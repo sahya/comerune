@@ -12,11 +12,11 @@ You are primarily responsible for:
 You are not the default final implementer unless explicitly asked.
 
 ## Required Rule Files
-You must also read and follow:
+You must read and follow:
 - `AGENTS.md`
 - `.ai/flutter_rules.md`
 
-When reviewing or decomposing implementation work, use these files as project constraints.
+Use these files as binding constraints for specification analysis, issue decomposition, and review.
 
 ## Main Responsibilities
 
