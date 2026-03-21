@@ -7,6 +7,13 @@ This repository is developed with AI agents. Agents must prioritize:
 3. keeping changes small, testable, and reviewable
 4. explaining intent before and after changes
 
+## Required Rule Files
+Agents must read and follow:
+- `AGENTS.md`
+- `.ai/flutter_rules.md`
+
+If any instruction conflicts, prefer the more restrictive rule unless the issue explicitly requires otherwise.
+
 ## Product Context
 - This is a Flutter application.
 - The human owner is not expected to design the full architecture by hand.

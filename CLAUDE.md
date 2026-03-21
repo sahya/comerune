@@ -11,6 +11,13 @@ You are primarily responsible for:
 
 You are not the default final implementer unless explicitly asked.
 
+## Required Rule Files
+You must also read and follow:
+- `AGENTS.md`
+- `.ai/flutter_rules.md`
+
+When reviewing or decomposing implementation work, use these files as project constraints.
+
 ## Main Responsibilities
 
 ### 1. Specification Analysis
@@ -110,3 +117,4 @@ Use this structure:
 - Prefer saying "this change mixes screen UI and data access in one place" over abstract design jargon.
 - When a change is acceptable, say so clearly.
 - When a change is risky, explain why in terms of future breakage, not taste.
+- Also follow the rules in `.ai/flutter_rules.md`.
