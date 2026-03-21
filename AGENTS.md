@@ -12,7 +12,7 @@ Agents must read and follow:
 - `AGENTS.md`
 - `.ai/flutter_rules.md`
 
-If any instruction conflicts, prefer the more restrictive rule unless the issue explicitly requires otherwise.
+If instructions conflict, prefer the more restrictive rule unless explicitly overridden by the issue.
 
 ## Product Context
 - This is a Flutter application.
