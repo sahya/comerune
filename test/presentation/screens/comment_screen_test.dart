@@ -108,10 +108,13 @@ void main() {
       final Container legacyRow =
           tester.widget(find.byKey(const Key('comment-row-legacy-1')));
       expect(legacyRow.color, Colors.lightBlue.shade50);
-      expect(find.textContaining(kLegacyUnsupportedFormatMessage), findsOneWidget);
+      expect(
+          find.textContaining(kLegacyUnsupportedFormatMessage), findsOneWidget);
     });
 
-    testWidgets('shows stop button during active connection and reconnect button on ENDED', (
+    testWidgets(
+        'shows stop button during active connection and reconnect button on ENDED',
+        (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
@@ -147,7 +150,8 @@ void main() {
       expect(reconnectCalls, 1);
     });
 
-    testWidgets('stop button is disabled while idle', (WidgetTester tester) async {
+    testWidgets('stop button is disabled while idle',
+        (WidgetTester tester) async {
       final ConnectionSupervisor supervisor = ConnectionSupervisor();
 
       await tester.pumpWidget(
@@ -162,7 +166,8 @@ void main() {
       expect(stopButton.onPressed, isNull);
     });
 
-    testWidgets('auto-scroll pauses while user scrolls up and resumes at bottom', (
+    testWidgets(
+        'auto-scroll pauses while user scrolls up and resumes at bottom', (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
@@ -182,6 +187,7 @@ void main() {
               content: 'comment-$index',
             ),
           ),
+          settingsStore: _newSettingsStore(),
         ),
       );
       await tester.pumpAndSettle();
@@ -195,7 +201,8 @@ void main() {
         isTrue,
       );
 
-      await tester.drag(find.byKey(const Key('comment-list')), const Offset(0, 300));
+      await tester.drag(
+          find.byKey(const Key('comment-list')), const Offset(0, 300));
       await tester.pumpAndSettle();
       final double pausedOffset = controller.offset;
 
@@ -210,7 +217,8 @@ void main() {
 
       expect(controller.offset, closeTo(pausedOffset, 2));
 
-      await tester.drag(find.byKey(const Key('comment-list')), const Offset(0, -1200));
+      await tester.drag(
+          find.byKey(const Key('comment-list')), const Offset(0, -1200));
       await tester.pumpAndSettle();
 
       hostKey.currentState!.addMessage(
@@ -240,7 +248,8 @@ void main() {
         ),
       );
 
-      expect(supervisor.fail(ConnectionErrorCode.endpointResolveFailed), isTrue);
+      expect(
+          supervisor.fail(ConnectionErrorCode.endpointResolveFailed), isTrue);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
@@ -263,7 +272,8 @@ void main() {
         ),
       );
 
-      expect(supervisor.fail(ConnectionErrorCode.endpointResolveFailed), isTrue);
+      expect(
+          supervisor.fail(ConnectionErrorCode.endpointResolveFailed), isTrue);
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('reconnect-button')), findsOneWidget);
@@ -299,6 +309,7 @@ void main() {
                             },
                             onReconnectSameLv: () async {},
                             onDifferentLvConnected: (_, __) async {},
+                            settingsStore: _newSettingsStore(),
                           ),
                         ),
                       );
@@ -343,6 +354,7 @@ void main() {
               content: 'message-1',
             ),
           ],
+          settingsStore: _newSettingsStore(),
         ),
       );
 
@@ -386,11 +398,13 @@ class _CommentScreenHost extends StatefulWidget {
     required this.supervisor,
     required this.initialLv,
     required this.initialMessages,
+    required this.settingsStore,
   });
 
   final ConnectionSupervisor supervisor;
   final String initialLv;
   final List<AppMessage> initialMessages;
+  final SettingsStore settingsStore;
 
   @override
   State<_CommentScreenHost> createState() => _CommentScreenHostState();
@@ -437,6 +451,7 @@ class _CommentScreenHostState extends State<_CommentScreenHost> {
           previousLv = previous;
           nextLv = next;
         },
+        settingsStore: widget.settingsStore,
       ),
     );
   }
@@ -460,7 +475,7 @@ Widget _buildScreen({
       onStopAllConnections: onStopAllConnections ?? () async {},
       onReconnectSameLv: onReconnectSameLv ?? () async {},
       onDifferentLvConnected: (_, __) async {},
-      settingsStore: settingsStore,
+      settingsStore: settingsStore ?? _newSettingsStore(),
       debugMode: debugMode,
       connectionMethod: connectionMethod,
     ),
@@ -486,5 +501,11 @@ AppMessage _message({
     userId: 'user-1',
     content: content,
     type: type,
+  );
+}
+
+SettingsStore _newSettingsStore() {
+  return SharedPreferencesSettingsStore(
+    prefs: InMemorySharedPreferences(),
   );
 }

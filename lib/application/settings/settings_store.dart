@@ -30,7 +30,7 @@ abstract class SharedPreferencesLike {
 
 class SharedPreferencesSettingsStore implements SettingsStore {
   const SharedPreferencesSettingsStore({required SharedPreferencesLike prefs})
-    : _prefs = prefs;
+      : _prefs = prefs;
 
   final SharedPreferencesLike _prefs;
 
@@ -44,14 +44,16 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   static const String _kVoicevoxSpeaker = 'settings.voicevox.speaker';
   static const String _kVoicevoxSpeed = 'settings.voicevox.speedScale';
   static const String _kVoicevoxPitch = 'settings.voicevox.pitchScale';
-  static const String _kVoicevoxIntonation = 'settings.voicevox.intonationScale';
+  static const String _kVoicevoxIntonation =
+      'settings.voicevox.intonationScale';
   static const String _kVoicevoxVolume = 'settings.voicevox.volumeScale';
   static const String _kQueueLimit = 'settings.queue.limit';
   static const String _kMaxDelaySeconds = 'settings.queue.maxDelaySeconds';
   static const String _kOmitUrl = 'settings.filter.omitUrl';
   static const String _kSuppressDuplicate = 'settings.filter.suppressDuplicate';
   static const String _kNgWords = 'settings.filter.ngWords';
-  static const String _kPastCommentFetchCount = 'settings.comment.pastFetchCount';
+  static const String _kPastCommentFetchCount =
+      'settings.comment.pastFetchCount';
   static const String _kDebugMode = 'settings.debugMode';
 
   @override
@@ -63,21 +65,27 @@ class SharedPreferencesSettingsStore implements SettingsStore {
         : SpeechEngine.bouyomi;
 
     return AppSettings(
-      autoReadEnabled: _prefs.getBool(_kAutoReadEnabled) ?? defaults.autoReadEnabled,
+      autoReadEnabled:
+          _prefs.getBool(_kAutoReadEnabled) ?? defaults.autoReadEnabled,
       speechEngine: speechEngine,
       bouyomiHost: _prefs.getString(_kBouyomiHost) ?? defaults.bouyomiHost,
       bouyomiSpeed: _prefs.getInt(_kBouyomiSpeed) ?? defaults.bouyomiSpeed,
       bouyomiTone: _prefs.getInt(_kBouyomiTone) ?? defaults.bouyomiTone,
       bouyomiVolume: _prefs.getInt(_kBouyomiVolume) ?? defaults.bouyomiVolume,
       bouyomiVoice: _prefs.getInt(_kBouyomiVoice) ?? defaults.bouyomiVoice,
-      voicevoxSpeaker: _prefs.getInt(_kVoicevoxSpeaker) ?? defaults.voicevoxSpeaker,
-      voicevoxSpeed: _prefs.getDouble(_kVoicevoxSpeed) ?? defaults.voicevoxSpeed,
-      voicevoxPitch: _prefs.getDouble(_kVoicevoxPitch) ?? defaults.voicevoxPitch,
+      voicevoxSpeaker:
+          _prefs.getInt(_kVoicevoxSpeaker) ?? defaults.voicevoxSpeaker,
+      voicevoxSpeed:
+          _prefs.getDouble(_kVoicevoxSpeed) ?? defaults.voicevoxSpeed,
+      voicevoxPitch:
+          _prefs.getDouble(_kVoicevoxPitch) ?? defaults.voicevoxPitch,
       voicevoxIntonation:
           _prefs.getDouble(_kVoicevoxIntonation) ?? defaults.voicevoxIntonation,
-      voicevoxVolume: _prefs.getDouble(_kVoicevoxVolume) ?? defaults.voicevoxVolume,
+      voicevoxVolume:
+          _prefs.getDouble(_kVoicevoxVolume) ?? defaults.voicevoxVolume,
       queueLimit: _prefs.getInt(_kQueueLimit) ?? defaults.queueLimit,
-      maxDelaySeconds: _prefs.getInt(_kMaxDelaySeconds) ?? defaults.maxDelaySeconds,
+      maxDelaySeconds:
+          _prefs.getInt(_kMaxDelaySeconds) ?? defaults.maxDelaySeconds,
       omitUrl: _prefs.getBool(_kOmitUrl) ?? defaults.omitUrl,
       suppressDuplicate:
           _prefs.getBool(_kSuppressDuplicate) ?? defaults.suppressDuplicate,

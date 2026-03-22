@@ -24,7 +24,7 @@ class CommentScreen extends StatefulWidget {
     required this.onStopAllConnections,
     required this.onReconnectSameLv,
     required this.onDifferentLvConnected,
-    this.settingsStore,
+    required this.settingsStore,
     this.onOpenSettings,
     this.debugMode = false,
     this.connectionMethod,
@@ -35,8 +35,9 @@ class CommentScreen extends StatefulWidget {
   final List<AppMessage> messages;
   final Future<void> Function() onStopAllConnections;
   final Future<void> Function() onReconnectSameLv;
-  final Future<void> Function(String previousLv, String nextLv) onDifferentLvConnected;
-  final SettingsStore? settingsStore;
+  final Future<void> Function(String previousLv, String nextLv)
+      onDifferentLvConnected;
+  final SettingsStore settingsStore;
   final Future<void> Function()? onOpenSettings;
   final bool debugMode;
   final ConnectionMethod? connectionMethod;
@@ -82,7 +83,8 @@ class _CommentScreenState extends State<CommentScreen> {
       });
     }
 
-    final bool hasNewMessages = widget.messages.length != oldWidget.messages.length;
+    final bool hasNewMessages =
+        widget.messages.length != oldWidget.messages.length;
     if (hasNewMessages && _autoScrollEnabled) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToBottom();
@@ -118,18 +120,19 @@ class _CommentScreenState extends State<CommentScreen> {
                       return;
                     }
 
-                    final SettingsStore? settingsStore = widget.settingsStore;
-                    if (settingsStore == null || !mounted) {
+                    if (!mounted) {
                       return;
                     }
 
                     await Navigator.of(context).push(
                       MaterialPageRoute<void>(
-                        builder: (_) => SettingsScreen(settingsStore: settingsStore),
+                        builder: (_) =>
+                            SettingsScreen(settingsStore: widget.settingsStore),
                       ),
                     );
                   },
-                  itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                  itemBuilder: (BuildContext context) =>
+                      <PopupMenuEntry<String>>[
                     const PopupMenuItem<String>(
                       value: 'settings',
                       child: Text('設定'),
@@ -243,8 +246,10 @@ class _CommentScreenState extends State<CommentScreen> {
   void _handleConnectionChanged() {
     final ConnectionStatus currentStatus = widget.connectionSupervisor.status;
 
-    if (_lastStatus != ConnectionStatus.failed && currentStatus == ConnectionStatus.failed) {
-      final String message = _failedMessage(widget.connectionSupervisor.lastError);
+    if (_lastStatus != ConnectionStatus.failed &&
+        currentStatus == ConnectionStatus.failed) {
+      final String message =
+          _failedMessage(widget.connectionSupervisor.lastError);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) {
           return;
@@ -302,7 +307,8 @@ class _CommentScreenState extends State<CommentScreen> {
 
     if (_autoScrollEnabled &&
         !nearBottom &&
-        _scrollController.position.userScrollDirection == ScrollDirection.forward) {
+        _scrollController.position.userScrollDirection ==
+            ScrollDirection.forward) {
       setState(() {
         _autoScrollEnabled = false;
       });
@@ -314,8 +320,8 @@ class _CommentScreenState extends State<CommentScreen> {
       return true;
     }
 
-    final double distanceToBottom =
-        _scrollController.position.maxScrollExtent - _scrollController.position.pixels;
+    final double distanceToBottom = _scrollController.position.maxScrollExtent -
+        _scrollController.position.pixels;
     return distanceToBottom <= _autoScrollResumeThreshold;
   }
 
@@ -354,9 +360,10 @@ class _StatusBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color wifiColor = supervisor.wifiIndicatorColor == WifiIndicatorColor.green
-        ? Colors.green
-        : Colors.red;
+    final Color wifiColor =
+        supervisor.wifiIndicatorColor == WifiIndicatorColor.green
+            ? Colors.green
+            : Colors.red;
 
     return Container(
       width: double.infinity,
