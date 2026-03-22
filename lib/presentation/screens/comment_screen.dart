@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
@@ -19,8 +21,8 @@ class CommentScreen extends StatefulWidget {
     required this.messages,
     required this.onStopAllConnections,
     required this.onReconnectSameLv,
+    required this.onDifferentLvConnected,
     this.onOpenSettings,
-    this.onDifferentLvConnected,
     this.debugMode = false,
     this.connectionMethod,
   });
@@ -30,8 +32,8 @@ class CommentScreen extends StatefulWidget {
   final List<AppMessage> messages;
   final Future<void> Function() onStopAllConnections;
   final Future<void> Function() onReconnectSameLv;
+  final Future<void> Function(String previousLv, String nextLv) onDifferentLvConnected;
   final Future<void> Function()? onOpenSettings;
-  final Future<void> Function(String previousLv, String nextLv)? onDifferentLvConnected;
   final bool debugMode;
   final ConnectionMethod? connectionMethod;
 
@@ -70,7 +72,7 @@ class _CommentScreenState extends State<CommentScreen> {
 
     if (oldWidget.lv != widget.lv) {
       _autoScrollEnabled = true;
-      widget.onDifferentLvConnected?.call(oldWidget.lv, widget.lv);
+      unawaited(widget.onDifferentLvConnected(oldWidget.lv, widget.lv));
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToBottom(animated: false);
       });
@@ -202,6 +204,7 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   Future<void> _stopAndPop() async {
+    _markStoppedIfPossible();
     await widget.onStopAllConnections();
     if (!mounted) {
       return;
@@ -210,8 +213,15 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   Future<bool> _handleBackNavigation() async {
+    _markStoppedIfPossible();
     await widget.onStopAllConnections();
     return true;
+  }
+
+  void _markStoppedIfPossible() {
+    if (_isStopEnabled(widget.connectionSupervisor.status)) {
+      widget.connectionSupervisor.stopByUser();
+    }
   }
 
   void _handleConnectionChanged() {
@@ -367,7 +377,7 @@ class _StatusBar extends StatelessWidget {
                 key: const Key('status-reconnect-count'),
               ),
               Text(
-                'エラー: ${supervisor.lastError?.code ?? '-'}',
+                'エラー: ${_errorLabel(supervisor.lastError)}',
                 key: const Key('status-last-error'),
               ),
             ],
@@ -416,6 +426,25 @@ class _StatusBar extends StatelessWidget {
         return '-';
     }
   }
+
+  String _errorLabel(ConnectionErrorCode? code) {
+    switch (code) {
+      case ConnectionErrorCode.broadcastEnded:
+        return '放送終了';
+      case ConnectionErrorCode.userStopped:
+        return 'ユーザー停止';
+      case null:
+        return '-';
+      case ConnectionErrorCode.lvParseFailed:
+      case ConnectionErrorCode.sessionWsConnectFailed:
+      case ConnectionErrorCode.endpointResolveFailed:
+      case ConnectionErrorCode.ndgrStreamFailed:
+      case ConnectionErrorCode.legacyWsFailed:
+      case ConnectionErrorCode.speechBouyomiFailed:
+      case ConnectionErrorCode.speechVoicevoxFailed:
+        return code.code;
+    }
+  }
 }
 
 class _CommentRow extends StatelessWidget {
@@ -448,7 +477,7 @@ class _CommentRow extends StatelessWidget {
   }
 
   Color? _backgroundColor(AppMessage message) {
-    if (message.content == kLegacyUnsupportedFormatMessage) {
+    if (_isLegacyUnsupportedSystemMessage(message)) {
       return Colors.lightBlue.shade50;
     }
 
@@ -462,5 +491,16 @@ class _CommentRow extends StatelessWidget {
       case AppMessageType.nicoad:
         return null;
     }
+  }
+
+  bool _isLegacyUnsupportedSystemMessage(AppMessage message) {
+    final Object? raw = message.raw;
+    if (raw is Map<Object?, Object?> &&
+        raw['kind'] == 'legacy_unsupported_format') {
+      return true;
+    }
+
+    return message.type == AppMessageType.notification &&
+        message.content == kLegacyUnsupportedFormatMessage;
   }
 }
