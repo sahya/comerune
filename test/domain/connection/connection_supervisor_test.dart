@@ -20,6 +20,7 @@ void main() {
         legacyCommentClient: FakeLegacyCommentClient(),
         jitterProvider: (int attempt) => Duration(milliseconds: attempt * 10),
       );
+      addTearDown(supervisor.dispose);
 
       expect(
         supervisor.backoffDelayForAttempt(1),
@@ -294,13 +295,19 @@ void main() {
       expect(started, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingNdgr);
 
-      ndgrClient.emitStalled();
+      const NdgrResumeCursor cursor = NdgrResumeCursor(
+        at: 'now',
+        next: 'segment-1',
+      );
+      ndgrClient.emitStalled(resumeCursor: cursor);
       await _flushAsync();
 
       expect(supervisor.status, ConnectionStatus.streamingNdgr);
       expect(supervisor.reconnectCount, 1);
       expect(ndgrClient.disconnectCalls, 1);
       expect(ndgrClient.connectCalls, 2);
+      expect(ndgrClient.connectedResumeCursors.last?.at, 'now');
+      expect(ndgrClient.connectedResumeCursors.last?.next, 'segment-1');
     });
 
     test('auto transitions to ENDED when session broadcast ended event is emitted', () async {
@@ -389,6 +396,7 @@ class FakeNdgrClient implements NdgrClient {
   final StreamController<NdgrEvent> _eventsController =
       StreamController<NdgrEvent>.broadcast();
   final List<Uri> connectedUris = <Uri>[];
+  final List<NdgrResumeCursor?> connectedResumeCursors = <NdgrResumeCursor?>[];
   int connectCalls = 0;
   int disconnectCalls = 0;
 
@@ -396,9 +404,13 @@ class FakeNdgrClient implements NdgrClient {
   Stream<NdgrEvent> get events => _eventsController.stream;
 
   @override
-  Future<void> connect(Uri viewApiUri) async {
+  Future<void> connect(
+    Uri viewApiUri, {
+    NdgrResumeCursor? resumeCursor,
+  }) async {
     connectCalls += 1;
     connectedUris.add(viewApiUri);
+    connectedResumeCursors.add(resumeCursor);
 
     if (_connectResults.isEmpty) {
       return;
@@ -419,8 +431,15 @@ class FakeNdgrClient implements NdgrClient {
     _eventsController.add(const NdgrEvent(NdgrEventType.disconnected));
   }
 
-  void emitStalled() {
-    _eventsController.add(const NdgrEvent(NdgrEventType.stalled));
+  void emitStalled({
+    NdgrResumeCursor? resumeCursor,
+  }) {
+    _eventsController.add(
+      NdgrEvent(
+        NdgrEventType.stalled,
+        resumeCursor: resumeCursor,
+      ),
+    );
   }
 }
 
