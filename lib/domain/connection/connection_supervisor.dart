@@ -119,7 +119,11 @@ class ConnectionSupervisor extends ChangeNotifier {
         _maxReconnectAttempts = maxReconnectAttempts,
         _legacySameUrlFailureThreshold = legacySameUrlFailureThreshold,
         _delayExecutor = delayExecutor ?? _defaultDelayExecutor,
-        _jitterProvider = jitterProvider ?? _defaultJitterProvider;
+        _jitterProvider = jitterProvider ?? _defaultJitterProvider {
+    _sessionEventSubscription = _sessionWsClient.events.listen(_onSessionWsEvent);
+    _ndgrEventSubscription = _ndgrClient.events.listen(_onNdgrEvent);
+    _legacyEventSubscription = _legacyCommentClient.events.listen(_onLegacyEvent);
+  }
 
   static const List<int> _backoffSeconds = <int>[1, 2, 4, 8, 16, 30];
 
@@ -164,7 +168,7 @@ class ConnectionSupervisor extends ChangeNotifier {
           ConnectionStatus.failed,
         },
         ConnectionStatus.stopped: <ConnectionStatus>{
-          ConnectionStatus.connectingSessionWs,
+          ConnectionStatus.idle,
         },
         ConnectionStatus.ended: <ConnectionStatus>{
           ConnectionStatus.idle,
@@ -190,6 +194,9 @@ class ConnectionSupervisor extends ChangeNotifier {
   final int _legacySameUrlFailureThreshold;
   final DelayExecutor _delayExecutor;
   final JitterProvider _jitterProvider;
+  late final StreamSubscription<SessionWsEvent> _sessionEventSubscription;
+  late final StreamSubscription<NdgrEvent> _ndgrEventSubscription;
+  late final StreamSubscription<LegacyCommentEvent> _legacyEventSubscription;
 
   ConnectionStatus _status = ConnectionStatus.idle;
   int _reconnectCount = 0;
@@ -228,6 +235,13 @@ class ConnectionSupervisor extends ChangeNotifier {
     if (!canStartConnection) {
       _logInvalidTransition(ConnectionStatus.connectingSessionWs);
       return false;
+    }
+
+    if (_status == ConnectionStatus.stopped) {
+      final bool resetToIdle = _transitionTo(ConnectionStatus.idle);
+      if (!resetToIdle) {
+        return false;
+      }
     }
 
     final bool transitioned = _transitionTo(
@@ -330,6 +344,54 @@ class ConnectionSupervisor extends ChangeNotifier {
   void recordError(ConnectionErrorCode errorCode) {
     _lastError = errorCode;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    unawaited(_sessionEventSubscription.cancel());
+    unawaited(_ndgrEventSubscription.cancel());
+    unawaited(_legacyEventSubscription.cancel());
+    super.dispose();
+  }
+
+  void _onSessionWsEvent(SessionWsEvent event) {
+    switch (event.type) {
+      case SessionWsEventType.disconnected:
+        if (_status == ConnectionStatus.idle ||
+            _status == ConnectionStatus.stopped ||
+            _status == ConnectionStatus.ended ||
+            _status == ConnectionStatus.failed) {
+          return;
+        }
+        unawaited(onSessionWsDisconnected());
+        break;
+      case SessionWsEventType.broadcastEnded:
+        unawaited(endBroadcast());
+        break;
+    }
+  }
+
+  void _onNdgrEvent(NdgrEvent event) {
+    if (_status != ConnectionStatus.streamingNdgr) {
+      return;
+    }
+    switch (event.type) {
+      case NdgrEventType.disconnected:
+      case NdgrEventType.stalled:
+        unawaited(onNdgrStreamStalled());
+        break;
+    }
+  }
+
+  void _onLegacyEvent(LegacyCommentEvent event) {
+    if (_status != ConnectionStatus.streamingLegacy) {
+      return;
+    }
+    switch (event.type) {
+      case LegacyCommentEventType.disconnected:
+        unawaited(onLegacyWsDisconnected());
+        break;
+    }
   }
 
   Future<void> _resolveEndpointsAndConnect() async {
@@ -442,7 +504,7 @@ class ConnectionSupervisor extends ChangeNotifier {
     required ConnectionErrorCode errorCode,
     required Future<void> Function(int attempt) reconnectOperation,
   }) async {
-    if (_status == ConnectionStatus.stopped || _status == ConnectionStatus.ended) {
+    if (_shouldSuppressReconnect()) {
       return false;
     }
 
@@ -463,7 +525,7 @@ class ConnectionSupervisor extends ChangeNotifier {
     _isReconnectLoopRunning = true;
 
     try {
-      while (_status != ConnectionStatus.stopped && _status != ConnectionStatus.ended) {
+      while (!_shouldSuppressReconnect()) {
         if (_reconnectCount >= _maxReconnectAttempts) {
           fail(errorCode);
           return false;
@@ -474,7 +536,7 @@ class ConnectionSupervisor extends ChangeNotifier {
         notifyListeners();
 
         await _delayExecutor(backoffDelayForAttempt(_reconnectCount));
-        if (_status == ConnectionStatus.stopped || _status == ConnectionStatus.ended) {
+        if (_shouldSuppressReconnect()) {
           return false;
         }
 
@@ -510,9 +572,18 @@ class ConnectionSupervisor extends ChangeNotifier {
 
   Future<void> _disconnectAllClients() async {
     await Future.wait<void>(<Future<void>>[
-      _sessionWsClient.disconnect(),
-      _ndgrClient.disconnect(),
-      _legacyCommentClient.disconnect(),
+      _safeDisconnect(
+        _sessionWsClient.disconnect,
+        'session ws',
+      ),
+      _safeDisconnect(
+        _ndgrClient.disconnect,
+        'ndgr stream',
+      ),
+      _safeDisconnect(
+        _legacyCommentClient.disconnect,
+        'legacy stream',
+      ),
     ]);
   }
 
@@ -547,6 +618,9 @@ class ConnectionSupervisor extends ChangeNotifier {
       );
     }
   }
+
+  bool _shouldSuppressReconnect() =>
+      _status == ConnectionStatus.stopped || _status == ConnectionStatus.ended;
 
   bool _transitionTo(
     ConnectionStatus next, {

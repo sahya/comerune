@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../lib/domain/connection/connection_clients.dart';
@@ -53,6 +55,7 @@ void main() {
         delayExecutor: (_) async {},
         jitterProvider: (_) => Duration.zero,
       );
+      addTearDown(supervisor.dispose);
 
       final bool started = await supervisor.startConnection();
       expect(started, isTrue);
@@ -85,6 +88,7 @@ void main() {
         delayExecutor: (_) async {},
         jitterProvider: (_) => Duration.zero,
       );
+      addTearDown(supervisor.dispose);
 
       final bool started = await supervisor.startConnection();
       expect(started, isTrue);
@@ -115,6 +119,7 @@ void main() {
         delayExecutor: (_) async {},
         jitterProvider: (_) => Duration.zero,
       );
+      addTearDown(supervisor.dispose);
 
       final bool started = await supervisor.startConnection();
       expect(started, isTrue);
@@ -147,6 +152,7 @@ void main() {
         delayExecutor: (_) async {},
         jitterProvider: (_) => Duration.zero,
       );
+      addTearDown(supervisor.dispose);
 
       final bool started = await supervisor.startConnection();
       expect(started, isTrue);
@@ -179,6 +185,7 @@ void main() {
         delayExecutor: (_) async {},
         jitterProvider: (_) => Duration.zero,
       );
+      addTearDown(supervisor.dispose);
 
       final bool started = await supervisor.startConnection();
       expect(started, isTrue);
@@ -217,6 +224,7 @@ void main() {
         delayExecutor: (_) async {},
         jitterProvider: (_) => Duration.zero,
       );
+      addTearDown(supervisor.dispose);
 
       final bool started = await supervisor.startConnection();
       expect(started, isTrue);
@@ -252,6 +260,7 @@ void main() {
         delayExecutor: (_) async {},
         jitterProvider: (_) => Duration.zero,
       );
+      addTearDown(supervisor.dispose);
 
       final bool started = await supervisor.startConnection();
       expect(started, isTrue);
@@ -263,7 +272,74 @@ void main() {
       expect(supervisor.reconnectCount, 2);
       expect(supervisor.lastError, ConnectionErrorCode.ndgrStreamFailed);
     });
+
+    test('auto reconnects when NDGR stall event is emitted', () async {
+      final Uri ndgrUri = Uri.parse('https://example.com/api/view/v4/stream');
+      final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
+        endpointsQueue: <SessionEndpoints>[
+          SessionEndpoints(ndgrViewApiUri: ndgrUri),
+        ],
+      );
+      final FakeNdgrClient ndgrClient = FakeNdgrClient();
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: sessionWsClient,
+        ndgrClient: ndgrClient,
+        legacyCommentClient: FakeLegacyCommentClient(),
+        delayExecutor: (_) async {},
+        jitterProvider: (_) => Duration.zero,
+      );
+      addTearDown(supervisor.dispose);
+
+      final bool started = await supervisor.startConnection();
+      expect(started, isTrue);
+      expect(supervisor.status, ConnectionStatus.streamingNdgr);
+
+      ndgrClient.emitStalled();
+      await _flushAsync();
+
+      expect(supervisor.status, ConnectionStatus.streamingNdgr);
+      expect(supervisor.reconnectCount, 1);
+      expect(ndgrClient.disconnectCalls, 1);
+      expect(ndgrClient.connectCalls, 2);
+    });
+
+    test('auto transitions to ENDED when session broadcast ended event is emitted', () async {
+      final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
+        endpointsQueue: <SessionEndpoints>[
+          SessionEndpoints(
+            legacyWsUrl: Uri.parse('wss://example.com/legacy'),
+          ),
+        ],
+      );
+      final FakeLegacyCommentClient legacyClient = FakeLegacyCommentClient();
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: sessionWsClient,
+        ndgrClient: FakeNdgrClient(),
+        legacyCommentClient: legacyClient,
+        delayExecutor: (_) async {},
+        jitterProvider: (_) => Duration.zero,
+      );
+      addTearDown(supervisor.dispose);
+
+      final bool started = await supervisor.startConnection();
+      expect(started, isTrue);
+      expect(supervisor.status, ConnectionStatus.streamingLegacy);
+
+      sessionWsClient.emitBroadcastEnded();
+      await _flushAsync();
+
+      expect(supervisor.status, ConnectionStatus.ended);
+      expect(supervisor.lastError, ConnectionErrorCode.broadcastEnded);
+
+      legacyClient.emitDisconnected();
+      await _flushAsync();
+      expect(supervisor.reconnectCount, 0);
+    });
   });
+}
+
+Future<void> _flushAsync() async {
+  await Future<void>.delayed(Duration.zero);
 }
 
 class FakeSessionWsClient implements SessionWsClient {
@@ -272,9 +348,14 @@ class FakeSessionWsClient implements SessionWsClient {
   });
 
   final List<SessionEndpoints> endpointsQueue;
+  final StreamController<SessionWsEvent> _eventsController =
+      StreamController<SessionWsEvent>.broadcast();
 
   int connectCalls = 0;
   int disconnectCalls = 0;
+
+  @override
+  Stream<SessionWsEvent> get events => _eventsController.stream;
 
   @override
   Future<SessionEndpoints> connectAndResolveEndpoints() async {
@@ -289,6 +370,14 @@ class FakeSessionWsClient implements SessionWsClient {
   Future<void> disconnect() async {
     disconnectCalls += 1;
   }
+
+  void emitDisconnected() {
+    _eventsController.add(const SessionWsEvent(SessionWsEventType.disconnected));
+  }
+
+  void emitBroadcastEnded() {
+    _eventsController.add(const SessionWsEvent(SessionWsEventType.broadcastEnded));
+  }
 }
 
 class FakeNdgrClient implements NdgrClient {
@@ -297,9 +386,14 @@ class FakeNdgrClient implements NdgrClient {
   }) : _connectResults = connectResults ?? <bool>[];
 
   final List<bool> _connectResults;
+  final StreamController<NdgrEvent> _eventsController =
+      StreamController<NdgrEvent>.broadcast();
   final List<Uri> connectedUris = <Uri>[];
   int connectCalls = 0;
   int disconnectCalls = 0;
+
+  @override
+  Stream<NdgrEvent> get events => _eventsController.stream;
 
   @override
   Future<void> connect(Uri viewApiUri) async {
@@ -320,6 +414,14 @@ class FakeNdgrClient implements NdgrClient {
   Future<void> disconnect() async {
     disconnectCalls += 1;
   }
+
+  void emitDisconnected() {
+    _eventsController.add(const NdgrEvent(NdgrEventType.disconnected));
+  }
+
+  void emitStalled() {
+    _eventsController.add(const NdgrEvent(NdgrEventType.stalled));
+  }
 }
 
 class FakeLegacyCommentClient implements LegacyCommentClient {
@@ -328,9 +430,14 @@ class FakeLegacyCommentClient implements LegacyCommentClient {
   }) : _connectResults = connectResults ?? <bool>[];
 
   final List<bool> _connectResults;
+  final StreamController<LegacyCommentEvent> _eventsController =
+      StreamController<LegacyCommentEvent>.broadcast();
   final List<Uri> connectedUris = <Uri>[];
   int connectCalls = 0;
   int disconnectCalls = 0;
+
+  @override
+  Stream<LegacyCommentEvent> get events => _eventsController.stream;
 
   @override
   Future<void> connect(Uri wsUrl) async {
@@ -350,5 +457,11 @@ class FakeLegacyCommentClient implements LegacyCommentClient {
   @override
   Future<void> disconnect() async {
     disconnectCalls += 1;
+  }
+
+  void emitDisconnected() {
+    _eventsController.add(
+      const LegacyCommentEvent(LegacyCommentEventType.disconnected),
+    );
   }
 }
