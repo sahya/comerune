@@ -1,0 +1,204 @@
+import 'dart:collection';
+import 'dart:developer';
+
+import '../models/app_message.dart';
+
+const int kDefaultSpeechQueueLimit = 20;
+const Duration kDefaultSpeechMaxDelay = Duration(seconds: 10);
+const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
+
+class SpeechQueueItem {
+  const SpeechQueueItem({
+    required this.messageId,
+    required this.messageTimestamp,
+    required this.userId,
+    required this.text,
+  });
+
+  final String messageId;
+  final DateTime messageTimestamp;
+  final String? userId;
+  final String text;
+}
+
+class SpeechQueueController {
+  SpeechQueueController({
+    int queueLimit = kDefaultSpeechQueueLimit,
+    Duration maxDelay = kDefaultSpeechMaxDelay,
+    bool autoReadEnabled = true,
+    List<String> ngWordPatterns = const <String>[],
+    DateTime Function()? nowProvider,
+  }) : _queueLimit = queueLimit,
+       _maxDelay = maxDelay,
+       _autoReadEnabled = autoReadEnabled,
+       _nowProvider = nowProvider ?? DateTime.now {
+    if (queueLimit < 1) {
+      throw ArgumentError.value(queueLimit, 'queueLimit', 'must be at least 1');
+    }
+    if (maxDelay < Duration.zero) {
+      throw ArgumentError.value(
+        maxDelay,
+        'maxDelay',
+        'must not be negative',
+      );
+    }
+
+    setNgWordPatterns(ngWordPatterns);
+  }
+
+  final Queue<SpeechQueueItem> _queue = Queue<SpeechQueueItem>();
+  final Map<String, DateTime> _lastAcceptedAtByUserId = <String, DateTime>{};
+  final DateTime Function() _nowProvider;
+  final RegExp _urlPattern = RegExp(r'https?:\/\/\S+');
+
+  int _queueLimit;
+  Duration _maxDelay;
+  bool _autoReadEnabled;
+  List<RegExp> _compiledNgWordPatterns = <RegExp>[];
+
+  int get queueLimit => _queueLimit;
+  Duration get maxDelay => _maxDelay;
+  bool get autoReadEnabled => _autoReadEnabled;
+  int get length => _queue.length;
+  bool get isEmpty => _queue.isEmpty;
+
+  List<SpeechQueueItem> get items => List<SpeechQueueItem>.unmodifiable(_queue);
+
+  void setAutoReadEnabled(bool enabled) {
+    _autoReadEnabled = enabled;
+  }
+
+  void setQueueLimit(int limit) {
+    if (limit < 1) {
+      throw ArgumentError.value(limit, 'limit', 'must be at least 1');
+    }
+    _queueLimit = limit;
+    _enforceQueueLimit();
+  }
+
+  void setMaxDelay(Duration delay) {
+    if (delay < Duration.zero) {
+      throw ArgumentError.value(delay, 'delay', 'must not be negative');
+    }
+    _maxDelay = delay;
+    _discardExpired(_nowProvider());
+  }
+
+  void setNgWordPatterns(List<String> patterns) {
+    final List<RegExp> compiled = <RegExp>[];
+    for (final String pattern in patterns) {
+      try {
+        compiled.add(RegExp(pattern));
+      } on FormatException catch (error) {
+        log(
+          'Ignoring invalid NG word pattern: $pattern ($error)',
+          name: 'SpeechQueueController',
+        );
+      }
+    }
+    _compiledNgWordPatterns = compiled;
+  }
+
+  bool enqueue(AppMessage message, {DateTime? now}) {
+    final DateTime nowAt = now ?? _nowProvider();
+    _discardExpired(nowAt);
+
+    if (!_autoReadEnabled) {
+      return false;
+    }
+    if (_isLegacyUnsupportedFormat(message)) {
+      return false;
+    }
+    if (_isFloodMessage(message)) {
+      return false;
+    }
+
+    final String normalizedText = _replaceUrls(message.content);
+    if (_matchesNgWord(normalizedText)) {
+      return false;
+    }
+
+    _queue.add(
+      SpeechQueueItem(
+        messageId: message.id,
+        messageTimestamp: message.timestamp,
+        userId: message.userId,
+        text: normalizedText,
+      ),
+    );
+    _rememberAcceptedMessage(message);
+    _enforceQueueLimit();
+    return true;
+  }
+
+  SpeechQueueItem? dequeue({DateTime? now}) {
+    _discardExpired(now ?? _nowProvider());
+    if (_queue.isEmpty) {
+      return null;
+    }
+    return _queue.removeFirst();
+  }
+
+  void clear() {
+    _queue.clear();
+    _lastAcceptedAtByUserId.clear();
+  }
+
+  bool _isLegacyUnsupportedFormat(AppMessage message) {
+    return message.content == kLegacyUnsupportedFormatMessage;
+  }
+
+  bool _isFloodMessage(AppMessage message) {
+    final String? userId = message.userId;
+    if (userId == null || userId.isEmpty) {
+      return false;
+    }
+
+    final DateTime? lastAcceptedAt = _lastAcceptedAtByUserId[userId];
+    if (lastAcceptedAt == null) {
+      return false;
+    }
+
+    final Duration interval = message.timestamp.difference(lastAcceptedAt);
+    return !interval.isNegative && interval < const Duration(seconds: 1);
+  }
+
+  void _rememberAcceptedMessage(AppMessage message) {
+    final String? userId = message.userId;
+    if (userId == null || userId.isEmpty) {
+      return;
+    }
+    _lastAcceptedAtByUserId[userId] = message.timestamp;
+  }
+
+  String _replaceUrls(String content) {
+    return content.replaceAll(_urlPattern, 'URL');
+  }
+
+  bool _matchesNgWord(String content) {
+    for (final RegExp pattern in _compiledNgWordPatterns) {
+      if (pattern.hasMatch(content)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void _discardExpired(DateTime now) {
+    while (_queue.isNotEmpty) {
+      final SpeechQueueItem oldest = _queue.first;
+      final Duration delay = now.difference(oldest.messageTimestamp);
+      if (!delay.isNegative && delay > _maxDelay) {
+        _queue.removeFirst();
+        continue;
+      }
+      break;
+    }
+  }
+
+  void _enforceQueueLimit() {
+    while (_queue.length > _queueLimit) {
+      _queue.removeFirst();
+    }
+  }
+}
