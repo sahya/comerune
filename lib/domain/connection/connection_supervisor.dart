@@ -160,7 +160,10 @@ class ConnectionSupervisor extends ChangeNotifier {
       _status.usesGreenWifiIcon ? WifiIndicatorColor.green : WifiIndicatorColor.red;
 
   bool get canStartConnection =>
-      _status == ConnectionStatus.idle || _status == ConnectionStatus.stopped;
+      _status == ConnectionStatus.idle ||
+      _status == ConnectionStatus.stopped ||
+      _status == ConnectionStatus.ended ||
+      _status == ConnectionStatus.failed;
 
   bool get canRetryFromTerminal =>
       _status == ConnectionStatus.ended || _status == ConnectionStatus.failed;
@@ -171,11 +174,8 @@ class ConnectionSupervisor extends ChangeNotifier {
       return false;
     }
 
-    if (_status == ConnectionStatus.stopped) {
-      final bool resetToIdle = _transitionTo(
-        ConnectionStatus.idle,
-        resetDiagnostics: true,
-      );
+    if (_status != ConnectionStatus.idle) {
+      final bool resetToIdle = _transitionTo(ConnectionStatus.idle);
       if (!resetToIdle) {
         return false;
       }

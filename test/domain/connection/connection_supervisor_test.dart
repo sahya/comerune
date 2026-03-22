@@ -134,38 +134,44 @@ void main() {
     expect(failedSupervisor.status, ConnectionStatus.idle);
   });
 
-  test('supports retry from terminal states via IDLE -> CONNECTING flow', () {
+  test('supports start from ENDED/FAILED and resets diagnostics', () {
     final ConnectionSupervisor supervisor = ConnectionSupervisor();
 
     expect(supervisor.startConnection(), isTrue);
     expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(supervisor.onNdgrEndpointResolved(), isTrue);
     expect(
-      supervisor.fail(ConnectionErrorCode.sessionWsConnectFailed),
+      supervisor.onStreamDisconnected(ConnectionErrorCode.ndgrStreamFailed),
       isTrue,
     );
     supervisor.recordReceivedAt(DateTime.parse('2026-03-22T01:23:45Z'));
+    expect(supervisor.fail(ConnectionErrorCode.endpointResolveFailed), isTrue);
 
-    expect(supervisor.retryConnectionFromTerminal(), isTrue);
+    expect(supervisor.startConnection(), isTrue);
     expect(supervisor.status, ConnectionStatus.connectingSessionWs);
     expect(supervisor.reconnectCount, 0);
     expect(supervisor.lastReceivedAt, isNull);
     expect(supervisor.lastError, isNull);
   });
 
-  test('restarts from STOPPED via IDLE -> CONNECTING flow', () {
+  test('supports start from STOPPED via IDLE and resets diagnostics', () {
     final ConnectionSupervisor supervisor = ConnectionSupervisor();
 
     expect(supervisor.startConnection(), isTrue);
     expect(supervisor.onSessionWsConnected(), isTrue);
-    expect(supervisor.onNdgrEndpointResolved(), isTrue);
+    expect(supervisor.onLegacyEndpointResolved(), isTrue);
+    expect(
+      supervisor.onStreamDisconnected(ConnectionErrorCode.legacyWsFailed),
+      isTrue,
+    );
+    supervisor.recordReceivedAt(DateTime.parse('2026-03-22T02:00:00Z'));
     expect(supervisor.stopByUser(), isTrue);
-    expect(supervisor.status, ConnectionStatus.stopped);
-    expect(supervisor.lastError, ConnectionErrorCode.userStopped);
 
     expect(supervisor.startConnection(), isTrue);
     expect(supervisor.status, ConnectionStatus.connectingSessionWs);
-    expect(supervisor.lastError, isNull);
     expect(supervisor.reconnectCount, 0);
+    expect(supervisor.lastReceivedAt, isNull);
+    expect(supervisor.lastError, isNull);
   });
 
   test('prevents invalid transition such as IDLE -> STREAMING_NDGR', () {
