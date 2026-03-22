@@ -49,6 +49,7 @@ typedef BouyomiConnectionOpener = Future<BouyomiConnection> Function(
 );
 
 typedef BouyomiSettingsProvider = BouyomiSettings Function();
+typedef BouyomiEncodingResolver = Encoding? Function(String name);
 
 class BouyomiPacketBuilder {
   static const int commandSpeak = 1;
@@ -81,15 +82,18 @@ class BouyomiEngine implements SpeechEngine {
   BouyomiEngine({
     required BouyomiSettingsProvider settingsProvider,
     BouyomiConnectionOpener? connectionOpener,
+    BouyomiEncodingResolver? encodingResolver,
     Duration connectTimeout = const Duration(seconds: 1),
     Duration writeTimeout = const Duration(seconds: 1),
   })  : _settingsProvider = settingsProvider,
         _connectionOpener = connectionOpener ?? _defaultConnectionOpener,
+        _encodingResolver = encodingResolver ?? Encoding.getByName,
         _connectTimeout = connectTimeout,
         _writeTimeout = writeTimeout;
 
   final BouyomiSettingsProvider _settingsProvider;
   final BouyomiConnectionOpener _connectionOpener;
+  final BouyomiEncodingResolver _encodingResolver;
   final Duration _connectTimeout;
   final Duration _writeTimeout;
 
@@ -147,18 +151,30 @@ class BouyomiEngine implements SpeechEngine {
     return _SocketBouyomiConnection(socket);
   }
 
-  static Uint8List _encodeMessage(String text, BouyomiCharset charset) {
+  Uint8List _encodeMessage(String text, BouyomiCharset charset) {
     switch (charset) {
       case BouyomiCharset.utf8:
         return Uint8List.fromList(utf8.encode(text));
       case BouyomiCharset.unicode:
         return _encodeUtf16Le(text);
       case BouyomiCharset.shiftJis:
-        // TODO(issue-13): Add Shift-JIS encoding support once codec dependency policy is approved.
-        throw UnsupportedError(
-          'Shift-JIS encoding is not supported without external codec dependency.',
-        );
+        final Encoding? shiftJisEncoding = _resolveShiftJisEncoding();
+        if (shiftJisEncoding == null) {
+          // TODO(issue-13): Select and wire a guaranteed Shift-JIS codec policy for all runtime environments.
+          throw UnsupportedError(
+            'Shift-JIS encoding is not available in this runtime.',
+          );
+        }
+        return Uint8List.fromList(shiftJisEncoding.encode(text));
     }
+  }
+
+  Encoding? _resolveShiftJisEncoding() {
+    return _encodingResolver('shift_jis') ??
+        _encodingResolver('shift-jis') ??
+        _encodingResolver('sjis') ??
+        _encodingResolver('cp932') ??
+        _encodingResolver('windows-31j');
   }
 
   static Uint8List _encodeUtf16Le(String text) {

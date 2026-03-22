@@ -105,6 +105,38 @@ void main() {
       expect(body, <int>[0x41, 0x00, 0x42, 0x30]);
     });
 
+    test('applies shift-jis charset when resolver provides encoding', () async {
+      final _FakeConnection connection = _FakeConnection();
+
+      final BouyomiEngine engine = BouyomiEngine(
+        settingsProvider: () => const BouyomiSettings(
+          host: 'localhost',
+          charset: BouyomiCharset.shiftJis,
+        ),
+        encodingResolver: (String name) {
+          if (name == 'shift_jis') {
+            return latin1;
+          }
+          return null;
+        },
+        connectionOpener: (String host, int port, Duration timeout) async =>
+            connection,
+      );
+
+      await engine.speak('ABC');
+
+      final Uint8List allBytes = Uint8List.fromList(connection.sentBytes);
+      final Uint8List header =
+          allBytes.sublist(0, BouyomiPacketBuilder.headerLength);
+      final Uint8List body =
+          allBytes.sublist(BouyomiPacketBuilder.headerLength);
+      final ByteData headerData = ByteData.sublistView(header);
+
+      expect(headerData.getInt8(10), BouyomiCharset.shiftJis.code);
+      expect(headerData.getInt32(11, Endian.little), body.length);
+      expect(body, <int>[0x41, 0x42, 0x43]);
+    });
+
     test('skips utterance when socket connection fails', () async {
       final BouyomiEngine engine = BouyomiEngine(
         settingsProvider: () => const BouyomiSettings(host: '127.0.0.1'),
@@ -124,6 +156,24 @@ void main() {
       );
 
       await expectLater(engine.speak('hello'), completes);
+    });
+
+    test('skips utterance when socket write times out', () async {
+      final _FakeConnection connection = _FakeConnection(
+        onFlush: () async {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        },
+      );
+
+      final BouyomiEngine engine = BouyomiEngine(
+        settingsProvider: () => const BouyomiSettings(host: '127.0.0.1'),
+        writeTimeout: const Duration(milliseconds: 1),
+        connectionOpener: (String host, int port, Duration timeout) async =>
+            connection,
+      );
+
+      await expectLater(engine.speak('hello'), completes);
+      expect(connection.closed, isTrue);
     });
 
     test('skips utterance when charset is unsupported without dependency',
@@ -159,6 +209,11 @@ void main() {
 }
 
 class _FakeConnection implements BouyomiConnection {
+  _FakeConnection({
+    this.onFlush,
+  });
+
+  final Future<void> Function()? onFlush;
   final List<int> sentBytes = <int>[];
   bool flushed = false;
   bool closed = false;
@@ -171,6 +226,9 @@ class _FakeConnection implements BouyomiConnection {
   @override
   Future<void> flush() async {
     flushed = true;
+    if (onFlush != null) {
+      await onFlush!();
+    }
   }
 
   @override
