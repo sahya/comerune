@@ -1,0 +1,3 @@
+abstract class SpeechEngine {
+  Future<void> speak(String text);
+}
