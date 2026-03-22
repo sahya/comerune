@@ -45,6 +45,7 @@ abstract class BouyomiConnection {
 typedef BouyomiConnectionOpener = Future<BouyomiConnection> Function(
   String host,
   int port,
+  Duration timeout,
 );
 
 typedef BouyomiSettingsProvider = BouyomiSettings Function();
@@ -100,36 +101,32 @@ class BouyomiEngine implements SpeechEngine {
       return;
     }
 
-    final Uint8List messageBytes;
-    try {
-      messageBytes = _encodeMessage(text, settings.charset);
-    } on UnsupportedError catch (error, stackTrace) {
-      _logSkip('Unsupported charset: ${settings.charset.name}', error, stackTrace);
-      return;
-    }
-
-    final Uint8List header = BouyomiPacketBuilder.buildHeader(
-      speed: settings.speed,
-      tone: settings.tone,
-      volume: settings.volume,
-      voice: settings.voice,
-      charset: settings.charset,
-      messageLength: messageBytes.length,
-    );
-
     BouyomiConnection? connection;
     try {
-      connection =
-          await _connectionOpener(host, defaultPort).timeout(_connectTimeout);
+      final Uint8List messageBytes = _encodeMessage(text, settings.charset);
+      final Uint8List header = BouyomiPacketBuilder.buildHeader(
+        speed: settings.speed,
+        tone: settings.tone,
+        volume: settings.volume,
+        voice: settings.voice,
+        charset: settings.charset,
+        messageLength: messageBytes.length,
+      );
+      connection = await _connectionOpener(host, defaultPort, _connectTimeout);
       connection.add(header);
       connection.add(messageBytes);
       await connection.flush().timeout(_writeTimeout);
+    } on UnsupportedError catch (error, stackTrace) {
+      _logSkip(
+          'Unsupported charset: ${settings.charset.name}', error, stackTrace);
     } on SocketException catch (error, stackTrace) {
       _logSkip('Socket connection failed.', error, stackTrace);
     } on TimeoutException catch (error, stackTrace) {
       _logSkip('Socket operation timed out.', error, stackTrace);
     } on IOException catch (error, stackTrace) {
       _logSkip('Socket I/O failed.', error, stackTrace);
+    } on Object catch (error, stackTrace) {
+      _logSkip('Unexpected speech error.', error, stackTrace);
     } finally {
       if (connection != null) {
         try {
@@ -144,8 +141,9 @@ class BouyomiEngine implements SpeechEngine {
   static Future<BouyomiConnection> _defaultConnectionOpener(
     String host,
     int port,
+    Duration timeout,
   ) async {
-    final Socket socket = await Socket.connect(host, port);
+    final Socket socket = await Socket.connect(host, port, timeout: timeout);
     return _SocketBouyomiConnection(socket);
   }
 

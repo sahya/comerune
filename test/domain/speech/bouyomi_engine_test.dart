@@ -21,7 +21,8 @@ void main() {
 
       expect(header.length, BouyomiPacketBuilder.headerLength);
       final ByteData data = ByteData.sublistView(header);
-      expect(data.getInt16(0, Endian.little), BouyomiPacketBuilder.commandSpeak);
+      expect(
+          data.getInt16(0, Endian.little), BouyomiPacketBuilder.commandSpeak);
       expect(data.getInt16(2, Endian.little), -1);
       expect(data.getInt16(4, Endian.little), 120);
       expect(data.getInt16(6, Endian.little), 80);
@@ -32,7 +33,8 @@ void main() {
   });
 
   group('BouyomiEngine', () {
-    test('sends packet with configured parameters to fixed port 50001', () async {
+    test('sends packet with configured parameters to fixed port 50001',
+        () async {
       final _FakeConnection connection = _FakeConnection();
       String? calledHost;
       int? calledPort;
@@ -46,7 +48,7 @@ void main() {
           voice: 4,
           charset: BouyomiCharset.utf8,
         ),
-        connectionOpener: (String host, int port) async {
+        connectionOpener: (String host, int port, Duration timeout) async {
           calledHost = host;
           calledPort = port;
           return connection;
@@ -61,8 +63,10 @@ void main() {
       expect(connection.closed, isTrue);
 
       final Uint8List allBytes = Uint8List.fromList(connection.sentBytes);
-      final Uint8List header = allBytes.sublist(0, BouyomiPacketBuilder.headerLength);
-      final Uint8List body = allBytes.sublist(BouyomiPacketBuilder.headerLength);
+      final Uint8List header =
+          allBytes.sublist(0, BouyomiPacketBuilder.headerLength);
+      final Uint8List body =
+          allBytes.sublist(BouyomiPacketBuilder.headerLength);
       final ByteData headerData = ByteData.sublistView(header);
 
       expect(headerData.getInt16(2, Endian.little), 150);
@@ -82,14 +86,17 @@ void main() {
           host: 'localhost',
           charset: BouyomiCharset.unicode,
         ),
-        connectionOpener: (String host, int port) async => connection,
+        connectionOpener: (String host, int port, Duration timeout) async =>
+            connection,
       );
 
       await engine.speak('Aあ');
 
       final Uint8List allBytes = Uint8List.fromList(connection.sentBytes);
-      final Uint8List header = allBytes.sublist(0, BouyomiPacketBuilder.headerLength);
-      final Uint8List body = allBytes.sublist(BouyomiPacketBuilder.headerLength);
+      final Uint8List header =
+          allBytes.sublist(0, BouyomiPacketBuilder.headerLength);
+      final Uint8List body =
+          allBytes.sublist(BouyomiPacketBuilder.headerLength);
       final ByteData headerData = ByteData.sublistView(header);
 
       expect(headerData.getInt8(10), BouyomiCharset.unicode.code);
@@ -101,7 +108,7 @@ void main() {
     test('skips utterance when socket connection fails', () async {
       final BouyomiEngine engine = BouyomiEngine(
         settingsProvider: () => const BouyomiSettings(host: '127.0.0.1'),
-        connectionOpener: (String host, int port) async {
+        connectionOpener: (String host, int port, Duration timeout) async {
           throw const SocketException('connect failed');
         },
       );
@@ -112,17 +119,15 @@ void main() {
     test('skips utterance when socket connect times out', () async {
       final BouyomiEngine engine = BouyomiEngine(
         settingsProvider: () => const BouyomiSettings(host: '127.0.0.1'),
-        connectTimeout: const Duration(milliseconds: 10),
-        connectionOpener: (String host, int port) async {
-          await Future<void>.delayed(const Duration(milliseconds: 100));
-          return _FakeConnection();
-        },
+        connectionOpener: (String host, int port, Duration timeout) async =>
+            throw TimeoutException('connect timed out'),
       );
 
       await expectLater(engine.speak('hello'), completes);
     });
 
-    test('skips utterance when charset is unsupported without dependency', () async {
+    test('skips utterance when charset is unsupported without dependency',
+        () async {
       int openerCallCount = 0;
 
       final BouyomiEngine engine = BouyomiEngine(
@@ -130,7 +135,7 @@ void main() {
           host: '127.0.0.1',
           charset: BouyomiCharset.shiftJis,
         ),
-        connectionOpener: (String host, int port) async {
+        connectionOpener: (String host, int port, Duration timeout) async {
           openerCallCount += 1;
           return _FakeConnection();
         },
@@ -138,6 +143,17 @@ void main() {
 
       await expectLater(engine.speak('hello'), completes);
       expect(openerCallCount, 0);
+    });
+
+    test('skips utterance when an unexpected error occurs', () async {
+      final BouyomiEngine engine = BouyomiEngine(
+        settingsProvider: () => const BouyomiSettings(host: '127.0.0.1'),
+        connectionOpener: (String host, int port, Duration timeout) async {
+          throw StateError('unexpected failure');
+        },
+      );
+
+      await expectLater(engine.speak('hello'), completes);
     });
   });
 }
