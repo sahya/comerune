@@ -111,6 +111,17 @@ Use this structure:
 ## Risk check
 - possible regressions or future maintenance concerns
 
+## Git Conventions
+
+### Branch Naming
+Use Git Flow prefixes: `feature/`, `fix/`, `hotfix/`, `docs/`, `chore/`, `release/`
+Format: `prefix/short-description` (e.g. `feature/login-screen`, `fix/crash-on-startup`)
+
+### Commit Messages
+Use [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): description`
+Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`
+Breaking changes: append `!` to type or add `BREAKING CHANGE:` in footer.
+
 ## Special Instructions
 - Do not assume the human owner understands Flutter architecture deeply.
 - Therefore, explain architecture concerns in plain and concrete terms.

@@ -109,6 +109,17 @@ Review against:
 - regression risk
 - readability and maintainability
 
+## Git Conventions
+
+### Branch Naming
+Use Git Flow prefixes: `feature/`, `fix/`, `hotfix/`, `docs/`, `chore/`, `release/`
+Format: `prefix/short-description` (e.g. `feature/login-screen`, `fix/crash-on-startup`)
+
+### Commit Messages
+Use [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): description`
+Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`
+Breaking changes: append `!` to type or add `BREAKING CHANGE:` in footer.
+
 ## Forbidden Behavior
 Agents must not:
 - invent major product requirements
