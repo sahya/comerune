@@ -56,6 +56,52 @@ void main() {
       expect(controller.items.single.messageId, 'm2');
     });
 
+    test('does not enqueue incoming comment when it already exceeds max delay',
+        () {
+      final DateTime now = DateTime.parse('2026-03-22T00:00:11Z');
+      final SpeechQueueController controller = SpeechQueueController(
+        maxDelay: const Duration(seconds: 10),
+      );
+
+      expect(
+        controller.enqueue(
+          _message(id: 'm1', content: 'old', second: 0),
+          now: now,
+        ),
+        isFalse,
+      );
+      expect(controller.length, 0);
+    });
+
+    test('drops expired item even when it is not at queue head', () {
+      final DateTime base = DateTime.parse('2026-03-22T00:00:00Z');
+      final SpeechQueueController controller = SpeechQueueController(
+        maxDelay: const Duration(seconds: 10),
+      );
+
+      expect(
+        controller.enqueue(
+          _message(id: 'fresh', content: 'fresh', second: 11),
+          now: base,
+        ),
+        isTrue,
+      );
+      expect(
+        controller.enqueue(
+          _message(id: 'old', content: 'old', second: 0),
+          now: base,
+        ),
+        isTrue,
+      );
+
+      controller.dequeue(now: base.add(const Duration(seconds: 11)));
+
+      expect(
+        controller.items.map((SpeechQueueItem item) => item.messageId).toList(),
+        <String>['fresh'],
+      );
+    });
+
     test('replaces URL with fixed text URL', () {
       final SpeechQueueController controller = SpeechQueueController();
 

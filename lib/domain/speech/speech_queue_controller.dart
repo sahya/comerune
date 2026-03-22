@@ -28,10 +28,10 @@ class SpeechQueueController {
     bool autoReadEnabled = true,
     List<String> ngWordPatterns = const <String>[],
     DateTime Function()? nowProvider,
-  }) : _queueLimit = queueLimit,
-       _maxDelay = maxDelay,
-       _autoReadEnabled = autoReadEnabled,
-       _nowProvider = nowProvider ?? DateTime.now {
+  })  : _queueLimit = queueLimit,
+        _maxDelay = maxDelay,
+        _autoReadEnabled = autoReadEnabled,
+        _nowProvider = nowProvider ?? DateTime.now {
     if (queueLimit < 1) {
       throw ArgumentError.value(queueLimit, 'queueLimit', 'must be at least 1');
     }
@@ -117,6 +117,9 @@ class SpeechQueueController {
     if (_matchesNgWord(normalizedText)) {
       return false;
     }
+    if (_isExpired(message.timestamp, nowAt)) {
+      return false;
+    }
 
     _queue.add(
       SpeechQueueItem(
@@ -185,14 +188,16 @@ class SpeechQueueController {
   }
 
   void _discardExpired(DateTime now) {
+    final Queue<SpeechQueueItem> retained = Queue<SpeechQueueItem>();
     while (_queue.isNotEmpty) {
-      final SpeechQueueItem oldest = _queue.first;
-      final Duration delay = now.difference(oldest.messageTimestamp);
-      if (!delay.isNegative && delay > _maxDelay) {
-        _queue.removeFirst();
+      final SpeechQueueItem item = _queue.removeFirst();
+      if (_isExpired(item.messageTimestamp, now)) {
         continue;
       }
-      break;
+      retained.add(item);
+    }
+    while (retained.isNotEmpty) {
+      _queue.add(retained.removeFirst());
     }
   }
 
@@ -200,5 +205,10 @@ class SpeechQueueController {
     while (_queue.length > _queueLimit) {
       _queue.removeFirst();
     }
+  }
+
+  bool _isExpired(DateTime timestamp, DateTime now) {
+    final Duration delay = now.difference(timestamp);
+    return !delay.isNegative && delay > _maxDelay;
   }
 }
