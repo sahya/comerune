@@ -49,14 +49,15 @@ class NdgrClientEvent {
 class NdgrClient {
   NdgrClient({
     HttpClient? httpClient,
+    HttpClient Function()? httpClientFactory,
     NdgrProtobufDecoder? protobufDecoder,
     NdgrMessageNormalizer? normalizer,
     Duration stallThreshold = const Duration(seconds: 15),
     Duration stallCheckInterval = const Duration(seconds: 1),
     Duration backwardSegmentInterval = const Duration(milliseconds: 7),
     DateTime Function()? now,
-  }) : _providedHttpClient = httpClient,
-       _ownsHttpClient = httpClient == null,
+  }) : _seedHttpClient = httpClient,
+       _httpClientFactory = httpClientFactory ?? HttpClient.new,
        _protobufDecoder = protobufDecoder ?? NdgrProtobufDecoder(),
        _normalizer = normalizer ?? NdgrMessageNormalizer(),
        _stallDetector = NdgrStallDetector(
@@ -67,8 +68,8 @@ class NdgrClient {
        _stallCheckInterval = stallCheckInterval,
        _backwardSegmentInterval = backwardSegmentInterval;
 
-  final HttpClient? _providedHttpClient;
-  final bool _ownsHttpClient;
+  final HttpClient Function() _httpClientFactory;
+  HttpClient? _seedHttpClient;
   HttpClient? _httpClient;
   final NdgrProtobufDecoder _protobufDecoder;
   final NdgrMessageNormalizer _normalizer;
@@ -403,7 +404,14 @@ class NdgrClient {
       return current;
     }
 
-    final HttpClient created = _providedHttpClient ?? HttpClient();
+    final HttpClient? seed = _seedHttpClient;
+    if (seed != null) {
+      _seedHttpClient = null;
+      _httpClient = seed;
+      return seed;
+    }
+
+    final HttpClient created = _httpClientFactory();
     _httpClient = created;
     return created;
   }
@@ -414,9 +422,7 @@ class NdgrClient {
       return;
     }
 
-    if (_ownsHttpClient) {
-      active.close(force: true);
-      _httpClient = null;
-    }
+    active.close(force: true);
+    _httpClient = null;
   }
 }
