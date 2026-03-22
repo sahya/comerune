@@ -97,4 +97,34 @@ void main() {
     final TimelineStore store = TimelineStore(capacity: 10);
     expect(() => store.setCapacity(0), throwsArgumentError);
   });
+
+  test('notifies listeners when add, setCapacity and clear change state', () {
+    final TimelineStore store = TimelineStore(capacity: 10);
+    int notifyCount = 0;
+    store.addListener(() {
+      notifyCount += 1;
+    });
+
+    store.add(_message(1));
+    store.setCapacity(5);
+    store.clear();
+
+    expect(notifyCount, 3);
+  });
+
+  test('does not notify listeners for duplicate add and no-op updates', () {
+    final TimelineStore store = TimelineStore(capacity: 10);
+    int notifyCount = 0;
+    store.addListener(() {
+      notifyCount += 1;
+    });
+
+    store.add(_message(1));
+    store.add(_message(1));
+    store.setCapacity(10);
+    store.clear();
+    store.clear();
+
+    expect(notifyCount, 2);
+  });
 }
