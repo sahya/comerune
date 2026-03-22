@@ -67,7 +67,8 @@ void main() {
     expect(supervisor.wifiIndicatorColor, WifiIndicatorColor.green);
   });
 
-  test('supports STREAMING_* -> RECONNECTING -> CONNECTING_SESSION_WS flow', () {
+  test('supports STREAMING_* -> RECONNECTING -> CONNECTING_SESSION_WS flow',
+      () {
     final ConnectionSupervisor supervisor = ConnectionSupervisor();
 
     expect(supervisor.startConnection(), isTrue);
@@ -184,20 +185,21 @@ void main() {
   test('wifi indicator color follows specification for each state', () {
     final Map<ConnectionStatus, WifiIndicatorColor> expectedColors =
         <ConnectionStatus, WifiIndicatorColor>{
-          ConnectionStatus.idle: WifiIndicatorColor.red,
-          ConnectionStatus.connectingSessionWs: WifiIndicatorColor.green,
-          ConnectionStatus.resolvingEndpoints: WifiIndicatorColor.green,
-          ConnectionStatus.streamingNdgr: WifiIndicatorColor.green,
-          ConnectionStatus.streamingLegacy: WifiIndicatorColor.green,
-          ConnectionStatus.reconnecting: WifiIndicatorColor.green,
-          ConnectionStatus.stopped: WifiIndicatorColor.red,
-          ConnectionStatus.ended: WifiIndicatorColor.red,
-          ConnectionStatus.failed: WifiIndicatorColor.red,
-        };
+      ConnectionStatus.idle: WifiIndicatorColor.red,
+      ConnectionStatus.connectingSessionWs: WifiIndicatorColor.green,
+      ConnectionStatus.resolvingEndpoints: WifiIndicatorColor.green,
+      ConnectionStatus.streamingNdgr: WifiIndicatorColor.green,
+      ConnectionStatus.streamingLegacy: WifiIndicatorColor.green,
+      ConnectionStatus.reconnecting: WifiIndicatorColor.green,
+      ConnectionStatus.stopped: WifiIndicatorColor.red,
+      ConnectionStatus.ended: WifiIndicatorColor.red,
+      ConnectionStatus.failed: WifiIndicatorColor.red,
+    };
 
     for (final ConnectionStatus status in ConnectionStatus.values) {
-      final WifiIndicatorColor color =
-          status.usesGreenWifiIcon ? WifiIndicatorColor.green : WifiIndicatorColor.red;
+      final WifiIndicatorColor color = status.usesGreenWifiIcon
+          ? WifiIndicatorColor.green
+          : WifiIndicatorColor.red;
       expect(color, expectedColors[status]);
     }
   });

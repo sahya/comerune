@@ -98,54 +98,54 @@ extension ConnectionErrorCodeCode on ConnectionErrorCode {
 }
 
 class ConnectionSupervisor extends ChangeNotifier {
-  static const Map<ConnectionStatus, Set<ConnectionStatus>> _allowedTransitions =
-      <ConnectionStatus, Set<ConnectionStatus>>{
-        ConnectionStatus.idle: <ConnectionStatus>{
-          ConnectionStatus.connectingSessionWs,
-        },
-        ConnectionStatus.connectingSessionWs: <ConnectionStatus>{
-          ConnectionStatus.resolvingEndpoints,
-          ConnectionStatus.stopped,
-          ConnectionStatus.ended,
-          ConnectionStatus.failed,
-        },
-        ConnectionStatus.resolvingEndpoints: <ConnectionStatus>{
-          ConnectionStatus.streamingNdgr,
-          ConnectionStatus.streamingLegacy,
-          ConnectionStatus.stopped,
-          ConnectionStatus.ended,
-          ConnectionStatus.failed,
-        },
-        ConnectionStatus.streamingNdgr: <ConnectionStatus>{
-          ConnectionStatus.reconnecting,
-          ConnectionStatus.stopped,
-          ConnectionStatus.ended,
-          ConnectionStatus.failed,
-        },
-        ConnectionStatus.streamingLegacy: <ConnectionStatus>{
-          ConnectionStatus.reconnecting,
-          ConnectionStatus.stopped,
-          ConnectionStatus.ended,
-          ConnectionStatus.failed,
-        },
-        ConnectionStatus.reconnecting: <ConnectionStatus>{
-          ConnectionStatus.connectingSessionWs,
-          ConnectionStatus.streamingNdgr,
-          ConnectionStatus.streamingLegacy,
-          ConnectionStatus.stopped,
-          ConnectionStatus.ended,
-          ConnectionStatus.failed,
-        },
-        ConnectionStatus.stopped: <ConnectionStatus>{
-          ConnectionStatus.idle,
-        },
-        ConnectionStatus.ended: <ConnectionStatus>{
-          ConnectionStatus.idle,
-        },
-        ConnectionStatus.failed: <ConnectionStatus>{
-          ConnectionStatus.idle,
-        },
-      };
+  static const Map<ConnectionStatus, Set<ConnectionStatus>>
+      _allowedTransitions = <ConnectionStatus, Set<ConnectionStatus>>{
+    ConnectionStatus.idle: <ConnectionStatus>{
+      ConnectionStatus.connectingSessionWs,
+    },
+    ConnectionStatus.connectingSessionWs: <ConnectionStatus>{
+      ConnectionStatus.resolvingEndpoints,
+      ConnectionStatus.stopped,
+      ConnectionStatus.ended,
+      ConnectionStatus.failed,
+    },
+    ConnectionStatus.resolvingEndpoints: <ConnectionStatus>{
+      ConnectionStatus.streamingNdgr,
+      ConnectionStatus.streamingLegacy,
+      ConnectionStatus.stopped,
+      ConnectionStatus.ended,
+      ConnectionStatus.failed,
+    },
+    ConnectionStatus.streamingNdgr: <ConnectionStatus>{
+      ConnectionStatus.reconnecting,
+      ConnectionStatus.stopped,
+      ConnectionStatus.ended,
+      ConnectionStatus.failed,
+    },
+    ConnectionStatus.streamingLegacy: <ConnectionStatus>{
+      ConnectionStatus.reconnecting,
+      ConnectionStatus.stopped,
+      ConnectionStatus.ended,
+      ConnectionStatus.failed,
+    },
+    ConnectionStatus.reconnecting: <ConnectionStatus>{
+      ConnectionStatus.connectingSessionWs,
+      ConnectionStatus.streamingNdgr,
+      ConnectionStatus.streamingLegacy,
+      ConnectionStatus.stopped,
+      ConnectionStatus.ended,
+      ConnectionStatus.failed,
+    },
+    ConnectionStatus.stopped: <ConnectionStatus>{
+      ConnectionStatus.idle,
+    },
+    ConnectionStatus.ended: <ConnectionStatus>{
+      ConnectionStatus.idle,
+    },
+    ConnectionStatus.failed: <ConnectionStatus>{
+      ConnectionStatus.idle,
+    },
+  };
 
   ConnectionStatus _status = ConnectionStatus.idle;
   int _reconnectCount = 0;
@@ -156,8 +156,9 @@ class ConnectionSupervisor extends ChangeNotifier {
   int get reconnectCount => _reconnectCount;
   DateTime? get lastReceivedAt => _lastReceivedAt;
   ConnectionErrorCode? get lastError => _lastError;
-  WifiIndicatorColor get wifiIndicatorColor =>
-      _status.usesGreenWifiIcon ? WifiIndicatorColor.green : WifiIndicatorColor.red;
+  WifiIndicatorColor get wifiIndicatorColor => _status.usesGreenWifiIcon
+      ? WifiIndicatorColor.green
+      : WifiIndicatorColor.red;
 
   bool get canStartConnection =>
       _status == ConnectionStatus.idle ||
