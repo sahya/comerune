@@ -70,6 +70,16 @@ void main() {
         BroadcastEndDetection.unknown,
       );
     });
+
+    test('does not treat unrelated reason containing END as ended', () {
+      expect(
+        SessionWsMessageParser.detectBroadcastEnd(<String, Object?>{
+          'type': 'disconnect',
+          'data': <String, Object?>{'reason': 'SUSPEND'},
+        }),
+        BroadcastEndDetection.unknown,
+      );
+    });
   });
 
   group('SessionWsLogSanitizer', () {
@@ -426,32 +436,119 @@ void main() {
       await client.dispose();
       await subscription.cancel();
     });
+
+    test('emits failed when endpoint resolution times out', () async {
+      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+      final SessionWsClient client = SessionWsClient(
+        lv: 'lv123456789',
+        channelFactory: (_) async => fakeChannel,
+        endpointResolveTimeout: const Duration(milliseconds: 20),
+      );
+      final List<SessionWsEvent> events = <SessionWsEvent>[];
+      final StreamSubscription<SessionWsEvent> subscription =
+          client.events.listen(events.add);
+
+      await client.connect();
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+
+      expect(
+        events.any(
+          (SessionWsEvent e) =>
+              e.type == SessionWsEventType.failed &&
+              e.errorCode == SessionWsErrorCode.endpointResolveFailed,
+        ),
+        isTrue,
+      );
+      expect(
+        events.any((SessionWsEvent e) => e.type == SessionWsEventType.disconnected),
+        isTrue,
+      );
+
+      await client.dispose();
+      await subscription.cancel();
+    });
+
+    test('can reconnect after startWatching send failure', () async {
+      final _FakeSessionWsChannel firstChannel = _FakeSessionWsChannel(
+        failOnStartWatching: true,
+      );
+      final _FakeSessionWsChannel secondChannel = _FakeSessionWsChannel();
+      int factoryCallCount = 0;
+
+      final SessionWsClient client = SessionWsClient(
+        lv: 'lv123456789',
+        channelFactory: (_) async {
+          factoryCallCount += 1;
+          if (factoryCallCount == 1) {
+            return firstChannel;
+          }
+          return secondChannel;
+        },
+      );
+      final List<SessionWsEvent> events = <SessionWsEvent>[];
+      final StreamSubscription<SessionWsEvent> subscription =
+          client.events.listen(events.add);
+
+      await client.connect();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(
+        events.any(
+          (SessionWsEvent e) =>
+              e.type == SessionWsEventType.error &&
+              e.errorCode == SessionWsErrorCode.connectFailed,
+        ),
+        isTrue,
+      );
+      expect(firstChannel.closeCount, 1);
+
+      await client.connect();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(factoryCallCount, 2);
+      expect(secondChannel.sentMessages, hasLength(1));
+      final Map<String, dynamic> startWatching =
+          jsonDecode(secondChannel.sentMessages.first as String)
+              as Map<String, dynamic>;
+      expect(startWatching['type'], 'startWatching');
+
+      await client.dispose();
+      await subscription.cancel();
+    });
   });
 }
 
 class _FakeSessionWsChannel implements SessionWsChannel {
-  _FakeSessionWsChannel({this.failOnPong = false})
+  _FakeSessionWsChannel({
+    this.failOnPong = false,
+    this.failOnStartWatching = false,
+  })
       : _incoming = StreamController<dynamic>(),
         _sink = _FakeSink() {
     _sink.onAdd = (dynamic data) {
       sentMessages.add(data);
 
-      if (!failOnPong) {
+      if (!failOnPong && !failOnStartWatching) {
         return;
       }
 
       final Map<String, dynamic> decoded =
           jsonDecode(data as String) as Map<String, dynamic>;
-      if (decoded['type'] == 'pong') {
+      if (failOnStartWatching && decoded['type'] == 'startWatching') {
+        throw StateError('startWatching send failed');
+      }
+      if (failOnPong && decoded['type'] == 'pong') {
         throw StateError('pong send failed');
       }
     };
   }
 
   final bool failOnPong;
+  final bool failOnStartWatching;
   final StreamController<dynamic> _incoming;
   final _FakeSink _sink;
   final List<dynamic> sentMessages = <dynamic>[];
+  int closeCount = 0;
 
   @override
   Stream<dynamic> get stream => _incoming.stream;
@@ -465,6 +562,7 @@ class _FakeSessionWsChannel implements SessionWsChannel {
 
   @override
   Future<void> close([int? code, String? reason]) async {
+    closeCount += 1;
     await _sink.close();
     if (!_incoming.isClosed) {
       await _incoming.close();
