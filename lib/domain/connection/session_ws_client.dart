@@ -17,6 +17,7 @@ enum SessionWsEventType {
 
 enum SessionWsErrorCode {
   connectFailed,
+  endpointResolveFailed,
   keepaliveResponseFailed,
   unknownBroadcastEndEvent,
 }
@@ -83,9 +84,11 @@ class SessionWsClient {
     required this.lv,
     SessionWsChannelFactory? channelFactory,
     Duration endpointFallbackDelay = const Duration(milliseconds: 300),
+    Duration endpointResolveTimeout = const Duration(seconds: 5),
     Map<String, Map<String, Object>>? keepaliveResponses,
   }) : _channelFactory = channelFactory ?? _defaultChannelFactory,
        _endpointFallbackDelay = endpointFallbackDelay,
+       _endpointResolveTimeout = endpointResolveTimeout,
        _keepaliveResponses =
            keepaliveResponses == null
                ? const <String, Map<String, Object>>{
@@ -109,6 +112,7 @@ class SessionWsClient {
   final String lv;
   final SessionWsChannelFactory _channelFactory;
   final Duration _endpointFallbackDelay;
+  final Duration _endpointResolveTimeout;
   final Map<String, Map<String, Object>> _keepaliveResponses;
 
   final StreamController<SessionWsEvent> _eventsController =
@@ -117,6 +121,7 @@ class SessionWsClient {
   SessionWsChannel? _channel;
   StreamSubscription<dynamic>? _subscription;
   Timer? _legacyFallbackTimer;
+  Timer? _endpointResolveTimer;
   String? _ndgrViewUri;
   String? _legacyWebSocketUrl;
   bool _hasEmittedNdgrEndpoint = false;
@@ -155,7 +160,18 @@ class SessionWsClient {
 
       _isConnected = true;
       _emit(const SessionWsEvent(type: SessionWsEventType.connected));
-      _sendStartWatching();
+      _startEndpointResolveTimer();
+      try {
+        _sendStartWatching();
+      } catch (_) {
+        await _cleanupConnectionState(emitDisconnected: false);
+        _emit(
+          const SessionWsEvent(
+            type: SessionWsEventType.error,
+            errorCode: SessionWsErrorCode.connectFailed,
+          ),
+        );
+      }
     } catch (error, stackTrace) {
       _emit(
         SessionWsEvent(
@@ -180,6 +196,8 @@ class SessionWsClient {
 
     _legacyFallbackTimer?.cancel();
     _legacyFallbackTimer = null;
+    _endpointResolveTimer?.cancel();
+    _endpointResolveTimer = null;
 
     final SessionWsChannel? channel = _channel;
     _channel = null;
@@ -316,6 +334,8 @@ class SessionWsClient {
   void _handleDone() {
     _legacyFallbackTimer?.cancel();
     _legacyFallbackTimer = null;
+    _endpointResolveTimer?.cancel();
+    _endpointResolveTimer = null;
     _channel = null;
     _isConnected = false;
     if (_isClosing) {
@@ -353,6 +373,8 @@ class SessionWsClient {
 
     _legacyFallbackTimer?.cancel();
     _legacyFallbackTimer = null;
+    _endpointResolveTimer?.cancel();
+    _endpointResolveTimer = null;
     _hasEmittedNdgrEndpoint = true;
     _emit(
       SessionWsEvent(
@@ -379,6 +401,8 @@ class SessionWsClient {
       }
 
       _hasEmittedLegacyEndpoint = true;
+      _endpointResolveTimer?.cancel();
+      _endpointResolveTimer = null;
       _emit(
         SessionWsEvent(
           type: SessionWsEventType.legacyEndpointResolved,
@@ -391,10 +415,56 @@ class SessionWsClient {
   void _resetEndpointResolutionState() {
     _legacyFallbackTimer?.cancel();
     _legacyFallbackTimer = null;
+    _endpointResolveTimer?.cancel();
+    _endpointResolveTimer = null;
     _ndgrViewUri = null;
     _legacyWebSocketUrl = null;
     _hasEmittedNdgrEndpoint = false;
     _hasEmittedLegacyEndpoint = false;
+  }
+
+  Future<void> _cleanupConnectionState({required bool emitDisconnected}) async {
+    _legacyFallbackTimer?.cancel();
+    _legacyFallbackTimer = null;
+    _endpointResolveTimer?.cancel();
+    _endpointResolveTimer = null;
+
+    await _subscription?.cancel();
+    _subscription = null;
+
+    final SessionWsChannel? channel = _channel;
+    _channel = null;
+    _isConnected = false;
+    if (channel != null) {
+      await channel.close();
+    }
+
+    if (emitDisconnected) {
+      _emit(const SessionWsEvent(type: SessionWsEventType.disconnected));
+    }
+  }
+
+  void _startEndpointResolveTimer() {
+    _endpointResolveTimer?.cancel();
+    _endpointResolveTimer = Timer(_endpointResolveTimeout, () {
+      if (_hasEmittedNdgrEndpoint || _hasEmittedLegacyEndpoint) {
+        return;
+      }
+
+      _emit(
+        const SessionWsEvent(
+          type: SessionWsEventType.failed,
+          errorCode: SessionWsErrorCode.endpointResolveFailed,
+        ),
+      );
+      _emit(
+        const SessionWsEvent(
+          type: SessionWsEventType.error,
+          errorCode: SessionWsErrorCode.endpointResolveFailed,
+        ),
+      );
+      unawaited(disconnect());
+    });
   }
 }
 
@@ -414,6 +484,7 @@ class SessionWsMessageParser {
     'END_PROGRAM',
     'END_BROADCAST',
     'PROGRAM_ENDED',
+    'SERVICE_ENDED',
   };
 
   static SessionEndpointResolution extractEndpoints(Object? payload) {
@@ -465,7 +536,9 @@ class SessionWsMessageParser {
       return BroadcastEndDetection.ended;
     }
 
-    if (normalized.contains('END')) {
+    if (normalized == 'END' ||
+        normalized.startsWith('END_') ||
+        normalized.endsWith('_ENDED')) {
       return BroadcastEndDetection.ended;
     }
 
