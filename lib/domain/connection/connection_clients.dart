@@ -1,16 +1,24 @@
 abstract class SessionWsClient {
+  Stream<void> get disconnected;
+
   Future<SessionEndpoints> connectAndResolveEndpoints();
 
   Future<void> disconnect();
 }
 
 abstract class NdgrClient {
-  Future<void> connect(Uri viewApiUri);
+  Stream<void> get stalled;
+
+  Stream<Object> get nextAt;
+
+  Future<void> connect(Uri viewApiUri, {Object at = 'now'});
 
   Future<void> disconnect();
 }
 
 abstract class LegacyCommentClient {
+  Stream<void> get disconnected;
+
   Future<void> connect(Uri wsUrl);
 
   Future<void> disconnect();

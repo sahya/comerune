@@ -1,9 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../lib/domain/connection/connection_clients.dart';
 import '../../../lib/domain/connection/connection_supervisor.dart';
 
 void main() {
+  Future<void> drainEventLoop() async {
+    for (int index = 0; index < 5; index += 1) {
+      await Future<void>.delayed(Duration.zero);
+    }
+  }
+
   group('ConnectionSupervisor', () {
     test('backoffDelayForAttempt returns exponential seconds and jitter', () {
       final ConnectionSupervisor supervisor = ConnectionSupervisor(
@@ -97,6 +105,36 @@ void main() {
       expect(ndgrClient.disconnectCalls, 1);
       expect(ndgrClient.connectCalls, 2);
       expect(ndgrClient.connectedUris, <Uri>[ndgrUri, ndgrUri]);
+    });
+
+    test('automatically reconnects on NDGR stalled event and reuses latest at', () async {
+      final Uri ndgrUri = Uri.parse('https://example.com/api/view/v4/stream');
+      final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
+        endpointsQueue: <SessionEndpoints>[
+          SessionEndpoints(ndgrViewApiUri: ndgrUri),
+        ],
+      );
+      final FakeNdgrClient ndgrClient = FakeNdgrClient();
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: sessionWsClient,
+        ndgrClient: ndgrClient,
+        legacyCommentClient: FakeLegacyCommentClient(),
+        delayExecutor: (_) async {},
+        jitterProvider: (_) => Duration.zero,
+      );
+
+      final bool started = await supervisor.startConnection();
+      expect(started, isTrue);
+      expect(ndgrClient.connectedAts.last, 'now');
+
+      ndgrClient.emitNextAt(1234567890);
+      ndgrClient.emitStalled();
+      await drainEventLoop();
+
+      expect(supervisor.status, ConnectionStatus.streamingNdgr);
+      expect(supervisor.reconnectCount, 1);
+      expect(ndgrClient.connectCalls, 2);
+      expect(ndgrClient.connectedAts.last, 1234567890);
     });
 
     test('does not reconnect when broadcast ended', () async {
@@ -196,6 +234,66 @@ void main() {
       expect(ndgrClient.connectedUris.last, secondNdgrUri);
     });
 
+    test('automatically reconnects when session WS disconnected event is emitted', () async {
+      final Uri firstNdgrUri = Uri.parse('https://example.com/api/view/v4/stream/1');
+      final Uri secondNdgrUri = Uri.parse('https://example.com/api/view/v4/stream/2');
+      final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
+        endpointsQueue: <SessionEndpoints>[
+          SessionEndpoints(ndgrViewApiUri: firstNdgrUri),
+          SessionEndpoints(ndgrViewApiUri: secondNdgrUri),
+        ],
+      );
+      final FakeNdgrClient ndgrClient = FakeNdgrClient();
+      final FakeLegacyCommentClient legacyClient = FakeLegacyCommentClient();
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: sessionWsClient,
+        ndgrClient: ndgrClient,
+        legacyCommentClient: legacyClient,
+        delayExecutor: (_) async {},
+        jitterProvider: (_) => Duration.zero,
+      );
+
+      final bool started = await supervisor.startConnection();
+      expect(started, isTrue);
+      expect(supervisor.status, ConnectionStatus.streamingNdgr);
+
+      sessionWsClient.emitDisconnected();
+      await drainEventLoop();
+
+      expect(supervisor.status, ConnectionStatus.streamingNdgr);
+      expect(supervisor.reconnectCount, 1);
+      expect(sessionWsClient.connectCalls, 2);
+      expect(ndgrClient.connectedUris.last, secondNdgrUri);
+    });
+
+    test('automatically reconnects when legacy disconnected event is emitted', () async {
+      final Uri legacyUrl = Uri.parse('wss://example.com/legacy');
+      final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
+        endpointsQueue: <SessionEndpoints>[
+          SessionEndpoints(legacyWsUrl: legacyUrl),
+        ],
+      );
+      final FakeLegacyCommentClient legacyClient = FakeLegacyCommentClient();
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: sessionWsClient,
+        ndgrClient: FakeNdgrClient(),
+        legacyCommentClient: legacyClient,
+        delayExecutor: (_) async {},
+        jitterProvider: (_) => Duration.zero,
+      );
+
+      final bool started = await supervisor.startConnection();
+      expect(started, isTrue);
+      expect(supervisor.status, ConnectionStatus.streamingLegacy);
+
+      legacyClient.emitDisconnected();
+      await drainEventLoop();
+
+      expect(supervisor.status, ConnectionStatus.streamingLegacy);
+      expect(supervisor.reconnectCount, 1);
+      expect(legacyClient.connectCalls, 2);
+    });
+
     test('legacy reconnect falls back to session after 3 consecutive failures', () async {
       final Uri originalLegacyUrl = Uri.parse('wss://example.com/legacy/1');
       final Uri refreshedLegacyUrl = Uri.parse('wss://example.com/legacy/2');
@@ -272,9 +370,18 @@ class FakeSessionWsClient implements SessionWsClient {
   });
 
   final List<SessionEndpoints> endpointsQueue;
+  final StreamController<void> _disconnectedController =
+      StreamController<void>.broadcast();
 
   int connectCalls = 0;
   int disconnectCalls = 0;
+
+  @override
+  Stream<void> get disconnected => _disconnectedController.stream;
+
+  void emitDisconnected() {
+    _disconnectedController.add(null);
+  }
 
   @override
   Future<SessionEndpoints> connectAndResolveEndpoints() async {
@@ -297,14 +404,32 @@ class FakeNdgrClient implements NdgrClient {
   }) : _connectResults = connectResults ?? <bool>[];
 
   final List<bool> _connectResults;
+  final StreamController<void> _stalledController = StreamController<void>.broadcast();
+  final StreamController<Object> _nextAtController = StreamController<Object>.broadcast();
   final List<Uri> connectedUris = <Uri>[];
+  final List<Object> connectedAts = <Object>[];
   int connectCalls = 0;
   int disconnectCalls = 0;
 
   @override
-  Future<void> connect(Uri viewApiUri) async {
+  Stream<void> get stalled => _stalledController.stream;
+
+  @override
+  Stream<Object> get nextAt => _nextAtController.stream;
+
+  void emitStalled() {
+    _stalledController.add(null);
+  }
+
+  void emitNextAt(Object at) {
+    _nextAtController.add(at);
+  }
+
+  @override
+  Future<void> connect(Uri viewApiUri, {Object at = 'now'}) async {
     connectCalls += 1;
     connectedUris.add(viewApiUri);
+    connectedAts.add(at);
 
     if (_connectResults.isEmpty) {
       return;
@@ -328,9 +453,18 @@ class FakeLegacyCommentClient implements LegacyCommentClient {
   }) : _connectResults = connectResults ?? <bool>[];
 
   final List<bool> _connectResults;
+  final StreamController<void> _disconnectedController =
+      StreamController<void>.broadcast();
   final List<Uri> connectedUris = <Uri>[];
   int connectCalls = 0;
   int disconnectCalls = 0;
+
+  @override
+  Stream<void> get disconnected => _disconnectedController.stream;
+
+  void emitDisconnected() {
+    _disconnectedController.add(null);
+  }
 
   @override
   Future<void> connect(Uri wsUrl) async {

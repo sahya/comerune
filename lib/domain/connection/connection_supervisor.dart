@@ -119,7 +119,9 @@ class ConnectionSupervisor extends ChangeNotifier {
         _maxReconnectAttempts = maxReconnectAttempts,
         _legacySameUrlFailureThreshold = legacySameUrlFailureThreshold,
         _delayExecutor = delayExecutor ?? _defaultDelayExecutor,
-        _jitterProvider = jitterProvider ?? _defaultJitterProvider;
+        _jitterProvider = jitterProvider ?? _defaultJitterProvider {
+    _bindClientEvents();
+  }
 
   static const List<int> _backoffSeconds = <int>[1, 2, 4, 8, 16, 30];
 
@@ -198,7 +200,12 @@ class ConnectionSupervisor extends ChangeNotifier {
   DateTime? _lastReceivedAt;
   ConnectionErrorCode? _lastError;
   Uri? _currentNdgrViewApiUri;
+  Object _currentNdgrAt = 'now';
   Uri? _currentLegacyWsUrl;
+  StreamSubscription<void>? _sessionDisconnectedSubscription;
+  StreamSubscription<void>? _ndgrStalledSubscription;
+  StreamSubscription<void>? _legacyDisconnectedSubscription;
+  StreamSubscription<Object>? _ndgrNextAtSubscription;
 
   ConnectionStatus get status => _status;
   int get reconnectCount => _reconnectCount;
@@ -224,6 +231,15 @@ class ConnectionSupervisor extends ChangeNotifier {
     return base + jitter;
   }
 
+  @override
+  void dispose() {
+    _sessionDisconnectedSubscription?.cancel();
+    _ndgrStalledSubscription?.cancel();
+    _legacyDisconnectedSubscription?.cancel();
+    _ndgrNextAtSubscription?.cancel();
+    super.dispose();
+  }
+
   Future<bool> startConnection() async {
     if (!canStartConnection) {
       _logInvalidTransition(ConnectionStatus.connectingSessionWs);
@@ -237,6 +253,7 @@ class ConnectionSupervisor extends ChangeNotifier {
     if (!transitioned) {
       return false;
     }
+    _currentNdgrAt = 'now';
 
     try {
       await _resolveEndpointsAndConnect();
@@ -347,6 +364,7 @@ class ConnectionSupervisor extends ChangeNotifier {
 
     if (endpoints.ndgrViewApiUri != null) {
       _currentNdgrViewApiUri = endpoints.ndgrViewApiUri;
+      _currentNdgrAt = 'now';
       _currentLegacyWsUrl = null;
       await _connectNdgr(endpoints.ndgrViewApiUri!);
       return;
@@ -362,9 +380,9 @@ class ConnectionSupervisor extends ChangeNotifier {
     throw _ConnectionFailure(ConnectionErrorCode.endpointResolveFailed);
   }
 
-  Future<void> _connectNdgr(Uri viewApiUri) async {
+  Future<void> _connectNdgr(Uri viewApiUri, {Object at = 'now'}) async {
     try {
-      await _ndgrClient.connect(viewApiUri);
+      await _ndgrClient.connect(viewApiUri, at: at);
     } catch (_) {
       throw _ConnectionFailure(ConnectionErrorCode.ndgrStreamFailed);
     }
@@ -410,7 +428,7 @@ class ConnectionSupervisor extends ChangeNotifier {
     if (viewApiUri == null) {
       throw _ConnectionFailure(ConnectionErrorCode.endpointResolveFailed);
     }
-    await _connectNdgr(viewApiUri);
+    await _connectNdgr(viewApiUri, at: _currentNdgrAt);
   }
 
   Future<void> _reconnectLegacyWithFallback(int _) async {
@@ -514,6 +532,24 @@ class ConnectionSupervisor extends ChangeNotifier {
       _ndgrClient.disconnect(),
       _legacyCommentClient.disconnect(),
     ]);
+  }
+
+  void _bindClientEvents() {
+    _sessionDisconnectedSubscription = _sessionWsClient.disconnected.listen((_) {
+      unawaited(onSessionWsDisconnected());
+    });
+
+    _ndgrStalledSubscription = _ndgrClient.stalled.listen((_) {
+      unawaited(onNdgrStreamStalled());
+    });
+
+    _legacyDisconnectedSubscription = _legacyCommentClient.disconnected.listen((_) {
+      unawaited(onLegacyWsDisconnected());
+    });
+
+    _ndgrNextAtSubscription = _ndgrClient.nextAt.listen((Object at) {
+      _currentNdgrAt = at;
+    });
   }
 
   Future<void> _disconnectForSessionReconnect() async {
