@@ -114,6 +114,20 @@ void main() {
       expect(value.endsWith('…'), isTrue);
       expect(value.length, 41);
     });
+
+    test('sanitizes URLs to scheme host path only', () {
+      final String raw = jsonEncode(<String, Object?>{
+        'url': 'https://u:p@e.co:9/p?a=1#f',
+        'socket': 'wss://u:p@e.co:9/ws?token=abc#x',
+      });
+
+      final String sanitized = SessionWsLogSanitizer.sanitizeRawJson(raw);
+      final Map<String, dynamic> decoded =
+          jsonDecode(sanitized) as Map<String, dynamic>;
+
+      expect(decoded['url'], 'https://e.co/p');
+      expect(decoded['socket'], 'wss://e.co/ws');
+    });
   });
 
   group('SessionWsClient', () {
@@ -333,6 +347,47 @@ void main() {
       expect(
         legacyEvent.legacyWebSocketUrl,
         'wss://msgd.live2.nicovideo.jp/websocket?thread=123',
+      );
+
+      await client.dispose();
+      await subscription.cancel();
+    });
+
+    test('does not postpone legacy fallback timer on unrelated incoming messages',
+        () async {
+      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+      final SessionWsClient client = SessionWsClient(
+        lv: 'lv123456789',
+        channelFactory: (_) async => fakeChannel,
+        endpointFallbackDelay: const Duration(milliseconds: 50),
+      );
+      final List<SessionWsEvent> events = <SessionWsEvent>[];
+      final StreamSubscription<SessionWsEvent> subscription =
+          client.events.listen(events.add);
+
+      await client.connect();
+      fakeChannel.pushIncoming(
+        jsonEncode(<String, Object?>{
+          'type': 'seat',
+          'data': <String, Object?>{
+            'legacy': 'wss://msgd.live2.nicovideo.jp/websocket?thread=123',
+          },
+        }),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      fakeChannel.pushIncoming(jsonEncode(<String, Object?>{'type': 'serverTime'}));
+
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      fakeChannel.pushIncoming(jsonEncode(<String, Object?>{'type': 'serverTime'}));
+
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(
+        events.any(
+          (SessionWsEvent e) => e.type == SessionWsEventType.legacyEndpointResolved,
+        ),
+        isTrue,
       );
 
       await client.dispose();
