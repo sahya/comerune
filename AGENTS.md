@@ -120,6 +120,11 @@ Use [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): 
 Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`
 Breaking changes: append `!` to type or add `BREAKING CHANGE:` in footer.
 
+## Issue Lifecycle
+- Agents must not close issues.
+- Only the human owner may close an issue, after confirming the implementation satisfies the acceptance criteria.
+- When implementation is complete, the agent should state that the issue is ready for human review and closure, not close it directly.
+
 ## Forbidden Behavior
 Agents must not:
 - invent major product requirements
@@ -128,3 +133,4 @@ Agents must not:
 - skip explaining assumptions
 - claim tests passed if they were not actually run
 - mark work complete when acceptance criteria are not satisfied
+- close issues on behalf of the human owner
