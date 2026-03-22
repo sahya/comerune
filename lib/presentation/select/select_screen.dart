@@ -104,7 +104,6 @@ class _SelectScreenState extends State<SelectScreen> {
 
     final String? lv = LvParser.extract(_controller.text);
     if (lv == null) {
-      widget.connectionSupervisor.recordError(ConnectionErrorCode.lvParseFailed);
       final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
       messenger
         ..hideCurrentSnackBar()

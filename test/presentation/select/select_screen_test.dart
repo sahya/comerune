@@ -82,7 +82,7 @@ void main() {
 
     expect(find.text('放送IDが見つかりません'), findsOneWidget);
     expect(supervisor.status, ConnectionStatus.idle);
-    expect(supervisor.lastError, ConnectionErrorCode.lvParseFailed);
+    expect(supervisor.lastError, isNull);
     expect(find.text('CommentScreen'), findsNothing);
   });
 
@@ -117,6 +117,23 @@ void main() {
 
     expect(input.enabled, isFalse);
     expect(button.onPressed, isNull);
+  });
+
+  testWidgets('button is enabled in STOPPED state when input is not empty', (
+    WidgetTester tester,
+  ) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+    expect(supervisor.startConnection(), isTrue);
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(supervisor.onNdgrEndpointResolved(), isTrue);
+    expect(supervisor.stopByUser(), isTrue);
+
+    await pumpSelectScreen(tester, supervisor);
+    await tester.enterText(inputField, 'lv345678901');
+    await tester.pump();
+
+    final ElevatedButton button = tester.widget<ElevatedButton>(connectButton);
+    expect(button.onPressed, isNotNull);
   });
 
   testWidgets('button can reconnect from FAILED state', (
