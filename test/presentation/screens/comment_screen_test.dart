@@ -83,7 +83,7 @@ void main() {
         ),
         _message(
           id: 'legacy-1',
-          type: AppMessageType.chat,
+          type: AppMessageType.notification,
           content: kLegacyUnsupportedFormatMessage,
         ),
       ];
@@ -143,6 +143,21 @@ void main() {
       await tester.tap(find.byKey(const Key('reconnect-button')));
       await tester.pumpAndSettle();
       expect(reconnectCalls, 1);
+    });
+
+    testWidgets('stop button is disabled while idle', (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+        ),
+      );
+
+      final ElevatedButton stopButton =
+          tester.widget(find.byKey(const Key('stop-button')));
+      expect(stopButton.onPressed, isNull);
     });
 
     testWidgets('auto-scroll pauses while user scrolls up and resumes at bottom', (
@@ -228,6 +243,56 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(find.text('コメントサーバーの取得に失敗しました'), findsOneWidget);
+    });
+
+    testWidgets('back navigation stops all connections and returns', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      int stopCalls = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (BuildContext context) {
+              return Scaffold(
+                body: Center(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => CommentScreen(
+                            lv: 'lv999',
+                            connectionSupervisor: supervisor,
+                            messages: const <AppMessage>[],
+                            onStopAllConnections: () async {
+                              stopCalls += 1;
+                            },
+                            onReconnectSameLv: () async {},
+                            onDifferentLvConnected: (_, __) async {},
+                          ),
+                        ),
+                      );
+                    },
+                    child: const Text('open'),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      expect(find.byType(CommentScreen), findsOneWidget);
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      expect(stopCalls, 1);
+      expect(supervisor.status, ConnectionStatus.stopped);
+      expect(find.byType(CommentScreen), findsNothing);
     });
 
     testWidgets('invokes callback when lv changes (different lv connection)', (
@@ -340,6 +405,7 @@ Widget _buildScreen({
       messages: messages,
       onStopAllConnections: onStopAllConnections ?? () async {},
       onReconnectSameLv: onReconnectSameLv ?? () async {},
+      onDifferentLvConnected: (_, __) async {},
       debugMode: debugMode,
       connectionMethod: connectionMethod,
     ),
