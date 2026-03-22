@@ -347,7 +347,7 @@ class SessionWsClient {
 
   void _emitNdgrEndpointIfNeeded() {
     final String? ndgr = _ndgrViewUri;
-    if (ndgr == null || _hasEmittedNdgrEndpoint) {
+    if (ndgr == null || _hasEmittedNdgrEndpoint || _hasEmittedLegacyEndpoint) {
       return;
     }
 
@@ -368,8 +368,12 @@ class SessionWsClient {
       return;
     }
 
-    _legacyFallbackTimer?.cancel();
+    if (_legacyFallbackTimer != null) {
+      return;
+    }
+
     _legacyFallbackTimer = Timer(_endpointFallbackDelay, () {
+      _legacyFallbackTimer = null;
       if (_hasEmittedNdgrEndpoint || _hasEmittedLegacyEndpoint) {
         return;
       }
@@ -618,11 +622,8 @@ class SessionWsLogSanitizer {
 
     return Uri(
       scheme: uri.scheme,
-      userInfo: uri.userInfo.isEmpty ? null : uri.userInfo,
       host: uri.host,
-      port: uri.hasPort ? uri.port : null,
       path: uri.path,
-      fragment: uri.fragment.isEmpty ? null : uri.fragment,
     ).toString();
   }
 }
