@@ -10,6 +10,7 @@ enum SessionWsEventType {
   ndgrEndpointResolved,
   legacyEndpointResolved,
   broadcastEnded,
+  failed,
   error,
   debugLog,
 }
@@ -81,16 +82,45 @@ class SessionWsClient {
   SessionWsClient({
     required this.lv,
     SessionWsChannelFactory? channelFactory,
-  }) : _channelFactory = channelFactory ?? _defaultChannelFactory;
+    Duration endpointFallbackDelay = const Duration(milliseconds: 300),
+    Map<String, Map<String, Object>>? keepaliveResponses,
+  }) : _channelFactory = channelFactory ?? _defaultChannelFactory,
+       _endpointFallbackDelay = endpointFallbackDelay,
+       _keepaliveResponses =
+           keepaliveResponses == null
+               ? const <String, Map<String, Object>>{
+                 'servertime': <String, Object>{
+                   'type': 'pong',
+                   'body': <String, Object>{},
+                 },
+                 'ping': <String, Object>{
+                   'type': 'pong',
+                   'body': <String, Object>{},
+                 },
+               }
+               : keepaliveResponses.map<String, Map<String, Object>>(
+                 (String key, Map<String, Object> value) =>
+                     MapEntry<String, Map<String, Object>>(
+                       key.toLowerCase(),
+                       value,
+                     ),
+               );
 
   final String lv;
   final SessionWsChannelFactory _channelFactory;
+  final Duration _endpointFallbackDelay;
+  final Map<String, Map<String, Object>> _keepaliveResponses;
 
   final StreamController<SessionWsEvent> _eventsController =
       StreamController<SessionWsEvent>.broadcast();
 
   SessionWsChannel? _channel;
   StreamSubscription<dynamic>? _subscription;
+  Timer? _legacyFallbackTimer;
+  String? _ndgrViewUri;
+  String? _legacyWebSocketUrl;
+  bool _hasEmittedNdgrEndpoint = false;
+  bool _hasEmittedLegacyEndpoint = false;
   bool _isConnected = false;
   bool _isClosing = false;
 
@@ -100,6 +130,7 @@ class SessionWsClient {
     if (_isConnected) {
       return;
     }
+    _resetEndpointResolutionState();
 
     final Uri uri =
         Uri.parse('wss://a.live2.nicovideo.jp/wsapi/v2/watch/$lv');
@@ -147,6 +178,9 @@ class SessionWsClient {
     await _subscription?.cancel();
     _subscription = null;
 
+    _legacyFallbackTimer?.cancel();
+    _legacyFallbackTimer = null;
+
     final SessionWsChannel? channel = _channel;
     _channel = null;
     _isConnected = false;
@@ -181,28 +215,19 @@ class SessionWsClient {
       return;
     }
 
-    if (_isKeepaliveMessage(decoded)) {
-      _respondPong();
+    final Map<String, Object>? keepaliveResponse = _resolveKeepaliveResponse(
+      decoded,
+    );
+    if (keepaliveResponse != null) {
+      _respondKeepalive(keepaliveResponse);
     }
 
     final SessionEndpointResolution resolution =
         SessionWsMessageParser.extractEndpoints(decoded);
+    _recordEndpoints(resolution);
 
-    if (resolution.ndgrViewUri != null) {
-      _emit(
-        SessionWsEvent(
-          type: SessionWsEventType.ndgrEndpointResolved,
-          ndgrViewUri: resolution.ndgrViewUri,
-        ),
-      );
-    } else if (resolution.legacyWebSocketUrl != null) {
-      _emit(
-        SessionWsEvent(
-          type: SessionWsEventType.legacyEndpointResolved,
-          legacyWebSocketUrl: resolution.legacyWebSocketUrl,
-        ),
-      );
-    }
+    _emitNdgrEndpointIfNeeded();
+    _scheduleLegacyFallbackIfNeeded();
 
     final BroadcastEndDetection broadcastEndState =
         SessionWsMessageParser.detectBroadcastEnd(decoded);
@@ -214,10 +239,17 @@ class SessionWsClient {
     if (broadcastEndState == BroadcastEndDetection.unknown) {
       _emit(
         const SessionWsEvent(
+          type: SessionWsEventType.failed,
+          errorCode: SessionWsErrorCode.unknownBroadcastEndEvent,
+        ),
+      );
+      _emit(
+        const SessionWsEvent(
           type: SessionWsEventType.error,
           errorCode: SessionWsErrorCode.unknownBroadcastEndEvent,
         ),
       );
+      unawaited(disconnect());
     }
   }
 
@@ -240,12 +272,9 @@ class SessionWsClient {
     });
   }
 
-  void _respondPong() {
+  void _respondKeepalive(Map<String, Object> payload) {
     try {
-      _sendJson(const <String, Object>{
-        'type': 'pong',
-        'body': <String, Object>{},
-      });
+      _sendJson(payload);
     } catch (error, stackTrace) {
       _emit(
         SessionWsEvent(
@@ -268,9 +297,12 @@ class SessionWsClient {
     channel.sink.add(jsonEncode(payload));
   }
 
-  bool _isKeepaliveMessage(Map<String, dynamic> decoded) {
+  Map<String, Object>? _resolveKeepaliveResponse(Map<String, dynamic> decoded) {
     final String? type = decoded['type']?.toString().toLowerCase();
-    return type == 'servertime';
+    if (type == null) {
+      return null;
+    }
+    return _keepaliveResponses[type];
   }
 
   Object? _tryDecodeJson(String raw) {
@@ -282,6 +314,8 @@ class SessionWsClient {
   }
 
   void _handleDone() {
+    _legacyFallbackTimer?.cancel();
+    _legacyFallbackTimer = null;
     _channel = null;
     _isConnected = false;
     if (_isClosing) {
@@ -300,6 +334,63 @@ class SessionWsClient {
   static Future<SessionWsChannel> _defaultChannelFactory(Uri uri) async {
     final WebSocketChannel channel = WebSocketChannel.connect(uri);
     return WebSocketSessionWsChannel(channel);
+  }
+
+  void _recordEndpoints(SessionEndpointResolution resolution) {
+    if (_ndgrViewUri == null && resolution.ndgrViewUri != null) {
+      _ndgrViewUri = resolution.ndgrViewUri;
+    }
+    if (_legacyWebSocketUrl == null && resolution.legacyWebSocketUrl != null) {
+      _legacyWebSocketUrl = resolution.legacyWebSocketUrl;
+    }
+  }
+
+  void _emitNdgrEndpointIfNeeded() {
+    final String? ndgr = _ndgrViewUri;
+    if (ndgr == null || _hasEmittedNdgrEndpoint) {
+      return;
+    }
+
+    _legacyFallbackTimer?.cancel();
+    _legacyFallbackTimer = null;
+    _hasEmittedNdgrEndpoint = true;
+    _emit(
+      SessionWsEvent(
+        type: SessionWsEventType.ndgrEndpointResolved,
+        ndgrViewUri: ndgr,
+      ),
+    );
+  }
+
+  void _scheduleLegacyFallbackIfNeeded() {
+    final String? legacy = _legacyWebSocketUrl;
+    if (legacy == null || _hasEmittedNdgrEndpoint || _hasEmittedLegacyEndpoint) {
+      return;
+    }
+
+    _legacyFallbackTimer?.cancel();
+    _legacyFallbackTimer = Timer(_endpointFallbackDelay, () {
+      if (_hasEmittedNdgrEndpoint || _hasEmittedLegacyEndpoint) {
+        return;
+      }
+
+      _hasEmittedLegacyEndpoint = true;
+      _emit(
+        SessionWsEvent(
+          type: SessionWsEventType.legacyEndpointResolved,
+          legacyWebSocketUrl: legacy,
+        ),
+      );
+    });
+  }
+
+  void _resetEndpointResolutionState() {
+    _legacyFallbackTimer?.cancel();
+    _legacyFallbackTimer = null;
+    _ndgrViewUri = null;
+    _legacyWebSocketUrl = null;
+    _hasEmittedNdgrEndpoint = false;
+    _hasEmittedLegacyEndpoint = false;
   }
 }
 

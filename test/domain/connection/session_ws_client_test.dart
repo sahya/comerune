@@ -190,6 +190,26 @@ void main() {
       await subscription.cancel();
     });
 
+    test('responds to ping keepalive when configured', () async {
+      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+      final SessionWsClient client = SessionWsClient(
+        lv: 'lv123456789',
+        channelFactory: (_) async => fakeChannel,
+      );
+
+      await client.connect();
+      fakeChannel.pushIncoming(jsonEncode(<String, Object?>{'type': 'ping'}));
+
+      await Future<void>.delayed(Duration.zero);
+
+      expect(fakeChannel.sentMessages, hasLength(2));
+      final Map<String, dynamic> pong =
+          jsonDecode(fakeChannel.sentMessages.last as String)
+              as Map<String, dynamic>;
+      expect(pong['type'], 'pong');
+      await client.dispose();
+    });
+
     test('emits ndgr endpoint event before legacy when both exist in message',
         () async {
       final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
@@ -226,6 +246,126 @@ void main() {
       expect(
         endpointEvent.ndgrViewUri,
         'https://mpn.live.nicovideo.jp/api/view/v4/watch?audience_token=abc',
+      );
+
+      await client.dispose();
+      await subscription.cancel();
+    });
+
+    test('delays legacy fallback and prefers ndgr if ndgr arrives in grace window',
+        () async {
+      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+      final SessionWsClient client = SessionWsClient(
+        lv: 'lv123456789',
+        channelFactory: (_) async => fakeChannel,
+        endpointFallbackDelay: const Duration(milliseconds: 50),
+      );
+      final List<SessionWsEvent> events = <SessionWsEvent>[];
+      final StreamSubscription<SessionWsEvent> subscription =
+          client.events.listen(events.add);
+
+      await client.connect();
+      fakeChannel.pushIncoming(
+        jsonEncode(<String, Object?>{
+          'type': 'seat',
+          'data': <String, Object?>{
+            'legacy': 'wss://msgd.live2.nicovideo.jp/websocket?thread=123',
+          },
+        }),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      fakeChannel.pushIncoming(
+        jsonEncode(<String, Object?>{
+          'type': 'seat',
+          'data': <String, Object?>{
+            'ndgr':
+                'https://mpn.live.nicovideo.jp/api/view/v4/watch?audience_token=abc',
+          },
+        }),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+
+      final List<SessionWsEventType> endpointTypes =
+          events
+              .where(
+                (SessionWsEvent e) =>
+                    e.type == SessionWsEventType.ndgrEndpointResolved ||
+                    e.type == SessionWsEventType.legacyEndpointResolved,
+              )
+              .map((SessionWsEvent e) => e.type)
+              .toList();
+      expect(endpointTypes, <SessionWsEventType>[
+        SessionWsEventType.ndgrEndpointResolved,
+      ]);
+
+      await client.dispose();
+      await subscription.cancel();
+    });
+
+    test('emits legacy endpoint when ndgr is not found after grace delay',
+        () async {
+      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+      final SessionWsClient client = SessionWsClient(
+        lv: 'lv123456789',
+        channelFactory: (_) async => fakeChannel,
+        endpointFallbackDelay: const Duration(milliseconds: 10),
+      );
+      final List<SessionWsEvent> events = <SessionWsEvent>[];
+      final StreamSubscription<SessionWsEvent> subscription =
+          client.events.listen(events.add);
+
+      await client.connect();
+      fakeChannel.pushIncoming(
+        jsonEncode(<String, Object?>{
+          'type': 'seat',
+          'data': <String, Object?>{
+            'legacy': 'wss://msgd.live2.nicovideo.jp/websocket?thread=123',
+          },
+        }),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      final SessionWsEvent legacyEvent = events.firstWhere(
+        (SessionWsEvent e) => e.type == SessionWsEventType.legacyEndpointResolved,
+      );
+      expect(
+        legacyEvent.legacyWebSocketUrl,
+        'wss://msgd.live2.nicovideo.jp/websocket?thread=123',
+      );
+
+      await client.dispose();
+      await subscription.cancel();
+    });
+
+    test('emits failed on unknown disconnect event', () async {
+      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+      final SessionWsClient client = SessionWsClient(
+        lv: 'lv123456789',
+        channelFactory: (_) async => fakeChannel,
+      );
+      final List<SessionWsEvent> events = <SessionWsEvent>[];
+      final StreamSubscription<SessionWsEvent> subscription =
+          client.events.listen(events.add);
+
+      await client.connect();
+      fakeChannel.pushIncoming(
+        jsonEncode(<String, Object?>{
+          'type': 'disconnect',
+          'data': <String, Object?>{'reason': 'MAINTENANCE'},
+        }),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(
+        events.any(
+          (SessionWsEvent e) =>
+              e.type == SessionWsEventType.failed &&
+              e.errorCode == SessionWsErrorCode.unknownBroadcastEndEvent,
+        ),
+        isTrue,
       );
 
       await client.dispose();
