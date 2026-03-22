@@ -171,6 +171,25 @@ void main() {
       expect(connection.closed, isTrue);
     });
 
+    test('encodes kanji in shift-jis fallback map', () async {
+      final _FakeConnection connection = _FakeConnection();
+      final BouyomiEngine engine = BouyomiEngine(
+        settingsProvider: () => const BouyomiSettings(
+          host: '127.0.0.1',
+          charset: BouyomiCharset.shiftJis,
+        ),
+        encodingResolver: (String name) => null,
+        connectionOpener: (String host, int port, Duration timeout) async =>
+            connection,
+      );
+
+      await engine.speak('漢A');
+      final Uint8List allBytes = Uint8List.fromList(connection.sentBytes);
+      final Uint8List body =
+          allBytes.sublist(BouyomiPacketBuilder.headerLength);
+      expect(body, <int>[0x8A, 0xBF, 0x41]);
+    });
+
     test('replaces unsupported shift-jis characters with question mark',
         () async {
       final _FakeConnection connection = _FakeConnection();
@@ -184,7 +203,7 @@ void main() {
             connection,
       );
 
-      await engine.speak('漢A');
+      await engine.speak('😀A');
       final Uint8List allBytes = Uint8List.fromList(connection.sentBytes);
       final Uint8List body =
           allBytes.sublist(BouyomiPacketBuilder.headerLength);

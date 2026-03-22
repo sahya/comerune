@@ -5,6 +5,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'speech_engine.dart';
+import 'shift_jis_cp932_map.dart';
 
 enum BouyomiCharset {
   utf8(0),
@@ -169,86 +170,18 @@ class BouyomiEngine implements SpeechEngine {
     }
 
     // Fallback for runtimes where Shift-JIS codec is unavailable.
-    // Unsupported characters are replaced with '?' to avoid dropping utterances.
+    // Maps with CP932 table; unsupported characters are replaced with '?'.
     final List<int> bytes = <int>[];
     for (final int rune in text.runes) {
-      bytes.addAll(_encodeShiftJisRuneOrFallback(rune));
+      final int value = kShiftJisCp932Map[rune] ?? 0x3F;
+      if (value <= 0xFF) {
+        bytes.add(value);
+      } else {
+        bytes.add((value >> 8) & 0xFF);
+        bytes.add(value & 0xFF);
+      }
     }
     return Uint8List.fromList(bytes);
-  }
-
-  List<int> _encodeShiftJisRuneOrFallback(int rune) {
-    final List<int>? encoded = _encodeShiftJisRune(rune);
-    return encoded ?? const <int>[0x3F];
-  }
-
-  List<int>? _encodeShiftJisRune(int rune) {
-    if (rune <= 0x7F) {
-      return <int>[rune];
-    }
-
-    if (rune >= 0xFF61 && rune <= 0xFF9F) {
-      return <int>[0xA1 + (rune - 0xFF61)];
-    }
-
-    if (rune >= 0x3041 && rune <= 0x3093) {
-      return <int>[0x82, 0x9F + (rune - 0x3041)];
-    }
-
-    if (rune >= 0x30A1 && rune <= 0x30F6) {
-      int second = 0x40 + (rune - 0x30A1);
-      if (second >= 0x7F) {
-        second += 1;
-      }
-      return <int>[0x83, second];
-    }
-
-    if (rune >= 0xFF10 && rune <= 0xFF19) {
-      return <int>[0x82, 0x4F + (rune - 0xFF10)];
-    }
-
-    if (rune >= 0xFF21 && rune <= 0xFF3A) {
-      return <int>[0x82, 0x60 + (rune - 0xFF21)];
-    }
-
-    if (rune >= 0xFF41 && rune <= 0xFF5A) {
-      return <int>[0x82, 0x81 + (rune - 0xFF41)];
-    }
-
-    switch (rune) {
-      case 0x00A5:
-        return const <int>[0x5C];
-      case 0x203E:
-        return const <int>[0x7E];
-      case 0x3000:
-        return const <int>[0x81, 0x40];
-      case 0x3001:
-        return const <int>[0x81, 0x41];
-      case 0x3002:
-        return const <int>[0x81, 0x42];
-      case 0x30FB:
-        return const <int>[0x81, 0x45];
-      case 0x30FC:
-        return const <int>[0x81, 0x5B];
-      case 0x309B:
-        return const <int>[0x81, 0x4A];
-      case 0x309C:
-        return const <int>[0x81, 0x4B];
-      case 0xFF01:
-        return const <int>[0x81, 0x49];
-      case 0xFF0C:
-        return const <int>[0x81, 0x43];
-      case 0xFF0E:
-        return const <int>[0x81, 0x44];
-      case 0xFF1A:
-        return const <int>[0x81, 0x46];
-      case 0xFF1B:
-        return const <int>[0x81, 0x47];
-      case 0xFF1F:
-        return const <int>[0x81, 0x48];
-      default:
-        return null;
-    }
   }
 
   Encoding? _resolveShiftJisEncoding() {
