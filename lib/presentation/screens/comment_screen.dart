@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
 import '../../application/settings/settings_store.dart';
-import '../../application/settings/settings_store_registry.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
 import 'settings_screen.dart';
@@ -25,7 +24,7 @@ class CommentScreen extends StatefulWidget {
     required this.onStopAllConnections,
     required this.onReconnectSameLv,
     required this.onDifferentLvConnected,
-    this.settingsStore,
+    required this.settingsStore,
     this.onOpenSettings,
     this.debugMode = false,
     this.connectionMethod,
@@ -38,7 +37,7 @@ class CommentScreen extends StatefulWidget {
   final Future<void> Function() onReconnectSameLv;
   final Future<void> Function(String previousLv, String nextLv)
       onDifferentLvConnected;
-  final SettingsStore? settingsStore;
+  final SettingsStore settingsStore;
   final Future<void> Function()? onOpenSettings;
   final bool debugMode;
   final ConnectionMethod? connectionMethod;
@@ -128,8 +127,7 @@ class _CommentScreenState extends State<CommentScreen> {
                     await Navigator.of(context).push(
                       MaterialPageRoute<void>(
                         builder: (_) => SettingsScreen(
-                          settingsStore: widget.settingsStore ??
-                              SettingsStoreRegistry.instance,
+                          settingsStore: widget.settingsStore,
                         ),
                       ),
                     );

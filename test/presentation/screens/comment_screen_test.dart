@@ -2,17 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../lib/application/settings/settings_store.dart';
-import '../../../lib/application/settings/settings_store_registry.dart';
 import '../../../lib/domain/connection/connection_supervisor.dart';
 import '../../../lib/domain/models/app_message.dart';
 import '../../../lib/presentation/screens/comment_screen.dart';
 import '../../../lib/presentation/screens/settings_screen.dart';
 
 void main() {
-  tearDown(() {
-    SettingsStoreRegistry.resetForTest();
-  });
-
   group('CommentScreen', () {
     testWidgets('Wi-Fi icon color follows connection status', (
       WidgetTester tester,
@@ -394,29 +389,6 @@ void main() {
 
       expect(find.byType(SettingsScreen), findsOneWidget);
     });
-
-    testWidgets('opens settings screen via startup-registered store', (
-      WidgetTester tester,
-    ) async {
-      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-      SettingsStoreRegistry.register(_newSettingsStore());
-
-      await tester.pumpWidget(
-        _buildScreen(
-          supervisor: supervisor,
-          messages: const <AppMessage>[],
-          settingsStore: null,
-          useDefaultSettingsStore: false,
-        ),
-      );
-
-      await tester.tap(find.byType(PopupMenuButton<String>));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('設定'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(SettingsScreen), findsOneWidget);
-    });
   });
 }
 
@@ -492,7 +464,6 @@ Widget _buildScreen({
   Future<void> Function()? onStopAllConnections,
   Future<void> Function()? onReconnectSameLv,
   SettingsStore? settingsStore,
-  bool useDefaultSettingsStore = true,
   bool debugMode = false,
   ConnectionMethod? connectionMethod,
 }) {
@@ -504,8 +475,7 @@ Widget _buildScreen({
       onStopAllConnections: onStopAllConnections ?? () async {},
       onReconnectSameLv: onReconnectSameLv ?? () async {},
       onDifferentLvConnected: (_, __) async {},
-      settingsStore: settingsStore ??
-          (useDefaultSettingsStore ? _newSettingsStore() : null),
+      settingsStore: settingsStore ?? _newSettingsStore(),
       debugMode: debugMode,
       connectionMethod: connectionMethod,
     ),
