@@ -5,7 +5,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'speech_engine.dart';
-import 'shift_jis_cp932_map.dart';
 
 enum BouyomiCharset {
   utf8(0),
@@ -108,18 +107,19 @@ class BouyomiEngine implements SpeechEngine {
 
     BouyomiConnection? connection;
     try {
-      final Uint8List messageBytes = _encodeMessage(text, settings.charset);
+      final _EncodedMessage encodedMessage =
+          _encodeMessage(text, settings.charset);
       final Uint8List header = BouyomiPacketBuilder.buildHeader(
         speed: settings.speed,
         tone: settings.tone,
         volume: settings.volume,
         voice: settings.voice,
-        charset: settings.charset,
-        messageLength: messageBytes.length,
+        charset: encodedMessage.charset,
+        messageLength: encodedMessage.bytes.length,
       );
       connection = await _connectionOpener(host, defaultPort, _connectTimeout);
       connection.add(header);
-      connection.add(messageBytes);
+      connection.add(encodedMessage.bytes);
       await connection.flush().timeout(_writeTimeout);
     } on UnsupportedError catch (error, stackTrace) {
       _logSkip(
@@ -152,36 +152,36 @@ class BouyomiEngine implements SpeechEngine {
     return _SocketBouyomiConnection(socket);
   }
 
-  Uint8List _encodeMessage(String text, BouyomiCharset charset) {
+  _EncodedMessage _encodeMessage(String text, BouyomiCharset charset) {
     switch (charset) {
       case BouyomiCharset.utf8:
-        return Uint8List.fromList(utf8.encode(text));
+        return _EncodedMessage(
+          bytes: Uint8List.fromList(utf8.encode(text)),
+          charset: BouyomiCharset.utf8,
+        );
       case BouyomiCharset.unicode:
-        return _encodeUtf16Le(text);
+        return _EncodedMessage(
+          bytes: _encodeUtf16Le(text),
+          charset: BouyomiCharset.unicode,
+        );
       case BouyomiCharset.shiftJis:
         return _encodeShiftJis(text);
     }
   }
 
-  Uint8List _encodeShiftJis(String text) {
+  _EncodedMessage _encodeShiftJis(String text) {
     final Encoding? shiftJisEncoding = _resolveShiftJisEncoding();
     if (shiftJisEncoding != null) {
-      return Uint8List.fromList(shiftJisEncoding.encode(text));
+      return _EncodedMessage(
+        bytes: Uint8List.fromList(shiftJisEncoding.encode(text)),
+        charset: BouyomiCharset.shiftJis,
+      );
     }
 
-    // Fallback for runtimes where Shift-JIS codec is unavailable.
-    // Maps with CP932 table; unsupported characters are replaced with '?'.
-    final List<int> bytes = <int>[];
-    for (final int rune in text.runes) {
-      final int value = kShiftJisCp932Map[rune] ?? 0x3F;
-      if (value <= 0xFF) {
-        bytes.add(value);
-      } else {
-        bytes.add((value >> 8) & 0xFF);
-        bytes.add(value & 0xFF);
-      }
-    }
-    return Uint8List.fromList(bytes);
+    return _EncodedMessage(
+      bytes: Uint8List.fromList(utf8.encode(text)),
+      charset: BouyomiCharset.utf8,
+    );
   }
 
   Encoding? _resolveShiftJisEncoding() {
@@ -230,4 +230,14 @@ class _SocketBouyomiConnection implements BouyomiConnection {
   Future<void> close() {
     return _socket.close();
   }
+}
+
+class _EncodedMessage {
+  const _EncodedMessage({
+    required this.bytes,
+    required this.charset,
+  });
+
+  final Uint8List bytes;
+  final BouyomiCharset charset;
 }

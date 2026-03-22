@@ -105,7 +105,7 @@ void main() {
       expect(body, <int>[0x41, 0x00, 0x42, 0x30]);
     });
 
-    test('applies shift-jis charset with deterministic bytes', () async {
+    test('applies shift-jis when resolver provides encoding', () async {
       final _FakeConnection connection = _FakeConnection();
 
       final BouyomiEngine engine = BouyomiEngine(
@@ -113,12 +113,17 @@ void main() {
           host: 'localhost',
           charset: BouyomiCharset.shiftJis,
         ),
-        encodingResolver: (String name) => null,
+        encodingResolver: (String name) {
+          if (name == 'shift_jis') {
+            return latin1;
+          }
+          return null;
+        },
         connectionOpener: (String host, int port, Duration timeout) async =>
             connection,
       );
 
-      await engine.speak('ABCあア');
+      await engine.speak('ABC');
 
       final Uint8List allBytes = Uint8List.fromList(connection.sentBytes);
       final Uint8List header =
@@ -129,7 +134,7 @@ void main() {
 
       expect(headerData.getInt8(10), BouyomiCharset.shiftJis.code);
       expect(headerData.getInt32(11, Endian.little), body.length);
-      expect(body, <int>[0x41, 0x42, 0x43, 0x82, 0xA0, 0x83, 0x41]);
+      expect(body, <int>[0x41, 0x42, 0x43]);
     });
 
     test('skips utterance when socket connection fails', () async {
@@ -171,7 +176,7 @@ void main() {
       expect(connection.closed, isTrue);
     });
 
-    test('encodes kanji in shift-jis fallback map', () async {
+    test('falls back to utf-8 when shift-jis codec is unavailable', () async {
       final _FakeConnection connection = _FakeConnection();
       final BouyomiEngine engine = BouyomiEngine(
         settingsProvider: () => const BouyomiSettings(
@@ -183,31 +188,16 @@ void main() {
             connection,
       );
 
-      await engine.speak('漢A');
+      await engine.speak('漢😀A');
+      final Uint8List header = Uint8List.fromList(connection.sentBytes
+          .take(BouyomiPacketBuilder.headerLength)
+          .toList());
       final Uint8List allBytes = Uint8List.fromList(connection.sentBytes);
       final Uint8List body =
           allBytes.sublist(BouyomiPacketBuilder.headerLength);
-      expect(body, <int>[0x8A, 0xBF, 0x41]);
-    });
-
-    test('replaces unsupported shift-jis characters with question mark',
-        () async {
-      final _FakeConnection connection = _FakeConnection();
-      final BouyomiEngine engine = BouyomiEngine(
-        settingsProvider: () => const BouyomiSettings(
-          host: '127.0.0.1',
-          charset: BouyomiCharset.shiftJis,
-        ),
-        encodingResolver: (String name) => null,
-        connectionOpener: (String host, int port, Duration timeout) async =>
-            connection,
-      );
-
-      await engine.speak('😀A');
-      final Uint8List allBytes = Uint8List.fromList(connection.sentBytes);
-      final Uint8List body =
-          allBytes.sublist(BouyomiPacketBuilder.headerLength);
-      expect(body, <int>[0x3F, 0x41]);
+      final ByteData headerData = ByteData.sublistView(header);
+      expect(headerData.getInt8(10), BouyomiCharset.utf8.code);
+      expect(utf8.decode(body), '漢😀A');
     });
 
     test('skips utterance when an unexpected error occurs', () async {
