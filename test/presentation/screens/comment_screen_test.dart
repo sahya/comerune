@@ -245,6 +245,33 @@ void main() {
       expect(find.text('コメントサーバーの取得に失敗しました'), findsOneWidget);
     });
 
+    testWidgets('shows reconnect button on FAILED and allows retry tap', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      int reconnectCalls = 0;
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          onReconnectSameLv: () async {
+            reconnectCalls += 1;
+          },
+        ),
+      );
+
+      expect(supervisor.fail(ConnectionErrorCode.endpointResolveFailed), isTrue);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('reconnect-button')), findsOneWidget);
+      expect(find.byKey(const Key('stop-button')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('reconnect-button')));
+      await tester.pumpAndSettle();
+      expect(reconnectCalls, 1);
+    });
+
     testWidgets('back navigation stops all connections and returns', (
       WidgetTester tester,
     ) async {
