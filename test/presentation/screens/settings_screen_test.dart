@@ -62,6 +62,40 @@ void main() {
       expect(find.text('1〜100 の範囲で入力してください'), findsNothing);
     });
 
+    testWidgets('shows validation error and does not save invalid max delay', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(const Key('max-delay-field')), 'abc');
+      await tester.tap(find.byKey(const Key('queue-limit-field')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('数値を入力してください'), findsOneWidget);
+      AppSettings loaded = await settingsStore.load();
+      expect(loaded.maxDelaySeconds, AppSettings.defaults.maxDelaySeconds);
+
+      await tester.enterText(find.byKey(const Key('max-delay-field')), '0');
+      await tester.tap(find.byKey(const Key('queue-limit-field')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('1〜60 の範囲で入力してください'), findsOneWidget);
+      loaded = await settingsStore.load();
+      expect(loaded.maxDelaySeconds, AppSettings.defaults.maxDelaySeconds);
+
+      await tester.enterText(find.byKey(const Key('max-delay-field')), '12');
+      await tester.tap(find.byKey(const Key('queue-limit-field')));
+      await tester.pumpAndSettle();
+
+      loaded = await settingsStore.load();
+      expect(loaded.maxDelaySeconds, 12);
+      expect(find.text('1〜60 の範囲で入力してください'), findsNothing);
+    });
+
     testWidgets('persists values and reloads on reopened screen', (
       WidgetTester tester,
     ) async {
@@ -91,6 +125,31 @@ void main() {
       final TextFormField ngWordsField =
           tester.widget(find.byKey(const Key('ng-words-field')));
       expect(ngWordsField.controller?.text, '^8+\$');
+    });
+
+    testWidgets('saves text fields when focus is lost', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('bouyomi-host-field')),
+        '192.168.0.10',
+      );
+      await tester.tap(find.byKey(const Key('queue-limit-field')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(const Key('ng-words-field')), '^w+\$');
+      await tester.tap(find.byKey(const Key('max-delay-field')));
+      await tester.pumpAndSettle();
+
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.bouyomiHost, '192.168.0.10');
+      expect(loaded.ngWords, '^w+\$');
     });
   });
 }
