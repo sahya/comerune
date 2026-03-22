@@ -154,6 +154,7 @@ class BouyomiEngine implements SpeechEngine {
       case BouyomiCharset.unicode:
         return _encodeUtf16Le(text);
       case BouyomiCharset.shiftJis:
+        // TODO(issue-13): Add Shift-JIS encoding support once codec dependency policy is approved.
         throw UnsupportedError(
           'Shift-JIS encoding is not supported without external codec dependency.',
         );
