@@ -55,7 +55,7 @@ class NdgrClient {
     Duration stallCheckInterval = const Duration(seconds: 1),
     Duration backwardSegmentInterval = const Duration(milliseconds: 7),
     DateTime Function()? now,
-  }) : _httpClient = httpClient ?? HttpClient(),
+  }) : _providedHttpClient = httpClient,
        _ownsHttpClient = httpClient == null,
        _protobufDecoder = protobufDecoder ?? NdgrProtobufDecoder(),
        _normalizer = normalizer ?? NdgrMessageNormalizer(),
@@ -67,8 +67,9 @@ class NdgrClient {
        _stallCheckInterval = stallCheckInterval,
        _backwardSegmentInterval = backwardSegmentInterval;
 
-  final HttpClient _httpClient;
+  final HttpClient? _providedHttpClient;
   final bool _ownsHttpClient;
+  HttpClient? _httpClient;
   final NdgrProtobufDecoder _protobufDecoder;
   final NdgrMessageNormalizer _normalizer;
   final NdgrStallDetector _stallDetector;
@@ -101,6 +102,7 @@ class NdgrClient {
 
     _isRunning = true;
     _isStopped = false;
+    _stallDetector.markReceived(_now());
     _startStallTimer();
 
     try {
@@ -110,6 +112,9 @@ class NdgrClient {
         at: at,
       );
     } catch (error, stackTrace) {
+      if (_isStopped) {
+        return;
+      }
       _emitError(error, stackTrace);
       rethrow;
     } finally {
@@ -121,15 +126,13 @@ class NdgrClient {
   Future<void> stop() async {
     _isStopped = true;
     _stopStallTimer();
+    _abortActiveConnections();
   }
 
   void dispose() {
     _isStopped = true;
     _stopStallTimer();
-
-    if (_ownsHttpClient) {
-      _httpClient.close(force: true);
-    }
+    _abortActiveConnections();
 
     if (!_eventsController.isClosed) {
       _eventsController.close();
@@ -143,6 +146,7 @@ class NdgrClient {
   }) async {
     Object? nextAt = at;
     bool initPhase = true;
+    int remainingHistory = historyCount;
 
     while (!_isStopped && nextAt != null) {
       final Uri fetchUri = _uriWithAt(viewApiUri, nextAt);
@@ -154,21 +158,28 @@ class NdgrClient {
         }
 
         if (entry.backwardSegmentUri != null) {
-          if (initPhase && historyCount > 0) {
+          if (initPhase && remainingHistory > 0) {
             final List<NdgrChunkedMessage> backwards = await _pullBackwards(
               Uri.parse(entry.backwardSegmentUri!),
-              historyCount,
+              remainingHistory,
             );
             for (final NdgrChunkedMessage message in backwards) {
-              _handleChunkedMessage(message);
+              final bool emitted = _handleChunkedMessage(message);
+              if (emitted && remainingHistory > 0) {
+                remainingHistory -= 1;
+              }
             }
           }
           continue;
         }
 
         if (entry.previousUri != null) {
-          if (initPhase) {
-            await _retrieveMessages(Uri.parse(entry.previousUri!));
+          if (initPhase && remainingHistory > 0) {
+            final int emittedCount = await _retrieveMessages(
+              Uri.parse(entry.previousUri!),
+              limit: remainingHistory,
+            );
+            remainingHistory -= emittedCount;
           }
           continue;
         }
@@ -221,16 +232,28 @@ class NdgrClient {
     return flattened.sublist(flattened.length - want);
   }
 
-  Future<void> _retrieveMessages(Uri uri) async {
+  Future<int> _retrieveMessages(Uri uri, {int? limit}) async {
+    int emittedCount = 0;
+
     await for (final NdgrChunkedMessage message in _streamChunkedMessages(uri)) {
       if (_isStopped) {
-        return;
+        return emittedCount;
       }
-      _handleChunkedMessage(message);
+
+      final bool emitted = _handleChunkedMessage(message);
+      if (emitted) {
+        emittedCount += 1;
+      }
+
+      if (limit != null && emittedCount >= limit) {
+        break;
+      }
     }
+
+    return emittedCount;
   }
 
-  void _handleChunkedMessage(NdgrChunkedMessage message) {
+  bool _handleChunkedMessage(NdgrChunkedMessage message) {
     _stallDetector.markReceived(_now());
 
     final AppMessage? normalized = _normalizer.normalizeChunkedMessage(
@@ -240,7 +263,10 @@ class NdgrClient {
 
     if (normalized != null) {
       _eventsController.add(NdgrClientEvent.message(normalized));
+      return true;
     }
+
+    return false;
   }
 
   Stream<NdgrChunkedEntry> _streamChunkedEntries(Uri uri) async* {
@@ -311,7 +337,7 @@ class NdgrClient {
   }
 
   Future<HttpClientResponse> _fetch(Uri uri, {required String phase}) async {
-    final HttpClientRequest request = await _httpClient.getUrl(uri);
+    final HttpClientRequest request = await _activeHttpClient.getUrl(uri);
     final HttpClientResponse response = await request.close();
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -368,6 +394,29 @@ class NdgrClient {
     );
     if (!_eventsController.isClosed) {
       _eventsController.add(NdgrClientEvent.error(error, stackTrace));
+    }
+  }
+
+  HttpClient get _activeHttpClient {
+    final HttpClient? current = _httpClient;
+    if (current != null) {
+      return current;
+    }
+
+    final HttpClient created = _providedHttpClient ?? HttpClient();
+    _httpClient = created;
+    return created;
+  }
+
+  void _abortActiveConnections() {
+    final HttpClient? active = _httpClient;
+    if (active == null) {
+      return;
+    }
+
+    if (_ownsHttpClient) {
+      active.close(force: true);
+      _httpClient = null;
     }
   }
 }
