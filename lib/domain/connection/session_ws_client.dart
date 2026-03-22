@@ -1,0 +1,537 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:developer';
+
+import 'package:web_socket_channel/web_socket_channel.dart';
+
+enum SessionWsEventType {
+  connected,
+  disconnected,
+  ndgrEndpointResolved,
+  legacyEndpointResolved,
+  broadcastEnded,
+  error,
+  debugLog,
+}
+
+enum SessionWsErrorCode {
+  connectFailed,
+  keepaliveResponseFailed,
+  unknownBroadcastEndEvent,
+}
+
+class SessionWsEvent {
+  const SessionWsEvent({
+    required this.type,
+    this.ndgrViewUri,
+    this.legacyWebSocketUrl,
+    this.errorCode,
+    this.error,
+    this.stackTrace,
+    this.debugMessage,
+  });
+
+  final SessionWsEventType type;
+  final String? ndgrViewUri;
+  final String? legacyWebSocketUrl;
+  final SessionWsErrorCode? errorCode;
+  final Object? error;
+  final StackTrace? stackTrace;
+  final String? debugMessage;
+}
+
+class SessionEndpointResolution {
+  const SessionEndpointResolution({
+    this.ndgrViewUri,
+    this.legacyWebSocketUrl,
+  });
+
+  final String? ndgrViewUri;
+  final String? legacyWebSocketUrl;
+
+  String? get preferredEndpoint => ndgrViewUri ?? legacyWebSocketUrl;
+}
+
+abstract class SessionWsChannel {
+  Stream<dynamic> get stream;
+  StreamSink<dynamic> get sink;
+  Future<void> close([int? code, String? reason]);
+}
+
+typedef SessionWsChannelFactory = FutureOr<SessionWsChannel> Function(Uri uri);
+
+class WebSocketSessionWsChannel implements SessionWsChannel {
+  WebSocketSessionWsChannel(this._inner);
+
+  final WebSocketChannel _inner;
+
+  @override
+  Stream<dynamic> get stream => _inner.stream;
+
+  @override
+  StreamSink<dynamic> get sink => _inner.sink;
+
+  @override
+  Future<void> close([int? code, String? reason]) async {
+    await _inner.sink.close(code, reason);
+  }
+}
+
+class SessionWsClient {
+  SessionWsClient({
+    required this.lv,
+    SessionWsChannelFactory? channelFactory,
+  }) : _channelFactory = channelFactory ?? _defaultChannelFactory;
+
+  final String lv;
+  final SessionWsChannelFactory _channelFactory;
+
+  final StreamController<SessionWsEvent> _eventsController =
+      StreamController<SessionWsEvent>.broadcast();
+
+  SessionWsChannel? _channel;
+  StreamSubscription<dynamic>? _subscription;
+  bool _isConnected = false;
+  bool _isClosing = false;
+
+  Stream<SessionWsEvent> get events => _eventsController.stream;
+
+  Future<void> connect() async {
+    if (_isConnected) {
+      return;
+    }
+
+    final Uri uri =
+        Uri.parse('wss://a.live2.nicovideo.jp/wsapi/v2/watch/$lv');
+
+    try {
+      final SessionWsChannel channel = await _channelFactory(uri);
+      _channel = channel;
+      _subscription = channel.stream.listen(
+        _handleIncoming,
+        onError: (Object error, StackTrace stackTrace) {
+          _emit(
+            SessionWsEvent(
+              type: SessionWsEventType.error,
+              errorCode: SessionWsErrorCode.connectFailed,
+              error: error,
+              stackTrace: stackTrace,
+            ),
+          );
+        },
+        onDone: _handleDone,
+      );
+
+      _isConnected = true;
+      _emit(const SessionWsEvent(type: SessionWsEventType.connected));
+      _sendStartWatching();
+    } catch (error, stackTrace) {
+      _emit(
+        SessionWsEvent(
+          type: SessionWsEventType.error,
+          errorCode: SessionWsErrorCode.connectFailed,
+          error: error,
+          stackTrace: stackTrace,
+        ),
+      );
+    }
+  }
+
+  Future<void> disconnect() async {
+    if (_isClosing) {
+      return;
+    }
+
+    _isClosing = true;
+
+    await _subscription?.cancel();
+    _subscription = null;
+
+    final SessionWsChannel? channel = _channel;
+    _channel = null;
+    _isConnected = false;
+
+    if (channel != null) {
+      await channel.close();
+    }
+
+    _emit(const SessionWsEvent(type: SessionWsEventType.disconnected));
+    _isClosing = false;
+  }
+
+  Future<void> dispose() async {
+    await disconnect();
+    await _eventsController.close();
+  }
+
+  void _handleIncoming(dynamic payload) {
+    final String raw = payload is String ? payload : payload.toString();
+
+    final String sanitizedLog = SessionWsLogSanitizer.sanitizeRawJson(raw);
+    log(sanitizedLog, name: 'SessionWsClient');
+    _emit(
+      SessionWsEvent(
+        type: SessionWsEventType.debugLog,
+        debugMessage: sanitizedLog,
+      ),
+    );
+
+    final Object? decoded = _tryDecodeJson(raw);
+    if (decoded is! Map<String, dynamic>) {
+      return;
+    }
+
+    if (_isKeepaliveMessage(decoded)) {
+      _respondPong();
+    }
+
+    final SessionEndpointResolution resolution =
+        SessionWsMessageParser.extractEndpoints(decoded);
+
+    if (resolution.ndgrViewUri != null) {
+      _emit(
+        SessionWsEvent(
+          type: SessionWsEventType.ndgrEndpointResolved,
+          ndgrViewUri: resolution.ndgrViewUri,
+        ),
+      );
+    } else if (resolution.legacyWebSocketUrl != null) {
+      _emit(
+        SessionWsEvent(
+          type: SessionWsEventType.legacyEndpointResolved,
+          legacyWebSocketUrl: resolution.legacyWebSocketUrl,
+        ),
+      );
+    }
+
+    final BroadcastEndDetection broadcastEndState =
+        SessionWsMessageParser.detectBroadcastEnd(decoded);
+    if (broadcastEndState == BroadcastEndDetection.ended) {
+      _emit(const SessionWsEvent(type: SessionWsEventType.broadcastEnded));
+      return;
+    }
+
+    if (broadcastEndState == BroadcastEndDetection.unknown) {
+      _emit(
+        const SessionWsEvent(
+          type: SessionWsEventType.error,
+          errorCode: SessionWsErrorCode.unknownBroadcastEndEvent,
+        ),
+      );
+    }
+  }
+
+  void _sendStartWatching() {
+    _sendJson(const <String, Object>{
+      'type': 'startWatching',
+      'data': <String, Object>{
+        'stream': <String, Object>{
+          'quality': 'abr',
+          'protocol': 'hls',
+          'latency': 'low',
+          'chasePlay': false,
+        },
+        'room': <String, Object>{
+          'protocol': 'webSocket',
+          'commentable': true,
+        },
+        'reconnect': false,
+      },
+    });
+  }
+
+  void _respondPong() {
+    try {
+      _sendJson(const <String, Object>{
+        'type': 'pong',
+        'body': <String, Object>{},
+      });
+    } catch (error, stackTrace) {
+      _emit(
+        SessionWsEvent(
+          type: SessionWsEventType.error,
+          errorCode: SessionWsErrorCode.keepaliveResponseFailed,
+          error: error,
+          stackTrace: stackTrace,
+        ),
+      );
+      unawaited(disconnect());
+    }
+  }
+
+  void _sendJson(Map<String, Object> payload) {
+    final SessionWsChannel? channel = _channel;
+    if (channel == null) {
+      throw StateError('Session WS channel is not connected');
+    }
+
+    channel.sink.add(jsonEncode(payload));
+  }
+
+  bool _isKeepaliveMessage(Map<String, dynamic> decoded) {
+    final String? type = decoded['type']?.toString().toLowerCase();
+    return type == 'servertime';
+  }
+
+  Object? _tryDecodeJson(String raw) {
+    try {
+      return jsonDecode(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _handleDone() {
+    _channel = null;
+    _isConnected = false;
+    if (_isClosing) {
+      return;
+    }
+    _emit(const SessionWsEvent(type: SessionWsEventType.disconnected));
+  }
+
+  void _emit(SessionWsEvent event) {
+    if (_eventsController.isClosed) {
+      return;
+    }
+    _eventsController.add(event);
+  }
+
+  static Future<SessionWsChannel> _defaultChannelFactory(Uri uri) async {
+    final WebSocketChannel channel = WebSocketChannel.connect(uri);
+    return WebSocketSessionWsChannel(channel);
+  }
+}
+
+enum BroadcastEndDetection {
+  none,
+  ended,
+  unknown,
+}
+
+class SessionWsMessageParser {
+  static final RegExp _urlPattern = RegExp(
+    r'((?:https?|wss):\/\/[^\s<>]+)',
+    caseSensitive: false,
+  );
+
+  static const Set<String> _knownBroadcastEndedReasons = <String>{
+    'END_PROGRAM',
+    'END_BROADCAST',
+    'PROGRAM_ENDED',
+  };
+
+  static SessionEndpointResolution extractEndpoints(Object? payload) {
+    final List<String> texts = <String>[];
+    _collectStrings(payload, texts);
+
+    String? ndgrViewUri;
+    String? legacyWebSocketUrl;
+
+    for (final String text in texts) {
+      for (final RegExpMatch match in _urlPattern.allMatches(text)) {
+        final String url = _normalizeDetectedUrl(match.group(0) ?? '');
+        if (url.isEmpty) {
+          continue;
+        }
+
+        if (ndgrViewUri == null &&
+            (url.startsWith('http://') || url.startsWith('https://')) &&
+            url.contains('/api/view/v4/')) {
+          ndgrViewUri = url;
+          continue;
+        }
+
+        if (legacyWebSocketUrl == null && url.startsWith('wss://')) {
+          legacyWebSocketUrl = url;
+        }
+      }
+    }
+
+    return SessionEndpointResolution(
+      ndgrViewUri: ndgrViewUri,
+      legacyWebSocketUrl: legacyWebSocketUrl,
+    );
+  }
+
+  static BroadcastEndDetection detectBroadcastEnd(Map<String, dynamic> json) {
+    final String type = json['type']?.toString() ?? '';
+    if (type.toLowerCase() != 'disconnect') {
+      return BroadcastEndDetection.none;
+    }
+
+    final String? reason = _extractDisconnectReason(json);
+    if (reason == null) {
+      return BroadcastEndDetection.unknown;
+    }
+
+    final String normalized = reason.toUpperCase();
+    if (_knownBroadcastEndedReasons.contains(normalized)) {
+      return BroadcastEndDetection.ended;
+    }
+
+    if (normalized.contains('END')) {
+      return BroadcastEndDetection.ended;
+    }
+
+    return BroadcastEndDetection.unknown;
+  }
+
+  static String? _extractDisconnectReason(Map<String, dynamic> json) {
+    final Object? data = json['data'];
+    if (data is Map<String, dynamic>) {
+      final Object? reason = data['reason'];
+      if (reason != null) {
+        return reason.toString();
+      }
+    }
+
+    final Object? body = json['body'];
+    if (body is Map<String, dynamic>) {
+      final Object? reason = body['reason'];
+      if (reason != null) {
+        return reason.toString();
+      }
+    }
+
+    final Object? reason = json['reason'];
+    return reason?.toString();
+  }
+
+  static void _collectStrings(Object? value, List<String> out) {
+    if (value == null) {
+      return;
+    }
+
+    if (value is String) {
+      out.add(value);
+      return;
+    }
+
+    if (value is Map<String, dynamic>) {
+      value.forEach((String key, Object? nested) {
+        out.add(key);
+        _collectStrings(nested, out);
+      });
+      return;
+    }
+
+    if (value is List<Object?>) {
+      for (final Object? nested in value) {
+        _collectStrings(nested, out);
+      }
+      return;
+    }
+
+    if (value is Map) {
+      value.forEach((Object? key, Object? nested) {
+        if (key != null) {
+          out.add(key.toString());
+        }
+        _collectStrings(nested, out);
+      });
+      return;
+    }
+
+    if (value is List) {
+      for (final Object? nested in value) {
+        _collectStrings(nested, out);
+      }
+    }
+  }
+
+  static String _normalizeDetectedUrl(String url) {
+    return url.replaceAll(RegExp('["\\\'\\],]+\$'), '');
+  }
+}
+
+class SessionWsLogSanitizer {
+  static final RegExp _sensitiveKeyPattern = RegExp(
+    r'(token|cookie|session|auth|credential|secret)',
+    caseSensitive: false,
+  );
+
+  static final RegExp _urlPattern = RegExp(
+    r'((?:https?|wss):\/\/[^\s<>]+)',
+    caseSensitive: false,
+  );
+
+  static String sanitizeRawJson(String rawJson) {
+    try {
+      final Object? decoded = jsonDecode(rawJson);
+      final Object? masked = _maskValue(decoded);
+      return jsonEncode(masked);
+    } catch (_) {
+      return _sanitizeString(rawJson);
+    }
+  }
+
+  static Object? _maskValue(Object? value) {
+    if (value is Map<String, dynamic>) {
+      final Map<String, Object?> masked = <String, Object?>{};
+      value.forEach((String key, Object? nested) {
+        if (_isSensitiveKey(key)) {
+          masked[key] = '***';
+        } else {
+          masked[key] = _maskValue(nested);
+        }
+      });
+      return masked;
+    }
+
+    if (value is List) {
+      return value.map<Object?>((Object? nested) => _maskValue(nested)).toList();
+    }
+
+    if (value is String) {
+      return _sanitizeString(value);
+    }
+
+    if (value is Map) {
+      final Map<String, Object?> masked = <String, Object?>{};
+      value.forEach((Object? key, Object? nested) {
+        final String keyText = key?.toString() ?? '';
+        if (_isSensitiveKey(keyText)) {
+          masked[keyText] = '***';
+        } else {
+          masked[keyText] = _maskValue(nested);
+        }
+      });
+      return masked;
+    }
+
+    return value;
+  }
+
+  static bool _isSensitiveKey(String key) {
+    return _sensitiveKeyPattern.hasMatch(key);
+  }
+
+  static String _sanitizeString(String input) {
+    final String withoutQuery = input.replaceAllMapped(_urlPattern, (RegExpMatch m) {
+      final String original = m.group(0) ?? '';
+      return _stripUrlQuery(original);
+    });
+
+    if (withoutQuery.length >= 40) {
+      return '${withoutQuery.substring(0, 40)}…';
+    }
+    return withoutQuery;
+  }
+
+  static String _stripUrlQuery(String url) {
+    final Uri? uri = Uri.tryParse(url);
+    if (uri == null || uri.scheme.isEmpty || uri.host.isEmpty) {
+      return url;
+    }
+
+    return Uri(
+      scheme: uri.scheme,
+      userInfo: uri.userInfo.isEmpty ? null : uri.userInfo,
+      host: uri.host,
+      port: uri.hasPort ? uri.port : null,
+      path: uri.path,
+      fragment: uri.fragment.isEmpty ? null : uri.fragment,
+    ).toString();
+  }
+}
