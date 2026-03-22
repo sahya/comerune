@@ -27,7 +27,8 @@ void main() {
       expect(find.byKey(const Key('bouyomi-section')), findsNothing);
     });
 
-    testWidgets('shows validation error and does not save invalid queue limit', (
+    testWidgets('shows validation error and does not save invalid queue limit',
+        (
       WidgetTester tester,
     ) async {
       final SharedPreferencesSettingsStore settingsStore =

@@ -40,7 +40,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _maxDelayController = TextEditingController();
     _ngWordsController = TextEditingController();
 
-    _bouyomiHostFocusNode = FocusNode()..addListener(_onBouyomiHostFocusChanged);
+    _bouyomiHostFocusNode = FocusNode()
+      ..addListener(_onBouyomiHostFocusChanged);
     _queueLimitFocusNode = FocusNode()..addListener(_onQueueLimitFocusChanged);
     _maxDelayFocusNode = FocusNode()..addListener(_onMaxDelayFocusChanged);
     _ngWordsFocusNode = FocusNode()..addListener(_onNgWordsFocusChanged);
@@ -240,7 +241,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       contentPadding: EdgeInsets.zero,
                       value: settings.autoReadEnabled,
                       onChanged: (bool value) {
-                        _saveNextSettings(settings.copyWith(autoReadEnabled: value));
+                        _saveNextSettings(
+                            settings.copyWith(autoReadEnabled: value));
                       },
                     ),
                     const Text('読み上げエンジン'),
@@ -254,7 +256,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         if (value == null) {
                           return;
                         }
-                        _saveNextSettings(settings.copyWith(speechEngine: value));
+                        _saveNextSettings(
+                            settings.copyWith(speechEngine: value));
                       },
                     ),
                     RadioListTile<SpeechEngine>(
@@ -267,7 +270,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         if (value == null) {
                           return;
                         }
-                        _saveNextSettings(settings.copyWith(speechEngine: value));
+                        _saveNextSettings(
+                            settings.copyWith(speechEngine: value));
                       },
                     ),
                   ],
@@ -296,7 +300,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         divisions: 301,
                         value: settings.bouyomiSpeed,
                         onChanged: (int value) {
-                          _saveNextSettings(settings.copyWith(bouyomiSpeed: value));
+                          _saveNextSettings(
+                              settings.copyWith(bouyomiSpeed: value));
                         },
                       ),
                       _IntSliderField(
@@ -307,7 +312,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         divisions: 301,
                         value: settings.bouyomiTone,
                         onChanged: (int value) {
-                          _saveNextSettings(settings.copyWith(bouyomiTone: value));
+                          _saveNextSettings(
+                              settings.copyWith(bouyomiTone: value));
                         },
                       ),
                       _IntSliderField(
@@ -318,7 +324,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         divisions: 101,
                         value: settings.bouyomiVolume,
                         onChanged: (int value) {
-                          _saveNextSettings(settings.copyWith(bouyomiVolume: value));
+                          _saveNextSettings(
+                              settings.copyWith(bouyomiVolume: value));
                         },
                       ),
                       DropdownButtonFormField<int>(
@@ -332,16 +339,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             .map(
                               (MapEntry<int, String> entry) =>
                                   DropdownMenuItem<int>(
-                                    value: entry.key,
-                                    child: Text(entry.value),
-                                  ),
+                                value: entry.key,
+                                child: Text(entry.value),
+                              ),
                             )
                             .toList(),
                         onChanged: (int? value) {
                           if (value == null) {
                             return;
                           }
-                          _saveNextSettings(settings.copyWith(bouyomiVoice: value));
+                          _saveNextSettings(
+                              settings.copyWith(bouyomiVoice: value));
                         },
                       ),
                     ],
@@ -368,7 +376,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           if (value == null) {
                             return;
                           }
-                          _saveNextSettings(settings.copyWith(voicevoxSpeaker: value));
+                          _saveNextSettings(
+                              settings.copyWith(voicevoxSpeaker: value));
                         },
                       ),
                       const SizedBox(height: 12),
@@ -380,7 +389,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         divisions: 15,
                         value: settings.voicevoxSpeed,
                         onChanged: (double value) {
-                          _saveNextSettings(settings.copyWith(voicevoxSpeed: value));
+                          _saveNextSettings(
+                              settings.copyWith(voicevoxSpeed: value));
                         },
                       ),
                       _DoubleSliderField(
@@ -391,7 +401,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         divisions: 30,
                         value: settings.voicevoxPitch,
                         onChanged: (double value) {
-                          _saveNextSettings(settings.copyWith(voicevoxPitch: value));
+                          _saveNextSettings(
+                              settings.copyWith(voicevoxPitch: value));
                         },
                       ),
                       _DoubleSliderField(
@@ -415,7 +426,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         divisions: 20,
                         value: settings.voicevoxVolume,
                         onChanged: (double value) {
-                          _saveNextSettings(settings.copyWith(voicevoxVolume: value));
+                          _saveNextSettings(
+                              settings.copyWith(voicevoxVolume: value));
                         },
                       ),
                     ],
@@ -468,7 +480,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       contentPadding: EdgeInsets.zero,
                       value: settings.suppressDuplicate,
                       onChanged: (bool value) {
-                        _saveNextSettings(settings.copyWith(suppressDuplicate: value));
+                        _saveNextSettings(
+                            settings.copyWith(suppressDuplicate: value));
                       },
                     ),
                     TextFormField(
@@ -500,9 +513,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           .map(
                             (PastCommentFetchCount value) =>
                                 DropdownMenuItem<PastCommentFetchCount>(
-                                  value: value,
-                                  child: Text(value.label),
-                                ),
+                              value: value,
+                              child: Text(value.label),
+                            ),
                           )
                           .toList(),
                       onChanged: (PastCommentFetchCount? value) {

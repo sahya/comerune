@@ -156,7 +156,8 @@ class AppSettings {
       omitUrl: omitUrl ?? this.omitUrl,
       suppressDuplicate: suppressDuplicate ?? this.suppressDuplicate,
       ngWords: ngWords ?? this.ngWords,
-      pastCommentFetchCount: pastCommentFetchCount ?? this.pastCommentFetchCount,
+      pastCommentFetchCount:
+          pastCommentFetchCount ?? this.pastCommentFetchCount,
       debugMode: debugMode ?? this.debugMode,
     );
   }
