@@ -152,6 +152,22 @@ void main() {
     expect(supervisor.lastError, isNull);
   });
 
+  test('restarts from STOPPED via IDLE -> CONNECTING flow', () {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    expect(supervisor.startConnection(), isTrue);
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(supervisor.onNdgrEndpointResolved(), isTrue);
+    expect(supervisor.stopByUser(), isTrue);
+    expect(supervisor.status, ConnectionStatus.stopped);
+    expect(supervisor.lastError, ConnectionErrorCode.userStopped);
+
+    expect(supervisor.startConnection(), isTrue);
+    expect(supervisor.status, ConnectionStatus.connectingSessionWs);
+    expect(supervisor.lastError, isNull);
+    expect(supervisor.reconnectCount, 0);
+  });
+
   test('prevents invalid transition such as IDLE -> STREAMING_NDGR', () {
     final ConnectionSupervisor supervisor = ConnectionSupervisor();
 
