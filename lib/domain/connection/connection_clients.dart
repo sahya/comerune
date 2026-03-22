@@ -22,16 +22,33 @@ enum NdgrEventType {
   stalled,
 }
 
+class NdgrResumeCursor {
+  const NdgrResumeCursor({
+    this.at,
+    this.next,
+  });
+
+  final String? at;
+  final String? next;
+}
+
 class NdgrEvent {
-  const NdgrEvent(this.type);
+  const NdgrEvent(
+    this.type, {
+    this.resumeCursor,
+  });
 
   final NdgrEventType type;
+  final NdgrResumeCursor? resumeCursor;
 }
 
 abstract class NdgrClient {
   Stream<NdgrEvent> get events;
 
-  Future<void> connect(Uri viewApiUri);
+  Future<void> connect(
+    Uri viewApiUri, {
+    NdgrResumeCursor? resumeCursor,
+  });
 
   Future<void> disconnect();
 }

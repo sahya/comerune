@@ -205,6 +205,7 @@ class ConnectionSupervisor extends ChangeNotifier {
   DateTime? _lastReceivedAt;
   ConnectionErrorCode? _lastError;
   Uri? _currentNdgrViewApiUri;
+  NdgrResumeCursor? _lastNdgrResumeCursor;
   Uri? _currentLegacyWsUrl;
 
   ConnectionStatus get status => _status;
@@ -285,7 +286,12 @@ class ConnectionSupervisor extends ChangeNotifier {
     );
   }
 
-  Future<bool> onNdgrStreamStalled() {
+  Future<bool> onNdgrStreamStalled({
+    NdgrResumeCursor? resumeCursor,
+  }) {
+    if (resumeCursor != null) {
+      _lastNdgrResumeCursor = resumeCursor;
+    }
     return _attemptReconnect(
       errorCode: ConnectionErrorCode.ndgrStreamFailed,
       reconnectOperation: _reconnectToNdgrStream,
@@ -375,10 +381,13 @@ class ConnectionSupervisor extends ChangeNotifier {
     if (_status != ConnectionStatus.streamingNdgr) {
       return;
     }
+    if (event.resumeCursor != null) {
+      _lastNdgrResumeCursor = event.resumeCursor;
+    }
     switch (event.type) {
       case NdgrEventType.disconnected:
       case NdgrEventType.stalled:
-        unawaited(onNdgrStreamStalled());
+        unawaited(onNdgrStreamStalled(resumeCursor: event.resumeCursor));
         break;
     }
   }
@@ -409,6 +418,7 @@ class ConnectionSupervisor extends ChangeNotifier {
 
     if (endpoints.ndgrViewApiUri != null) {
       _currentNdgrViewApiUri = endpoints.ndgrViewApiUri;
+      _lastNdgrResumeCursor = null;
       _currentLegacyWsUrl = null;
       await _connectNdgr(endpoints.ndgrViewApiUri!);
       return;
@@ -424,9 +434,15 @@ class ConnectionSupervisor extends ChangeNotifier {
     throw _ConnectionFailure(ConnectionErrorCode.endpointResolveFailed);
   }
 
-  Future<void> _connectNdgr(Uri viewApiUri) async {
+  Future<void> _connectNdgr(
+    Uri viewApiUri, {
+    NdgrResumeCursor? resumeCursor,
+  }) async {
     try {
-      await _ndgrClient.connect(viewApiUri);
+      await _ndgrClient.connect(
+        viewApiUri,
+        resumeCursor: resumeCursor,
+      );
     } catch (_) {
       throw _ConnectionFailure(ConnectionErrorCode.ndgrStreamFailed);
     }
@@ -472,7 +488,10 @@ class ConnectionSupervisor extends ChangeNotifier {
     if (viewApiUri == null) {
       throw _ConnectionFailure(ConnectionErrorCode.endpointResolveFailed);
     }
-    await _connectNdgr(viewApiUri);
+    await _connectNdgr(
+      viewApiUri,
+      resumeCursor: _lastNdgrResumeCursor,
+    );
   }
 
   Future<void> _reconnectLegacyWithFallback(int _) async {
@@ -639,6 +658,7 @@ class ConnectionSupervisor extends ChangeNotifier {
       _legacyConsecutiveFailures = 0;
       _lastReceivedAt = null;
       _lastError = null;
+      _lastNdgrResumeCursor = null;
     }
 
     if (errorCode != null) {
