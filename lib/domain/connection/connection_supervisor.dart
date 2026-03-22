@@ -391,6 +391,8 @@ class ConnectionSupervisor extends ChangeNotifier {
   }
 
   Future<void> _reconnectViaSessionWs(int _) async {
+    await _disconnectForSessionReconnect();
+
     final bool toConnecting = _transitionTo(ConnectionStatus.connectingSessionWs);
     if (!toConnecting) {
       throw _ConnectionFailure(ConnectionErrorCode.sessionWsConnectFailed);
@@ -399,6 +401,11 @@ class ConnectionSupervisor extends ChangeNotifier {
   }
 
   Future<void> _reconnectToNdgrStream(int _) async {
+    await _safeDisconnect(
+      _ndgrClient.disconnect,
+      'ndgr stream',
+    );
+
     final Uri? viewApiUri = _currentNdgrViewApiUri;
     if (viewApiUri == null) {
       throw _ConnectionFailure(ConnectionErrorCode.endpointResolveFailed);
@@ -417,6 +424,11 @@ class ConnectionSupervisor extends ChangeNotifier {
       await _reconnectViaSessionWs(0);
       return;
     }
+
+    await _safeDisconnect(
+      _legacyCommentClient.disconnect,
+      'legacy stream',
+    );
 
     try {
       await _connectLegacy(legacyWsUrl);
@@ -502,6 +514,38 @@ class ConnectionSupervisor extends ChangeNotifier {
       _ndgrClient.disconnect(),
       _legacyCommentClient.disconnect(),
     ]);
+  }
+
+  Future<void> _disconnectForSessionReconnect() async {
+    await Future.wait<void>(<Future<void>>[
+      _safeDisconnect(
+        _sessionWsClient.disconnect,
+        'session ws',
+      ),
+      _safeDisconnect(
+        _ndgrClient.disconnect,
+        'ndgr stream',
+      ),
+      _safeDisconnect(
+        _legacyCommentClient.disconnect,
+        'legacy stream',
+      ),
+    ]);
+  }
+
+  Future<void> _safeDisconnect(
+    Future<void> Function() disconnect,
+    String clientName,
+  ) async {
+    try {
+      await disconnect();
+    } catch (error, stackTrace) {
+      log(
+        'Failed to disconnect $clientName during reconnect: $error',
+        name: 'ConnectionSupervisor',
+        stackTrace: stackTrace,
+      );
+    }
   }
 
   bool _transitionTo(
