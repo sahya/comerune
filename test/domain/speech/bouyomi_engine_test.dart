@@ -105,7 +105,7 @@ void main() {
       expect(body, <int>[0x41, 0x00, 0x42, 0x30]);
     });
 
-    test('applies shift-jis charset when resolver provides encoding', () async {
+    test('applies shift-jis charset with deterministic bytes', () async {
       final _FakeConnection connection = _FakeConnection();
 
       final BouyomiEngine engine = BouyomiEngine(
@@ -113,17 +113,12 @@ void main() {
           host: 'localhost',
           charset: BouyomiCharset.shiftJis,
         ),
-        encodingResolver: (String name) {
-          if (name == 'shift_jis') {
-            return latin1;
-          }
-          return null;
-        },
+        encodingResolver: (String name) => null,
         connectionOpener: (String host, int port, Duration timeout) async =>
             connection,
       );
 
-      await engine.speak('ABC');
+      await engine.speak('ABCあア');
 
       final Uint8List allBytes = Uint8List.fromList(connection.sentBytes);
       final Uint8List header =
@@ -134,7 +129,7 @@ void main() {
 
       expect(headerData.getInt8(10), BouyomiCharset.shiftJis.code);
       expect(headerData.getInt32(11, Endian.little), body.length);
-      expect(body, <int>[0x41, 0x42, 0x43]);
+      expect(body, <int>[0x41, 0x42, 0x43, 0x82, 0xA0, 0x83, 0x41]);
     });
 
     test('skips utterance when socket connection fails', () async {
@@ -176,23 +171,24 @@ void main() {
       expect(connection.closed, isTrue);
     });
 
-    test('skips utterance when charset is unsupported without dependency',
+    test('replaces unsupported shift-jis characters with question mark',
         () async {
-      int openerCallCount = 0;
-
+      final _FakeConnection connection = _FakeConnection();
       final BouyomiEngine engine = BouyomiEngine(
         settingsProvider: () => const BouyomiSettings(
           host: '127.0.0.1',
           charset: BouyomiCharset.shiftJis,
         ),
-        connectionOpener: (String host, int port, Duration timeout) async {
-          openerCallCount += 1;
-          return _FakeConnection();
-        },
+        encodingResolver: (String name) => null,
+        connectionOpener: (String host, int port, Duration timeout) async =>
+            connection,
       );
 
-      await expectLater(engine.speak('hello'), completes);
-      expect(openerCallCount, 0);
+      await engine.speak('漢A');
+      final Uint8List allBytes = Uint8List.fromList(connection.sentBytes);
+      final Uint8List body =
+          allBytes.sublist(BouyomiPacketBuilder.headerLength);
+      expect(body, <int>[0x3F, 0x41]);
     });
 
     test('skips utterance when an unexpected error occurs', () async {
