@@ -36,7 +36,8 @@ abstract class VoicevoxTransport {
 }
 
 class DartIoVoicevoxTransport implements VoicevoxTransport {
-  DartIoVoicevoxTransport({HttpClient? client}) : _client = client ?? HttpClient();
+  DartIoVoicevoxTransport({HttpClient? client})
+      : _client = client ?? HttpClient();
 
   final HttpClient _client;
 
@@ -186,7 +187,8 @@ class VoicevoxEngine implements SpeechEngine {
 
       await _audioPlayer.playBytes(synthesisResponse.bodyBytes);
     } catch (error, stackTrace) {
-      _logSkip('voice synthesis/playback error: $error', stackTrace: stackTrace);
+      _logSkip('voice synthesis/playback error: $error',
+          stackTrace: stackTrace);
     }
   }
 
@@ -266,7 +268,6 @@ class VoicevoxEngine implements SpeechEngine {
     }
   }
 
-  @override
   Future<void> dispose() async {
     if (_ownsAudioPlayer) {
       await _audioPlayer.dispose();

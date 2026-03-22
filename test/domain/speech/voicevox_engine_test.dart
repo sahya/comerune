@@ -9,7 +9,8 @@ import '../../../lib/domain/speech/voicevox_models.dart';
 
 void main() {
   group('VoicevoxEngine.speak', () {
-    test('calls /audio_query then /synthesis and plays synthesized audio', () async {
+    test('calls /audio_query then /synthesis and plays synthesized audio',
+        () async {
       final FakeVoicevoxTransport transport = FakeVoicevoxTransport();
       final FakeVoicevoxAudioPlayer audioPlayer = FakeVoicevoxAudioPlayer();
 
@@ -45,7 +46,8 @@ void main() {
       expect(transport.requests.length, 2);
       expect(transport.requests[0].method, 'POST');
       expect(transport.requests[0].uri.path, '/audio_query');
-      expect(transport.requests[0].uri.queryParameters['text'], 'hello voicevox');
+      expect(
+          transport.requests[0].uri.queryParameters['text'], 'hello voicevox');
       expect(transport.requests[0].uri.queryParameters['speaker'], '7');
 
       expect(transport.requests[1].method, 'POST');
@@ -85,6 +87,36 @@ void main() {
 
       expect(transport.requests.length, 1);
       expect(transport.requests.single.uri.path, '/audio_query');
+      expect(audioPlayer.playedBytes, isEmpty);
+    });
+
+    test('skips speaking when /synthesis fails', () async {
+      final FakeVoicevoxTransport transport = FakeVoicevoxTransport();
+      final FakeVoicevoxAudioPlayer audioPlayer = FakeVoicevoxAudioPlayer();
+
+      transport.enqueuePost(
+        '/audio_query',
+        _jsonResponse(<String, dynamic>{
+          'accent_phrases': <Object?>[],
+        }),
+      );
+      transport.enqueuePost(
+        '/synthesis',
+        VoicevoxHttpResponse(
+          statusCode: 500,
+          bodyBytes: Uint8List.fromList(utf8.encode('error')),
+        ),
+      );
+
+      final VoicevoxEngine engine = VoicevoxEngine(
+        transport: transport,
+        audioPlayer: audioPlayer,
+      );
+
+      await engine.speak('will be skipped after synthesis');
+
+      expect(transport.requests.length, 2);
+      expect(transport.requests[1].uri.path, '/synthesis');
       expect(audioPlayer.playedBytes, isEmpty);
     });
   });
@@ -134,6 +166,28 @@ void main() {
       expect(speakers.single.id, 0);
       expect(speakers.single.label, '取得失敗');
     });
+
+    test('falls back to ID=0 when /speakers returns non-200 status', () async {
+      final FakeVoicevoxTransport transport = FakeVoicevoxTransport();
+      transport.enqueueGet(
+        '/speakers',
+        VoicevoxHttpResponse(
+          statusCode: 503,
+          bodyBytes: Uint8List.fromList(utf8.encode('unavailable')),
+        ),
+      );
+
+      final VoicevoxEngine engine = VoicevoxEngine(
+        transport: transport,
+        audioPlayer: FakeVoicevoxAudioPlayer(),
+      );
+
+      final List<VoicevoxSpeakerOption> speakers = await engine.fetchSpeakers();
+
+      expect(speakers.length, 1);
+      expect(speakers.single.id, 0);
+      expect(speakers.single.label, '取得失敗');
+    });
   });
 }
 
@@ -161,11 +215,15 @@ class FakeVoicevoxTransport implements VoicevoxTransport {
   final Map<String, Object> _postErrors = <String, Object>{};
 
   void enqueueGet(String path, VoicevoxHttpResponse response) {
-    _getResponses.putIfAbsent(path, Queue<VoicevoxHttpResponse>.new).add(response);
+    _getResponses
+        .putIfAbsent(path, Queue<VoicevoxHttpResponse>.new)
+        .add(response);
   }
 
   void enqueuePost(String path, VoicevoxHttpResponse response) {
-    _postResponses.putIfAbsent(path, Queue<VoicevoxHttpResponse>.new).add(response);
+    _postResponses
+        .putIfAbsent(path, Queue<VoicevoxHttpResponse>.new)
+        .add(response);
   }
 
   void throwOnGet(String path, Object error) {
