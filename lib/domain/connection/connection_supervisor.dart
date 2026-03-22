@@ -137,7 +137,7 @@ class ConnectionSupervisor extends ChangeNotifier {
           ConnectionStatus.failed,
         },
         ConnectionStatus.stopped: <ConnectionStatus>{
-          ConnectionStatus.connectingSessionWs,
+          ConnectionStatus.idle,
         },
         ConnectionStatus.ended: <ConnectionStatus>{
           ConnectionStatus.idle,
@@ -169,6 +169,16 @@ class ConnectionSupervisor extends ChangeNotifier {
     if (!canStartConnection) {
       _logInvalidTransition(ConnectionStatus.connectingSessionWs);
       return false;
+    }
+
+    if (_status == ConnectionStatus.stopped) {
+      final bool resetToIdle = _transitionTo(
+        ConnectionStatus.idle,
+        resetDiagnostics: true,
+      );
+      if (!resetToIdle) {
+        return false;
+      }
     }
 
     return _transitionTo(
