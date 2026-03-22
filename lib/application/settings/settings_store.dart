@@ -1,6 +1,7 @@
 import '../../domain/models/app_settings.dart';
 
 abstract class SettingsStore {
+  /// アプリ起動時に `SettingsStoreRegistry.register(...)` で注入する。
   Future<AppSettings> load();
 
   Future<void> save(AppSettings settings);
