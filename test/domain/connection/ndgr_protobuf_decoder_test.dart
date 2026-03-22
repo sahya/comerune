@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -176,5 +177,5 @@ List<int> _encodeVarint(int value) {
 }
 
 List<int> _utf8(String value) {
-  return value.codeUnits;
+  return utf8.encode(value);
 }
