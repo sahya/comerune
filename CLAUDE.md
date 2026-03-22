@@ -111,6 +111,22 @@ Use this structure:
 ## Risk check
 - possible regressions or future maintenance concerns
 
+## Git Conventions
+
+### Branch Naming
+Use Git Flow prefixes: `feature/`, `fix/`, `hotfix/`, `docs/`, `chore/`, `release/`
+Format: `prefix/short-description` (e.g. `feature/login-screen`, `fix/crash-on-startup`)
+
+### Commit Messages
+Use [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): description`
+Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`
+Breaking changes: append `!` to type or add `BREAKING CHANGE:` in footer.
+
+## Issue Lifecycle
+- Do not close issues.
+- Only the human owner may close an issue, after confirming that acceptance criteria are met.
+- When review or analysis is complete, indicate that the issue is ready for human decision and closure.
+
 ## Special Instructions
 - Do not assume the human owner understands Flutter architecture deeply.
 - Therefore, explain architecture concerns in plain and concrete terms.
