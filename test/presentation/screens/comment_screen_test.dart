@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../../lib/application/settings/settings_store.dart';
 import '../../../lib/domain/connection/connection_supervisor.dart';
 import '../../../lib/domain/models/app_message.dart';
 import '../../../lib/presentation/screens/comment_screen.dart';
+import '../../../lib/presentation/screens/settings_screen.dart';
 
 void main() {
   group('CommentScreen', () {
@@ -351,6 +353,30 @@ void main() {
       expect(hostKey.currentState!.previousLv, 'lv111');
       expect(hostKey.currentState!.nextLv, 'lv222');
     });
+
+    testWidgets('opens settings screen from overflow menu', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final SettingsStore settingsStore = SharedPreferencesSettingsStore(
+        prefs: InMemorySharedPreferences(),
+      );
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          settingsStore: settingsStore,
+        ),
+      );
+
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('設定'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SettingsScreen), findsOneWidget);
+    });
   });
 }
 
@@ -422,6 +448,7 @@ Widget _buildScreen({
   String lv = 'lv345678901',
   Future<void> Function()? onStopAllConnections,
   Future<void> Function()? onReconnectSameLv,
+  SettingsStore? settingsStore,
   bool debugMode = false,
   ConnectionMethod? connectionMethod,
 }) {
@@ -433,6 +460,7 @@ Widget _buildScreen({
       onStopAllConnections: onStopAllConnections ?? () async {},
       onReconnectSameLv: onReconnectSameLv ?? () async {},
       onDifferentLvConnected: (_, __) async {},
+      settingsStore: settingsStore,
       debugMode: debugMode,
       connectionMethod: connectionMethod,
     ),

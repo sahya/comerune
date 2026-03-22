@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
+import '../../application/settings/settings_store.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
+import 'settings_screen.dart';
 
 const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
 
@@ -22,6 +24,7 @@ class CommentScreen extends StatefulWidget {
     required this.onStopAllConnections,
     required this.onReconnectSameLv,
     required this.onDifferentLvConnected,
+    this.settingsStore,
     this.onOpenSettings,
     this.debugMode = false,
     this.connectionMethod,
@@ -33,6 +36,7 @@ class CommentScreen extends StatefulWidget {
   final Future<void> Function() onStopAllConnections;
   final Future<void> Function() onReconnectSameLv;
   final Future<void> Function(String previousLv, String nextLv) onDifferentLvConnected;
+  final SettingsStore? settingsStore;
   final Future<void> Function()? onOpenSettings;
   final bool debugMode;
   final ConnectionMethod? connectionMethod;
@@ -111,7 +115,19 @@ class _CommentScreenState extends State<CommentScreen> {
                   onSelected: (_) async {
                     if (widget.onOpenSettings != null) {
                       await widget.onOpenSettings!.call();
+                      return;
                     }
+
+                    final SettingsStore? settingsStore = widget.settingsStore;
+                    if (settingsStore == null || !mounted) {
+                      return;
+                    }
+
+                    await Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => SettingsScreen(settingsStore: settingsStore),
+                      ),
+                    );
                   },
                   itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
                     const PopupMenuItem<String>(
