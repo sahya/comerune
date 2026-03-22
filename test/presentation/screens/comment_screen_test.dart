@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../lib/application/settings/settings_store.dart';
+import '../../../lib/application/settings/shared_preferences_adapter.dart';
 import '../../../lib/domain/connection/connection_supervisor.dart';
 import '../../../lib/domain/models/app_message.dart';
 import '../../../lib/presentation/screens/comment_screen.dart';
@@ -388,6 +390,38 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(SettingsScreen), findsOneWidget);
+    });
+
+    testWidgets('opens settings screen with startup-created prefs store', (
+      WidgetTester tester,
+    ) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'settings.debugMode': true,
+      });
+      final SettingsStore settingsStore =
+          await createSharedPreferencesSettingsStore();
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          settingsStore: settingsStore,
+        ),
+      );
+
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('設定'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SettingsScreen), findsOneWidget);
+      final Finder debugSwitchFinder = find.descendant(
+        of: find.byKey(const Key('debug-mode-switch')),
+        matching: find.byType(Switch),
+      );
+      final Switch debugSwitch = tester.widget(debugSwitchFinder);
+      expect(debugSwitch.value, isTrue);
     });
   });
 }
