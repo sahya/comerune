@@ -94,12 +94,13 @@ void main() {
         isTrue,
       );
 
-      controller.dequeue(now: base.add(const Duration(seconds: 11)));
-
-      expect(
-        controller.items.map((SpeechQueueItem item) => item.messageId).toList(),
-        <String>['fresh'],
+      final SpeechQueueItem? dequeued = controller.dequeue(
+        now: base.add(const Duration(seconds: 11)),
       );
+
+      expect(dequeued, isNotNull);
+      expect(dequeued!.messageId, 'fresh');
+      expect(controller.length, 0);
     });
 
     test('replaces URL with fixed text URL', () {
