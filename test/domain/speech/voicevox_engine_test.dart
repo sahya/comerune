@@ -119,6 +119,37 @@ void main() {
       expect(transport.requests[1].uri.path, '/synthesis');
       expect(audioPlayer.playedBytes, isEmpty);
     });
+
+    test('skips speaking when audio playback throws', () async {
+      final FakeVoicevoxTransport transport = FakeVoicevoxTransport();
+      final FakeVoicevoxAudioPlayer audioPlayer = FakeVoicevoxAudioPlayer()
+        ..errorOnPlay = StateError('player failed');
+
+      transport.enqueuePost(
+        '/audio_query',
+        _jsonResponse(<String, dynamic>{
+          'accent_phrases': <Object?>[],
+        }),
+      );
+      transport.enqueuePost(
+        '/synthesis',
+        VoicevoxHttpResponse(
+          statusCode: 200,
+          bodyBytes: Uint8List.fromList(<int>[1, 2, 3, 4]),
+        ),
+      );
+
+      final VoicevoxEngine engine = VoicevoxEngine(
+        transport: transport,
+        audioPlayer: audioPlayer,
+      );
+
+      await engine.speak('skip on playback failure');
+
+      expect(transport.requests.length, 2);
+      expect(transport.requests[1].uri.path, '/synthesis');
+      expect(audioPlayer.playedBytes, isEmpty);
+    });
   });
 
   group('VoicevoxEngine.fetchSpeakers', () {
@@ -287,9 +318,13 @@ class FakeVoicevoxTransport implements VoicevoxTransport {
 class FakeVoicevoxAudioPlayer implements VoicevoxAudioPlayer {
   final List<List<int>> playedBytes = <List<int>>[];
   bool disposed = false;
+  Object? errorOnPlay;
 
   @override
   Future<void> playBytes(Uint8List bytes) async {
+    if (errorOnPlay != null) {
+      throw errorOnPlay!;
+    }
     playedBytes.add(bytes.toList(growable: false));
   }
 
