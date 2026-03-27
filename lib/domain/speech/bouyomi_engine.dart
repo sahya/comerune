@@ -82,6 +82,8 @@ class BouyomiEngine implements SpeechEngine {
     required BouyomiSettingsProvider settingsProvider,
     BouyomiConnectionOpener? connectionOpener,
     BouyomiEncodingResolver? encodingResolver,
+    // TODO(PR#25-optional): Consider increasing default timeout (for example,
+    //  3s) for unstable Wi-Fi environments.
     Duration connectTimeout = const Duration(seconds: 1),
     Duration writeTimeout = const Duration(seconds: 1),
   })  : _settingsProvider = settingsProvider,
@@ -104,6 +106,7 @@ class BouyomiEngine implements SpeechEngine {
       return;
     }
     if (host.isEmpty) {
+      // TODO(PR#25-optional): Revisit wording as developer-focused log text.
       _logInfo('Skipping utterance: Host is empty. Check settings.');
       return;
     }
@@ -138,6 +141,8 @@ class BouyomiEngine implements SpeechEngine {
     } finally {
       if (connection != null) {
         try {
+          // TODO(PR#25-optional): _writeTimeout is also used for close. Consider
+          //  renaming this field to a generic I/O timeout in a follow-up.
           await connection.close().timeout(_writeTimeout);
         } on Exception catch (_) {
           // Ignore close failures. The utterance has already been skipped.
