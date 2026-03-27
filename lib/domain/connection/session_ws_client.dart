@@ -43,10 +43,7 @@ class SessionWsEvent {
 }
 
 class SessionEndpointResolution {
-  const SessionEndpointResolution({
-    this.ndgrViewUri,
-    this.legacyWebSocketUrl,
-  });
+  const SessionEndpointResolution({this.ndgrViewUri, this.legacyWebSocketUrl});
 
   final String? ndgrViewUri;
   final String? legacyWebSocketUrl;
@@ -89,25 +86,24 @@ class SessionWsClient {
   }) : _channelFactory = channelFactory ?? _defaultChannelFactory,
        _endpointFallbackDelay = endpointFallbackDelay,
        _endpointResolveTimeout = endpointResolveTimeout,
-       _keepaliveResponses =
-           keepaliveResponses == null
-               ? const <String, Map<String, Object>>{
-                 'servertime': <String, Object>{
-                   'type': 'pong',
-                   'body': <String, Object>{},
-                 },
-                 'ping': <String, Object>{
-                   'type': 'pong',
-                   'body': <String, Object>{},
-                 },
-               }
-               : keepaliveResponses.map<String, Map<String, Object>>(
-                 (String key, Map<String, Object> value) =>
-                     MapEntry<String, Map<String, Object>>(
-                       key.toLowerCase(),
-                       value,
-                     ),
-               );
+       _keepaliveResponses = keepaliveResponses == null
+           ? const <String, Map<String, Object>>{
+               'servertime': <String, Object>{
+                 'type': 'pong',
+                 'body': <String, Object>{},
+               },
+               'ping': <String, Object>{
+                 'type': 'pong',
+                 'body': <String, Object>{},
+               },
+             }
+           : keepaliveResponses.map<String, Map<String, Object>>(
+               (String key, Map<String, Object> value) =>
+                   MapEntry<String, Map<String, Object>>(
+                     key.toLowerCase(),
+                     value,
+                   ),
+             );
 
   final String lv;
   final SessionWsChannelFactory _channelFactory;
@@ -122,8 +118,10 @@ class SessionWsClient {
   StreamSubscription<dynamic>? _subscription;
   Timer? _legacyFallbackTimer;
   Timer? _endpointResolveTimer;
+  Timer? _keepSeatTimer;
   String? _ndgrViewUri;
   String? _legacyWebSocketUrl;
+  int? _keepSeatIntervalSec;
   bool _hasEmittedNdgrEndpoint = false;
   bool _hasEmittedLegacyEndpoint = false;
   bool _isConnected = false;
@@ -132,13 +130,12 @@ class SessionWsClient {
   Stream<SessionWsEvent> get events => _eventsController.stream;
 
   Future<void> connect() async {
-    if (_isConnected) {
+    if (_isConnected || _isClosing) {
       return;
     }
     _resetEndpointResolutionState();
 
-    final Uri uri =
-        Uri.parse('wss://a.live2.nicovideo.jp/wsapi/v2/watch/$lv');
+    final Uri uri = Uri.parse('wss://a.live2.nicovideo.jp/wsapi/v2/watch/$lv');
 
     try {
       final SessionWsChannel channel = await _channelFactory(uri);
@@ -159,8 +156,6 @@ class SessionWsClient {
       );
 
       _isConnected = true;
-      _emit(const SessionWsEvent(type: SessionWsEventType.connected));
-      _startEndpointResolveTimer();
       try {
         _sendStartWatching();
       } catch (_) {
@@ -171,7 +166,10 @@ class SessionWsClient {
             errorCode: SessionWsErrorCode.connectFailed,
           ),
         );
+        return;
       }
+      _emit(const SessionWsEvent(type: SessionWsEventType.connected));
+      _startEndpointResolveTimer();
     } catch (error, stackTrace) {
       _emit(
         SessionWsEvent(
@@ -198,6 +196,7 @@ class SessionWsClient {
     _legacyFallbackTimer = null;
     _endpointResolveTimer?.cancel();
     _endpointResolveTimer = null;
+    _stopKeepSeatTimer();
 
     final SessionWsChannel? channel = _channel;
     _channel = null;
@@ -239,6 +238,7 @@ class SessionWsClient {
     if (keepaliveResponse != null) {
       _respondKeepalive(keepaliveResponse);
     }
+    _updateKeepSeatTimerFromSeat(decoded);
 
     final SessionEndpointResolution resolution =
         SessionWsMessageParser.extractEndpoints(decoded);
@@ -261,12 +261,6 @@ class SessionWsClient {
           errorCode: SessionWsErrorCode.unknownBroadcastEndEvent,
         ),
       );
-      _emit(
-        const SessionWsEvent(
-          type: SessionWsEventType.error,
-          errorCode: SessionWsErrorCode.unknownBroadcastEndEvent,
-        ),
-      );
       unawaited(disconnect());
     }
   }
@@ -281,10 +275,7 @@ class SessionWsClient {
           'latency': 'low',
           'chasePlay': false,
         },
-        'room': <String, Object>{
-          'protocol': 'webSocket',
-          'commentable': true,
-        },
+        'room': <String, Object>{'protocol': 'webSocket', 'commentable': true},
         'reconnect': false,
       },
     });
@@ -323,6 +314,45 @@ class SessionWsClient {
     return _keepaliveResponses[type];
   }
 
+  void _updateKeepSeatTimerFromSeat(Map<String, dynamic> decoded) {
+    final String? type = decoded['type']?.toString().toLowerCase();
+    if (type != 'seat') {
+      return;
+    }
+
+    final int? intervalSec = _extractKeepSeatIntervalSec(decoded);
+    if (intervalSec == null || intervalSec <= 0) {
+      return;
+    }
+
+    if (_keepSeatTimer != null && _keepSeatIntervalSec == intervalSec) {
+      return;
+    }
+
+    _stopKeepSeatTimer();
+    _keepSeatIntervalSec = intervalSec;
+    _keepSeatTimer = Timer.periodic(Duration(seconds: intervalSec), (_) {
+      _respondKeepalive(const <String, Object>{'type': 'keepSeat'});
+    });
+  }
+
+  int? _extractKeepSeatIntervalSec(Map<String, dynamic> decoded) {
+    final Object? data = decoded['data'] ?? decoded['body'];
+    if (data is! Map) {
+      return null;
+    }
+
+    final Object? rawInterval =
+        data['keepIntervalSec'] ?? data['keep_interval_sec'];
+    if (rawInterval is num) {
+      return rawInterval.toInt();
+    }
+    if (rawInterval is String) {
+      return int.tryParse(rawInterval);
+    }
+    return null;
+  }
+
   Object? _tryDecodeJson(String raw) {
     try {
       return jsonDecode(raw);
@@ -336,6 +366,7 @@ class SessionWsClient {
     _legacyFallbackTimer = null;
     _endpointResolveTimer?.cancel();
     _endpointResolveTimer = null;
+    _stopKeepSeatTimer();
     _channel = null;
     _isConnected = false;
     if (_isClosing) {
@@ -386,7 +417,9 @@ class SessionWsClient {
 
   void _scheduleLegacyFallbackIfNeeded() {
     final String? legacy = _legacyWebSocketUrl;
-    if (legacy == null || _hasEmittedNdgrEndpoint || _hasEmittedLegacyEndpoint) {
+    if (legacy == null ||
+        _hasEmittedNdgrEndpoint ||
+        _hasEmittedLegacyEndpoint) {
       return;
     }
 
@@ -417,8 +450,10 @@ class SessionWsClient {
     _legacyFallbackTimer = null;
     _endpointResolveTimer?.cancel();
     _endpointResolveTimer = null;
+    _stopKeepSeatTimer();
     _ndgrViewUri = null;
     _legacyWebSocketUrl = null;
+    _keepSeatIntervalSec = null;
     _hasEmittedNdgrEndpoint = false;
     _hasEmittedLegacyEndpoint = false;
   }
@@ -428,6 +463,7 @@ class SessionWsClient {
     _legacyFallbackTimer = null;
     _endpointResolveTimer?.cancel();
     _endpointResolveTimer = null;
+    _stopKeepSeatTimer();
 
     await _subscription?.cancel();
     _subscription = null;
@@ -444,6 +480,12 @@ class SessionWsClient {
     }
   }
 
+  void _stopKeepSeatTimer() {
+    _keepSeatTimer?.cancel();
+    _keepSeatTimer = null;
+    _keepSeatIntervalSec = null;
+  }
+
   void _startEndpointResolveTimer() {
     _endpointResolveTimer?.cancel();
     _endpointResolveTimer = Timer(_endpointResolveTimeout, () {
@@ -457,22 +499,12 @@ class SessionWsClient {
           errorCode: SessionWsErrorCode.endpointResolveFailed,
         ),
       );
-      _emit(
-        const SessionWsEvent(
-          type: SessionWsEventType.error,
-          errorCode: SessionWsErrorCode.endpointResolveFailed,
-        ),
-      );
       unawaited(disconnect());
     });
   }
 }
 
-enum BroadcastEndDetection {
-  none,
-  ended,
-  unknown,
-}
+enum BroadcastEndDetection { none, ended, unknown }
 
 class SessionWsMessageParser {
   static final RegExp _urlPattern = RegExp(
@@ -536,12 +568,6 @@ class SessionWsMessageParser {
       return BroadcastEndDetection.ended;
     }
 
-    if (normalized == 'END' ||
-        normalized.startsWith('END_') ||
-        normalized.endsWith('_ENDED')) {
-      return BroadcastEndDetection.ended;
-    }
-
     return BroadcastEndDetection.unknown;
   }
 
@@ -578,7 +604,6 @@ class SessionWsMessageParser {
 
     if (value is Map<String, dynamic>) {
       value.forEach((String key, Object? nested) {
-        out.add(key);
         _collectStrings(nested, out);
       });
       return;
@@ -593,9 +618,6 @@ class SessionWsMessageParser {
 
     if (value is Map) {
       value.forEach((Object? key, Object? nested) {
-        if (key != null) {
-          out.add(key.toString());
-        }
         _collectStrings(nested, out);
       });
       return;
@@ -615,7 +637,7 @@ class SessionWsMessageParser {
 
 class SessionWsLogSanitizer {
   static final RegExp _sensitiveKeyPattern = RegExp(
-    r'(token|cookie|session|auth|credential|secret)',
+    r'(token|cookie|session|auth|credential|secret|password)',
     caseSensitive: false,
   );
 
@@ -648,10 +670,15 @@ class SessionWsLogSanitizer {
     }
 
     if (value is List) {
-      return value.map<Object?>((Object? nested) => _maskValue(nested)).toList();
+      return value
+          .map<Object?>((Object? nested) => _maskValue(nested))
+          .toList();
     }
 
     if (value is String) {
+      if (_isUrlValue(value)) {
+        return _stripUrlQuery(value);
+      }
       return _sanitizeString(value);
     }
 
@@ -675,8 +702,14 @@ class SessionWsLogSanitizer {
     return _sensitiveKeyPattern.hasMatch(key);
   }
 
+  static bool _isUrlValue(String value) {
+    final String trimmed = value.trim();
+    final Match? match = _urlPattern.matchAsPrefix(trimmed);
+    return match != null && match.end == trimmed.length;
+  }
+
   static String _sanitizeString(String input) {
-    final String withoutQuery = input.replaceAllMapped(_urlPattern, (RegExpMatch m) {
+    final String withoutQuery = input.replaceAllMapped(_urlPattern, (Match m) {
       final String original = m.group(0) ?? '';
       return _stripUrlQuery(original);
     });
@@ -693,10 +726,15 @@ class SessionWsLogSanitizer {
       return url;
     }
 
-    return Uri(
-      scheme: uri.scheme,
-      host: uri.host,
-      path: uri.path,
-    ).toString();
+    if (uri.hasPort) {
+      return Uri(
+        scheme: uri.scheme,
+        host: uri.host,
+        port: uri.port,
+        path: uri.path,
+      ).toString();
+    }
+
+    return Uri(scheme: uri.scheme, host: uri.host, path: uri.path).toString();
   }
 }
