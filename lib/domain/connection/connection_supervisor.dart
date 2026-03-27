@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:developer';
-import 'dart:math';
+import 'dart:developer' as developer;
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
@@ -120,70 +120,72 @@ class ConnectionSupervisor extends ChangeNotifier {
         _legacySameUrlFailureThreshold = legacySameUrlFailureThreshold,
         _delayExecutor = delayExecutor ?? _defaultDelayExecutor,
         _jitterProvider = jitterProvider ?? _defaultJitterProvider {
-    _sessionEventSubscription = _sessionWsClient.events.listen(_onSessionWsEvent);
+    _sessionEventSubscription =
+        _sessionWsClient.events.listen(_onSessionWsEvent);
     _ndgrEventSubscription = _ndgrClient.events.listen(_onNdgrEvent);
-    _legacyEventSubscription = _legacyCommentClient.events.listen(_onLegacyEvent);
+    _legacyEventSubscription =
+        _legacyCommentClient.events.listen(_onLegacyEvent);
   }
 
   static const List<int> _backoffSeconds = <int>[1, 2, 4, 8, 16, 30];
 
-  static const Map<ConnectionStatus, Set<ConnectionStatus>> _allowedTransitions =
-      <ConnectionStatus, Set<ConnectionStatus>>{
-        ConnectionStatus.idle: <ConnectionStatus>{
-          ConnectionStatus.connectingSessionWs,
-        },
-        ConnectionStatus.connectingSessionWs: <ConnectionStatus>{
-          ConnectionStatus.resolvingEndpoints,
-          ConnectionStatus.reconnecting,
-          ConnectionStatus.stopped,
-          ConnectionStatus.ended,
-          ConnectionStatus.failed,
-        },
-        ConnectionStatus.resolvingEndpoints: <ConnectionStatus>{
-          ConnectionStatus.streamingNdgr,
-          ConnectionStatus.streamingLegacy,
-          ConnectionStatus.reconnecting,
-          ConnectionStatus.stopped,
-          ConnectionStatus.ended,
-          ConnectionStatus.failed,
-        },
-        ConnectionStatus.streamingNdgr: <ConnectionStatus>{
-          ConnectionStatus.reconnecting,
-          ConnectionStatus.stopped,
-          ConnectionStatus.ended,
-          ConnectionStatus.failed,
-        },
-        ConnectionStatus.streamingLegacy: <ConnectionStatus>{
-          ConnectionStatus.reconnecting,
-          ConnectionStatus.stopped,
-          ConnectionStatus.ended,
-          ConnectionStatus.failed,
-        },
-        ConnectionStatus.reconnecting: <ConnectionStatus>{
-          ConnectionStatus.connectingSessionWs,
-          ConnectionStatus.streamingNdgr,
-          ConnectionStatus.streamingLegacy,
-          ConnectionStatus.stopped,
-          ConnectionStatus.ended,
-          ConnectionStatus.failed,
-        },
-        ConnectionStatus.stopped: <ConnectionStatus>{
-          ConnectionStatus.connectingSessionWs,
-        },
-        ConnectionStatus.ended: <ConnectionStatus>{
-          ConnectionStatus.idle,
-        },
-        ConnectionStatus.failed: <ConnectionStatus>{
-          ConnectionStatus.idle,
-        },
-      };
+  static const Map<ConnectionStatus, Set<ConnectionStatus>>
+      _allowedTransitions = <ConnectionStatus, Set<ConnectionStatus>>{
+    ConnectionStatus.idle: <ConnectionStatus>{
+      ConnectionStatus.connectingSessionWs,
+    },
+    ConnectionStatus.connectingSessionWs: <ConnectionStatus>{
+      ConnectionStatus.resolvingEndpoints,
+      ConnectionStatus.reconnecting,
+      ConnectionStatus.stopped,
+      ConnectionStatus.ended,
+      ConnectionStatus.failed,
+    },
+    ConnectionStatus.resolvingEndpoints: <ConnectionStatus>{
+      ConnectionStatus.streamingNdgr,
+      ConnectionStatus.streamingLegacy,
+      ConnectionStatus.reconnecting,
+      ConnectionStatus.stopped,
+      ConnectionStatus.ended,
+      ConnectionStatus.failed,
+    },
+    ConnectionStatus.streamingNdgr: <ConnectionStatus>{
+      ConnectionStatus.reconnecting,
+      ConnectionStatus.stopped,
+      ConnectionStatus.ended,
+      ConnectionStatus.failed,
+    },
+    ConnectionStatus.streamingLegacy: <ConnectionStatus>{
+      ConnectionStatus.reconnecting,
+      ConnectionStatus.stopped,
+      ConnectionStatus.ended,
+      ConnectionStatus.failed,
+    },
+    ConnectionStatus.reconnecting: <ConnectionStatus>{
+      ConnectionStatus.connectingSessionWs,
+      ConnectionStatus.streamingNdgr,
+      ConnectionStatus.streamingLegacy,
+      ConnectionStatus.stopped,
+      ConnectionStatus.ended,
+      ConnectionStatus.failed,
+    },
+    ConnectionStatus.stopped: <ConnectionStatus>{
+      ConnectionStatus.connectingSessionWs,
+    },
+    ConnectionStatus.ended: <ConnectionStatus>{
+      ConnectionStatus.idle,
+    },
+    ConnectionStatus.failed: <ConnectionStatus>{
+      ConnectionStatus.idle,
+    },
+  };
 
   static Future<void> _defaultDelayExecutor(Duration delay) {
     return Future<void>.delayed(delay);
   }
 
   static Duration _defaultJitterProvider(int _) {
-    final Random random = Random();
+    final math.Random random = math.Random();
     return Duration(milliseconds: random.nextInt(1000));
   }
 
@@ -212,8 +214,9 @@ class ConnectionSupervisor extends ChangeNotifier {
   int get reconnectCount => _reconnectCount;
   DateTime? get lastReceivedAt => _lastReceivedAt;
   ConnectionErrorCode? get lastError => _lastError;
-  WifiIndicatorColor get wifiIndicatorColor =>
-      _status.usesGreenWifiIcon ? WifiIndicatorColor.green : WifiIndicatorColor.red;
+  WifiIndicatorColor get wifiIndicatorColor => _status.usesGreenWifiIcon
+      ? WifiIndicatorColor.green
+      : WifiIndicatorColor.red;
 
   bool get canStartConnection =>
       _status == ConnectionStatus.idle || _status == ConnectionStatus.stopped;
@@ -223,10 +226,11 @@ class ConnectionSupervisor extends ChangeNotifier {
 
   Duration backoffDelayForAttempt(int attempt) {
     if (attempt <= 0) {
-      throw ArgumentError.value(attempt, 'attempt', 'must be greater than zero');
+      throw ArgumentError.value(
+          attempt, 'attempt', 'must be greater than zero');
     }
 
-    final int index = min(attempt - 1, _backoffSeconds.length - 1);
+    final int index = math.min(attempt - 1, _backoffSeconds.length - 1);
     final Duration base = Duration(seconds: _backoffSeconds[index]);
     final Duration jitter = _jitterProvider(attempt);
     return base + jitter;
@@ -464,7 +468,8 @@ class ConnectionSupervisor extends ChangeNotifier {
   Future<void> _reconnectViaSessionWs(int _) async {
     await _disconnectAllClients();
 
-    final bool toConnecting = _transitionTo(ConnectionStatus.connectingSessionWs);
+    final bool toConnecting =
+        _transitionTo(ConnectionStatus.connectingSessionWs);
     if (!toConnecting) {
       throw _ConnectionFailure(ConnectionErrorCode.sessionWsConnectFailed);
     }
@@ -606,7 +611,7 @@ class ConnectionSupervisor extends ChangeNotifier {
     try {
       await disconnect();
     } catch (error, stackTrace) {
-      log(
+      developer.log(
         'Failed to disconnect $clientName during reconnect: $error',
         name: 'ConnectionSupervisor',
         stackTrace: stackTrace,
@@ -647,7 +652,7 @@ class ConnectionSupervisor extends ChangeNotifier {
   }
 
   void _logInvalidTransition(ConnectionStatus next) {
-    log(
+    developer.log(
       'Ignoring invalid transition: ${_status.code} -> ${next.code}',
       name: 'ConnectionSupervisor',
     );
