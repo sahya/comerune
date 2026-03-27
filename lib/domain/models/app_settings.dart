@@ -47,6 +47,7 @@ extension PastCommentFetchCountValue on PastCommentFetchCount {
         return PastCommentFetchCount.all;
       case '100':
       case null:
+      default:
         return PastCommentFetchCount.count100;
     }
   }

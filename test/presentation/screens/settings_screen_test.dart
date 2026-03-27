@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../../lib/application/settings/settings_store.dart';
 import '../../../lib/domain/models/app_settings.dart';
 import '../../../lib/presentation/screens/settings_screen.dart';
+import '../../helpers/in_memory_shared_preferences.dart';
 
 void main() {
   group('SettingsScreen', () {

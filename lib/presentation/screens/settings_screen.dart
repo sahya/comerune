@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../application/settings/settings_store.dart';
@@ -122,7 +124,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _settings = next;
     });
-    widget.settingsStore.save(next);
+    unawaited(_saveSettings(next));
+  }
+
+  Future<void> _saveSettings(AppSettings next) async {
+    try {
+      await widget.settingsStore.save(next);
+    } on Object catch (error, stackTrace) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'settings_screen',
+          context: ErrorDescription('while saving settings'),
+        ),
+      );
+    }
   }
 
   void _saveBouyomiHost() {
