@@ -34,6 +34,27 @@ class NdgrClientEvent {
   final Duration? stallDuration;
 }
 
+class NdgrAt {
+  const NdgrAt._(this._queryValue);
+
+  static const NdgrAt now = NdgrAt._('now');
+
+  factory NdgrAt.timestamp(int unixTimeSeconds) {
+    if (unixTimeSeconds < 0) {
+      throw ArgumentError.value(
+        unixTimeSeconds,
+        'unixTimeSeconds',
+        'must be >= 0',
+      );
+    }
+    return NdgrAt._(unixTimeSeconds.toString());
+  }
+
+  final String _queryValue;
+
+  String asQueryValue() => _queryValue;
+}
+
 class NdgrClient {
   NdgrClient({
     HttpClient? httpClient,
@@ -43,6 +64,7 @@ class NdgrClient {
     Duration stallThreshold = const Duration(seconds: 15),
     Duration stallCheckInterval = const Duration(seconds: 1),
     Duration backwardSegmentInterval = const Duration(milliseconds: 7),
+    Duration connectionTimeout = const Duration(seconds: 15),
     DateTime Function()? now,
   })  : _seedHttpClient = httpClient,
         _httpClientFactory = httpClientFactory ?? HttpClient.new,
@@ -54,7 +76,16 @@ class NdgrClient {
         ),
         _now = now ?? DateTime.now,
         _stallCheckInterval = stallCheckInterval,
-        _backwardSegmentInterval = backwardSegmentInterval;
+        _backwardSegmentInterval = backwardSegmentInterval,
+        _connectionTimeout = connectionTimeout {
+    if (connectionTimeout <= Duration.zero) {
+      throw ArgumentError.value(
+        connectionTimeout,
+        'connectionTimeout',
+        'must be > Duration.zero',
+      );
+    }
+  }
 
   final HttpClient Function() _httpClientFactory;
   HttpClient? _seedHttpClient;
@@ -65,6 +96,7 @@ class NdgrClient {
   final DateTime Function() _now;
   final Duration _stallCheckInterval;
   final Duration _backwardSegmentInterval;
+  final Duration _connectionTimeout;
 
   final StreamController<NdgrClientEvent> _eventsController =
       StreamController<NdgrClientEvent>.broadcast();
@@ -84,7 +116,7 @@ class NdgrClient {
   Future<void> connect(
     Uri viewApiUri, {
     int historyCount = 100,
-    Object at = 'now',
+    NdgrAt at = NdgrAt.now,
   }) async {
     if (_isRunning) {
       throw StateError('NdgrClient is already running');
@@ -95,8 +127,7 @@ class NdgrClient {
 
     _isRunning = true;
     _isStopped = false;
-    _stallDetector.markReceived(_now());
-    _startStallTimer();
+    _stopStallTimer();
 
     try {
       await _runHeadLoop(
@@ -140,9 +171,9 @@ class NdgrClient {
   Future<void> _runHeadLoop(
     Uri viewApiUri, {
     required int historyCount,
-    required Object at,
+    required NdgrAt at,
   }) async {
-    Object? nextAt = at;
+    NdgrAt? nextAt = at;
     bool initPhase = true;
     int remainingHistory = historyCount;
 
@@ -190,7 +221,7 @@ class NdgrClient {
         }
 
         if (entry.nextAt != null) {
-          nextAt = entry.nextAt;
+          nextAt = NdgrAt.timestamp(entry.nextAt!);
         }
       }
     }
@@ -220,6 +251,7 @@ class NdgrClient {
         break;
       }
 
+      // Avoid hammering the backward endpoint with tight consecutive requests.
       await Future<void>.delayed(_backwardSegmentInterval);
       current = Uri.parse(packed.nextUri!);
     }
@@ -257,11 +289,12 @@ class NdgrClient {
   }
 
   bool _handleChunkedMessage(NdgrChunkedMessage message) {
-    _stallDetector.markReceived(_now());
+    final DateTime receivedAt = _now();
+    _markReceivedAndEnsureTimer(receivedAt);
 
     final AppMessage? normalized = _normalizer.normalizeChunkedMessage(
       message,
-      receivedAt: _now().toUtc(),
+      receivedAt: receivedAt.toUtc(),
     );
 
     if (normalized != null) {
@@ -284,7 +317,7 @@ class NdgrClient {
       final List<Uint8List> frames = decoder.add(chunk);
       for (final Uint8List frame in frames) {
         try {
-          _stallDetector.markReceived(_now());
+          _markReceivedAndEnsureTimer(_now());
           yield _protobufDecoder.decodeChunkedEntry(frame);
         } catch (error, stackTrace) {
           log(
@@ -353,11 +386,11 @@ class NdgrClient {
     return response;
   }
 
-  Uri _uriWithAt(Uri baseUri, Object at) {
+  Uri _uriWithAt(Uri baseUri, NdgrAt at) {
     final Map<String, String> query = Map<String, String>.from(
       baseUri.queryParameters,
     );
-    query['at'] = at.toString();
+    query['at'] = at.asQueryValue();
     return baseUri.replace(queryParameters: query);
   }
 
@@ -388,9 +421,17 @@ class NdgrClient {
     _stallTimer = null;
   }
 
+  void _markReceivedAndEnsureTimer(DateTime timestamp) {
+    _stallDetector.markReceived(timestamp);
+    if (_stallTimer == null) {
+      _startStallTimer();
+    }
+  }
+
   HttpClient get _activeHttpClient {
     final HttpClient? current = _httpClient;
     if (current != null) {
+      current.connectionTimeout = _connectionTimeout;
       return current;
     }
 
@@ -398,10 +439,12 @@ class NdgrClient {
     if (seed != null) {
       _seedHttpClient = null;
       _httpClient = seed;
+      seed.connectionTimeout = _connectionTimeout;
       return seed;
     }
 
     final HttpClient created = _httpClientFactory();
+    created.connectionTimeout = _connectionTimeout;
     _httpClient = created;
     return created;
   }
