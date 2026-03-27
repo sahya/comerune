@@ -8,6 +8,7 @@ import '../../../lib/domain/connection/connection_supervisor.dart';
 import '../../../lib/domain/models/app_message.dart';
 import '../../../lib/presentation/screens/comment_screen.dart';
 import '../../../lib/presentation/screens/settings_screen.dart';
+import '../../helpers/in_memory_shared_preferences.dart';
 
 void main() {
   group('CommentScreen', () {
