@@ -34,22 +34,20 @@ void main() {
 
     test('drops items that exceed max delay', () {
       final DateTime base = DateTime.parse('2026-03-22T00:00:00Z');
+      DateTime nowAt = base;
       final SpeechQueueController controller = SpeechQueueController(
         maxDelay: const Duration(seconds: 10),
+        nowProvider: () => nowAt,
       );
 
+      nowAt = base;
       expect(
-        controller.enqueue(
-          _message(id: 'm1', content: 'old', second: 0),
-          now: base,
-        ),
+        controller.enqueue(_message(id: 'm1', content: 'old', second: 0)),
         isTrue,
       );
+      nowAt = base.add(const Duration(seconds: 11));
       expect(
-        controller.enqueue(
-          _message(id: 'm2', content: 'new', second: 11),
-          now: base.add(const Duration(seconds: 11)),
-        ),
+        controller.enqueue(_message(id: 'm2', content: 'new', second: 11)),
         isTrue,
       );
 
@@ -60,16 +58,16 @@ void main() {
     test(
       'does not enqueue incoming comment when it already exceeds max delay',
       () {
-        final DateTime now = DateTime.parse('2026-03-22T00:00:11Z');
+        final DateTime base = DateTime.parse('2026-03-22T00:00:11Z');
+        DateTime nowAt = base;
         final SpeechQueueController controller = SpeechQueueController(
           maxDelay: const Duration(seconds: 10),
+          nowProvider: () => nowAt,
         );
 
+        nowAt = base;
         expect(
-          controller.enqueue(
-            _message(id: 'm1', content: 'old', second: 0),
-            now: now,
-          ),
+          controller.enqueue(_message(id: 'm1', content: 'old', second: 0)),
           isFalse,
         );
         expect(controller.length, 0);
@@ -78,28 +76,24 @@ void main() {
 
     test('drops expired item even when it is not at queue head', () {
       final DateTime base = DateTime.parse('2026-03-22T00:00:00Z');
+      DateTime nowAt = base;
       final SpeechQueueController controller = SpeechQueueController(
         maxDelay: const Duration(seconds: 10),
+        nowProvider: () => nowAt,
       );
 
+      nowAt = base;
       expect(
-        controller.enqueue(
-          _message(id: 'fresh', content: 'fresh', second: 11),
-          now: base,
-        ),
+        controller.enqueue(_message(id: 'fresh', content: 'fresh', second: 11)),
         isTrue,
       );
       expect(
-        controller.enqueue(
-          _message(id: 'old', content: 'old', second: 0),
-          now: base,
-        ),
+        controller.enqueue(_message(id: 'old', content: 'old', second: 0)),
         isTrue,
       );
 
-      final SpeechQueueItem? dequeued = controller.dequeue(
-        now: base.add(const Duration(seconds: 11)),
-      );
+      nowAt = base.add(const Duration(seconds: 11));
+      final SpeechQueueItem? dequeued = controller.dequeue();
 
       expect(dequeued, isNotNull);
       expect(dequeued!.messageId, 'fresh');
@@ -128,7 +122,8 @@ void main() {
       expect(item!.text, 'look URL now');
     });
 
-    test('suppresses consecutive same-user comments within one second', () {
+    test('suppresses consecutive same-user comments within one second (<=1s)',
+        () {
       final DateTime base = DateTime.parse('2026-03-22T00:00:00Z');
       final SpeechQueueController controller = SpeechQueueController(
         nowProvider: () => base,
@@ -150,14 +145,44 @@ void main() {
         controller.enqueue(
           _message(id: 'm3', content: 'third', userId: 'u1', millisecond: 1000),
         ),
+        isFalse,
+      );
+      expect(
+        controller.enqueue(
+          _message(
+              id: 'm4', content: 'fourth', userId: 'u1', millisecond: 1001),
+        ),
         isTrue,
       );
 
       expect(controller.length, 2);
       expect(
         controller.items.map((SpeechQueueItem item) => item.messageId).toList(),
-        <String>['m1', 'm3'],
+        <String>['m1', 'm4'],
       );
+    });
+
+    test('checks ng words before URL replacement', () {
+      final DateTime base = DateTime.parse('2026-03-22T00:00:00Z');
+      final SpeechQueueController controller = SpeechQueueController(
+        ngWordPatterns: <String>[r'\bURL\b'],
+        nowProvider: () => base,
+      );
+
+      expect(
+        controller.enqueue(
+          _message(
+            id: 'm1',
+            content: 'see https://example.com/path',
+            second: 0,
+          ),
+        ),
+        isTrue,
+      );
+
+      final SpeechQueueItem? item = controller.dequeue();
+      expect(item, isNotNull);
+      expect(item!.text, 'see URL');
     });
 
     test('skips comments that match ng word regular expressions', () {

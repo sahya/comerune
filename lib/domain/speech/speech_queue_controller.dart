@@ -5,6 +5,7 @@ import '../models/app_message.dart';
 
 const int kDefaultSpeechQueueLimit = 20;
 const Duration kDefaultSpeechMaxDelay = Duration(seconds: 10);
+const Duration kFloodSuppressionWindow = Duration(seconds: 1);
 
 class SpeechQueueItem {
   const SpeechQueueItem({
@@ -97,9 +98,10 @@ class SpeechQueueController {
     _compiledNgWordPatterns = compiled;
   }
 
-  bool enqueue(AppMessage message, {DateTime? now}) {
-    final DateTime nowAt = now ?? _nowProvider();
+  bool enqueue(AppMessage message) {
+    final DateTime nowAt = _nowProvider();
     _discardExpired(nowAt);
+    _pruneOldFloodHistory(nowAt);
 
     if (!_autoReadEnabled) {
       return false;
@@ -111,10 +113,10 @@ class SpeechQueueController {
       return false;
     }
 
-    final String normalizedText = _replaceUrls(message.content);
-    if (_matchesNgWord(normalizedText)) {
+    if (_matchesNgWord(message.content)) {
       return false;
     }
+    final String normalizedText = _replaceUrls(message.content);
     if (_isExpired(message.timestamp, nowAt)) {
       return false;
     }
@@ -132,8 +134,8 @@ class SpeechQueueController {
     return true;
   }
 
-  SpeechQueueItem? dequeue({DateTime? now}) {
-    _discardExpired(now ?? _nowProvider());
+  SpeechQueueItem? dequeue() {
+    _discardExpired(_nowProvider());
     if (_queue.isEmpty) {
       return null;
     }
@@ -164,7 +166,7 @@ class SpeechQueueController {
     }
 
     final Duration interval = message.timestamp.difference(lastAcceptedAt);
-    return !interval.isNegative && interval < const Duration(seconds: 1);
+    return !interval.isNegative && interval <= kFloodSuppressionWindow;
   }
 
   void _rememberAcceptedMessage(AppMessage message) {
@@ -173,6 +175,13 @@ class SpeechQueueController {
       return;
     }
     _lastAcceptedAtByUserId[userId] = message.timestamp;
+  }
+
+  void _pruneOldFloodHistory(DateTime now) {
+    _lastAcceptedAtByUserId.removeWhere((String _, DateTime acceptedAt) {
+      final Duration age = now.difference(acceptedAt);
+      return !age.isNegative && age > kFloodSuppressionWindow;
+    });
   }
 
   String _replaceUrls(String content) {
