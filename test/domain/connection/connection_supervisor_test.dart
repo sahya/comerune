@@ -7,6 +7,52 @@ import '../../../lib/domain/connection/connection_supervisor.dart';
 
 void main() {
   group('ConnectionSupervisor', () {
+    test('status code mapping remains stable', () {
+      expect(
+        ConnectionStatus.values.map((ConnectionStatus status) => status.code),
+        <String>[
+          'IDLE',
+          'CONNECTING_SESSION_WS',
+          'RESOLVING_ENDPOINTS',
+          'STREAMING_NDGR',
+          'STREAMING_LEGACY',
+          'RECONNECTING',
+          'STOPPED',
+          'ENDED',
+          'FAILED',
+        ],
+      );
+    });
+
+    test('error code mapping remains stable', () {
+      expect(
+        ConnectionErrorCode.values.map((ConnectionErrorCode code) => code.code),
+        <String>[
+          'LV_PARSE_FAILED',
+          'SESSION_WS_CONNECT_FAILED',
+          'ENDPOINT_RESOLVE_FAILED',
+          'NDGR_STREAM_FAILED',
+          'LEGACY_WS_FAILED',
+          'SPEECH_BOUYOMI_FAILED',
+          'SPEECH_VOICEVOX_FAILED',
+          'USER_STOPPED',
+          'BROADCAST_ENDED',
+        ],
+      );
+    });
+
+    test('wifi indicator mapping remains stable for all statuses', () {
+      expect(ConnectionStatus.idle.usesGreenWifiIcon, isFalse);
+      expect(ConnectionStatus.connectingSessionWs.usesGreenWifiIcon, isTrue);
+      expect(ConnectionStatus.resolvingEndpoints.usesGreenWifiIcon, isTrue);
+      expect(ConnectionStatus.streamingNdgr.usesGreenWifiIcon, isTrue);
+      expect(ConnectionStatus.streamingLegacy.usesGreenWifiIcon, isTrue);
+      expect(ConnectionStatus.reconnecting.usesGreenWifiIcon, isTrue);
+      expect(ConnectionStatus.stopped.usesGreenWifiIcon, isFalse);
+      expect(ConnectionStatus.ended.usesGreenWifiIcon, isFalse);
+      expect(ConnectionStatus.failed.usesGreenWifiIcon, isFalse);
+    });
+
     test('backoffDelayForAttempt returns exponential seconds and jitter', () {
       final ConnectionSupervisor supervisor = ConnectionSupervisor(
         sessionWsClient: FakeSessionWsClient(
@@ -41,6 +87,169 @@ void main() {
       );
     });
 
+    test('rejects invalid transition methods from idle', () async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: FakeSessionWsClient(
+          endpointsQueue: <SessionEndpoints>[
+            SessionEndpoints(
+              ndgrViewApiUri:
+                  Uri.parse('https://example.com/api/view/v4/stream'),
+            ),
+          ],
+        ),
+        ndgrClient: FakeNdgrClient(),
+        legacyCommentClient: FakeLegacyCommentClient(),
+      );
+      addTearDown(supervisor.dispose);
+
+      final bool reset = supervisor.resetToIdle();
+      expect(reset, isFalse);
+      expect(supervisor.status, ConnectionStatus.idle);
+
+      final bool ended = await supervisor.endBroadcast();
+      expect(ended, isFalse);
+      expect(supervisor.status, ConnectionStatus.idle);
+    });
+
+    test('resetToIdle succeeds from ended', () async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: FakeSessionWsClient(
+          endpointsQueue: <SessionEndpoints>[
+            SessionEndpoints(
+              ndgrViewApiUri:
+                  Uri.parse('https://example.com/api/view/v4/stream'),
+            ),
+          ],
+        ),
+        ndgrClient: FakeNdgrClient(),
+        legacyCommentClient: FakeLegacyCommentClient(),
+      );
+      addTearDown(supervisor.dispose);
+
+      final bool started = await supervisor.startConnection();
+      expect(started, isTrue);
+
+      final bool ended = await supervisor.endBroadcast();
+      expect(ended, isTrue);
+      expect(supervisor.status, ConnectionStatus.ended);
+
+      final bool reset = supervisor.resetToIdle();
+      expect(reset, isTrue);
+      expect(supervisor.status, ConnectionStatus.idle);
+    });
+
+    test('startConnection works from FAILED and resets diagnostics', () async {
+      final Uri firstUri =
+          Uri.parse('https://example.com/api/view/v4/stream/1');
+      final Uri secondUri =
+          Uri.parse('https://example.com/api/view/v4/stream/2');
+      final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
+        endpointsQueue: <SessionEndpoints>[
+          SessionEndpoints(ndgrViewApiUri: firstUri),
+          SessionEndpoints(ndgrViewApiUri: secondUri),
+        ],
+      );
+      final FakeNdgrClient ndgrClient = FakeNdgrClient(
+        connectResults: <bool>[true, false, true],
+      );
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: sessionWsClient,
+        ndgrClient: ndgrClient,
+        legacyCommentClient: FakeLegacyCommentClient(),
+        delayExecutor: (_) async {},
+        jitterProvider: (_) => Duration.zero,
+      );
+      addTearDown(supervisor.dispose);
+
+      final bool started = await supervisor.startConnection();
+      expect(started, isTrue);
+
+      final bool stalledReconnected = await supervisor.onNdgrStreamStalled();
+      expect(stalledReconnected, isTrue);
+      expect(supervisor.reconnectCount, 2);
+
+      supervisor.recordReceivedAt(DateTime(2026, 1, 1));
+      final bool failed = supervisor.fail(ConnectionErrorCode.ndgrStreamFailed);
+      expect(failed, isTrue);
+      expect(supervisor.status, ConnectionStatus.failed);
+      expect(supervisor.canStartConnection, isTrue);
+
+      final bool restarted = await supervisor.startConnection();
+      expect(restarted, isTrue);
+      expect(supervisor.status, ConnectionStatus.streamingNdgr);
+      expect(supervisor.reconnectCount, 0);
+      expect(supervisor.lastError, isNull);
+      expect(supervisor.lastReceivedAt, isNull);
+      expect(ndgrClient.connectedUris.last, secondUri);
+    });
+
+    test('retryConnectionFromTerminal resets diagnostics and reconnects',
+        () async {
+      final Uri firstUri =
+          Uri.parse('https://example.com/api/view/v4/stream/1');
+      final Uri secondUri =
+          Uri.parse('https://example.com/api/view/v4/stream/2');
+      final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
+        endpointsQueue: <SessionEndpoints>[
+          SessionEndpoints(ndgrViewApiUri: firstUri),
+          SessionEndpoints(ndgrViewApiUri: secondUri),
+        ],
+      );
+      final FakeNdgrClient ndgrClient = FakeNdgrClient(
+        connectResults: <bool>[true, false, true],
+      );
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: sessionWsClient,
+        ndgrClient: ndgrClient,
+        legacyCommentClient: FakeLegacyCommentClient(),
+        delayExecutor: (_) async {},
+        jitterProvider: (_) => Duration.zero,
+      );
+      addTearDown(supervisor.dispose);
+
+      final bool started = await supervisor.startConnection();
+      expect(started, isTrue);
+      expect(supervisor.canRetryFromTerminal, isFalse);
+
+      final bool reconnected = await supervisor.onNdgrStreamStalled();
+      expect(reconnected, isTrue);
+      expect(supervisor.reconnectCount, 2);
+
+      supervisor.recordReceivedAt(DateTime(2026, 1, 1));
+      final bool failed = supervisor.fail(ConnectionErrorCode.ndgrStreamFailed);
+      expect(failed, isTrue);
+      expect(supervisor.canRetryFromTerminal, isTrue);
+
+      final bool retried = await supervisor.retryConnectionFromTerminal();
+      expect(retried, isTrue);
+      expect(supervisor.status, ConnectionStatus.streamingNdgr);
+      expect(supervisor.reconnectCount, 0);
+      expect(supervisor.lastError, isNull);
+      expect(supervisor.lastReceivedAt, isNull);
+      expect(ndgrClient.connectedUris.last, secondUri);
+    });
+
+    test('retryConnectionFromTerminal is rejected outside terminal states',
+        () async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: FakeSessionWsClient(
+          endpointsQueue: <SessionEndpoints>[
+            SessionEndpoints(
+              ndgrViewApiUri:
+                  Uri.parse('https://example.com/api/view/v4/stream'),
+            ),
+          ],
+        ),
+        ndgrClient: FakeNdgrClient(),
+        legacyCommentClient: FakeLegacyCommentClient(),
+      );
+      addTearDown(supervisor.dispose);
+
+      final bool retried = await supervisor.retryConnectionFromTerminal();
+      expect(retried, isFalse);
+      expect(supervisor.status, ConnectionStatus.idle);
+    });
+
     test('does not reconnect when stopped by user', () async {
       final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
         endpointsQueue: <SessionEndpoints>[
@@ -71,6 +280,39 @@ void main() {
       expect(reconnectTriggered, isFalse);
       expect(supervisor.reconnectCount, 0);
       expect(ndgrClient.connectCalls, 1);
+    });
+
+    test('startConnection restarts from STOPPED via IDLE path', () async {
+      final Uri firstUri =
+          Uri.parse('https://example.com/api/view/v4/stream/1');
+      final Uri secondUri =
+          Uri.parse('https://example.com/api/view/v4/stream/2');
+      final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
+        endpointsQueue: <SessionEndpoints>[
+          SessionEndpoints(ndgrViewApiUri: firstUri),
+          SessionEndpoints(ndgrViewApiUri: secondUri),
+        ],
+      );
+      final FakeNdgrClient ndgrClient = FakeNdgrClient();
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: sessionWsClient,
+        ndgrClient: ndgrClient,
+        legacyCommentClient: FakeLegacyCommentClient(),
+      );
+      addTearDown(supervisor.dispose);
+
+      final bool firstStart = await supervisor.startConnection();
+      expect(firstStart, isTrue);
+      expect(supervisor.status, ConnectionStatus.streamingNdgr);
+
+      final bool stopped = await supervisor.stopByUser();
+      expect(stopped, isTrue);
+      expect(supervisor.status, ConnectionStatus.stopped);
+
+      final bool secondStart = await supervisor.startConnection();
+      expect(secondStart, isTrue);
+      expect(supervisor.status, ConnectionStatus.streamingNdgr);
+      expect(ndgrClient.connectedUris.last, secondUri);
     });
 
     test('reconnects NDGR stall with same URI after disconnecting old stream',
@@ -210,6 +452,40 @@ void main() {
       expect(ndgrClient.connectedUris.last, secondNdgrUri);
     });
 
+    test('auto reconnects when session disconnect event is emitted', () async {
+      final Uri firstNdgrUri =
+          Uri.parse('https://example.com/api/view/v4/stream/1');
+      final Uri secondNdgrUri =
+          Uri.parse('https://example.com/api/view/v4/stream/2');
+      final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
+        endpointsQueue: <SessionEndpoints>[
+          SessionEndpoints(ndgrViewApiUri: firstNdgrUri),
+          SessionEndpoints(ndgrViewApiUri: secondNdgrUri),
+        ],
+      );
+      final FakeNdgrClient ndgrClient = FakeNdgrClient();
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: sessionWsClient,
+        ndgrClient: ndgrClient,
+        legacyCommentClient: FakeLegacyCommentClient(),
+        delayExecutor: (_) async {},
+        jitterProvider: (_) => Duration.zero,
+      );
+      addTearDown(supervisor.dispose);
+
+      final bool started = await supervisor.startConnection();
+      expect(started, isTrue);
+      expect(supervisor.status, ConnectionStatus.streamingNdgr);
+
+      sessionWsClient.emitDisconnected();
+      await _drainEventLoop();
+
+      expect(supervisor.status, ConnectionStatus.streamingNdgr);
+      expect(supervisor.reconnectCount, 1);
+      expect(sessionWsClient.connectCalls, 2);
+      expect(ndgrClient.connectedUris.last, secondNdgrUri);
+    });
+
     test('legacy reconnect falls back to session after 3 consecutive failures',
         () async {
       final Uri originalLegacyUrl = Uri.parse('wss://example.com/legacy/1');
@@ -246,6 +522,104 @@ void main() {
       expect(sessionWsClient.disconnectCalls, 1);
       expect(legacyClient.disconnectCalls, 4);
       expect(legacyClient.connectedUris.last, refreshedLegacyUrl);
+    });
+
+    test('auto reconnects when legacy disconnect event is emitted', () async {
+      final Uri legacyUrl = Uri.parse('wss://example.com/legacy');
+      final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
+        endpointsQueue: <SessionEndpoints>[
+          SessionEndpoints(legacyWsUrl: legacyUrl),
+        ],
+      );
+      final FakeLegacyCommentClient legacyClient = FakeLegacyCommentClient();
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: sessionWsClient,
+        ndgrClient: FakeNdgrClient(),
+        legacyCommentClient: legacyClient,
+        delayExecutor: (_) async {},
+        jitterProvider: (_) => Duration.zero,
+      );
+      addTearDown(supervisor.dispose);
+
+      final bool started = await supervisor.startConnection();
+      expect(started, isTrue);
+      expect(supervisor.status, ConnectionStatus.streamingLegacy);
+
+      legacyClient.emitDisconnected();
+      await _drainEventLoop();
+
+      expect(supervisor.status, ConnectionStatus.streamingLegacy);
+      expect(supervisor.reconnectCount, 1);
+      expect(legacyClient.disconnectCalls, 1);
+      expect(legacyClient.connectCalls, 2);
+      expect(legacyClient.connectedUris, <Uri>[legacyUrl, legacyUrl]);
+    });
+
+    test('reconnect loop stops when user stops during backoff delay', () async {
+      final Uri ndgrUri = Uri.parse('https://example.com/api/view/v4/stream');
+      final Completer<void> delayCompleter = Completer<void>();
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: FakeSessionWsClient(
+          endpointsQueue: <SessionEndpoints>[
+            SessionEndpoints(ndgrViewApiUri: ndgrUri),
+          ],
+        ),
+        ndgrClient: FakeNdgrClient(),
+        legacyCommentClient: FakeLegacyCommentClient(),
+        delayExecutor: (_) => delayCompleter.future,
+        jitterProvider: (_) => Duration.zero,
+      );
+      addTearDown(supervisor.dispose);
+
+      final bool started = await supervisor.startConnection();
+      expect(started, isTrue);
+
+      final Future<bool> reconnectFuture = supervisor.onNdgrStreamStalled();
+      await _drainEventLoop();
+      expect(supervisor.status, ConnectionStatus.reconnecting);
+
+      final bool stopped = await supervisor.stopByUser();
+      expect(stopped, isTrue);
+      expect(supervisor.status, ConnectionStatus.stopped);
+
+      delayCompleter.complete();
+      final bool reconnectResult = await reconnectFuture;
+      expect(reconnectResult, isFalse);
+      expect(supervisor.status, ConnectionStatus.stopped);
+    });
+
+    test('reconnect loop stops when broadcast ends during backoff delay',
+        () async {
+      final Uri ndgrUri = Uri.parse('https://example.com/api/view/v4/stream');
+      final Completer<void> delayCompleter = Completer<void>();
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: FakeSessionWsClient(
+          endpointsQueue: <SessionEndpoints>[
+            SessionEndpoints(ndgrViewApiUri: ndgrUri),
+          ],
+        ),
+        ndgrClient: FakeNdgrClient(),
+        legacyCommentClient: FakeLegacyCommentClient(),
+        delayExecutor: (_) => delayCompleter.future,
+        jitterProvider: (_) => Duration.zero,
+      );
+      addTearDown(supervisor.dispose);
+
+      final bool started = await supervisor.startConnection();
+      expect(started, isTrue);
+
+      final Future<bool> reconnectFuture = supervisor.onNdgrStreamStalled();
+      await _drainEventLoop();
+      expect(supervisor.status, ConnectionStatus.reconnecting);
+
+      final bool ended = await supervisor.endBroadcast();
+      expect(ended, isTrue);
+      expect(supervisor.status, ConnectionStatus.ended);
+
+      delayCompleter.complete();
+      final bool reconnectResult = await reconnectFuture;
+      expect(reconnectResult, isFalse);
+      expect(supervisor.status, ConnectionStatus.ended);
     });
 
     test('moves to failed when max reconnect attempts are exceeded', () async {
