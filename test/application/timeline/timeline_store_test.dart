@@ -46,6 +46,48 @@ void main() {
     ]);
   });
 
+  test('addAll keeps only unique ids from incoming batch', () {
+    final TimelineStore store = TimelineStore(capacity: 10);
+
+    store.addAll(<AppMessage>[
+      _message(1),
+      _message(2),
+      _message(1),
+      _message(3),
+    ]);
+
+    expect(store.messages.map((AppMessage m) => m.id).toList(), <String>[
+      'id-1',
+      'id-2',
+      'id-3',
+    ]);
+  });
+
+  test('addAll notifies listeners once when state changes', () {
+    final TimelineStore store = TimelineStore(capacity: 10);
+    int notifyCount = 0;
+    store.addListener(() {
+      notifyCount += 1;
+    });
+
+    store.addAll(<AppMessage>[_message(1), _message(2), _message(3)]);
+    expect(notifyCount, 1);
+
+    store.addAll(<AppMessage>[_message(1), _message(2)]);
+    expect(notifyCount, 1);
+  });
+
+  test('addAll trims oldest messages when capacity is exceeded', () {
+    final TimelineStore store = TimelineStore(capacity: 2);
+
+    store.addAll(<AppMessage>[_message(1), _message(2), _message(3)]);
+
+    expect(store.messages.map((AppMessage m) => m.id).toList(), <String>[
+      'id-2',
+      'id-3',
+    ]);
+  });
+
   test('does not add duplicate id', () {
     final TimelineStore store = TimelineStore(capacity: 10);
     final AppMessage original = _message(1);

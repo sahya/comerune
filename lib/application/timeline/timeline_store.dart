@@ -34,6 +34,27 @@ class TimelineStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  void addAll(List<AppMessage> messages) {
+    bool changed = false;
+
+    for (final AppMessage message in messages) {
+      if (_knownIds.contains(message.id)) {
+        continue;
+      }
+
+      _messages.addLast(message);
+      _knownIds.add(message.id);
+      changed = true;
+    }
+
+    if (!changed) {
+      return;
+    }
+
+    _trimOverflow();
+    notifyListeners();
+  }
+
   void clear() {
     if (_messages.isEmpty) {
       return;
