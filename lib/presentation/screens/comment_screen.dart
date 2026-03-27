@@ -114,6 +114,8 @@ class _CommentScreenState extends State<CommentScreen> {
       onPopInvokedWithResult: (bool didPop, Object? result) {
         unawaited(_handleBackNavigation(didPop));
       },
+      // TODO(PR#20-O3): AnimatedBuilder を ListenableBuilder に置き換える。
+      //   Flutter 3.10+ で非アニメーション用途には ListenableBuilder が推奨。
       child: AnimatedBuilder(
         animation: widget.connectionSupervisor,
         builder: (BuildContext context, _) {
@@ -538,6 +540,8 @@ class _CommentRow extends StatelessWidget {
       case AppMessageType.notification:
         return Colors.lightBlue.shade50;
       case AppMessageType.chat:
+      // TODO(PR#20-O1): gift/nicoad は _shouldDisplayMessage で除外済みのため
+      //   ここには到達しない。将来 gift/nicoad を表示する際に背景色を定義する。
       case AppMessageType.gift:
       case AppMessageType.nicoad:
         return null;
