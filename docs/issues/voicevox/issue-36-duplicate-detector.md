@@ -1,4 +1,4 @@
-# Issue 05: 重複抑制 (DuplicateDetector)
+# Issue #36: 重複抑制 (DuplicateDetector)
 
 ## Goal
 
@@ -34,8 +34,8 @@
 
 ## Dependencies
 
-- Issue 01（データモデル: NormalizedComment, SpeechSettings）
-- Issue 02（CommentNormalizer に統合するため）
+- #32（データモデル: NormalizedComment, SpeechSettings）
+- #33（CommentNormalizer に統合するため）
 
 ## Acceptance Criteria
 

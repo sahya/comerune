@@ -1,4 +1,4 @@
-# Issue 07: 設定リポジトリ (SettingsRepository)
+# Issue #38: 設定リポジトリ (SettingsRepository)
 
 ## Goal
 
@@ -31,7 +31,7 @@ interface SettingsRepository {
 
 ## Dependencies
 
-- Issue 01（データモデル: SpeechSettings, ReplaceRule）
+- #32（データモデル: SpeechSettings, ReplaceRule）
 
 ## Acceptance Criteria
 

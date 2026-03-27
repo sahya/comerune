@@ -1,4 +1,4 @@
-# Issue 15: Flutter Dart ラッパー
+# Issue #48: Flutter Dart ラッパー
 
 ## Goal
 
@@ -52,7 +52,7 @@ abstract class CommentSpeechPlatform {
 
 ## Dependencies
 
-- Issue 14（Plugin 側の MethodChannel/EventChannel が実装済みであること）
+- #47（Plugin 側の MethodChannel/EventChannel が実装済みであること）
 
 ## Acceptance Criteria
 

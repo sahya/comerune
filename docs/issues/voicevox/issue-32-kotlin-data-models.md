@@ -1,4 +1,4 @@
-# Issue 01: Kotlin データモデル定義
+# Issue #32: Kotlin データモデル定義
 
 ## Goal
 

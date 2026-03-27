@@ -1,4 +1,4 @@
-# Issue 11: Audio Focus 制御
+# Issue #44: Audio Focus 制御
 
 ## Goal
 
@@ -33,7 +33,7 @@
 
 ## Dependencies
 
-- Issue 10（WavPlayer: Audio Focus を WavPlayer に統合するため）
+- #43（WavPlayer: Audio Focus を WavPlayer に統合するため）
 
 ## Acceptance Criteria
 

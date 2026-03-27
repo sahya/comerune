@@ -1,4 +1,4 @@
-# Issue 03: コメント整形 — URL・記号圧縮・絵文字変換
+# Issue #34: コメント整形 — URL・記号圧縮・絵文字変換
 
 ## Goal
 
@@ -36,16 +36,16 @@
 
 ## Non-scope
 
-- 辞書置換ルール（Issue 04）
-- NGワード（Issue 04）
-- 文字数制限（Issue 04）
+- 辞書置換ルール（#35）
+- NGワード（#35）
+- 文字数制限（#35）
 - 絵文字の「えもじ」置換対応（将来拡張）
 - 複雑な顔文字辞書
 
 ## Dependencies
 
-- Issue 01（データモデル）
-- Issue 02（CommentNormalizer 骨格。この Issue で変換ルールを追加する）
+- #32（データモデル）
+- #33（CommentNormalizer 骨格。この Issue で変換ルールを追加する）
 
 ## Acceptance Criteria
 

@@ -1,4 +1,4 @@
-# Issue 02: コメント整形 — 前処理・スキップ判定
+# Issue #33: コメント整形 — 前処理・スキップ判定
 
 ## Goal
 
@@ -33,17 +33,17 @@
 
 ## Non-scope
 
-- URL 処理（Issue 03）
-- 記号圧縮（Issue 03）
-- 絵文字変換の詳細ロジック（Issue 03）
-- 文字数制限（Issue 04）
-- 辞書置換（Issue 04）
-- NGワード（Issue 04）
-- 重複抑制（Issue 05）
+- URL 処理（#34）
+- 記号圧縮（#34）
+- 絵文字変換の詳細ロジック（#34）
+- 文字数制限（#35）
+- 辞書置換（#35）
+- NGワード（#35）
+- 重複抑制（#36）
 
 ## Dependencies
 
-- Issue 01（データモデル: RawComment, NormalizedComment, SpeechSettings）
+- #32（データモデル: RawComment, NormalizedComment, SpeechSettings）
 
 ## Acceptance Criteria
 

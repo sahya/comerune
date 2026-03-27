@@ -1,4 +1,4 @@
-# Issue 04: コメント整形 — 文字数制限・辞書置換・NGワード
+# Issue #35: コメント整形 — 文字数制限・辞書置換・NGワード
 
 ## Goal
 
@@ -42,9 +42,9 @@
 
 ## Dependencies
 
-- Issue 01（データモデル: SpeechSettings, ReplaceRule）
-- Issue 02（CommentNormalizer 骨格）
-- Issue 03（URL・記号変換が先に適用される前提）
+- #32（データモデル: SpeechSettings, ReplaceRule）
+- #33（CommentNormalizer 骨格）
+- #34（URL・記号変換が先に適用される前提）
 
 ## Acceptance Criteria
 
@@ -76,6 +76,6 @@
 ## Implementation Notes
 
 - 辞書置換で不正な正規表現が来る可能性があるため、`runCatching` で囲む（スケルトンコードにも実装済み）
-- 適用順序: NGワード判定 → URL/記号/絵文字変換（Issue 03）→ 辞書置換 → 文字数制限
+- 適用順序: NGワード判定 → URL/記号/絵文字変換（#34）→ 辞書置換 → 文字数制限
   - NGワードは整形前に判定する（変換後に判定すると意図しないマッチが起きうる）
 - `maxTextLength` の `coerceAtLeast(1)` で0以下の設定値を防ぐ

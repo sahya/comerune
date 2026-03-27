@@ -1,4 +1,4 @@
-# Issue 08: VOICEVOX Core JNI ブリッジ基盤
+# Issue #39: VOICEVOX Core JNI ブリッジ基盤
 
 ## Goal
 
@@ -78,14 +78,14 @@ JNI 境界を固定する理由: 0.16 系は今後も周辺 API が動く可能�
 
 ## Non-scope
 
-- C++ 側の本実装（Issue 08b）
-- OpenJTalk 辞書の assets 配置（Issue 09）
-- VVM モデルの配置（Issue 09）
-- VoicevoxEngineImpl の Kotlin 実装（Issue 09）
+- C++ 側の本実装（Issue #40）
+- OpenJTalk 辞書の assets 配置（Issue #42）
+- VVM モデルの配置（Issue #42）
+- VoicevoxEngineImpl の Kotlin 実装（Issue #42）
 
 ## Dependencies
 
-- なし（Issue 01 と並行可能）
+- なし（Issue #32 と並行可能）
 - ただし **.so ファイルのダウンロード** はオーナーの手動作業が必要
 
 ## Acceptance Criteria
