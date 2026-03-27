@@ -56,7 +56,6 @@ class BouyomiPacketBuilder {
   static const int headerLength = 15;
 
   static Uint8List buildHeader({
-    int command = commandSpeak,
     required int speed,
     required int tone,
     required int volume,
@@ -65,7 +64,7 @@ class BouyomiPacketBuilder {
     required int messageLength,
   }) {
     final ByteData data = ByteData(headerLength);
-    data.setInt16(0, command, Endian.little);
+    data.setInt16(0, commandSpeak, Endian.little);
     data.setInt16(2, speed, Endian.little);
     data.setInt16(4, tone, Endian.little);
     data.setInt16(6, volume, Endian.little);
@@ -101,7 +100,11 @@ class BouyomiEngine implements SpeechEngine {
   Future<void> speak(String text) async {
     final BouyomiSettings settings = _settingsProvider();
     final String host = settings.host.trim();
-    if (host.isEmpty || text.isEmpty) {
+    if (text.isEmpty) {
+      return;
+    }
+    if (host.isEmpty) {
+      _logInfo('Skipping utterance: Host is empty. Check settings.');
       return;
     }
 
@@ -130,17 +133,22 @@ class BouyomiEngine implements SpeechEngine {
       _logSkip('Socket operation timed out.', error, stackTrace);
     } on IOException catch (error, stackTrace) {
       _logSkip('Socket I/O failed.', error, stackTrace);
-    } on Object catch (error, stackTrace) {
+    } on Exception catch (error, stackTrace) {
       _logSkip('Unexpected speech error.', error, stackTrace);
     } finally {
       if (connection != null) {
         try {
-          await connection.close();
-        } on Object catch (_) {
+          await connection.close().timeout(_writeTimeout);
+        } on Exception catch (_) {
           // Ignore close failures. The utterance has already been skipped.
         }
       }
     }
+  }
+
+  @override
+  Future<void> stop() async {
+    // Bouyomi uses one connection per utterance and keeps no persistent stream.
   }
 
   static Future<BouyomiConnection> _defaultConnectionOpener(
@@ -178,6 +186,7 @@ class BouyomiEngine implements SpeechEngine {
       );
     }
 
+    _logInfo('Shift-JIS codec unavailable, falling back to UTF-8.');
     return _EncodedMessage(
       bytes: Uint8List.fromList(utf8.encode(text)),
       charset: BouyomiCharset.utf8,
@@ -207,6 +216,13 @@ class BouyomiEngine implements SpeechEngine {
       name: 'BouyomiEngine',
       error: error,
       stackTrace: stackTrace,
+    );
+  }
+
+  void _logInfo(String message) {
+    log(
+      message,
+      name: 'BouyomiEngine',
     );
   }
 }

@@ -4,8 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-
-import '../../../lib/domain/speech/bouyomi_engine.dart';
+import 'package:comerune/domain/speech/bouyomi_engine.dart';
 
 void main() {
   group('BouyomiPacketBuilder', () {
@@ -176,6 +175,24 @@ void main() {
       expect(connection.closed, isTrue);
     });
 
+    test('skips utterance when socket close times out', () async {
+      final _FakeConnection connection = _FakeConnection(
+        onClose: () async {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        },
+      );
+
+      final BouyomiEngine engine = BouyomiEngine(
+        settingsProvider: () => const BouyomiSettings(host: '127.0.0.1'),
+        writeTimeout: const Duration(milliseconds: 1),
+        connectionOpener: (String host, int port, Duration timeout) async =>
+            connection,
+      );
+
+      await expectLater(engine.speak('hello'), completes);
+      expect(connection.closed, isTrue);
+    });
+
     test('falls back to utf-8 when shift-jis codec is unavailable', () async {
       final _FakeConnection connection = _FakeConnection();
       final BouyomiEngine engine = BouyomiEngine(
@@ -200,7 +217,18 @@ void main() {
       expect(utf8.decode(body), '漢😀A');
     });
 
-    test('skips utterance when an unexpected error occurs', () async {
+    test('skips utterance when an unexpected exception occurs', () async {
+      final BouyomiEngine engine = BouyomiEngine(
+        settingsProvider: () => const BouyomiSettings(host: '127.0.0.1'),
+        connectionOpener: (String host, int port, Duration timeout) async {
+          throw Exception('unexpected failure');
+        },
+      );
+
+      await expectLater(engine.speak('hello'), completes);
+    });
+
+    test('rethrows non-exception errors', () async {
       final BouyomiEngine engine = BouyomiEngine(
         settingsProvider: () => const BouyomiSettings(host: '127.0.0.1'),
         connectionOpener: (String host, int port, Duration timeout) async {
@@ -208,7 +236,43 @@ void main() {
         },
       );
 
+      await expectLater(engine.speak('hello'), throwsStateError);
+    });
+
+    test('returns early when text is empty', () async {
+      bool openCalled = false;
+      final BouyomiEngine engine = BouyomiEngine(
+        settingsProvider: () => const BouyomiSettings(host: '127.0.0.1'),
+        connectionOpener: (String host, int port, Duration timeout) async {
+          openCalled = true;
+          return _FakeConnection();
+        },
+      );
+
+      await expectLater(engine.speak(''), completes);
+      expect(openCalled, isFalse);
+    });
+
+    test('returns early when host is empty', () async {
+      bool openCalled = false;
+      final BouyomiEngine engine = BouyomiEngine(
+        settingsProvider: () => const BouyomiSettings(host: '   '),
+        connectionOpener: (String host, int port, Duration timeout) async {
+          openCalled = true;
+          return _FakeConnection();
+        },
+      );
+
       await expectLater(engine.speak('hello'), completes);
+      expect(openCalled, isFalse);
+    });
+
+    test('stop completes as a no-op', () async {
+      final BouyomiEngine engine = BouyomiEngine(
+        settingsProvider: () => const BouyomiSettings(host: '127.0.0.1'),
+      );
+
+      await expectLater(engine.stop(), completes);
     });
   });
 }
@@ -216,9 +280,11 @@ void main() {
 class _FakeConnection implements BouyomiConnection {
   _FakeConnection({
     this.onFlush,
+    this.onClose,
   });
 
   final Future<void> Function()? onFlush;
+  final Future<void> Function()? onClose;
   final List<int> sentBytes = <int>[];
   bool flushed = false;
   bool closed = false;
@@ -239,5 +305,8 @@ class _FakeConnection implements BouyomiConnection {
   @override
   Future<void> close() async {
     closed = true;
+    if (onClose != null) {
+      await onClose!();
+    }
   }
 }
