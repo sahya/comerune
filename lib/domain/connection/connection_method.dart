@@ -1,0 +1,4 @@
+enum ConnectionMethod {
+  ndgr,
+  legacy,
+}
