@@ -179,6 +179,8 @@ class LegacyCommentClient {
     return sanitized.toString();
   }
 
+  // TODO(PR#19-O1): 切り詰め閾値が message_normalizer.dart の _maxLogStringLength(40) と
+  //  異なる(120)。URL フォールバック用に長めにしているが、意図を明示する定数化を検討。
   String _truncateForLog(String value) {
     if (value.length <= 120) {
       return value;
