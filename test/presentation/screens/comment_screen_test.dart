@@ -111,14 +111,47 @@ void main() {
           find.textContaining(kLegacyUnsupportedFormatMessage), findsOneWidget);
     });
 
-    testWidgets(
-        'shows stop button during active connection and reconnect button on ENDED',
-        (
+    testWidgets('does not render gift and nicoad messages on v1.2', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        _message(
+          id: 'chat-visible',
+          type: AppMessageType.chat,
+          content: '通常コメント',
+        ),
+        _message(
+          id: 'gift-hidden',
+          type: AppMessageType.gift,
+          content: 'ギフト',
+        ),
+        _message(
+          id: 'nicoad-hidden',
+          type: AppMessageType.nicoad,
+          content: 'ニコニ広告',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+        ),
+      );
+
+      expect(find.byKey(const Key('comment-row-chat-visible')), findsOneWidget);
+      expect(find.byKey(const Key('comment-row-gift-hidden')), findsNothing);
+      expect(find.byKey(const Key('comment-row-nicoad-hidden')), findsNothing);
+      expect(find.text('ギフト'), findsNothing);
+      expect(find.text('ニコニ広告'), findsNothing);
+    });
+
+    testWidgets('shows stop button during active connection', (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
       int stopCalls = 0;
-      int reconnectCalls = 0;
 
       await tester.pumpWidget(
         _buildScreen(
@@ -127,9 +160,6 @@ void main() {
           onStopAllConnections: () async {
             stopCalls += 1;
           },
-          onReconnectSameLv: () async {
-            reconnectCalls += 1;
-          },
         ),
       );
 
@@ -137,9 +167,26 @@ void main() {
       await tester.tap(find.byKey(const Key('stop-button')));
       await tester.pumpAndSettle();
       expect(stopCalls, 1);
+      expect(supervisor.status, ConnectionStatus.stopped);
+    });
+
+    testWidgets('shows reconnect button on ENDED and allows retry tap', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      int reconnectCalls = 0;
 
       expect(supervisor.endBroadcast(), isTrue);
-      await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          onReconnectSameLv: () async {
+            reconnectCalls += 1;
+          },
+        ),
+      );
+      await tester.pump();
 
       expect(find.byKey(const Key('reconnect-button')), findsOneWidget);
       expect(find.byKey(const Key('stop-button')), findsNothing);
@@ -234,6 +281,57 @@ void main() {
       );
     });
 
+    testWidgets(
+        'auto-scroll keeps working when ring-buffer update keeps same length',
+        (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final GlobalKey<_CommentScreenHostState> hostKey =
+          GlobalKey<_CommentScreenHostState>();
+
+      final List<AppMessage> initialMessages = List<AppMessage>.generate(
+        40,
+        (int index) => _message(
+          id: 'rb-initial-$index',
+          type: AppMessageType.chat,
+          content: 'comment-$index',
+        ),
+      );
+
+      await tester.pumpWidget(
+        _CommentScreenHost(
+          key: hostKey,
+          supervisor: supervisor,
+          initialLv: 'lv-ring',
+          initialMessages: initialMessages,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final ListView listView =
+          tester.widget(find.byKey(const Key('comment-list')));
+      final ScrollController controller = listView.controller!;
+      expect(
+        (controller.position.maxScrollExtent - controller.offset).abs() < 2,
+        isTrue,
+      );
+
+      final List<AppMessage> rotated = <AppMessage>[
+        ...initialMessages.sublist(1),
+        _message(
+          id: 'rb-new-tail',
+          type: AppMessageType.chat,
+          content: 'new tail\nline2\nline3\nline4\nline5',
+        ),
+      ];
+      hostKey.currentState!.replaceMessages(rotated);
+      await tester.pumpAndSettle();
+
+      expect(
+        (controller.position.maxScrollExtent - controller.offset).abs() < 2,
+        isTrue,
+      );
+    });
+
     testWidgets('shows snackbar on transition to FAILED', (
       WidgetTester tester,
     ) async {
@@ -251,7 +349,10 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      expect(find.text('コメントサーバーの取得に失敗しました'), findsOneWidget);
+      expect(
+        find.text('コメントサーバーの取得に失敗しました 再接続ボタンで再試行できます。'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('shows reconnect button on FAILED and allows retry tap', (
@@ -276,6 +377,10 @@ void main() {
 
       expect(find.byKey(const Key('reconnect-button')), findsOneWidget);
       expect(find.byKey(const Key('stop-button')), findsNothing);
+
+      final BuildContext context = tester.element(find.byType(CommentScreen));
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('reconnect-button')));
       await tester.pumpAndSettle();
@@ -398,6 +503,12 @@ class _CommentScreenHostState extends State<_CommentScreenHost> {
   void addMessage(AppMessage message) {
     setState(() {
       _messages = List<AppMessage>.from(_messages)..add(message);
+    });
+  }
+
+  void replaceMessages(List<AppMessage> messages) {
+    setState(() {
+      _messages = List<AppMessage>.from(messages);
     });
   }
 

@@ -60,6 +60,7 @@ class _CommentScreenState extends State<CommentScreen> {
   late final ScrollController _scrollController;
   late ConnectionStatus _lastStatus;
   bool _autoScrollEnabled = true;
+  bool _isStoppingForExit = false;
 
   @override
   void initState() {
@@ -92,7 +93,7 @@ class _CommentScreenState extends State<CommentScreen> {
     }
 
     final bool hasNewMessages =
-        widget.messages.length != oldWidget.messages.length;
+        _hasNewMessages(oldWidget.messages, widget.messages);
     if (hasNewMessages && _autoScrollEnabled) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToBottom();
@@ -112,20 +113,16 @@ class _CommentScreenState extends State<CommentScreen> {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
-      onPopInvokedWithResult: (bool didPop, Object? _) async {
-        if (didPop) {
-          return;
-        }
-
-        await _stopForExit();
-        if (mounted) {
-          Navigator.of(context).pop();
-        }
+      onPopInvoked: (bool didPop) {
+        unawaited(_handleBackNavigation(didPop));
       },
       child: AnimatedBuilder(
         animation: widget.connectionSupervisor,
         builder: (BuildContext context, _) {
           final ConnectionStatus status = widget.connectionSupervisor.status;
+          final List<AppMessage> visibleMessages = widget.messages
+              .where(_shouldDisplayMessage)
+              .toList(growable: false);
 
           return Scaffold(
             appBar: AppBar(
@@ -160,9 +157,9 @@ class _CommentScreenState extends State<CommentScreen> {
                   child: ListView.builder(
                     key: const Key('comment-list'),
                     controller: _scrollController,
-                    itemCount: widget.messages.length,
+                    itemCount: visibleMessages.length,
                     itemBuilder: (BuildContext context, int index) {
-                      final AppMessage message = widget.messages[index];
+                      final AppMessage message = visibleMessages[index];
                       return _CommentRow(message: message);
                     },
                   ),
@@ -174,6 +171,17 @@ class _CommentScreenState extends State<CommentScreen> {
         },
       ),
     );
+  }
+
+  Future<void> _handleBackNavigation(bool didPop) async {
+    if (didPop) {
+      return;
+    }
+
+    await _stopForExit();
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
   }
 
   Widget _buildBottomAction(ConnectionStatus status) {
@@ -233,12 +241,21 @@ class _CommentScreenState extends State<CommentScreen> {
     if (!mounted) {
       return;
     }
-    await Navigator.of(context).maybePop();
+    Navigator.of(context).pop();
   }
 
   Future<void> _stopForExit() async {
-    _markStoppedIfPossible();
-    await widget.onStopAllConnections();
+    if (_isStoppingForExit) {
+      return;
+    }
+    _isStoppingForExit = true;
+
+    try {
+      _markStoppedIfPossible();
+      await widget.onStopAllConnections();
+    } finally {
+      _isStoppingForExit = false;
+    }
   }
 
   void _markStoppedIfPossible() {
@@ -253,7 +270,7 @@ class _CommentScreenState extends State<CommentScreen> {
     if (_lastStatus != ConnectionStatus.failed &&
         currentStatus == ConnectionStatus.failed) {
       final String message =
-          _failedMessage(widget.connectionSupervisor.lastError);
+          '${_failedMessage(widget.connectionSupervisor.lastError)} 再接続ボタンで再試行できます。';
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) {
           return;
@@ -300,9 +317,7 @@ class _CommentScreenState extends State<CommentScreen> {
 
     final bool nearBottom = _isNearBottom();
     if (nearBottom && !_autoScrollEnabled) {
-      setState(() {
-        _autoScrollEnabled = true;
-      });
+      _autoScrollEnabled = true;
       return;
     }
 
@@ -310,10 +325,39 @@ class _CommentScreenState extends State<CommentScreen> {
         !nearBottom &&
         _scrollController.position.userScrollDirection ==
             ScrollDirection.forward) {
-      setState(() {
-        _autoScrollEnabled = false;
-      });
+      _autoScrollEnabled = false;
     }
+  }
+
+  bool _shouldDisplayMessage(AppMessage message) {
+    switch (message.type) {
+      case AppMessageType.chat:
+      case AppMessageType.operator:
+      case AppMessageType.notification:
+        return true;
+      case AppMessageType.gift:
+      case AppMessageType.nicoad:
+        return false;
+    }
+  }
+
+  bool _hasNewMessages(
+    List<AppMessage> previous,
+    List<AppMessage> current,
+  ) {
+    if (identical(previous, current)) {
+      return false;
+    }
+    if (current.isEmpty) {
+      return false;
+    }
+    if (previous.isEmpty) {
+      return true;
+    }
+    if (previous.length != current.length) {
+      return true;
+    }
+    return previous.last.id != current.last.id;
   }
 
   bool _isNearBottom() {
