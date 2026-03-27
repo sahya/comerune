@@ -5,6 +5,11 @@ import '../models/app_message.dart';
 
 const String kLegacyUnsupportedFormatContent = 'legacy: 未対応フォーマット';
 
+bool isLegacyUnsupportedFormatMessage(AppMessage message) {
+  return message.type == AppMessageType.notification &&
+      message.content == kLegacyUnsupportedFormatContent;
+}
+
 typedef LegacyMessageIdGenerator = String Function();
 
 abstract interface class LegacyChatExtractor {
@@ -45,9 +50,11 @@ class DefaultLegacyChatExtractor implements LegacyChatExtractor {
       return null;
     }
 
-    final String? userId = _readString(chat['user_id']) ?? _readString(chat['userId']);
-    final DateTime timestamp =
-        _parseTimestamp(chat['timestamp']) ?? _parseTimestamp(chat['date']) ?? receivedAt;
+    final String? userId =
+        _readString(chat['user_id']) ?? _readString(chat['userId']);
+    final DateTime timestamp = _parseTimestamp(chat['timestamp']) ??
+        _parseTimestamp(chat['date']) ??
+        receivedAt;
 
     return LegacyChatExtraction(
       content: content,
@@ -58,7 +65,8 @@ class DefaultLegacyChatExtractor implements LegacyChatExtractor {
 
   Map<String, Object?> _toObjectMap(Map<dynamic, dynamic> source) {
     return source.map(
-      (dynamic key, dynamic value) => MapEntry(key.toString(), value as Object?),
+      (dynamic key, dynamic value) =>
+          MapEntry(key.toString(), value as Object?),
     );
   }
 
@@ -105,9 +113,10 @@ class MessageNormalizer {
     LegacyChatExtractor? legacyChatExtractor,
     LegacyMessageIdGenerator? idGenerator,
     DateTime Function()? clockNow,
-  }) : _legacyChatExtractor = legacyChatExtractor ?? const DefaultLegacyChatExtractor(),
-       _clockNow = clockNow ?? DateTime.now,
-       _idGenerator = idGenerator;
+  })  : _legacyChatExtractor =
+            legacyChatExtractor ?? const DefaultLegacyChatExtractor(),
+        _clockNow = clockNow ?? DateTime.now,
+        _idGenerator = idGenerator;
 
   final LegacyChatExtractor _legacyChatExtractor;
   final DateTime Function() _clockNow;
@@ -140,7 +149,8 @@ class MessageNormalizer {
     }
 
     final Map<String, Object?> payload = decoded.map(
-      (dynamic key, dynamic value) => MapEntry(key.toString(), value as Object?),
+      (dynamic key, dynamic value) =>
+          MapEntry(key.toString(), value as Object?),
     );
 
     final LegacyChatExtraction? extraction =

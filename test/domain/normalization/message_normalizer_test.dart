@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../../lib/domain/models/app_message.dart';
-import '../../../lib/domain/normalization/message_normalizer.dart';
+import 'package:comerune/domain/models/app_message.dart';
+import 'package:comerune/domain/normalization/message_normalizer.dart';
 
 void main() {
   group('MessageNormalizer.normalizeLegacyJson', () {
@@ -23,6 +23,7 @@ void main() {
         message.timestamp,
         DateTime.fromMillisecondsSinceEpoch(1710939600 * 1000, isUtc: true),
       );
+      expect(isLegacyUnsupportedFormatMessage(message), isFalse);
     });
 
     test('returns unsupported-format message when chat key is missing', () {
@@ -41,6 +42,7 @@ void main() {
       expect(message.content, kLegacyUnsupportedFormatContent);
       expect(message.userId, isNull);
       expect(message.timestamp, receivedAt);
+      expect(isLegacyUnsupportedFormatMessage(message), isTrue);
     });
 
     test('returns null when JSON parse fails', () {
@@ -48,7 +50,8 @@ void main() {
         idGenerator: _sequentialIdGenerator(),
       );
 
-      final AppMessage? message = normalizer.normalizeLegacyJson('{invalid-json');
+      final AppMessage? message =
+          normalizer.normalizeLegacyJson('{invalid-json');
 
       expect(message, isNull);
     });
@@ -59,7 +62,8 @@ void main() {
         legacyChatExtractor: const _InjectedExtractor(),
       );
 
-      final AppMessage? message = normalizer.normalizeLegacyJson('{"other":true}');
+      final AppMessage? message =
+          normalizer.normalizeLegacyJson('{"other":true}');
 
       expect(message, isNotNull);
       expect(message!.type, AppMessageType.chat);

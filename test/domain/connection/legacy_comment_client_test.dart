@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../../lib/domain/connection/legacy_comment_client.dart';
-import '../../../lib/domain/models/app_message.dart';
-import '../../../lib/domain/normalization/message_normalizer.dart';
+import 'package:comerune/domain/connection/legacy_comment_client.dart';
+import 'package:comerune/domain/models/app_message.dart';
+import 'package:comerune/domain/normalization/message_normalizer.dart';
 
 void main() {
   group('LegacyCommentClient', () {
@@ -99,7 +99,25 @@ void main() {
       await client.dispose();
     });
 
-    test('notifies connectionFailed when websocket connection throws', () async {
+    test('notifies streamError when websocket stream emits an error', () async {
+      final _FakeLegacyWebSocket fakeSocket = _FakeLegacyWebSocket();
+      final LegacyCommentClient client = LegacyCommentClient(
+        webSocketConnector: (_) async => fakeSocket,
+      );
+
+      final Future<LegacyCommentClientError> firstError = client.errors.first;
+      await client.connect('wss://legacy.example/ws');
+      fakeSocket.addError(StateError('stream failed'));
+
+      final LegacyCommentClientError error = await firstError;
+      expect(error.code, LegacyCommentClientErrorCode.streamError);
+      expect(error.cause, isA<StateError>());
+
+      await client.dispose();
+    });
+
+    test('notifies connectionFailed when websocket connection throws',
+        () async {
       final LegacyCommentClient client = LegacyCommentClient(
         webSocketConnector: (_) async => throw StateError('connect failed'),
       );
@@ -141,6 +159,12 @@ class _FakeLegacyWebSocket implements LegacyWebSocket {
   void add(Object? event) {
     if (!_closed) {
       _controller.add(event);
+    }
+  }
+
+  void addError(Object error) {
+    if (!_closed) {
+      _controller.addError(error);
     }
   }
 
