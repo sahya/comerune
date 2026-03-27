@@ -5,9 +5,11 @@ import 'package:comerune/domain/speech/speech_queue_controller.dart';
 void main() {
   group('SpeechQueueController', () {
     test('drops oldest items when queue limit is exceeded', () {
+      final DateTime base = DateTime.parse('2026-03-22T00:00:00Z');
       final SpeechQueueController controller = SpeechQueueController(
         queueLimit: 2,
         maxDelay: const Duration(minutes: 1),
+        nowProvider: () => base,
       );
 
       expect(
@@ -105,7 +107,10 @@ void main() {
     });
 
     test('replaces URL with fixed text URL', () {
-      final SpeechQueueController controller = SpeechQueueController();
+      final DateTime base = DateTime.parse('2026-03-22T00:00:00Z');
+      final SpeechQueueController controller = SpeechQueueController(
+        nowProvider: () => base,
+      );
 
       expect(
         controller.enqueue(
@@ -124,7 +129,10 @@ void main() {
     });
 
     test('suppresses consecutive same-user comments within one second', () {
-      final SpeechQueueController controller = SpeechQueueController();
+      final DateTime base = DateTime.parse('2026-03-22T00:00:00Z');
+      final SpeechQueueController controller = SpeechQueueController(
+        nowProvider: () => base,
+      );
 
       expect(
         controller.enqueue(
@@ -153,8 +161,10 @@ void main() {
     });
 
     test('skips comments that match ng word regular expressions', () {
+      final DateTime base = DateTime.parse('2026-03-22T00:00:00Z');
       final SpeechQueueController controller = SpeechQueueController(
         ngWordPatterns: <String>[r'spam|禁止'],
+        nowProvider: () => base,
       );
 
       expect(
@@ -171,8 +181,10 @@ void main() {
     });
 
     test('ignores invalid ng word regular expressions', () {
+      final DateTime base = DateTime.parse('2026-03-22T00:00:00Z');
       final SpeechQueueController controller = SpeechQueueController(
         ngWordPatterns: <String>['[', r'foo\d+'],
+        nowProvider: () => base,
       );
 
       expect(
@@ -189,8 +201,10 @@ void main() {
     });
 
     test('does not enqueue when auto read is off', () {
+      final DateTime base = DateTime.parse('2026-03-22T00:00:00Z');
       final SpeechQueueController controller = SpeechQueueController(
         autoReadEnabled: false,
+        nowProvider: () => base,
       );
 
       expect(

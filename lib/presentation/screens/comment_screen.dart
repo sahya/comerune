@@ -111,7 +111,7 @@ class _CommentScreenState extends State<CommentScreen> {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
-      onPopInvoked: (bool didPop) {
+      onPopInvokedWithResult: (bool didPop, Object? result) {
         unawaited(_handleBackNavigation(didPop));
       },
       child: AnimatedBuilder(
