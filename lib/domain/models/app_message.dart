@@ -10,7 +10,7 @@ class AppMessage {
   const AppMessage({
     required this.id,
     required this.timestamp,
-    required this.userId,
+    this.userId,
     required this.content,
     required this.type,
     this.raw,
