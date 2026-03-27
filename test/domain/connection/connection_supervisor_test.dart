@@ -126,7 +126,7 @@ void main() {
       );
       addTearDown(supervisor.dispose);
 
-      final bool started = await supervisor.startConnection();
+      final bool started = await _startAndDrain(supervisor);
       expect(started, isTrue);
 
       final bool ended = await supervisor.endBroadcast();
@@ -161,7 +161,7 @@ void main() {
       );
       addTearDown(supervisor.dispose);
 
-      final bool started = await supervisor.startConnection();
+      final bool started = await _startAndDrain(supervisor);
       expect(started, isTrue);
 
       final bool stalledReconnected = await supervisor.onNdgrStreamStalled();
@@ -174,7 +174,7 @@ void main() {
       expect(supervisor.status, ConnectionStatus.failed);
       expect(supervisor.canStartConnection, isTrue);
 
-      final bool restarted = await supervisor.startConnection();
+      final bool restarted = await _startAndDrain(supervisor);
       expect(restarted, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingNdgr);
       expect(supervisor.reconnectCount, 0);
@@ -207,7 +207,7 @@ void main() {
       );
       addTearDown(supervisor.dispose);
 
-      final bool started = await supervisor.startConnection();
+      final bool started = await _startAndDrain(supervisor);
       expect(started, isTrue);
       expect(supervisor.canRetryFromTerminal, isFalse);
 
@@ -221,6 +221,7 @@ void main() {
       expect(supervisor.canRetryFromTerminal, isTrue);
 
       final bool retried = await supervisor.retryConnectionFromTerminal();
+      await _drainEventLoop();
       expect(retried, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingNdgr);
       expect(supervisor.reconnectCount, 0);
@@ -268,7 +269,7 @@ void main() {
       );
       addTearDown(supervisor.dispose);
 
-      final bool started = await supervisor.startConnection();
+      final bool started = await _startAndDrain(supervisor);
       expect(started, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingNdgr);
 
@@ -301,7 +302,7 @@ void main() {
       );
       addTearDown(supervisor.dispose);
 
-      final bool firstStart = await supervisor.startConnection();
+      final bool firstStart = await _startAndDrain(supervisor);
       expect(firstStart, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingNdgr);
 
@@ -309,7 +310,7 @@ void main() {
       expect(stopped, isTrue);
       expect(supervisor.status, ConnectionStatus.stopped);
 
-      final bool secondStart = await supervisor.startConnection();
+      final bool secondStart = await _startAndDrain(supervisor);
       expect(secondStart, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingNdgr);
       expect(ndgrClient.connectedUris.last, secondUri);
@@ -335,7 +336,7 @@ void main() {
       );
       addTearDown(supervisor.dispose);
 
-      final bool started = await supervisor.startConnection();
+      final bool started = await _startAndDrain(supervisor);
       expect(started, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingNdgr);
 
@@ -366,7 +367,7 @@ void main() {
       );
       addTearDown(supervisor.dispose);
 
-      final bool started = await supervisor.startConnection();
+      final bool started = await _startAndDrain(supervisor);
       expect(started, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingLegacy);
 
@@ -400,7 +401,7 @@ void main() {
       );
       addTearDown(supervisor.dispose);
 
-      final bool started = await supervisor.startConnection();
+      final bool started = await _startAndDrain(supervisor);
       expect(started, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingLegacy);
 
@@ -436,7 +437,7 @@ void main() {
       );
       addTearDown(supervisor.dispose);
 
-      final bool started = await supervisor.startConnection();
+      final bool started = await _startAndDrain(supervisor);
       expect(started, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingNdgr);
       expect(ndgrClient.connectedUris.last, firstNdgrUri);
@@ -473,7 +474,7 @@ void main() {
       );
       addTearDown(supervisor.dispose);
 
-      final bool started = await supervisor.startConnection();
+      final bool started = await _startAndDrain(supervisor);
       expect(started, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingNdgr);
 
@@ -510,7 +511,7 @@ void main() {
       );
       addTearDown(supervisor.dispose);
 
-      final bool started = await supervisor.startConnection();
+      final bool started = await _startAndDrain(supervisor);
       expect(started, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingLegacy);
 
@@ -541,7 +542,7 @@ void main() {
       );
       addTearDown(supervisor.dispose);
 
-      final bool started = await supervisor.startConnection();
+      final bool started = await _startAndDrain(supervisor);
       expect(started, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingLegacy);
 
@@ -571,7 +572,7 @@ void main() {
       );
       addTearDown(supervisor.dispose);
 
-      final bool started = await supervisor.startConnection();
+      final bool started = await _startAndDrain(supervisor);
       expect(started, isTrue);
 
       final Future<bool> reconnectFuture = supervisor.onNdgrStreamStalled();
@@ -605,7 +606,7 @@ void main() {
       );
       addTearDown(supervisor.dispose);
 
-      final bool started = await supervisor.startConnection();
+      final bool started = await _startAndDrain(supervisor);
       expect(started, isTrue);
 
       final Future<bool> reconnectFuture = supervisor.onNdgrStreamStalled();
@@ -644,7 +645,7 @@ void main() {
       );
       addTearDown(supervisor.dispose);
 
-      final bool started = await supervisor.startConnection();
+      final bool started = await _startAndDrain(supervisor);
       expect(started, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingNdgr);
 
@@ -675,7 +676,7 @@ void main() {
       );
       addTearDown(supervisor.dispose);
 
-      expect(await supervisor.startConnection(), isTrue);
+      expect(await _startAndDrain(supervisor), isTrue);
       expect(await supervisor.onNdgrStreamStalled(), isFalse);
       expect(supervisor.status, ConnectionStatus.failed);
       expect(supervisor.reconnectCount, 6);
@@ -699,7 +700,7 @@ void main() {
       );
       addTearDown(supervisor.dispose);
 
-      final bool started = await supervisor.startConnection();
+      final bool started = await _startAndDrain(supervisor);
       expect(started, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingNdgr);
 
@@ -738,7 +739,7 @@ void main() {
       );
       addTearDown(supervisor.dispose);
 
-      final bool started = await supervisor.startConnection();
+      final bool started = await _startAndDrain(supervisor);
       expect(started, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingLegacy);
 
@@ -753,6 +754,12 @@ void main() {
       expect(supervisor.reconnectCount, 0);
     });
   });
+}
+
+Future<bool> _startAndDrain(ConnectionSupervisor supervisor) async {
+  final bool started = supervisor.startConnection();
+  await _drainEventLoop();
+  return started;
 }
 
 Future<void> _drainEventLoop() async {
