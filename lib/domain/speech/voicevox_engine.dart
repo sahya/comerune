@@ -1,149 +1,12 @@
 import 'dart:convert';
 import 'dart:developer';
-import 'dart:io';
-import 'dart:typed_data';
 
-import 'package:audioplayers/audioplayers.dart';
-
+import '../../data/speech/audioplayers_voicevox_audio_player.dart';
+import '../../data/speech/dart_io_voicevox_transport.dart';
 import 'speech_engine.dart';
+import 'voicevox_audio_player.dart';
 import 'voicevox_models.dart';
-
-class VoicevoxHttpResponse {
-  const VoicevoxHttpResponse({
-    required this.statusCode,
-    required this.bodyBytes,
-  });
-
-  final int statusCode;
-  final Uint8List bodyBytes;
-
-  String get bodyText => utf8.decode(bodyBytes);
-}
-
-abstract class VoicevoxTransport {
-  Future<VoicevoxHttpResponse> get(
-    Uri uri, {
-    Map<String, String> headers = const <String, String>{},
-  });
-
-  Future<VoicevoxHttpResponse> post(
-    Uri uri, {
-    Map<String, String> headers = const <String, String>{},
-    List<int>? bodyBytes,
-  });
-
-  Future<void> dispose();
-}
-
-class DartIoVoicevoxTransport implements VoicevoxTransport {
-  DartIoVoicevoxTransport({
-    HttpClient? client,
-    Duration requestTimeout = const Duration(seconds: 5),
-    Duration responseReadTimeout = const Duration(seconds: 5),
-  })  : _client = client ?? HttpClient(),
-        _requestTimeout = requestTimeout,
-        _responseReadTimeout = responseReadTimeout {
-    if (requestTimeout <= Duration.zero) {
-      throw ArgumentError.value(
-        requestTimeout,
-        'requestTimeout',
-        'must be greater than zero',
-      );
-    }
-    if (responseReadTimeout <= Duration.zero) {
-      throw ArgumentError.value(
-        responseReadTimeout,
-        'responseReadTimeout',
-        'must be greater than zero',
-      );
-    }
-  }
-
-  final HttpClient _client;
-  final Duration _requestTimeout;
-  final Duration _responseReadTimeout;
-
-  @override
-  Future<VoicevoxHttpResponse> get(
-    Uri uri, {
-    Map<String, String> headers = const <String, String>{},
-  }) {
-    return _send(
-      method: 'GET',
-      uri: uri,
-      headers: headers,
-    );
-  }
-
-  @override
-  Future<VoicevoxHttpResponse> post(
-    Uri uri, {
-    Map<String, String> headers = const <String, String>{},
-    List<int>? bodyBytes,
-  }) {
-    return _send(
-      method: 'POST',
-      uri: uri,
-      headers: headers,
-      bodyBytes: bodyBytes,
-    );
-  }
-
-  Future<VoicevoxHttpResponse> _send({
-    required String method,
-    required Uri uri,
-    Map<String, String> headers = const <String, String>{},
-    List<int>? bodyBytes,
-  }) async {
-    final HttpClientRequest request =
-        await _client.openUrl(method, uri).timeout(_requestTimeout);
-    headers.forEach(request.headers.set);
-    if (bodyBytes != null) {
-      request.add(bodyBytes);
-    }
-
-    final HttpClientResponse response =
-        await request.close().timeout(_requestTimeout);
-    final BytesBuilder bytesBuilder = BytesBuilder(copy: false);
-    await for (final List<int> chunk
-        in response.timeout(_responseReadTimeout)) {
-      bytesBuilder.add(chunk);
-    }
-
-    return VoicevoxHttpResponse(
-      statusCode: response.statusCode,
-      bodyBytes: bytesBuilder.takeBytes(),
-    );
-  }
-
-  @override
-  Future<void> dispose() async {
-    _client.close(force: false);
-  }
-}
-
-abstract class VoicevoxAudioPlayer {
-  Future<void> playBytes(Uint8List bytes);
-
-  Future<void> dispose();
-}
-
-class AudioplayersVoicevoxAudioPlayer implements VoicevoxAudioPlayer {
-  AudioplayersVoicevoxAudioPlayer({AudioPlayer? player})
-      : _player = player ?? AudioPlayer();
-
-  final AudioPlayer _player;
-
-  @override
-  Future<void> playBytes(Uint8List bytes) async {
-    await _player.play(BytesSource(bytes));
-  }
-
-  @override
-  Future<void> dispose() async {
-    await _player.dispose();
-  }
-}
+import 'voicevox_transport.dart';
 
 class VoicevoxEngine implements SpeechEngine {
   VoicevoxEngine({
@@ -158,6 +21,9 @@ class VoicevoxEngine implements SpeechEngine {
         _audioPlayer = audioPlayer ?? AudioplayersVoicevoxAudioPlayer(),
         _ownsTransport = transport == null,
         _ownsAudioPlayer = audioPlayer == null;
+
+  static const int _httpStatusOk = 200;
+  static const String _jsonContentType = 'application/json';
 
   final VoicevoxEndpoint _endpoint;
   final VoicevoxSettingsResolver _settingsResolver;
@@ -181,7 +47,7 @@ class VoicevoxEngine implements SpeechEngine {
           speakerId: settings.speakerId,
         ),
       );
-      if (audioQueryResponse.statusCode != HttpStatus.ok) {
+      if (audioQueryResponse.statusCode != _httpStatusOk) {
         _logSkip('audio_query failed: ${audioQueryResponse.statusCode}');
         return;
       }
@@ -196,12 +62,12 @@ class VoicevoxEngine implements SpeechEngine {
 
       final VoicevoxHttpResponse synthesisResponse = await _transport.post(
         _endpoint.synthesisUri(speakerId: settings.speakerId),
-        headers: <String, String>{
-          HttpHeaders.contentTypeHeader: 'application/json',
+        headers: const <String, String>{
+          'content-type': _jsonContentType,
         },
         bodyBytes: utf8.encode(jsonEncode(decodedAudioQuery)),
       );
-      if (synthesisResponse.statusCode != HttpStatus.ok) {
+      if (synthesisResponse.statusCode != _httpStatusOk) {
         _logSkip('synthesis failed: ${synthesisResponse.statusCode}');
         return;
       }
@@ -212,8 +78,10 @@ class VoicevoxEngine implements SpeechEngine {
 
       await _audioPlayer.playBytes(synthesisResponse.bodyBytes);
     } catch (error, stackTrace) {
-      _logSkip('voice synthesis/playback error: $error',
-          stackTrace: stackTrace);
+      _logSkip(
+        'voice synthesis/playback error: $error',
+        stackTrace: stackTrace,
+      );
     }
   }
 
@@ -222,7 +90,7 @@ class VoicevoxEngine implements SpeechEngine {
       final VoicevoxHttpResponse response = await _transport.get(
         _endpoint.speakersUri,
       );
-      if (response.statusCode != HttpStatus.ok) {
+      if (response.statusCode != _httpStatusOk) {
         log(
           'Failed to fetch speakers: ${response.statusCode}',
           name: 'VoicevoxEngine',
@@ -293,6 +161,7 @@ class VoicevoxEngine implements SpeechEngine {
     }
   }
 
+  @override
   Future<void> dispose() async {
     if (_ownsAudioPlayer) {
       await _audioPlayer.dispose();

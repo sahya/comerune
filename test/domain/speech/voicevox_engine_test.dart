@@ -2,10 +2,11 @@ import 'dart:collection';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:comerune/domain/speech/voicevox_audio_player.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import '../../../lib/domain/speech/voicevox_engine.dart';
-import '../../../lib/domain/speech/voicevox_models.dart';
+import 'package:comerune/domain/speech/voicevox_engine.dart';
+import 'package:comerune/domain/speech/voicevox_models.dart';
+import 'package:comerune/domain/speech/voicevox_transport.dart';
 
 void main() {
   group('VoicevoxEngine.speak', () {
@@ -220,6 +221,22 @@ void main() {
       expect(speakers.single.label, '取得失敗');
     });
   });
+
+  group('VoicevoxEngine.dispose', () {
+    test('disposes transport and audio player', () async {
+      final FakeVoicevoxTransport transport = FakeVoicevoxTransport();
+      final FakeVoicevoxAudioPlayer audioPlayer = FakeVoicevoxAudioPlayer();
+      final VoicevoxEngine engine = VoicevoxEngine(
+        transport: transport,
+        audioPlayer: audioPlayer,
+      );
+
+      await engine.dispose();
+
+      expect(transport.disposed, isTrue);
+      expect(audioPlayer.disposed, isTrue);
+    });
+  });
 }
 
 class RecordedRequest {
@@ -244,6 +261,7 @@ class FakeVoicevoxTransport implements VoicevoxTransport {
       <String, Queue<VoicevoxHttpResponse>>{};
   final Map<String, Object> _getErrors = <String, Object>{};
   final Map<String, Object> _postErrors = <String, Object>{};
+  bool disposed = false;
 
   void enqueueGet(String path, VoicevoxHttpResponse response) {
     _getResponses
@@ -312,7 +330,9 @@ class FakeVoicevoxTransport implements VoicevoxTransport {
   }
 
   @override
-  Future<void> dispose() async {}
+  Future<void> dispose() async {
+    disposed = true;
+  }
 }
 
 class FakeVoicevoxAudioPlayer implements VoicevoxAudioPlayer {
