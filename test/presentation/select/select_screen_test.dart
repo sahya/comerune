@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:comerune/application/timeline/timeline_store.dart';
 import 'package:comerune/domain/connection/connection_supervisor.dart';
+import 'package:comerune/domain/models/app_message.dart';
 import 'package:comerune/presentation/select/select_screen.dart';
+import 'package:comerune/presentation/screens/comment_screen.dart';
 
 Finder inputField() => find.byKey(const Key('select_screen_input'));
 Finder connectButton() => find.byKey(const Key('select_screen_connect_button'));
@@ -12,9 +15,7 @@ void main() {
     ConnectionSupervisor supervisor,
   ) async {
     await tester.pumpWidget(
-      MaterialApp(
-        home: SelectScreen(connectionSupervisor: supervisor),
-      ),
+      MaterialApp(home: SelectScreen(connectionSupervisor: supervisor)),
     );
     await tester.pump();
   }
@@ -26,8 +27,9 @@ void main() {
 
     await pumpSelectScreen(tester, supervisor);
 
-    final ElevatedButton button =
-        tester.widget<ElevatedButton>(connectButton());
+    final ElevatedButton button = tester.widget<ElevatedButton>(
+      connectButton(),
+    );
     expect(button.onPressed, isNull);
   });
 
@@ -40,8 +42,9 @@ void main() {
     await tester.enterText(inputField(), '   ');
     await tester.pump();
 
-    final ElevatedButton button =
-        tester.widget<ElevatedButton>(connectButton());
+    final ElevatedButton button = tester.widget<ElevatedButton>(
+      connectButton(),
+    );
     expect(button.onPressed, isNull);
   });
 
@@ -58,7 +61,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(supervisor.status, ConnectionStatus.connectingSessionWs);
-    expect(find.text('CommentScreen'), findsOneWidget);
+    expect(find.byType(CommentScreen), findsOneWidget);
     expect(find.text('lv345678901'), findsOneWidget);
   });
 
@@ -78,7 +81,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(supervisor.status, ConnectionStatus.connectingSessionWs);
-    expect(find.text('CommentScreen'), findsOneWidget);
+    expect(find.byType(CommentScreen), findsOneWidget);
     expect(find.text('lv345678901'), findsOneWidget);
   });
 
@@ -97,7 +100,7 @@ void main() {
     expect(find.text('放送IDが見つかりません'), findsOneWidget);
     expect(supervisor.status, ConnectionStatus.idle);
     expect(supervisor.lastError, isNull);
-    expect(find.text('CommentScreen'), findsNothing);
+    expect(find.byType(CommentScreen), findsNothing);
   });
 
   testWidgets('pressing Enter starts connection', (WidgetTester tester) async {
@@ -111,7 +114,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(supervisor.status, ConnectionStatus.connectingSessionWs);
-    expect(find.text('CommentScreen'), findsOneWidget);
+    expect(find.byType(CommentScreen), findsOneWidget);
   });
 
   testWidgets('pressing Enter does nothing when input is empty', (
@@ -127,7 +130,7 @@ void main() {
     await tester.pump();
 
     expect(supervisor.status, ConnectionStatus.idle);
-    expect(find.text('CommentScreen'), findsNothing);
+    expect(find.byType(CommentScreen), findsNothing);
     expect(find.text('放送IDが見つかりません'), findsNothing);
   });
 
@@ -144,8 +147,9 @@ void main() {
     await tester.pump();
 
     final TextField input = tester.widget<TextField>(inputField());
-    final ElevatedButton button =
-        tester.widget<ElevatedButton>(connectButton());
+    final ElevatedButton button = tester.widget<ElevatedButton>(
+      connectButton(),
+    );
 
     expect(input.enabled, isFalse);
     expect(button.onPressed, isNull);
@@ -164,8 +168,9 @@ void main() {
     await tester.enterText(inputField(), 'lv345678901');
     await tester.pump();
 
-    final ElevatedButton button =
-        tester.widget<ElevatedButton>(connectButton());
+    final ElevatedButton button = tester.widget<ElevatedButton>(
+      connectButton(),
+    );
     expect(button.onPressed, isNotNull);
   });
 
@@ -176,24 +181,22 @@ void main() {
 
     expect(supervisor.startConnection(), isTrue);
     expect(supervisor.onSessionWsConnected(), isTrue);
-    expect(
-      supervisor.fail(ConnectionErrorCode.sessionWsConnectFailed),
-      isTrue,
-    );
+    expect(supervisor.fail(ConnectionErrorCode.sessionWsConnectFailed), isTrue);
 
     await pumpSelectScreen(tester, supervisor);
     await tester.enterText(inputField(), 'lv345678901');
     await tester.pump();
 
-    final ElevatedButton button =
-        tester.widget<ElevatedButton>(connectButton());
+    final ElevatedButton button = tester.widget<ElevatedButton>(
+      connectButton(),
+    );
     expect(button.onPressed, isNotNull);
 
     await tester.tap(connectButton());
     await tester.pumpAndSettle();
 
     expect(supervisor.status, ConnectionStatus.connectingSessionWs);
-    expect(find.text('CommentScreen'), findsOneWidget);
+    expect(find.byType(CommentScreen), findsOneWidget);
   });
 
   testWidgets('button can reconnect from ENDED state', (
@@ -210,14 +213,49 @@ void main() {
     await tester.enterText(inputField(), 'lv345678901');
     await tester.pump();
 
-    final ElevatedButton button =
-        tester.widget<ElevatedButton>(connectButton());
+    final ElevatedButton button = tester.widget<ElevatedButton>(
+      connectButton(),
+    );
     expect(button.onPressed, isNotNull);
 
     await tester.tap(connectButton());
     await tester.pumpAndSettle();
 
     expect(supervisor.status, ConnectionStatus.connectingSessionWs);
-    expect(find.text('CommentScreen'), findsOneWidget);
+    expect(find.byType(CommentScreen), findsOneWidget);
+  });
+
+  testWidgets('passes timeline messages to comment screen', (
+    WidgetTester tester,
+  ) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+    final TimelineStore timelineStore = TimelineStore();
+    timelineStore.add(
+      AppMessage(
+        id: 'msg-1',
+        timestamp: DateTime(2026, 3, 28, 10, 0, 0),
+        userId: 'user-1',
+        content: 'hello',
+        type: AppMessageType.chat,
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SelectScreen(
+          connectionSupervisor: supervisor,
+          timelineStore: timelineStore,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.enterText(inputField(), 'lv345678901');
+    await tester.pump();
+    await tester.tap(connectButton());
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CommentScreen), findsOneWidget);
+    expect(find.byKey(const Key('comment-row-msg-1')), findsOneWidget);
   });
 }
