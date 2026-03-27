@@ -88,14 +88,8 @@ class SessionWsClient {
         _endpointResolveTimeout = endpointResolveTimeout,
         _keepaliveResponses = keepaliveResponses == null
             ? const <String, Map<String, Object>>{
-                'servertime': <String, Object>{
-                  'type': 'pong',
-                  'body': <String, Object>{},
-                },
-                'ping': <String, Object>{
-                  'type': 'pong',
-                  'body': <String, Object>{},
-                },
+                'servertime': <String, Object>{'type': 'pong'},
+                'ping': <String, Object>{'type': 'pong'},
               }
             : keepaliveResponses.map<String, Map<String, Object>>(
                 (String key, Map<String, Object> value) =>
@@ -286,7 +280,10 @@ class SessionWsClient {
           'latency': 'low',
           'chasePlay': false,
         },
-        'room': <String, Object>{'protocol': 'webSocket', 'commentable': true},
+        'room': <String, Object>{
+          'protocol': 'webSocket',
+          'commentable': false,
+        },
         'reconnect': false,
       },
     });
@@ -642,7 +639,7 @@ class SessionWsMessageParser {
   }
 
   static String _normalizeDetectedUrl(String url) {
-    return url.replaceAll(RegExp('["\\\'\\],]+\$'), '');
+    return url.replaceAll(RegExp('["\\\'\\],}]+\$'), '');
   }
 }
 
