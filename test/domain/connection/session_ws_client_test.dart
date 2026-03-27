@@ -48,6 +48,18 @@ void main() {
       );
     });
 
+    test('normalizes detected URL by trimming trailing brace', () {
+      final SessionEndpointResolution resolution =
+          SessionWsMessageParser.extractEndpoints(<String, Object?>{
+        'messageServer': 'wss://msgd.live2.nicovideo.jp/websocket?thread=123}',
+      });
+
+      expect(
+        resolution.legacyWebSocketUrl,
+        'wss://msgd.live2.nicovideo.jp/websocket?thread=123',
+      );
+    });
+
     test('detects broadcast end event', () {
       expect(
         SessionWsMessageParser.detectBroadcastEnd(<String, Object?>{
@@ -191,6 +203,10 @@ void main() {
           jsonDecode(fakeChannel.sentMessages.first as String)
               as Map<String, dynamic>;
       expect(startWatching['type'], 'startWatching');
+      expect(
+        (startWatching['data'] as Map<String, dynamic>)['room'],
+        <String, dynamic>{'protocol': 'webSocket', 'commentable': false},
+      );
 
       fakeChannel.pushIncoming(
         jsonEncode(<String, Object?>{
@@ -206,6 +222,7 @@ void main() {
           jsonDecode(fakeChannel.sentMessages.last as String)
               as Map<String, dynamic>;
       expect(pong['type'], 'pong');
+      expect(pong.containsKey('body'), isFalse);
       expect(
         events.map((SessionWsEvent e) => e.type),
         contains(SessionWsEventType.connected),
@@ -271,6 +288,7 @@ void main() {
           jsonDecode(fakeChannel.sentMessages.last as String)
               as Map<String, dynamic>;
       expect(pong['type'], 'pong');
+      expect(pong.containsKey('body'), isFalse);
       await client.dispose();
     });
 
