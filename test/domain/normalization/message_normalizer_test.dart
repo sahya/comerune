@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/domain/models/app_message.dart';
@@ -7,7 +9,7 @@ void main() {
   group('sanitizeLegacyPayloadForLog', () {
     test('masks sensitive keys including auth and credential', () {
       final String sanitized = sanitizeLegacyPayloadForLog(
-        '{"auth":"Bearer abc","credential":"secret","token":"t","safe":"ok"}',
+        _legacyFixture('log_sensitive_payload.json'),
       );
 
       expect(sanitized, contains('"auth":"***"'));
@@ -17,9 +19,8 @@ void main() {
     });
 
     test('sanitizes nested url and truncates long strings', () {
-      final String longValue = 'a' * 50;
       final String sanitized = sanitizeLegacyPayloadForLog(
-        '{"outer":{"url":"https://example.com/path?token=abc","message":"$longValue"}}',
+        _legacyFixture('log_nested_payload.json'),
       );
 
       expect(sanitized, contains('"url":"https://example.com/path"'));
@@ -28,7 +29,7 @@ void main() {
 
     test('falls back when payload is not json', () {
       final String sanitized = sanitizeLegacyPayloadForLog(
-        'wss://legacy.example/ws?token=abc',
+        _legacyFixture('log_non_json_url.txt'),
       );
 
       expect(sanitized, 'wss://legacy.example/ws');
@@ -42,7 +43,7 @@ void main() {
       );
 
       final AppMessage? message = normalizer.normalizeLegacyJson(
-        '{"chat":{"content":"hello","user_id":"user-1","timestamp":1710939600}}',
+        _legacyFixture('chat_message.json'),
       );
 
       expect(message, isNotNull);
@@ -64,7 +65,7 @@ void main() {
       );
 
       final AppMessage? message = normalizer.normalizeLegacyJson(
-        '{"ping":"pong"}',
+        _legacyFixture('unsupported_ping.json'),
         receivedAt: receivedAt,
       );
 
@@ -96,7 +97,7 @@ void main() {
       );
 
       final AppMessage? message =
-          normalizer.normalizeLegacyJson('{invalid-json');
+          normalizer.normalizeLegacyJson(_legacyFixture('invalid_json.txt'));
 
       expect(message, isNull);
     });
@@ -107,8 +108,9 @@ void main() {
         legacyChatExtractor: const _InjectedExtractor(),
       );
 
-      final AppMessage? message =
-          normalizer.normalizeLegacyJson('{"other":true}');
+      final AppMessage? message = normalizer.normalizeLegacyJson(
+        _legacyFixture('other_payload.json'),
+      );
 
       expect(message, isNotNull);
       expect(message!.type, AppMessageType.chat);
@@ -123,7 +125,7 @@ void main() {
       );
 
       final AppMessage? message = normalizer.normalizeLegacyJson(
-        '{"chat":{"content":42,"user_id":"user-3","timestamp":1710939600}}',
+        _legacyFixture('chat_non_string_content.json'),
       );
 
       expect(message, isNotNull);
@@ -156,4 +158,8 @@ class _InjectedExtractor implements LegacyChatExtractor {
       timestamp: DateTime.parse('2026-03-22T12:34:56Z'),
     );
   }
+}
+
+String _legacyFixture(String name) {
+  return File('test/fixtures/legacy/$name').readAsStringSync();
 }
