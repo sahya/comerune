@@ -9,8 +9,10 @@ import '../../../lib/domain/models/app_message.dart';
 
 void main() {
   group('NdgrClient', () {
-    test('limits initial history count across backward and previous streams', () async {
-      final HttpServer server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    test('limits initial history count across backward and previous streams',
+        () async {
+      final HttpServer server =
+          await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       addTearDown(() async {
         await server.close(force: true);
       });
@@ -78,10 +80,12 @@ void main() {
       addTearDown(client.dispose);
 
       final List<AppMessage> messages = <AppMessage>[];
-      final StreamSubscription<NdgrClientEvent> subscription = client.events.listen((
+      final StreamSubscription<NdgrClientEvent> subscription =
+          client.events.listen((
         NdgrClientEvent event,
       ) {
-        if (event.type == NdgrClientEventType.message && event.message != null) {
+        if (event.type == NdgrClientEventType.message &&
+            event.message != null) {
           messages.add(event.message!);
         }
       });
@@ -94,8 +98,11 @@ void main() {
       expect(messages[1].content, 'previous-1');
     });
 
-    test('notifies stall on initial no-message period and stop aborts provided client connection', () async {
-      final HttpServer server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    test(
+        'notifies stall on initial no-message period and stop aborts provided client connection',
+        () async {
+      final HttpServer server =
+          await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       final Completer<void> releaseView = Completer<void>();
       addTearDown(() async {
         if (!releaseView.isCompleted) {
@@ -132,7 +139,8 @@ void main() {
       addTearDown(client.dispose);
 
       final Completer<Duration> stalled = Completer<Duration>();
-      final StreamSubscription<NdgrClientEvent> subscription = client.events.listen((
+      final StreamSubscription<NdgrClientEvent> subscription =
+          client.events.listen((
         NdgrClientEvent event,
       ) {
         if (event.type == NdgrClientEventType.stalled && !stalled.isCompleted) {
@@ -158,6 +166,47 @@ void main() {
 
       await connectFuture.timeout(const Duration(seconds: 1));
       expect(client.isRunning, isFalse);
+    });
+
+    test('reports connect failure only via Future exception', () async {
+      final HttpServer server =
+          await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() async {
+        await server.close(force: true);
+      });
+
+      server.listen((HttpRequest request) async {
+        request.response.statusCode = HttpStatus.internalServerError;
+        await request.response.close();
+      });
+
+      final Uri viewUri = Uri(
+        scheme: 'http',
+        host: server.address.host,
+        port: server.port,
+        path: '/view',
+      );
+
+      final NdgrClient client = NdgrClient(
+        stallThreshold: const Duration(minutes: 1),
+        stallCheckInterval: const Duration(seconds: 10),
+      );
+      addTearDown(client.dispose);
+
+      final List<NdgrClientEventType> eventTypes = <NdgrClientEventType>[];
+      final StreamSubscription<NdgrClientEvent> subscription =
+          client.events.listen((
+        NdgrClientEvent event,
+      ) {
+        eventTypes.add(event.type);
+      });
+      addTearDown(subscription.cancel);
+
+      await expectLater(
+        client.connect(viewUri),
+        throwsA(isA<HttpException>()),
+      );
+      expect(eventTypes, isEmpty);
     });
   });
 }

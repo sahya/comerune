@@ -11,7 +11,6 @@ import 'ndgr_stall_detector.dart';
 enum NdgrClientEventType {
   message,
   stalled,
-  error,
 }
 
 class NdgrClientEvent {
@@ -19,31 +18,20 @@ class NdgrClientEvent {
     required this.type,
     this.message,
     this.stallDuration,
-    this.error,
-    this.stackTrace,
   });
 
   const NdgrClientEvent.message(AppMessage message)
-    : this._(type: NdgrClientEventType.message, message: message);
+      : this._(type: NdgrClientEventType.message, message: message);
 
   const NdgrClientEvent.stalled(Duration stallDuration)
-    : this._(
-        type: NdgrClientEventType.stalled,
-        stallDuration: stallDuration,
-      );
-
-  const NdgrClientEvent.error(Object error, StackTrace stackTrace)
-    : this._(
-        type: NdgrClientEventType.error,
-        error: error,
-        stackTrace: stackTrace,
-      );
+      : this._(
+          type: NdgrClientEventType.stalled,
+          stallDuration: stallDuration,
+        );
 
   final NdgrClientEventType type;
   final AppMessage? message;
   final Duration? stallDuration;
-  final Object? error;
-  final StackTrace? stackTrace;
 }
 
 class NdgrClient {
@@ -56,17 +44,17 @@ class NdgrClient {
     Duration stallCheckInterval = const Duration(seconds: 1),
     Duration backwardSegmentInterval = const Duration(milliseconds: 7),
     DateTime Function()? now,
-  }) : _seedHttpClient = httpClient,
-       _httpClientFactory = httpClientFactory ?? HttpClient.new,
-       _protobufDecoder = protobufDecoder ?? NdgrProtobufDecoder(),
-       _normalizer = normalizer ?? NdgrMessageNormalizer(),
-       _stallDetector = NdgrStallDetector(
-         threshold: stallThreshold,
-         now: now,
-       ),
-       _now = now ?? DateTime.now,
-       _stallCheckInterval = stallCheckInterval,
-       _backwardSegmentInterval = backwardSegmentInterval;
+  })  : _seedHttpClient = httpClient,
+        _httpClientFactory = httpClientFactory ?? HttpClient.new,
+        _protobufDecoder = protobufDecoder ?? NdgrProtobufDecoder(),
+        _normalizer = normalizer ?? NdgrMessageNormalizer(),
+        _stallDetector = NdgrStallDetector(
+          threshold: stallThreshold,
+          now: now,
+        ),
+        _now = now ?? DateTime.now,
+        _stallCheckInterval = stallCheckInterval,
+        _backwardSegmentInterval = backwardSegmentInterval;
 
   final HttpClient Function() _httpClientFactory;
   HttpClient? _seedHttpClient;
@@ -89,6 +77,10 @@ class NdgrClient {
 
   bool get isRunning => _isRunning;
 
+  /// Connects to NDGR and streams comments.
+  ///
+  /// Failure is signaled only by this Future throwing.
+  /// `events` stream emits `message` / `stalled` events only.
   Future<void> connect(
     Uri viewApiUri, {
     int historyCount = 100,
@@ -116,7 +108,12 @@ class NdgrClient {
       if (_isStopped) {
         return;
       }
-      _emitError(error, stackTrace);
+      log(
+        'NDGR client connect failed',
+        name: 'NdgrClient',
+        error: error,
+        stackTrace: stackTrace,
+      );
       rethrow;
     } finally {
       _stopStallTimer();
@@ -153,7 +150,8 @@ class NdgrClient {
       final Uri fetchUri = _uriWithAt(viewApiUri, nextAt);
       nextAt = null;
 
-      await for (final NdgrChunkedEntry entry in _streamChunkedEntries(fetchUri)) {
+      await for (final NdgrChunkedEntry entry
+          in _streamChunkedEntries(fetchUri)) {
         if (_isStopped) {
           return;
         }
@@ -198,7 +196,8 @@ class NdgrClient {
     }
   }
 
-  Future<List<NdgrChunkedMessage>> _pullBackwards(Uri fetchUri, int want) async {
+  Future<List<NdgrChunkedMessage>> _pullBackwards(
+      Uri fetchUri, int want) async {
     if (want == 0) {
       return const <NdgrChunkedMessage>[];
     }
@@ -208,10 +207,12 @@ class NdgrClient {
     Uri? current = fetchUri;
 
     while (!_isStopped && current != null && length < want) {
-      final HttpClientResponse response = await _fetch(current, phase: 'backward');
+      final HttpClientResponse response =
+          await _fetch(current, phase: 'backward');
       final Uint8List bytes = await _readAllBytes(response);
 
-      final NdgrPackedSegment packed = _protobufDecoder.decodePackedSegment(bytes);
+      final NdgrPackedSegment packed =
+          _protobufDecoder.decodePackedSegment(bytes);
       buffer.insert(0, packed.messages);
       length += packed.messages.length;
 
@@ -236,7 +237,8 @@ class NdgrClient {
   Future<int> _retrieveMessages(Uri uri, {int? limit}) async {
     int emittedCount = 0;
 
-    await for (final NdgrChunkedMessage message in _streamChunkedMessages(uri)) {
+    await for (final NdgrChunkedMessage message
+        in _streamChunkedMessages(uri)) {
       if (_isStopped) {
         return emittedCount;
       }
@@ -384,18 +386,6 @@ class NdgrClient {
   void _stopStallTimer() {
     _stallTimer?.cancel();
     _stallTimer = null;
-  }
-
-  void _emitError(Object error, StackTrace stackTrace) {
-    log(
-      'NDGR client error',
-      name: 'NdgrClient',
-      error: error,
-      stackTrace: stackTrace,
-    );
-    if (!_eventsController.isClosed) {
-      _eventsController.add(NdgrClientEvent.error(error, stackTrace));
-    }
   }
 
   HttpClient get _activeHttpClient {
