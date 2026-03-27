@@ -10,6 +10,20 @@ import 'package:comerune/domain/speech/voicevox_transport.dart';
 
 void main() {
   group('VoicevoxEngine.speak', () {
+    test('does nothing when text is empty after trim', () async {
+      final FakeVoicevoxTransport transport = FakeVoicevoxTransport();
+      final FakeVoicevoxAudioPlayer audioPlayer = FakeVoicevoxAudioPlayer();
+      final VoicevoxEngine engine = VoicevoxEngine(
+        transport: transport,
+        audioPlayer: audioPlayer,
+      );
+
+      await engine.speak('   ');
+
+      expect(transport.requests, isEmpty);
+      expect(audioPlayer.playedBytes, isEmpty);
+    });
+
     test('calls /audio_query then /synthesis and plays synthesized audio',
         () async {
       final FakeVoicevoxTransport transport = FakeVoicevoxTransport();

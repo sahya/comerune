@@ -1,8 +1,6 @@
 import 'dart:convert';
 import 'dart:developer';
 
-import '../../data/speech/audioplayers_voicevox_audio_player.dart';
-import '../../data/speech/dart_io_voicevox_transport.dart';
 import 'speech_engine.dart';
 import 'voicevox_audio_player.dart';
 import 'voicevox_models.dart';
@@ -12,13 +10,13 @@ class VoicevoxEngine implements SpeechEngine {
   VoicevoxEngine({
     VoicevoxEndpoint endpoint = const VoicevoxEndpoint(),
     VoicevoxSettingsResolver? settingsResolver,
-    VoicevoxTransport? transport,
-    VoicevoxAudioPlayer? audioPlayer,
+    required VoicevoxTransport transport,
+    required VoicevoxAudioPlayer audioPlayer,
   })  : _endpoint = endpoint,
         _settingsResolver =
             settingsResolver ?? (() => const VoicevoxSpeechSettings()),
-        _transport = transport ?? DartIoVoicevoxTransport(),
-        _audioPlayer = audioPlayer ?? AudioplayersVoicevoxAudioPlayer();
+        _transport = transport,
+        _audioPlayer = audioPlayer;
 
   static const int _httpStatusOk = 200;
   static const String _jsonContentType = 'application/json';

@@ -6,8 +6,8 @@ import '../../domain/speech/voicevox_transport.dart';
 class DartIoVoicevoxTransport implements VoicevoxTransport {
   DartIoVoicevoxTransport({
     HttpClient? client,
-    Duration requestTimeout = const Duration(seconds: 5),
-    Duration responseReadTimeout = const Duration(seconds: 5),
+    Duration requestTimeout = const Duration(seconds: 10),
+    Duration responseReadTimeout = const Duration(seconds: 20),
   })  : _client = client ?? HttpClient(),
         _requestTimeout = requestTimeout,
         _responseReadTimeout = responseReadTimeout {
