@@ -132,6 +132,25 @@ void main() {
     expect(supervisor.status, ConnectionStatus.ended);
   });
 
+  test('does not reconnect after transitioning to FAILED', () {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    expect(supervisor.startConnection(), isTrue);
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(supervisor.onLegacyEndpointResolved(), isTrue);
+    expect(supervisor.fail(ConnectionErrorCode.legacyWsFailed), isTrue);
+    expect(supervisor.status, ConnectionStatus.failed);
+
+    expect(
+      supervisor.onStreamDisconnected(ConnectionErrorCode.legacyWsFailed),
+      isFalse,
+    );
+    expect(supervisor.reconnectViaSessionWs(), isFalse);
+    expect(supervisor.reconnectToNdgrStream(), isFalse);
+    expect(supervisor.reconnectToLegacyStream(), isFalse);
+    expect(supervisor.status, ConnectionStatus.failed);
+  });
+
   test('supports user action to return from ENDED/FAILED to IDLE', () {
     final ConnectionSupervisor endedSupervisor = ConnectionSupervisor();
     expect(endedSupervisor.startConnection(), isTrue);
@@ -243,6 +262,21 @@ void main() {
 
     supervisor.recordError(ConnectionErrorCode.speechVoicevoxFailed);
     expect(supervisor.lastError, ConnectionErrorCode.speechVoicevoxFailed);
+  });
+
+  test('supports RESOLVING_ENDPOINTS -> FAILED when endpoint resolve fails',
+      () {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    expect(supervisor.startConnection(), isTrue);
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(
+      supervisor.fail(ConnectionErrorCode.endpointResolveFailed),
+      isTrue,
+    );
+
+    expect(supervisor.status, ConnectionStatus.failed);
+    expect(supervisor.lastError, ConnectionErrorCode.endpointResolveFailed);
   });
 
   test('notifies listeners when state or diagnostic fields are updated', () {

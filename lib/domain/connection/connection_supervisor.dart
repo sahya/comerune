@@ -177,16 +177,22 @@ class ConnectionSupervisor extends ChangeNotifier {
       return false;
     }
 
+    bool resetDuringPreStart = false;
     if (_status != ConnectionStatus.idle) {
-      final bool resetToIdle = _transitionTo(ConnectionStatus.idle);
+      final bool resetToIdle = _transitionTo(
+        ConnectionStatus.idle,
+        resetDiagnostics: true,
+        notify: false,
+      );
       if (!resetToIdle) {
         return false;
       }
+      resetDuringPreStart = true;
     }
 
     return _transitionTo(
       ConnectionStatus.connectingSessionWs,
-      resetDiagnostics: true,
+      resetDiagnostics: !resetDuringPreStart,
     );
   }
 
@@ -195,12 +201,6 @@ class ConnectionSupervisor extends ChangeNotifier {
       _logInvalidTransition(ConnectionStatus.connectingSessionWs);
       return false;
     }
-
-    final bool resetToIdle = _transitionTo(ConnectionStatus.idle);
-    if (!resetToIdle) {
-      return false;
-    }
-
     return startConnection();
   }
 
@@ -277,6 +277,7 @@ class ConnectionSupervisor extends ChangeNotifier {
     ConnectionErrorCode? errorCode,
     bool incrementReconnectCount = false,
     bool resetDiagnostics = false,
+    bool notify = true,
   }) {
     final Set<ConnectionStatus> allowed =
         _allowedTransitions[_status] ?? const <ConnectionStatus>{};
@@ -300,7 +301,9 @@ class ConnectionSupervisor extends ChangeNotifier {
     }
 
     _status = next;
-    notifyListeners();
+    if (notify) {
+      notifyListeners();
+    }
     return true;
   }
 
