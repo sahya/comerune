@@ -193,6 +193,38 @@ void main() {
     expect(supervisor.lastError, isNull);
   });
 
+  test('retryConnectionFromTerminal works from ENDED', () {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    expect(supervisor.startConnection(), isTrue);
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(supervisor.onNdgrEndpointResolved(), isTrue);
+    expect(supervisor.endBroadcast(), isTrue);
+    supervisor.recordReceivedAt(DateTime.parse('2026-03-28T01:23:45Z'));
+
+    expect(supervisor.retryConnectionFromTerminal(), isTrue);
+    expect(supervisor.status, ConnectionStatus.connectingSessionWs);
+    expect(supervisor.reconnectCount, 0);
+    expect(supervisor.lastReceivedAt, isNull);
+    expect(supervisor.lastError, isNull);
+  });
+
+  test('retryConnectionFromTerminal works from FAILED', () {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    expect(supervisor.startConnection(), isTrue);
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(supervisor.onLegacyEndpointResolved(), isTrue);
+    expect(supervisor.fail(ConnectionErrorCode.legacyWsFailed), isTrue);
+    supervisor.recordReceivedAt(DateTime.parse('2026-03-28T01:23:45Z'));
+
+    expect(supervisor.retryConnectionFromTerminal(), isTrue);
+    expect(supervisor.status, ConnectionStatus.connectingSessionWs);
+    expect(supervisor.reconnectCount, 0);
+    expect(supervisor.lastReceivedAt, isNull);
+    expect(supervisor.lastError, isNull);
+  });
+
   test('supports start from STOPPED via IDLE and resets diagnostics', () {
     final ConnectionSupervisor supervisor = ConnectionSupervisor();
 

@@ -179,6 +179,7 @@ class ConnectionSupervisor extends ChangeNotifier {
 
     bool resetDuringPreStart = false;
     if (_status != ConnectionStatus.idle) {
+      // Hide intermediate IDLE from observers to avoid UI flicker.
       final bool resetToIdle = _transitionTo(
         ConnectionStatus.idle,
         resetDiagnostics: true,
