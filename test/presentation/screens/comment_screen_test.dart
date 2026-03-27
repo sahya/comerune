@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../../lib/domain/connection/connection_supervisor.dart';
-import '../../../lib/domain/models/app_message.dart';
-import '../../../lib/presentation/screens/comment_screen.dart';
+import 'package:comerune/domain/connection/connection_method.dart';
+import 'package:comerune/domain/connection/connection_supervisor.dart';
+import 'package:comerune/domain/models/app_message.dart';
+import 'package:comerune/presentation/screens/comment_screen.dart';
 
 void main() {
   group('CommentScreen', () {
@@ -106,10 +107,13 @@ void main() {
       final Container legacyRow =
           tester.widget(find.byKey(const Key('comment-row-legacy-1')));
       expect(legacyRow.color, Colors.lightBlue.shade50);
-      expect(find.textContaining(kLegacyUnsupportedFormatMessage), findsOneWidget);
+      expect(
+          find.textContaining(kLegacyUnsupportedFormatMessage), findsOneWidget);
     });
 
-    testWidgets('shows stop button during active connection and reconnect button on ENDED', (
+    testWidgets(
+        'shows stop button during active connection and reconnect button on ENDED',
+        (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
@@ -145,7 +149,8 @@ void main() {
       expect(reconnectCalls, 1);
     });
 
-    testWidgets('stop button is disabled while idle', (WidgetTester tester) async {
+    testWidgets('stop button is disabled while idle',
+        (WidgetTester tester) async {
       final ConnectionSupervisor supervisor = ConnectionSupervisor();
 
       await tester.pumpWidget(
@@ -160,7 +165,8 @@ void main() {
       expect(stopButton.onPressed, isNull);
     });
 
-    testWidgets('auto-scroll pauses while user scrolls up and resumes at bottom', (
+    testWidgets(
+        'auto-scroll pauses while user scrolls up and resumes at bottom', (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
@@ -193,7 +199,8 @@ void main() {
         isTrue,
       );
 
-      await tester.drag(find.byKey(const Key('comment-list')), const Offset(0, 300));
+      await tester.drag(
+          find.byKey(const Key('comment-list')), const Offset(0, 300));
       await tester.pumpAndSettle();
       final double pausedOffset = controller.offset;
 
@@ -208,7 +215,8 @@ void main() {
 
       expect(controller.offset, closeTo(pausedOffset, 2));
 
-      await tester.drag(find.byKey(const Key('comment-list')), const Offset(0, -1200));
+      await tester.drag(
+          find.byKey(const Key('comment-list')), const Offset(0, -1200));
       await tester.pumpAndSettle();
 
       hostKey.currentState!.addMessage(
@@ -238,7 +246,8 @@ void main() {
         ),
       );
 
-      expect(supervisor.fail(ConnectionErrorCode.endpointResolveFailed), isTrue);
+      expect(
+          supervisor.fail(ConnectionErrorCode.endpointResolveFailed), isTrue);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
@@ -261,7 +270,8 @@ void main() {
         ),
       );
 
-      expect(supervisor.fail(ConnectionErrorCode.endpointResolveFailed), isTrue);
+      expect(
+          supervisor.fail(ConnectionErrorCode.endpointResolveFailed), isTrue);
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('reconnect-button')), findsOneWidget);

@@ -3,14 +3,26 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
+import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
 
 const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
 
-enum ConnectionMethod {
-  ndgr,
-  legacy,
+String _formatHms(DateTime value) {
+  final DateTime local = value.toLocal();
+  final String hh = local.hour.toString().padLeft(2, '0');
+  final String mm = local.minute.toString().padLeft(2, '0');
+  final String ss = local.second.toString().padLeft(2, '0');
+  return '$hh:$mm:$ss';
+}
+
+String _formatHmsOrDash(DateTime? value) {
+  if (value == null) {
+    return '-';
+  }
+
+  return _formatHms(value);
 }
 
 class CommentScreen extends StatefulWidget {
@@ -32,7 +44,8 @@ class CommentScreen extends StatefulWidget {
   final List<AppMessage> messages;
   final Future<void> Function() onStopAllConnections;
   final Future<void> Function() onReconnectSameLv;
-  final Future<void> Function(String previousLv, String nextLv) onDifferentLvConnected;
+  final Future<void> Function(String previousLv, String nextLv)
+      onDifferentLvConnected;
   final Future<void> Function()? onOpenSettings;
   final bool debugMode;
   final ConnectionMethod? connectionMethod;
@@ -78,7 +91,8 @@ class _CommentScreenState extends State<CommentScreen> {
       });
     }
 
-    final bool hasNewMessages = widget.messages.length != oldWidget.messages.length;
+    final bool hasNewMessages =
+        widget.messages.length != oldWidget.messages.length;
     if (hasNewMessages && _autoScrollEnabled) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToBottom();
@@ -96,8 +110,18 @@ class _CommentScreenState extends State<CommentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: _handleBackNavigation,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, Object? _) async {
+        if (didPop) {
+          return;
+        }
+
+        await _stopForExit();
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
+      },
       child: AnimatedBuilder(
         animation: widget.connectionSupervisor,
         builder: (BuildContext context, _) {
@@ -113,7 +137,8 @@ class _CommentScreenState extends State<CommentScreen> {
                       await widget.onOpenSettings!.call();
                     }
                   },
-                  itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                  itemBuilder: (BuildContext context) =>
+                      <PopupMenuEntry<String>>[
                     const PopupMenuItem<String>(
                       value: 'settings',
                       child: Text('設定'),
@@ -204,18 +229,16 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   Future<void> _stopAndPop() async {
-    _markStoppedIfPossible();
-    await widget.onStopAllConnections();
+    await _stopForExit();
     if (!mounted) {
       return;
     }
     await Navigator.of(context).maybePop();
   }
 
-  Future<bool> _handleBackNavigation() async {
+  Future<void> _stopForExit() async {
     _markStoppedIfPossible();
     await widget.onStopAllConnections();
-    return true;
   }
 
   void _markStoppedIfPossible() {
@@ -227,8 +250,10 @@ class _CommentScreenState extends State<CommentScreen> {
   void _handleConnectionChanged() {
     final ConnectionStatus currentStatus = widget.connectionSupervisor.status;
 
-    if (_lastStatus != ConnectionStatus.failed && currentStatus == ConnectionStatus.failed) {
-      final String message = _failedMessage(widget.connectionSupervisor.lastError);
+    if (_lastStatus != ConnectionStatus.failed &&
+        currentStatus == ConnectionStatus.failed) {
+      final String message =
+          _failedMessage(widget.connectionSupervisor.lastError);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) {
           return;
@@ -246,9 +271,6 @@ class _CommentScreenState extends State<CommentScreen> {
     }
 
     _lastStatus = currentStatus;
-    if (mounted) {
-      setState(() {});
-    }
   }
 
   String _failedMessage(ConnectionErrorCode? errorCode) {
@@ -286,7 +308,8 @@ class _CommentScreenState extends State<CommentScreen> {
 
     if (_autoScrollEnabled &&
         !nearBottom &&
-        _scrollController.position.userScrollDirection == ScrollDirection.forward) {
+        _scrollController.position.userScrollDirection ==
+            ScrollDirection.forward) {
       setState(() {
         _autoScrollEnabled = false;
       });
@@ -298,8 +321,8 @@ class _CommentScreenState extends State<CommentScreen> {
       return true;
     }
 
-    final double distanceToBottom =
-        _scrollController.position.maxScrollExtent - _scrollController.position.pixels;
+    final double distanceToBottom = _scrollController.position.maxScrollExtent -
+        _scrollController.position.pixels;
     return distanceToBottom <= _autoScrollResumeThreshold;
   }
 
@@ -338,9 +361,10 @@ class _StatusBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color wifiColor = supervisor.wifiIndicatorColor == WifiIndicatorColor.green
-        ? Colors.green
-        : Colors.red;
+    final Color wifiColor =
+        supervisor.wifiIndicatorColor == WifiIndicatorColor.green
+            ? Colors.green
+            : Colors.red;
 
     return Container(
       width: double.infinity,
@@ -369,7 +393,7 @@ class _StatusBar extends StatelessWidget {
             runSpacing: 4,
             children: <Widget>[
               Text(
-                '最終受信: ${_formatTime(supervisor.lastReceivedAt)}',
+                '最終受信: ${_formatHmsOrDash(supervisor.lastReceivedAt)}',
                 key: const Key('status-last-received'),
               ),
               Text(
@@ -402,18 +426,6 @@ class _StatusBar extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  String _formatTime(DateTime? value) {
-    if (value == null) {
-      return '-';
-    }
-
-    final DateTime local = value.toLocal();
-    final String hh = local.hour.toString().padLeft(2, '0');
-    final String mm = local.minute.toString().padLeft(2, '0');
-    final String ss = local.second.toString().padLeft(2, '0');
-    return '$hh:$mm:$ss';
   }
 
   String _connectionMethodLabel(ConnectionMethod? method) {
@@ -463,17 +475,14 @@ class _CommentRow extends StatelessWidget {
   }
 
   String _lineText(AppMessage message) {
-    final DateTime local = message.timestamp.toLocal();
-    final String hh = local.hour.toString().padLeft(2, '0');
-    final String mm = local.minute.toString().padLeft(2, '0');
-    final String ss = local.second.toString().padLeft(2, '0');
+    final String timestamp = _formatHms(message.timestamp);
     final String userId = message.userId ?? '';
 
     if (userId.isEmpty) {
-      return '$hh:$mm:$ss  ${message.content}';
+      return '$timestamp  ${message.content}';
     }
 
-    return '$hh:$mm:$ss  $userId  ${message.content}';
+    return '$timestamp  $userId  ${message.content}';
   }
 
   Color? _backgroundColor(AppMessage message) {
