@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../../lib/domain/connection/connection_supervisor.dart';
+import 'package:comerune/domain/connection/connection_supervisor.dart';
 
 void main() {
   group('ConnectionStatus', () {
@@ -191,6 +191,24 @@ void main() {
     expect(supervisor.reconnectCount, 0);
     expect(supervisor.lastReceivedAt, isNull);
     expect(supervisor.lastError, isNull);
+  });
+
+  test('startConnection from ENDED emits only one notification', () {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    expect(supervisor.startConnection(), isTrue);
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(supervisor.onNdgrEndpointResolved(), isTrue);
+    expect(supervisor.endBroadcast(), isTrue);
+
+    int notifyCount = 0;
+    supervisor.addListener(() {
+      notifyCount += 1;
+    });
+
+    expect(supervisor.startConnection(), isTrue);
+    expect(notifyCount, 1);
+    expect(supervisor.status, ConnectionStatus.connectingSessionWs);
   });
 
   test('retryConnectionFromTerminal works from ENDED', () {
