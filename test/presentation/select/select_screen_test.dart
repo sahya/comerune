@@ -1,0 +1,223 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:comerune/domain/connection/connection_supervisor.dart';
+import 'package:comerune/presentation/select/select_screen.dart';
+
+Finder inputField() => find.byKey(const Key('select_screen_input'));
+Finder connectButton() => find.byKey(const Key('select_screen_connect_button'));
+
+void main() {
+  Future<void> pumpSelectScreen(
+    WidgetTester tester,
+    ConnectionSupervisor supervisor,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SelectScreen(connectionSupervisor: supervisor),
+      ),
+    );
+    await tester.pump();
+  }
+
+  testWidgets('connect button is disabled when input is empty', (
+    WidgetTester tester,
+  ) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    await pumpSelectScreen(tester, supervisor);
+
+    final ElevatedButton button =
+        tester.widget<ElevatedButton>(connectButton());
+    expect(button.onPressed, isNull);
+  });
+
+  testWidgets('connect button is disabled when input is whitespace only', (
+    WidgetTester tester,
+  ) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    await pumpSelectScreen(tester, supervisor);
+    await tester.enterText(inputField(), '   ');
+    await tester.pump();
+
+    final ElevatedButton button =
+        tester.widget<ElevatedButton>(connectButton());
+    expect(button.onPressed, isNull);
+  });
+
+  testWidgets('connect button starts connection and navigates with lv input', (
+    WidgetTester tester,
+  ) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    await pumpSelectScreen(tester, supervisor);
+    await tester.enterText(inputField(), 'lv345678901');
+    await tester.pump();
+
+    await tester.tap(connectButton());
+    await tester.pumpAndSettle();
+
+    expect(supervisor.status, ConnectionStatus.connectingSessionWs);
+    expect(find.text('CommentScreen'), findsOneWidget);
+    expect(find.text('lv345678901'), findsOneWidget);
+  });
+
+  testWidgets('connect button extracts lv from URL and navigates', (
+    WidgetTester tester,
+  ) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    await pumpSelectScreen(tester, supervisor);
+    await tester.enterText(
+      inputField(),
+      'https://live.nicovideo.jp/watch/lv345678901',
+    );
+    await tester.pump();
+
+    await tester.tap(connectButton());
+    await tester.pumpAndSettle();
+
+    expect(supervisor.status, ConnectionStatus.connectingSessionWs);
+    expect(find.text('CommentScreen'), findsOneWidget);
+    expect(find.text('lv345678901'), findsOneWidget);
+  });
+
+  testWidgets('shows snackbar when lv extraction fails', (
+    WidgetTester tester,
+  ) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    await pumpSelectScreen(tester, supervisor);
+    await tester.enterText(inputField(), 'invalid');
+    await tester.pump();
+
+    await tester.tap(connectButton());
+    await tester.pump();
+
+    expect(find.text('放送IDが見つかりません'), findsOneWidget);
+    expect(supervisor.status, ConnectionStatus.idle);
+    expect(supervisor.lastError, isNull);
+    expect(find.text('CommentScreen'), findsNothing);
+  });
+
+  testWidgets('pressing Enter starts connection', (WidgetTester tester) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    await pumpSelectScreen(tester, supervisor);
+    await tester.enterText(inputField(), 'lv345678901');
+    await tester.pump();
+
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(supervisor.status, ConnectionStatus.connectingSessionWs);
+    expect(find.text('CommentScreen'), findsOneWidget);
+  });
+
+  testWidgets('pressing Enter does nothing when input is empty', (
+    WidgetTester tester,
+  ) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    await pumpSelectScreen(tester, supervisor);
+    await tester.tap(inputField());
+    await tester.pump();
+
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+
+    expect(supervisor.status, ConnectionStatus.idle);
+    expect(find.text('CommentScreen'), findsNothing);
+    expect(find.text('放送IDが見つかりません'), findsNothing);
+  });
+
+  testWidgets('button and input are disabled while connecting', (
+    WidgetTester tester,
+  ) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    await pumpSelectScreen(tester, supervisor);
+    await tester.enterText(inputField(), 'lv345678901');
+    await tester.pump();
+
+    expect(supervisor.startConnection(), isTrue);
+    await tester.pump();
+
+    final TextField input = tester.widget<TextField>(inputField());
+    final ElevatedButton button =
+        tester.widget<ElevatedButton>(connectButton());
+
+    expect(input.enabled, isFalse);
+    expect(button.onPressed, isNull);
+  });
+
+  testWidgets('button is enabled in STOPPED state when input is not empty', (
+    WidgetTester tester,
+  ) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+    expect(supervisor.startConnection(), isTrue);
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(supervisor.onNdgrEndpointResolved(), isTrue);
+    expect(supervisor.stopByUser(), isTrue);
+
+    await pumpSelectScreen(tester, supervisor);
+    await tester.enterText(inputField(), 'lv345678901');
+    await tester.pump();
+
+    final ElevatedButton button =
+        tester.widget<ElevatedButton>(connectButton());
+    expect(button.onPressed, isNotNull);
+  });
+
+  testWidgets('button can reconnect from FAILED state', (
+    WidgetTester tester,
+  ) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    expect(supervisor.startConnection(), isTrue);
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(
+      supervisor.fail(ConnectionErrorCode.sessionWsConnectFailed),
+      isTrue,
+    );
+
+    await pumpSelectScreen(tester, supervisor);
+    await tester.enterText(inputField(), 'lv345678901');
+    await tester.pump();
+
+    final ElevatedButton button =
+        tester.widget<ElevatedButton>(connectButton());
+    expect(button.onPressed, isNotNull);
+
+    await tester.tap(connectButton());
+    await tester.pumpAndSettle();
+
+    expect(supervisor.status, ConnectionStatus.connectingSessionWs);
+    expect(find.text('CommentScreen'), findsOneWidget);
+  });
+
+  testWidgets('button can reconnect from ENDED state', (
+    WidgetTester tester,
+  ) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    expect(supervisor.startConnection(), isTrue);
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(supervisor.onNdgrEndpointResolved(), isTrue);
+    expect(supervisor.endBroadcast(), isTrue);
+
+    await pumpSelectScreen(tester, supervisor);
+    await tester.enterText(inputField(), 'lv345678901');
+    await tester.pump();
+
+    final ElevatedButton button =
+        tester.widget<ElevatedButton>(connectButton());
+    expect(button.onPressed, isNotNull);
+
+    await tester.tap(connectButton());
+    await tester.pumpAndSettle();
+
+    expect(supervisor.status, ConnectionStatus.connectingSessionWs);
+    expect(find.text('CommentScreen'), findsOneWidget);
+  });
+}
