@@ -168,7 +168,7 @@ class ConnectionSupervisor extends ChangeNotifier {
           ConnectionStatus.failed,
         },
         ConnectionStatus.stopped: <ConnectionStatus>{
-          ConnectionStatus.idle,
+          ConnectionStatus.connectingSessionWs,
         },
         ConnectionStatus.ended: <ConnectionStatus>{
           ConnectionStatus.idle,
@@ -236,13 +236,6 @@ class ConnectionSupervisor extends ChangeNotifier {
     if (!canStartConnection) {
       _logInvalidTransition(ConnectionStatus.connectingSessionWs);
       return false;
-    }
-
-    if (_status == ConnectionStatus.stopped) {
-      final bool resetToIdle = _transitionTo(ConnectionStatus.idle);
-      if (!resetToIdle) {
-        return false;
-      }
     }
 
     final bool transitioned = _transitionTo(
@@ -469,7 +462,7 @@ class ConnectionSupervisor extends ChangeNotifier {
   }
 
   Future<void> _reconnectViaSessionWs(int _) async {
-    await _disconnectForSessionReconnect();
+    await _disconnectAllClients();
 
     final bool toConnecting = _transitionTo(ConnectionStatus.connectingSessionWs);
     if (!toConnecting) {
@@ -590,23 +583,6 @@ class ConnectionSupervisor extends ChangeNotifier {
   }
 
   Future<void> _disconnectAllClients() async {
-    await Future.wait<void>(<Future<void>>[
-      _safeDisconnect(
-        _sessionWsClient.disconnect,
-        'session ws',
-      ),
-      _safeDisconnect(
-        _ndgrClient.disconnect,
-        'ndgr stream',
-      ),
-      _safeDisconnect(
-        _legacyCommentClient.disconnect,
-        'legacy stream',
-      ),
-    ]);
-  }
-
-  Future<void> _disconnectForSessionReconnect() async {
     await Future.wait<void>(<Future<void>>[
       _safeDisconnect(
         _sessionWsClient.disconnect,
