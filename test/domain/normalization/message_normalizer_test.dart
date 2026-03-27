@@ -4,6 +4,37 @@ import 'package:comerune/domain/models/app_message.dart';
 import 'package:comerune/domain/normalization/message_normalizer.dart';
 
 void main() {
+  group('sanitizeLegacyPayloadForLog', () {
+    test('masks sensitive keys including auth and credential', () {
+      final String sanitized = sanitizeLegacyPayloadForLog(
+        '{"auth":"Bearer abc","credential":"secret","token":"t","safe":"ok"}',
+      );
+
+      expect(sanitized, contains('"auth":"***"'));
+      expect(sanitized, contains('"credential":"***"'));
+      expect(sanitized, contains('"token":"***"'));
+      expect(sanitized, contains('"safe":"ok"'));
+    });
+
+    test('sanitizes nested url and truncates long strings', () {
+      final String longValue = 'a' * 50;
+      final String sanitized = sanitizeLegacyPayloadForLog(
+        '{"outer":{"url":"https://example.com/path?token=abc","message":"$longValue"}}',
+      );
+
+      expect(sanitized, contains('"url":"https://example.com/path"'));
+      expect(sanitized, contains('"message":"${'a' * 40}..."'));
+    });
+
+    test('falls back when payload is not json', () {
+      final String sanitized = sanitizeLegacyPayloadForLog(
+        'wss://legacy.example/ws?token=abc',
+      );
+
+      expect(sanitized, 'wss://legacy.example/ws');
+    });
+  });
+
   group('MessageNormalizer.normalizeLegacyJson', () {
     test('extracts chat payload into AppMessage', () {
       final MessageNormalizer normalizer = MessageNormalizer(

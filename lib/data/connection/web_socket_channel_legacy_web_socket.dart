@@ -17,6 +17,7 @@ class WebSocketChannelLegacyWebSocket implements LegacyWebSocket {
   static Future<LegacyWebSocket> connect(String url) async {
     final Uri uri = Uri.parse(url);
     final WebSocketChannel channel = WebSocketChannel.connect(uri);
+    await channel.ready;
     return WebSocketChannelLegacyWebSocket(channel);
   }
 }
