@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../../lib/domain/connection/connection_supervisor.dart';
+import 'package:comerune/domain/connection/connection_supervisor.dart';
 
 void main() {
   group('ConnectionStatus', () {
@@ -67,7 +67,8 @@ void main() {
     expect(supervisor.wifiIndicatorColor, WifiIndicatorColor.green);
   });
 
-  test('supports STREAMING_* -> RECONNECTING -> CONNECTING_SESSION_WS flow', () {
+  test('supports STREAMING_* -> RECONNECTING -> CONNECTING_SESSION_WS flow',
+      () {
     final ConnectionSupervisor supervisor = ConnectionSupervisor();
 
     expect(supervisor.startConnection(), isTrue);
@@ -112,6 +113,44 @@ void main() {
     expect(supervisor.wifiIndicatorColor, WifiIndicatorColor.red);
   });
 
+  test('does not reconnect after transitioning to ENDED', () {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    expect(supervisor.startConnection(), isTrue);
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(supervisor.onNdgrEndpointResolved(), isTrue);
+    expect(supervisor.endBroadcast(), isTrue);
+    expect(supervisor.status, ConnectionStatus.ended);
+
+    expect(
+      supervisor.onStreamDisconnected(ConnectionErrorCode.ndgrStreamFailed),
+      isFalse,
+    );
+    expect(supervisor.reconnectViaSessionWs(), isFalse);
+    expect(supervisor.reconnectToNdgrStream(), isFalse);
+    expect(supervisor.reconnectToLegacyStream(), isFalse);
+    expect(supervisor.status, ConnectionStatus.ended);
+  });
+
+  test('does not reconnect after transitioning to FAILED', () {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    expect(supervisor.startConnection(), isTrue);
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(supervisor.onLegacyEndpointResolved(), isTrue);
+    expect(supervisor.fail(ConnectionErrorCode.legacyWsFailed), isTrue);
+    expect(supervisor.status, ConnectionStatus.failed);
+
+    expect(
+      supervisor.onStreamDisconnected(ConnectionErrorCode.legacyWsFailed),
+      isFalse,
+    );
+    expect(supervisor.reconnectViaSessionWs(), isFalse);
+    expect(supervisor.reconnectToNdgrStream(), isFalse);
+    expect(supervisor.reconnectToLegacyStream(), isFalse);
+    expect(supervisor.status, ConnectionStatus.failed);
+  });
+
   test('supports user action to return from ENDED/FAILED to IDLE', () {
     final ConnectionSupervisor endedSupervisor = ConnectionSupervisor();
     expect(endedSupervisor.startConnection(), isTrue);
@@ -154,6 +193,56 @@ void main() {
     expect(supervisor.lastError, isNull);
   });
 
+  test('startConnection from ENDED emits only one notification', () {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    expect(supervisor.startConnection(), isTrue);
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(supervisor.onNdgrEndpointResolved(), isTrue);
+    expect(supervisor.endBroadcast(), isTrue);
+
+    int notifyCount = 0;
+    supervisor.addListener(() {
+      notifyCount += 1;
+    });
+
+    expect(supervisor.startConnection(), isTrue);
+    expect(notifyCount, 1);
+    expect(supervisor.status, ConnectionStatus.connectingSessionWs);
+  });
+
+  test('retryConnectionFromTerminal works from ENDED', () {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    expect(supervisor.startConnection(), isTrue);
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(supervisor.onNdgrEndpointResolved(), isTrue);
+    expect(supervisor.endBroadcast(), isTrue);
+    supervisor.recordReceivedAt(DateTime.parse('2026-03-28T01:23:45Z'));
+
+    expect(supervisor.retryConnectionFromTerminal(), isTrue);
+    expect(supervisor.status, ConnectionStatus.connectingSessionWs);
+    expect(supervisor.reconnectCount, 0);
+    expect(supervisor.lastReceivedAt, isNull);
+    expect(supervisor.lastError, isNull);
+  });
+
+  test('retryConnectionFromTerminal works from FAILED', () {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    expect(supervisor.startConnection(), isTrue);
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(supervisor.onLegacyEndpointResolved(), isTrue);
+    expect(supervisor.fail(ConnectionErrorCode.legacyWsFailed), isTrue);
+    supervisor.recordReceivedAt(DateTime.parse('2026-03-28T01:23:45Z'));
+
+    expect(supervisor.retryConnectionFromTerminal(), isTrue);
+    expect(supervisor.status, ConnectionStatus.connectingSessionWs);
+    expect(supervisor.reconnectCount, 0);
+    expect(supervisor.lastReceivedAt, isNull);
+    expect(supervisor.lastError, isNull);
+  });
+
   test('supports start from STOPPED via IDLE and resets diagnostics', () {
     final ConnectionSupervisor supervisor = ConnectionSupervisor();
 
@@ -184,20 +273,21 @@ void main() {
   test('wifi indicator color follows specification for each state', () {
     final Map<ConnectionStatus, WifiIndicatorColor> expectedColors =
         <ConnectionStatus, WifiIndicatorColor>{
-          ConnectionStatus.idle: WifiIndicatorColor.red,
-          ConnectionStatus.connectingSessionWs: WifiIndicatorColor.green,
-          ConnectionStatus.resolvingEndpoints: WifiIndicatorColor.green,
-          ConnectionStatus.streamingNdgr: WifiIndicatorColor.green,
-          ConnectionStatus.streamingLegacy: WifiIndicatorColor.green,
-          ConnectionStatus.reconnecting: WifiIndicatorColor.green,
-          ConnectionStatus.stopped: WifiIndicatorColor.red,
-          ConnectionStatus.ended: WifiIndicatorColor.red,
-          ConnectionStatus.failed: WifiIndicatorColor.red,
-        };
+      ConnectionStatus.idle: WifiIndicatorColor.red,
+      ConnectionStatus.connectingSessionWs: WifiIndicatorColor.green,
+      ConnectionStatus.resolvingEndpoints: WifiIndicatorColor.green,
+      ConnectionStatus.streamingNdgr: WifiIndicatorColor.green,
+      ConnectionStatus.streamingLegacy: WifiIndicatorColor.green,
+      ConnectionStatus.reconnecting: WifiIndicatorColor.green,
+      ConnectionStatus.stopped: WifiIndicatorColor.red,
+      ConnectionStatus.ended: WifiIndicatorColor.red,
+      ConnectionStatus.failed: WifiIndicatorColor.red,
+    };
 
     for (final ConnectionStatus status in ConnectionStatus.values) {
-      final WifiIndicatorColor color =
-          status.usesGreenWifiIcon ? WifiIndicatorColor.green : WifiIndicatorColor.red;
+      final WifiIndicatorColor color = status.usesGreenWifiIcon
+          ? WifiIndicatorColor.green
+          : WifiIndicatorColor.red;
       expect(color, expectedColors[status]);
     }
   });
@@ -222,6 +312,21 @@ void main() {
 
     supervisor.recordError(ConnectionErrorCode.speechVoicevoxFailed);
     expect(supervisor.lastError, ConnectionErrorCode.speechVoicevoxFailed);
+  });
+
+  test('supports RESOLVING_ENDPOINTS -> FAILED when endpoint resolve fails',
+      () {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    expect(supervisor.startConnection(), isTrue);
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(
+      supervisor.fail(ConnectionErrorCode.endpointResolveFailed),
+      isTrue,
+    );
+
+    expect(supervisor.status, ConnectionStatus.failed);
+    expect(supervisor.lastError, ConnectionErrorCode.endpointResolveFailed);
   });
 
   test('notifies listeners when state or diagnostic fields are updated', () {
