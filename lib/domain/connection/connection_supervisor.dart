@@ -109,7 +109,7 @@ class ConnectionSupervisor extends ChangeNotifier {
     required SessionWsClient sessionWsClient,
     required NdgrClient ndgrClient,
     required LegacyCommentClient legacyCommentClient,
-    int maxReconnectAttempts = 10,
+    int maxReconnectAttempts = 6,
     int legacySameUrlFailureThreshold = 3,
     DelayExecutor? delayExecutor,
     JitterProvider? jitterProvider,
@@ -128,6 +128,7 @@ class ConnectionSupervisor extends ChangeNotifier {
   }
 
   static const List<int> _backoffSeconds = <int>[1, 2, 4, 8, 16, 30];
+  static final math.Random _random = math.Random();
 
   static const Map<ConnectionStatus, Set<ConnectionStatus>>
       _allowedTransitions = <ConnectionStatus, Set<ConnectionStatus>>{
@@ -170,7 +171,7 @@ class ConnectionSupervisor extends ChangeNotifier {
       ConnectionStatus.failed,
     },
     ConnectionStatus.stopped: <ConnectionStatus>{
-      ConnectionStatus.connectingSessionWs,
+      ConnectionStatus.idle,
     },
     ConnectionStatus.ended: <ConnectionStatus>{
       ConnectionStatus.idle,
@@ -185,8 +186,7 @@ class ConnectionSupervisor extends ChangeNotifier {
   }
 
   static Duration _defaultJitterProvider(int _) {
-    final math.Random random = math.Random();
-    return Duration(milliseconds: random.nextInt(1000));
+    return Duration(milliseconds: _random.nextInt(1000));
   }
 
   final SessionWsClient _sessionWsClient;
@@ -219,7 +219,10 @@ class ConnectionSupervisor extends ChangeNotifier {
       : WifiIndicatorColor.red;
 
   bool get canStartConnection =>
-      _status == ConnectionStatus.idle || _status == ConnectionStatus.stopped;
+      _status == ConnectionStatus.idle ||
+      _status == ConnectionStatus.stopped ||
+      _status == ConnectionStatus.ended ||
+      _status == ConnectionStatus.failed;
 
   bool get canRetryFromTerminal =>
       _status == ConnectionStatus.ended || _status == ConnectionStatus.failed;
@@ -240,6 +243,13 @@ class ConnectionSupervisor extends ChangeNotifier {
     if (!canStartConnection) {
       _logInvalidTransition(ConnectionStatus.connectingSessionWs);
       return false;
+    }
+
+    if (_status != ConnectionStatus.idle) {
+      final bool transitionedToIdle = _transitionTo(ConnectionStatus.idle);
+      if (!transitionedToIdle) {
+        return false;
+      }
     }
 
     final bool transitioned = _transitionTo(
@@ -377,9 +387,6 @@ class ConnectionSupervisor extends ChangeNotifier {
   void _onNdgrEvent(NdgrEvent event) {
     if (_status != ConnectionStatus.streamingNdgr) {
       return;
-    }
-    if (event.resumeCursor != null) {
-      _lastNdgrResumeCursor = event.resumeCursor;
     }
     switch (event.type) {
       case NdgrEventType.disconnected:
