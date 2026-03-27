@@ -183,6 +183,9 @@ class MessageNormalizer {
     );
   }
 
+  // TODO(PR#19-O2): raw.payload に未サニタイズの rawJson を保持している。
+  //  Issue #10(CommentScreen) のデバッグ表示で raw を表示する場合、
+  //  機密情報が露出しないようサニタイズ済みの値に差し替えるか表示側でマスクすること。
   AppMessage _buildUnsupportedMessage(String rawJson, DateTime timestamp) {
     return AppMessage(
       id: _nextId(),
