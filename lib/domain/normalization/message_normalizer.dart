@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:developer';
 
+import 'package:meta/meta.dart';
+
 import '../models/app_message.dart';
 
 const String kLegacyUnsupportedFormatContent = 'legacy: 未対応フォーマット';
@@ -8,9 +10,15 @@ const String kLegacyUnsupportedFormatMarkerKey = 'legacy_unsupported_format';
 const int _maxLogStringLength = 40;
 const String _maskedLogValue = '***';
 const RegExp _sensitiveKeyPattern = RegExp(
-  'token|cookie|authorization|password|passwd|secret|session',
+  'token|cookie|auth|credential|password|passwd|secret|session',
   caseSensitive: false,
 );
+
+@visibleForTesting
+String sanitizeLegacyPayloadForLog(String rawJson) {
+  final Object? decoded = _tryDecodeJson(rawJson);
+  return _sanitizeLegacyPayloadForLog(decoded, fallbackRaw: rawJson);
+}
 
 bool isLegacyUnsupportedFormatMessage(AppMessage message) {
   if (message.raw is! Map<dynamic, dynamic>) {
@@ -137,7 +145,7 @@ class MessageNormalizer {
       decoded = jsonDecode(rawJson);
     } on FormatException catch (error, stackTrace) {
       log(
-        'Failed to parse legacy JSON. payload=${_sanitizeLegacyPayloadForLog(rawJson)}',
+        'Failed to parse legacy JSON. payload=${sanitizeLegacyPayloadForLog(rawJson)}',
         name: 'MessageNormalizer',
         error: error,
         stackTrace: stackTrace,
@@ -147,7 +155,7 @@ class MessageNormalizer {
 
     if (decoded is! Map) {
       log(
-        'Legacy payload does not contain chat key. payload=${_sanitizeLegacyPayloadForLog(rawJson)}',
+        'Legacy payload does not contain chat key. payload=${_sanitizeLegacyPayloadForLog(decoded, fallbackRaw: rawJson)}',
         name: 'MessageNormalizer',
       );
       return _buildUnsupportedMessage(rawJson, now);
@@ -159,7 +167,7 @@ class MessageNormalizer {
         _legacyChatExtractor.extract(payload, receivedAt: now);
     if (extraction == null) {
       log(
-        'Legacy payload does not contain chat key. payload=${_sanitizeLegacyPayloadForLog(rawJson)}',
+        'Legacy payload does not contain chat key. payload=${_sanitizeLegacyPayloadForLog(decoded, fallbackRaw: rawJson)}',
         name: 'MessageNormalizer',
       );
       return _buildUnsupportedMessage(rawJson, now);
@@ -206,17 +214,19 @@ Map<String, Object?> _toStringObjectMap(Map<dynamic, dynamic> source) {
   );
 }
 
-String _sanitizeLegacyPayloadForLog(String rawJson) {
-  final Object? decoded = _tryDecodeJson(rawJson);
+String _sanitizeLegacyPayloadForLog(
+  Object? decoded, {
+  required String fallbackRaw,
+}) {
   if (decoded == null) {
-    return _sanitizeLogString(rawJson);
+    return _sanitizeLogString(fallbackRaw);
   }
 
   final Object? sanitized = _sanitizeForLog(decoded);
   try {
     return jsonEncode(sanitized);
   } on JsonUnsupportedObjectError {
-    return _sanitizeLogString(rawJson);
+    return _sanitizeLogString(fallbackRaw);
   }
 }
 
@@ -242,9 +252,6 @@ Object? _sanitizeForLog(Object? value, {String? key}) {
   }
 
   if (value is String) {
-    if (key != null && _isSensitiveKey(key)) {
-      return _maskedLogValue;
-    }
     return _sanitizeLogString(value);
   }
 
