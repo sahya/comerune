@@ -76,7 +76,7 @@ extension ConnectionStatusCode on ConnectionStatus {
   }
 }
 
-extension ConnectionErrorCodeCode on ConnectionErrorCode {
+extension ConnectionErrorCodeExtension on ConnectionErrorCode {
   String get code {
     switch (this) {
       case ConnectionErrorCode.lvParseFailed:
@@ -218,6 +218,15 @@ class ConnectionSupervisor extends ChangeNotifier {
       ? WifiIndicatorColor.green
       : WifiIndicatorColor.red;
 
+  /// Whether the supervisor can start (or restart) a connection.
+  ///
+  /// True for all resting states: [ConnectionStatus.idle],
+  /// [ConnectionStatus.stopped], [ConnectionStatus.ended], and
+  /// [ConnectionStatus.failed].
+  ///
+  /// For non-idle resting states, [startConnection] performs an internal
+  /// reset to [ConnectionStatus.idle] and then transitions to
+  /// [ConnectionStatus.connectingSessionWs].
   bool get canStartConnection =>
       _status == ConnectionStatus.idle ||
       _status == ConnectionStatus.stopped ||
@@ -245,16 +254,18 @@ class ConnectionSupervisor extends ChangeNotifier {
       return false;
     }
 
+    bool resetDuringPreStart = false;
     if (_status != ConnectionStatus.idle) {
       final bool transitionedToIdle = _transitionTo(ConnectionStatus.idle);
       if (!transitionedToIdle) {
         return false;
       }
+      resetDuringPreStart = true;
     }
 
     final bool transitioned = _transitionTo(
       ConnectionStatus.connectingSessionWs,
-      resetDiagnostics: true,
+      resetDiagnostics: !resetDuringPreStart,
     );
     if (!transitioned) {
       return false;
@@ -277,12 +288,6 @@ class ConnectionSupervisor extends ChangeNotifier {
       _logInvalidTransition(ConnectionStatus.connectingSessionWs);
       return false;
     }
-
-    final bool resetToIdle = _transitionTo(ConnectionStatus.idle);
-    if (!resetToIdle) {
-      return false;
-    }
-
     return startConnection();
   }
 
@@ -355,6 +360,7 @@ class ConnectionSupervisor extends ChangeNotifier {
   }
 
   void recordError(ConnectionErrorCode errorCode) {
+    // Used for non-transition error updates (e.g. parse/speech failures).
     _lastError = errorCode;
     notifyListeners();
   }
@@ -633,6 +639,7 @@ class ConnectionSupervisor extends ChangeNotifier {
     ConnectionStatus next, {
     ConnectionErrorCode? errorCode,
     bool resetDiagnostics = false,
+    bool notify = true,
   }) {
     final Set<ConnectionStatus> allowed =
         _allowedTransitions[_status] ?? const <ConnectionStatus>{};
@@ -654,7 +661,9 @@ class ConnectionSupervisor extends ChangeNotifier {
     }
 
     _status = next;
-    notifyListeners();
+    if (notify) {
+      notifyListeners();
+    }
     return true;
   }
 
