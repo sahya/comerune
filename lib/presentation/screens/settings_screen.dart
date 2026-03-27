@@ -167,6 +167,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
+    // TODO(issue-12-followup): NGワードは正規表現入力のため、保存前に
+    // RegExp.tryParse 相当で妥当性を検証し、無効パターンは保存を抑止する。
     _saveNextSettings(current.copyWith(ngWords: ngWords));
   }
 
@@ -180,6 +182,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (parsed == null) {
       setState(() {
         _queueLimitError = '数値を入力してください';
+        // TODO(issue-12-followup): バリデーション失敗時の表示値は、
+        // 「直前に保存済みの値へ復帰」仕様にするかを仕様側で再整理する。
       });
       return;
     }
@@ -187,6 +191,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (parsed < _queueLimitMin || parsed > _queueLimitMax) {
       setState(() {
         _queueLimitError = '$_queueLimitMin〜$_queueLimitMax の範囲で入力してください';
+        // TODO(issue-12-followup): バリデーション失敗時の表示値復帰仕様を定義後、
+        // ここで controller 値のロールバックを実装する。
       });
       return;
     }
@@ -213,6 +219,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (parsed == null) {
       setState(() {
         _maxDelayError = '数値を入力してください';
+        // TODO(issue-12-followup): バリデーション失敗時の表示値は、
+        // 「直前に保存済みの値へ復帰」仕様にするかを仕様側で再整理する。
       });
       return;
     }
@@ -220,6 +228,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (parsed < _maxDelayMin || parsed > _maxDelayMax) {
       setState(() {
         _maxDelayError = '$_maxDelayMin〜$_maxDelayMax の範囲で入力してください';
+        // TODO(issue-12-followup): バリデーション失敗時の表示値復帰仕様を定義後、
+        // ここで controller 値のロールバックを実装する。
       });
       return;
     }
