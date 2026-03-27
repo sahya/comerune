@@ -53,6 +53,8 @@ class _SelectScreenState extends State<SelectScreen> {
   }
 
   void _onSupervisorChanged() {
+    // TODO(PR#18-optional): If this callback becomes frequent, reduce rebuild
+    //  scope with a builder pattern instead of rebuilding the full screen.
     setState(() {});
   }
 
