@@ -9,7 +9,7 @@ const String kLegacyUnsupportedFormatContent = 'legacy: 未対応フォーマッ
 const String kLegacyUnsupportedFormatMarkerKey = 'legacy_unsupported_format';
 const int _maxLogStringLength = 40;
 const String _maskedLogValue = '***';
-const RegExp _sensitiveKeyPattern = RegExp(
+final RegExp _sensitiveKeyPattern = RegExp(
   'token|cookie|auth|credential|password|passwd|secret|session',
   caseSensitive: false,
 );

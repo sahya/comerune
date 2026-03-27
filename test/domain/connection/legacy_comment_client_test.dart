@@ -171,7 +171,8 @@ Future<void> _flushEvents() async {
 }
 
 String _legacyFixture(String name) {
-  final Uri fixtureUri = Platform.script.resolve('../../fixtures/legacy/$name');
+  final Uri fixtureUri =
+      Directory.current.uri.resolve('test/fixtures/legacy/$name');
   return File.fromUri(fixtureUri).readAsStringSync();
 }
 
