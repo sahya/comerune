@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-
-import '../../../lib/domain/models/app_message.dart';
+import 'package:comerune/domain/models/app_message.dart';
 
 void main() {
   test('AppMessage can be created with required fields', () {
@@ -22,6 +21,17 @@ void main() {
     expect(message.content, 'hello');
     expect(message.type, AppMessageType.chat);
     expect(message.raw, raw);
+  });
+
+  test('AppMessage can be created without userId', () {
+    final AppMessage message = AppMessage(
+      id: 'message-002',
+      timestamp: DateTime.parse('2026-03-22T00:00:01Z'),
+      content: 'no user',
+      type: AppMessageType.notification,
+    );
+
+    expect(message.userId, isNull);
   });
 
   test('AppMessageType has expected values', () {
