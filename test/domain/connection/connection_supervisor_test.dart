@@ -12,7 +12,8 @@ void main() {
         sessionWsClient: FakeSessionWsClient(
           endpointsQueue: <SessionEndpoints>[
             SessionEndpoints(
-              ndgrViewApiUri: Uri.parse('https://example.com/api/view/v4/stream'),
+              ndgrViewApiUri:
+                  Uri.parse('https://example.com/api/view/v4/stream'),
             ),
           ],
         ),
@@ -72,7 +73,8 @@ void main() {
       expect(ndgrClient.connectCalls, 1);
     });
 
-    test('reconnects NDGR stall with same URI after disconnecting old stream', () async {
+    test('reconnects NDGR stall with same URI after disconnecting old stream',
+        () async {
       final Uri ndgrUri = Uri.parse('https://example.com/api/view/v4/stream');
       final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
         endpointsQueue: <SessionEndpoints>[
@@ -136,7 +138,8 @@ void main() {
       expect(legacyClient.connectCalls, 1);
     });
 
-    test('reconnects legacy WS with same URL after disconnecting old stream', () async {
+    test('reconnects legacy WS with same URL after disconnecting old stream',
+        () async {
       final Uri legacyUrl = Uri.parse('wss://example.com/legacy');
       final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
         endpointsQueue: <SessionEndpoints>[
@@ -168,9 +171,12 @@ void main() {
       expect(legacyClient.connectedUris, <Uri>[legacyUrl, legacyUrl]);
     });
 
-    test('reconnects session WS path after disconnecting active clients', () async {
-      final Uri firstNdgrUri = Uri.parse('https://example.com/api/view/v4/stream/1');
-      final Uri secondNdgrUri = Uri.parse('https://example.com/api/view/v4/stream/2');
+    test('reconnects session WS path after disconnecting active clients',
+        () async {
+      final Uri firstNdgrUri =
+          Uri.parse('https://example.com/api/view/v4/stream/1');
+      final Uri secondNdgrUri =
+          Uri.parse('https://example.com/api/view/v4/stream/2');
       final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
         endpointsQueue: <SessionEndpoints>[
           SessionEndpoints(ndgrViewApiUri: firstNdgrUri),
@@ -204,7 +210,8 @@ void main() {
       expect(ndgrClient.connectedUris.last, secondNdgrUri);
     });
 
-    test('legacy reconnect falls back to session after 3 consecutive failures', () async {
+    test('legacy reconnect falls back to session after 3 consecutive failures',
+        () async {
       final Uri originalLegacyUrl = Uri.parse('wss://example.com/legacy/1');
       final Uri refreshedLegacyUrl = Uri.parse('wss://example.com/legacy/2');
 
@@ -310,7 +317,9 @@ void main() {
       expect(ndgrClient.connectedResumeCursors.last?.next, 'segment-1');
     });
 
-    test('auto transitions to ENDED when session broadcast ended event is emitted', () async {
+    test(
+        'auto transitions to ENDED when session broadcast ended event is emitted',
+        () async {
       final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
         endpointsQueue: <SessionEndpoints>[
           SessionEndpoints(
@@ -381,11 +390,13 @@ class FakeSessionWsClient implements SessionWsClient {
   }
 
   void emitDisconnected() {
-    _eventsController.add(const SessionWsEvent(SessionWsEventType.disconnected));
+    _eventsController
+        .add(const SessionWsEvent(SessionWsEventType.disconnected));
   }
 
   void emitBroadcastEnded() {
-    _eventsController.add(const SessionWsEvent(SessionWsEventType.broadcastEnded));
+    _eventsController
+        .add(const SessionWsEvent(SessionWsEventType.broadcastEnded));
   }
 }
 
