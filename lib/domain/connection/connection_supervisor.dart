@@ -1,10 +1,6 @@
-import 'dart:async';
 import 'dart:developer';
-import 'dart:math';
 
 import 'package:flutter/foundation.dart';
-
-import 'connection_clients.dart';
 
 enum ConnectionStatus {
   idle,
@@ -76,7 +72,7 @@ extension ConnectionStatusCode on ConnectionStatus {
   }
 }
 
-extension ConnectionErrorCodeCode on ConnectionErrorCode {
+extension ConnectionErrorCodeExtension on ConnectionErrorCode {
   String get code {
     switch (this) {
       case ConnectionErrorCode.lvParseFailed:
@@ -101,231 +97,172 @@ extension ConnectionErrorCodeCode on ConnectionErrorCode {
   }
 }
 
-typedef DelayExecutor = Future<void> Function(Duration delay);
-typedef JitterProvider = Duration Function(int attempt);
-
 class ConnectionSupervisor extends ChangeNotifier {
-  ConnectionSupervisor({
-    required SessionWsClient sessionWsClient,
-    required NdgrClient ndgrClient,
-    required LegacyCommentClient legacyCommentClient,
-    int maxReconnectAttempts = 10,
-    int legacySameUrlFailureThreshold = 3,
-    DelayExecutor? delayExecutor,
-    JitterProvider? jitterProvider,
-  })  : _sessionWsClient = sessionWsClient,
-        _ndgrClient = ndgrClient,
-        _legacyCommentClient = legacyCommentClient,
-        _maxReconnectAttempts = maxReconnectAttempts,
-        _legacySameUrlFailureThreshold = legacySameUrlFailureThreshold,
-        _delayExecutor = delayExecutor ?? _defaultDelayExecutor,
-        _jitterProvider = jitterProvider ?? _defaultJitterProvider {
-    _bindClientEvents();
-  }
-
-  static const List<int> _backoffSeconds = <int>[1, 2, 4, 8, 16, 30];
-
-  static const Map<ConnectionStatus, Set<ConnectionStatus>> _allowedTransitions =
-      <ConnectionStatus, Set<ConnectionStatus>>{
-        ConnectionStatus.idle: <ConnectionStatus>{
-          ConnectionStatus.connectingSessionWs,
-        },
-        ConnectionStatus.connectingSessionWs: <ConnectionStatus>{
-          ConnectionStatus.resolvingEndpoints,
-          ConnectionStatus.reconnecting,
-          ConnectionStatus.stopped,
-          ConnectionStatus.ended,
-          ConnectionStatus.failed,
-        },
-        ConnectionStatus.resolvingEndpoints: <ConnectionStatus>{
-          ConnectionStatus.streamingNdgr,
-          ConnectionStatus.streamingLegacy,
-          ConnectionStatus.reconnecting,
-          ConnectionStatus.stopped,
-          ConnectionStatus.ended,
-          ConnectionStatus.failed,
-        },
-        ConnectionStatus.streamingNdgr: <ConnectionStatus>{
-          ConnectionStatus.reconnecting,
-          ConnectionStatus.stopped,
-          ConnectionStatus.ended,
-          ConnectionStatus.failed,
-        },
-        ConnectionStatus.streamingLegacy: <ConnectionStatus>{
-          ConnectionStatus.reconnecting,
-          ConnectionStatus.stopped,
-          ConnectionStatus.ended,
-          ConnectionStatus.failed,
-        },
-        ConnectionStatus.reconnecting: <ConnectionStatus>{
-          ConnectionStatus.connectingSessionWs,
-          ConnectionStatus.streamingNdgr,
-          ConnectionStatus.streamingLegacy,
-          ConnectionStatus.stopped,
-          ConnectionStatus.ended,
-          ConnectionStatus.failed,
-        },
-        ConnectionStatus.stopped: <ConnectionStatus>{
-          ConnectionStatus.connectingSessionWs,
-        },
-        ConnectionStatus.ended: <ConnectionStatus>{
-          ConnectionStatus.idle,
-        },
-        ConnectionStatus.failed: <ConnectionStatus>{
-          ConnectionStatus.idle,
-        },
-      };
-
-  static Future<void> _defaultDelayExecutor(Duration delay) {
-    return Future<void>.delayed(delay);
-  }
-
-  static Duration _defaultJitterProvider(int _) {
-    final Random random = Random();
-    return Duration(milliseconds: random.nextInt(1000));
-  }
-
-  final SessionWsClient _sessionWsClient;
-  final NdgrClient _ndgrClient;
-  final LegacyCommentClient _legacyCommentClient;
-  final int _maxReconnectAttempts;
-  final int _legacySameUrlFailureThreshold;
-  final DelayExecutor _delayExecutor;
-  final JitterProvider _jitterProvider;
+  static const Map<ConnectionStatus, Set<ConnectionStatus>>
+      _allowedTransitions = <ConnectionStatus, Set<ConnectionStatus>>{
+    ConnectionStatus.idle: <ConnectionStatus>{
+      ConnectionStatus.connectingSessionWs,
+    },
+    ConnectionStatus.connectingSessionWs: <ConnectionStatus>{
+      ConnectionStatus.resolvingEndpoints,
+      ConnectionStatus.stopped,
+      ConnectionStatus.ended,
+      ConnectionStatus.failed,
+    },
+    ConnectionStatus.resolvingEndpoints: <ConnectionStatus>{
+      ConnectionStatus.streamingNdgr,
+      ConnectionStatus.streamingLegacy,
+      ConnectionStatus.stopped,
+      ConnectionStatus.ended,
+      ConnectionStatus.failed,
+    },
+    ConnectionStatus.streamingNdgr: <ConnectionStatus>{
+      ConnectionStatus.reconnecting,
+      ConnectionStatus.stopped,
+      ConnectionStatus.ended,
+      ConnectionStatus.failed,
+    },
+    ConnectionStatus.streamingLegacy: <ConnectionStatus>{
+      ConnectionStatus.reconnecting,
+      ConnectionStatus.stopped,
+      ConnectionStatus.ended,
+      ConnectionStatus.failed,
+    },
+    // Integrated spec §6.2(5) explicitly allows reconnecting to return
+    // directly to STREAMING_* when reusing the same endpoint.
+    ConnectionStatus.reconnecting: <ConnectionStatus>{
+      ConnectionStatus.connectingSessionWs,
+      ConnectionStatus.streamingNdgr,
+      ConnectionStatus.streamingLegacy,
+      ConnectionStatus.stopped,
+      ConnectionStatus.ended,
+      ConnectionStatus.failed,
+    },
+    ConnectionStatus.stopped: <ConnectionStatus>{
+      ConnectionStatus.idle,
+    },
+    ConnectionStatus.ended: <ConnectionStatus>{
+      ConnectionStatus.idle,
+    },
+    ConnectionStatus.failed: <ConnectionStatus>{
+      ConnectionStatus.idle,
+    },
+  };
 
   ConnectionStatus _status = ConnectionStatus.idle;
   int _reconnectCount = 0;
-  int _legacyConsecutiveFailures = 0;
-  bool _isReconnectLoopRunning = false;
   DateTime? _lastReceivedAt;
   ConnectionErrorCode? _lastError;
-  Uri? _currentNdgrViewApiUri;
-  Object _currentNdgrAt = 'now';
-  Uri? _currentLegacyWsUrl;
-  StreamSubscription<void>? _sessionDisconnectedSubscription;
-  StreamSubscription<void>? _ndgrStalledSubscription;
-  StreamSubscription<void>? _legacyDisconnectedSubscription;
-  StreamSubscription<Object>? _ndgrNextAtSubscription;
 
   ConnectionStatus get status => _status;
   int get reconnectCount => _reconnectCount;
   DateTime? get lastReceivedAt => _lastReceivedAt;
   ConnectionErrorCode? get lastError => _lastError;
-  WifiIndicatorColor get wifiIndicatorColor =>
-      _status.usesGreenWifiIcon ? WifiIndicatorColor.green : WifiIndicatorColor.red;
+  WifiIndicatorColor get wifiIndicatorColor => _status.usesGreenWifiIcon
+      ? WifiIndicatorColor.green
+      : WifiIndicatorColor.red;
 
+  /// Whether the supervisor can start (or restart) a connection.
+  ///
+  /// True for all resting states: [ConnectionStatus.idle],
+  /// [ConnectionStatus.stopped], [ConnectionStatus.ended], and
+  /// [ConnectionStatus.failed].
+  ///
+  /// For non-idle resting states, [startConnection] performs an internal
+  /// reset to [ConnectionStatus.idle] and then transitions to
+  /// [ConnectionStatus.connectingSessionWs].
   bool get canStartConnection =>
-      _status == ConnectionStatus.idle || _status == ConnectionStatus.stopped;
+      _status == ConnectionStatus.idle ||
+      _status == ConnectionStatus.stopped ||
+      _status == ConnectionStatus.ended ||
+      _status == ConnectionStatus.failed;
 
   bool get canRetryFromTerminal =>
       _status == ConnectionStatus.ended || _status == ConnectionStatus.failed;
 
-  Duration backoffDelayForAttempt(int attempt) {
-    if (attempt <= 0) {
-      throw ArgumentError.value(attempt, 'attempt', 'must be greater than zero');
-    }
-
-    final int index = min(attempt - 1, _backoffSeconds.length - 1);
-    final Duration base = Duration(seconds: _backoffSeconds[index]);
-    final Duration jitter = _jitterProvider(attempt);
-    return base + jitter;
-  }
-
-  @override
-  void dispose() {
-    _sessionDisconnectedSubscription?.cancel();
-    _ndgrStalledSubscription?.cancel();
-    _legacyDisconnectedSubscription?.cancel();
-    _ndgrNextAtSubscription?.cancel();
-    super.dispose();
-  }
-
-  Future<bool> startConnection() async {
+  bool startConnection() {
     if (!canStartConnection) {
       _logInvalidTransition(ConnectionStatus.connectingSessionWs);
       return false;
     }
 
-    final bool transitioned = _transitionTo(
-      ConnectionStatus.connectingSessionWs,
-      resetDiagnostics: true,
-    );
-    if (!transitioned) {
-      return false;
+    bool resetDuringPreStart = false;
+    if (_status != ConnectionStatus.idle) {
+      // Hide intermediate IDLE from observers to avoid UI flicker.
+      final bool resetToIdle = _transitionTo(
+        ConnectionStatus.idle,
+        resetDiagnostics: true,
+        notify: false,
+      );
+      if (!resetToIdle) {
+        return false;
+      }
+      resetDuringPreStart = true;
     }
-    _currentNdgrAt = 'now';
 
-    try {
-      await _resolveEndpointsAndConnect();
-      return true;
-    } on _ConnectionFailure catch (failure) {
-      fail(failure.errorCode);
-      return false;
-    } catch (_) {
-      fail(ConnectionErrorCode.sessionWsConnectFailed);
-      return false;
-    }
+    return _transitionTo(
+      ConnectionStatus.connectingSessionWs,
+      resetDiagnostics: !resetDuringPreStart,
+    );
   }
 
-  Future<bool> retryConnectionFromTerminal() async {
+  /// Retries from a terminal state ([ConnectionStatus.ended] or
+  /// [ConnectionStatus.failed]).
+  ///
+  /// This method validates terminal-state usage and then delegates to
+  /// [startConnection].
+  bool retryConnectionFromTerminal() {
     if (!canRetryFromTerminal) {
       _logInvalidTransition(ConnectionStatus.connectingSessionWs);
       return false;
     }
-
-    final bool resetToIdle = _transitionTo(ConnectionStatus.idle);
-    if (!resetToIdle) {
-      return false;
-    }
-
     return startConnection();
   }
 
-  Future<bool> onSessionWsDisconnected() {
-    return _attemptReconnect(
-      errorCode: ConnectionErrorCode.sessionWsConnectFailed,
-      reconnectOperation: _reconnectViaSessionWs,
+  bool onSessionWsConnected() {
+    return _transitionTo(ConnectionStatus.resolvingEndpoints);
+  }
+
+  bool onNdgrEndpointResolved() {
+    return _transitionTo(ConnectionStatus.streamingNdgr);
+  }
+
+  bool onLegacyEndpointResolved() {
+    return _transitionTo(ConnectionStatus.streamingLegacy);
+  }
+
+  bool onStreamDisconnected(ConnectionErrorCode errorCode) {
+    return _transitionTo(
+      ConnectionStatus.reconnecting,
+      errorCode: errorCode,
+      incrementReconnectCount: true,
     );
   }
 
-  Future<bool> onNdgrStreamStalled() {
-    return _attemptReconnect(
-      errorCode: ConnectionErrorCode.ndgrStreamFailed,
-      reconnectOperation: _reconnectToNdgrStream,
-    );
+  bool reconnectViaSessionWs() {
+    return _transitionTo(ConnectionStatus.connectingSessionWs);
   }
 
-  Future<bool> onLegacyWsDisconnected() {
-    return _attemptReconnect(
-      errorCode: ConnectionErrorCode.legacyWsFailed,
-      reconnectOperation: _reconnectLegacyWithFallback,
-    );
+  bool reconnectToNdgrStream() {
+    return _transitionTo(ConnectionStatus.streamingNdgr);
   }
 
-  Future<bool> stopByUser() async {
-    final bool transitioned = _transitionTo(
+  bool reconnectToLegacyStream() {
+    return _transitionTo(ConnectionStatus.streamingLegacy);
+  }
+
+  bool stopByUser() {
+    return _transitionTo(
       ConnectionStatus.stopped,
       errorCode: ConnectionErrorCode.userStopped,
     );
-    if (!transitioned) {
-      return false;
-    }
-
-    await _disconnectAllClients();
-    return true;
   }
 
-  Future<bool> endBroadcast() async {
-    final bool transitioned = _transitionTo(
+  bool endBroadcast() {
+    return _transitionTo(
       ConnectionStatus.ended,
       errorCode: ConnectionErrorCode.broadcastEnded,
     );
-    if (!transitioned) {
-      return false;
-    }
-
-    await _disconnectAllClients();
-    return true;
   }
 
   bool fail(ConnectionErrorCode errorCode) {
@@ -345,249 +282,17 @@ class ConnectionSupervisor extends ChangeNotifier {
   }
 
   void recordError(ConnectionErrorCode errorCode) {
+    // Used for non-transition error updates (e.g. parse/speech failures).
     _lastError = errorCode;
     notifyListeners();
-  }
-
-  Future<void> _resolveEndpointsAndConnect() async {
-    SessionEndpoints endpoints;
-    try {
-      endpoints = await _sessionWsClient.connectAndResolveEndpoints();
-    } catch (_) {
-      throw _ConnectionFailure(ConnectionErrorCode.sessionWsConnectFailed);
-    }
-
-    final bool toResolving = _transitionTo(ConnectionStatus.resolvingEndpoints);
-    if (!toResolving) {
-      throw _ConnectionFailure(ConnectionErrorCode.endpointResolveFailed);
-    }
-
-    if (endpoints.ndgrViewApiUri != null) {
-      _currentNdgrViewApiUri = endpoints.ndgrViewApiUri;
-      _currentNdgrAt = 'now';
-      _currentLegacyWsUrl = null;
-      await _connectNdgr(endpoints.ndgrViewApiUri!);
-      return;
-    }
-
-    if (endpoints.legacyWsUrl != null) {
-      _currentLegacyWsUrl = endpoints.legacyWsUrl;
-      _currentNdgrViewApiUri = null;
-      await _connectLegacy(endpoints.legacyWsUrl!);
-      return;
-    }
-
-    throw _ConnectionFailure(ConnectionErrorCode.endpointResolveFailed);
-  }
-
-  Future<void> _connectNdgr(Uri viewApiUri, {Object at = 'now'}) async {
-    try {
-      await _ndgrClient.connect(viewApiUri, at: at);
-    } catch (_) {
-      throw _ConnectionFailure(ConnectionErrorCode.ndgrStreamFailed);
-    }
-
-    final bool transitioned = _transitionTo(ConnectionStatus.streamingNdgr);
-    if (!transitioned) {
-      throw _ConnectionFailure(ConnectionErrorCode.ndgrStreamFailed);
-    }
-    _legacyConsecutiveFailures = 0;
-  }
-
-  Future<void> _connectLegacy(Uri wsUrl) async {
-    try {
-      await _legacyCommentClient.connect(wsUrl);
-    } catch (_) {
-      throw _ConnectionFailure(ConnectionErrorCode.legacyWsFailed);
-    }
-
-    final bool transitioned = _transitionTo(ConnectionStatus.streamingLegacy);
-    if (!transitioned) {
-      throw _ConnectionFailure(ConnectionErrorCode.legacyWsFailed);
-    }
-    _legacyConsecutiveFailures = 0;
-  }
-
-  Future<void> _reconnectViaSessionWs(int _) async {
-    await _disconnectForSessionReconnect();
-
-    final bool toConnecting = _transitionTo(ConnectionStatus.connectingSessionWs);
-    if (!toConnecting) {
-      throw _ConnectionFailure(ConnectionErrorCode.sessionWsConnectFailed);
-    }
-    await _resolveEndpointsAndConnect();
-  }
-
-  Future<void> _reconnectToNdgrStream(int _) async {
-    await _safeDisconnect(
-      _ndgrClient.disconnect,
-      'ndgr stream',
-    );
-
-    final Uri? viewApiUri = _currentNdgrViewApiUri;
-    if (viewApiUri == null) {
-      throw _ConnectionFailure(ConnectionErrorCode.endpointResolveFailed);
-    }
-    await _connectNdgr(viewApiUri, at: _currentNdgrAt);
-  }
-
-  Future<void> _reconnectLegacyWithFallback(int _) async {
-    final Uri? legacyWsUrl = _currentLegacyWsUrl;
-    if (legacyWsUrl == null) {
-      throw _ConnectionFailure(ConnectionErrorCode.endpointResolveFailed);
-    }
-
-    if (_legacyConsecutiveFailures >= _legacySameUrlFailureThreshold) {
-      _legacyConsecutiveFailures = 0;
-      await _reconnectViaSessionWs(0);
-      return;
-    }
-
-    await _safeDisconnect(
-      _legacyCommentClient.disconnect,
-      'legacy stream',
-    );
-
-    try {
-      await _connectLegacy(legacyWsUrl);
-    } on _ConnectionFailure {
-      _legacyConsecutiveFailures += 1;
-      rethrow;
-    }
-  }
-
-  Future<bool> _attemptReconnect({
-    required ConnectionErrorCode errorCode,
-    required Future<void> Function(int attempt) reconnectOperation,
-  }) async {
-    if (_status == ConnectionStatus.stopped || _status == ConnectionStatus.ended) {
-      return false;
-    }
-
-    if (_isReconnectLoopRunning) {
-      return false;
-    }
-
-    final bool toReconnecting = _status == ConnectionStatus.reconnecting
-        ? true
-        : _transitionTo(
-            ConnectionStatus.reconnecting,
-            errorCode: errorCode,
-          );
-    if (!toReconnecting) {
-      return false;
-    }
-
-    _isReconnectLoopRunning = true;
-
-    try {
-      while (_status != ConnectionStatus.stopped && _status != ConnectionStatus.ended) {
-        if (_reconnectCount >= _maxReconnectAttempts) {
-          fail(errorCode);
-          return false;
-        }
-
-        _reconnectCount += 1;
-        _lastError = errorCode;
-        notifyListeners();
-
-        await _delayExecutor(backoffDelayForAttempt(_reconnectCount));
-        if (_status == ConnectionStatus.stopped || _status == ConnectionStatus.ended) {
-          return false;
-        }
-
-        try {
-          await reconnectOperation(_reconnectCount);
-          return true;
-        } on _ConnectionFailure catch (failure) {
-          _lastError = failure.errorCode;
-          if (_status != ConnectionStatus.reconnecting) {
-            _transitionTo(
-              ConnectionStatus.reconnecting,
-              errorCode: failure.errorCode,
-            );
-          }
-          notifyListeners();
-        } catch (_) {
-          _lastError = errorCode;
-          if (_status != ConnectionStatus.reconnecting) {
-            _transitionTo(
-              ConnectionStatus.reconnecting,
-              errorCode: errorCode,
-            );
-          }
-          notifyListeners();
-        }
-      }
-
-      return false;
-    } finally {
-      _isReconnectLoopRunning = false;
-    }
-  }
-
-  Future<void> _disconnectAllClients() async {
-    await Future.wait<void>(<Future<void>>[
-      _sessionWsClient.disconnect(),
-      _ndgrClient.disconnect(),
-      _legacyCommentClient.disconnect(),
-    ]);
-  }
-
-  void _bindClientEvents() {
-    _sessionDisconnectedSubscription = _sessionWsClient.disconnected.listen((_) {
-      unawaited(onSessionWsDisconnected());
-    });
-
-    _ndgrStalledSubscription = _ndgrClient.stalled.listen((_) {
-      unawaited(onNdgrStreamStalled());
-    });
-
-    _legacyDisconnectedSubscription = _legacyCommentClient.disconnected.listen((_) {
-      unawaited(onLegacyWsDisconnected());
-    });
-
-    _ndgrNextAtSubscription = _ndgrClient.nextAt.listen((Object at) {
-      _currentNdgrAt = at;
-    });
-  }
-
-  Future<void> _disconnectForSessionReconnect() async {
-    await Future.wait<void>(<Future<void>>[
-      _safeDisconnect(
-        _sessionWsClient.disconnect,
-        'session ws',
-      ),
-      _safeDisconnect(
-        _ndgrClient.disconnect,
-        'ndgr stream',
-      ),
-      _safeDisconnect(
-        _legacyCommentClient.disconnect,
-        'legacy stream',
-      ),
-    ]);
-  }
-
-  Future<void> _safeDisconnect(
-    Future<void> Function() disconnect,
-    String clientName,
-  ) async {
-    try {
-      await disconnect();
-    } catch (error, stackTrace) {
-      log(
-        'Failed to disconnect $clientName during reconnect: $error',
-        name: 'ConnectionSupervisor',
-        stackTrace: stackTrace,
-      );
-    }
   }
 
   bool _transitionTo(
     ConnectionStatus next, {
     ConnectionErrorCode? errorCode,
+    bool incrementReconnectCount = false,
     bool resetDiagnostics = false,
+    bool notify = true,
   }) {
     final Set<ConnectionStatus> allowed =
         _allowedTransitions[_status] ?? const <ConnectionStatus>{};
@@ -598,9 +303,12 @@ class ConnectionSupervisor extends ChangeNotifier {
 
     if (resetDiagnostics) {
       _reconnectCount = 0;
-      _legacyConsecutiveFailures = 0;
       _lastReceivedAt = null;
       _lastError = null;
+    }
+
+    if (incrementReconnectCount) {
+      _reconnectCount += 1;
     }
 
     if (errorCode != null) {
@@ -608,7 +316,9 @@ class ConnectionSupervisor extends ChangeNotifier {
     }
 
     _status = next;
-    notifyListeners();
+    if (notify) {
+      notifyListeners();
+    }
     return true;
   }
 
@@ -618,10 +328,4 @@ class ConnectionSupervisor extends ChangeNotifier {
       name: 'ConnectionSupervisor',
     );
   }
-}
-
-class _ConnectionFailure implements Exception {
-  const _ConnectionFailure(this.errorCode);
-
-  final ConnectionErrorCode errorCode;
 }
