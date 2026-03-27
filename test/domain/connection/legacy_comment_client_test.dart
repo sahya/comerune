@@ -171,7 +171,8 @@ Future<void> _flushEvents() async {
 }
 
 String _legacyFixture(String name) {
-  return File('test/fixtures/legacy/$name').readAsStringSync();
+  final Uri fixtureUri = Platform.script.resolve('../../fixtures/legacy/$name');
+  return File.fromUri(fixtureUri).readAsStringSync();
 }
 
 class _FakeLegacyWebSocket implements LegacyWebSocket {
