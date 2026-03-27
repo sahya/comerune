@@ -103,8 +103,16 @@ class _CommentScreenState extends State<CommentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: _handleBackNavigation,
+    return PopScope(
+      canPop: true,
+      onPopInvoked: (bool didPop) {
+        if (didPop || _stoppingViaButton) {
+          if (didPop && !_stoppingViaButton) {
+            _markStoppedIfPossible();
+            unawaited(widget.onStopAllConnections());
+          }
+        }
+      },
       child: AnimatedBuilder(
         animation: widget.connectionSupervisor,
         builder: (BuildContext context, _) {
@@ -236,15 +244,6 @@ class _CommentScreenState extends State<CommentScreen> {
     } finally {
       _stoppingViaButton = false;
     }
-  }
-
-  Future<bool> _handleBackNavigation() async {
-    if (_stoppingViaButton) {
-      return true;
-    }
-    _markStoppedIfPossible();
-    await widget.onStopAllConnections();
-    return true;
   }
 
   void _markStoppedIfPossible() {
