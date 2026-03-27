@@ -1,4 +1,4 @@
-# Issue 10: WAV 音声再生 (MediaPlayerWavPlayer)
+# Issue #43: WAV 音声再生 (MediaPlayerWavPlayer)
 
 ## Goal
 
@@ -43,13 +43,13 @@ interface WavPlayer {
 ## Non-scope
 
 - AudioTrack 方式（将来の改善版）
-- Audio Focus 制御（Issue 11）
+- Audio Focus 制御（#44）
 - 音量制御（SpeechSettings の volumeScale はエンジン側の合成パラメータ）
 - バックグラウンド再生
 
 ## Dependencies
 
-- Issue 01（データモデル: PlayerState）
+- #32（データモデル: PlayerState）
 
 ## Acceptance Criteria
 

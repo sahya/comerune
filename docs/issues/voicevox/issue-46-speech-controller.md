@@ -1,4 +1,4 @@
-# Issue 13: SpeechController 統合制御
+# Issue #46: SpeechController 統合制御
 
 ## Goal
 
@@ -66,12 +66,12 @@ interface SpeechController {
 
 ## Dependencies
 
-- Issue 02-05（CommentNormalizer 一式）
-- Issue 06（SpeechQueueManager）
-- Issue 07（SettingsRepository）
-- Issue 09（VoicevoxEngine）
-- Issue 10（WavPlayer）
-- Issue 12（SpeechEventEmitter）
+- #33-#36（CommentNormalizer 一式）
+- #37（SpeechQueueManager）
+- #38（SettingsRepository）
+- #42（VoicevoxEngine）
+- #43（WavPlayer）
+- #45（SpeechEventEmitter）
 
 ## Acceptance Criteria
 

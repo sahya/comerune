@@ -1,4 +1,4 @@
-# Issue 14: CommentSpeechPlugin (Platform Channel)
+# Issue #47: CommentSpeechPlugin (Platform Channel)
 
 ## Goal
 
@@ -53,17 +53,17 @@ Flutter からの呼び出しを受け付け、SpeechController に委譲し、�
 
 ## Non-scope
 
-- Flutter Dart 側のラッパー（Issue 15）
+- Flutter Dart 側のラッパー（Issue #48）
 - 依存コンポーネントの実装（各 Issue で実装済みのものを組み立てるだけ）
 
 ## Dependencies
 
-- Issue 06（SpeechQueueManager）
-- Issue 07（SettingsRepository）
-- Issue 09（VoicevoxEngine）
-- Issue 10（WavPlayer）
-- Issue 12（SpeechEventEmitter）
-- Issue 13（SpeechController）
+- #37（SpeechQueueManager）
+- #38（SettingsRepository）
+- #42（VoicevoxEngine）
+- #43（WavPlayer）
+- #45（SpeechEventEmitter）
+- #46（SpeechController）
 
 ## Acceptance Criteria
 

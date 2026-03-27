@@ -24,21 +24,23 @@
 
 | # | Issue | 概要 | Phase |
 |---|---|---|---|
-| 1 | Kotlin データモデル定義 | 全 Issue の基盤となるデータクラス群 | 0: 基盤 |
-| 2 | コメント整形: 前処理・スキップ判定 | 空白正規化、空文字・記号のみ判定 | 1: 整形 |
-| 3 | コメント整形: URL・記号圧縮・絵文字変換 | URL置換、草→わら等、絵文字削除 | 1: 整形 |
-| 4 | コメント整形: 文字数制限・辞書置換・NGワード | 50文字制限、用語辞書、禁止語 | 1: 整形 |
-| 5 | 重複抑制 (DuplicateDetector) | 同一コメント・連投の抑制 | 1: 整形 |
-| 6 | 読み上げキュー管理 (SpeechQueueManager) | FIFO キュー、最大件数、重複排除 | 2: 制御 |
-| 7 | 設定リポジトリ (SettingsRepository) | 読み上げ設定の保持・読み出し | 2: 制御 |
-| 8 | VOICEVOX Core JNI ブリッジ基盤 | .so 配置、CMake、NativeVoicevoxBridge | 3: エンジン |
-| 9 | VoicevoxEngineImpl 実装 | 初期化・合成・解放の本実装 | 3: エンジン |
-| 10 | WAV 音声再生 (MediaPlayerWavPlayer) | 一時ファイル保存 + MediaPlayer 再生 | 4: 再生 |
-| 11 | Audio Focus 制御 | 他アプリとの音声競合管理 | 4: 再生 |
-| 12 | イベント通知基盤 (SpeechEventEmitter) | Flutter 向け状態変化イベント送信 | 5: 統合 |
-| 13 | SpeechController 統合制御 | 整形→合成→再生のオーケストレーション | 5: 統合 |
-| 14 | CommentSpeechPlugin (Platform Channel) | MethodChannel/EventChannel の Android 側 | 6: 連携 |
-| 15 | Flutter Dart ラッパー | Dart 側モデル + CommentSpeechPlatform | 6: 連携 |
+| #32 | Kotlin データモデル定義 | 全 Issue の基盤となるデータクラス群 | 0: 基盤 |
+| #33 | コメント整形: 前処理・スキップ判定 | 空白正規化、空文字・記号のみ判定 | 1: 整形 |
+| #34 | コメント整形: URL・記号圧縮・絵文字変換 | URL置換、草→わら等、絵文字削除 | 1: 整形 |
+| #35 | コメント整形: 文字数制限・辞書置換・NGワード | 50文字制限、用語辞書、禁止語 | 1: 整形 |
+| #36 | 重複抑制 (DuplicateDetector) | 同一コメント・連投の抑制 | 1: 整形 |
+| #37 | 読み上げキュー管理 (SpeechQueueManager) | FIFO キュー、最大件数、重複排除 | 2: 制御 |
+| #38 | 設定リポジトリ (SettingsRepository) | 読み上げ設定の保持・読み出し | 2: 制御 |
+| #39 | VOICEVOX Core JNI ブリッジ基盤 | .so 配置、CMake、NativeVoicevoxBridge、ビルド通過 | 3: エンジン |
+| #40 | JNI 実装の前提準備（人間作業） | ヘッダ配置、設計判断確定、assets 配置 | 3: エンジン |
+| #41 | voicevox_jni.cpp C++ 本実装 | ヘッダを読んで nativeInitialize/LoadModel/Tts を実装 | 3: エンジン |
+| #42 | VoicevoxEngineImpl 実装 | Kotlin ラッパー、assets 展開、防御コーディング | 3: エンジン |
+| #43 | WAV 音声再生 (MediaPlayerWavPlayer) | 一時ファイル保存 + MediaPlayer 再生 | 4: 再生 |
+| #44 | Audio Focus 制御 | 他アプリとの音声競合管理 | 4: 再生 |
+| #45 | イベント通知基盤 (SpeechEventEmitter) | Flutter 向け状態変化イベント送信 | 5: 統合 |
+| #46 | SpeechController 統合制御 | 整形→合成→再生のオーケストレーション | 5: 統合 |
+| #47 | CommentSpeechPlugin (Platform Channel) | MethodChannel/EventChannel の Android 側 | 6: 連携 |
+| #48 | Flutter Dart ラッパー | Dart 側モデル + CommentSpeechPlatform | 6: 連携 |
 
 ## スコープ外（この Epic に含まないもの）
 

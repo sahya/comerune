@@ -1,4 +1,4 @@
-# Issue 06: 読み上げキュー管理 (SpeechQueueManager)
+# Issue #37: 読み上げキュー管理 (SpeechQueueManager)
 
 ## Goal
 
@@ -40,7 +40,7 @@ interface SpeechQueueManager {
 
 ## Dependencies
 
-- Issue 01（データモデル: SpeechQueueItem, QueueOfferResult）
+- #32（データモデル: SpeechQueueItem, QueueOfferResult）
 
 ## Acceptance Criteria
 

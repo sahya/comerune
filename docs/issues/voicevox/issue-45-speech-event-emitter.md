@@ -1,4 +1,4 @@
-# Issue 12: イベント通知基盤 (SpeechEventEmitter)
+# Issue #45: イベント通知基盤 (SpeechEventEmitter)
 
 ## Goal
 
@@ -45,13 +45,13 @@ interface SpeechEventEmitter {
 
 ## Non-scope
 
-- EventChannel のセットアップ（Issue 14: Plugin の責務）
-- Flutter 側でのイベント受信処理（Issue 15）
+- EventChannel のセットアップ（Issue #47: Plugin の責務）
+- Flutter 側でのイベント受信処理（Issue #48）
 - イベントのフィルタリング・バッファリング
 
 ## Dependencies
 
-- Issue 01（データモデル: TtsEngineState）
+- #32（データモデル: TtsEngineState）
 
 ## Acceptance Criteria
 
