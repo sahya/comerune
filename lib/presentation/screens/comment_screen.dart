@@ -52,6 +52,7 @@ class _CommentScreenState extends State<CommentScreen> {
   late final ScrollController _scrollController;
   late ConnectionStatus _lastStatus;
   bool _autoScrollEnabled = true;
+  bool _stoppingViaButton = false;
 
   @override
   void initState() {
@@ -224,15 +225,23 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   Future<void> _stopAndPop() async {
-    _markStoppedIfPossible();
-    await widget.onStopAllConnections();
-    if (!mounted) {
-      return;
+    _stoppingViaButton = true;
+    try {
+      _markStoppedIfPossible();
+      await widget.onStopAllConnections();
+      if (!mounted) {
+        return;
+      }
+      await Navigator.of(context).maybePop();
+    } finally {
+      _stoppingViaButton = false;
     }
-    await Navigator.of(context).maybePop();
   }
 
   Future<bool> _handleBackNavigation() async {
+    if (_stoppingViaButton) {
+      return true;
+    }
     _markStoppedIfPossible();
     await widget.onStopAllConnections();
     return true;
