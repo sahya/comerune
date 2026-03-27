@@ -655,6 +655,33 @@ void main() {
       expect(supervisor.lastError, ConnectionErrorCode.ndgrStreamFailed);
     });
 
+    test('uses 6 as default max reconnect attempts', () async {
+      final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
+        endpointsQueue: <SessionEndpoints>[
+          SessionEndpoints(
+            ndgrViewApiUri: Uri.parse('https://example.com/api/view/v4/stream'),
+          ),
+        ],
+      );
+      final FakeNdgrClient ndgrClient = FakeNdgrClient(
+        connectResults: <bool>[true, false, false, false, false, false, false],
+      );
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: sessionWsClient,
+        ndgrClient: ndgrClient,
+        legacyCommentClient: FakeLegacyCommentClient(),
+        delayExecutor: (_) async {},
+        jitterProvider: (_) => Duration.zero,
+      );
+      addTearDown(supervisor.dispose);
+
+      expect(await supervisor.startConnection(), isTrue);
+      expect(await supervisor.onNdgrStreamStalled(), isFalse);
+      expect(supervisor.status, ConnectionStatus.failed);
+      expect(supervisor.reconnectCount, 6);
+      expect(supervisor.lastError, ConnectionErrorCode.ndgrStreamFailed);
+    });
+
     test('auto reconnects when NDGR stall event is emitted', () async {
       final Uri ndgrUri = Uri.parse('https://example.com/api/view/v4/stream');
       final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
