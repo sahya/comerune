@@ -189,6 +189,8 @@ Future<void> _toggleSwitchByKey(WidgetTester tester, Key key) async {
   await _scrollToKey(tester, key);
   final SwitchListTile tile =
       tester.widget(find.byKey(key, skipOffstage: false));
+  // TODO(issue-12-followup): off-screen 要素のヒットテスト制約を解消したら、
+  // 直接 callback 呼び出しではなく tester.tap ベースに統一する。
   tile.onChanged!.call(!tile.value);
   await tester.pumpAndSettle();
 }
