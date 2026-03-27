@@ -18,9 +18,7 @@ class VoicevoxEngine implements SpeechEngine {
         _settingsResolver =
             settingsResolver ?? (() => const VoicevoxSpeechSettings()),
         _transport = transport ?? DartIoVoicevoxTransport(),
-        _audioPlayer = audioPlayer ?? AudioplayersVoicevoxAudioPlayer(),
-        _ownsTransport = transport == null,
-        _ownsAudioPlayer = audioPlayer == null;
+        _audioPlayer = audioPlayer ?? AudioplayersVoicevoxAudioPlayer();
 
   static const int _httpStatusOk = 200;
   static const String _jsonContentType = 'application/json';
@@ -29,8 +27,6 @@ class VoicevoxEngine implements SpeechEngine {
   final VoicevoxSettingsResolver _settingsResolver;
   final VoicevoxTransport _transport;
   final VoicevoxAudioPlayer _audioPlayer;
-  final bool _ownsTransport;
-  final bool _ownsAudioPlayer;
 
   @override
   Future<void> speak(String text) async {
@@ -163,12 +159,8 @@ class VoicevoxEngine implements SpeechEngine {
 
   @override
   Future<void> dispose() async {
-    if (_ownsAudioPlayer) {
-      await _audioPlayer.dispose();
-    }
-    if (_ownsTransport) {
-      await _transport.dispose();
-    }
+    await _audioPlayer.dispose();
+    await _transport.dispose();
   }
 
   void _applyVoiceSettings(
