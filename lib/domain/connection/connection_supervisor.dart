@@ -162,6 +162,15 @@ class ConnectionSupervisor extends ChangeNotifier {
       ? WifiIndicatorColor.green
       : WifiIndicatorColor.red;
 
+  /// Whether the supervisor can start (or restart) a connection.
+  ///
+  /// True for all resting states: [ConnectionStatus.idle],
+  /// [ConnectionStatus.stopped], [ConnectionStatus.ended], and
+  /// [ConnectionStatus.failed].
+  ///
+  /// For non-idle resting states, [startConnection] performs an internal
+  /// reset to [ConnectionStatus.idle] and then transitions to
+  /// [ConnectionStatus.connectingSessionWs].
   bool get canStartConnection =>
       _status == ConnectionStatus.idle ||
       _status == ConnectionStatus.stopped ||
@@ -197,6 +206,11 @@ class ConnectionSupervisor extends ChangeNotifier {
     );
   }
 
+  /// Retries from a terminal state ([ConnectionStatus.ended] or
+  /// [ConnectionStatus.failed]).
+  ///
+  /// This method validates terminal-state usage and then delegates to
+  /// [startConnection].
   bool retryConnectionFromTerminal() {
     if (!canRetryFromTerminal) {
       _logInvalidTransition(ConnectionStatus.connectingSessionWs);
