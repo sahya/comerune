@@ -1,0 +1,1 @@
+wss://legacy.example/ws?token=abc
