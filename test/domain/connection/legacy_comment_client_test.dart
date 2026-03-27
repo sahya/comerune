@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -26,9 +27,7 @@ void main() {
       final Future<AppMessage> firstMessage = client.messages.first;
       await client.connect('wss://legacy.example/ws');
 
-      fakeSocket.add(
-        '{"chat":{"content":"hello","user_id":"user-1","timestamp":1710939600}}',
-      );
+      fakeSocket.add(_legacyFixture('chat_message.json'));
 
       final AppMessage message = await firstMessage;
       expect(connectedUrl, 'wss://legacy.example/ws');
@@ -53,11 +52,7 @@ void main() {
       final Future<AppMessage> firstMessage = client.messages.first;
       await client.connect('wss://legacy.example/ws');
 
-      fakeSocket.add(
-        utf8.encode(
-          '{"chat":{"content":"hello-binary","user_id":"user-2","timestamp":1710939601}}',
-        ),
-      );
+      fakeSocket.add(utf8.encode(_legacyFixture('chat_message_binary.json')));
 
       final AppMessage message = await firstMessage;
       expect(message.type, AppMessageType.chat);
@@ -81,7 +76,7 @@ void main() {
           client.messages.listen(emitted.add);
 
       await client.connect('wss://legacy.example/ws');
-      fakeSocket.add('{invalid-json');
+      fakeSocket.add(_legacyFixture('invalid_json.txt'));
       await _flushEvents();
 
       expect(emitted, isEmpty);
@@ -102,7 +97,7 @@ void main() {
 
       final Future<AppMessage> firstMessage = client.messages.first;
       await client.connect('wss://legacy.example/ws');
-      fakeSocket.add('{"no_chat":true}');
+      fakeSocket.add(_legacyFixture('unsupported_no_chat.json'));
 
       final AppMessage message = await firstMessage;
       expect(message.type, AppMessageType.notification);
@@ -173,6 +168,10 @@ LegacyMessageIdGenerator _sequentialIdGenerator() {
 
 Future<void> _flushEvents() async {
   await Future<void>.delayed(const Duration(milliseconds: 1));
+}
+
+String _legacyFixture(String name) {
+  return File('test/fixtures/legacy/$name').readAsStringSync();
 }
 
 class _FakeLegacyWebSocket implements LegacyWebSocket {
