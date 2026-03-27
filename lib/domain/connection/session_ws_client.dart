@@ -83,27 +83,27 @@ class SessionWsClient {
     Duration endpointFallbackDelay = const Duration(milliseconds: 300),
     Duration endpointResolveTimeout = const Duration(seconds: 5),
     Map<String, Map<String, Object>>? keepaliveResponses,
-  }) : _channelFactory = channelFactory ?? _defaultChannelFactory,
-       _endpointFallbackDelay = endpointFallbackDelay,
-       _endpointResolveTimeout = endpointResolveTimeout,
-       _keepaliveResponses = keepaliveResponses == null
-           ? const <String, Map<String, Object>>{
-               'servertime': <String, Object>{
-                 'type': 'pong',
-                 'body': <String, Object>{},
-               },
-               'ping': <String, Object>{
-                 'type': 'pong',
-                 'body': <String, Object>{},
-               },
-             }
-           : keepaliveResponses.map<String, Map<String, Object>>(
-               (String key, Map<String, Object> value) =>
-                   MapEntry<String, Map<String, Object>>(
-                     key.toLowerCase(),
-                     value,
-                   ),
-             );
+  })  : _channelFactory = channelFactory ?? _defaultChannelFactory,
+        _endpointFallbackDelay = endpointFallbackDelay,
+        _endpointResolveTimeout = endpointResolveTimeout,
+        _keepaliveResponses = keepaliveResponses == null
+            ? const <String, Map<String, Object>>{
+                'servertime': <String, Object>{
+                  'type': 'pong',
+                  'body': <String, Object>{},
+                },
+                'ping': <String, Object>{
+                  'type': 'pong',
+                  'body': <String, Object>{},
+                },
+              }
+            : keepaliveResponses.map<String, Map<String, Object>>(
+                (String key, Map<String, Object> value) =>
+                    MapEntry<String, Map<String, Object>>(
+                  key.toLowerCase(),
+                  value,
+                ),
+              );
 
   final String lv;
   final SessionWsChannelFactory _channelFactory;
@@ -126,10 +126,14 @@ class SessionWsClient {
   bool _hasEmittedLegacyEndpoint = false;
   bool _isConnected = false;
   bool _isClosing = false;
+  bool _isDisposed = false;
 
   Stream<SessionWsEvent> get events => _eventsController.stream;
 
   Future<void> connect() async {
+    if (_isDisposed) {
+      throw StateError('SessionWsClient is already disposed');
+    }
     if (_isConnected || _isClosing) {
       return;
     }
@@ -183,6 +187,9 @@ class SessionWsClient {
   }
 
   Future<void> disconnect() async {
+    if (_isDisposed) {
+      return;
+    }
     if (_isClosing) {
       return;
     }
@@ -211,7 +218,11 @@ class SessionWsClient {
   }
 
   Future<void> dispose() async {
+    if (_isDisposed) {
+      return;
+    }
     await disconnect();
+    _isDisposed = true;
     await _eventsController.close();
   }
 
