@@ -33,7 +33,7 @@ extension PastCommentFetchCountValue on PastCommentFetchCount {
       case PastCommentFetchCount.count1000:
         return '1000';
       case PastCommentFetchCount.all:
-        return '全部';
+        return '全部（上限あり）';
     }
   }
 

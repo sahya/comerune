@@ -690,7 +690,9 @@ class _DoubleSliderField extends StatelessWidget {
           max: max,
           divisions: divisions,
           value: value,
-          onChanged: onChanged,
+          onChanged: (double next) {
+            onChanged(double.parse(next.toStringAsFixed(2)));
+          },
         ),
       ],
     );

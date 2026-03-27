@@ -11,4 +11,10 @@ void main() {
       );
     });
   });
+
+  group('PastCommentFetchCountValue.label', () {
+    test('uses spec label for all option', () {
+      expect(PastCommentFetchCount.all.label, '全部（上限あり）');
+    });
+  });
 }

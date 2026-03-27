@@ -180,15 +180,8 @@ Future<void> _focusFieldByKey(WidgetTester tester, Key key) async {
 }
 
 Future<void> _enterTextByKey(WidgetTester tester, Key key, String text) async {
-  await _scrollToKey(tester, key);
-  try {
-    await tester.enterText(find.byKey(key), text);
-  } on StateError {
-    await _focusFieldByKey(tester, key);
-    final TextFormField field =
-        tester.widget(find.byKey(key, skipOffstage: false));
-    field.controller!.text = text;
-  }
+  await _focusFieldByKey(tester, key);
+  await tester.enterText(find.byKey(key), text);
   await tester.pumpAndSettle();
 }
 
