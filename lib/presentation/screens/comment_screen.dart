@@ -6,12 +6,7 @@ import 'package:flutter/rendering.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
 
-const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
-
-enum ConnectionMethod {
-  ndgr,
-  legacy,
-}
+enum ConnectionMethod { ndgr, legacy }
 
 class CommentScreen extends StatefulWidget {
   const CommentScreen({
@@ -32,7 +27,8 @@ class CommentScreen extends StatefulWidget {
   final List<AppMessage> messages;
   final Future<void> Function() onStopAllConnections;
   final Future<void> Function() onReconnectSameLv;
-  final Future<void> Function(String previousLv, String nextLv) onDifferentLvConnected;
+  final Future<void> Function(String previousLv, String nextLv)
+  onDifferentLvConnected;
   final Future<void> Function()? onOpenSettings;
   final bool debugMode;
   final ConnectionMethod? connectionMethod;
@@ -78,7 +74,8 @@ class _CommentScreenState extends State<CommentScreen> {
       });
     }
 
-    final bool hasNewMessages = widget.messages.length != oldWidget.messages.length;
+    final bool hasNewMessages =
+        widget.messages.length != oldWidget.messages.length;
     if (hasNewMessages && _autoScrollEnabled) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToBottom();
@@ -113,12 +110,13 @@ class _CommentScreenState extends State<CommentScreen> {
                       await widget.onOpenSettings!.call();
                     }
                   },
-                  itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-                    const PopupMenuItem<String>(
-                      value: 'settings',
-                      child: Text('設定'),
-                    ),
-                  ],
+                  itemBuilder: (BuildContext context) =>
+                      <PopupMenuEntry<String>>[
+                        const PopupMenuItem<String>(
+                          value: 'settings',
+                          child: Text('設定'),
+                        ),
+                      ],
                 ),
               ],
             ),
@@ -227,8 +225,11 @@ class _CommentScreenState extends State<CommentScreen> {
   void _handleConnectionChanged() {
     final ConnectionStatus currentStatus = widget.connectionSupervisor.status;
 
-    if (_lastStatus != ConnectionStatus.failed && currentStatus == ConnectionStatus.failed) {
-      final String message = _failedMessage(widget.connectionSupervisor.lastError);
+    if (_lastStatus != ConnectionStatus.failed &&
+        currentStatus == ConnectionStatus.failed) {
+      final String message = _failedMessage(
+        widget.connectionSupervisor.lastError,
+      );
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) {
           return;
@@ -286,7 +287,8 @@ class _CommentScreenState extends State<CommentScreen> {
 
     if (_autoScrollEnabled &&
         !nearBottom &&
-        _scrollController.position.userScrollDirection == ScrollDirection.forward) {
+        _scrollController.position.userScrollDirection ==
+            ScrollDirection.forward) {
       setState(() {
         _autoScrollEnabled = false;
       });
@@ -299,7 +301,8 @@ class _CommentScreenState extends State<CommentScreen> {
     }
 
     final double distanceToBottom =
-        _scrollController.position.maxScrollExtent - _scrollController.position.pixels;
+        _scrollController.position.maxScrollExtent -
+        _scrollController.position.pixels;
     return distanceToBottom <= _autoScrollResumeThreshold;
   }
 
@@ -338,7 +341,8 @@ class _StatusBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color wifiColor = supervisor.wifiIndicatorColor == WifiIndicatorColor.green
+    final Color wifiColor =
+        supervisor.wifiIndicatorColor == WifiIndicatorColor.green
         ? Colors.green
         : Colors.red;
 
@@ -357,10 +361,7 @@ class _StatusBar extends StatelessWidget {
                 color: wifiColor,
               ),
               const SizedBox(width: 8),
-              Text(
-                'lv: $lv',
-                key: const Key('status-lv'),
-              ),
+              Text('lv: $lv', key: const Key('status-lv')),
             ],
           ),
           const SizedBox(height: 4),

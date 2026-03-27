@@ -1,10 +1,6 @@
-enum AppMessageType {
-  chat,
-  operator,
-  notification,
-  gift,
-  nicoad,
-}
+const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
+
+enum AppMessageType { chat, operator, notification, gift, nicoad }
 
 class AppMessage {
   const AppMessage({

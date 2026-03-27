@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-
-import '../../../lib/domain/models/app_message.dart';
-import '../../../lib/domain/speech/speech_queue_controller.dart';
+import 'package:comerune/domain/models/app_message.dart';
+import 'package:comerune/domain/speech/speech_queue_controller.dart';
 
 void main() {
   group('SpeechQueueController', () {
@@ -56,22 +55,24 @@ void main() {
       expect(controller.items.single.messageId, 'm2');
     });
 
-    test('does not enqueue incoming comment when it already exceeds max delay',
-        () {
-      final DateTime now = DateTime.parse('2026-03-22T00:00:11Z');
-      final SpeechQueueController controller = SpeechQueueController(
-        maxDelay: const Duration(seconds: 10),
-      );
+    test(
+      'does not enqueue incoming comment when it already exceeds max delay',
+      () {
+        final DateTime now = DateTime.parse('2026-03-22T00:00:11Z');
+        final SpeechQueueController controller = SpeechQueueController(
+          maxDelay: const Duration(seconds: 10),
+        );
 
-      expect(
-        controller.enqueue(
-          _message(id: 'm1', content: 'old', second: 0),
-          now: now,
-        ),
-        isFalse,
-      );
-      expect(controller.length, 0);
-    });
+        expect(
+          controller.enqueue(
+            _message(id: 'm1', content: 'old', second: 0),
+            now: now,
+          ),
+          isFalse,
+        );
+        expect(controller.length, 0);
+      },
+    );
 
     test('drops expired item even when it is not at queue head', () {
       final DateTime base = DateTime.parse('2026-03-22T00:00:00Z');
@@ -127,34 +128,19 @@ void main() {
 
       expect(
         controller.enqueue(
-          _message(
-            id: 'm1',
-            content: 'first',
-            userId: 'u1',
-            millisecond: 0,
-          ),
+          _message(id: 'm1', content: 'first', userId: 'u1', millisecond: 0),
         ),
         isTrue,
       );
       expect(
         controller.enqueue(
-          _message(
-            id: 'm2',
-            content: 'second',
-            userId: 'u1',
-            millisecond: 500,
-          ),
+          _message(id: 'm2', content: 'second', userId: 'u1', millisecond: 500),
         ),
         isFalse,
       );
       expect(
         controller.enqueue(
-          _message(
-            id: 'm3',
-            content: 'third',
-            userId: 'u1',
-            millisecond: 1000,
-          ),
+          _message(id: 'm3', content: 'third', userId: 'u1', millisecond: 1000),
         ),
         isTrue,
       );

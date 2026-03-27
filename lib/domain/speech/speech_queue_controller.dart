@@ -5,7 +5,6 @@ import '../models/app_message.dart';
 
 const int kDefaultSpeechQueueLimit = 20;
 const Duration kDefaultSpeechMaxDelay = Duration(seconds: 10);
-const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
 
 class SpeechQueueItem {
   const SpeechQueueItem({
@@ -28,19 +27,15 @@ class SpeechQueueController {
     bool autoReadEnabled = true,
     List<String> ngWordPatterns = const <String>[],
     DateTime Function()? nowProvider,
-  })  : _queueLimit = queueLimit,
-        _maxDelay = maxDelay,
-        _autoReadEnabled = autoReadEnabled,
-        _nowProvider = nowProvider ?? DateTime.now {
+  }) : _queueLimit = queueLimit,
+       _maxDelay = maxDelay,
+       _autoReadEnabled = autoReadEnabled,
+       _nowProvider = nowProvider ?? DateTime.now {
     if (queueLimit < 1) {
       throw ArgumentError.value(queueLimit, 'queueLimit', 'must be at least 1');
     }
     if (maxDelay < Duration.zero) {
-      throw ArgumentError.value(
-        maxDelay,
-        'maxDelay',
-        'must not be negative',
-      );
+      throw ArgumentError.value(maxDelay, 'maxDelay', 'must not be negative');
     }
 
     setNgWordPatterns(ngWordPatterns);
