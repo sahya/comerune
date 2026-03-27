@@ -59,6 +59,9 @@ void main() {
     expect(left.hashCode, right.hashCode);
   });
 
+  // TODO(issue-2/O1): 不等価テスト（異なる id → not equal）を追加して
+  // equality の positive / negative 両方向を検証する。
+
   test('AppMessageType has expected values', () {
     expect(
       AppMessageType.values,
