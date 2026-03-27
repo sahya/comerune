@@ -52,6 +52,9 @@ class NdgrPackedSegment {
 }
 
 class NdgrLengthDelimitedDecoder {
+  static const int _maxFrameLengthBytes = 100 * 1024;
+  static const int _maxBufferedBytes = 256 * 1024;
+
   final List<int> _buffer = <int>[];
   bool _waitingForMore = false;
   int _fragmentRestoreCount = 0;
@@ -69,14 +72,31 @@ class NdgrLengthDelimitedDecoder {
     }
 
     _buffer.addAll(chunk);
+    if (_buffer.length > _maxBufferedBytes) {
+      clear();
+      return const <Uint8List>[];
+    }
 
     final List<Uint8List> frames = <Uint8List>[];
     int offset = 0;
+    bool didResetBuffer = false;
 
     while (offset < _buffer.length) {
-      final _VarintReadResult? length = _tryReadVarintFromList(_buffer, offset);
+      final _VarintReadResult? length;
+      try {
+        length = _tryReadVarintFromList(_buffer, offset);
+      } on FormatException {
+        clear();
+        didResetBuffer = true;
+        break;
+      }
       if (length == null) {
         _waitingForMore = true;
+        break;
+      }
+      if (length.value > _maxFrameLengthBytes) {
+        clear();
+        didResetBuffer = true;
         break;
       }
 
@@ -91,7 +111,7 @@ class NdgrLengthDelimitedDecoder {
       offset = frameEnd;
     }
 
-    if (offset > 0) {
+    if (!didResetBuffer && offset > 0) {
       _buffer.removeRange(0, offset);
     }
 
@@ -283,7 +303,9 @@ class NdgrProtobufDecoder {
       final int fieldNumber = tag >> 3;
       final int wireType = tag & 0x07;
 
-      if (fieldNumber == 1 && wireType == _WireType.lengthDelimited) {
+      if ((fieldNumber == 1 || fieldNumber == 20) &&
+          wireType == _WireType.lengthDelimited) {
+        // NicoliveMessage.chat / NicoliveMessage.overflowed_chat
         return _decodeChat(reader.readLengthDelimited());
       }
 
