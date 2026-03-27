@@ -148,6 +148,8 @@ class ConnectionSupervisor extends ChangeNotifier {
     },
     ConnectionStatus.connectingSessionWs: <ConnectionStatus>{
       ConnectionStatus.resolvingEndpoints,
+      // Integrated spec §6.2 extension: when session WS drops during
+      // connect phase, move to reconnecting and retry.
       ConnectionStatus.reconnecting,
       ConnectionStatus.stopped,
       ConnectionStatus.ended,
@@ -156,6 +158,8 @@ class ConnectionSupervisor extends ChangeNotifier {
     ConnectionStatus.resolvingEndpoints: <ConnectionStatus>{
       ConnectionStatus.streamingNdgr,
       ConnectionStatus.streamingLegacy,
+      // Integrated spec §6.2 extension: when session WS drops during
+      // endpoint resolution, move to reconnecting and retry.
       ConnectionStatus.reconnecting,
       ConnectionStatus.stopped,
       ConnectionStatus.ended,
@@ -175,6 +179,8 @@ class ConnectionSupervisor extends ChangeNotifier {
     },
     ConnectionStatus.reconnecting: <ConnectionStatus>{
       ConnectionStatus.connectingSessionWs,
+      // Integrated spec §6.2(5): reconnecting may return directly to
+      // streaming states when reusing the same endpoint.
       ConnectionStatus.streamingNdgr,
       ConnectionStatus.streamingLegacy,
       ConnectionStatus.stopped,
@@ -235,6 +241,15 @@ class ConnectionSupervisor extends ChangeNotifier {
       ? WifiIndicatorColor.green
       : WifiIndicatorColor.red;
 
+  /// Whether the supervisor can start (or restart) a connection.
+  ///
+  /// True for resting states: [ConnectionStatus.idle],
+  /// [ConnectionStatus.stopped], [ConnectionStatus.ended], and
+  /// [ConnectionStatus.failed].
+  ///
+  /// For non-idle resting states, [startConnection] resets to
+  /// [ConnectionStatus.idle] first and then transitions to
+  /// [ConnectionStatus.connectingSessionWs].
   bool get canStartConnection =>
       _status == ConnectionStatus.idle ||
       _status == ConnectionStatus.stopped ||
@@ -290,6 +305,11 @@ class ConnectionSupervisor extends ChangeNotifier {
     return true;
   }
 
+  /// Retries from a terminal state ([ConnectionStatus.ended] or
+  /// [ConnectionStatus.failed]).
+  ///
+  /// This validates terminal-state usage and delegates to
+  /// [startConnection].
   bool retryConnectionFromTerminal() {
     if (!canRetryFromTerminal) {
       _logInvalidTransition(ConnectionStatus.connectingSessionWs);

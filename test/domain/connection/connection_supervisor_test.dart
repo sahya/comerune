@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../../lib/domain/connection/connection_clients.dart';
-import '../../../lib/domain/connection/connection_supervisor.dart';
+import 'package:comerune/domain/connection/connection_clients.dart';
+import 'package:comerune/domain/connection/connection_supervisor.dart';
 
 void main() {
   group('ConnectionSupervisor', () {
