@@ -31,6 +31,20 @@ void main() {
     expect(button.onPressed, isNull);
   });
 
+  testWidgets('connect button is disabled when input is whitespace only', (
+    WidgetTester tester,
+  ) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    await pumpSelectScreen(tester, supervisor);
+    await tester.enterText(inputField(), '   ');
+    await tester.pump();
+
+    final ElevatedButton button =
+        tester.widget<ElevatedButton>(connectButton());
+    expect(button.onPressed, isNull);
+  });
+
   testWidgets('connect button starts connection and navigates with lv input', (
     WidgetTester tester,
   ) async {
@@ -98,6 +112,23 @@ void main() {
 
     expect(supervisor.status, ConnectionStatus.connectingSessionWs);
     expect(find.text('CommentScreen'), findsOneWidget);
+  });
+
+  testWidgets('pressing Enter does nothing when input is empty', (
+    WidgetTester tester,
+  ) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    await pumpSelectScreen(tester, supervisor);
+    await tester.tap(inputField());
+    await tester.pump();
+
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+
+    expect(supervisor.status, ConnectionStatus.idle);
+    expect(find.text('CommentScreen'), findsNothing);
+    expect(find.text('放送IDが見つかりません'), findsNothing);
   });
 
   testWidgets('button and input are disabled while connecting', (
