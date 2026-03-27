@@ -95,6 +95,16 @@ NDGR の view API URI を起点に HTTP streaming でコメントを取得し、
   - 二重シグナリング（stream + exception）の再処理を禁止する
 - Approval status: **Approved by owner (sahya)**
 
+### Approval 3: TimelineStore 連携責務
+
+- Decision:
+  - `NdgrClient` は TimelineStore に直接依存せず、`NdgrClientEvent.message` を emit する
+  - TimelineStore への投入は ConnectionSupervisor/上位層で実施する
+- Rationale:
+  - `domain/connection` で接続責務に限定し、保存責務を分離する
+  - Issue #8 以降の統合時に、NDGR/legacy の双方を同一経路で集約できる
+- Approval status: **Approved by owner (sahya)**
+
 
 ---
 

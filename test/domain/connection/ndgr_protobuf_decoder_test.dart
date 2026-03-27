@@ -141,6 +141,23 @@ void main() {
       expect(second.first, Uint8List.fromList(payload));
       expect(decoder.fragmentRestoreCount, 1);
     });
+
+    test('clear resets fragment restoration count', () {
+      final NdgrLengthDelimitedDecoder decoder = NdgrLengthDelimitedDecoder();
+
+      final List<int> payload = <int>[1, 2, 3];
+      final List<int> delimited = <int>[
+        ..._encodeVarint(payload.length),
+        ...payload,
+      ];
+
+      decoder.add(delimited.sublist(0, 1));
+      decoder.add(delimited.sublist(1));
+      expect(decoder.fragmentRestoreCount, 1);
+
+      decoder.clear();
+      expect(decoder.fragmentRestoreCount, 0);
+    });
   });
 }
 

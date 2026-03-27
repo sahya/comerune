@@ -101,6 +101,7 @@ class NdgrLengthDelimitedDecoder {
   void clear() {
     _buffer.clear();
     _waitingForMore = false;
+    _fragmentRestoreCount = 0;
   }
 }
 
@@ -137,7 +138,8 @@ class NdgrProtobufDecoder {
           break;
         case 3:
           if (wireType == _WireType.lengthDelimited) {
-            previousUri = _decodeMessageSegmentUri(reader.readLengthDelimited());
+            previousUri =
+                _decodeMessageSegmentUri(reader.readLengthDelimited());
           } else {
             reader.skipField(wireType);
           }
