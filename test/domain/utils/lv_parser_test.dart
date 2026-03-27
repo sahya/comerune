@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-
-import '../../../lib/domain/utils/lv_parser.dart';
+import 'package:comerune/domain/utils/lv_parser.dart';
 
 void main() {
   test('returns lv when input is lv string', () {
@@ -31,5 +30,9 @@ void main() {
 
   test('returns null when input is empty string', () {
     expect(LvParser.extract(''), isNull);
+  });
+
+  test('returns null when input is whitespace only', () {
+    expect(LvParser.extract('   '), isNull);
   });
 }
