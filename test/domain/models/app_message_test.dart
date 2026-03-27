@@ -32,6 +32,31 @@ void main() {
     );
 
     expect(message.userId, isNull);
+    expect(message.raw, isNull);
+  });
+
+  test('AppMessage equality and hashCode are value-based for core fields', () {
+    final DateTime timestamp = DateTime.parse('2026-03-22T00:00:02Z');
+
+    final AppMessage left = AppMessage(
+      id: 'message-003',
+      timestamp: timestamp,
+      userId: 'user-1',
+      content: 'same',
+      type: AppMessageType.chat,
+      raw: <String, Object?>{'source': 'ndgr'},
+    );
+    final AppMessage right = AppMessage(
+      id: 'message-003',
+      timestamp: timestamp,
+      userId: 'user-1',
+      content: 'same',
+      type: AppMessageType.chat,
+      raw: <String, Object?>{'source': 'legacy'},
+    );
+
+    expect(left, equals(right));
+    expect(left.hashCode, right.hashCode);
   });
 
   test('AppMessageType has expected values', () {

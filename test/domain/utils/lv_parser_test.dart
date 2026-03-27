@@ -31,4 +31,8 @@ void main() {
   test('returns null when input is empty string', () {
     expect(LvParser.extract(''), isNull);
   });
+
+  test('returns null when input is whitespace only', () {
+    expect(LvParser.extract('   '), isNull);
+  });
 }
