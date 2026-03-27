@@ -53,6 +53,26 @@ void main() {
       expect(message.chat!.no, 99);
     });
 
+    test('decodes overflowed chat payload as chat', () {
+      final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+      final List<int> chat = <int>[
+        ..._stringField(1, 'overflowed-body'),
+      ];
+      final List<int> nicoliveMessage = <int>[
+        ..._bytesField(20, chat),
+      ];
+
+      final Uint8List bytes = Uint8List.fromList(<int>[
+        ..._bytesField(2, nicoliveMessage),
+      ]);
+
+      final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+      expect(message.chat, isNotNull);
+      expect(message.chat!.content, 'overflowed-body');
+    });
+
     test('decodes chunked entry backward segment and next at', () {
       final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
 
@@ -157,6 +177,40 @@ void main() {
 
       decoder.clear();
       expect(decoder.fragmentRestoreCount, 0);
+    });
+
+    test('drops oversized frame length and recovers on next chunk', () {
+      final NdgrLengthDelimitedDecoder decoder = NdgrLengthDelimitedDecoder();
+
+      final List<int> oversizedPrefix = _encodeVarint(102401);
+      expect(decoder.add(oversizedPrefix), isEmpty);
+
+      final List<int> payload = <int>[7, 8, 9];
+      final List<int> delimited = <int>[
+        ..._encodeVarint(payload.length),
+        ...payload,
+      ];
+
+      final List<Uint8List> recovered = decoder.add(delimited);
+      expect(recovered.length, 1);
+      expect(recovered.first, Uint8List.fromList(payload));
+    });
+
+    test('drops malformed varint prefix and recovers on next chunk', () {
+      final NdgrLengthDelimitedDecoder decoder = NdgrLengthDelimitedDecoder();
+
+      final List<int> malformedPrefix = List<int>.filled(11, 0x80);
+      expect(decoder.add(malformedPrefix), isEmpty);
+
+      final List<int> payload = <int>[1, 2];
+      final List<int> delimited = <int>[
+        ..._encodeVarint(payload.length),
+        ...payload,
+      ];
+
+      final List<Uint8List> recovered = decoder.add(delimited);
+      expect(recovered.length, 1);
+      expect(recovered.first, Uint8List.fromList(payload));
     });
   });
 }
