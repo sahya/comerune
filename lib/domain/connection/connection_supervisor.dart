@@ -72,7 +72,7 @@ extension ConnectionStatusCode on ConnectionStatus {
   }
 }
 
-extension ConnectionErrorCodeCode on ConnectionErrorCode {
+extension ConnectionErrorCodeExtension on ConnectionErrorCode {
   String get code {
     switch (this) {
       case ConnectionErrorCode.lvParseFailed:
@@ -98,54 +98,56 @@ extension ConnectionErrorCodeCode on ConnectionErrorCode {
 }
 
 class ConnectionSupervisor extends ChangeNotifier {
-  static const Map<ConnectionStatus, Set<ConnectionStatus>> _allowedTransitions =
-      <ConnectionStatus, Set<ConnectionStatus>>{
-        ConnectionStatus.idle: <ConnectionStatus>{
-          ConnectionStatus.connectingSessionWs,
-        },
-        ConnectionStatus.connectingSessionWs: <ConnectionStatus>{
-          ConnectionStatus.resolvingEndpoints,
-          ConnectionStatus.stopped,
-          ConnectionStatus.ended,
-          ConnectionStatus.failed,
-        },
-        ConnectionStatus.resolvingEndpoints: <ConnectionStatus>{
-          ConnectionStatus.streamingNdgr,
-          ConnectionStatus.streamingLegacy,
-          ConnectionStatus.stopped,
-          ConnectionStatus.ended,
-          ConnectionStatus.failed,
-        },
-        ConnectionStatus.streamingNdgr: <ConnectionStatus>{
-          ConnectionStatus.reconnecting,
-          ConnectionStatus.stopped,
-          ConnectionStatus.ended,
-          ConnectionStatus.failed,
-        },
-        ConnectionStatus.streamingLegacy: <ConnectionStatus>{
-          ConnectionStatus.reconnecting,
-          ConnectionStatus.stopped,
-          ConnectionStatus.ended,
-          ConnectionStatus.failed,
-        },
-        ConnectionStatus.reconnecting: <ConnectionStatus>{
-          ConnectionStatus.connectingSessionWs,
-          ConnectionStatus.streamingNdgr,
-          ConnectionStatus.streamingLegacy,
-          ConnectionStatus.stopped,
-          ConnectionStatus.ended,
-          ConnectionStatus.failed,
-        },
-        ConnectionStatus.stopped: <ConnectionStatus>{
-          ConnectionStatus.idle,
-        },
-        ConnectionStatus.ended: <ConnectionStatus>{
-          ConnectionStatus.idle,
-        },
-        ConnectionStatus.failed: <ConnectionStatus>{
-          ConnectionStatus.idle,
-        },
-      };
+  static const Map<ConnectionStatus, Set<ConnectionStatus>>
+      _allowedTransitions = <ConnectionStatus, Set<ConnectionStatus>>{
+    ConnectionStatus.idle: <ConnectionStatus>{
+      ConnectionStatus.connectingSessionWs,
+    },
+    ConnectionStatus.connectingSessionWs: <ConnectionStatus>{
+      ConnectionStatus.resolvingEndpoints,
+      ConnectionStatus.stopped,
+      ConnectionStatus.ended,
+      ConnectionStatus.failed,
+    },
+    ConnectionStatus.resolvingEndpoints: <ConnectionStatus>{
+      ConnectionStatus.streamingNdgr,
+      ConnectionStatus.streamingLegacy,
+      ConnectionStatus.stopped,
+      ConnectionStatus.ended,
+      ConnectionStatus.failed,
+    },
+    ConnectionStatus.streamingNdgr: <ConnectionStatus>{
+      ConnectionStatus.reconnecting,
+      ConnectionStatus.stopped,
+      ConnectionStatus.ended,
+      ConnectionStatus.failed,
+    },
+    ConnectionStatus.streamingLegacy: <ConnectionStatus>{
+      ConnectionStatus.reconnecting,
+      ConnectionStatus.stopped,
+      ConnectionStatus.ended,
+      ConnectionStatus.failed,
+    },
+    // Integrated spec §6.2(5) explicitly allows reconnecting to return
+    // directly to STREAMING_* when reusing the same endpoint.
+    ConnectionStatus.reconnecting: <ConnectionStatus>{
+      ConnectionStatus.connectingSessionWs,
+      ConnectionStatus.streamingNdgr,
+      ConnectionStatus.streamingLegacy,
+      ConnectionStatus.stopped,
+      ConnectionStatus.ended,
+      ConnectionStatus.failed,
+    },
+    ConnectionStatus.stopped: <ConnectionStatus>{
+      ConnectionStatus.idle,
+    },
+    ConnectionStatus.ended: <ConnectionStatus>{
+      ConnectionStatus.idle,
+    },
+    ConnectionStatus.failed: <ConnectionStatus>{
+      ConnectionStatus.idle,
+    },
+  };
 
   ConnectionStatus _status = ConnectionStatus.idle;
   int _reconnectCount = 0;
@@ -156,9 +158,19 @@ class ConnectionSupervisor extends ChangeNotifier {
   int get reconnectCount => _reconnectCount;
   DateTime? get lastReceivedAt => _lastReceivedAt;
   ConnectionErrorCode? get lastError => _lastError;
-  WifiIndicatorColor get wifiIndicatorColor =>
-      _status.usesGreenWifiIcon ? WifiIndicatorColor.green : WifiIndicatorColor.red;
+  WifiIndicatorColor get wifiIndicatorColor => _status.usesGreenWifiIcon
+      ? WifiIndicatorColor.green
+      : WifiIndicatorColor.red;
 
+  /// Whether the supervisor can start (or restart) a connection.
+  ///
+  /// True for all resting states: [ConnectionStatus.idle],
+  /// [ConnectionStatus.stopped], [ConnectionStatus.ended], and
+  /// [ConnectionStatus.failed].
+  ///
+  /// For non-idle resting states, [startConnection] performs an internal
+  /// reset to [ConnectionStatus.idle] and then transitions to
+  /// [ConnectionStatus.connectingSessionWs].
   bool get canStartConnection =>
       _status == ConnectionStatus.idle ||
       _status == ConnectionStatus.stopped ||
@@ -174,30 +186,36 @@ class ConnectionSupervisor extends ChangeNotifier {
       return false;
     }
 
+    bool resetDuringPreStart = false;
     if (_status != ConnectionStatus.idle) {
-      final bool resetToIdle = _transitionTo(ConnectionStatus.idle);
+      // Hide intermediate IDLE from observers to avoid UI flicker.
+      final bool resetToIdle = _transitionTo(
+        ConnectionStatus.idle,
+        resetDiagnostics: true,
+        notify: false,
+      );
       if (!resetToIdle) {
         return false;
       }
+      resetDuringPreStart = true;
     }
 
     return _transitionTo(
       ConnectionStatus.connectingSessionWs,
-      resetDiagnostics: true,
+      resetDiagnostics: !resetDuringPreStart,
     );
   }
 
+  /// Retries from a terminal state ([ConnectionStatus.ended] or
+  /// [ConnectionStatus.failed]).
+  ///
+  /// This method validates terminal-state usage and then delegates to
+  /// [startConnection].
   bool retryConnectionFromTerminal() {
     if (!canRetryFromTerminal) {
       _logInvalidTransition(ConnectionStatus.connectingSessionWs);
       return false;
     }
-
-    final bool resetToIdle = _transitionTo(ConnectionStatus.idle);
-    if (!resetToIdle) {
-      return false;
-    }
-
     return startConnection();
   }
 
@@ -264,6 +282,7 @@ class ConnectionSupervisor extends ChangeNotifier {
   }
 
   void recordError(ConnectionErrorCode errorCode) {
+    // Used for non-transition error updates (e.g. parse/speech failures).
     _lastError = errorCode;
     notifyListeners();
   }
@@ -273,6 +292,7 @@ class ConnectionSupervisor extends ChangeNotifier {
     ConnectionErrorCode? errorCode,
     bool incrementReconnectCount = false,
     bool resetDiagnostics = false,
+    bool notify = true,
   }) {
     final Set<ConnectionStatus> allowed =
         _allowedTransitions[_status] ?? const <ConnectionStatus>{};
@@ -296,7 +316,9 @@ class ConnectionSupervisor extends ChangeNotifier {
     }
 
     _status = next;
-    notifyListeners();
+    if (notify) {
+      notifyListeners();
+    }
     return true;
   }
 
