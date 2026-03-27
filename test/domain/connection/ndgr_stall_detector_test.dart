@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../../lib/domain/connection/ndgr_stall_detector.dart';
+import 'package:comerune/domain/connection/ndgr_stall_detector.dart';
 
 void main() {
   group('NdgrStallDetector', () {
@@ -40,6 +40,23 @@ void main() {
       expect(detector.isStalled, isFalse);
       expect(detector.shouldNotifyStall(), isFalse);
       expect(detector.elapsedSinceLastReceived(), isNull);
+    });
+
+    test('reset clears last received timestamp and notification state', () {
+      DateTime now = DateTime.parse('2026-03-22T00:00:00Z');
+
+      final NdgrStallDetector detector = NdgrStallDetector(
+        threshold: const Duration(seconds: 15),
+        now: () => now,
+      );
+
+      detector.markReceived(now);
+      now = now.add(const Duration(seconds: 15));
+      expect(detector.shouldNotifyStall(), isTrue);
+
+      detector.reset();
+      expect(detector.lastReceivedAt, isNull);
+      expect(detector.shouldNotifyStall(), isFalse);
     });
   });
 }

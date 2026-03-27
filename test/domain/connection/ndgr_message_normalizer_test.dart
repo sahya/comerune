@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../../lib/domain/connection/ndgr_message_normalizer.dart';
-import '../../../lib/domain/connection/ndgr_protobuf_decoder.dart';
-import '../../../lib/domain/models/app_message.dart';
+import 'package:comerune/domain/connection/ndgr_message_normalizer.dart';
+import 'package:comerune/domain/connection/ndgr_protobuf_decoder.dart';
+import 'package:comerune/domain/models/app_message.dart';
 
 void main() {
   group('NdgrMessageNormalizer', () {
@@ -62,6 +62,16 @@ void main() {
 
       final AppMessage? normalized = normalizer.normalizeChunkedMessage(
         const NdgrChunkedMessage(),
+      );
+
+      expect(normalized, isNull);
+    });
+
+    test('returns null when chat content is empty', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        const NdgrChunkedMessage(chat: NdgrChat(content: '')),
       );
 
       expect(normalized, isNull);

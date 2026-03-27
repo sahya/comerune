@@ -12,15 +12,14 @@ class NdgrMessageNormalizer {
     if (chat == null) {
       return null;
     }
+    if (chat.content.isEmpty) {
+      return null;
+    }
 
     final DateTime timestamp =
         source.serverTimestamp ?? receivedAt ?? DateTime.now().toUtc();
 
-    final String id = _resolveId(
-      source.id,
-      chat,
-      timestamp,
-    );
+    final String id = _resolveId(source.id, chat, timestamp);
 
     return AppMessage(
       id: id,

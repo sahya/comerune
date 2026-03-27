@@ -120,14 +120,14 @@ class NdgrProtobufDecoder {
       final int wireType = tag & 0x07;
 
       switch (fieldNumber) {
-        case 1:
+        case 1: // Entry.segment (MessageSegment)
           if (wireType == _WireType.lengthDelimited) {
             segmentUri = _decodeMessageSegmentUri(reader.readLengthDelimited());
           } else {
             reader.skipField(wireType);
           }
           break;
-        case 2:
+        case 2: // Entry.backward (BackwardSegment)
           if (wireType == _WireType.lengthDelimited) {
             backwardSegmentUri = _decodeBackwardSegmentUri(
               reader.readLengthDelimited(),
@@ -136,7 +136,7 @@ class NdgrProtobufDecoder {
             reader.skipField(wireType);
           }
           break;
-        case 3:
+        case 3: // Entry.previous (MessageSegment)
           if (wireType == _WireType.lengthDelimited) {
             previousUri =
                 _decodeMessageSegmentUri(reader.readLengthDelimited());
@@ -144,7 +144,7 @@ class NdgrProtobufDecoder {
             reader.skipField(wireType);
           }
           break;
-        case 4:
+        case 4: // Entry.next (ReadyForNext)
           if (wireType == _WireType.lengthDelimited) {
             nextAt = _decodeReadyForNextAt(reader.readLengthDelimited());
           } else {
@@ -177,7 +177,7 @@ class NdgrProtobufDecoder {
       final int wireType = tag & 0x07;
 
       switch (fieldNumber) {
-        case 1:
+        case 1: // ChunkedMessage.meta
           if (wireType == _WireType.lengthDelimited) {
             final _ChunkedMessageMeta meta = _decodeChunkedMessageMeta(
               reader.readLengthDelimited(),
@@ -188,7 +188,7 @@ class NdgrProtobufDecoder {
             reader.skipField(wireType);
           }
           break;
-        case 2:
+        case 2: // ChunkedMessage.message (oneof NicoliveMessage)
           if (wireType == _WireType.lengthDelimited) {
             chat = _decodeNicoliveMessageChat(reader.readLengthDelimited());
           } else {
@@ -219,14 +219,14 @@ class NdgrProtobufDecoder {
       final int wireType = tag & 0x07;
 
       switch (fieldNumber) {
-        case 1:
+        case 1: // PackedSegment.messages (repeated ChunkedMessage)
           if (wireType == _WireType.lengthDelimited) {
             messages.add(decodeChunkedMessage(reader.readLengthDelimited()));
           } else {
             reader.skipField(wireType);
           }
           break;
-        case 2:
+        case 2: // PackedSegment.next (next packed segment uri)
           if (wireType == _WireType.lengthDelimited) {
             nextUri = _decodePackedSegmentNextUri(reader.readLengthDelimited());
           } else {
@@ -253,14 +253,14 @@ class NdgrProtobufDecoder {
       final int wireType = tag & 0x07;
 
       switch (fieldNumber) {
-        case 1:
+        case 1: // ChunkedMessageMeta.id
           if (wireType == _WireType.lengthDelimited) {
             id = reader.readString();
           } else {
             reader.skipField(wireType);
           }
           break;
-        case 2:
+        case 2: // ChunkedMessageMeta.at (google.protobuf.Timestamp)
           if (wireType == _WireType.lengthDelimited) {
             serverTimestamp = _decodeTimestamp(reader.readLengthDelimited());
           } else {
@@ -307,28 +307,28 @@ class NdgrProtobufDecoder {
       final int wireType = tag & 0x07;
 
       switch (fieldNumber) {
-        case 1:
+        case 1: // Chat.content
           if (wireType == _WireType.lengthDelimited) {
             content = reader.readString();
           } else {
             reader.skipField(wireType);
           }
           break;
-        case 5:
+        case 5: // Chat.raw_user_id
           if (wireType == _WireType.varint) {
             rawUserId = reader.readVarint();
           } else {
             reader.skipField(wireType);
           }
           break;
-        case 6:
+        case 6: // Chat.hashed_user_id
           if (wireType == _WireType.lengthDelimited) {
             hashedUserId = reader.readString();
           } else {
             reader.skipField(wireType);
           }
           break;
-        case 8:
+        case 8: // Chat.no
           if (wireType == _WireType.varint) {
             no = reader.readVarint();
           } else {
@@ -432,14 +432,14 @@ class NdgrProtobufDecoder {
       final int wireType = tag & 0x07;
 
       switch (fieldNumber) {
-        case 1:
+        case 1: // Timestamp.seconds
           if (wireType == _WireType.varint) {
             seconds = reader.readVarint();
           } else {
             reader.skipField(wireType);
           }
           break;
-        case 2:
+        case 2: // Timestamp.nanos
           if (wireType == _WireType.varint) {
             nanos = reader.readVarint();
           } else {

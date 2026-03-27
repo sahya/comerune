@@ -104,10 +104,12 @@ class NdgrClient {
   Timer? _stallTimer;
   bool _isRunning = false;
   bool _isStopped = false;
+  NdgrAt? _lastNextAt;
 
   Stream<NdgrClientEvent> get events => _eventsController.stream;
 
   bool get isRunning => _isRunning;
+  NdgrAt? get lastNextAt => _lastNextAt;
 
   /// Connects to NDGR and streams comments.
   ///
@@ -127,7 +129,9 @@ class NdgrClient {
 
     _isRunning = true;
     _isStopped = false;
+    _lastNextAt = at;
     _stopStallTimer();
+    _stallDetector.reset();
 
     try {
       await _runHeadLoop(
@@ -222,6 +226,7 @@ class NdgrClient {
 
         if (entry.nextAt != null) {
           nextAt = NdgrAt.timestamp(entry.nextAt!);
+          _lastNextAt = nextAt;
         }
       }
     }
@@ -351,6 +356,7 @@ class NdgrClient {
       final List<Uint8List> frames = decoder.add(chunk);
       for (final Uint8List frame in frames) {
         try {
+          _markReceivedAndEnsureTimer(_now());
           yield _protobufDecoder.decodeChunkedMessage(frame);
         } catch (error, stackTrace) {
           log(
