@@ -45,6 +45,20 @@ void main() {
       expect(isLegacyUnsupportedFormatMessage(message), isTrue);
     });
 
+    test('does not classify user notification with same content as unsupported',
+        () {
+      final AppMessage message = AppMessage(
+        id: 'manual-1',
+        timestamp: DateTime.parse('2026-03-22T00:00:00Z'),
+        userId: 'user-1',
+        content: kLegacyUnsupportedFormatContent,
+        type: AppMessageType.notification,
+        raw: <String, Object?>{'payload': 'manual'},
+      );
+
+      expect(isLegacyUnsupportedFormatMessage(message), isFalse);
+    });
+
     test('returns null when JSON parse fails', () {
       final MessageNormalizer normalizer = MessageNormalizer(
         idGenerator: _sequentialIdGenerator(),
@@ -70,6 +84,20 @@ void main() {
       expect(message.content, 'from-injected-extractor');
       expect(message.userId, 'injected-user');
       expect(message.timestamp, DateTime.parse('2026-03-22T12:34:56Z'));
+    });
+
+    test('treats non-string content as unsupported-format', () {
+      final MessageNormalizer normalizer = MessageNormalizer(
+        idGenerator: _sequentialIdGenerator(),
+      );
+
+      final AppMessage? message = normalizer.normalizeLegacyJson(
+        '{"chat":{"content":42,"user_id":"user-3","timestamp":1710939600}}',
+      );
+
+      expect(message, isNotNull);
+      expect(message!.type, AppMessageType.notification);
+      expect(isLegacyUnsupportedFormatMessage(message), isTrue);
     });
   });
 }

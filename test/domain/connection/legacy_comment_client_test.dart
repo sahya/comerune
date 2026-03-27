@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -35,6 +36,33 @@ void main() {
       expect(message.type, AppMessageType.chat);
       expect(message.content, 'hello');
       expect(message.userId, 'user-1');
+
+      await client.dispose();
+    });
+
+    test('decodes List<int> websocket payload', () async {
+      final _FakeLegacyWebSocket fakeSocket = _FakeLegacyWebSocket();
+
+      final LegacyCommentClient client = LegacyCommentClient(
+        messageNormalizer: MessageNormalizer(
+          idGenerator: _sequentialIdGenerator(),
+        ),
+        webSocketConnector: (_) async => fakeSocket,
+      );
+
+      final Future<AppMessage> firstMessage = client.messages.first;
+      await client.connect('wss://legacy.example/ws');
+
+      fakeSocket.add(
+        utf8.encode(
+          '{"chat":{"content":"hello-binary","user_id":"user-2","timestamp":1710939601}}',
+        ),
+      );
+
+      final AppMessage message = await firstMessage;
+      expect(message.type, AppMessageType.chat);
+      expect(message.content, 'hello-binary');
+      expect(message.userId, 'user-2');
 
       await client.dispose();
     });

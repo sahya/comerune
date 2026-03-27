@@ -4,10 +4,21 @@ import 'dart:developer';
 import '../models/app_message.dart';
 
 const String kLegacyUnsupportedFormatContent = 'legacy: 未対応フォーマット';
+const String kLegacyUnsupportedFormatMarkerKey = 'legacy_unsupported_format';
+const int _maxLogStringLength = 40;
+const String _maskedLogValue = '***';
+const RegExp _sensitiveKeyPattern = RegExp(
+  'token|cookie|authorization|password|passwd|secret|session',
+  caseSensitive: false,
+);
 
 bool isLegacyUnsupportedFormatMessage(AppMessage message) {
-  return message.type == AppMessageType.notification &&
-      message.content == kLegacyUnsupportedFormatContent;
+  if (message.raw is! Map<dynamic, dynamic>) {
+    return false;
+  }
+
+  final Map<dynamic, dynamic> raw = message.raw! as Map<dynamic, dynamic>;
+  return raw[kLegacyUnsupportedFormatMarkerKey] == true;
 }
 
 typedef LegacyMessageIdGenerator = String Function();
@@ -44,8 +55,9 @@ class DefaultLegacyChatExtractor implements LegacyChatExtractor {
       return null;
     }
 
-    final Map<String, Object?> chat = _toObjectMap(chatObject);
+    final Map<String, Object?> chat = _toStringObjectMap(chatObject);
     final String? content = _readString(chat['content']);
+    // Empty content is treated as unsupported legacy format.
     if (content == null || content.isEmpty) {
       return null;
     }
@@ -63,19 +75,12 @@ class DefaultLegacyChatExtractor implements LegacyChatExtractor {
     );
   }
 
-  Map<String, Object?> _toObjectMap(Map<dynamic, dynamic> source) {
-    return source.map(
-      (dynamic key, dynamic value) =>
-          MapEntry(key.toString(), value as Object?),
-    );
-  }
-
   String? _readString(Object? value) {
-    if (value == null) {
+    if (value is! String) {
       return null;
     }
 
-    final String text = value.toString().trim();
+    final String text = value.trim();
     if (text.isEmpty) {
       return null;
     }
@@ -132,7 +137,7 @@ class MessageNormalizer {
       decoded = jsonDecode(rawJson);
     } on FormatException catch (error, stackTrace) {
       log(
-        'Failed to parse legacy JSON. payload=$rawJson',
+        'Failed to parse legacy JSON. payload=${_sanitizeLegacyPayloadForLog(rawJson)}',
         name: 'MessageNormalizer',
         error: error,
         stackTrace: stackTrace,
@@ -142,22 +147,19 @@ class MessageNormalizer {
 
     if (decoded is! Map) {
       log(
-        'Legacy payload does not contain chat key. payload=$rawJson',
+        'Legacy payload does not contain chat key. payload=${_sanitizeLegacyPayloadForLog(rawJson)}',
         name: 'MessageNormalizer',
       );
       return _buildUnsupportedMessage(rawJson, now);
     }
 
-    final Map<String, Object?> payload = decoded.map(
-      (dynamic key, dynamic value) =>
-          MapEntry(key.toString(), value as Object?),
-    );
+    final Map<String, Object?> payload = _toStringObjectMap(decoded);
 
     final LegacyChatExtraction? extraction =
         _legacyChatExtractor.extract(payload, receivedAt: now);
     if (extraction == null) {
       log(
-        'Legacy payload does not contain chat key. payload=$rawJson',
+        'Legacy payload does not contain chat key. payload=${_sanitizeLegacyPayloadForLog(rawJson)}',
         name: 'MessageNormalizer',
       );
       return _buildUnsupportedMessage(rawJson, now);
@@ -180,7 +182,10 @@ class MessageNormalizer {
       userId: null,
       content: kLegacyUnsupportedFormatContent,
       type: AppMessageType.notification,
-      raw: rawJson,
+      raw: <String, Object?>{
+        kLegacyUnsupportedFormatMarkerKey: true,
+        'payload': rawJson,
+      },
     );
   }
 
@@ -193,4 +198,88 @@ class MessageNormalizer {
     _sequence += 1;
     return id;
   }
+}
+
+Map<String, Object?> _toStringObjectMap(Map<dynamic, dynamic> source) {
+  return source.map(
+    (dynamic key, dynamic value) => MapEntry(key.toString(), value as Object?),
+  );
+}
+
+String _sanitizeLegacyPayloadForLog(String rawJson) {
+  final Object? decoded = _tryDecodeJson(rawJson);
+  if (decoded == null) {
+    return _sanitizeLogString(rawJson);
+  }
+
+  final Object? sanitized = _sanitizeForLog(decoded);
+  try {
+    return jsonEncode(sanitized);
+  } on JsonUnsupportedObjectError {
+    return _sanitizeLogString(rawJson);
+  }
+}
+
+Object? _sanitizeForLog(Object? value, {String? key}) {
+  if (value is Map<dynamic, dynamic>) {
+    final Map<String, Object?> sanitized = <String, Object?>{};
+    value.forEach((dynamic mapKey, dynamic mapValue) {
+      final String stringKey = mapKey.toString();
+      if (_isSensitiveKey(stringKey)) {
+        sanitized[stringKey] = _maskedLogValue;
+      } else {
+        sanitized[stringKey] =
+            _sanitizeForLog(mapValue as Object?, key: stringKey);
+      }
+    });
+    return sanitized;
+  }
+
+  if (value is List<dynamic>) {
+    return value
+        .map((dynamic item) => _sanitizeForLog(item as Object?, key: key))
+        .toList();
+  }
+
+  if (value is String) {
+    if (key != null && _isSensitiveKey(key)) {
+      return _maskedLogValue;
+    }
+    return _sanitizeLogString(value);
+  }
+
+  return value;
+}
+
+Object? _tryDecodeJson(String rawJson) {
+  try {
+    return jsonDecode(rawJson);
+  } on FormatException {
+    return null;
+  }
+}
+
+bool _isSensitiveKey(String key) {
+  return _sensitiveKeyPattern.hasMatch(key);
+}
+
+String _sanitizeLogString(String value) {
+  final Uri? uri = Uri.tryParse(value);
+  final String normalized;
+  if (uri != null && uri.host.isNotEmpty && uri.hasScheme) {
+    final Uri sanitizedUri = Uri(
+      scheme: uri.scheme,
+      host: uri.host,
+      port: uri.hasPort ? uri.port : null,
+      path: uri.path,
+    );
+    normalized = sanitizedUri.toString();
+  } else {
+    normalized = value;
+  }
+
+  if (normalized.length <= _maxLogStringLength) {
+    return normalized;
+  }
+  return '${normalized.substring(0, _maxLogStringLength)}...';
 }
