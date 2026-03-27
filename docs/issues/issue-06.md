@@ -67,6 +67,34 @@ NDGR の view API URI を起点に HTTP streaming でコメントを取得し、
 
 **Yes** — Protobuf ライブラリの選定と .proto の内容について承認が必要
 
+## Human Approval Record (2026-03-28 JST)
+
+### Approval 1: Protobuf ライブラリ不使用（手書きデコーダ採用）
+
+- Decision: `protobuf` パッケージを追加せず、`NdgrProtobufDecoder` / `_ProtoReader` を採用
+- Alternatives considered:
+  - `protobuf` + `.proto` 生成コード
+  - 既存実装の一部移植
+- Rationale:
+  - NDGR の実レスポンスを段階的に扱える最小実装を優先
+  - 依存追加を避けつつ、length-delimited 復元と unknown field skip を明示実装
+  - 参考実装（tsukumijima/NDGRClient, TORISOUP/NdgrClientSharp）のフィールド対応で検証
+- Risks:
+  - API 変更時の追従コストが高い
+- Mitigation:
+  - デコーダ単体テストを維持し、仕様変更時は field mapping を更新する
+- Approval status: **Approved by owner (sahya)**
+
+### Approval 2: エラー通知インターフェース（Issue #8 接続点）
+
+- Decision:
+  - `NdgrClient.connect()` の失敗は **Future の例外でのみ通知**
+  - `events` ストリームは `message` / `stalled` のみ通知（error event は emit しない）
+- Integration rule:
+  - ConnectionSupervisor 側で `connect()` の例外を `ConnectionErrorCode.ndgrStreamFailed` に単一マッピングする
+  - 二重シグナリング（stream + exception）の再処理を禁止する
+- Approval status: **Approved by owner (sahya)**
+
 
 ---
 
