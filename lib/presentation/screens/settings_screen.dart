@@ -247,6 +247,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: settings == null
           ? const Center(child: CircularProgressIndicator())
           : ListView(
+              key: const Key('settings-list'),
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
               children: <Widget>[
                 _Section(

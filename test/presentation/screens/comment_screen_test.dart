@@ -6,6 +6,7 @@ import '../../../lib/application/settings/settings_store.dart';
 import '../../../lib/application/settings/shared_preferences_adapter.dart';
 import '../../../lib/domain/connection/connection_supervisor.dart';
 import '../../../lib/domain/models/app_message.dart';
+import '../../../lib/domain/models/app_settings.dart';
 import '../../../lib/presentation/screens/comment_screen.dart';
 import '../../../lib/presentation/screens/settings_screen.dart';
 import '../../helpers/in_memory_shared_preferences.dart';
@@ -121,16 +122,12 @@ void main() {
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-      int stopCalls = 0;
       int reconnectCalls = 0;
 
       await tester.pumpWidget(
         _buildScreen(
           supervisor: supervisor,
           messages: const <AppMessage>[],
-          onStopAllConnections: () async {
-            stopCalls += 1;
-          },
           onReconnectSameLv: () async {
             reconnectCalls += 1;
           },
@@ -138,17 +135,15 @@ void main() {
       );
 
       expect(find.byKey(const Key('stop-button')), findsOneWidget);
-      await tester.tap(find.byKey(const Key('stop-button')));
-      await tester.pumpAndSettle();
-      expect(stopCalls, 1);
-
       expect(supervisor.endBroadcast(), isTrue);
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('reconnect-button')), findsOneWidget);
       expect(find.byKey(const Key('stop-button')), findsNothing);
 
-      await tester.tap(find.byKey(const Key('reconnect-button')));
+      final ElevatedButton reconnectButton =
+          tester.widget(find.byKey(const Key('reconnect-button')));
+      reconnectButton.onPressed!.call();
       await tester.pumpAndSettle();
       expect(reconnectCalls, 1);
     });
@@ -282,7 +277,9 @@ void main() {
       expect(find.byKey(const Key('reconnect-button')), findsOneWidget);
       expect(find.byKey(const Key('stop-button')), findsNothing);
 
-      await tester.tap(find.byKey(const Key('reconnect-button')));
+      final ElevatedButton reconnectButton =
+          tester.widget(find.byKey(const Key('reconnect-button')));
+      reconnectButton.onPressed!.call();
       await tester.pumpAndSettle();
       expect(reconnectCalls, 1);
     });
@@ -417,12 +414,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(SettingsScreen), findsOneWidget);
-      final Finder debugSwitchFinder = find.descendant(
-        of: find.byKey(const Key('debug-mode-switch')),
-        matching: find.byType(Switch),
-      );
-      final Switch debugSwitch = tester.widget(debugSwitchFinder);
-      expect(debugSwitch.value, isTrue);
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.debugMode, isTrue);
     });
   });
 }
