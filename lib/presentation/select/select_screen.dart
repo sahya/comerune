@@ -45,6 +45,9 @@ class _SelectScreenState extends State<SelectScreen> {
     super.dispose();
   }
 
+  // TODO(PR#18-optional): setState rebuilds the entire widget on every
+  //  keystroke. Consider using ValueListenableBuilder to limit rebuilds to
+  //  the connect button's enabled/disabled state only.
   void _onInputChanged() {
     setState(() {});
   }
