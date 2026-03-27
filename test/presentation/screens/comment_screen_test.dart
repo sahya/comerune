@@ -1,15 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../../lib/application/settings/settings_store.dart';
-import '../../../lib/application/settings/shared_preferences_adapter.dart';
-import '../../../lib/domain/connection/connection_supervisor.dart';
-import '../../../lib/domain/models/app_message.dart';
-import '../../../lib/domain/models/app_settings.dart';
-import '../../../lib/presentation/screens/comment_screen.dart';
-import '../../../lib/presentation/screens/settings_screen.dart';
-import '../../helpers/in_memory_shared_preferences.dart';
+import 'package:comerune/domain/connection/connection_method.dart';
+import 'package:comerune/domain/connection/connection_supervisor.dart';
+import 'package:comerune/domain/models/app_message.dart';
+import 'package:comerune/presentation/screens/comment_screen.dart';
 
 void main() {
   group('CommentScreen', () {
@@ -116,14 +111,72 @@ void main() {
           find.textContaining(kLegacyUnsupportedFormatMessage), findsOneWidget);
     });
 
-    testWidgets(
-        'shows stop button during active connection and reconnect button on ENDED',
-        (
+    testWidgets('does not render gift and nicoad messages on v1.2', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        _message(
+          id: 'chat-visible',
+          type: AppMessageType.chat,
+          content: '通常コメント',
+        ),
+        _message(
+          id: 'gift-hidden',
+          type: AppMessageType.gift,
+          content: 'ギフト',
+        ),
+        _message(
+          id: 'nicoad-hidden',
+          type: AppMessageType.nicoad,
+          content: 'ニコニ広告',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+        ),
+      );
+
+      expect(find.byKey(const Key('comment-row-chat-visible')), findsOneWidget);
+      expect(find.byKey(const Key('comment-row-gift-hidden')), findsNothing);
+      expect(find.byKey(const Key('comment-row-nicoad-hidden')), findsNothing);
+      expect(find.text('ギフト'), findsNothing);
+      expect(find.text('ニコニ広告'), findsNothing);
+    });
+
+    testWidgets('shows stop button during active connection', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      int stopCalls = 0;
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          onStopAllConnections: () async {
+            stopCalls += 1;
+          },
+        ),
+      );
+
+      expect(find.byKey(const Key('stop-button')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('stop-button')));
+      await tester.pumpAndSettle();
+      expect(stopCalls, 1);
+      expect(supervisor.status, ConnectionStatus.stopped);
+    });
+
+    testWidgets('shows reconnect button on ENDED and allows retry tap', (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
       int reconnectCalls = 0;
 
+      expect(supervisor.endBroadcast(), isTrue);
       await tester.pumpWidget(
         _buildScreen(
           supervisor: supervisor,
@@ -133,17 +186,12 @@ void main() {
           },
         ),
       );
-
-      expect(find.byKey(const Key('stop-button')), findsOneWidget);
-      expect(supervisor.endBroadcast(), isTrue);
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       expect(find.byKey(const Key('reconnect-button')), findsOneWidget);
       expect(find.byKey(const Key('stop-button')), findsNothing);
 
-      final ElevatedButton reconnectButton =
-          tester.widget(find.byKey(const Key('reconnect-button')));
-      reconnectButton.onPressed!.call();
+      await tester.tap(find.byKey(const Key('reconnect-button')));
       await tester.pumpAndSettle();
       expect(reconnectCalls, 1);
     });
@@ -185,7 +233,6 @@ void main() {
               content: 'comment-$index',
             ),
           ),
-          settingsStore: _newSettingsStore(),
         ),
       );
       await tester.pumpAndSettle();
@@ -234,6 +281,57 @@ void main() {
       );
     });
 
+    testWidgets(
+        'auto-scroll keeps working when ring-buffer update keeps same length',
+        (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final GlobalKey<_CommentScreenHostState> hostKey =
+          GlobalKey<_CommentScreenHostState>();
+
+      final List<AppMessage> initialMessages = List<AppMessage>.generate(
+        40,
+        (int index) => _message(
+          id: 'rb-initial-$index',
+          type: AppMessageType.chat,
+          content: 'comment-$index',
+        ),
+      );
+
+      await tester.pumpWidget(
+        _CommentScreenHost(
+          key: hostKey,
+          supervisor: supervisor,
+          initialLv: 'lv-ring',
+          initialMessages: initialMessages,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final ListView listView =
+          tester.widget(find.byKey(const Key('comment-list')));
+      final ScrollController controller = listView.controller!;
+      expect(
+        (controller.position.maxScrollExtent - controller.offset).abs() < 2,
+        isTrue,
+      );
+
+      final List<AppMessage> rotated = <AppMessage>[
+        ...initialMessages.sublist(1),
+        _message(
+          id: 'rb-new-tail',
+          type: AppMessageType.chat,
+          content: 'new tail\nline2\nline3\nline4\nline5',
+        ),
+      ];
+      hostKey.currentState!.replaceMessages(rotated);
+      await tester.pumpAndSettle();
+
+      expect(
+        (controller.position.maxScrollExtent - controller.offset).abs() < 2,
+        isTrue,
+      );
+    });
+
     testWidgets('shows snackbar on transition to FAILED', (
       WidgetTester tester,
     ) async {
@@ -251,7 +349,10 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      expect(find.text('コメントサーバーの取得に失敗しました'), findsOneWidget);
+      expect(
+        find.text('コメントサーバーの取得に失敗しました 再接続ボタンで再試行できます。'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('shows reconnect button on FAILED and allows retry tap', (
@@ -277,9 +378,11 @@ void main() {
       expect(find.byKey(const Key('reconnect-button')), findsOneWidget);
       expect(find.byKey(const Key('stop-button')), findsNothing);
 
-      final ElevatedButton reconnectButton =
-          tester.widget(find.byKey(const Key('reconnect-button')));
-      reconnectButton.onPressed!.call();
+      final BuildContext context = tester.element(find.byType(CommentScreen));
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('reconnect-button')));
       await tester.pumpAndSettle();
       expect(reconnectCalls, 1);
     });
@@ -309,7 +412,6 @@ void main() {
                             },
                             onReconnectSameLv: () async {},
                             onDifferentLvConnected: (_, __) async {},
-                            settingsStore: _newSettingsStore(),
                           ),
                         ),
                       );
@@ -354,7 +456,6 @@ void main() {
               content: 'message-1',
             ),
           ],
-          settingsStore: _newSettingsStore(),
         ),
       );
 
@@ -365,58 +466,6 @@ void main() {
       expect(hostKey.currentState!.previousLv, 'lv111');
       expect(hostKey.currentState!.nextLv, 'lv222');
     });
-
-    testWidgets('opens settings screen from overflow menu', (
-      WidgetTester tester,
-    ) async {
-      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-      final SettingsStore settingsStore = SharedPreferencesSettingsStore(
-        prefs: InMemorySharedPreferences(),
-      );
-
-      await tester.pumpWidget(
-        _buildScreen(
-          supervisor: supervisor,
-          messages: const <AppMessage>[],
-          settingsStore: settingsStore,
-        ),
-      );
-
-      await tester.tap(find.byType(PopupMenuButton<String>));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('設定'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(SettingsScreen), findsOneWidget);
-    });
-
-    testWidgets('opens settings screen with startup-created prefs store', (
-      WidgetTester tester,
-    ) async {
-      SharedPreferences.setMockInitialValues(<String, Object>{
-        'settings.debugMode': true,
-      });
-      final SettingsStore settingsStore =
-          await createSharedPreferencesSettingsStore();
-      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-
-      await tester.pumpWidget(
-        _buildScreen(
-          supervisor: supervisor,
-          messages: const <AppMessage>[],
-          settingsStore: settingsStore,
-        ),
-      );
-
-      await tester.tap(find.byType(PopupMenuButton<String>));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('設定'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(SettingsScreen), findsOneWidget);
-      final AppSettings loaded = await settingsStore.load();
-      expect(loaded.debugMode, isTrue);
-    });
   });
 }
 
@@ -426,13 +475,11 @@ class _CommentScreenHost extends StatefulWidget {
     required this.supervisor,
     required this.initialLv,
     required this.initialMessages,
-    required this.settingsStore,
   });
 
   final ConnectionSupervisor supervisor;
   final String initialLv;
   final List<AppMessage> initialMessages;
-  final SettingsStore settingsStore;
 
   @override
   State<_CommentScreenHost> createState() => _CommentScreenHostState();
@@ -459,6 +506,12 @@ class _CommentScreenHostState extends State<_CommentScreenHost> {
     });
   }
 
+  void replaceMessages(List<AppMessage> messages) {
+    setState(() {
+      _messages = List<AppMessage>.from(messages);
+    });
+  }
+
   void changeLv(String lv) {
     setState(() {
       _lv = lv;
@@ -479,7 +532,6 @@ class _CommentScreenHostState extends State<_CommentScreenHost> {
           previousLv = previous;
           nextLv = next;
         },
-        settingsStore: widget.settingsStore,
       ),
     );
   }
@@ -491,7 +543,6 @@ Widget _buildScreen({
   String lv = 'lv345678901',
   Future<void> Function()? onStopAllConnections,
   Future<void> Function()? onReconnectSameLv,
-  SettingsStore? settingsStore,
   bool debugMode = false,
   ConnectionMethod? connectionMethod,
 }) {
@@ -503,7 +554,6 @@ Widget _buildScreen({
       onStopAllConnections: onStopAllConnections ?? () async {},
       onReconnectSameLv: onReconnectSameLv ?? () async {},
       onDifferentLvConnected: (_, __) async {},
-      settingsStore: settingsStore ?? _newSettingsStore(),
       debugMode: debugMode,
       connectionMethod: connectionMethod,
     ),
@@ -529,11 +579,5 @@ AppMessage _message({
     userId: 'user-1',
     content: content,
     type: type,
-  );
-}
-
-SettingsStore _newSettingsStore() {
-  return SharedPreferencesSettingsStore(
-    prefs: InMemorySharedPreferences(),
   );
 }
