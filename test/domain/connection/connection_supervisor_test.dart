@@ -113,6 +113,25 @@ void main() {
     expect(supervisor.wifiIndicatorColor, WifiIndicatorColor.red);
   });
 
+  test('does not reconnect after transitioning to ENDED', () {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    expect(supervisor.startConnection(), isTrue);
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(supervisor.onNdgrEndpointResolved(), isTrue);
+    expect(supervisor.endBroadcast(), isTrue);
+    expect(supervisor.status, ConnectionStatus.ended);
+
+    expect(
+      supervisor.onStreamDisconnected(ConnectionErrorCode.ndgrStreamFailed),
+      isFalse,
+    );
+    expect(supervisor.reconnectViaSessionWs(), isFalse);
+    expect(supervisor.reconnectToNdgrStream(), isFalse);
+    expect(supervisor.reconnectToLegacyStream(), isFalse);
+    expect(supervisor.status, ConnectionStatus.ended);
+  });
+
   test('supports user action to return from ENDED/FAILED to IDLE', () {
     final ConnectionSupervisor endedSupervisor = ConnectionSupervisor();
     expect(endedSupervisor.startConnection(), isTrue);

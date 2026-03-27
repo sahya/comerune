@@ -72,7 +72,7 @@ extension ConnectionStatusCode on ConnectionStatus {
   }
 }
 
-extension ConnectionErrorCodeCode on ConnectionErrorCode {
+extension ConnectionErrorCodeExtension on ConnectionErrorCode {
   String get code {
     switch (this) {
       case ConnectionErrorCode.lvParseFailed:
@@ -128,6 +128,8 @@ class ConnectionSupervisor extends ChangeNotifier {
       ConnectionStatus.ended,
       ConnectionStatus.failed,
     },
+    // Integrated spec §6.2(5) explicitly allows reconnecting to return
+    // directly to STREAMING_* when reusing the same endpoint.
     ConnectionStatus.reconnecting: <ConnectionStatus>{
       ConnectionStatus.connectingSessionWs,
       ConnectionStatus.streamingNdgr,
@@ -265,6 +267,7 @@ class ConnectionSupervisor extends ChangeNotifier {
   }
 
   void recordError(ConnectionErrorCode errorCode) {
+    // Used for non-transition error updates (e.g. parse/speech failures).
     _lastError = errorCode;
     notifyListeners();
   }
