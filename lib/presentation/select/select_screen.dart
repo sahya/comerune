@@ -1,16 +1,33 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../application/settings/settings_store.dart';
+import '../../application/timeline/timeline_store.dart';
+import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
+import '../../domain/models/app_message.dart';
+import '../../domain/models/app_settings.dart';
 import '../../domain/utils/lv_parser.dart';
-import '../comment/comment_screen.dart';
+import '../screens/comment_screen.dart';
+import '../screens/settings_screen.dart';
 
 class SelectScreen extends StatefulWidget {
   const SelectScreen({
     required this.connectionSupervisor,
+    this.timelineStore,
+    this.settingsStore,
+    this.initialSettings = AppSettings.defaults,
+    this.onPrepareConnection,
     super.key,
   });
 
   final ConnectionSupervisor connectionSupervisor;
+  final TimelineStore? timelineStore;
+  final SettingsStore? settingsStore;
+  final AppSettings initialSettings;
+  final Future<void> Function(String lv, AppSettings settings)?
+      onPrepareConnection;
 
   @override
   State<SelectScreen> createState() => _SelectScreenState();
@@ -18,13 +35,22 @@ class SelectScreen extends StatefulWidget {
 
 class _SelectScreenState extends State<SelectScreen> {
   late final TextEditingController _controller;
+  late final ValueNotifier<AppSettings> _settingsNotifier;
+  late ConnectionStatus _previousStatus;
+  ConnectionMethod? _connectionMethod;
+  String? _lastConnectedLv;
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController();
+    _settingsNotifier = ValueNotifier<AppSettings>(widget.initialSettings);
+    _previousStatus = widget.connectionSupervisor.status;
     _controller.addListener(_onInputChanged);
     widget.connectionSupervisor.addListener(_onSupervisorChanged);
+    if (widget.settingsStore != null) {
+      unawaited(_reloadSettingsFromStore());
+    }
   }
 
   @override
@@ -33,12 +59,24 @@ class _SelectScreenState extends State<SelectScreen> {
     if (oldWidget.connectionSupervisor != widget.connectionSupervisor) {
       oldWidget.connectionSupervisor.removeListener(_onSupervisorChanged);
       widget.connectionSupervisor.addListener(_onSupervisorChanged);
+      _previousStatus = widget.connectionSupervisor.status;
+    }
+
+    if (oldWidget.initialSettings != widget.initialSettings &&
+        _settingsNotifier.value == oldWidget.initialSettings) {
+      _settingsNotifier.value = widget.initialSettings;
+    }
+
+    if (oldWidget.settingsStore != widget.settingsStore &&
+        widget.settingsStore != null) {
+      unawaited(_reloadSettingsFromStore());
     }
   }
 
   @override
   void dispose() {
     widget.connectionSupervisor.removeListener(_onSupervisorChanged);
+    _settingsNotifier.dispose();
     _controller
       ..removeListener(_onInputChanged)
       ..dispose();
@@ -53,8 +91,29 @@ class _SelectScreenState extends State<SelectScreen> {
   }
 
   void _onSupervisorChanged() {
-    // TODO(PR#18-optional): If this callback becomes frequent, reduce rebuild
-    //  scope with a builder pattern instead of rebuilding the full screen.
+    final ConnectionStatus status = widget.connectionSupervisor.status;
+    switch (status) {
+      case ConnectionStatus.streamingNdgr:
+        _connectionMethod = ConnectionMethod.ndgr;
+        break;
+      case ConnectionStatus.streamingLegacy:
+        _connectionMethod = ConnectionMethod.legacy;
+        break;
+      case ConnectionStatus.connectingSessionWs:
+        if (_isTerminalLike(_previousStatus)) {
+          _connectionMethod = null;
+        }
+        break;
+      case ConnectionStatus.idle:
+      case ConnectionStatus.resolvingEndpoints:
+      case ConnectionStatus.reconnecting:
+      case ConnectionStatus.stopped:
+      case ConnectionStatus.ended:
+      case ConnectionStatus.failed:
+        break;
+    }
+
+    _previousStatus = status;
     setState(() {});
   }
 
@@ -69,10 +128,10 @@ class _SelectScreenState extends State<SelectScreen> {
   }
 
   void _onSubmit(String _) {
-    _connect();
+    unawaited(_connect());
   }
 
-  void _connect() {
+  Future<void> _connect() async {
     if (!_canAttemptConnection) {
       return;
     }
@@ -84,11 +143,18 @@ class _SelectScreenState extends State<SelectScreen> {
       final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
       messenger
         ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('放送IDが見つかりません')),
-        );
+        ..showSnackBar(const SnackBar(content: Text('放送IDが見つかりません')));
       return;
     }
+
+    final AppSettings settings = _settingsNotifier.value;
+    if (_lastConnectedLv != null && _lastConnectedLv != lv) {
+      widget.timelineStore?.clear();
+    }
+    widget.timelineStore?.setCapacity(
+      _historyCountFrom(settings.pastCommentFetchCount),
+    );
+    await widget.onPrepareConnection?.call(lv, settings);
 
     final bool started = widget.connectionSupervisor.startConnection();
 
@@ -96,13 +162,13 @@ class _SelectScreenState extends State<SelectScreen> {
       return;
     }
 
-    final Widget destination = CommentScreen(
-      lv: lv,
-      connectionSupervisor: widget.connectionSupervisor,
-    );
+    _lastConnectedLv = lv;
 
     Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => destination),
+      MaterialPageRoute<void>(
+        builder: (BuildContext routeContext) =>
+            _buildCommentScreen(routeContext, lv),
+      ),
     );
   }
 
@@ -122,16 +188,15 @@ class _SelectScreenState extends State<SelectScreen> {
               keyboardType: TextInputType.url,
               textInputAction: TextInputAction.done,
               onSubmitted: _onSubmit,
-              decoration: const InputDecoration(
-                hintText: 'lv番号またはURLを入力',
-              ),
+              decoration: const InputDecoration(hintText: 'lv番号またはURLを入力'),
             ),
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerRight,
               child: ElevatedButton(
                 key: const Key('select_screen_connect_button'),
-                onPressed: _canAttemptConnection ? _connect : null,
+                onPressed:
+                    _canAttemptConnection ? () => unawaited(_connect()) : null,
                 child: const Text('接続開始'),
               ),
             ),
@@ -139,5 +204,122 @@ class _SelectScreenState extends State<SelectScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildCommentScreen(BuildContext routeContext, String lv) {
+    final List<Listenable> listenables = <Listenable>[
+      widget.connectionSupervisor,
+      _settingsNotifier,
+      if (widget.timelineStore != null) widget.timelineStore!,
+    ];
+
+    return ListenableBuilder(
+      listenable: Listenable.merge(listenables),
+      builder: (BuildContext context, Widget? _) {
+        final List<AppMessage> messages =
+            widget.timelineStore?.messages ?? const <AppMessage>[];
+        return CommentScreen(
+          lv: lv,
+          connectionSupervisor: widget.connectionSupervisor,
+          messages: messages,
+          onStopAllConnections: _stopAllConnections,
+          onReconnectSameLv: _reconnectSameLv,
+          onDifferentLvConnected: _onDifferentLvConnected,
+          onOpenSettings: widget.settingsStore == null
+              ? null
+              : () => _openSettings(routeContext),
+          debugMode: _settingsNotifier.value.debugMode,
+          connectionMethod: _connectionMethod,
+        );
+      },
+    );
+  }
+
+  Future<void> _stopAllConnections() async {
+    widget.connectionSupervisor.stopByUser();
+  }
+
+  Future<void> _reconnectSameLv() async {
+    final String? lv = _lastConnectedLv;
+    if (lv == null) {
+      return;
+    }
+
+    final AppSettings settings = _settingsNotifier.value;
+    widget.timelineStore?.setCapacity(
+      _historyCountFrom(settings.pastCommentFetchCount),
+    );
+    await widget.onPrepareConnection?.call(lv, settings);
+
+    final bool retried =
+        widget.connectionSupervisor.retryConnectionFromTerminal();
+    if (!retried && widget.connectionSupervisor.canStartConnection) {
+      widget.connectionSupervisor.startConnection();
+    }
+  }
+
+  Future<void> _onDifferentLvConnected(String previousLv, String nextLv) async {
+    if (previousLv != nextLv) {
+      widget.timelineStore?.clear();
+    }
+    _lastConnectedLv = nextLv;
+  }
+
+  Future<void> _openSettings(BuildContext context) async {
+    final SettingsStore? settingsStore = widget.settingsStore;
+    if (settingsStore == null) {
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SettingsScreen(settingsStore: settingsStore),
+      ),
+    );
+
+    await _reloadSettingsFromStore();
+  }
+
+  Future<void> _reloadSettingsFromStore() async {
+    final SettingsStore? settingsStore = widget.settingsStore;
+    if (settingsStore == null) {
+      return;
+    }
+
+    final AppSettings loaded = await settingsStore.load();
+    if (!mounted) {
+      return;
+    }
+
+    _settingsNotifier.value = loaded;
+  }
+
+  bool _isTerminalLike(ConnectionStatus status) {
+    switch (status) {
+      case ConnectionStatus.idle:
+      case ConnectionStatus.stopped:
+      case ConnectionStatus.ended:
+      case ConnectionStatus.failed:
+        return true;
+      case ConnectionStatus.connectingSessionWs:
+      case ConnectionStatus.resolvingEndpoints:
+      case ConnectionStatus.streamingNdgr:
+      case ConnectionStatus.streamingLegacy:
+      case ConnectionStatus.reconnecting:
+        return false;
+    }
+  }
+
+  int _historyCountFrom(PastCommentFetchCount value) {
+    switch (value) {
+      case PastCommentFetchCount.count100:
+        return 100;
+      case PastCommentFetchCount.count500:
+        return 500;
+      case PastCommentFetchCount.count1000:
+        return 1000;
+      case PastCommentFetchCount.all:
+        return 10000;
+    }
   }
 }
