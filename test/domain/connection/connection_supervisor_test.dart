@@ -300,7 +300,7 @@ void main() {
         next: 'segment-1',
       );
       ndgrClient.emitStalled(resumeCursor: cursor);
-      await _flushAsync();
+      await _drainEventLoop();
 
       expect(supervisor.status, ConnectionStatus.streamingNdgr);
       expect(supervisor.reconnectCount, 1);
@@ -333,20 +333,22 @@ void main() {
       expect(supervisor.status, ConnectionStatus.streamingLegacy);
 
       sessionWsClient.emitBroadcastEnded();
-      await _flushAsync();
+      await _drainEventLoop();
 
       expect(supervisor.status, ConnectionStatus.ended);
       expect(supervisor.lastError, ConnectionErrorCode.broadcastEnded);
 
       legacyClient.emitDisconnected();
-      await _flushAsync();
+      await _drainEventLoop();
       expect(supervisor.reconnectCount, 0);
     });
   });
 }
 
-Future<void> _flushAsync() async {
-  await Future<void>.delayed(Duration.zero);
+Future<void> _drainEventLoop() async {
+  for (int i = 0; i < 6; i += 1) {
+    await Future<void>.delayed(Duration.zero);
+  }
 }
 
 class FakeSessionWsClient implements SessionWsClient {
