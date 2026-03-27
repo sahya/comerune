@@ -24,6 +24,20 @@ void main() {
     );
   });
 
+  test('accepts lv with up to 18 digits', () {
+    expect(
+      LvParser.extract('lv123456789012345678'),
+      'lv123456789012345678',
+    );
+  });
+
+  test('rejects lv longer than 18 digits', () {
+    expect(
+      LvParser.extract('lv1234567890123456789'),
+      isNull,
+    );
+  });
+
   test('returns null when input is null', () {
     expect(LvParser.extract(null), isNull);
   });
