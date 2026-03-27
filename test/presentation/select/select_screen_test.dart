@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:comerune/domain/connection/connection_supervisor.dart';
+import 'package:comerune/presentation/select/select_screen.dart';
 
-import '../../../lib/domain/connection/connection_supervisor.dart';
-import '../../../lib/presentation/select/select_screen.dart';
+Finder inputField() => find.byKey(const Key('select_screen_input'));
+Finder connectButton() => find.byKey(const Key('select_screen_connect_button'));
 
 void main() {
-  Finder get inputField => find.byKey(const Key('select_screen_input'));
-  Finder get connectButton => find.byKey(const Key('select_screen_connect_button'));
-
   Future<void> pumpSelectScreen(
     WidgetTester tester,
     ConnectionSupervisor supervisor,
@@ -27,7 +26,8 @@ void main() {
 
     await pumpSelectScreen(tester, supervisor);
 
-    final ElevatedButton button = tester.widget<ElevatedButton>(connectButton);
+    final ElevatedButton button =
+        tester.widget<ElevatedButton>(connectButton());
     expect(button.onPressed, isNull);
   });
 
@@ -37,10 +37,10 @@ void main() {
     final ConnectionSupervisor supervisor = ConnectionSupervisor();
 
     await pumpSelectScreen(tester, supervisor);
-    await tester.enterText(inputField, 'lv345678901');
+    await tester.enterText(inputField(), 'lv345678901');
     await tester.pump();
 
-    await tester.tap(connectButton);
+    await tester.tap(connectButton());
     await tester.pumpAndSettle();
 
     expect(supervisor.status, ConnectionStatus.connectingSessionWs);
@@ -55,12 +55,12 @@ void main() {
 
     await pumpSelectScreen(tester, supervisor);
     await tester.enterText(
-      inputField,
+      inputField(),
       'https://live.nicovideo.jp/watch/lv345678901',
     );
     await tester.pump();
 
-    await tester.tap(connectButton);
+    await tester.tap(connectButton());
     await tester.pumpAndSettle();
 
     expect(supervisor.status, ConnectionStatus.connectingSessionWs);
@@ -74,10 +74,10 @@ void main() {
     final ConnectionSupervisor supervisor = ConnectionSupervisor();
 
     await pumpSelectScreen(tester, supervisor);
-    await tester.enterText(inputField, 'invalid');
+    await tester.enterText(inputField(), 'invalid');
     await tester.pump();
 
-    await tester.tap(connectButton);
+    await tester.tap(connectButton());
     await tester.pump();
 
     expect(find.text('放送IDが見つかりません'), findsOneWidget);
@@ -90,7 +90,7 @@ void main() {
     final ConnectionSupervisor supervisor = ConnectionSupervisor();
 
     await pumpSelectScreen(tester, supervisor);
-    await tester.enterText(inputField, 'lv345678901');
+    await tester.enterText(inputField(), 'lv345678901');
     await tester.pump();
 
     await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -106,14 +106,15 @@ void main() {
     final ConnectionSupervisor supervisor = ConnectionSupervisor();
 
     await pumpSelectScreen(tester, supervisor);
-    await tester.enterText(inputField, 'lv345678901');
+    await tester.enterText(inputField(), 'lv345678901');
     await tester.pump();
 
     expect(supervisor.startConnection(), isTrue);
     await tester.pump();
 
-    final TextField input = tester.widget<TextField>(inputField);
-    final ElevatedButton button = tester.widget<ElevatedButton>(connectButton);
+    final TextField input = tester.widget<TextField>(inputField());
+    final ElevatedButton button =
+        tester.widget<ElevatedButton>(connectButton());
 
     expect(input.enabled, isFalse);
     expect(button.onPressed, isNull);
@@ -129,10 +130,11 @@ void main() {
     expect(supervisor.stopByUser(), isTrue);
 
     await pumpSelectScreen(tester, supervisor);
-    await tester.enterText(inputField, 'lv345678901');
+    await tester.enterText(inputField(), 'lv345678901');
     await tester.pump();
 
-    final ElevatedButton button = tester.widget<ElevatedButton>(connectButton);
+    final ElevatedButton button =
+        tester.widget<ElevatedButton>(connectButton());
     expect(button.onPressed, isNotNull);
   });
 
@@ -149,13 +151,14 @@ void main() {
     );
 
     await pumpSelectScreen(tester, supervisor);
-    await tester.enterText(inputField, 'lv345678901');
+    await tester.enterText(inputField(), 'lv345678901');
     await tester.pump();
 
-    final ElevatedButton button = tester.widget<ElevatedButton>(connectButton);
+    final ElevatedButton button =
+        tester.widget<ElevatedButton>(connectButton());
     expect(button.onPressed, isNotNull);
 
-    await tester.tap(connectButton);
+    await tester.tap(connectButton());
     await tester.pumpAndSettle();
 
     expect(supervisor.status, ConnectionStatus.connectingSessionWs);
@@ -173,13 +176,14 @@ void main() {
     expect(supervisor.endBroadcast(), isTrue);
 
     await pumpSelectScreen(tester, supervisor);
-    await tester.enterText(inputField, 'lv345678901');
+    await tester.enterText(inputField(), 'lv345678901');
     await tester.pump();
 
-    final ElevatedButton button = tester.widget<ElevatedButton>(connectButton);
+    final ElevatedButton button =
+        tester.widget<ElevatedButton>(connectButton());
     expect(button.onPressed, isNotNull);
 
-    await tester.tap(connectButton);
+    await tester.tap(connectButton());
     await tester.pumpAndSettle();
 
     expect(supervisor.status, ConnectionStatus.connectingSessionWs);

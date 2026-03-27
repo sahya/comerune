@@ -7,12 +7,10 @@ import '../comment/comment_screen.dart';
 class SelectScreen extends StatefulWidget {
   const SelectScreen({
     required this.connectionSupervisor,
-    this.commentScreenBuilder,
     super.key,
   });
 
   final ConnectionSupervisor connectionSupervisor;
-  final Widget Function(String lv)? commentScreenBuilder;
 
   @override
   State<SelectScreen> createState() => _SelectScreenState();
@@ -55,40 +53,14 @@ class _SelectScreenState extends State<SelectScreen> {
     setState(() {});
   }
 
-  bool get _isConnectionInProgress {
-    switch (widget.connectionSupervisor.status) {
-      case ConnectionStatus.connectingSessionWs:
-      case ConnectionStatus.resolvingEndpoints:
-      case ConnectionStatus.streamingNdgr:
-      case ConnectionStatus.streamingLegacy:
-      case ConnectionStatus.reconnecting:
-        return true;
-      case ConnectionStatus.idle:
-      case ConnectionStatus.stopped:
-      case ConnectionStatus.ended:
-      case ConnectionStatus.failed:
-        return false;
-    }
-  }
+  bool get _isConnectionInProgress =>
+      !widget.connectionSupervisor.canStartConnection;
 
   bool get _canAttemptConnection {
-    if (_controller.text.trim().isEmpty || _isConnectionInProgress) {
+    if (_controller.text.trim().isEmpty) {
       return false;
     }
-
-    switch (widget.connectionSupervisor.status) {
-      case ConnectionStatus.idle:
-      case ConnectionStatus.stopped:
-      case ConnectionStatus.failed:
-      case ConnectionStatus.ended:
-        return true;
-      case ConnectionStatus.connectingSessionWs:
-      case ConnectionStatus.resolvingEndpoints:
-      case ConnectionStatus.streamingNdgr:
-      case ConnectionStatus.streamingLegacy:
-      case ConnectionStatus.reconnecting:
-        return false;
-    }
+    return widget.connectionSupervisor.canStartConnection;
   }
 
   void _onSubmit(String _) {
@@ -113,24 +85,16 @@ class _SelectScreenState extends State<SelectScreen> {
       return;
     }
 
-    final ConnectionStatus status = widget.connectionSupervisor.status;
-    final bool started;
-    if (status == ConnectionStatus.failed || status == ConnectionStatus.ended) {
-      started = widget.connectionSupervisor.retryConnectionFromTerminal();
-    } else {
-      started = widget.connectionSupervisor.startConnection();
-    }
+    final bool started = widget.connectionSupervisor.startConnection();
 
     if (!started || !mounted) {
       return;
     }
 
-    final Widget destination =
-        widget.commentScreenBuilder?.call(lv) ??
-        CommentScreen(
-          lv: lv,
-          connectionSupervisor: widget.connectionSupervisor,
-        );
+    final Widget destination = CommentScreen(
+      lv: lv,
+      connectionSupervisor: widget.connectionSupervisor,
+    );
 
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => destination),
