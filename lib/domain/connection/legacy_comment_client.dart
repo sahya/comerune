@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
-import 'dart:io';
 
 import '../models/app_message.dart';
 import '../normalization/message_normalizer.dart';
@@ -13,25 +12,6 @@ abstract interface class LegacyWebSocket {
 }
 
 typedef LegacyWebSocketConnector = Future<LegacyWebSocket> Function(String url);
-
-class IoLegacyWebSocket implements LegacyWebSocket {
-  IoLegacyWebSocket(this._webSocket);
-
-  final WebSocket _webSocket;
-
-  @override
-  Stream<Object?> get stream => _webSocket.cast<Object?>();
-
-  @override
-  Future<void> close([int? code, String? reason]) {
-    return _webSocket.close(code, reason);
-  }
-
-  static Future<LegacyWebSocket> connect(String url) async {
-    final WebSocket socket = await WebSocket.connect(url);
-    return IoLegacyWebSocket(socket);
-  }
-}
 
 enum LegacyCommentClientErrorCode {
   connectionFailed,
@@ -48,10 +28,10 @@ class LegacyCommentClientError {
 
 class LegacyCommentClient {
   LegacyCommentClient({
+    required LegacyWebSocketConnector webSocketConnector,
     MessageNormalizer? messageNormalizer,
-    LegacyWebSocketConnector? webSocketConnector,
-  }) : _messageNormalizer = messageNormalizer ?? MessageNormalizer(),
-       _webSocketConnector = webSocketConnector ?? IoLegacyWebSocket.connect;
+  })  : _messageNormalizer = messageNormalizer ?? MessageNormalizer(),
+        _webSocketConnector = webSocketConnector;
 
   final MessageNormalizer _messageNormalizer;
   final LegacyWebSocketConnector _webSocketConnector;
@@ -75,7 +55,7 @@ class LegacyCommentClient {
       _webSocket = await _webSocketConnector(legacyWsUrl);
     } catch (error, stackTrace) {
       log(
-        'Failed to connect to legacy websocket. url=$legacyWsUrl',
+        'Failed to connect to legacy websocket. url=${_sanitizeUrlForLog(legacyWsUrl)}',
         name: 'LegacyCommentClient',
         error: error,
         stackTrace: stackTrace,
@@ -132,7 +112,8 @@ class LegacyCommentClient {
       return;
     }
 
-    final AppMessage? normalized = _messageNormalizer.normalizeLegacyJson(rawJson);
+    final AppMessage? normalized =
+        _messageNormalizer.normalizeLegacyJson(rawJson);
     if (normalized != null && !_messages.isClosed) {
       _messages.add(normalized);
     }
@@ -181,5 +162,27 @@ class LegacyCommentClient {
       return;
     }
     _errors.add(error);
+  }
+
+  String _sanitizeUrlForLog(String url) {
+    final Uri? uri = Uri.tryParse(url);
+    if (uri == null || uri.host.isEmpty) {
+      return _truncateForLog(url);
+    }
+
+    final Uri sanitized = Uri(
+      scheme: uri.scheme,
+      host: uri.host,
+      port: uri.hasPort ? uri.port : null,
+      path: uri.path,
+    );
+    return sanitized.toString();
+  }
+
+  String _truncateForLog(String value) {
+    if (value.length <= 120) {
+      return value;
+    }
+    return '${value.substring(0, 120)}...';
   }
 }
