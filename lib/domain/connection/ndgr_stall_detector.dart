@@ -2,8 +2,8 @@ class NdgrStallDetector {
   NdgrStallDetector({
     Duration threshold = const Duration(seconds: 15),
     DateTime Function()? now,
-  }) : threshold = threshold,
-       _now = now ?? DateTime.now;
+  })  : threshold = threshold,
+        _now = now ?? DateTime.now;
 
   final Duration threshold;
   final DateTime Function() _now;
@@ -15,6 +15,11 @@ class NdgrStallDetector {
 
   void markReceived([DateTime? timestamp]) {
     _lastReceivedAt = timestamp ?? _now();
+    _stallNotified = false;
+  }
+
+  void reset() {
+    _lastReceivedAt = null;
     _stallNotified = false;
   }
 

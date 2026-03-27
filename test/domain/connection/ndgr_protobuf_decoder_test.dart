@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../../lib/domain/connection/ndgr_protobuf_decoder.dart';
+import 'package:comerune/domain/connection/ndgr_protobuf_decoder.dart';
 
 void main() {
   group('NdgrProtobufDecoder', () {

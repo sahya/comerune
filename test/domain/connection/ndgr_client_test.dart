@@ -4,8 +4,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../../lib/domain/connection/ndgr_client.dart';
-import '../../../lib/domain/models/app_message.dart';
+import 'package:comerune/domain/connection/ndgr_client.dart';
+import 'package:comerune/domain/models/app_message.dart';
 
 void main() {
   group('NdgrClient', () {
@@ -291,6 +291,117 @@ void main() {
         throwsA(isA<HttpException>()),
       );
       expect(eventTypes, isEmpty);
+    });
+
+    test(
+      'skips malformed protobuf frame and continues with next frame',
+      () async {
+        final HttpServer server = await HttpServer.bind(
+          InternetAddress.loopbackIPv4,
+          0,
+        );
+        addTearDown(() async {
+          await server.close(force: true);
+        });
+
+        final Uri base = Uri(
+          scheme: 'http',
+          host: server.address.host,
+          port: server.port,
+        );
+        final Uri viewUri = base.replace(path: '/view');
+        final Uri segmentUri = base.replace(path: '/segment');
+
+        server.listen((HttpRequest request) async {
+          if (request.uri.path == '/view') {
+            request.response.add(
+              _delimit(
+                _encodeChunkedEntrySegment(segmentUri: segmentUri.toString()),
+              ),
+            );
+            await request.response.close();
+            return;
+          }
+          if (request.uri.path == '/segment') {
+            request.response.add(_delimit(<int>[0x80]));
+            request.response.add(
+              _delimit(_encodeChunkedMessage(id: 'valid-1', content: 'valid')),
+            );
+            await request.response.close();
+            return;
+          }
+
+          request.response.statusCode = HttpStatus.notFound;
+          await request.response.close();
+        });
+
+        final NdgrClient client = NdgrClient();
+        addTearDown(client.dispose);
+
+        final List<AppMessage> messages = <AppMessage>[];
+        final StreamSubscription<NdgrClientEvent> subscription =
+            client.events.listen((NdgrClientEvent event) {
+          if (event.type == NdgrClientEventType.message &&
+              event.message != null) {
+            messages.add(event.message!);
+          }
+        });
+        addTearDown(subscription.cancel);
+
+        await client.connect(viewUri);
+        expect(messages.map((AppMessage m) => m.content).toList(), <String>[
+          'valid',
+        ]);
+      },
+    );
+
+    test('throws StateError when connect is called while running', () async {
+      final HttpServer server = await HttpServer.bind(
+        InternetAddress.loopbackIPv4,
+        0,
+      );
+      final Completer<void> releaseView = Completer<void>();
+      addTearDown(() async {
+        if (!releaseView.isCompleted) {
+          releaseView.complete();
+        }
+        await server.close(force: true);
+      });
+
+      server.listen((HttpRequest request) async {
+        if (request.uri.path == '/view') {
+          await releaseView.future;
+          await request.response.close();
+          return;
+        }
+
+        request.response.statusCode = HttpStatus.notFound;
+        await request.response.close();
+      });
+
+      final Uri viewUri = Uri(
+        scheme: 'http',
+        host: server.address.host,
+        port: server.port,
+        path: '/view',
+      );
+
+      final NdgrClient client = NdgrClient();
+      addTearDown(client.dispose);
+
+      final Future<void> firstConnect = client.connect(viewUri);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      await expectLater(
+        () => client.connect(viewUri),
+        throwsA(isA<StateError>()),
+      );
+
+      await client.stop();
+      if (!releaseView.isCompleted) {
+        releaseView.complete();
+      }
+      await firstConnect.timeout(const Duration(seconds: 1));
     });
 
     test('uses typed at query cursor when requesting view endpoint', () async {
