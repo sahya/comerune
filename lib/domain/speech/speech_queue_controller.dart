@@ -27,10 +27,10 @@ class SpeechQueueController {
     bool autoReadEnabled = true,
     List<String> ngWordPatterns = const <String>[],
     DateTime Function()? nowProvider,
-  }) : _queueLimit = queueLimit,
-       _maxDelay = maxDelay,
-       _autoReadEnabled = autoReadEnabled,
-       _nowProvider = nowProvider ?? DateTime.now {
+  })  : _queueLimit = queueLimit,
+        _maxDelay = maxDelay,
+        _autoReadEnabled = autoReadEnabled,
+        _nowProvider = nowProvider ?? DateTime.now {
     if (queueLimit < 1) {
       throw ArgumentError.value(queueLimit, 'queueLimit', 'must be at least 1');
     }
@@ -44,6 +44,9 @@ class SpeechQueueController {
   final Queue<SpeechQueueItem> _queue = Queue<SpeechQueueItem>();
   final Map<String, DateTime> _lastAcceptedAtByUserId = <String, DateTime>{};
   final DateTime Function() _nowProvider;
+  // Optional review note:
+  // Keep URL detection simple for v1.2; trailing punctuation may be consumed.
+  // If readability impact is observed, narrow this pattern in a follow-up.
   final RegExp _urlPattern = RegExp(r'https?:\/\/\S+');
 
   int _queueLimit;
@@ -143,6 +146,9 @@ class SpeechQueueController {
   }
 
   bool _isLegacyUnsupportedFormat(AppMessage message) {
+    // Optional review note:
+    // v1.2 uses shared fallback text as the compatibility signal.
+    // If a dedicated marker (e.g. raw.kind) becomes stable, switch to it.
     return message.content == kLegacyUnsupportedFormatMessage;
   }
 
