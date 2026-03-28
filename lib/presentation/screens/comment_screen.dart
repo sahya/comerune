@@ -159,9 +159,8 @@ class _CommentScreenState extends State<CommentScreen> {
       return;
     }
 
-    final int start = oldMessages.length < newMessages.length
-        ? oldMessages.length
-        : 0;
+    final int start =
+        oldMessages.length < newMessages.length ? oldMessages.length : 0;
     for (int i = start; i < newMessages.length; i++) {
       final String? userId = newMessages[i].userId;
       if (userId != null && userId.isNotEmpty) {
@@ -531,8 +530,7 @@ class _CommentScreenState extends State<CommentScreen> {
       return true;
     }
 
-    return _scrollController.position.pixels <=
-        _autoScrollResumeThreshold;
+    return _scrollController.position.pixels <= _autoScrollResumeThreshold;
   }
 
   void _scrollToEdge({bool animated = true}) {
