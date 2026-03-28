@@ -38,6 +38,7 @@ void main() {
       );
       expect(result.title, 'Test Program');
       expect(result.supplierUserId, isNull);
+      expect(result.broadcasterName, isNull);
 
       expect(httpClient.requests, hasLength(1));
       final _CapturedRequest request = httpClient.requests[0];
@@ -83,6 +84,7 @@ void main() {
 
       expect(result.title, 'Broadcaster Program');
       expect(result.supplierUserId, '67890');
+      expect(result.broadcasterName, '配信者A');
 
       resolver.dispose();
     });
@@ -117,6 +119,7 @@ void main() {
 
       expect(result.title, 'Supplier Fallback');
       expect(result.supplierUserId, '12345');
+      expect(result.broadcasterName, isNull);
 
       resolver.dispose();
     });
@@ -152,6 +155,7 @@ void main() {
       );
 
       expect(result.supplierUserId, '11111');
+      expect(result.broadcasterName, '配信者B');
 
       resolver.dispose();
     });
@@ -189,6 +193,7 @@ void main() {
 
       expect(result.title, 'No IDs');
       expect(result.supplierUserId, isNull);
+      expect(result.broadcasterName, isNull);
 
       resolver.dispose();
     });
