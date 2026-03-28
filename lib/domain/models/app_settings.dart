@@ -37,6 +37,19 @@ extension PastCommentFetchCountValue on PastCommentFetchCount {
     }
   }
 
+  int get historyCount {
+    switch (this) {
+      case PastCommentFetchCount.count100:
+        return 100;
+      case PastCommentFetchCount.count500:
+        return 500;
+      case PastCommentFetchCount.count1000:
+        return 1000;
+      case PastCommentFetchCount.all:
+        return 10000;
+    }
+  }
+
   static PastCommentFetchCount fromStorageValue(String? raw) {
     switch (raw) {
       case '500':
@@ -73,6 +86,8 @@ class AppSettings {
     required this.suppressDuplicate,
     required this.ngWords,
     required this.pastCommentFetchCount,
+    required this.showUserName,
+    required this.resolveUserName,
     required this.debugMode,
   });
 
@@ -95,6 +110,8 @@ class AppSettings {
     suppressDuplicate: true,
     ngWords: '',
     pastCommentFetchCount: PastCommentFetchCount.count100,
+    showUserName: true,
+    resolveUserName: true,
     debugMode: false,
   );
 
@@ -116,6 +133,8 @@ class AppSettings {
   final bool suppressDuplicate;
   final String ngWords;
   final PastCommentFetchCount pastCommentFetchCount;
+  final bool showUserName;
+  final bool resolveUserName;
   final bool debugMode;
 
   AppSettings copyWith({
@@ -137,6 +156,8 @@ class AppSettings {
     bool? suppressDuplicate,
     String? ngWords,
     PastCommentFetchCount? pastCommentFetchCount,
+    bool? showUserName,
+    bool? resolveUserName,
     bool? debugMode,
   }) {
     return AppSettings(
@@ -159,6 +180,8 @@ class AppSettings {
       ngWords: ngWords ?? this.ngWords,
       pastCommentFetchCount:
           pastCommentFetchCount ?? this.pastCommentFetchCount,
+      showUserName: showUserName ?? this.showUserName,
+      resolveUserName: resolveUserName ?? this.resolveUserName,
       debugMode: debugMode ?? this.debugMode,
     );
   }
