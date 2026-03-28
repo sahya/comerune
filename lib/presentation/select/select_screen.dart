@@ -244,6 +244,7 @@ class _SelectScreenState extends State<SelectScreen> {
           debugMode: _settingsNotifier.value.debugMode,
           connectionMethod: _connectionMethod,
           programTitle: widget.programTitleNotifier?.value,
+          showUserName: _settingsNotifier.value.showUserName,
           resolveUserName: _settingsNotifier.value.resolveUserName
               ? widget.resolveUserName
               : null,
