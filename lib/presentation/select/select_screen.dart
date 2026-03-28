@@ -307,8 +307,7 @@ class _SelectScreenState extends State<SelectScreen> {
             nameResolutionEnabled && supplierUserId != null
                 ? widget.resolveUserName?.call(supplierUserId)
                 : null;
-        final String? broadcasterName =
-            resolvedName ?? _followBroadcasterName;
+        final String? broadcasterName = resolvedName ?? _followBroadcasterName;
 
         return CommentScreen(
           lv: lv,

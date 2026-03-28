@@ -514,11 +514,10 @@ void main() {
       );
 
       // AppBar shows only the broadcaster name.
-      expect(
+      final Text appBarText = tester.widget<Text>(
         find.byKey(const Key('appbar-title-text')),
-        findsOneWidget,
       );
-      expect(find.text('テスト配信者'), findsOneWidget);
+      expect(appBarText.data, 'テスト配信者');
 
       // Program title bar shows the title with broadcaster icon.
       expect(find.byKey(const Key('program-title-bar')), findsOneWidget);
