@@ -186,6 +186,26 @@ void main() {
   });
 
   group('SessionWsClient', () {
+    test('applies default Android User-Agent header', () {
+      final SessionWsClient client = SessionWsClient(lv: 'lv123456789');
+
+      expect(
+        client.connectHeaders['User-Agent'],
+        SessionWsClient.defaultAndroidUserAgent,
+      );
+    });
+
+    test('keeps explicit User-Agent header when provided', () {
+      final SessionWsClient client = SessionWsClient(
+        lv: 'lv123456789',
+        connectHeaders: const <String, String>{
+          'User-Agent': 'comerune-test-agent',
+        },
+      );
+
+      expect(client.connectHeaders['User-Agent'], 'comerune-test-agent');
+    });
+
     test('sends startWatching on connect and pong on keepalive', () async {
       final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
       final SessionWsClient client = SessionWsClient(
@@ -230,6 +250,26 @@ void main() {
 
       await client.dispose();
       await subscription.cancel();
+    });
+
+    test('sends minimal startWatching payload when configured', () async {
+      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+      final SessionWsClient client = SessionWsClient(
+        lv: 'lv123456789',
+        channelFactory: (_) async => fakeChannel,
+        startWatchingMode: SessionWsStartWatchingMode.minimal,
+      );
+
+      await client.connect();
+
+      expect(fakeChannel.sentMessages, hasLength(1));
+      final Map<String, dynamic> startWatching =
+          jsonDecode(fakeChannel.sentMessages.first as String)
+              as Map<String, dynamic>;
+      expect(startWatching['type'], 'startWatching');
+      expect(startWatching['data'], <String, dynamic>{});
+
+      await client.dispose();
     });
 
     test(
@@ -581,7 +621,10 @@ void main() {
             e.type == SessionWsEventType.failed &&
             e.errorCode == SessionWsErrorCode.unknownBroadcastEndEvent,
       );
-      expect(failedEvent.error, contains('MAINTENANCE'));
+      expect(failedEvent.errorDetail, isNotNull);
+      expect(failedEvent.errorDetail!.phase,
+          SessionWsFailurePhase.handlingIncoming);
+      expect(failedEvent.error.toString(), contains('MAINTENANCE'));
       expect(
         events.any(
           (SessionWsEvent e) =>
@@ -616,6 +659,16 @@ void main() {
               e.errorCode == SessionWsErrorCode.endpointResolveFailed,
         ),
         isTrue,
+      );
+      final SessionWsEvent failedEvent = events.firstWhere(
+        (SessionWsEvent e) =>
+            e.type == SessionWsEventType.failed &&
+            e.errorCode == SessionWsErrorCode.endpointResolveFailed,
+      );
+      expect(failedEvent.errorDetail, isNotNull);
+      expect(
+        failedEvent.errorDetail!.phase,
+        SessionWsFailurePhase.waitingEndpoint,
       );
       expect(
         events.any(
@@ -740,6 +793,16 @@ void main() {
               event.errorCode == SessionWsErrorCode.connectFailed,
         ),
         isTrue,
+      );
+      final SessionWsEvent errorEvent = events.firstWhere(
+        (SessionWsEvent event) =>
+            event.type == SessionWsEventType.error &&
+            event.errorCode == SessionWsErrorCode.connectFailed,
+      );
+      expect(errorEvent.errorDetail, isNotNull);
+      expect(
+        errorEvent.errorDetail!.phase,
+        SessionWsFailurePhase.openingSocket,
       );
       expect(
         events.any(
