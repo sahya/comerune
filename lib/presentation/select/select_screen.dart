@@ -188,8 +188,7 @@ class _SelectScreenState extends State<SelectScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bool hasSettingsAccess =
-        widget.settingsStore != null;
+    final bool hasSettingsAccess = widget.settingsStore != null;
 
     return Scaffold(
       appBar: AppBar(
@@ -200,8 +199,7 @@ class _SelectScreenState extends State<SelectScreen> {
               key: const Key('select_screen_settings_button'),
               icon: const Icon(Icons.settings),
               tooltip: '設定',
-              onPressed: () =>
-                  _openSettings(context, widget.userSessionStore),
+              onPressed: () => _openSettings(context, widget.userSessionStore),
             ),
         ],
       ),
@@ -212,8 +210,7 @@ class _SelectScreenState extends State<SelectScreen> {
             _LoginStatusBanner(
               key: ValueKey<int>(_loginBannerRefreshKey),
               userSessionStore: widget.userSessionStore,
-              onTapLogin: () =>
-                  _openSettings(context, widget.userSessionStore),
+              onTapLogin: () => _openSettings(context, widget.userSessionStore),
             ),
           Padding(
             padding: const EdgeInsets.all(16),
@@ -227,8 +224,7 @@ class _SelectScreenState extends State<SelectScreen> {
                   keyboardType: TextInputType.url,
                   textInputAction: TextInputAction.done,
                   onSubmitted: _onSubmit,
-                  decoration:
-                      const InputDecoration(hintText: 'lv番号またはURLを入力'),
+                  decoration: const InputDecoration(hintText: 'lv番号またはURLを入力'),
                 ),
                 const SizedBox(height: 12),
                 Align(

@@ -160,9 +160,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     _isOpeningLogin = true;
-    bool? loggedIn;
     try {
-      loggedIn = await Navigator.of(context).push<bool>(
+      await Navigator.of(context).push<bool>(
         MaterialPageRoute<bool>(
           builder: (_) => LoginScreen(userSessionStore: sessionStore),
         ),
