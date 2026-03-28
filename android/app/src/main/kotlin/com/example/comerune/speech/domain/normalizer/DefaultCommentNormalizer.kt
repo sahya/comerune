@@ -11,6 +11,7 @@ class DefaultCommentNormalizer(
 
     /** Cache of compiled Regex objects keyed by pattern string. */
     private val regexCache = mutableMapOf<String, Regex>()
+    private val INVALID_REGEX_SENTINEL = Regex("(?!)")
 
     override fun normalize(raw: RawComment, settings: SpeechSettings): NormalizedComment {
         // Step 1: Preprocessing (existing)
@@ -244,7 +245,7 @@ class DefaultCommentNormalizer(
     internal fun detectNgWord(text: String, settings: SpeechSettings): String? {
         if (settings.ngWords.isEmpty()) return null
         val lowerText = text.lowercase()
-        return if (settings.ngWords.any { lowerText.contains(it.lowercase()) }) {
+        return if (settings.ngWords.filter { it.isNotBlank() }.any { lowerText.contains(it.lowercase()) }) {
             SKIP_NG_WORD
         } else {
             null
@@ -262,8 +263,9 @@ class DefaultCommentNormalizer(
         for (rule in settings.dictionaryRules) {
             if (!rule.enabled) continue
             val regex = regexCache.getOrPut(rule.pattern) {
-                runCatching { Regex(rule.pattern) }.getOrNull() ?: continue
+                runCatching { Regex(rule.pattern) }.getOrDefault(INVALID_REGEX_SENTINEL)
             }
+            if (regex === INVALID_REGEX_SENTINEL) continue
             val safeReplacement = Regex.escapeReplacement(rule.replacement)
             result = try {
                 regex.replace(result, safeReplacement)
@@ -281,8 +283,10 @@ class DefaultCommentNormalizer(
      */
     internal fun truncateText(text: String, settings: SpeechSettings): String {
         val maxLen = settings.maxTextLength.coerceAtLeast(1)
-        return if (text.length > maxLen) {
-            text.take(maxLen) + settings.trimLongTextSuffix
+        val codePointCount = text.codePointCount(0, text.length)
+        return if (codePointCount > maxLen) {
+            val endIndex = text.offsetByCodePoints(0, maxLen)
+            text.substring(0, endIndex) + settings.trimLongTextSuffix
         } else {
             text
         }
