@@ -14,11 +14,10 @@ class MethodChannelCommentSpeech implements CommentSpeechPlatform {
       MethodChannel('jp.example.comment_speech/methods');
   static const _eventChannel = EventChannel('jp.example.comment_speech/events');
 
-  late final Stream<SpeechEvent> _events = _eventChannel
-      .receiveBroadcastStream()
-      .map(
-        (event) => SpeechEvent.fromMap(Map<dynamic, dynamic>.from(event)),
-      );
+  late final Stream<SpeechEvent> _events =
+      _eventChannel.receiveBroadcastStream().map(
+            (event) => SpeechEvent.fromMap(Map<dynamic, dynamic>.from(event)),
+          );
 
   @override
   Future<void> initialize() async {
