@@ -513,14 +513,14 @@ void main() {
         ),
       );
 
-      // AppBar shows "放送者名 ─ lv" in a single line.
+      // AppBar shows only the broadcaster name.
       expect(
         find.byKey(const Key('appbar-title-text')),
         findsOneWidget,
       );
-      expect(find.text('テスト配信者 | lv345678901'), findsOneWidget);
+      expect(find.text('テスト配信者'), findsOneWidget);
 
-      // Program title bar shows only the title, no broadcaster name.
+      // Program title bar shows the title with broadcaster icon.
       expect(find.byKey(const Key('program-title-bar')), findsOneWidget);
       expect(find.text('テスト番組'), findsOneWidget);
     });

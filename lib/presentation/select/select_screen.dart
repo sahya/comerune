@@ -61,6 +61,8 @@ class _SelectScreenState extends State<SelectScreen> {
   late ConnectionStatus _previousStatus;
   ConnectionMethod? _connectionMethod;
   String? _lastConnectedLv;
+  String? _followBroadcasterName;
+  String? _followBroadcasterIconUrl;
   final ValueNotifier<bool?> _loginStateNotifier = ValueNotifier<bool?>(null);
   List<FollowProgram> _followPrograms = const <FollowProgram>[];
   bool _isLoadingFollowPrograms = false;
@@ -160,6 +162,8 @@ class _SelectScreenState extends State<SelectScreen> {
   }
 
   void _onSubmit(String _) {
+    _followBroadcasterName = null;
+    _followBroadcasterIconUrl = null;
     unawaited(_connect());
   }
 
@@ -255,7 +259,11 @@ class _SelectScreenState extends State<SelectScreen> {
                   child: ElevatedButton(
                     key: const Key('select_screen_connect_button'),
                     onPressed: _canAttemptConnection
-                        ? () => unawaited(_connect())
+                        ? () {
+                            _followBroadcasterName = null;
+                            _followBroadcasterIconUrl = null;
+                            unawaited(_connect());
+                          }
                         : null,
                     child: const Text('接続開始'),
                   ),
@@ -295,10 +303,12 @@ class _SelectScreenState extends State<SelectScreen> {
         final bool nameResolutionEnabled =
             _settingsNotifier.value.resolveUserName;
         final String? supplierUserId = widget.supplierUserIdNotifier?.value;
-        final String? broadcasterName =
+        final String? resolvedName =
             nameResolutionEnabled && supplierUserId != null
                 ? widget.resolveUserName?.call(supplierUserId)
                 : null;
+        final String? broadcasterName =
+            resolvedName ?? _followBroadcasterName;
 
         return CommentScreen(
           lv: lv,
@@ -314,6 +324,7 @@ class _SelectScreenState extends State<SelectScreen> {
           connectionMethod: _connectionMethod,
           programTitle: widget.programTitleNotifier?.value,
           broadcasterName: broadcasterName,
+          broadcasterIconUrl: _followBroadcasterIconUrl,
           showUserName: _settingsNotifier.value.showUserName,
           commentFontSize: _settingsNotifier.value.commentFontSize,
           resolveUserName:
@@ -451,6 +462,8 @@ class _SelectScreenState extends State<SelectScreen> {
   }
 
   void _connectToProgram(FollowProgram program) {
+    _followBroadcasterName = program.providerName;
+    _followBroadcasterIconUrl = program.providerIconUrl;
     _controller.text = program.programId;
     unawaited(_connect());
   }

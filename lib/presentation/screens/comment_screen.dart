@@ -46,6 +46,7 @@ class CommentScreen extends StatefulWidget {
     this.connectionMethod,
     this.programTitle,
     this.broadcasterName,
+    this.broadcasterIconUrl,
     this.showUserName = true,
     this.commentFontSize = commentFontSizeDefault,
     this.resolveUserName,
@@ -69,6 +70,7 @@ class CommentScreen extends StatefulWidget {
   final ConnectionMethod? connectionMethod;
   final String? programTitle;
   final String? broadcasterName;
+  final String? broadcasterIconUrl;
   final bool showUserName;
   final double commentFontSize;
 
@@ -229,9 +231,7 @@ class _CommentScreenState extends State<CommentScreen> {
             appBar: AppBar(
               toolbarHeight: 44,
               title: Text(
-                widget.broadcasterName != null
-                    ? '${widget.broadcasterName} | ${widget.lv}'
-                    : widget.lv,
+                widget.broadcasterName ?? widget.lv,
                 key: const Key('appbar-title-text'),
                 style: const TextStyle(fontSize: 15),
                 overflow: TextOverflow.ellipsis,
@@ -274,6 +274,7 @@ class _CommentScreenState extends State<CommentScreen> {
                   _ProgramTitleBar(
                     key: const Key('program-title-bar'),
                     title: widget.programTitle!,
+                    broadcasterIconUrl: widget.broadcasterIconUrl,
                     themeColors: themeColors,
                   ),
                 _StatusBar(
@@ -282,6 +283,8 @@ class _CommentScreenState extends State<CommentScreen> {
                   supervisor: widget.connectionSupervisor,
                   debugMode: widget.debugMode,
                   connectionMethod: widget.connectionMethod,
+                  broadcasterName: widget.broadcasterName,
+                  broadcasterIconUrl: widget.broadcasterIconUrl,
                   themeColors: themeColors,
                 ),
                 Expanded(
@@ -737,10 +740,12 @@ class _ProgramTitleBar extends StatelessWidget {
   const _ProgramTitleBar({
     super.key,
     required this.title,
+    this.broadcasterIconUrl,
     required this.themeColors,
   });
 
   final String title;
+  final String? broadcasterIconUrl;
   final AppThemeColors themeColors;
 
   @override
@@ -749,10 +754,22 @@ class _ProgramTitleBar extends StatelessWidget {
       width: double.infinity,
       color: themeColors.programTitleBarBackground,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Text(
-        title,
-        key: const Key('program-title-text'),
-        style: const TextStyle(fontWeight: FontWeight.bold),
+      child: Row(
+        children: <Widget>[
+          _BroadcasterIcon(
+            url: broadcasterIconUrl,
+            size: 20,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              title,
+              key: const Key('program-title-text'),
+              style: const TextStyle(fontWeight: FontWeight.bold),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -765,6 +782,8 @@ class _StatusBar extends StatelessWidget {
     required this.supervisor,
     required this.debugMode,
     required this.connectionMethod,
+    this.broadcasterName,
+    this.broadcasterIconUrl,
     required this.themeColors,
   });
 
@@ -772,6 +791,8 @@ class _StatusBar extends StatelessWidget {
   final ConnectionSupervisor supervisor;
   final bool debugMode;
   final ConnectionMethod? connectionMethod;
+  final String? broadcasterName;
+  final String? broadcasterIconUrl;
   final AppThemeColors themeColors;
 
   @override
@@ -796,6 +817,26 @@ class _StatusBar extends StatelessWidget {
                 color: wifiColor,
               ),
               const SizedBox(width: 8),
+              if (broadcasterName != null) ...<Widget>[
+                _BroadcasterIcon(
+                  url: broadcasterIconUrl,
+                  size: 16,
+                ),
+                const SizedBox(width: 4),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 100),
+                  child: Text(
+                    broadcasterName!,
+                    key: const Key('status-broadcaster-name'),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: themeColors.statusConnected.withValues(alpha: 0.7),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
               Text(
                 'lv: $lv',
                 key: const Key('status-lv'),
@@ -877,6 +918,43 @@ class _StatusBar extends StatelessWidget {
       case ConnectionErrorCode.speechVoicevoxFailed:
         return code.code;
     }
+  }
+}
+
+class _BroadcasterIcon extends StatelessWidget {
+  const _BroadcasterIcon({
+    required this.url,
+    required this.size,
+  });
+
+  final String? url;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipOval(
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: url != null && url!.isNotEmpty
+            ? Image.network(
+                url!,
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+                cacheWidth: (size * 2).round(),
+                cacheHeight: (size * 2).round(),
+                errorBuilder: (_, __, ___) => Icon(
+                  Icons.person,
+                  size: size,
+                ),
+              )
+            : Icon(
+                Icons.person,
+                size: size,
+              ),
+      ),
+    );
   }
 }
 
