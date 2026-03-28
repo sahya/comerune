@@ -6,6 +6,8 @@ import '../../application/settings/settings_store.dart';
 import '../../application/timeline/timeline_store.dart';
 import '../../data/auth/user_session_store.dart';
 import '../../data/comment_log/comment_log_writer.dart';
+import '../../data/follow/follow_program.dart';
+import '../../data/follow/follow_program_repository.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
@@ -29,6 +31,7 @@ class SelectScreen extends StatefulWidget {
     this.supplierUserIdNotifier,
     this.commentLogWriter,
     this.themeModeNotifier,
+    this.followProgramRepository,
     super.key,
   });
 
@@ -46,6 +49,7 @@ class SelectScreen extends StatefulWidget {
   final Listenable? userNameListenable;
   final ValueNotifier<String?>? supplierUserIdNotifier;
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
+  final FollowProgramRepository? followProgramRepository;
 
   @override
   State<SelectScreen> createState() => _SelectScreenState();
@@ -58,6 +62,11 @@ class _SelectScreenState extends State<SelectScreen> {
   ConnectionMethod? _connectionMethod;
   String? _lastConnectedLv;
   final ValueNotifier<bool?> _loginStateNotifier = ValueNotifier<bool?>(null);
+  List<FollowProgram> _followPrograms = const <FollowProgram>[];
+  bool _isLoadingFollowPrograms = false;
+  Timer? _followRefreshTimer;
+
+  static const Duration _followRefreshInterval = Duration(seconds: 60);
 
   @override
   void initState() {
@@ -71,6 +80,7 @@ class _SelectScreenState extends State<SelectScreen> {
       unawaited(_reloadSettingsFromStore());
     }
     unawaited(_refreshLoginState());
+    unawaited(_fetchFollowPrograms());
   }
 
   @override
@@ -95,6 +105,7 @@ class _SelectScreenState extends State<SelectScreen> {
 
   @override
   void dispose() {
+    _followRefreshTimer?.cancel();
     widget.connectionSupervisor.removeListener(_onSupervisorChanged);
     _loginStateNotifier.dispose();
     _settingsNotifier.dispose();
@@ -252,6 +263,15 @@ class _SelectScreenState extends State<SelectScreen> {
               ],
             ),
           ),
+          Expanded(
+            child: _FollowProgramList(
+              programs: _followPrograms,
+              isLoading: _isLoadingFollowPrograms,
+              enabled: !_isConnectionInProgress,
+              onTap: _connectToProgram,
+              onRefresh: _fetchFollowPrograms,
+            ),
+          ),
         ],
       ),
     );
@@ -373,6 +393,7 @@ class _SelectScreenState extends State<SelectScreen> {
 
     await _reloadSettingsFromStore();
     await _refreshLoginState();
+    await _fetchFollowPrograms();
   }
 
   Future<void> _refreshLoginState() async {
@@ -392,6 +413,47 @@ class _SelectScreenState extends State<SelectScreen> {
       return;
     }
     _loginStateNotifier.value = session.isNotEmpty;
+  }
+
+  Future<void> _fetchFollowPrograms() async {
+    final FollowProgramRepository? repository =
+        widget.followProgramRepository;
+    final UserSessionStore? sessionStore = widget.userSessionStore;
+    if (repository == null || sessionStore == null) {
+      return;
+    }
+
+    setState(() {
+      _isLoadingFollowPrograms = true;
+    });
+
+    String userSession;
+    try {
+      userSession = await sessionStore.load();
+    } on Exception {
+      userSession = '';
+    }
+
+    final List<FollowProgram> programs =
+        await repository.fetchOnAirPrograms(userSession: userSession);
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _followPrograms = programs;
+      _isLoadingFollowPrograms = false;
+    });
+
+    _followRefreshTimer?.cancel();
+    _followRefreshTimer =
+        Timer(_followRefreshInterval, () => unawaited(_fetchFollowPrograms()));
+  }
+
+  void _connectToProgram(FollowProgram program) {
+    _controller.text = program.programId;
+    unawaited(_connect());
   }
 
   Future<void> _reloadSettingsFromStore() async {
@@ -489,6 +551,196 @@ class _LoginStatusBanner extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _FollowProgramList extends StatelessWidget {
+  const _FollowProgramList({
+    required this.programs,
+    required this.isLoading,
+    required this.enabled,
+    required this.onTap,
+    required this.onRefresh,
+  });
+
+  final List<FollowProgram> programs;
+  final bool isLoading;
+  final bool enabled;
+  final void Function(FollowProgram program) onTap;
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoading && programs.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (programs.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: <Widget>[
+              Text(
+                'フォロー中の放送',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const Spacer(),
+              SizedBox(
+                height: 32,
+                width: 32,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  iconSize: 18,
+                  icon: const Icon(Icons.refresh),
+                  tooltip: '更新',
+                  onPressed: onRefresh,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: onRefresh,
+            child: ListView.separated(
+              itemCount: programs.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (BuildContext context, int index) {
+                return _FollowProgramTile(
+                  program: programs[index],
+                  enabled: enabled,
+                  onTap: () => onTap(programs[index]),
+                );
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FollowProgramTile extends StatelessWidget {
+  const _FollowProgramTile({
+    required this.program,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final FollowProgram program;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final String? elapsed = program.elapsedLabel();
+
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: <Widget>[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: _buildIcon(),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(
+                    program.title,
+                    style: theme.textTheme.bodyMedium,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: <Widget>[
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          program.providerName,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (elapsed != null) ...<Widget>[
+                        const SizedBox(width: 8),
+                        Text(
+                          elapsed,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.outline,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              Icons.play_circle_outline,
+              size: 20,
+              color: enabled
+                  ? theme.colorScheme.primary
+                  : theme.disabledColor,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildIcon() {
+    final String? iconUrl = program.providerIconUrl;
+    if (iconUrl != null && iconUrl.isNotEmpty) {
+      return Image.network(
+        iconUrl,
+        width: 36,
+        height: 36,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _buildFallbackIcon(),
+      );
+    }
+    return _buildFallbackIcon();
+  }
+
+  static Widget _buildFallbackIcon() {
+    return Container(
+      width: 36,
+      height: 36,
+      color: Colors.grey.shade300,
+      child: const Icon(Icons.person, size: 20, color: Colors.grey),
     );
   }
 }
