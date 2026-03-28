@@ -34,6 +34,7 @@ class UserNameResolver extends ChangeNotifier {
 
   final Map<String, String> _cache = <String, String>{};
   final Set<String> _pending = <String>{};
+  bool _disposed = false;
 
   HttpClient get _activeHttpClient {
     final HttpClient? current = _httpClient;
@@ -108,7 +109,7 @@ class UserNameResolver extends ChangeNotifier {
 
       final String? nickname = user['nickname'] as String?;
       _pending.remove(userId);
-      if (nickname != null && nickname.isNotEmpty) {
+      if (nickname != null && nickname.isNotEmpty && !_disposed) {
         _cache[userId] = nickname;
         notifyListeners();
       }
@@ -132,6 +133,7 @@ class UserNameResolver extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _httpClient?.close();
     _httpClient = null;
     _seedHttpClient = null;
