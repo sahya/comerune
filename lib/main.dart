@@ -1,34 +1,530 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import 'application/settings/settings_store.dart';
+import 'application/settings/shared_preferences_adapter.dart';
+import 'application/timeline/timeline_store.dart';
+import 'data/connection/web_socket_channel_legacy_web_socket.dart';
+import 'domain/connection/connection_clients.dart' as reconnect;
 import 'domain/connection/connection_supervisor.dart';
+import 'domain/connection/legacy_comment_client.dart' as legacy_impl;
+import 'domain/connection/ndgr_client.dart' as ndgr_impl;
+import 'domain/connection/session_ws_client.dart' as session_impl;
+import 'domain/models/app_message.dart';
+import 'domain/models/app_settings.dart';
 import 'presentation/select/select_screen.dart';
 
-void main() {
-  runApp(const ComeruneApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  final SettingsStore settingsStore =
+      await createSharedPreferencesSettingsStore();
+  final AppSettings initialSettings = await settingsStore.load();
+
+  runApp(
+    ComeruneApp(settingsStore: settingsStore, initialSettings: initialSettings),
+  );
 }
 
 class ComeruneApp extends StatefulWidget {
-  const ComeruneApp({super.key});
+  const ComeruneApp({
+    super.key,
+    required this.settingsStore,
+    required this.initialSettings,
+  });
+
+  final SettingsStore settingsStore;
+  final AppSettings initialSettings;
 
   @override
   State<ComeruneApp> createState() => _ComeruneAppState();
 }
 
 class _ComeruneAppState extends State<ComeruneApp> {
-  late final ConnectionSupervisor _connectionSupervisor =
-      ConnectionSupervisor();
+  late final TimelineStore _timelineStore;
+  late final _SessionWsClientAdapter _sessionWsClient;
+  late final _NdgrClientAdapter _ndgrClient;
+  late final _LegacyCommentClientAdapter _legacyCommentClient;
+  late final ConnectionSupervisor _connectionSupervisor;
+  late final StreamSubscription<AppMessage> _ndgrMessageSubscription;
+  late final StreamSubscription<AppMessage> _legacyMessageSubscription;
+
+  String _currentLv = '';
+  int _ndgrHistoryCount = 100;
+
+  @override
+  void initState() {
+    super.initState();
+    _ndgrHistoryCount = _historyCountFrom(
+      widget.initialSettings.pastCommentFetchCount,
+    );
+
+    _timelineStore = TimelineStore(capacity: _ndgrHistoryCount);
+    _sessionWsClient = _SessionWsClientAdapter(lvProvider: () => _currentLv);
+    _ndgrClient = _NdgrClientAdapter(
+      client: ndgr_impl.NdgrClient(),
+      historyCountProvider: () => _ndgrHistoryCount,
+    );
+    _legacyCommentClient = _LegacyCommentClientAdapter(
+      client: legacy_impl.LegacyCommentClient(
+        webSocketConnector: WebSocketChannelLegacyWebSocket.connect,
+      ),
+    );
+
+    _connectionSupervisor = ConnectionSupervisor(
+      sessionWsClient: _sessionWsClient,
+      ndgrClient: _ndgrClient,
+      legacyCommentClient: _legacyCommentClient,
+    );
+
+    _ndgrMessageSubscription = _ndgrClient.messages.listen(_timelineStore.add);
+    _legacyMessageSubscription = _legacyCommentClient.messages.listen(
+      _timelineStore.add,
+    );
+  }
 
   @override
   void dispose() {
+    unawaited(_ndgrMessageSubscription.cancel());
+    unawaited(_legacyMessageSubscription.cancel());
     _connectionSupervisor.dispose();
+    unawaited(_sessionWsClient.dispose());
+    unawaited(_ndgrClient.dispose());
+    unawaited(_legacyCommentClient.dispose());
+    _timelineStore.dispose();
     super.dispose();
+  }
+
+  Future<void> _prepareConnection(String lv, AppSettings settings) async {
+    _currentLv = lv;
+    _ndgrHistoryCount = _historyCountFrom(settings.pastCommentFetchCount);
+    _timelineStore.setCapacity(_ndgrHistoryCount);
   }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'comerune',
-      home: SelectScreen(connectionSupervisor: _connectionSupervisor),
+      home: SelectScreen(
+        connectionSupervisor: _connectionSupervisor,
+        timelineStore: _timelineStore,
+        settingsStore: widget.settingsStore,
+        initialSettings: widget.initialSettings,
+        onPrepareConnection: _prepareConnection,
+      ),
     );
+  }
+}
+
+int _historyCountFrom(PastCommentFetchCount value) {
+  switch (value) {
+    case PastCommentFetchCount.count100:
+      return 100;
+    case PastCommentFetchCount.count500:
+      return 500;
+    case PastCommentFetchCount.count1000:
+      return 1000;
+    case PastCommentFetchCount.all:
+      return 10000;
+  }
+}
+
+class _SessionWsClientAdapter implements reconnect.SessionWsClient {
+  _SessionWsClientAdapter({required String Function() lvProvider})
+      : _lvProvider = lvProvider;
+
+  final String Function() _lvProvider;
+  final StreamController<reconnect.SessionWsEvent> _eventsController =
+      StreamController<reconnect.SessionWsEvent>.broadcast();
+
+  session_impl.SessionWsClient? _activeClient;
+  StreamSubscription<session_impl.SessionWsEvent>? _activeSubscription;
+  Completer<reconnect.SessionEndpoints>? _pendingEndpointsCompleter;
+
+  @override
+  Stream<reconnect.SessionWsEvent> get events => _eventsController.stream;
+
+  @override
+  Future<reconnect.SessionEndpoints> connectAndResolveEndpoints() async {
+    await disconnect();
+
+    final String lv = _lvProvider();
+    if (lv.isEmpty) {
+      throw StateError('lv is empty');
+    }
+
+    final session_impl.SessionWsClient client = session_impl.SessionWsClient(
+      lv: lv,
+    );
+    final Completer<reconnect.SessionEndpoints> completer =
+        Completer<reconnect.SessionEndpoints>();
+
+    _activeClient = client;
+    _pendingEndpointsCompleter = completer;
+    _activeSubscription = client.events.listen(
+      (session_impl.SessionWsEvent event) {
+        _handleClientEvent(event, completer);
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (!completer.isCompleted) {
+          completer.completeError(error, stackTrace);
+        }
+      },
+    );
+
+    await client.connect();
+    return completer.future;
+  }
+
+  @override
+  Future<void> disconnect() async {
+    final StreamSubscription<session_impl.SessionWsEvent>? subscription =
+        _activeSubscription;
+    _activeSubscription = null;
+    await subscription?.cancel();
+
+    final Completer<reconnect.SessionEndpoints>? completer =
+        _pendingEndpointsCompleter;
+    _pendingEndpointsCompleter = null;
+    if (completer != null && !completer.isCompleted) {
+      completer.completeError(
+        StateError('Session WS disconnected before endpoint resolution'),
+      );
+    }
+
+    final session_impl.SessionWsClient? client = _activeClient;
+    _activeClient = null;
+    if (client != null) {
+      await client.dispose();
+    }
+  }
+
+  Future<void> dispose() async {
+    await disconnect();
+    await _eventsController.close();
+  }
+
+  void _handleClientEvent(
+    session_impl.SessionWsEvent event,
+    Completer<reconnect.SessionEndpoints> completer,
+  ) {
+    switch (event.type) {
+      case session_impl.SessionWsEventType.connected:
+      case session_impl.SessionWsEventType.debugLog:
+        break;
+      case session_impl.SessionWsEventType.ndgrEndpointResolved:
+        final Uri? uri = Uri.tryParse(event.ndgrViewUri ?? '');
+        if (uri == null) {
+          _completeEndpointError(
+            completer,
+            StateError('Invalid NDGR endpoint URI'),
+          );
+          break;
+        }
+        if (!completer.isCompleted) {
+          completer.complete(reconnect.SessionEndpoints(ndgrViewApiUri: uri));
+        }
+        break;
+      case session_impl.SessionWsEventType.legacyEndpointResolved:
+        final Uri? uri = Uri.tryParse(event.legacyWebSocketUrl ?? '');
+        if (uri == null) {
+          _completeEndpointError(
+            completer,
+            StateError('Invalid legacy endpoint URI'),
+          );
+          break;
+        }
+        if (!completer.isCompleted) {
+          completer.complete(reconnect.SessionEndpoints(legacyWsUrl: uri));
+        }
+        break;
+      case session_impl.SessionWsEventType.disconnected:
+        _completeEndpointError(
+          completer,
+          StateError('Session WS disconnected'),
+        );
+        _emitSessionEvent(
+          const reconnect.SessionWsEvent(
+            reconnect.SessionWsEventType.disconnected,
+          ),
+        );
+        break;
+      case session_impl.SessionWsEventType.broadcastEnded:
+        _completeEndpointError(
+          completer,
+          StateError('Broadcast ended while resolving session endpoints'),
+        );
+        _emitSessionEvent(
+          const reconnect.SessionWsEvent(
+            reconnect.SessionWsEventType.broadcastEnded,
+          ),
+        );
+        break;
+      case session_impl.SessionWsEventType.failed:
+      case session_impl.SessionWsEventType.error:
+        if (completer.isCompleted) {
+          _emitSessionEvent(
+            const reconnect.SessionWsEvent(
+              reconnect.SessionWsEventType.disconnected,
+            ),
+          );
+        } else {
+          _completeEndpointError(
+            completer,
+            StateError('Failed to resolve session endpoints'),
+          );
+        }
+        break;
+    }
+  }
+
+  void _completeEndpointError(
+    Completer<reconnect.SessionEndpoints> completer,
+    Object error,
+  ) {
+    if (!completer.isCompleted) {
+      completer.completeError(error);
+    }
+  }
+
+  void _emitSessionEvent(reconnect.SessionWsEvent event) {
+    if (_eventsController.isClosed) {
+      return;
+    }
+    _eventsController.add(event);
+  }
+}
+
+class _NdgrClientAdapter implements reconnect.NdgrClient {
+  _NdgrClientAdapter({
+    required ndgr_impl.NdgrClient client,
+    required int Function() historyCountProvider,
+  })  : _client = client,
+        _historyCountProvider = historyCountProvider {
+    _clientEventsSubscription = _client.events.listen(
+      _handleClientEvent,
+      onError: (_, __) {
+        _emitDisconnected();
+      },
+    );
+  }
+
+  final ndgr_impl.NdgrClient _client;
+  final int Function() _historyCountProvider;
+  final StreamController<reconnect.NdgrEvent> _eventsController =
+      StreamController<reconnect.NdgrEvent>.broadcast();
+  final StreamController<AppMessage> _messagesController =
+      StreamController<AppMessage>.broadcast();
+  late final StreamSubscription<ndgr_impl.NdgrClientEvent>
+      _clientEventsSubscription;
+
+  Future<void>? _activeConnectFuture;
+  Completer<void>? _pendingStartupCompleter;
+  bool _disconnectRequested = false;
+
+  Stream<AppMessage> get messages => _messagesController.stream;
+
+  @override
+  Stream<reconnect.NdgrEvent> get events => _eventsController.stream;
+
+  @override
+  Future<void> connect(
+    Uri viewApiUri, {
+    reconnect.NdgrResumeCursor? resumeCursor,
+  }) async {
+    await disconnect();
+
+    final ndgr_impl.NdgrAt at = _resumeCursorToAt(resumeCursor);
+    final int historyCount = _historyCountProvider();
+    final Completer<void> startupCompleter = Completer<void>();
+
+    _disconnectRequested = false;
+    _pendingStartupCompleter = startupCompleter;
+    _activeConnectFuture = _runConnect(
+      viewApiUri,
+      historyCount: historyCount,
+      at: at,
+    );
+    unawaited(_activeConnectFuture);
+    await startupCompleter.future;
+  }
+
+  @override
+  Future<void> disconnect() async {
+    _disconnectRequested = true;
+    _completeStartupErrorIfPending(
+      StateError('NDGR disconnected before streaming started'),
+    );
+    await _client.stop();
+
+    final Future<void>? activeConnectFuture = _activeConnectFuture;
+    if (activeConnectFuture != null) {
+      await activeConnectFuture;
+    }
+    _activeConnectFuture = null;
+    _disconnectRequested = false;
+  }
+
+  Future<void> dispose() async {
+    await disconnect();
+    await _clientEventsSubscription.cancel();
+    _client.dispose();
+    await _eventsController.close();
+    await _messagesController.close();
+  }
+
+  Future<void> _runConnect(
+    Uri viewApiUri, {
+    required int historyCount,
+    required ndgr_impl.NdgrAt at,
+  }) async {
+    try {
+      await _client.connect(viewApiUri, historyCount: historyCount, at: at);
+    } catch (_) {
+      _completeStartupErrorIfPending(StateError('Failed to start NDGR stream'));
+      _emitDisconnected();
+      return;
+    }
+
+    _completeStartupErrorIfPending(
+      StateError('NDGR stream disconnected before startup completed'),
+    );
+    _emitDisconnected();
+  }
+
+  void _handleClientEvent(ndgr_impl.NdgrClientEvent event) {
+    switch (event.type) {
+      case ndgr_impl.NdgrClientEventType.connected:
+        _completeStartupIfPending();
+        break;
+      case ndgr_impl.NdgrClientEventType.message:
+        _completeStartupIfPending();
+        final AppMessage? message = event.message;
+        if (message == null || _messagesController.isClosed) {
+          return;
+        }
+        _messagesController.add(message);
+        break;
+      case ndgr_impl.NdgrClientEventType.stalled:
+        _completeStartupIfPending();
+        if (_eventsController.isClosed) {
+          return;
+        }
+        final String? at = _client.lastNextAt?.asQueryValue();
+        _eventsController.add(
+          reconnect.NdgrEvent(
+            reconnect.NdgrEventType.stalled,
+            resumeCursor: reconnect.NdgrResumeCursor(at: at, next: at),
+          ),
+        );
+        break;
+    }
+  }
+
+  ndgr_impl.NdgrAt _resumeCursorToAt(reconnect.NdgrResumeCursor? resumeCursor) {
+    final String? rawAt = resumeCursor?.at ?? resumeCursor?.next;
+    if (rawAt == null || rawAt.isEmpty || rawAt == 'now') {
+      return ndgr_impl.NdgrAt.now;
+    }
+
+    final int? parsed = int.tryParse(rawAt);
+    if (parsed == null || parsed < 0) {
+      return ndgr_impl.NdgrAt.now;
+    }
+
+    return ndgr_impl.NdgrAt.timestamp(parsed);
+  }
+
+  void _emitDisconnected() {
+    if (_disconnectRequested || _eventsController.isClosed) {
+      return;
+    }
+
+    _eventsController.add(
+      const reconnect.NdgrEvent(reconnect.NdgrEventType.disconnected),
+    );
+  }
+
+  void _completeStartupIfPending() {
+    final Completer<void>? completer = _pendingStartupCompleter;
+    if (completer == null || completer.isCompleted) {
+      return;
+    }
+    completer.complete();
+    _pendingStartupCompleter = null;
+  }
+
+  void _completeStartupErrorIfPending(Object error) {
+    final Completer<void>? completer = _pendingStartupCompleter;
+    if (completer == null || completer.isCompleted) {
+      return;
+    }
+    completer.completeError(error);
+    _pendingStartupCompleter = null;
+  }
+}
+
+class _LegacyCommentClientAdapter implements reconnect.LegacyCommentClient {
+  _LegacyCommentClientAdapter({required legacy_impl.LegacyCommentClient client})
+      : _client = client {
+    _messageSubscription = _client.messages.listen((AppMessage message) {
+      if (_messagesController.isClosed) {
+        return;
+      }
+      _messagesController.add(message);
+    });
+
+    _errorSubscription = _client.errors.listen((_) {
+      if (_isDisconnecting || _eventsController.isClosed) {
+        return;
+      }
+      _eventsController.add(
+        const reconnect.LegacyCommentEvent(
+          reconnect.LegacyCommentEventType.disconnected,
+        ),
+      );
+    });
+  }
+
+  final legacy_impl.LegacyCommentClient _client;
+  final StreamController<reconnect.LegacyCommentEvent> _eventsController =
+      StreamController<reconnect.LegacyCommentEvent>.broadcast();
+  final StreamController<AppMessage> _messagesController =
+      StreamController<AppMessage>.broadcast();
+  late final StreamSubscription<AppMessage> _messageSubscription;
+  late final StreamSubscription<legacy_impl.LegacyCommentClientError>
+      _errorSubscription;
+
+  bool _isDisconnecting = false;
+
+  Stream<AppMessage> get messages => _messagesController.stream;
+
+  @override
+  Stream<reconnect.LegacyCommentEvent> get events => _eventsController.stream;
+
+  @override
+  Future<void> connect(Uri wsUrl) async {
+    await disconnect();
+    await _client.connect(wsUrl.toString());
+  }
+
+  @override
+  Future<void> disconnect() async {
+    _isDisconnecting = true;
+    try {
+      await _client.disconnect();
+    } finally {
+      _isDisconnecting = false;
+    }
+  }
+
+  Future<void> dispose() async {
+    await disconnect();
+    await _messageSubscription.cancel();
+    await _errorSubscription.cancel();
+    await _client.dispose();
+    await _eventsController.close();
+    await _messagesController.close();
   }
 }

@@ -252,6 +252,56 @@ void main() {
       await connectFuture.timeout(const Duration(seconds: 1));
     });
 
+    test('emits connected once after first successful head response', () async {
+      final HttpServer server =
+          await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() async {
+        await server.close(force: true);
+      });
+
+      final Uri base = Uri(
+        scheme: 'http',
+        host: server.address.host,
+        port: server.port,
+      );
+      final Uri viewUri = base.replace(path: '/view');
+      final Uri segmentUri = base.replace(path: '/segment');
+
+      server.listen((HttpRequest request) async {
+        if (request.uri.path == '/view') {
+          request.response.add(
+            _delimit(
+              _encodeChunkedEntrySegment(segmentUri: segmentUri.toString()),
+            ),
+          );
+          await request.response.close();
+          return;
+        }
+        if (request.uri.path == '/segment') {
+          await request.response.close();
+          return;
+        }
+
+        request.response.statusCode = HttpStatus.notFound;
+        await request.response.close();
+      });
+
+      final NdgrClient client = NdgrClient();
+      addTearDown(client.dispose);
+
+      int connectedCount = 0;
+      final StreamSubscription<NdgrClientEvent> subscription =
+          client.events.listen((NdgrClientEvent event) {
+        if (event.type == NdgrClientEventType.connected) {
+          connectedCount += 1;
+        }
+      });
+      addTearDown(subscription.cancel);
+
+      await client.connect(viewUri);
+      expect(connectedCount, 1);
+    });
+
     test('reports connect failure only via Future exception', () async {
       final HttpServer server =
           await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
