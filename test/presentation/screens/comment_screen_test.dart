@@ -809,6 +809,27 @@ void main() {
       expect(find.byKey(const Key('settings-button')), findsOneWidget);
     });
 
+    testWidgets('tapping settings button invokes onOpenSettings callback', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      int settingsCalls = 0;
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          onOpenSettings: () async {
+            settingsCalls += 1;
+          },
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('settings-button')));
+      await tester.pumpAndSettle();
+      expect(settingsCalls, 1);
+    });
+
     testWidgets('hides settings button when onOpenSettings is null', (
       WidgetTester tester,
     ) async {
