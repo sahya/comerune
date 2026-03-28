@@ -220,28 +220,14 @@ class _CommentScreenState extends State<CommentScreen> {
 
           return Scaffold(
             appBar: AppBar(
-              title: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    widget.broadcasterName ?? widget.lv,
-                    key: const Key('appbar-title-text'),
-                    style: const TextStyle(fontSize: 18),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (widget.broadcasterName != null)
-                    Text(
-                      widget.lv,
-                      key: const Key('appbar-lv-subtitle'),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withAlpha(153),
-                      ),
-                    ),
-                ],
+              toolbarHeight: 38,
+              title: Text(
+                widget.broadcasterName != null
+                    ? '${widget.broadcasterName} ─ ${widget.lv}'
+                    : widget.lv,
+                key: const Key('appbar-title-text'),
+                style: const TextStyle(fontSize: 14),
+                overflow: TextOverflow.ellipsis,
               ),
               actions: <Widget>[
                 if (widget.commentLogWriter != null)

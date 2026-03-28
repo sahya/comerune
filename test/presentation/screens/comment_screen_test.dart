@@ -495,7 +495,7 @@ void main() {
       expect(find.text('lv345678901'), findsAtLeast(1));
     });
 
-    testWidgets('shows broadcaster name in AppBar with lv subtitle', (
+    testWidgets('shows broadcaster name with lv in AppBar title', (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
@@ -509,25 +509,19 @@ void main() {
         ),
       );
 
-      // Broadcaster name is shown as the main AppBar title.
+      // AppBar shows "放送者名 ─ lv" in a single line.
       expect(
         find.byKey(const Key('appbar-title-text')),
         findsOneWidget,
       );
-      expect(find.text('テスト配信者'), findsOneWidget);
-
-      // lv is shown as a subtitle in the AppBar.
-      expect(
-        find.byKey(const Key('appbar-lv-subtitle')),
-        findsOneWidget,
-      );
+      expect(find.text('テスト配信者 ─ lv345678901'), findsOneWidget);
 
       // Program title bar shows only the title, no broadcaster name.
       expect(find.byKey(const Key('program-title-bar')), findsOneWidget);
       expect(find.text('テスト番組'), findsOneWidget);
     });
 
-    testWidgets('shows lv as AppBar title when broadcasterName is null', (
+    testWidgets('shows lv only in AppBar when broadcasterName is null', (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
@@ -540,18 +534,12 @@ void main() {
         ),
       );
 
-      // lv is shown as the main title when no broadcaster name.
+      // lv is shown as the title when no broadcaster name.
       expect(
         find.byKey(const Key('appbar-title-text')),
         findsOneWidget,
       );
       expect(find.text('lv345678901'), findsAtLeast(1));
-
-      // No subtitle when broadcaster name is absent.
-      expect(
-        find.byKey(const Key('appbar-lv-subtitle')),
-        findsNothing,
-      );
 
       expect(find.byKey(const Key('program-title-bar')), findsOneWidget);
       expect(find.text('タイトルのみ'), findsOneWidget);
