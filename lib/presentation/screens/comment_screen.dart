@@ -8,6 +8,7 @@ import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
+import '../../domain/models/app_settings.dart';
 import 'user_detail_sheet.dart';
 
 const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
@@ -45,6 +46,7 @@ class CommentScreen extends StatefulWidget {
     this.programTitle,
     this.broadcasterName,
     this.showUserName = true,
+    this.commentFontSize = CommentFontSize.medium,
     this.resolveUserName,
     this.requestUserNameResolve,
     this.commentLogWriter,
@@ -66,6 +68,7 @@ class CommentScreen extends StatefulWidget {
   final String? programTitle;
   final String? broadcasterName;
   final bool showUserName;
+  final CommentFontSize commentFontSize;
 
   /// Returns the cached resolved name for a user ID, or null.
   final String? Function(String userId)? resolveUserName;
@@ -291,6 +294,7 @@ class _CommentScreenState extends State<CommentScreen> {
                         message: message,
                         resolvedUserName: _resolveDisplayName(message),
                         showUserName: widget.showUserName,
+                        fontSize: widget.commentFontSize.pixels,
                         onLongPress:
                             message.userId != null && message.userId!.isNotEmpty
                                 ? () => _showUserDetail(message)
@@ -874,12 +878,14 @@ class _CommentRow extends StatelessWidget {
     required this.message,
     this.resolvedUserName,
     this.showUserName = true,
+    required this.fontSize,
     this.onLongPress,
   });
 
   final AppMessage message;
   final String? resolvedUserName;
   final bool showUserName;
+  final double fontSize;
   final VoidCallback? onLongPress;
 
   @override
@@ -890,7 +896,10 @@ class _CommentRow extends StatelessWidget {
       child: Container(
         color: _backgroundColor(message),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        child: Text(_lineText(message)),
+        child: Text(
+          _lineText(message),
+          style: TextStyle(fontSize: fontSize),
+        ),
       ),
     );
   }

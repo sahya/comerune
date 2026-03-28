@@ -3,6 +3,87 @@ enum SpeechEngine {
   voicevox,
 }
 
+enum CommentFontSize {
+  xs,
+  small,
+  medium,
+  large,
+  xl,
+  xxl,
+}
+
+extension CommentFontSizeValue on CommentFontSize {
+  String get storageValue {
+    switch (this) {
+      case CommentFontSize.xs:
+        return 'xs';
+      case CommentFontSize.small:
+        return 'small';
+      case CommentFontSize.medium:
+        return 'medium';
+      case CommentFontSize.large:
+        return 'large';
+      case CommentFontSize.xl:
+        return 'xl';
+      case CommentFontSize.xxl:
+        return 'xxl';
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case CommentFontSize.xs:
+        return '極小 (10px)';
+      case CommentFontSize.small:
+        return '小 (12px)';
+      case CommentFontSize.medium:
+        return '標準 (14px)';
+      case CommentFontSize.large:
+        return '大 (16px)';
+      case CommentFontSize.xl:
+        return '特大 (18px)';
+      case CommentFontSize.xxl:
+        return '最大 (20px)';
+    }
+  }
+
+  double get pixels {
+    switch (this) {
+      case CommentFontSize.xs:
+        return 10;
+      case CommentFontSize.small:
+        return 12;
+      case CommentFontSize.medium:
+        return 14;
+      case CommentFontSize.large:
+        return 16;
+      case CommentFontSize.xl:
+        return 18;
+      case CommentFontSize.xxl:
+        return 20;
+    }
+  }
+
+  static CommentFontSize fromStorageValue(String? raw) {
+    switch (raw) {
+      case 'xs':
+        return CommentFontSize.xs;
+      case 'small':
+        return CommentFontSize.small;
+      case 'large':
+        return CommentFontSize.large;
+      case 'xl':
+        return CommentFontSize.xl;
+      case 'xxl':
+        return CommentFontSize.xxl;
+      case 'medium':
+      case null:
+      default:
+        return CommentFontSize.medium;
+    }
+  }
+}
+
 enum PastCommentFetchCount {
   count100,
   count500,
@@ -89,6 +170,7 @@ class AppSettings {
     required this.pastCommentFetchCount,
     required this.showUserName,
     required this.resolveUserName,
+    required this.commentFontSize,
     required this.autoSaveCommentLog,
     required this.debugMode,
   });
@@ -115,6 +197,7 @@ class AppSettings {
     pastCommentFetchCount: PastCommentFetchCount.count100,
     showUserName: true,
     resolveUserName: true,
+    commentFontSize: CommentFontSize.medium,
     autoSaveCommentLog: false,
     debugMode: false,
   );
@@ -142,6 +225,7 @@ class AppSettings {
   final PastCommentFetchCount pastCommentFetchCount;
   final bool showUserName;
   final bool resolveUserName;
+  final CommentFontSize commentFontSize;
   final bool autoSaveCommentLog;
   final bool debugMode;
 
@@ -203,6 +287,7 @@ class AppSettings {
     PastCommentFetchCount? pastCommentFetchCount,
     bool? showUserName,
     bool? resolveUserName,
+    CommentFontSize? commentFontSize,
     bool? autoSaveCommentLog,
     bool? debugMode,
   }) {
@@ -229,6 +314,7 @@ class AppSettings {
           pastCommentFetchCount ?? this.pastCommentFetchCount,
       showUserName: showUserName ?? this.showUserName,
       resolveUserName: resolveUserName ?? this.resolveUserName,
+      commentFontSize: commentFontSize ?? this.commentFontSize,
       autoSaveCommentLog: autoSaveCommentLog ?? this.autoSaveCommentLog,
       debugMode: debugMode ?? this.debugMode,
     );

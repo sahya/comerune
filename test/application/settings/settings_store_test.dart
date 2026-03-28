@@ -30,6 +30,32 @@ void main() {
       expect(loaded.showUserName, isFalse);
     });
 
+    test('commentFontSize defaults to medium when not stored', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.commentFontSize, CommentFontSize.medium);
+    });
+
+    test('round-trips commentFontSize value', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      for (final CommentFontSize size in CommentFontSize.values) {
+        final AppSettings original = AppSettings.defaults.copyWith(
+          commentFontSize: size,
+        );
+        await store.save(original);
+
+        final AppSettings loaded = await store.load();
+
+        expect(loaded.commentFontSize, size,
+            reason: '${size.storageValue} should round-trip');
+      }
+    });
+
     test('autoSaveCommentLog defaults to false when not stored', () async {
       final SharedPreferencesSettingsStore store =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
