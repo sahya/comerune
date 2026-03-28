@@ -11,6 +11,7 @@ import 'domain/connection/connection_supervisor.dart';
 import 'domain/connection/legacy_comment_client.dart' as legacy_impl;
 import 'domain/connection/ndgr_client.dart' as ndgr_impl;
 import 'domain/connection/session_ws_client.dart' as session_impl;
+import 'domain/connection/ws_endpoint_resolver.dart';
 import 'domain/models/app_message.dart';
 import 'domain/models/app_settings.dart';
 import 'presentation/select/select_screen.dart';
@@ -51,6 +52,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
   late final StreamSubscription<AppMessage> _legacyMessageSubscription;
 
   String _currentLv = '';
+  String _currentAccessToken = '';
   int _ndgrHistoryCount = 100;
 
   @override
@@ -61,7 +63,10 @@ class _ComeruneAppState extends State<ComeruneApp> {
     );
 
     _timelineStore = TimelineStore(capacity: _ndgrHistoryCount);
-    _sessionWsClient = _SessionWsClientAdapter(lvProvider: () => _currentLv);
+    _sessionWsClient = _SessionWsClientAdapter(
+      lvProvider: () => _currentLv,
+      accessTokenProvider: () => _currentAccessToken,
+    );
     _ndgrClient = _NdgrClientAdapter(
       client: ndgr_impl.NdgrClient(),
       historyCountProvider: () => _ndgrHistoryCount,
@@ -98,6 +103,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
 
   Future<void> _prepareConnection(String lv, AppSettings settings) async {
     _currentLv = lv;
+    _currentAccessToken = settings.niconicoAccessToken;
     _ndgrHistoryCount = _historyCountFrom(settings.pastCommentFetchCount);
     _timelineStore.setCapacity(_ndgrHistoryCount);
   }
@@ -131,10 +137,15 @@ int _historyCountFrom(PastCommentFetchCount value) {
 }
 
 class _SessionWsClientAdapter implements reconnect.SessionWsClient {
-  _SessionWsClientAdapter({required String Function() lvProvider})
-      : _lvProvider = lvProvider;
+  _SessionWsClientAdapter({
+    required String Function() lvProvider,
+    required String Function() accessTokenProvider,
+  })  : _lvProvider = lvProvider,
+        _accessTokenProvider = accessTokenProvider;
 
   final String Function() _lvProvider;
+  final String Function() _accessTokenProvider;
+  final WsEndpointResolver _wsEndpointResolver = WsEndpointResolver();
   final StreamController<reconnect.SessionWsEvent> _eventsController =
       StreamController<reconnect.SessionWsEvent>.broadcast();
 
@@ -155,8 +166,22 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       throw StateError('lv is empty');
     }
 
+    Uri? wsEndpointUri;
+    final String accessToken = _accessTokenProvider();
+    if (accessToken.isNotEmpty) {
+      try {
+        wsEndpointUri = await _wsEndpointResolver.resolve(
+          lv: lv,
+          accessToken: accessToken,
+        );
+      } catch (_) {
+        // Fall back to hardcoded URL if API resolution fails
+      }
+    }
+
     final session_impl.SessionWsClient client = session_impl.SessionWsClient(
       lv: lv,
+      wsEndpointUri: wsEndpointUri,
     );
     final Completer<reconnect.SessionEndpoints> completer =
         Completer<reconnect.SessionEndpoints>();
@@ -220,6 +245,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
 
   Future<void> dispose() async {
     await disconnect();
+    _wsEndpointResolver.dispose();
     await _eventsController.close();
   }
 

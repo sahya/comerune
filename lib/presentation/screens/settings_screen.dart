@@ -24,11 +24,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _queueLimitController;
   late final TextEditingController _maxDelayController;
   late final TextEditingController _ngWordsController;
+  late final TextEditingController _accessTokenController;
 
   late final FocusNode _bouyomiHostFocusNode;
   late final FocusNode _queueLimitFocusNode;
   late final FocusNode _maxDelayFocusNode;
   late final FocusNode _ngWordsFocusNode;
+  late final FocusNode _accessTokenFocusNode;
 
   AppSettings? _settings;
   String? _queueLimitError;
@@ -41,12 +43,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _queueLimitController = TextEditingController();
     _maxDelayController = TextEditingController();
     _ngWordsController = TextEditingController();
+    _accessTokenController = TextEditingController();
 
     _bouyomiHostFocusNode = FocusNode()
       ..addListener(_onBouyomiHostFocusChanged);
     _queueLimitFocusNode = FocusNode()..addListener(_onQueueLimitFocusChanged);
     _maxDelayFocusNode = FocusNode()..addListener(_onMaxDelayFocusChanged);
     _ngWordsFocusNode = FocusNode()..addListener(_onNgWordsFocusChanged);
+    _accessTokenFocusNode = FocusNode()
+      ..addListener(_onAccessTokenFocusChanged);
 
     _loadSettings();
   }
@@ -65,10 +70,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _ngWordsFocusNode
       ..removeListener(_onNgWordsFocusChanged)
       ..dispose();
+    _accessTokenFocusNode
+      ..removeListener(_onAccessTokenFocusChanged)
+      ..dispose();
     _bouyomiHostController.dispose();
     _queueLimitController.dispose();
     _maxDelayController.dispose();
     _ngWordsController.dispose();
+    _accessTokenController.dispose();
     super.dispose();
   }
 
@@ -82,6 +91,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _queueLimitController.text = loaded.queueLimit.toString();
     _maxDelayController.text = loaded.maxDelaySeconds.toString();
     _ngWordsController.text = loaded.ngWords;
+    _accessTokenController.text = loaded.niconicoAccessToken;
 
     setState(() {
       _settings = loaded;
@@ -118,6 +128,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     _saveNgWords();
+  }
+
+  void _onAccessTokenFocusChanged() {
+    if (_accessTokenFocusNode.hasFocus) {
+      return;
+    }
+
+    _saveAccessToken();
+  }
+
+  void _saveAccessToken() {
+    final AppSettings? current = _settings;
+    if (current == null) {
+      return;
+    }
+
+    final String token = _accessTokenController.text.trim();
+    if (token == current.niconicoAccessToken) {
+      return;
+    }
+
+    _saveNextSettings(current.copyWith(niconicoAccessToken: token));
   }
 
   void _saveNextSettings(AppSettings next) {
@@ -260,6 +292,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
               key: const Key('settings-list'),
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
               children: <Widget>[
+                _Section(
+                  title: 'ニコニコアカウント',
+                  children: <Widget>[
+                    TextFormField(
+                      key: const Key('access-token-field'),
+                      controller: _accessTokenController,
+                      focusNode: _accessTokenFocusNode,
+                      obscureText: true,
+                      decoration: InputDecoration(
+                        labelText: 'アクセストークン',
+                        border: const OutlineInputBorder(),
+                        helperText: settings.niconicoAccessToken.isEmpty
+                            ? '未設定（接続にはトークンが必要です）'
+                            : '設定済み',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
                 _Section(
                   title: '読み上げ',
                   children: <Widget>[

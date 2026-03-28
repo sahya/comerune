@@ -74,6 +74,7 @@ class AppSettings {
     required this.ngWords,
     required this.pastCommentFetchCount,
     required this.debugMode,
+    required this.niconicoAccessToken,
   });
 
   static const AppSettings defaults = AppSettings(
@@ -96,6 +97,7 @@ class AppSettings {
     ngWords: '',
     pastCommentFetchCount: PastCommentFetchCount.count100,
     debugMode: false,
+    niconicoAccessToken: '',
   );
 
   final bool autoReadEnabled;
@@ -117,6 +119,7 @@ class AppSettings {
   final String ngWords;
   final PastCommentFetchCount pastCommentFetchCount;
   final bool debugMode;
+  final String niconicoAccessToken;
 
   AppSettings copyWith({
     bool? autoReadEnabled,
@@ -138,6 +141,7 @@ class AppSettings {
     String? ngWords,
     PastCommentFetchCount? pastCommentFetchCount,
     bool? debugMode,
+    String? niconicoAccessToken,
   }) {
     return AppSettings(
       autoReadEnabled: autoReadEnabled ?? this.autoReadEnabled,
@@ -160,6 +164,8 @@ class AppSettings {
       pastCommentFetchCount:
           pastCommentFetchCount ?? this.pastCommentFetchCount,
       debugMode: debugMode ?? this.debugMode,
+      niconicoAccessToken:
+          niconicoAccessToken ?? this.niconicoAccessToken,
     );
   }
 }
