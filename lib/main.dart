@@ -28,7 +28,7 @@ Future<void> main() async {
   );
   final AppSettings initialSettings = await settingsStore.load();
   final UserSessionStore userSessionStore =
-      SharedPreferencesUserSessionStore(prefs);
+      SecureUserSessionStore(prefs: prefs);
 
   runApp(
     ComeruneApp(
