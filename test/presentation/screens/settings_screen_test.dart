@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../../lib/application/settings/settings_store.dart';
-import '../../../lib/domain/models/app_settings.dart';
-import '../../../lib/presentation/screens/settings_screen.dart';
+import 'package:comerune/application/settings/settings_store.dart';
+import 'package:comerune/data/auth/user_session_store.dart';
+import 'package:comerune/domain/models/app_settings.dart';
+import 'package:comerune/presentation/screens/settings_screen.dart';
+
 import '../../helpers/in_memory_shared_preferences.dart';
+import '../../helpers/in_memory_user_session_store.dart';
 
 void main() {
   group('SettingsScreen', () {
@@ -115,6 +118,43 @@ void main() {
       expect(ngWordsField.controller?.text, '^8+\$');
     });
 
+    testWidgets('shows login button when not logged in', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final InMemoryUserSessionStore userSessionStore =
+          InMemoryUserSessionStore();
+
+      await tester.pumpWidget(
+        _buildScreen(settingsStore, userSessionStore: userSessionStore),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('login-button')), findsOneWidget);
+      expect(find.byKey(const Key('logout-button')), findsNothing);
+      expect(find.text('コメント取得にはログインが必要です'), findsOneWidget);
+    });
+
+    testWidgets('shows logout button when logged in', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final InMemoryUserSessionStore userSessionStore =
+          InMemoryUserSessionStore();
+      await userSessionStore.save('user_session_abc123');
+
+      await tester.pumpWidget(
+        _buildScreen(settingsStore, userSessionStore: userSessionStore),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('logout-button')), findsOneWidget);
+      expect(find.byKey(const Key('login-button')), findsNothing);
+      expect(find.text('ログイン済み'), findsOneWidget);
+    });
+
     testWidgets('saves text fields when focus is lost', (
       WidgetTester tester,
     ) async {
@@ -141,9 +181,15 @@ void main() {
   });
 }
 
-Widget _buildScreen(SettingsStore settingsStore) {
+Widget _buildScreen(
+  SettingsStore settingsStore, {
+  UserSessionStore? userSessionStore,
+}) {
   return MaterialApp(
-    home: SettingsScreen(settingsStore: settingsStore),
+    home: SettingsScreen(
+      settingsStore: settingsStore,
+      userSessionStore: userSessionStore,
+    ),
   );
 }
 

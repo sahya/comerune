@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../application/settings/settings_store.dart';
 import '../../application/timeline/timeline_store.dart';
+import '../../data/auth/user_session_store.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
@@ -19,6 +20,7 @@ class SelectScreen extends StatefulWidget {
     this.settingsStore,
     this.initialSettings = AppSettings.defaults,
     this.onPrepareConnection,
+    this.userSessionStore,
     super.key,
   });
 
@@ -26,6 +28,7 @@ class SelectScreen extends StatefulWidget {
   final TimelineStore? timelineStore;
   final SettingsStore? settingsStore;
   final AppSettings initialSettings;
+  final UserSessionStore? userSessionStore;
   final Future<void> Function(String lv, AppSettings settings)?
       onPrepareConnection;
 
@@ -152,7 +155,7 @@ class _SelectScreenState extends State<SelectScreen> {
       widget.timelineStore?.clear();
     }
     widget.timelineStore?.setCapacity(
-      _historyCountFrom(settings.pastCommentFetchCount),
+      settings.pastCommentFetchCount.historyCount,
     );
     await widget.onPrepareConnection?.call(lv, settings);
 
@@ -227,7 +230,7 @@ class _SelectScreenState extends State<SelectScreen> {
           onDifferentLvConnected: _onDifferentLvConnected,
           onOpenSettings: widget.settingsStore == null
               ? null
-              : () => _openSettings(routeContext),
+              : () => _openSettings(routeContext, widget.userSessionStore),
           debugMode: _settingsNotifier.value.debugMode,
           connectionMethod: _connectionMethod,
         );
@@ -247,7 +250,7 @@ class _SelectScreenState extends State<SelectScreen> {
 
     final AppSettings settings = _settingsNotifier.value;
     widget.timelineStore?.setCapacity(
-      _historyCountFrom(settings.pastCommentFetchCount),
+      settings.pastCommentFetchCount.historyCount,
     );
     await widget.onPrepareConnection?.call(lv, settings);
 
@@ -265,7 +268,10 @@ class _SelectScreenState extends State<SelectScreen> {
     _lastConnectedLv = nextLv;
   }
 
-  Future<void> _openSettings(BuildContext context) async {
+  Future<void> _openSettings(
+    BuildContext context,
+    UserSessionStore? userSessionStore,
+  ) async {
     final SettingsStore? settingsStore = widget.settingsStore;
     if (settingsStore == null) {
       return;
@@ -273,7 +279,10 @@ class _SelectScreenState extends State<SelectScreen> {
 
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => SettingsScreen(settingsStore: settingsStore),
+        builder: (_) => SettingsScreen(
+          settingsStore: settingsStore,
+          userSessionStore: userSessionStore,
+        ),
       ),
     );
 
@@ -307,19 +316,6 @@ class _SelectScreenState extends State<SelectScreen> {
       case ConnectionStatus.streamingLegacy:
       case ConnectionStatus.reconnecting:
         return false;
-    }
-  }
-
-  int _historyCountFrom(PastCommentFetchCount value) {
-    switch (value) {
-      case PastCommentFetchCount.count100:
-        return 100;
-      case PastCommentFetchCount.count500:
-        return 500;
-      case PastCommentFetchCount.count1000:
-        return 1000;
-      case PastCommentFetchCount.all:
-        return 10000;
     }
   }
 }

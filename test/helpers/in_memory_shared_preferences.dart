@@ -1,4 +1,4 @@
-import '../../lib/application/settings/settings_store.dart';
+import 'package:comerune/application/settings/settings_store.dart';
 
 class InMemorySharedPreferences implements SharedPreferencesLike {
   final Map<String, Object> _values = <String, Object>{};
