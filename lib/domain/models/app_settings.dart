@@ -33,17 +33,17 @@ extension CommentFontSizeValue on CommentFontSize {
   String get label {
     switch (this) {
       case CommentFontSize.xs:
-        return '極小';
+        return '極小 (10px)';
       case CommentFontSize.small:
-        return '小';
+        return '小 (12px)';
       case CommentFontSize.medium:
-        return '標準';
+        return '標準 (14px)';
       case CommentFontSize.large:
-        return '大';
+        return '大 (16px)';
       case CommentFontSize.xl:
-        return '特大';
+        return '特大 (18px)';
       case CommentFontSize.xxl:
-        return '最大';
+        return '最大 (20px)';
     }
   }
 

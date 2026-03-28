@@ -744,13 +744,13 @@ class _CommentRow extends StatelessWidget {
     required this.message,
     this.resolvedUserName,
     this.showUserName = true,
-    this.fontSize,
+    this.fontSize = 14,
   });
 
   final AppMessage message;
   final String? resolvedUserName;
   final bool showUserName;
-  final double? fontSize;
+  final double fontSize;
 
   @override
   Widget build(BuildContext context) {
@@ -760,7 +760,7 @@ class _CommentRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: Text(
         _lineText(message),
-        style: fontSize != null ? TextStyle(fontSize: fontSize) : null,
+        style: TextStyle(fontSize: fontSize),
       ),
     );
   }
