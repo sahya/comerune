@@ -48,7 +48,7 @@ dev_dependencies:
 
   # Protobuf コード生成（.proto → Dart クラス）
   # protoc --dart_out で使用。実行時には不要
-  protoc_plugin: ^21.1.2
+  protoc_plugin: 25.0.0
 
 flutter:
   uses-material-design: true
