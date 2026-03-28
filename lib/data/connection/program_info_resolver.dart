@@ -138,19 +138,28 @@ class ProgramInfoResolver {
 
   Future<String> _readLimitedBody(HttpClientResponse response) async {
     final List<int> bytes = <int>[];
-    await for (final List<int> chunk in response) {
-      bytes.addAll(chunk);
-      if (bytes.length >= _maxErrorBodyBytes) {
-        break;
+    bool truncated = false;
+    try {
+      await for (final List<int> chunk in response) {
+        bytes.addAll(chunk);
+        if (bytes.length >= _maxErrorBodyBytes) {
+          truncated = true;
+          break;
+        }
+      }
+    } finally {
+      // Drain any remaining bytes to release the underlying TCP connection
+      // back to the pool. Without this, a partial read leaves the socket
+      // open until the server or OS times it out.
+      if (truncated) {
+        await response.drain<void>();
       }
     }
     final String result = utf8.decode(
-      bytes.length > _maxErrorBodyBytes
-          ? bytes.sublist(0, _maxErrorBodyBytes)
-          : bytes,
+      truncated ? bytes.sublist(0, _maxErrorBodyBytes) : bytes,
       allowMalformed: true,
     );
-    return bytes.length >= _maxErrorBodyBytes ? '$result...' : result;
+    return truncated ? '$result...' : result;
   }
 
   void dispose() {
