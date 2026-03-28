@@ -6,6 +6,8 @@ import 'package:flutter/rendering.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
+import '../../domain/models/app_settings.dart';
+import '../theme/app_theme.dart';
 import 'user_detail_sheet.dart';
 
 const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
@@ -47,6 +49,7 @@ class CommentScreen extends StatefulWidget {
     this.requestUserNameResolve,
     this.ngUserIds = const <String>{},
     this.onToggleNgUser,
+    this.themeMode = AppThemeMode.light,
   });
 
   final String lv;
@@ -74,6 +77,8 @@ class CommentScreen extends StatefulWidget {
 
   /// Called to toggle NG status for a user.
   final void Function(String userId)? onToggleNgUser;
+
+  final AppThemeMode themeMode;
 
   @override
   State<CommentScreen> createState() => _CommentScreenState();
@@ -209,6 +214,8 @@ class _CommentScreenState extends State<CommentScreen> {
 
           final List<AppMessage> sortedMessages =
               _applySortOrder(visibleMessages);
+          final AppThemeColors themeColors =
+              AppTheme.colorsFor(widget.themeMode);
 
           return Scaffold(
             appBar: AppBar(
@@ -249,6 +256,7 @@ class _CommentScreenState extends State<CommentScreen> {
                     key: const Key('program-title-bar'),
                     title: widget.programTitle!,
                     broadcasterName: widget.broadcasterName,
+                    themeColors: themeColors,
                   ),
                 _StatusBar(
                   key: const Key('status-bar'),
@@ -256,6 +264,7 @@ class _CommentScreenState extends State<CommentScreen> {
                   supervisor: widget.connectionSupervisor,
                   debugMode: widget.debugMode,
                   connectionMethod: widget.connectionMethod,
+                  themeColors: themeColors,
                 ),
                 Expanded(
                   child: ListView.builder(
@@ -266,6 +275,7 @@ class _CommentScreenState extends State<CommentScreen> {
                       final AppMessage message = sortedMessages[index];
                       return _CommentRow(
                         message: message,
+                        themeColors: themeColors,
                         resolvedUserName: _resolveDisplayName(message),
                         showUserName: widget.showUserName,
                         onLongPress:
@@ -301,6 +311,7 @@ class _CommentScreenState extends State<CommentScreen> {
           resolvedUserName: _resolveDisplayName(message),
           allMessages: widget.messages,
           isNgUser: isNg,
+          themeMode: widget.themeMode,
           onToggleNgUser: () {
             widget.onToggleNgUser?.call(userId);
             Navigator.of(sheetContext).pop();
@@ -625,17 +636,19 @@ class _ProgramTitleBar extends StatelessWidget {
   const _ProgramTitleBar({
     super.key,
     required this.title,
+    required this.themeColors,
     this.broadcasterName,
   });
 
   final String title;
+  final AppThemeColors themeColors;
   final String? broadcasterName;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      color: Colors.indigo.shade50,
+      color: themeColors.programTitleBarBackground,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -651,7 +664,7 @@ class _ProgramTitleBar extends StatelessWidget {
               key: const Key('broadcaster-name-text'),
               style: TextStyle(
                 fontSize: 12,
-                color: Colors.grey.shade700,
+                color: themeColors.broadcasterNameColor,
               ),
             ),
         ],
@@ -667,23 +680,25 @@ class _StatusBar extends StatelessWidget {
     required this.supervisor,
     required this.debugMode,
     required this.connectionMethod,
+    required this.themeColors,
   });
 
   final String lv;
   final ConnectionSupervisor supervisor;
   final bool debugMode;
   final ConnectionMethod? connectionMethod;
+  final AppThemeColors themeColors;
 
   @override
   Widget build(BuildContext context) {
     final Color wifiColor =
         supervisor.wifiIndicatorColor == WifiIndicatorColor.green
-            ? Colors.green
-            : Colors.red;
+            ? themeColors.statusConnected
+            : themeColors.statusDisconnected;
 
     return Container(
       width: double.infinity,
-      color: Colors.grey.shade200,
+      color: themeColors.statusBarBackground,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -783,12 +798,14 @@ class _StatusBar extends StatelessWidget {
 class _CommentRow extends StatelessWidget {
   const _CommentRow({
     required this.message,
+    required this.themeColors,
     this.resolvedUserName,
     this.showUserName = true,
     this.onLongPress,
   });
 
   final AppMessage message;
+  final AppThemeColors themeColors;
   final String? resolvedUserName;
   final bool showUserName;
   final VoidCallback? onLongPress;
@@ -827,14 +844,14 @@ class _CommentRow extends StatelessWidget {
 
   Color? _backgroundColor(AppMessage message) {
     if (_isLegacyUnsupportedSystemMessage(message)) {
-      return Colors.lightBlue.shade50;
+      return themeColors.notificationMessageBackground;
     }
 
     switch (message.type) {
       case AppMessageType.operator:
-        return Colors.yellow.shade100;
+        return themeColors.operatorMessageBackground;
       case AppMessageType.notification:
-        return Colors.lightBlue.shade50;
+        return themeColors.notificationMessageBackground;
       case AppMessageType.chat:
       // TODO(PR#20-O1): gift/nicoad は _shouldDisplayMessage で除外済みのため
       //   ここには到達しない。将来 gift/nicoad を表示する際に背景色を定義する。

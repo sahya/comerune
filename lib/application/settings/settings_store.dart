@@ -34,6 +34,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
 
   final SharedPreferencesLike _prefs;
 
+  static const String _kThemeMode = 'settings.themeMode';
   static const String _kAutoReadEnabled = 'settings.autoReadEnabled';
   static const String _kSpeechEngine = 'settings.speechEngine';
   static const String _kBouyomiHost = 'settings.bouyomi.host';
@@ -68,6 +69,9 @@ class SharedPreferencesSettingsStore implements SettingsStore {
         : SpeechEngine.bouyomi;
 
     return AppSettings(
+      themeMode: AppThemeModeValue.fromStorageValue(
+        _prefs.getString(_kThemeMode),
+      ),
       autoReadEnabled:
           _prefs.getBool(_kAutoReadEnabled) ?? defaults.autoReadEnabled,
       speechEngine: speechEngine,
@@ -106,6 +110,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
 
   @override
   Future<void> save(AppSettings settings) async {
+    await _prefs.setString(_kThemeMode, settings.themeMode.storageValue);
     await _prefs.setBool(_kAutoReadEnabled, settings.autoReadEnabled);
     await _prefs.setString(
       _kSpeechEngine,
