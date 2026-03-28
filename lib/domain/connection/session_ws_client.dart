@@ -221,7 +221,7 @@ class SessionWsClient {
             SessionWsEvent(
               type: SessionWsEventType.error,
               errorCode: SessionWsErrorCode.connectFailed,
-              error: detail,
+              error: error,
               errorDetail: detail,
               stackTrace: stackTrace,
             ),
@@ -245,7 +245,7 @@ class SessionWsClient {
           SessionWsEvent(
             type: SessionWsEventType.error,
             errorCode: SessionWsErrorCode.connectFailed,
-            error: detail,
+            error: error,
             errorDetail: detail,
             stackTrace: stackTrace,
           ),
@@ -265,7 +265,7 @@ class SessionWsClient {
         SessionWsEvent(
           type: SessionWsEventType.error,
           errorCode: SessionWsErrorCode.connectFailed,
-          error: detail,
+          error: error,
           errorDetail: detail,
           stackTrace: stackTrace,
         ),
@@ -367,7 +367,7 @@ class SessionWsClient {
         SessionWsEvent(
           type: SessionWsEventType.failed,
           errorCode: SessionWsErrorCode.unknownBroadcastEndEvent,
-          error: detail,
+          error: reason,
           errorDetail: detail,
         ),
       );
@@ -393,7 +393,7 @@ class SessionWsClient {
         SessionWsEvent(
           type: SessionWsEventType.error,
           errorCode: SessionWsErrorCode.keepaliveResponseFailed,
-          error: detail,
+          error: error,
           errorDetail: detail,
           stackTrace: stackTrace,
         ),
@@ -678,7 +678,6 @@ class SessionWsClient {
         SessionWsEvent(
           type: SessionWsEventType.failed,
           errorCode: SessionWsErrorCode.endpointResolveFailed,
-          error: detail,
           errorDetail: detail,
         ),
       );

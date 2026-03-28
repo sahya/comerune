@@ -352,8 +352,17 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     return _mapSessionErrorCodeToConnectException(
       event.errorCode,
       fallbackKind: fallbackKind,
-      cause: event.error ?? event.debugMessage,
+      cause: _eventCause(event),
     );
+  }
+
+  Object? _eventCause(session_impl.SessionWsEvent event) {
+    final session_impl.SessionWsErrorDetail? errorDetail = event.errorDetail;
+    if (errorDetail != null) {
+      return errorDetail.cause ?? errorDetail.toString();
+    }
+
+    return event.error ?? event.debugMessage;
   }
 
   reconnect.SessionWsConnectException _mapSessionErrorCodeToConnectException(
