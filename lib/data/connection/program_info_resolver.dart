@@ -132,15 +132,14 @@ class ProgramInfoResolver {
       );
     }
 
-    // Extract supplier (broadcaster) user ID if available.
-    String? supplierUserId;
-    final Object? supplier = data['supplier'];
-    if (supplier is Map<String, dynamic>) {
-      final Object? providerId = supplier['programProviderId'];
-      if (providerId != null) {
-        supplierUserId = providerId.toString();
-      }
-    }
+    // Extract broadcaster user ID if available.
+    //
+    // The programinfo API returns broadcaster info in `data.broadcaster`
+    // (array of {id, name}), as defined in N Air's ProgramInfo type.
+    // Some responses may also include `data.supplier.programProviderId`
+    // (undocumented but observed in related APIs). We try `broadcaster`
+    // first, then fall back to `supplier`.
+    final String? supplierUserId = _extractBroadcasterUserId(data);
 
     log(
       'Resolved NDGR viewUri for $lv via programinfo',
@@ -151,6 +150,35 @@ class ProgramInfoResolver {
       title: title,
       supplierUserId: supplierUserId,
     );
+  }
+
+  /// Extracts the broadcaster user ID from the programinfo response data.
+  ///
+  /// Tries `data.broadcaster[0].id` first (N Air's documented field),
+  /// then falls back to `data.supplier.programProviderId`.
+  static String? _extractBroadcasterUserId(Map<String, dynamic> data) {
+    // Primary: data.broadcaster (array of {id, name}).
+    final Object? broadcaster = data['broadcaster'];
+    if (broadcaster is List && broadcaster.isNotEmpty) {
+      final Object? first = broadcaster[0];
+      if (first is Map<String, dynamic>) {
+        final Object? id = first['id'];
+        if (id != null) {
+          return id.toString();
+        }
+      }
+    }
+
+    // Fallback: data.supplier.programProviderId (undocumented but observed).
+    final Object? supplier = data['supplier'];
+    if (supplier is Map<String, dynamic>) {
+      final Object? providerId = supplier['programProviderId'];
+      if (providerId != null) {
+        return providerId.toString();
+      }
+    }
+
+    return null;
   }
 
   /// Reads at most [_maxErrorBodyBytes] bytes from the response to avoid
@@ -196,7 +224,8 @@ class ProgramInfo {
   final Uri viewUri;
   final String? title;
 
-  /// The broadcaster's user ID extracted from `supplier.programProviderId`.
+  /// The broadcaster's user ID, extracted from `broadcaster[0].id`
+  /// or `supplier.programProviderId`.
   final String? supplierUserId;
 }
 
