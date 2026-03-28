@@ -273,11 +273,7 @@ class _CommentScreenState extends State<CommentScreen> {
 
     if (_lastStatus != ConnectionStatus.failed &&
         currentStatus == ConnectionStatus.failed) {
-      final String detail = widget.connectionSupervisor.lastErrorDetail ?? '';
-      final String detailSuffix =
-          detail.isEmpty ? '' : ' 原因: ${_compactSingleLine(detail)}';
-      final String message =
-          '${_failedMessage(widget.connectionSupervisor.lastError)}$detailSuffix 再接続ボタンで再試行できます。';
+      final String message = _buildFailedSnackbarMessage();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) {
           return;
@@ -295,6 +291,24 @@ class _CommentScreenState extends State<CommentScreen> {
     }
 
     _lastStatus = currentStatus;
+  }
+
+  String _buildFailedSnackbarMessage() {
+    final ConnectionErrorCode? errorCode =
+        widget.connectionSupervisor.lastError;
+    final String base = _failedMessage(errorCode);
+    final String detail = widget.connectionSupervisor.lastErrorDetail ?? '';
+    final String compactDetail =
+        detail.isEmpty ? '-' : _compactSingleLine(detail);
+
+    if (widget.debugMode) {
+      final String code = errorCode?.code ?? 'UNKNOWN_ERROR';
+      return '$base [code: $code] 原因: $compactDetail 再接続ボタンで再試行できます。';
+    }
+
+    final String detailSuffix =
+        detail.isEmpty ? '' : ' 原因: ${_compactSingleLine(detail)}';
+    return '$base$detailSuffix 再接続ボタンで再試行できます。';
   }
 
   String _failedMessage(ConnectionErrorCode? errorCode) {

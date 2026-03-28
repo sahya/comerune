@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
 
+import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 enum SessionWsEventType {
@@ -22,6 +23,51 @@ enum SessionWsErrorCode {
   unknownBroadcastEndEvent,
 }
 
+enum SessionWsFailurePhase {
+  openingSocket,
+  sendingStartWatching,
+  waitingEndpoint,
+  handlingIncoming,
+  keepalive,
+}
+
+enum SessionWsStartWatchingMode {
+  full,
+  minimal,
+}
+
+class SessionWsErrorDetail {
+  const SessionWsErrorDetail({
+    required this.code,
+    required this.phase,
+    required this.lv,
+    required this.startWatchingMode,
+    required this.occurredAt,
+    this.message,
+    this.endpoint,
+    this.cause,
+  });
+
+  final SessionWsErrorCode code;
+  final SessionWsFailurePhase phase;
+  final String lv;
+  final SessionWsStartWatchingMode startWatchingMode;
+  final DateTime occurredAt;
+  final String? message;
+  final Uri? endpoint;
+  final Object? cause;
+
+  @override
+  String toString() {
+    final String endpointText = endpoint?.toString() ?? '-';
+    final String messageText = (message ?? '-').replaceAll('\n', ' ');
+    final String causeText = (cause?.toString() ?? '-').replaceAll('\n', ' ');
+    return 'code=${code.name}; phase=${phase.name}; lv=$lv; '
+        'mode=${startWatchingMode.name}; endpoint=$endpointText; '
+        'message=$messageText; cause=$causeText';
+  }
+}
+
 class SessionWsEvent {
   const SessionWsEvent({
     required this.type,
@@ -29,6 +75,7 @@ class SessionWsEvent {
     this.legacyWebSocketUrl,
     this.errorCode,
     this.error,
+    this.errorDetail,
     this.stackTrace,
     this.debugMessage,
   });
@@ -38,6 +85,7 @@ class SessionWsEvent {
   final String? legacyWebSocketUrl;
   final SessionWsErrorCode? errorCode;
   final Object? error;
+  final SessionWsErrorDetail? errorDetail;
   final StackTrace? stackTrace;
   final String? debugMessage;
 }
@@ -77,15 +125,28 @@ class WebSocketSessionWsChannel implements SessionWsChannel {
 }
 
 class SessionWsClient {
+  static const String defaultAndroidUserAgent =
+      'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 '
+      '(KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36';
+
   SessionWsClient({
     required this.lv,
     SessionWsChannelFactory? channelFactory,
     Duration endpointFallbackDelay = const Duration(milliseconds: 300),
     Duration endpointResolveTimeout = const Duration(seconds: 5),
     Map<String, Map<String, Object>>? keepaliveResponses,
-  })  : _channelFactory = channelFactory ?? _defaultChannelFactory,
+    SessionWsStartWatchingMode startWatchingMode =
+        SessionWsStartWatchingMode.full,
+    Map<String, String>? connectHeaders,
+    String userAgent = defaultAndroidUserAgent,
+  })  : _channelFactory = channelFactory,
         _endpointFallbackDelay = endpointFallbackDelay,
         _endpointResolveTimeout = endpointResolveTimeout,
+        _startWatchingMode = startWatchingMode,
+        _connectHeaders = _buildConnectHeaders(
+          connectHeaders: connectHeaders,
+          userAgent: userAgent,
+        ),
         _keepaliveResponses = keepaliveResponses == null
             ? const <String, Map<String, Object>>{
                 'servertime': <String, Object>{'type': 'pong'},
@@ -100,9 +161,11 @@ class SessionWsClient {
               );
 
   final String lv;
-  final SessionWsChannelFactory _channelFactory;
+  final SessionWsChannelFactory? _channelFactory;
   final Duration _endpointFallbackDelay;
   final Duration _endpointResolveTimeout;
+  final SessionWsStartWatchingMode _startWatchingMode;
+  final Map<String, dynamic> _connectHeaders;
   final Map<String, Map<String, Object>> _keepaliveResponses;
 
   final StreamController<SessionWsEvent> _eventsController =
@@ -121,8 +184,12 @@ class SessionWsClient {
   bool _isConnected = false;
   bool _isClosing = false;
   bool _isDisposed = false;
+  Uri? _sessionWsUri;
 
   Stream<SessionWsEvent> get events => _eventsController.stream;
+  SessionWsStartWatchingMode get startWatchingMode => _startWatchingMode;
+  Map<String, dynamic> get connectHeaders =>
+      Map<String, dynamic>.unmodifiable(_connectHeaders);
 
   Future<void> connect() async {
     if (_isDisposed) {
@@ -134,18 +201,28 @@ class SessionWsClient {
     _resetEndpointResolutionState();
 
     final Uri uri = Uri.parse('wss://a.live2.nicovideo.jp/wsapi/v2/watch/$lv');
+    _sessionWsUri = uri;
 
     try {
-      final SessionWsChannel channel = await _channelFactory(uri);
+      final SessionWsChannel channel = await (_channelFactory == null
+          ? _defaultChannelFactory(uri, _connectHeaders)
+          : _channelFactory!(uri));
       _channel = channel;
       _subscription = channel.stream.listen(
         _handleIncoming,
         onError: (Object error, StackTrace stackTrace) {
+          final SessionWsErrorDetail detail = _buildErrorDetail(
+            code: SessionWsErrorCode.connectFailed,
+            phase: SessionWsFailurePhase.handlingIncoming,
+            message: 'Session WS stream emitted an error',
+            cause: error,
+          );
           _emit(
             SessionWsEvent(
               type: SessionWsEventType.error,
               errorCode: SessionWsErrorCode.connectFailed,
-              error: error,
+              error: detail,
+              errorDetail: detail,
               stackTrace: stackTrace,
             ),
           );
@@ -156,12 +233,21 @@ class SessionWsClient {
       _isConnected = true;
       try {
         _sendStartWatching();
-      } catch (_) {
+      } catch (error, stackTrace) {
         await _cleanupConnectionState(emitDisconnected: false);
+        final SessionWsErrorDetail detail = _buildErrorDetail(
+          code: SessionWsErrorCode.connectFailed,
+          phase: SessionWsFailurePhase.sendingStartWatching,
+          message: 'Failed to send startWatching',
+          cause: error,
+        );
         _emit(
-          const SessionWsEvent(
+          SessionWsEvent(
             type: SessionWsEventType.error,
             errorCode: SessionWsErrorCode.connectFailed,
+            error: detail,
+            errorDetail: detail,
+            stackTrace: stackTrace,
           ),
         );
         return;
@@ -169,11 +255,18 @@ class SessionWsClient {
       _emit(const SessionWsEvent(type: SessionWsEventType.connected));
       _startEndpointResolveTimer();
     } catch (error, stackTrace) {
+      final SessionWsErrorDetail detail = _buildErrorDetail(
+        code: SessionWsErrorCode.connectFailed,
+        phase: SessionWsFailurePhase.openingSocket,
+        message: 'Failed to open session websocket',
+        cause: error,
+      );
       _emit(
         SessionWsEvent(
           type: SessionWsEventType.error,
           errorCode: SessionWsErrorCode.connectFailed,
-          error: error,
+          error: detail,
+          errorDetail: detail,
           stackTrace: stackTrace,
         ),
       );
@@ -208,6 +301,7 @@ class SessionWsClient {
     }
 
     _emit(const SessionWsEvent(type: SessionWsEventType.disconnected));
+    _sessionWsUri = null;
     _isClosing = false;
   }
 
@@ -263,13 +357,18 @@ class SessionWsClient {
       final String? reason = SessionWsMessageParser._extractDisconnectReason(
         decoded,
       );
+      final SessionWsErrorDetail detail = _buildErrorDetail(
+        code: SessionWsErrorCode.unknownBroadcastEndEvent,
+        phase: SessionWsFailurePhase.handlingIncoming,
+        message: 'Unknown disconnect event',
+        cause: reason,
+      );
       _emit(
         SessionWsEvent(
           type: SessionWsEventType.failed,
           errorCode: SessionWsErrorCode.unknownBroadcastEndEvent,
-          error: reason == null || reason.isEmpty
-              ? 'Unknown disconnect event received'
-              : 'Unknown disconnect reason: $reason',
+          error: detail,
+          errorDetail: detail,
         ),
       );
       unawaited(disconnect());
@@ -277,33 +376,25 @@ class SessionWsClient {
   }
 
   void _sendStartWatching() {
-    _sendJson(const <String, Object>{
-      'type': 'startWatching',
-      'data': <String, Object>{
-        'stream': <String, Object>{
-          'quality': 'abr',
-          'protocol': 'hls',
-          'latency': 'low',
-          'chasePlay': false,
-        },
-        'room': <String, Object>{
-          'protocol': 'webSocket',
-          'commentable': false,
-        },
-        'reconnect': false,
-      },
-    });
+    _sendJson(_startWatchingPayload(_startWatchingMode));
   }
 
   void _respondKeepalive(Map<String, Object> payload) {
     try {
       _sendJson(payload);
     } catch (error, stackTrace) {
+      final SessionWsErrorDetail detail = _buildErrorDetail(
+        code: SessionWsErrorCode.keepaliveResponseFailed,
+        phase: SessionWsFailurePhase.keepalive,
+        message: 'Failed to send keepalive response',
+        cause: error,
+      );
       _emit(
         SessionWsEvent(
           type: SessionWsEventType.error,
           errorCode: SessionWsErrorCode.keepaliveResponseFailed,
-          error: error,
+          error: detail,
+          errorDetail: detail,
           stackTrace: stackTrace,
         ),
       );
@@ -383,6 +474,7 @@ class SessionWsClient {
     _stopKeepSeatTimer();
     _channel = null;
     _isConnected = false;
+    _sessionWsUri = null;
     if (_isClosing) {
       return;
     }
@@ -396,9 +488,78 @@ class SessionWsClient {
     _eventsController.add(event);
   }
 
-  static Future<SessionWsChannel> _defaultChannelFactory(Uri uri) async {
-    final WebSocketChannel channel = WebSocketChannel.connect(uri);
+  static Future<SessionWsChannel> _defaultChannelFactory(
+    Uri uri,
+    Map<String, dynamic> headers,
+  ) async {
+    final IOWebSocketChannel channel = IOWebSocketChannel.connect(
+      uri,
+      headers: headers.isEmpty ? null : headers,
+    );
     return WebSocketSessionWsChannel(channel);
+  }
+
+  static Map<String, dynamic> _buildConnectHeaders({
+    required Map<String, String>? connectHeaders,
+    required String userAgent,
+  }) {
+    final Map<String, dynamic> headers = <String, dynamic>{
+      if (connectHeaders != null) ...connectHeaders,
+    };
+    final bool hasUserAgentHeader = headers.keys.any(
+      (String key) => key.toLowerCase() == 'user-agent',
+    );
+    if (!hasUserAgentHeader && userAgent.trim().isNotEmpty) {
+      headers['User-Agent'] = userAgent.trim();
+    }
+    return headers;
+  }
+
+  Map<String, Object> _startWatchingPayload(
+    SessionWsStartWatchingMode mode,
+  ) {
+    switch (mode) {
+      case SessionWsStartWatchingMode.full:
+        return const <String, Object>{
+          'type': 'startWatching',
+          'data': <String, Object>{
+            'stream': <String, Object>{
+              'quality': 'abr',
+              'protocol': 'hls',
+              'latency': 'low',
+              'chasePlay': false,
+            },
+            'room': <String, Object>{
+              'protocol': 'webSocket',
+              'commentable': false,
+            },
+            'reconnect': false,
+          },
+        };
+      case SessionWsStartWatchingMode.minimal:
+        return const <String, Object>{
+          'type': 'startWatching',
+          'data': <String, Object>{},
+        };
+    }
+  }
+
+  SessionWsErrorDetail _buildErrorDetail({
+    required SessionWsErrorCode code,
+    required SessionWsFailurePhase phase,
+    required String message,
+    Object? cause,
+  }) {
+    return SessionWsErrorDetail(
+      code: code,
+      phase: phase,
+      lv: lv,
+      startWatchingMode: _startWatchingMode,
+      occurredAt: DateTime.now(),
+      message: message,
+      endpoint: _sessionWsUri,
+      cause: cause,
+    );
   }
 
   void _recordEndpoints(SessionEndpointResolution resolution) {
@@ -488,6 +649,7 @@ class SessionWsClient {
     if (channel != null) {
       await channel.close();
     }
+    _sessionWsUri = null;
 
     if (emitDisconnected) {
       _emit(const SessionWsEvent(type: SessionWsEventType.disconnected));
@@ -507,10 +669,17 @@ class SessionWsClient {
         return;
       }
 
+      final SessionWsErrorDetail detail = _buildErrorDetail(
+        code: SessionWsErrorCode.endpointResolveFailed,
+        phase: SessionWsFailurePhase.waitingEndpoint,
+        message: 'Session endpoint resolution timed out',
+      );
       _emit(
-        const SessionWsEvent(
+        SessionWsEvent(
           type: SessionWsEventType.failed,
           errorCode: SessionWsErrorCode.endpointResolveFailed,
+          error: detail,
+          errorDetail: detail,
         ),
       );
       unawaited(disconnect());

@@ -378,6 +378,10 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
+      expect(
+        find.textContaining('code: SESSION_WS_CONNECT_FAILED'),
+        findsOneWidget,
+      );
       expect(find.textContaining('原因: HandshakeException: 401 Unauthorized'),
           findsOneWidget);
       expect(find.byKey(const Key('status-last-error-detail')), findsOneWidget);
