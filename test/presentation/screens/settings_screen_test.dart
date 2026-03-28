@@ -155,6 +155,45 @@ void main() {
       expect(find.text('ログイン済み'), findsOneWidget);
     });
 
+    testWidgets('toggles showUserName and persists value', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      // Default is true
+      AppSettings loaded = await settingsStore.load();
+      expect(loaded.showUserName, isTrue);
+
+      await _toggleSwitchByKey(tester, const Key('show-user-name-switch'));
+
+      loaded = await settingsStore.load();
+      expect(loaded.showUserName, isFalse);
+    });
+
+    testWidgets('disables resolveUserName switch when showUserName is off', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      // Turn off showUserName
+      await _toggleSwitchByKey(tester, const Key('show-user-name-switch'));
+
+      // resolveUserName switch should now be disabled
+      await _scrollToKey(tester, const Key('resolve-user-name-switch'));
+      final SwitchListTile resolveTile = tester.widget(
+        find.byKey(const Key('resolve-user-name-switch'), skipOffstage: false),
+      );
+      expect(resolveTile.onChanged, isNull);
+    });
+
     testWidgets('saves text fields when focus is lost', (
       WidgetTester tester,
     ) async {
