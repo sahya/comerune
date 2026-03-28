@@ -76,6 +76,12 @@ void main() {
       expect(find.text('user123'), findsNothing);
       expect(find.text('user456'), findsOneWidget);
 
+      // Snackbar feedback should appear.
+      expect(
+        find.text('ユーザーID「user123」のNG登録を解除しました'),
+        findsOneWidget,
+      );
+
       // Verify persistence.
       final AppSettings loaded = await store.load();
       expect(loaded.ngUserIdSet, <String>{'user456'});

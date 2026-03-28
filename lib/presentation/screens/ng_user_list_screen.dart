@@ -73,6 +73,12 @@ class _NgUserListScreenState extends State<NgUserListScreen> {
     setState(() {
       _ngUserIds = updated.ngUserIdSet.toList();
     });
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text('ユーザーID「$userId」のNG登録を解除しました')),
+      );
   }
 
   @override
