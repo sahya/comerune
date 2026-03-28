@@ -217,20 +217,15 @@ class _CommentScreenState extends State<CommentScreen> {
                       : '古い順に切替',
                   onPressed: _toggleSortOrder,
                 ),
-                PopupMenuButton<String>(
-                  onSelected: (_) async {
-                    if (widget.onOpenSettings != null) {
+                if (widget.onOpenSettings != null)
+                  IconButton(
+                    key: const Key('settings-button'),
+                    icon: const Icon(Icons.settings),
+                    tooltip: '設定',
+                    onPressed: () async {
                       await widget.onOpenSettings!.call();
-                    }
-                  },
-                  itemBuilder: (BuildContext context) =>
-                      <PopupMenuEntry<String>>[
-                    const PopupMenuItem<String>(
-                      value: 'settings',
-                      child: Text('設定'),
-                    ),
-                  ],
-                ),
+                    },
+                  ),
               ],
             ),
             body: Column(

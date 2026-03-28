@@ -173,11 +173,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (mounted) {
       await _refreshLoginState();
-      // After successful login, pop settings screen so the user
-      // returns to the previous screen (select or comment screen).
-      if (loggedIn == true && mounted) {
-        Navigator.of(context).pop();
-      }
     }
   }
 
