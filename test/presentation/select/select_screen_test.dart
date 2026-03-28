@@ -449,7 +449,7 @@ void main() {
       await pumpWithFollowPrograms(
         tester,
         programs: <FollowProgram>[
-          const FollowProgram(
+          FollowProgram(
             programId: 'lv123456789',
             title: 'テスト放送タイトル',
             providerName: 'テスト放送者',
@@ -471,7 +471,7 @@ void main() {
       await pumpWithFollowPrograms(
         tester,
         programs: <FollowProgram>[
-          const FollowProgram(
+          FollowProgram(
             programId: 'lv987654321',
             title: 'コミュニティなし放送',
             providerName: '放送者A',
@@ -488,12 +488,12 @@ void main() {
       await pumpWithFollowPrograms(
         tester,
         programs: <FollowProgram>[
-          const FollowProgram(
+          FollowProgram(
             programId: 'lv111',
             title: '放送1',
             providerName: '放送者1',
           ),
-          const FollowProgram(
+          FollowProgram(
             programId: 'lv222',
             title: '放送2',
             providerName: '放送者2',
@@ -530,7 +530,7 @@ void main() {
       await pumpWithFollowPrograms(
         tester,
         programs: <FollowProgram>[
-          const FollowProgram(
+          FollowProgram(
             programId: 'lv444',
             title: 'アイコンなし',
             providerName: '放送者',
@@ -547,7 +547,7 @@ void main() {
       await pumpWithFollowPrograms(
         tester,
         programs: <FollowProgram>[
-          const FollowProgram(
+          FollowProgram(
             programId: 'lv555666777',
             title: 'タップテスト放送',
             providerName: 'タップ放送者',
@@ -566,7 +566,7 @@ void main() {
     ) async {
       await pumpWithFollowPrograms(
         tester,
-        programs: const <FollowProgram>[],
+        programs: <FollowProgram>[],
       );
 
       expect(find.text('フォロー中の放送'), findsNothing);
