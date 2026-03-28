@@ -11,9 +11,7 @@ void main() {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'data': <String, Object?>{
-          'user': <String, Object?>{
-            'nickname': 'テストユーザー',
-          },
+          'nickname': 'テストユーザー',
         },
       });
 
@@ -53,7 +51,7 @@ void main() {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'data': <String, Object?>{
-          'user': <String, Object?>{'nickname': 'UserA'},
+          'nickname': 'UserA',
         },
       });
 
@@ -78,7 +76,7 @@ void main() {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'data': <String, Object?>{
-          'user': <String, Object?>{'nickname': 'Delayed'},
+          'nickname': 'Delayed',
         },
       });
       httpClient.responseDelay = responseCompleter.future;
@@ -127,7 +125,7 @@ void main() {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'data': <String, Object?>{
-          'user': <String, Object?>{'nickname': 'CachedUser'},
+          'nickname': 'CachedUser',
         },
       });
 
@@ -150,7 +148,7 @@ void main() {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'data': <String, Object?>{
-          'user': <String, Object?>{'nickname': 'Late'},
+          'nickname': 'Late',
         },
       });
       httpClient.responseDelay =
@@ -179,7 +177,7 @@ void main() {
       final Completer<void> gate = Completer<void>();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'data': <String, Object?>{
-          'user': <String, Object?>{'nickname': 'User'},
+          'nickname': 'User',
         },
       });
       httpClient.responseDelay = gate.future;
@@ -210,7 +208,7 @@ void main() {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'data': <String, Object?>{
-          'user': <String, Object?>{'nickname': 'User'},
+          'nickname': 'User',
         },
       });
 
