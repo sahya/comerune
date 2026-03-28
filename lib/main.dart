@@ -169,19 +169,15 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
         _handleClientEvent(event, completer);
       },
       onError: (Object error, StackTrace stackTrace) {
-        _recordSessionFailure(
-          reconnect.SessionWsConnectException(
-            reconnect.SessionWsConnectFailureKind.connectFailed,
-            cause: error,
-          ),
+        final reconnect.SessionWsConnectException failure =
+            reconnect.SessionWsConnectException(
+          reconnect.SessionWsConnectFailureKind.connectFailed,
+          cause: error,
         );
+        _recordSessionFailure(failure);
         _completeEndpointError(
           completer,
-          _lastSessionFailure ??
-              reconnect.SessionWsConnectException(
-                reconnect.SessionWsConnectFailureKind.connectFailed,
-                cause: error,
-              ),
+          failure,
           stackTrace: stackTrace,
         );
       },
@@ -385,10 +381,10 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
         );
       case session_impl.SessionWsErrorCode.unknownBroadcastEndEvent:
         return reconnect.SessionWsConnectException(
-          reconnect.SessionWsConnectFailureKind.connectFailed,
+          reconnect.SessionWsConnectFailureKind.broadcastEnded,
           cause: cause ??
               _defaultCauseForKind(
-                reconnect.SessionWsConnectFailureKind.connectFailed,
+                reconnect.SessionWsConnectFailureKind.broadcastEnded,
               ),
         );
       case null:
