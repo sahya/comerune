@@ -68,28 +68,18 @@ void main() {
       expect(content, contains('テストメッセージ'));
     });
 
-    test('excludes gift and nicoad messages', () async {
+    test('writes all passed messages (caller responsible for filtering)',
+        () async {
       final FileCommentLogWriter writer =
           FileCommentLogWriter(directory: tempDir, tempDirectory: tempDir);
 
+      // Only chat messages are passed (caller filters out gift/nicoad).
       final List<AppMessage> messages = <AppMessage>[
         AppMessage(
           id: '1',
           timestamp: DateTime(2026, 3, 28, 12, 0, 0),
           content: 'チャット',
           type: AppMessageType.chat,
-        ),
-        AppMessage(
-          id: '2',
-          timestamp: DateTime(2026, 3, 28, 12, 0, 1),
-          content: 'ギフト',
-          type: AppMessageType.gift,
-        ),
-        AppMessage(
-          id: '3',
-          timestamp: DateTime(2026, 3, 28, 12, 0, 2),
-          content: 'ニコニ広告',
-          type: AppMessageType.nicoad,
         ),
       ];
 
@@ -101,8 +91,6 @@ void main() {
       expect(path, isNotNull);
       final String content = await File(path!).readAsString();
       expect(content, contains('チャット'));
-      expect(content, isNot(contains('ギフト')));
-      expect(content, isNot(contains('ニコニ広告')));
     });
 
     test('file name contains lv number', () async {

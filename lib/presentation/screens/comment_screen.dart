@@ -216,8 +216,8 @@ class _CommentScreenState extends State<CommentScreen> {
                 if (widget.commentLogWriter != null)
                   IconButton(
                     key: const Key('save-comment-log-button'),
-                    icon: const Icon(Icons.save),
-                    tooltip: 'コメントログを保存',
+                    icon: const Icon(Icons.ios_share),
+                    tooltip: 'コメントログを共有',
                     onPressed:
                         _isSavingLog ? null : () => unawaited(_saveLogManual()),
                   ),
@@ -642,30 +642,14 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   Future<void> _saveLogAuto() async {
-    await _saveLog();
-  }
-
-  Future<String?> _saveLog() async {
     final CommentLogWriter? writer = widget.commentLogWriter;
     if (writer == null) {
-      return null;
+      return;
     }
 
-    setState(() {
-      _isSavingLog = true;
-    });
-
-    try {
-      final List<AppMessage> messages =
-          widget.messages.where(_shouldDisplayMessage).toList(growable: false);
-      return await writer.save(lv: widget.lv, messages: messages);
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSavingLog = false;
-        });
-      }
-    }
+    final List<AppMessage> messages =
+        widget.messages.where(_shouldDisplayMessage).toList(growable: false);
+    await writer.save(lv: widget.lv, messages: messages);
   }
 
   void _scrollToEdge({bool animated = true}) {

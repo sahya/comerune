@@ -3,6 +3,9 @@ import 'dart:io';
 import '../../domain/models/app_message.dart';
 
 /// Writes comment logs to a text file in the specified directory.
+///
+/// Callers are responsible for filtering messages before passing them in
+/// (e.g. excluding gift / nicoad types).
 abstract class CommentLogWriter {
   /// Saves the given messages as a comment log file in the app's local
   /// directory.
@@ -74,14 +77,12 @@ class FileCommentLogWriter implements CommentLogWriter {
 
       final DateTime now = DateTime.now();
       final String timestamp = _formatFileTimestamp(now);
-      final String fileName = '${lv}_$timestamp.txt';
+      final String sanitizedLv = lv.replaceAll(RegExp(r'[/\\. ]'), '_');
+      final String fileName = '${sanitizedLv}_$timestamp.txt';
       final File file = File('${directory.path}/$fileName');
 
       final StringBuffer buffer = StringBuffer();
       for (final AppMessage message in messages) {
-        if (!_shouldInclude(message)) {
-          continue;
-        }
         final String time = _formatHms(message.timestamp);
         final String user = message.userId ?? '';
         final String escapedContent =
@@ -93,18 +94,6 @@ class FileCommentLogWriter implements CommentLogWriter {
       return file.path;
     } on Object {
       return null;
-    }
-  }
-
-  bool _shouldInclude(AppMessage message) {
-    switch (message.type) {
-      case AppMessageType.chat:
-      case AppMessageType.operator:
-      case AppMessageType.notification:
-        return true;
-      case AppMessageType.gift:
-      case AppMessageType.nicoad:
-        return false;
     }
   }
 
