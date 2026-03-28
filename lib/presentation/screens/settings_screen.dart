@@ -714,7 +714,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       leading: const Icon(Icons.person_off),
                       title: const Text('NGユーザーID管理'),
                       subtitle: Text(
-                        '${settings.ngUserIdSet.length}件登録中',
+                        settings.ngUserIdSet.isEmpty
+                            ? '未登録'
+                            : '${settings.ngUserIdSet.length}件登録中',
                       ),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () async {
