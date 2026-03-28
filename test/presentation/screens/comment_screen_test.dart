@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:comerune/domain/connection/connection_method.dart';
 import 'package:comerune/domain/connection/connection_supervisor.dart';
 import 'package:comerune/domain/models/app_message.dart';
+import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/presentation/screens/comment_screen.dart';
 
 void main() {
@@ -655,6 +656,67 @@ void main() {
       expect(find.textContaining('world'), findsOneWidget);
     });
 
+    testWidgets('applies configured font size to comment rows', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'font-msg',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'u1',
+          content: 'font size test',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          commentFontSize: CommentFontSize.xl,
+        ),
+      );
+
+      final Text textWidget = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('comment-row-font-msg')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(textWidget.style?.fontSize, 18);
+    });
+
+    testWidgets('default font size is medium (14px)', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'default-font-msg',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'u1',
+          content: 'default font test',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+        ),
+      );
+
+      final Text textWidget = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('comment-row-default-font-msg')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(textWidget.style?.fontSize, 14);
+    });
+
     testWidgets('invokes callback when lv changes (different lv connection)', (
       WidgetTester tester,
     ) async {
@@ -766,6 +828,7 @@ Widget _buildScreen({
   String? programTitle,
   String? broadcasterName,
   String? Function(String userId)? resolveUserName,
+  CommentFontSize commentFontSize = CommentFontSize.medium,
 }) {
   return MaterialApp(
     home: CommentScreen(
@@ -780,6 +843,7 @@ Widget _buildScreen({
       programTitle: programTitle,
       broadcasterName: broadcasterName,
       resolveUserName: resolveUserName,
+      commentFontSize: commentFontSize,
     ),
   );
 }

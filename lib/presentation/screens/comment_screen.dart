@@ -744,7 +744,7 @@ class _CommentRow extends StatelessWidget {
     required this.message,
     this.resolvedUserName,
     this.showUserName = true,
-    this.fontSize = 14,
+    required this.fontSize,
   });
 
   final AppMessage message;
