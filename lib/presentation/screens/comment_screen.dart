@@ -47,7 +47,7 @@ class CommentScreen extends StatefulWidget {
     this.programTitle,
     this.broadcasterName,
     this.showUserName = true,
-    this.commentFontSize = CommentFontSize.medium,
+    this.commentFontSize = commentFontSizeDefault,
     this.resolveUserName,
     this.requestUserNameResolve,
     this.commentLogWriter,
@@ -70,7 +70,7 @@ class CommentScreen extends StatefulWidget {
   final String? programTitle;
   final String? broadcasterName;
   final bool showUserName;
-  final CommentFontSize commentFontSize;
+  final double commentFontSize;
 
   /// Returns the cached resolved name for a user ID, or null.
   final String? Function(String userId)? resolveUserName;
@@ -298,7 +298,7 @@ class _CommentScreenState extends State<CommentScreen> {
                         themeColors: themeColors,
                         resolvedUserName: _resolveDisplayName(message),
                         showUserName: widget.showUserName,
-                        fontSize: widget.commentFontSize.pixels,
+                        fontSize: widget.commentFontSize,
                         onLongPress:
                             message.userId != null && message.userId!.isNotEmpty
                                 ? () => _showUserDetail(message)
