@@ -21,7 +21,7 @@ void main() {
 
     test('returns null when messages are empty', () async {
       final FileCommentLogWriter writer =
-          FileCommentLogWriter(directory: tempDir);
+          FileCommentLogWriter(directory: tempDir, tempDirectory: tempDir);
 
       final String? result = await writer.save(
         lv: 'lv123',
@@ -33,7 +33,7 @@ void main() {
 
     test('saves chat messages to file', () async {
       final FileCommentLogWriter writer =
-          FileCommentLogWriter(directory: tempDir);
+          FileCommentLogWriter(directory: tempDir, tempDirectory: tempDir);
 
       final List<AppMessage> messages = <AppMessage>[
         AppMessage(
@@ -70,7 +70,7 @@ void main() {
 
     test('excludes gift and nicoad messages', () async {
       final FileCommentLogWriter writer =
-          FileCommentLogWriter(directory: tempDir);
+          FileCommentLogWriter(directory: tempDir, tempDirectory: tempDir);
 
       final List<AppMessage> messages = <AppMessage>[
         AppMessage(
@@ -107,7 +107,7 @@ void main() {
 
     test('file name contains lv number', () async {
       final FileCommentLogWriter writer =
-          FileCommentLogWriter(directory: tempDir);
+          FileCommentLogWriter(directory: tempDir, tempDirectory: tempDir);
 
       final List<AppMessage> messages = <AppMessage>[
         AppMessage(
@@ -130,7 +130,7 @@ void main() {
     test('creates directory if it does not exist', () async {
       final Directory subDir = Directory('${tempDir.path}/nested/comment_logs');
       final FileCommentLogWriter writer =
-          FileCommentLogWriter(directory: subDir);
+          FileCommentLogWriter(directory: subDir, tempDirectory: tempDir);
 
       final List<AppMessage> messages = <AppMessage>[
         AppMessage(
@@ -150,9 +150,37 @@ void main() {
       expect(subDir.existsSync(), isTrue);
     });
 
+    test('writeToTempFile writes to temp directory', () async {
+      final Directory shareDir = Directory('${tempDir.path}/share_temp');
+      final FileCommentLogWriter writer = FileCommentLogWriter(
+        directory: tempDir,
+        tempDirectory: shareDir,
+      );
+
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: '1',
+          timestamp: DateTime(2026, 3, 28, 12, 0, 0),
+          content: 'shared content',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      final String? path = await writer.writeToTempFile(
+        lv: 'lv300',
+        messages: messages,
+      );
+
+      expect(path, isNotNull);
+      expect(path, contains('share_temp'));
+      expect(path, contains('lv300'));
+      final String content = await File(path!).readAsString();
+      expect(content, contains('shared content'));
+    });
+
     test('escapes tabs and newlines in content', () async {
       final FileCommentLogWriter writer =
-          FileCommentLogWriter(directory: tempDir);
+          FileCommentLogWriter(directory: tempDir, tempDirectory: tempDir);
 
       final List<AppMessage> messages = <AppMessage>[
         AppMessage(

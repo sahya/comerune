@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/connection/connection_method.dart';
@@ -605,20 +606,38 @@ class _CommentScreenState extends State<CommentScreen> {
       return;
     }
 
-    final String? path = await _saveLog();
-    if (!mounted) {
+    final CommentLogWriter? writer = widget.commentLogWriter;
+    if (writer == null) {
       return;
     }
-    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-    messenger.clearSnackBars();
-    if (path != null) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('コメントログを保存しました: $path')),
-      );
-    } else {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('コメントログの保存に失敗しました')),
-      );
+
+    setState(() {
+      _isSavingLog = true;
+    });
+
+    try {
+      final List<AppMessage> messages =
+          widget.messages.where(_shouldDisplayMessage).toList(growable: false);
+      final String? tempPath =
+          await writer.writeToTempFile(lv: widget.lv, messages: messages);
+      if (tempPath == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+            ..clearSnackBars()
+            ..showSnackBar(
+              const SnackBar(content: Text('コメントログの保存に失敗しました')),
+            );
+        }
+        return;
+      }
+
+      await Share.shareXFiles(<XFile>[XFile(tempPath)]);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSavingLog = false;
+        });
+      }
     }
   }
 

@@ -4,23 +4,62 @@ import '../../domain/models/app_message.dart';
 
 /// Writes comment logs to a text file in the specified directory.
 abstract class CommentLogWriter {
-  /// Saves the given messages as a comment log file.
+  /// Saves the given messages as a comment log file in the app's local
+  /// directory.
   ///
   /// Returns the path to the saved file, or null if saving failed.
   Future<String?> save({
     required String lv,
     required List<AppMessage> messages,
   });
+
+  /// Writes a comment log to a temporary file and returns its path.
+  ///
+  /// Intended for use with the system share sheet so the user can choose
+  /// an external destination (Google Drive, etc.).  Returns null if writing
+  /// failed.
+  Future<String?> writeToTempFile({
+    required String lv,
+    required List<AppMessage> messages,
+  });
 }
 
 class FileCommentLogWriter implements CommentLogWriter {
-  const FileCommentLogWriter({required Directory directory})
-      : _directory = directory;
+  const FileCommentLogWriter({
+    required Directory directory,
+    required Directory tempDirectory,
+  })  : _directory = directory,
+        _tempDirectory = tempDirectory;
 
   final Directory _directory;
+  final Directory _tempDirectory;
 
   @override
   Future<String?> save({
+    required String lv,
+    required List<AppMessage> messages,
+  }) async {
+    return _writeFile(
+      directory: _directory,
+      lv: lv,
+      messages: messages,
+    );
+  }
+
+  @override
+  Future<String?> writeToTempFile({
+    required String lv,
+    required List<AppMessage> messages,
+  }) async {
+    return _writeFile(
+      directory: _tempDirectory,
+      lv: lv,
+      messages: messages,
+    );
+  }
+
+  Future<String?> _writeFile({
+    required Directory directory,
     required String lv,
     required List<AppMessage> messages,
   }) async {
@@ -29,14 +68,14 @@ class FileCommentLogWriter implements CommentLogWriter {
     }
 
     try {
-      if (!_directory.existsSync()) {
-        await _directory.create(recursive: true);
+      if (!directory.existsSync()) {
+        await directory.create(recursive: true);
       }
 
       final DateTime now = DateTime.now();
       final String timestamp = _formatFileTimestamp(now);
       final String fileName = '${lv}_$timestamp.txt';
-      final File file = File('${_directory.path}/$fileName');
+      final File file = File('${directory.path}/$fileName');
 
       final StringBuffer buffer = StringBuffer();
       for (final AppMessage message in messages) {

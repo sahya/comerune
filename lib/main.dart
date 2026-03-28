@@ -35,8 +35,10 @@ Future<void> main() async {
       SecureUserSessionStore(prefs: prefs);
 
   final Directory appDocDir = await getApplicationDocumentsDirectory();
+  final Directory tempDir = await getTemporaryDirectory();
   final CommentLogWriter commentLogWriter = FileCommentLogWriter(
     directory: Directory('${appDocDir.path}/comment_logs'),
+    tempDirectory: Directory('${tempDir.path}/comment_logs'),
   );
 
   runApp(

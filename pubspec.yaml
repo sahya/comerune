@@ -44,6 +44,9 @@ dependencies:
   # コメントログのファイル保存先ディレクトリ取得
   path_provider: ^2.1.0
 
+  # コメントログの共有（Google Drive等の外部ストレージへの保存）
+  share_plus: ^10.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
