@@ -199,7 +199,12 @@ class AppSettings {
     required this.commentFontSize,
     required this.autoSaveCommentLog,
     required this.debugMode,
-  });
+  }) : assert(
+          commentFontSize >= commentFontSizeMin &&
+              commentFontSize <= commentFontSizeMax,
+          'commentFontSize must be between $commentFontSizeMin and $commentFontSizeMax, '
+          'but was $commentFontSize',
+        );
 
   static const AppSettings defaults = AppSettings(
     themeMode: AppThemeMode.light,

@@ -68,6 +68,45 @@ void main() {
       expect(loaded.commentFontSize, 18);
     });
 
+    test('clamps out-of-range commentFontSize to valid bounds', () async {
+      final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: prefs);
+
+      // Below minimum → clamp to min.
+      await prefs.setString('settings.comment.fontSize', '0');
+      AppSettings loaded = await store.load();
+      expect(loaded.commentFontSize, commentFontSizeMin);
+
+      // Above maximum → clamp to max.
+      await prefs.setString('settings.comment.fontSize', '100');
+      loaded = await store.load();
+      expect(loaded.commentFontSize, commentFontSizeMax);
+    });
+
+    test('falls back to default for invalid commentFontSize strings', () async {
+      final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: prefs);
+
+      for (final String invalid in <String>['abc', '', 'unknown']) {
+        await prefs.setString('settings.comment.fontSize', invalid);
+        final AppSettings loaded = await store.load();
+        expect(loaded.commentFontSize, commentFontSizeDefault,
+            reason: '"$invalid" should fall back to default');
+      }
+    });
+
+    test('parses fractional commentFontSize correctly', () async {
+      final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: prefs);
+
+      await prefs.setString('settings.comment.fontSize', '14.5');
+      final AppSettings loaded = await store.load();
+      expect(loaded.commentFontSize, 14.5);
+    });
+
     test('autoSaveCommentLog defaults to false when not stored', () async {
       final SharedPreferencesSettingsStore store =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
