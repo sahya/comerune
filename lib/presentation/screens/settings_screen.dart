@@ -1,14 +1,22 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../application/settings/settings_store.dart';
+import '../../data/auth/user_session_store.dart';
 import '../../domain/models/app_settings.dart';
+import 'login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key, required this.settingsStore});
+  const SettingsScreen({
+    super.key,
+    required this.settingsStore,
+    this.userSessionStore,
+  });
 
   final SettingsStore settingsStore;
+  final UserSessionStore? userSessionStore;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -33,6 +41,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   AppSettings? _settings;
   String? _queueLimitError;
   String? _maxDelayError;
+  bool _isLoggedIn = false;
 
   @override
   void initState() {
@@ -83,9 +92,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _maxDelayController.text = loaded.maxDelaySeconds.toString();
     _ngWordsController.text = loaded.ngWords;
 
+    await _refreshLoginState();
+
     setState(() {
       _settings = loaded;
     });
+  }
+
+  Future<void> _refreshLoginState() async {
+    final UserSessionStore? sessionStore = widget.userSessionStore;
+    if (sessionStore == null) {
+      return;
+    }
+    final String session = await sessionStore.load();
+    if (!mounted) {
+      return;
+    }
+    final bool loggedIn = session.isNotEmpty;
+    if (loggedIn != _isLoggedIn) {
+      setState(() {
+        _isLoggedIn = loggedIn;
+      });
+    }
   }
 
   void _onBouyomiHostFocusChanged() {
@@ -118,6 +146,84 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     _saveNgWords();
+  }
+
+  bool _isOpeningLogin = false;
+
+  Future<void> _openLoginScreen() async {
+    if (_isOpeningLogin) {
+      return;
+    }
+    final UserSessionStore? sessionStore = widget.userSessionStore;
+    if (sessionStore == null) {
+      return;
+    }
+
+    _isOpeningLogin = true;
+    bool? loggedIn;
+    try {
+      loggedIn = await Navigator.of(context).push<bool>(
+        MaterialPageRoute<bool>(
+          builder: (_) => LoginScreen(userSessionStore: sessionStore),
+        ),
+      );
+    } finally {
+      _isOpeningLogin = false;
+    }
+
+    if (mounted) {
+      await _refreshLoginState();
+      // After successful login, pop settings screen so the user
+      // returns to the previous screen (select or comment screen).
+      if (loggedIn == true && mounted) {
+        Navigator.of(context).pop();
+      }
+    }
+  }
+
+  Future<void> _logout() async {
+    final UserSessionStore? sessionStore = widget.userSessionStore;
+    if (sessionStore == null) {
+      return;
+    }
+
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('ログアウト'),
+          content: const Text('ログアウトしますか？再度ログインが必要になります。'),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('キャンセル'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('ログアウト'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    await sessionStore.clear();
+    // Also clear WebView cookies so re-login doesn't reuse stale session
+    await WebViewCookieManager().clearCookies();
+    if (mounted) {
+      setState(() {
+        _isLoggedIn = false;
+      });
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text('ログアウトしました')),
+        );
+    }
   }
 
   void _saveNextSettings(AppSettings next) {
@@ -260,6 +366,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
               key: const Key('settings-list'),
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
               children: <Widget>[
+                _Section(
+                  title: 'ニコニコアカウント',
+                  children: <Widget>[
+                    if (_isLoggedIn) ...<Widget>[
+                      const Row(
+                        children: <Widget>[
+                          Icon(Icons.check_circle, color: Colors.green),
+                          SizedBox(width: 8),
+                          Text('ログイン済み'),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          key: const Key('logout-button'),
+                          onPressed: _logout,
+                          child: const Text('ログアウト'),
+                        ),
+                      ),
+                    ] else ...<Widget>[
+                      const Text('コメント取得にはログインが必要です'),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          key: const Key('login-button'),
+                          onPressed: widget.userSessionStore != null
+                              ? _openLoginScreen
+                              : null,
+                          icon: const Icon(Icons.login),
+                          label: const Text('ニコニコにログイン'),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 12),
                 _Section(
                   title: '読み上げ',
                   children: <Widget>[
@@ -530,6 +674,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _Section(
                   title: 'コメント表示',
                   children: <Widget>[
+                    SwitchListTile(
+                      key: const Key('resolve-user-name-switch'),
+                      title: const Text('ユーザーID名前解決'),
+                      subtitle: const Text('数値IDをニックネームに変換'),
+                      contentPadding: EdgeInsets.zero,
+                      value: settings.resolveUserName,
+                      onChanged: (bool value) {
+                        _saveNextSettings(
+                            settings.copyWith(resolveUserName: value));
+                      },
+                    ),
+                    const SizedBox(height: 8),
                     DropdownButtonFormField<PastCommentFetchCount>(
                       key: const Key('past-comment-count-dropdown'),
                       value: settings.pastCommentFetchCount,
