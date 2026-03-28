@@ -156,7 +156,8 @@ void main() {
       resolver.dispose();
     });
 
-    test('returns null supplierUserId when neither broadcaster nor supplier has ID',
+    test(
+        'returns null supplierUserId when neither broadcaster nor supplier has ID',
         () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
@@ -171,8 +172,7 @@ void main() {
           },
           'rooms': <Object?>[
             <String, Object?>{
-              'viewUri':
-                  'https://mpn.live.nicovideo.jp/api/view/v4/NoIds',
+              'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/NoIds',
             },
           ],
         },
