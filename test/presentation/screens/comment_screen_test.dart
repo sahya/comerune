@@ -522,6 +522,12 @@ void main() {
       // Program title bar shows the title with broadcaster icon.
       expect(find.byKey(const Key('program-title-bar')), findsOneWidget);
       expect(find.text('テスト番組'), findsOneWidget);
+
+      // Status bar also shows the broadcaster name.
+      expect(
+        find.byKey(const Key('status-broadcaster-name')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('shows lv only in AppBar when broadcasterName is null', (
@@ -546,6 +552,12 @@ void main() {
 
       expect(find.byKey(const Key('program-title-bar')), findsOneWidget);
       expect(find.text('タイトルのみ'), findsOneWidget);
+
+      // Status bar does not show broadcaster name when null.
+      expect(
+        find.byKey(const Key('status-broadcaster-name')),
+        findsNothing,
+      );
     });
 
     testWidgets('hides program title bar when title is null', (

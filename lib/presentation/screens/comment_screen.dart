@@ -756,11 +756,14 @@ class _ProgramTitleBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: Row(
         children: <Widget>[
-          _BroadcasterIcon(
-            url: broadcasterIconUrl,
-            size: 20,
-          ),
-          const SizedBox(width: 8),
+          if (broadcasterIconUrl != null &&
+              broadcasterIconUrl!.isNotEmpty) ...<Widget>[
+            _BroadcasterIcon(
+              url: broadcasterIconUrl,
+              size: 20,
+            ),
+            const SizedBox(width: 8),
+          ],
           Expanded(
             child: Text(
               title,
@@ -818,11 +821,14 @@ class _StatusBar extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               if (broadcasterName != null) ...<Widget>[
-                _BroadcasterIcon(
-                  url: broadcasterIconUrl,
-                  size: 16,
-                ),
-                const SizedBox(width: 4),
+                if (broadcasterIconUrl != null &&
+                    broadcasterIconUrl!.isNotEmpty) ...<Widget>[
+                  _BroadcasterIcon(
+                    url: broadcasterIconUrl,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 4),
+                ],
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 100),
                   child: Text(
