@@ -25,6 +25,7 @@ class NdgrMessageNormalizer {
       id: id,
       timestamp: timestamp,
       userId: _resolveUserId(chat),
+      userName: chat.name,
       content: chat.content,
       type: AppMessageType.chat,
       raw: source,

@@ -11,6 +11,7 @@ class AppMessage {
     required this.id,
     required this.timestamp,
     this.userId,
+    this.userName,
     required this.content,
     required this.type,
     this.raw,
@@ -19,6 +20,9 @@ class AppMessage {
   final String id;
   final DateTime timestamp;
   final String? userId;
+
+  /// User nickname from the NDGR protobuf (chat.name field).
+  final String? userName;
   final String content;
   final AppMessageType type;
   final Object? raw;

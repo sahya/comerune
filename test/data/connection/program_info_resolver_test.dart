@@ -62,8 +62,7 @@ void main() {
           'title': 'Public Program',
           'rooms': <Object?>[
             <String, Object?>{
-              'viewUri':
-                  'https://mpn.live.nicovideo.jp/api/view/v4/PublicTest',
+              'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/PublicTest',
             },
           ],
         },
