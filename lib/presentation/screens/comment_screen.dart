@@ -593,8 +593,7 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   Future<void> _saveLogManual() async {
-    final bool hasMessages =
-        widget.messages.any(_shouldDisplayMessage);
+    final bool hasMessages = widget.messages.any(_shouldDisplayMessage);
     if (!hasMessages) {
       if (mounted) {
         ScaffoldMessenger.of(context)

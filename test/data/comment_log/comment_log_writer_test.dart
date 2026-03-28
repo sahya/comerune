@@ -128,8 +128,7 @@ void main() {
     });
 
     test('creates directory if it does not exist', () async {
-      final Directory subDir =
-          Directory('${tempDir.path}/nested/comment_logs');
+      final Directory subDir = Directory('${tempDir.path}/nested/comment_logs');
       final FileCommentLogWriter writer =
           FileCommentLogWriter(directory: subDir);
 

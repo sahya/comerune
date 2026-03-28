@@ -100,8 +100,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       showUserName: _prefs.getBool(_kShowUserName) ?? defaults.showUserName,
       resolveUserName:
           _prefs.getBool(_kResolveUserName) ?? defaults.resolveUserName,
-      autoSaveCommentLog: _prefs.getBool(_kAutoSaveCommentLog) ??
-          defaults.autoSaveCommentLog,
+      autoSaveCommentLog:
+          _prefs.getBool(_kAutoSaveCommentLog) ?? defaults.autoSaveCommentLog,
       debugMode: _prefs.getBool(_kDebugMode) ?? defaults.debugMode,
     );
   }

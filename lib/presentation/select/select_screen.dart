@@ -265,8 +265,7 @@ class _SelectScreenState extends State<SelectScreen> {
           requestUserNameResolve:
               nameResolutionEnabled ? widget.requestUserNameResolve : null,
           commentLogWriter: widget.commentLogWriter,
-          autoSaveCommentLog:
-              _settingsNotifier.value.autoSaveCommentLog,
+          autoSaveCommentLog: _settingsNotifier.value.autoSaveCommentLog,
         );
       },
     );
