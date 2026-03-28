@@ -20,8 +20,8 @@ abstract class UserSessionStore {
 /// SharedPreferences-backed implementation.
 ///
 /// NOTE: SharedPreferences stores data in plaintext. For production use,
-/// consider migrating to flutter_secure_storage (Android Keystore / iOS
-/// Keychain) once added as a dependency.
+/// migrate to flutter_secure_storage (Android Keystore / iOS Keychain).
+/// See: https://github.com/sahya/comerune/issues/50
 class SharedPreferencesUserSessionStore implements UserSessionStore {
   SharedPreferencesUserSessionStore(this._prefs);
 
