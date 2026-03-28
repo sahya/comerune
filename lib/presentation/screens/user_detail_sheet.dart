@@ -39,7 +39,7 @@ class UserDetailSheet extends StatelessWidget {
         final AppThemeColors themeColors = AppTheme.colorsFor(themeMode);
         return Column(
           children: <Widget>[
-            _buildHandle(),
+            _buildHandle(themeColors),
             _buildHeader(context, themeColors),
             const Divider(height: 1),
             Expanded(
@@ -56,8 +56,7 @@ class UserDetailSheet extends StatelessWidget {
     );
   }
 
-  Widget _buildHandle() {
-    final AppThemeColors themeColors = AppTheme.colorsFor(themeMode);
+  Widget _buildHandle(AppThemeColors themeColors) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Container(

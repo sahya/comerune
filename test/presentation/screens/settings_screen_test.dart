@@ -21,14 +21,32 @@ void main() {
       await tester.pumpWidget(_buildScreen(settingsStore));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('bouyomi-section')), findsOneWidget);
-      expect(find.byKey(const Key('voicevox-section')), findsNothing);
+      await _scrollToKey(tester, const Key('bouyomi-section'));
+      expect(
+        find.byKey(const Key('bouyomi-section'), skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('voicevox-section'), skipOffstage: false),
+        findsNothing,
+      );
 
-      await tester.tap(find.byKey(const Key('engine-voicevox-radio')));
+      await _scrollToKey(tester, const Key('engine-voicevox-radio'));
+      final RadioListTile<SpeechEngine> radio = tester.widget(
+        find.byKey(const Key('engine-voicevox-radio'), skipOffstage: false),
+      );
+      radio.onChanged!(radio.value);
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('voicevox-section')), findsOneWidget);
-      expect(find.byKey(const Key('bouyomi-section')), findsNothing);
+      await _scrollToKey(tester, const Key('voicevox-section'));
+      expect(
+        find.byKey(const Key('voicevox-section'), skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('bouyomi-section'), skipOffstage: false),
+        findsNothing,
+      );
     });
 
     testWidgets('shows validation error and does not save invalid queue limit',

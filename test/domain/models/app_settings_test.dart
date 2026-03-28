@@ -3,6 +3,38 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../../lib/domain/models/app_settings.dart';
 
 void main() {
+  group('AppThemeModeValue.fromStorageValue', () {
+    test('returns light for null', () {
+      expect(
+        AppThemeModeValue.fromStorageValue(null),
+        AppThemeMode.light,
+      );
+    });
+
+    test('returns light for unknown value', () {
+      expect(
+        AppThemeModeValue.fromStorageValue('garbage'),
+        AppThemeMode.light,
+      );
+    });
+
+    test('returns light for empty string', () {
+      expect(
+        AppThemeModeValue.fromStorageValue(''),
+        AppThemeMode.light,
+      );
+    });
+
+    test('round-trips all enum values via storageValue', () {
+      for (final AppThemeMode mode in AppThemeMode.values) {
+        expect(
+          AppThemeModeValue.fromStorageValue(mode.storageValue),
+          mode,
+        );
+      }
+    });
+  });
+
   group('PastCommentFetchCountValue.fromStorageValue', () {
     test('returns default count100 for unknown value', () {
       expect(

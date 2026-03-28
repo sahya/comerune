@@ -72,17 +72,18 @@ class AppTheme {
     sheetHandleColor: Color(0xFFBDBDBD),
   );
 
-  /// D-type: avoids red-green confusion. Uses blue/orange contrast.
+  /// D-type: avoids red-green confusion. Uses purple/amber contrast
+  /// (shifted from P-type's blue/orange to aid users who lose green sensitivity).
   static const AppThemeColors _deuteranopiaColors = AppThemeColors(
-    programTitleBarBackground: Color(0xFFE3F2FD),
+    programTitleBarBackground: Color(0xFFEDE7F6),
     broadcasterNameColor: Color(0xFF616161),
     statusBarBackground: Color(0xFFEEEEEE),
-    statusConnected: Color(0xFF1565C0),
-    statusDisconnected: Color(0xFFE65100),
-    operatorMessageBackground: Color(0xFFFFF3E0),
-    notificationMessageBackground: Color(0xFFE3F2FD),
+    statusConnected: Color(0xFF4527A0),
+    statusDisconnected: Color(0xFFFF8F00),
+    operatorMessageBackground: Color(0xFFFFF8E1),
+    notificationMessageBackground: Color(0xFFEDE7F6),
     subtleTextColor: Color(0xFF757575),
-    ngUserActiveColor: Color(0xFFE65100),
+    ngUserActiveColor: Color(0xFFFF8F00),
     sheetHandleColor: Color(0xFFBDBDBD),
   );
 
@@ -150,7 +151,7 @@ class AppTheme {
 
   static final ThemeData _deuteranopiaTheme = ThemeData(
     brightness: Brightness.light,
-    colorSchemeSeed: Colors.blue,
+    colorSchemeSeed: Colors.deepPurple,
     useMaterial3: true,
   );
 
