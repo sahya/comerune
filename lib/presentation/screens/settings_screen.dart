@@ -691,10 +691,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       subtitle: const Text('数値IDをニックネームに変換'),
                       contentPadding: EdgeInsets.zero,
                       value: settings.resolveUserName,
-                      onChanged: (bool value) {
-                        _saveNextSettings(
-                            settings.copyWith(resolveUserName: value));
-                      },
+                      onChanged: settings.showUserName
+                          ? (bool value) {
+                              _saveNextSettings(
+                                  settings.copyWith(resolveUserName: value));
+                            }
+                          : null,
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<PastCommentFetchCount>(
