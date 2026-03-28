@@ -132,11 +132,25 @@ class ProgramInfoResolver {
       );
     }
 
+    // Extract supplier (broadcaster) user ID if available.
+    String? supplierUserId;
+    final Object? supplier = data['supplier'];
+    if (supplier is Map<String, dynamic>) {
+      final Object? providerId = supplier['programProviderId'];
+      if (providerId != null) {
+        supplierUserId = providerId.toString();
+      }
+    }
+
     log(
       'Resolved NDGR viewUri for $lv via programinfo',
       name: 'ProgramInfoResolver',
     );
-    return ProgramInfo(viewUri: parsed, title: title);
+    return ProgramInfo(
+      viewUri: parsed,
+      title: title,
+      supplierUserId: supplierUserId,
+    );
   }
 
   /// Reads at most [_maxErrorBodyBytes] bytes from the response to avoid
@@ -177,10 +191,13 @@ class ProgramInfoResolver {
 }
 
 class ProgramInfo {
-  const ProgramInfo({required this.viewUri, this.title});
+  const ProgramInfo({required this.viewUri, this.title, this.supplierUserId});
 
   final Uri viewUri;
   final String? title;
+
+  /// The broadcaster's user ID extracted from `supplier.programProviderId`.
+  final String? supplierUserId;
 }
 
 class ProgramInfoResolveException implements Exception {

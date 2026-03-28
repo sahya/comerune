@@ -37,6 +37,7 @@ void main() {
         'https://mpn.live.nicovideo.jp/api/view/v4/BBzh6D87sTyy',
       );
       expect(result.title, 'Test Program');
+      expect(result.supplierUserId, isNull);
 
       expect(httpClient.requests, hasLength(1));
       final _CapturedRequest request = httpClient.requests[0];
@@ -49,6 +50,40 @@ void main() {
         'user_session_abc123',
       );
       expect(request.headers['User-Agent'], isNotNull);
+
+      resolver.dispose();
+    });
+
+    test('extracts supplier user ID from programinfo response', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'Streamer Program',
+          'supplier': <String, Object?>{
+            'name': 'テスト配信者',
+            'programProviderId': 12345,
+          },
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri':
+                  'https://mpn.live.nicovideo.jp/api/view/v4/TestSupplier',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv999',
+        userSession: 'session',
+      );
+
+      expect(result.title, 'Streamer Program');
+      expect(result.supplierUserId, '12345');
 
       resolver.dispose();
     });

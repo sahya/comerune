@@ -69,6 +69,8 @@ class _ComeruneAppState extends State<ComeruneApp> {
   int _ndgrHistoryCount = 100;
   final ValueNotifier<String?> _programTitleNotifier =
       ValueNotifier<String?>(null);
+  final ValueNotifier<String?> _supplierUserIdNotifier =
+      ValueNotifier<String?>(null);
   late final UserNameResolver _userNameResolver;
 
   @override
@@ -85,6 +87,10 @@ class _ComeruneAppState extends State<ComeruneApp> {
       programInfoResolver: ProgramInfoResolver(),
       onProgramTitleResolved: (String title) {
         _programTitleNotifier.value = title;
+      },
+      onSupplierUserIdResolved: (String userId) {
+        _supplierUserIdNotifier.value = userId;
+        _userNameResolver.requestResolve(userId);
       },
     );
     _ndgrClient = _NdgrClientAdapter(
@@ -120,12 +126,14 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _timelineStore.dispose();
     _userNameResolver.dispose();
     _programTitleNotifier.dispose();
+    _supplierUserIdNotifier.dispose();
     super.dispose();
   }
 
   Future<void> _prepareConnection(String lv, AppSettings settings) async {
     _currentLv = lv;
     _programTitleNotifier.value = null;
+    _supplierUserIdNotifier.value = null;
     _ndgrHistoryCount = settings.pastCommentFetchCount.historyCount;
     _timelineStore.setCapacity(_ndgrHistoryCount);
   }
@@ -145,6 +153,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
         resolveUserName: _userNameResolver.getCachedName,
         requestUserNameResolve: _userNameResolver.requestResolve,
         userNameListenable: _userNameResolver,
+        supplierUserIdNotifier: _supplierUserIdNotifier,
       ),
     );
   }
@@ -156,15 +165,18 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     required Future<String> Function() userSessionProvider,
     required ProgramInfoResolver programInfoResolver,
     void Function(String title)? onProgramTitleResolved,
+    void Function(String userId)? onSupplierUserIdResolved,
   })  : _lvProvider = lvProvider,
         _userSessionProvider = userSessionProvider,
         _programInfoResolver = programInfoResolver,
-        _onProgramTitleResolved = onProgramTitleResolved;
+        _onProgramTitleResolved = onProgramTitleResolved,
+        _onSupplierUserIdResolved = onSupplierUserIdResolved;
 
   final String Function() _lvProvider;
   final Future<String> Function() _userSessionProvider;
   final ProgramInfoResolver _programInfoResolver;
   final void Function(String title)? _onProgramTitleResolved;
+  final void Function(String userId)? _onSupplierUserIdResolved;
   final StreamController<reconnect.SessionWsEvent> _eventsController =
       StreamController<reconnect.SessionWsEvent>.broadcast();
 
@@ -198,6 +210,9 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       );
       if (programInfo.title != null) {
         _onProgramTitleResolved?.call(programInfo.title!);
+      }
+      if (programInfo.supplierUserId != null) {
+        _onSupplierUserIdResolved?.call(programInfo.supplierUserId!);
       }
       log(
         'Resolved NDGR endpoint via programinfo API',
