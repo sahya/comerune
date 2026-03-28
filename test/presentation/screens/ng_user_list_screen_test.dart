@@ -30,9 +30,8 @@ void main() {
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
       // Pre-save settings with NG user IDs.
-      final AppSettings initial = AppSettings.defaults
-          .addNgUserId('user123')
-          .addNgUserId('user456');
+      final AppSettings initial =
+          AppSettings.defaults.addNgUserId('user123').addNgUserId('user456');
       await store.save(initial);
 
       await tester.pumpWidget(_buildScreen(store));
@@ -51,9 +50,8 @@ void main() {
       final SharedPreferencesSettingsStore store =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
-      final AppSettings initial = AppSettings.defaults
-          .addNgUserId('user123')
-          .addNgUserId('user456');
+      final AppSettings initial =
+          AppSettings.defaults.addNgUserId('user123').addNgUserId('user456');
       await store.save(initial);
 
       await tester.pumpWidget(_buildScreen(store));
@@ -65,7 +63,10 @@ void main() {
 
       // Confirm dialog should appear.
       expect(find.text('NG解除'), findsOneWidget);
-      expect(find.textContaining('user123'), findsOneWidget);
+      expect(
+        find.text('ユーザーID「user123」のNG登録を解除しますか？'),
+        findsOneWidget,
+      );
 
       // Tap confirm button.
       await tester.tap(find.byKey(const Key('ng-remove-confirm-button')));
@@ -86,8 +87,7 @@ void main() {
       final SharedPreferencesSettingsStore store =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
-      final AppSettings initial =
-          AppSettings.defaults.addNgUserId('user123');
+      final AppSettings initial = AppSettings.defaults.addNgUserId('user123');
       await store.save(initial);
 
       await tester.pumpWidget(_buildScreen(store));
@@ -113,8 +113,7 @@ void main() {
       final SharedPreferencesSettingsStore store =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
-      final AppSettings initial =
-          AppSettings.defaults.addNgUserId('onlyUser');
+      final AppSettings initial = AppSettings.defaults.addNgUserId('onlyUser');
       await store.save(initial);
 
       await tester.pumpWidget(_buildScreen(store));

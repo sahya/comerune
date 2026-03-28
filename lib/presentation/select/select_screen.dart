@@ -416,8 +416,7 @@ class _SelectScreenState extends State<SelectScreen> {
   }
 
   Future<void> _fetchFollowPrograms() async {
-    final FollowProgramRepository? repository =
-        widget.followProgramRepository;
+    final FollowProgramRepository? repository = widget.followProgramRepository;
     final UserSessionStore? sessionStore = widget.userSessionStore;
     if (repository == null || sessionStore == null) {
       return;
@@ -711,9 +710,7 @@ class _FollowProgramTile extends StatelessWidget {
             Icon(
               Icons.play_circle_outline,
               size: 20,
-              color: enabled
-                  ? theme.colorScheme.primary
-                  : theme.disabledColor,
+              color: enabled ? theme.colorScheme.primary : theme.disabledColor,
             ),
           ],
         ),
