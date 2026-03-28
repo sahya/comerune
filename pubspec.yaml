@@ -35,6 +35,9 @@ dependencies:
   # 設定永続化（読み上げエンジン選択・接続設定）
   shared_preferences: ^2.3.3
 
+  # WebView（ニコニコログイン画面でuser_sessionクッキー取得）
+  webview_flutter: ^4.10.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
