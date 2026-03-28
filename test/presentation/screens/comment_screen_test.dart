@@ -793,6 +793,58 @@ void main() {
       expect(find.text('名前: テストさん'), findsOneWidget);
     });
 
+    testWidgets('shows settings button when onOpenSettings is provided', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          onOpenSettings: () async {},
+        ),
+      );
+
+      expect(find.byKey(const Key('settings-button')), findsOneWidget);
+    });
+
+    testWidgets('tapping settings button invokes onOpenSettings callback', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      int settingsCalls = 0;
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          onOpenSettings: () async {
+            settingsCalls += 1;
+          },
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('settings-button')));
+      await tester.pumpAndSettle();
+      expect(settingsCalls, 1);
+    });
+
+    testWidgets('hides settings button when onOpenSettings is null', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+        ),
+      );
+
+      expect(find.byKey(const Key('settings-button')), findsNothing);
+    });
+
     testWidgets('invokes callback when lv changes (different lv connection)', (
       WidgetTester tester,
     ) async {
@@ -899,6 +951,7 @@ Widget _buildScreen({
   String lv = 'lv345678901',
   Future<void> Function()? onStopAllConnections,
   Future<void> Function()? onReconnectSameLv,
+  Future<void> Function()? onOpenSettings,
   bool debugMode = false,
   ConnectionMethod? connectionMethod,
   String? programTitle,
@@ -915,6 +968,7 @@ Widget _buildScreen({
       onStopAllConnections: onStopAllConnections ?? () async {},
       onReconnectSameLv: onReconnectSameLv ?? () async {},
       onDifferentLvConnected: (_, __) async {},
+      onOpenSettings: onOpenSettings,
       debugMode: debugMode,
       connectionMethod: connectionMethod,
       programTitle: programTitle,

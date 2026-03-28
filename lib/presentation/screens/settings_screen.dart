@@ -160,9 +160,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     _isOpeningLogin = true;
-    bool? loggedIn;
     try {
-      loggedIn = await Navigator.of(context).push<bool>(
+      await Navigator.of(context).push<bool>(
         MaterialPageRoute<bool>(
           builder: (_) => LoginScreen(userSessionStore: sessionStore),
         ),
@@ -173,11 +172,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (mounted) {
       await _refreshLoginState();
-      // After successful login, pop settings screen so the user
-      // returns to the previous screen (select or comment screen).
-      if (loggedIn == true && mounted) {
-        Navigator.of(context).pop();
-      }
     }
   }
 

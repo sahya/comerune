@@ -55,6 +55,7 @@ class _SelectScreenState extends State<SelectScreen> {
   late ConnectionStatus _previousStatus;
   ConnectionMethod? _connectionMethod;
   String? _lastConnectedLv;
+  final ValueNotifier<bool?> _loginStateNotifier = ValueNotifier<bool?>(null);
 
   @override
   void initState() {
@@ -67,6 +68,7 @@ class _SelectScreenState extends State<SelectScreen> {
     if (widget.settingsStore != null) {
       unawaited(_reloadSettingsFromStore());
     }
+    unawaited(_refreshLoginState());
   }
 
   @override
@@ -92,6 +94,7 @@ class _SelectScreenState extends State<SelectScreen> {
   @override
   void dispose() {
     widget.connectionSupervisor.removeListener(_onSupervisorChanged);
+    _loginStateNotifier.dispose();
     _settingsNotifier.dispose();
     _controller
       ..removeListener(_onInputChanged)
@@ -190,34 +193,64 @@ class _SelectScreenState extends State<SelectScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool hasSettingsAccess = widget.settingsStore != null;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('comerune')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            TextField(
-              key: const Key('select_screen_input'),
-              controller: _controller,
-              enabled: !_isConnectionInProgress,
-              keyboardType: TextInputType.url,
-              textInputAction: TextInputAction.done,
-              onSubmitted: _onSubmit,
-              decoration: const InputDecoration(hintText: 'lv番号またはURLを入力'),
+      appBar: AppBar(
+        title: const Text('comerune'),
+        actions: <Widget>[
+          if (hasSettingsAccess)
+            IconButton(
+              key: const Key('select_screen_settings_button'),
+              icon: const Icon(Icons.settings),
+              tooltip: '設定',
+              onPressed: () => _openSettings(context, widget.userSessionStore),
             ),
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerRight,
-              child: ElevatedButton(
-                key: const Key('select_screen_connect_button'),
-                onPressed:
-                    _canAttemptConnection ? () => unawaited(_connect()) : null,
-                child: const Text('接続開始'),
-              ),
+        ],
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          if (hasSettingsAccess)
+            ValueListenableBuilder<bool?>(
+              valueListenable: _loginStateNotifier,
+              builder: (BuildContext context, bool? isLoggedIn, Widget? _) {
+                return _LoginStatusBanner(
+                  isLoggedIn: isLoggedIn,
+                  onTapLogin: () =>
+                      _openSettings(context, widget.userSessionStore),
+                );
+              },
             ),
-          ],
-        ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                TextField(
+                  key: const Key('select_screen_input'),
+                  controller: _controller,
+                  enabled: !_isConnectionInProgress,
+                  keyboardType: TextInputType.url,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: _onSubmit,
+                  decoration: const InputDecoration(hintText: 'lv番号またはURLを入力'),
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: ElevatedButton(
+                    key: const Key('select_screen_connect_button'),
+                    onPressed: _canAttemptConnection
+                        ? () => unawaited(_connect())
+                        : null,
+                    child: const Text('接続開始'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -335,6 +368,26 @@ class _SelectScreenState extends State<SelectScreen> {
     );
 
     await _reloadSettingsFromStore();
+    await _refreshLoginState();
+  }
+
+  Future<void> _refreshLoginState() async {
+    final UserSessionStore? store = widget.userSessionStore;
+    if (store == null) {
+      _loginStateNotifier.value = null;
+      return;
+    }
+
+    String session;
+    try {
+      session = await store.load();
+    } on Exception {
+      session = '';
+    }
+    if (!mounted) {
+      return;
+    }
+    _loginStateNotifier.value = session.isNotEmpty;
   }
 
   Future<void> _reloadSettingsFromStore() async {
@@ -365,5 +418,69 @@ class _SelectScreenState extends State<SelectScreen> {
       case ConnectionStatus.reconnecting:
         return false;
     }
+  }
+}
+
+class _LoginStatusBanner extends StatelessWidget {
+  const _LoginStatusBanner({
+    required this.isLoggedIn,
+    required this.onTapLogin,
+  });
+
+  final bool? isLoggedIn;
+  final VoidCallback onTapLogin;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool? loggedIn = isLoggedIn;
+    if (loggedIn == null) {
+      return const SizedBox.shrink();
+    }
+
+    if (loggedIn) {
+      return Semantics(
+        label: 'ニコニコ ログイン済み',
+        child: Container(
+          key: const Key('login-status-banner-ok'),
+          width: double.infinity,
+          color: Colors.green.shade50,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: const Row(
+            children: <Widget>[
+              Icon(Icons.check_circle, color: Colors.green, size: 18),
+              SizedBox(width: 8),
+              Text('ニコニコ ログイン済み'),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Semantics(
+      button: true,
+      label: 'ログインが必要です。タップして設定を開く',
+      child: Material(
+        key: const Key('login-status-banner-required'),
+        color: Colors.orange.shade50,
+        child: InkWell(
+          onTap: onTapLogin,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: Row(
+              children: <Widget>[
+                Icon(Icons.warning_amber_rounded,
+                    color: Colors.orange.shade700, size: 18),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text('ログインが必要です。タップして設定を開く'),
+                ),
+                Icon(Icons.chevron_right, color: Colors.orange.shade700),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
