@@ -12,8 +12,7 @@ import 'models/submit_result.dart';
 class MethodChannelCommentSpeech implements CommentSpeechPlatform {
   static const _methodChannel =
       MethodChannel('jp.example.comment_speech/methods');
-  static const _eventChannel =
-      EventChannel('jp.example.comment_speech/events');
+  static const _eventChannel = EventChannel('jp.example.comment_speech/events');
 
   @override
   Future<void> initialize() async {
@@ -27,8 +26,7 @@ class MethodChannelCommentSpeech implements CommentSpeechPlatform {
 
   @override
   Future<void> stop({bool clearQueue = false}) async {
-    await _methodChannel
-        .invokeMethod<void>('stop', {'clearQueue': clearQueue});
+    await _methodChannel.invokeMethod<void>('stop', {'clearQueue': clearQueue});
   }
 
   @override
