@@ -2,5 +2,23 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
+  ],
+  "enabledManagers": ["pub"],
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 5,
+  "timezone": "Asia/Tokyo",
+  "schedule": [
+    "after 10pm every weekday",
+    "every weekend"
+  ],
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "enabled": true
+  },
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["major"],
+      "draftPR": true
+    }
   ]
 }
