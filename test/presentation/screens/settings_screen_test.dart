@@ -115,6 +115,26 @@ void main() {
       expect(ngWordsField.controller?.text, '^8+\$');
     });
 
+    testWidgets('saves access token when focus is lost', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      await _enterTextByKey(
+        tester,
+        const Key('access-token-field'),
+        'test-oauth-token-123',
+      );
+      await _focusFieldByKey(tester, const Key('bouyomi-host-field'));
+
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.niconicoAccessToken, 'test-oauth-token-123');
+    });
+
     testWidgets('saves text fields when focus is lost', (
       WidgetTester tester,
     ) async {
