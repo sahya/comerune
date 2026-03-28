@@ -78,5 +78,29 @@ void main() {
 
       expect(loaded.autoSaveCommentLog, isTrue);
     });
+
+    test('themeMode defaults to light when not stored', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.themeMode, AppThemeMode.light);
+    });
+
+    test('round-trips themeMode value', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      for (final AppThemeMode mode in AppThemeMode.values) {
+        final AppSettings original =
+            AppSettings.defaults.copyWith(themeMode: mode);
+        await store.save(original);
+
+        final AppSettings loaded = await store.load();
+
+        expect(loaded.themeMode, mode);
+      }
+    });
   });
 }
