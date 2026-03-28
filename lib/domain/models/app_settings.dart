@@ -86,6 +86,7 @@ class AppSettings {
     required this.suppressDuplicate,
     required this.ngWords,
     required this.pastCommentFetchCount,
+    required this.resolveUserName,
     required this.debugMode,
   });
 
@@ -108,6 +109,7 @@ class AppSettings {
     suppressDuplicate: true,
     ngWords: '',
     pastCommentFetchCount: PastCommentFetchCount.count100,
+    resolveUserName: true,
     debugMode: false,
   );
 
@@ -129,6 +131,7 @@ class AppSettings {
   final bool suppressDuplicate;
   final String ngWords;
   final PastCommentFetchCount pastCommentFetchCount;
+  final bool resolveUserName;
   final bool debugMode;
 
   AppSettings copyWith({
@@ -150,6 +153,7 @@ class AppSettings {
     bool? suppressDuplicate,
     String? ngWords,
     PastCommentFetchCount? pastCommentFetchCount,
+    bool? resolveUserName,
     bool? debugMode,
   }) {
     return AppSettings(
@@ -172,6 +176,7 @@ class AppSettings {
       ngWords: ngWords ?? this.ngWords,
       pastCommentFetchCount:
           pastCommentFetchCount ?? this.pastCommentFetchCount,
+      resolveUserName: resolveUserName ?? this.resolveUserName,
       debugMode: debugMode ?? this.debugMode,
     );
   }
