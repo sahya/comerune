@@ -135,6 +135,18 @@ Breaking changes: append `!` to type or add `BREAKING CHANGE:` in footer.
 - When a change is risky, explain why in terms of future breakage, not taste.
 - Also follow the rules in `.ai/flutter_rules.md`.
 
+## 環境前提チェック
+
+Flutter コマンド（`flutter analyze`、`flutter test`、`dart format` など）を実行する前に、必ず `flutter --version` を実行して Flutter SDK がインストールされているか確認すること。
+
+Flutter SDK が見つからない場合（コマンドが存在しない、PATH が通っていないなど）:
+1. **作業を中断する** — Flutter が必要な操作（ビルド、テスト、解析、フォーマット）を一切実行してはならない
+2. **ユーザーに確認する** — 「Flutter SDK がインストールされていません。インストールしてもよろしいですか？」と必ず許可を求める
+3. **許可が得られた場合のみ** インストール手順を案内または実行する
+4. **許可が得られなかった場合** — Flutter を必要とするタスクはスキップし、その旨をユーザーに報告する
+
+この確認はセッションごとに最低1回行うこと。Flutter の存在を仮定して進めてはならない。
+
 ## Post-Code-Update Requirements
 
 ### 必須チェック
