@@ -26,6 +26,7 @@ class SelectScreen extends StatefulWidget {
     this.requestUserNameResolve,
     this.userNameListenable,
     this.supplierUserIdNotifier,
+    this.themeModeNotifier,
     super.key,
   });
 
@@ -41,6 +42,7 @@ class SelectScreen extends StatefulWidget {
   final void Function(String userId)? requestUserNameResolve;
   final Listenable? userNameListenable;
   final ValueNotifier<String?>? supplierUserIdNotifier;
+  final ValueNotifier<AppThemeMode>? themeModeNotifier;
 
   @override
   State<SelectScreen> createState() => _SelectScreenState();
@@ -263,6 +265,7 @@ class _SelectScreenState extends State<SelectScreen> {
               nameResolutionEnabled ? widget.requestUserNameResolve : null,
           ngUserIds: _settingsNotifier.value.ngUserIdSet,
           onToggleNgUser: _toggleNgUser,
+          themeMode: _settingsNotifier.value.themeMode,
         );
       },
     );
@@ -343,6 +346,7 @@ class _SelectScreenState extends State<SelectScreen> {
     }
 
     _settingsNotifier.value = loaded;
+    widget.themeModeNotifier?.value = loaded.themeMode;
   }
 
   bool _isTerminalLike(ConnectionStatus status) {

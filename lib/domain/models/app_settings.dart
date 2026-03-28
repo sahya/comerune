@@ -1,3 +1,60 @@
+enum AppThemeMode {
+  light,
+  dark,
+  protanopia,
+  deuteranopia,
+  tritanopia,
+}
+
+extension AppThemeModeValue on AppThemeMode {
+  String get storageValue {
+    switch (this) {
+      case AppThemeMode.light:
+        return 'light';
+      case AppThemeMode.dark:
+        return 'dark';
+      case AppThemeMode.protanopia:
+        return 'protanopia';
+      case AppThemeMode.deuteranopia:
+        return 'deuteranopia';
+      case AppThemeMode.tritanopia:
+        return 'tritanopia';
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case AppThemeMode.light:
+        return 'ライト';
+      case AppThemeMode.dark:
+        return 'ダーク';
+      case AppThemeMode.protanopia:
+        return '1型色覚（P型）';
+      case AppThemeMode.deuteranopia:
+        return '2型色覚（D型）';
+      case AppThemeMode.tritanopia:
+        return '3型色覚（T型）';
+    }
+  }
+
+  static AppThemeMode fromStorageValue(String? raw) {
+    switch (raw) {
+      case 'dark':
+        return AppThemeMode.dark;
+      case 'protanopia':
+        return AppThemeMode.protanopia;
+      case 'deuteranopia':
+        return AppThemeMode.deuteranopia;
+      case 'tritanopia':
+        return AppThemeMode.tritanopia;
+      case 'light':
+      case null:
+      default:
+        return AppThemeMode.light;
+    }
+  }
+}
+
 enum SpeechEngine {
   bouyomi,
   voicevox,
@@ -68,6 +125,7 @@ extension PastCommentFetchCountValue on PastCommentFetchCount {
 
 class AppSettings {
   const AppSettings({
+    required this.themeMode,
     required this.autoReadEnabled,
     required this.speechEngine,
     required this.bouyomiHost,
@@ -93,6 +151,7 @@ class AppSettings {
   });
 
   static const AppSettings defaults = AppSettings(
+    themeMode: AppThemeMode.light,
     autoReadEnabled: false,
     speechEngine: SpeechEngine.bouyomi,
     bouyomiHost: '',
@@ -117,6 +176,7 @@ class AppSettings {
     debugMode: false,
   );
 
+  final AppThemeMode themeMode;
   final bool autoReadEnabled;
   final SpeechEngine speechEngine;
   final String bouyomiHost;
@@ -179,6 +239,7 @@ class AppSettings {
   }
 
   AppSettings copyWith({
+    AppThemeMode? themeMode,
     bool? autoReadEnabled,
     SpeechEngine? speechEngine,
     String? bouyomiHost,
@@ -203,6 +264,7 @@ class AppSettings {
     bool? debugMode,
   }) {
     return AppSettings(
+      themeMode: themeMode ?? this.themeMode,
       autoReadEnabled: autoReadEnabled ?? this.autoReadEnabled,
       speechEngine: speechEngine ?? this.speechEngine,
       bouyomiHost: bouyomiHost ?? this.bouyomiHost,

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/models/app_message.dart';
+import '../../domain/models/app_settings.dart';
+import '../theme/app_theme.dart';
 
 class UserDetailSheet extends StatelessWidget {
   const UserDetailSheet({
@@ -10,6 +12,7 @@ class UserDetailSheet extends StatelessWidget {
     required this.allMessages,
     required this.isNgUser,
     required this.onToggleNgUser,
+    this.themeMode = AppThemeMode.light,
   });
 
   final String userId;
@@ -17,6 +20,7 @@ class UserDetailSheet extends StatelessWidget {
   final List<AppMessage> allMessages;
   final bool isNgUser;
   final VoidCallback onToggleNgUser;
+  final AppThemeMode themeMode;
 
   @override
   Widget build(BuildContext context) {
@@ -32,13 +36,19 @@ class UserDetailSheet extends StatelessWidget {
       maxChildSize: 0.85,
       expand: false,
       builder: (BuildContext context, ScrollController scrollController) {
+        final AppThemeColors themeColors = AppTheme.colorsFor(themeMode);
         return Column(
           children: <Widget>[
             _buildHandle(),
-            _buildHeader(context),
+            _buildHeader(context, themeColors),
             const Divider(height: 1),
             Expanded(
-              child: _buildCommentList(context, userComments, scrollController),
+              child: _buildCommentList(
+                context,
+                userComments,
+                scrollController,
+                themeColors,
+              ),
             ),
           ],
         );
@@ -47,20 +57,21 @@ class UserDetailSheet extends StatelessWidget {
   }
 
   Widget _buildHandle() {
+    final AppThemeColors themeColors = AppTheme.colorsFor(themeMode);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Container(
         width: 40,
         height: 4,
         decoration: BoxDecoration(
-          color: Colors.grey.shade400,
+          color: themeColors.sheetHandleColor,
           borderRadius: BorderRadius.circular(2),
         ),
       ),
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader(BuildContext context, AppThemeColors themeColors) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
@@ -81,6 +92,7 @@ class UserDetailSheet extends StatelessWidget {
                 key: const Key('ng-user-toggle-button'),
                 isNgUser: isNgUser,
                 onPressed: onToggleNgUser,
+                themeColors: themeColors,
               ),
             ],
           ),
@@ -105,6 +117,7 @@ class UserDetailSheet extends StatelessWidget {
     BuildContext context,
     List<AppMessage> userComments,
     ScrollController scrollController,
+    AppThemeColors themeColors,
   ) {
     if (userComments.isEmpty) {
       return const Center(
@@ -139,6 +152,7 @@ class UserDetailSheet extends StatelessWidget {
               return _UserCommentRow(
                 key: Key('user-comment-row-$index'),
                 message: message,
+                themeColors: themeColors,
               );
             },
           ),
@@ -153,10 +167,12 @@ class _NgUserButton extends StatelessWidget {
     super.key,
     required this.isNgUser,
     required this.onPressed,
+    required this.themeColors,
   });
 
   final bool isNgUser;
   final VoidCallback onPressed;
+  final AppThemeColors themeColors;
 
   @override
   Widget build(BuildContext context) {
@@ -165,13 +181,17 @@ class _NgUserButton extends StatelessWidget {
       icon: Icon(
         isNgUser ? Icons.person_off : Icons.block,
         size: 16,
-        color: isNgUser ? Colors.red : Colors.grey.shade600,
+        color: isNgUser
+            ? themeColors.ngUserActiveColor
+            : themeColors.subtleTextColor,
       ),
       label: Text(
         isNgUser ? 'NG解除' : 'NG登録',
         style: TextStyle(
           fontSize: 12,
-          color: isNgUser ? Colors.red : Colors.grey.shade600,
+          color: isNgUser
+              ? themeColors.ngUserActiveColor
+              : themeColors.subtleTextColor,
         ),
       ),
       style: TextButton.styleFrom(
@@ -187,9 +207,11 @@ class _UserCommentRow extends StatelessWidget {
   const _UserCommentRow({
     super.key,
     required this.message,
+    required this.themeColors,
   });
 
   final AppMessage message;
+  final AppThemeColors themeColors;
 
   @override
   Widget build(BuildContext context) {
@@ -208,7 +230,7 @@ class _UserCommentRow extends StatelessWidget {
             timestamp,
             style: TextStyle(
               fontSize: 12,
-              color: Colors.grey.shade600,
+              color: themeColors.subtleTextColor,
               fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
             ),
           ),
