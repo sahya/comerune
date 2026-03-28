@@ -748,7 +748,7 @@ class _ProgramTitleBar extends StatelessWidget {
     return Container(
       width: double.infinity,
       color: themeColors.programTitleBarBackground,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
       child: Text(
         title,
         key: const Key('program-title-text'),
@@ -904,7 +904,7 @@ class _CommentRow extends StatelessWidget {
       onLongPress: onLongPress,
       child: Container(
         color: _backgroundColor(message),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
         child: Text(
           _lineText(message),
           style: TextStyle(fontSize: fontSize),
