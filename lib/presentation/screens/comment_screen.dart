@@ -599,7 +599,7 @@ class _ProgramTitleBar extends StatelessWidget {
           ),
           if (broadcasterName != null)
             Text(
-              broadcasterName!,
+              '配信者: $broadcasterName',
               key: const Key('broadcaster-name-text'),
               style: TextStyle(
                 fontSize: 12,
