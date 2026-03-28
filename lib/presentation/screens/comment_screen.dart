@@ -40,6 +40,7 @@ class CommentScreen extends StatefulWidget {
     this.debugMode = false,
     this.connectionMethod,
     this.programTitle,
+    this.broadcasterName,
     this.resolveUserName,
     this.requestUserNameResolve,
   });
@@ -55,6 +56,7 @@ class CommentScreen extends StatefulWidget {
   final bool debugMode;
   final ConnectionMethod? connectionMethod;
   final String? programTitle;
+  final String? broadcasterName;
 
   /// Returns the cached resolved name for a user ID, or null.
   final String? Function(String userId)? resolveUserName;
@@ -235,6 +237,7 @@ class _CommentScreenState extends State<CommentScreen> {
                   _ProgramTitleBar(
                     key: const Key('program-title-bar'),
                     title: widget.programTitle!,
+                    broadcasterName: widget.broadcasterName,
                   ),
                 _StatusBar(
                   key: const Key('status-bar'),
@@ -571,9 +574,14 @@ class _CommentScreenState extends State<CommentScreen> {
 }
 
 class _ProgramTitleBar extends StatelessWidget {
-  const _ProgramTitleBar({super.key, required this.title});
+  const _ProgramTitleBar({
+    super.key,
+    required this.title,
+    this.broadcasterName,
+  });
 
   final String title;
+  final String? broadcasterName;
 
   @override
   Widget build(BuildContext context) {
@@ -581,10 +589,24 @@ class _ProgramTitleBar extends StatelessWidget {
       width: double.infinity,
       color: Colors.indigo.shade50,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Text(
-        title,
-        key: const Key('program-title-text'),
-        style: const TextStyle(fontWeight: FontWeight.bold),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            title,
+            key: const Key('program-title-text'),
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          if (broadcasterName != null)
+            Text(
+              broadcasterName!,
+              key: const Key('broadcaster-name-text'),
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey.shade700,
+              ),
+            ),
+        ],
       ),
     );
   }

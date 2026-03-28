@@ -25,6 +25,7 @@ class SelectScreen extends StatefulWidget {
     this.resolveUserName,
     this.requestUserNameResolve,
     this.userNameListenable,
+    this.supplierUserIdNotifier,
     super.key,
   });
 
@@ -39,6 +40,7 @@ class SelectScreen extends StatefulWidget {
   final String? Function(String userId)? resolveUserName;
   final void Function(String userId)? requestUserNameResolve;
   final Listenable? userNameListenable;
+  final ValueNotifier<String?>? supplierUserIdNotifier;
 
   @override
   State<SelectScreen> createState() => _SelectScreenState();
@@ -224,6 +226,8 @@ class _SelectScreenState extends State<SelectScreen> {
       if (widget.timelineStore != null) widget.timelineStore!,
       if (widget.programTitleNotifier != null) widget.programTitleNotifier!,
       if (widget.userNameListenable != null) widget.userNameListenable!,
+      if (widget.supplierUserIdNotifier != null)
+        widget.supplierUserIdNotifier!,
     ];
 
     return ListenableBuilder(
@@ -231,6 +235,12 @@ class _SelectScreenState extends State<SelectScreen> {
       builder: (BuildContext context, Widget? _) {
         final List<AppMessage> messages =
             widget.timelineStore?.messages ?? const <AppMessage>[];
+        final String? supplierUserId =
+            widget.supplierUserIdNotifier?.value;
+        final String? broadcasterName = supplierUserId != null
+            ? widget.resolveUserName?.call(supplierUserId)
+            : null;
+
         return CommentScreen(
           lv: lv,
           connectionSupervisor: widget.connectionSupervisor,
@@ -244,6 +254,7 @@ class _SelectScreenState extends State<SelectScreen> {
           debugMode: _settingsNotifier.value.debugMode,
           connectionMethod: _connectionMethod,
           programTitle: widget.programTitleNotifier?.value,
+          broadcasterName: broadcasterName,
           resolveUserName: _settingsNotifier.value.resolveUserName
               ? widget.resolveUserName
               : null,
