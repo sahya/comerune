@@ -10,6 +10,7 @@ import 'application/timeline/timeline_store.dart';
 import 'data/auth/user_session_store.dart';
 import 'data/connection/program_info_resolver.dart';
 import 'data/connection/web_socket_channel_legacy_web_socket.dart';
+import 'data/user/user_name_resolver.dart';
 import 'domain/connection/connection_clients.dart' as reconnect;
 import 'domain/connection/connection_supervisor.dart';
 import 'domain/connection/legacy_comment_client.dart' as legacy_impl;
@@ -66,6 +67,8 @@ class _ComeruneAppState extends State<ComeruneApp> {
 
   String _currentLv = '';
   int _ndgrHistoryCount = 100;
+  String? _programTitle;
+  late final UserNameResolver _userNameResolver;
 
   @override
   void initState() {
@@ -73,11 +76,17 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _ndgrHistoryCount =
         widget.initialSettings.pastCommentFetchCount.historyCount;
 
+    _userNameResolver = UserNameResolver();
     _timelineStore = TimelineStore(capacity: _ndgrHistoryCount);
     _sessionWsClient = _SessionWsClientAdapter(
       lvProvider: () => _currentLv,
       userSessionProvider: () => widget.userSessionStore.load(),
       programInfoResolver: ProgramInfoResolver(),
+      onProgramTitleResolved: (String title) {
+        setState(() {
+          _programTitle = title;
+        });
+      },
     );
     _ndgrClient = _NdgrClientAdapter(
       client: ndgr_impl.NdgrClient(),
@@ -110,11 +119,13 @@ class _ComeruneAppState extends State<ComeruneApp> {
     unawaited(_ndgrClient.dispose());
     unawaited(_legacyCommentClient.dispose());
     _timelineStore.dispose();
+    _userNameResolver.dispose();
     super.dispose();
   }
 
   Future<void> _prepareConnection(String lv, AppSettings settings) async {
     _currentLv = lv;
+    _programTitle = null;
     _ndgrHistoryCount = settings.pastCommentFetchCount.historyCount;
     _timelineStore.setCapacity(_ndgrHistoryCount);
   }
@@ -130,6 +141,8 @@ class _ComeruneAppState extends State<ComeruneApp> {
         initialSettings: widget.initialSettings,
         onPrepareConnection: _prepareConnection,
         userSessionStore: widget.userSessionStore,
+        programTitle: _programTitle,
+        userNameResolver: _userNameResolver,
       ),
     );
   }
@@ -140,13 +153,16 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     required String Function() lvProvider,
     required Future<String> Function() userSessionProvider,
     required ProgramInfoResolver programInfoResolver,
+    void Function(String title)? onProgramTitleResolved,
   })  : _lvProvider = lvProvider,
         _userSessionProvider = userSessionProvider,
-        _programInfoResolver = programInfoResolver;
+        _programInfoResolver = programInfoResolver,
+        _onProgramTitleResolved = onProgramTitleResolved;
 
   final String Function() _lvProvider;
   final Future<String> Function() _userSessionProvider;
   final ProgramInfoResolver _programInfoResolver;
+  final void Function(String title)? _onProgramTitleResolved;
   final StreamController<reconnect.SessionWsEvent> _eventsController =
       StreamController<reconnect.SessionWsEvent>.broadcast();
 
@@ -171,15 +187,20 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     final String userSession = await _userSessionProvider();
     if (userSession.isNotEmpty) {
       try {
-        final Uri viewUri = await _programInfoResolver.resolve(
+        final ProgramInfo programInfo = await _programInfoResolver.resolve(
           lv: lv,
           userSession: userSession,
         );
+        if (programInfo.title != null) {
+          _onProgramTitleResolved?.call(programInfo.title!);
+        }
         log(
           'Resolved NDGR endpoint via programinfo API',
           name: 'SessionWsClientAdapter',
         );
-        return reconnect.SessionEndpoints(ndgrViewApiUri: viewUri);
+        return reconnect.SessionEndpoints(
+          ndgrViewApiUri: programInfo.viewUri,
+        );
       } on ProgramInfoResolveException catch (error) {
         log(
           'programinfo resolution failed, falling back to WebSocket: $error',

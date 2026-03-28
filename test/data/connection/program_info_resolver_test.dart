@@ -27,15 +27,16 @@ void main() {
         httpClient: httpClient,
       );
 
-      final Uri result = await resolver.resolve(
+      final ProgramInfo result = await resolver.resolve(
         lv: 'lv350186414',
         userSession: 'user_session_abc123',
       );
 
       expect(
-        result.toString(),
+        result.viewUri.toString(),
         'https://mpn.live.nicovideo.jp/api/view/v4/BBzh6D87sTyy',
       );
+      expect(result.title, 'Test Program');
 
       expect(httpClient.requests, hasLength(1));
       final _CapturedRequest request = httpClient.requests[0];
