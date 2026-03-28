@@ -96,6 +96,38 @@ class DefaultCommentNormalizerTest {
         assertNull(result.skipReason)
     }
 
+    // --- Blank/Empty Input Tests ---
+
+    @Test
+    fun `empty string is skipped with blank reason`() {
+        val result = normalizer.normalize(raw(""), defaultSettings)
+        assertEquals("blank", result.skipReason)
+    }
+
+    @Test
+    fun `whitespace only is skipped with blank reason`() {
+        val result = normalizer.normalize(raw("   "), defaultSettings)
+        assertEquals("blank", result.skipReason)
+    }
+
+    @Test
+    fun `tab and newline only is skipped with blank reason`() {
+        val result = normalizer.normalize(raw("\t\n"), defaultSettings)
+        assertEquals("blank", result.skipReason)
+    }
+
+    @Test
+    fun `id field is passed through to NormalizedComment`() {
+        val comment = RawComment(
+            id = "custom-id-42",
+            text = "hello",
+            userId = "user1",
+            postedAtEpochMs = 0L
+        )
+        val result = normalizer.normalize(comment, defaultSettings)
+        assertEquals("custom-id-42", result.id)
+    }
+
     // --- Edge Case Tests ---
 
     @Test
@@ -111,9 +143,23 @@ class DefaultCommentNormalizerTest {
     }
 
     @Test
+    fun `two ws compress to わら - boundary of 2`() {
+        val result = normalizer.normalize(raw("ww"), defaultSettings)
+        assertEquals("わら", result.normalizedText)
+        assertNull(result.skipReason)
+    }
+
+    @Test
     fun `two 8s are not compressed - requires 3 or more`() {
         val result = normalizer.normalize(raw("88"), defaultSettings)
         assertEquals("88", result.normalizedText)
+    }
+
+    @Test
+    fun `three 8s compress to はくしゅ - boundary of 3`() {
+        val result = normalizer.normalize(raw("888"), defaultSettings)
+        assertEquals("はくしゅ", result.normalizedText)
+        assertNull(result.skipReason)
     }
 
     @Test

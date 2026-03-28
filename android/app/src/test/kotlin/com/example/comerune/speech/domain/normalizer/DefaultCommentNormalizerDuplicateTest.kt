@@ -82,6 +82,30 @@ class DefaultCommentNormalizerDuplicateTest {
     }
 
     @Test
+    fun `postedAtEpochMs does not affect duplicate detection`() {
+        val farFuture = RawComment(
+            id = "test-id",
+            text = "hello",
+            userId = "user1",
+            postedAtEpochMs = 9_999_999_999_999L
+        )
+        val first = normalizer.normalize(farFuture, settings)
+        assertNull(first.skipReason)
+
+        // Same text from different user, still within window based on timeProvider, not postedAtEpochMs
+        val second = normalizer.normalize(
+            RawComment(
+                id = "test-id-2",
+                text = "hello",
+                userId = "user2",
+                postedAtEpochMs = 0L
+            ),
+            settings
+        )
+        assertEquals("duplicate", second.skipReason)
+    }
+
+    @Test
     fun `normalizer without detector does not check duplicates`() {
         val plainNormalizer = DefaultCommentNormalizer()
 
