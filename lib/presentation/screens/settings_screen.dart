@@ -781,6 +781,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       divisions:
                           (commentFontSizeMax - commentFontSizeMin).round(),
                       suffix: 'px',
+                      sweetSpotMin: 12,
+                      sweetSpotMax: 18,
+                      sweetSpotLabel: 'おすすめ',
                       onChanged: (int value) {
                         _saveNextSettings(
                           settings.copyWith(commentFontSize: value.toDouble()),
@@ -889,6 +892,9 @@ class _IntSliderField extends StatelessWidget {
     required this.value,
     required this.onChanged,
     this.suffix = '',
+    this.sweetSpotMin,
+    this.sweetSpotMax,
+    this.sweetSpotLabel,
   });
 
   final String label;
@@ -898,9 +904,14 @@ class _IntSliderField extends StatelessWidget {
   final int value;
   final ValueChanged<int> onChanged;
   final String suffix;
+  final int? sweetSpotMin;
+  final int? sweetSpotMax;
+  final String? sweetSpotLabel;
 
   @override
   Widget build(BuildContext context) {
+    final bool hasSweetSpot = sweetSpotMin != null && sweetSpotMax != null;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -911,18 +922,115 @@ class _IntSliderField extends StatelessWidget {
             Text(value == -1 ? '-1 (既定)' : '$value$suffix'),
           ],
         ),
-        Slider(
-          min: min.toDouble(),
-          max: max.toDouble(),
-          divisions: divisions,
-          value: value.toDouble(),
-          semanticFormatterCallback:
-              suffix.isNotEmpty ? (double v) => '${v.round()}$suffix' : null,
-          onChanged: (double next) {
-            onChanged(next.round());
-          },
-        ),
+        if (hasSweetSpot)
+          _SweetSpotSlider(
+            min: min,
+            max: max,
+            divisions: divisions,
+            value: value,
+            suffix: suffix,
+            sweetSpotMin: sweetSpotMin!,
+            sweetSpotMax: sweetSpotMax!,
+            sweetSpotLabel: sweetSpotLabel,
+            onChanged: onChanged,
+          )
+        else
+          Slider(
+            min: min.toDouble(),
+            max: max.toDouble(),
+            divisions: divisions,
+            value: value.toDouble(),
+            semanticFormatterCallback:
+                suffix.isNotEmpty ? (double v) => '${v.round()}$suffix' : null,
+            onChanged: (double next) {
+              onChanged(next.round());
+            },
+          ),
       ],
+    );
+  }
+}
+
+class _SweetSpotSlider extends StatelessWidget {
+  const _SweetSpotSlider({
+    required this.min,
+    required this.max,
+    required this.divisions,
+    required this.value,
+    required this.suffix,
+    required this.sweetSpotMin,
+    required this.sweetSpotMax,
+    this.sweetSpotLabel,
+    required this.onChanged,
+  });
+
+  final int min;
+  final int max;
+  final int divisions;
+  final int value;
+  final String suffix;
+  final int sweetSpotMin;
+  final int sweetSpotMax;
+  final String? sweetSpotLabel;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        // Slider has 24px horizontal padding on each side by default.
+        const double sliderPadding = 24.0;
+        final double trackWidth = constraints.maxWidth - sliderPadding * 2;
+        final double range = (max - min).toDouble();
+        final double leftFraction = (sweetSpotMin - min) / range;
+        final double rightFraction = (sweetSpotMax - min) / range;
+        final double left = sliderPadding + trackWidth * leftFraction;
+        final double width = trackWidth * (rightFraction - leftFraction);
+
+        return Stack(
+          clipBehavior: Clip.none,
+          children: <Widget>[
+            Positioned(
+              left: left,
+              top: 16,
+              width: width,
+              height: 20,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: const Color(0x1A4CAF50),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+            Slider(
+              min: min.toDouble(),
+              max: max.toDouble(),
+              divisions: divisions,
+              value: value.toDouble(),
+              semanticFormatterCallback: suffix.isNotEmpty
+                  ? (double v) => '${v.round()}$suffix'
+                  : null,
+              onChanged: (double next) {
+                onChanged(next.round());
+              },
+            ),
+            if (sweetSpotLabel != null)
+              Positioned(
+                left: left,
+                top: 40,
+                width: width,
+                child: Text(
+                  sweetSpotLabel!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.grey.shade500,
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
