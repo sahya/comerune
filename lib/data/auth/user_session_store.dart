@@ -1,5 +1,6 @@
 import 'dart:developer';
 
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Stores the niconico user_session cookie value.
@@ -7,42 +8,82 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// The user_session cookie is obtained when a user logs in to niconico.
 /// It is used to authenticate API calls via the X-Niconico-Session header
 /// (same approach as N Air, the official niconico streaming tool).
-///
-/// Uses SharedPreferences as the underlying storage for now.
-/// When flutter_secure_storage is added as a dependency, this class
-/// should be updated to use it instead for secure credential storage.
 abstract class UserSessionStore {
   Future<String> load();
   Future<void> save(String userSession);
   Future<void> clear();
 }
 
-/// SharedPreferences-backed implementation.
+/// Secure storage-backed implementation using flutter_secure_storage.
 ///
-/// NOTE: SharedPreferences stores data in plaintext. For production use,
-/// migrate to flutter_secure_storage (Android Keystore / iOS Keychain).
-/// See: https://github.com/sahya/comerune/issues/50
-class SharedPreferencesUserSessionStore implements UserSessionStore {
-  SharedPreferencesUserSessionStore(this._prefs);
+/// Uses Android Keystore on Android and Keychain on iOS for
+/// encrypted credential storage. On first use, automatically migrates
+/// any existing plaintext session from SharedPreferences.
+class SecureUserSessionStore implements UserSessionStore {
+  SecureUserSessionStore({
+    required SharedPreferences prefs,
+    FlutterSecureStorage? secureStorage,
+  })  : _prefs = prefs,
+        _secureStorage = secureStorage ?? const FlutterSecureStorage();
 
   final SharedPreferences _prefs;
+  final FlutterSecureStorage _secureStorage;
 
-  static const String _key = 'auth.userSession';
+  static const String _secureKey = 'auth.userSession';
+  static const String _legacyPrefsKey = 'auth.userSession';
+
+  bool _migrated = false;
 
   @override
   Future<String> load() async {
-    return _prefs.getString(_key) ?? '';
+    await _migrateIfNeeded();
+    return await _secureStorage.read(key: _secureKey) ?? '';
   }
 
   @override
   Future<void> save(String userSession) async {
-    await _prefs.setString(_key, userSession);
+    await _secureStorage.write(key: _secureKey, value: userSession);
     log('User session saved', name: 'UserSessionStore');
   }
 
   @override
   Future<void> clear() async {
-    await _prefs.remove(_key);
+    await _secureStorage.delete(key: _secureKey);
     log('User session cleared', name: 'UserSessionStore');
+  }
+
+  /// Migrates from SharedPreferences (plaintext) to secure storage.
+  /// Runs at most once per app lifetime. Deletes the legacy key after
+  /// successful migration.
+  Future<void> _migrateIfNeeded() async {
+    if (_migrated) {
+      return;
+    }
+    _migrated = true;
+
+    final String? legacy = _prefs.getString(_legacyPrefsKey);
+    if (legacy == null || legacy.isEmpty) {
+      return;
+    }
+
+    // Check if secure storage already has a value (no need to overwrite)
+    final String? existing = await _secureStorage.read(key: _secureKey);
+    if (existing != null && existing.isNotEmpty) {
+      // Secure storage already has data — just delete legacy
+      await _prefs.remove(_legacyPrefsKey);
+      log(
+        'Removed legacy plaintext session (secure storage already populated)',
+        name: 'UserSessionStore',
+      );
+      return;
+    }
+
+    // Migrate: copy to secure storage, then delete from SharedPreferences
+    await _secureStorage.write(key: _secureKey, value: legacy);
+    await _prefs.remove(_legacyPrefsKey);
+    log(
+      'Migrated user session from SharedPreferences to secure storage',
+      name: 'UserSessionStore',
+    );
   }
 }
