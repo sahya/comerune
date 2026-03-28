@@ -241,6 +241,37 @@ void main() {
       expect(loaded.themeMode, AppThemeMode.dark);
     });
 
+    testWidgets('theme dropdown updates themeModeNotifier immediately', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final ValueNotifier<AppThemeMode> themeNotifier =
+          ValueNotifier<AppThemeMode>(AppThemeMode.light);
+
+      await tester.pumpWidget(
+        _buildScreen(settingsStore, themeModeNotifier: themeNotifier),
+      );
+      await tester.pumpAndSettle();
+
+      expect(themeNotifier.value, AppThemeMode.light);
+
+      // Open dropdown and select dark
+      await _scrollToKey(tester, const Key('theme-mode-dropdown'));
+      await tester.tap(
+        find.byKey(const Key('theme-mode-dropdown')),
+        warnIfMissed: false,
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('ダーク').last);
+      await tester.pumpAndSettle();
+
+      expect(themeNotifier.value, AppThemeMode.dark);
+
+      themeNotifier.dispose();
+    });
+
     testWidgets('saves text fields when focus is lost', (
       WidgetTester tester,
     ) async {
@@ -270,11 +301,13 @@ void main() {
 Widget _buildScreen(
   SettingsStore settingsStore, {
   UserSessionStore? userSessionStore,
+  ValueNotifier<AppThemeMode>? themeModeNotifier,
 }) {
   return MaterialApp(
     home: SettingsScreen(
       settingsStore: settingsStore,
       userSessionStore: userSessionStore,
+      themeModeNotifier: themeModeNotifier,
     ),
   );
 }
