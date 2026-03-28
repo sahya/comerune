@@ -658,88 +658,88 @@ class _FollowProgramTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final String? elapsed = program.elapsedLabel();
+    final String semanticsLabel = _buildSemanticsLabel(elapsed);
 
-    return InkWell(
-      onTap: enabled ? onTap : null,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        child: Row(
-          children: <Widget>[
-            _buildIconWithLiveBadge(),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Text(
-                    program.title,
-                    style: theme.textTheme.bodyMedium,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Row(
-                    children: <Widget>[
-                      Flexible(
-                        child: Text(
-                          _buildSubtitle(),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 6),
-            if (elapsed != null) ...<Widget>[
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Icon(Icons.access_time, size: 11,
-                      color: theme.colorScheme.outline),
-                  const SizedBox(width: 3),
-                  Text(
-                    elapsed,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.outline,
+    return Semantics(
+      button: true,
+      label: semanticsLabel,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(
+            children: <Widget>[
+              _buildIconWithLiveIndicator(theme),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      program.title,
+                      style: theme.textTheme.bodyMedium,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 2),
+                    Text(
+                      _formatProviderInfo(),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 8),
+              if (elapsed != null) ...<Widget>[
+                Icon(Icons.access_time,
+                    size: 11, color: theme.colorScheme.outline),
+                const SizedBox(width: 3),
+                Text(
+                  elapsed,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.outline,
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+              Icon(
+                Icons.play_circle_outline,
+                size: 20,
+                color: enabled
+                    ? theme.colorScheme.primary
+                    : theme.disabledColor,
+              ),
             ],
-            Icon(
-              Icons.play_circle_outline,
-              size: 20,
-              color: enabled
-                  ? theme.colorScheme.primary
-                  : theme.disabledColor,
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  /// Builds subtitle combining provider name, community name, and program ID.
-  String _buildSubtitle() {
-    final StringBuffer sb = StringBuffer(program.providerName);
-    final String? community = program.communityName;
-    if (community != null && community.isNotEmpty) {
-      sb.write(' / $community');
+  String _buildSemanticsLabel(String? elapsed) {
+    final StringBuffer sb = StringBuffer('${program.providerName}の放送');
+    sb.write(' ${program.title}');
+    if (elapsed != null) {
+      sb.write(' $elapsed経過');
     }
-    sb.write(' - ${program.programId}');
+    sb.write(' タップして接続');
     return sb.toString();
   }
 
-  /// Builds icon with a small red live indicator dot in the bottom-right.
-  Widget _buildIconWithLiveBadge() {
+  String _formatProviderInfo() {
+    final String? community = program.communityName;
+    if (community != null && community.isNotEmpty) {
+      return '${program.providerName} / $community - ${program.programId}';
+    }
+    return '${program.providerName} - ${program.programId}';
+  }
+
+  Widget _buildIconWithLiveIndicator(ThemeData theme) {
     return SizedBox(
       width: 40,
       height: 40,
@@ -758,7 +758,10 @@ class _FollowProgramTile extends StatelessWidget {
               decoration: BoxDecoration(
                 color: Colors.red,
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 1.5),
+                border: Border.all(
+                  color: theme.colorScheme.surface,
+                  width: 1.5,
+                ),
               ),
             ),
           ),
@@ -775,6 +778,8 @@ class _FollowProgramTile extends StatelessWidget {
         width: 40,
         height: 40,
         fit: BoxFit.cover,
+        cacheWidth: 80,
+        cacheHeight: 80,
         errorBuilder: (_, __, ___) => _buildFallbackIcon(),
       );
     }
