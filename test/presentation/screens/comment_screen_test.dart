@@ -512,8 +512,7 @@ void main() {
       expect(find.text('配信者: テスト配信者'), findsOneWidget);
     });
 
-    testWidgets(
-        'hides broadcaster name when broadcasterName is null', (
+    testWidgets('hides broadcaster name when broadcasterName is null', (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();

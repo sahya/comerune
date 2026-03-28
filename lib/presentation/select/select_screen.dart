@@ -226,8 +226,7 @@ class _SelectScreenState extends State<SelectScreen> {
       if (widget.timelineStore != null) widget.timelineStore!,
       if (widget.programTitleNotifier != null) widget.programTitleNotifier!,
       if (widget.userNameListenable != null) widget.userNameListenable!,
-      if (widget.supplierUserIdNotifier != null)
-        widget.supplierUserIdNotifier!,
+      if (widget.supplierUserIdNotifier != null) widget.supplierUserIdNotifier!,
     ];
 
     return ListenableBuilder(
@@ -237,8 +236,7 @@ class _SelectScreenState extends State<SelectScreen> {
             widget.timelineStore?.messages ?? const <AppMessage>[];
         final bool nameResolutionEnabled =
             _settingsNotifier.value.resolveUserName;
-        final String? supplierUserId =
-            widget.supplierUserIdNotifier?.value;
+        final String? supplierUserId = widget.supplierUserIdNotifier?.value;
         final String? broadcasterName =
             nameResolutionEnabled && supplierUserId != null
                 ? widget.resolveUserName?.call(supplierUserId)
@@ -258,12 +256,10 @@ class _SelectScreenState extends State<SelectScreen> {
           connectionMethod: _connectionMethod,
           programTitle: widget.programTitleNotifier?.value,
           broadcasterName: broadcasterName,
-          resolveUserName: nameResolutionEnabled
-              ? widget.resolveUserName
-              : null,
-          requestUserNameResolve: nameResolutionEnabled
-              ? widget.requestUserNameResolve
-              : null,
+          resolveUserName:
+              nameResolutionEnabled ? widget.resolveUserName : null,
+          requestUserNameResolve:
+              nameResolutionEnabled ? widget.requestUserNameResolve : null,
         );
       },
     );
