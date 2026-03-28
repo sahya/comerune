@@ -256,6 +256,7 @@ class _SelectScreenState extends State<SelectScreen> {
           connectionMethod: _connectionMethod,
           programTitle: widget.programTitleNotifier?.value,
           broadcasterName: broadcasterName,
+          showUserName: _settingsNotifier.value.showUserName,
           resolveUserName:
               nameResolutionEnabled ? widget.resolveUserName : null,
           requestUserNameResolve:
