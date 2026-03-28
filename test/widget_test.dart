@@ -2,7 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/application/settings/settings_store.dart';
-import 'package:comerune/data/auth/access_token_store.dart';
+import 'package:comerune/data/auth/user_session_store.dart';
 import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/main.dart';
 
@@ -17,7 +17,7 @@ void main() {
       ComeruneApp(
         settingsStore: settingsStore,
         initialSettings: AppSettings.defaults,
-        accessTokenStore: _InMemoryAccessTokenStore(),
+        userSessionStore: _InMemoryUserSessionStore(),
       ),
     );
     await tester.pump();
@@ -71,19 +71,19 @@ class _InMemorySharedPreferences implements SharedPreferencesLike {
   }
 }
 
-class _InMemoryAccessTokenStore implements AccessTokenStore {
-  String _token = '';
+class _InMemoryUserSessionStore implements UserSessionStore {
+  String _session = '';
 
   @override
-  Future<String> load() async => _token;
+  Future<String> load() async => _session;
 
   @override
-  Future<void> save(String token) async {
-    _token = token;
+  Future<void> save(String userSession) async {
+    _session = userSession;
   }
 
   @override
   Future<void> clear() async {
-    _token = '';
+    _session = '';
   }
 }

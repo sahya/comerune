@@ -3,18 +3,18 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../application/settings/settings_store.dart';
-import '../../data/auth/access_token_store.dart';
+import '../../data/auth/user_session_store.dart';
 import '../../domain/models/app_settings.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
     super.key,
     required this.settingsStore,
-    this.accessTokenStore,
+    this.userSessionStore,
   });
 
   final SettingsStore settingsStore;
-  final AccessTokenStore? accessTokenStore;
+  final UserSessionStore? userSessionStore;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -98,11 +98,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _maxDelayController.text = loaded.maxDelaySeconds.toString();
     _ngWordsController.text = loaded.ngWords;
 
-    final AccessTokenStore? tokenStore = widget.accessTokenStore;
-    if (tokenStore != null) {
-      final String token = await tokenStore.load();
+    final UserSessionStore? sessionStore = widget.userSessionStore;
+    if (sessionStore != null) {
+      final String session = await sessionStore.load();
       if (mounted) {
-        _accessTokenController.text = token;
+        _accessTokenController.text = session;
       }
     }
 
@@ -152,13 +152,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _saveAccessToken() {
-    final AccessTokenStore? tokenStore = widget.accessTokenStore;
-    if (tokenStore == null) {
+    final UserSessionStore? sessionStore = widget.userSessionStore;
+    if (sessionStore == null) {
       return;
     }
 
-    final String token = _accessTokenController.text.trim();
-    unawaited(tokenStore.save(token));
+    final String session = _accessTokenController.text.trim();
+    unawaited(sessionStore.save(session));
   }
 
   void _saveNextSettings(AppSettings next) {
@@ -310,11 +310,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       focusNode: _accessTokenFocusNode,
                       obscureText: true,
                       decoration: InputDecoration(
-                        labelText: 'アクセストークン',
+                        labelText: 'user_session',
                         border: const OutlineInputBorder(),
                         helperText: _accessTokenController.text.trim().isEmpty
-                            ? '未設定（接続にはトークンが必要です）'
+                            ? '未設定（ブラウザのCookieから取得）'
                             : '設定済み',
+                        helperMaxLines: 2,
                       ),
                     ),
                   ],
