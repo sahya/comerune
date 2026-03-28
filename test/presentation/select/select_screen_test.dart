@@ -361,6 +361,40 @@ void main() {
     );
   });
 
+  testWidgets(
+      'hides login banner when settingsStore is provided but userSessionStore is null',
+      (
+    WidgetTester tester,
+  ) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+    final SettingsStore settingsStore = SharedPreferencesSettingsStore(
+      prefs: InMemorySharedPreferences(),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SelectScreen(
+          connectionSupervisor: supervisor,
+          settingsStore: settingsStore,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('login-status-banner-ok')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('login-status-banner-required')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('select_screen_settings_button')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('hides login banner when settingsStore is null', (
     WidgetTester tester,
   ) async {
