@@ -39,3 +39,6 @@ android/**/GeneratedPluginRegistrant.java
 
 # Analysis options (auto-generated)
 analysis_options.yaml
+
+# Claude Code
+.claude/
