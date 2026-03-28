@@ -675,6 +675,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: 'コメント表示',
                   children: <Widget>[
                     SwitchListTile(
+                      key: const Key('show-user-name-switch'),
+                      title: const Text('ユーザー名表示'),
+                      subtitle: const Text('コメントにユーザー名カラムを表示'),
+                      contentPadding: EdgeInsets.zero,
+                      value: settings.showUserName,
+                      onChanged: (bool value) {
+                        _saveNextSettings(
+                            settings.copyWith(showUserName: value));
+                      },
+                    ),
+                    SwitchListTile(
                       key: const Key('resolve-user-name-switch'),
                       title: const Text('ユーザーID名前解決'),
                       subtitle: const Text('数値IDをニックネームに変換'),

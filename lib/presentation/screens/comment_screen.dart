@@ -40,6 +40,7 @@ class CommentScreen extends StatefulWidget {
     this.debugMode = false,
     this.connectionMethod,
     this.programTitle,
+    this.showUserName = true,
     this.resolveUserName,
     this.requestUserNameResolve,
   });
@@ -55,6 +56,7 @@ class CommentScreen extends StatefulWidget {
   final bool debugMode;
   final ConnectionMethod? connectionMethod;
   final String? programTitle;
+  final bool showUserName;
 
   /// Returns the cached resolved name for a user ID, or null.
   final String? Function(String userId)? resolveUserName;
@@ -253,6 +255,7 @@ class _CommentScreenState extends State<CommentScreen> {
                       return _CommentRow(
                         message: message,
                         resolvedUserName: _resolveDisplayName(message),
+                        showUserName: widget.showUserName,
                       );
                     },
                   ),
@@ -714,10 +717,12 @@ class _CommentRow extends StatelessWidget {
   const _CommentRow({
     required this.message,
     this.resolvedUserName,
+    this.showUserName = true,
   });
 
   final AppMessage message;
   final String? resolvedUserName;
+  final bool showUserName;
 
   @override
   Widget build(BuildContext context) {
@@ -731,6 +736,11 @@ class _CommentRow extends StatelessWidget {
 
   String _lineText(AppMessage message) {
     final String timestamp = _formatHms(message.timestamp);
+
+    if (!showUserName) {
+      return '$timestamp  ${message.content}';
+    }
+
     final String userId = message.userId ?? '';
 
     if (userId.isEmpty) {
