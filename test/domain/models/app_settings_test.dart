@@ -17,5 +17,4 @@ void main() {
       expect(PastCommentFetchCount.all.label, '全部（上限あり）');
     });
   });
-
 }

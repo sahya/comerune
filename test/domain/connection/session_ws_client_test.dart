@@ -886,7 +886,6 @@ void main() {
       await expectLater(client.connect(), throwsA(isA<StateError>()));
       expect(fakeChannel.sentMessages, isEmpty);
     });
-
   });
 }
 
