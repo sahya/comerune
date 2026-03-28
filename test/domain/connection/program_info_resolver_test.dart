@@ -170,6 +170,9 @@ class _FakeHttpClient implements HttpClient {
   set connectionTimeout(Duration? timeout) {}
 
   @override
+  void close({bool force = false}) {}
+
+  @override
   dynamic noSuchMethod(Invocation invocation) {
     return super.noSuchMethod(invocation);
   }
@@ -224,9 +227,9 @@ class _FakeHttpHeaders implements HttpHeaders {
     _values.putIfAbsent(name, () => <String>[]).add(value.toString());
   }
 
-  String? operator [](String name) {
-    final List<String>? values = _values[name];
-    return values != null && values.isNotEmpty ? values.first : null;
+  @override
+  List<String>? operator [](String name) {
+    return _values[name];
   }
 
   @override
