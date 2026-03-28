@@ -132,7 +132,7 @@ int _historyCountFrom(PastCommentFetchCount value) {
 
 class _SessionWsClientAdapter implements reconnect.SessionWsClient {
   _SessionWsClientAdapter({required String Function() lvProvider})
-    : _lvProvider = lvProvider;
+      : _lvProvider = lvProvider;
 
   final String Function() _lvProvider;
   final StreamController<reconnect.SessionWsEvent> _eventsController =
@@ -263,10 +263,18 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
         break;
       case session_impl.SessionWsEventType.failed:
       case session_impl.SessionWsEventType.error:
-        _completeEndpointError(
-          completer,
-          StateError('Failed to resolve session endpoints'),
-        );
+        if (completer.isCompleted) {
+          _emitSessionEvent(
+            const reconnect.SessionWsEvent(
+              reconnect.SessionWsEventType.disconnected,
+            ),
+          );
+        } else {
+          _completeEndpointError(
+            completer,
+            StateError('Failed to resolve session endpoints'),
+          );
+        }
         break;
     }
   }
@@ -292,8 +300,8 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
   _NdgrClientAdapter({
     required ndgr_impl.NdgrClient client,
     required int Function() historyCountProvider,
-  }) : _client = client,
-       _historyCountProvider = historyCountProvider {
+  })  : _client = client,
+        _historyCountProvider = historyCountProvider {
     _clientEventsSubscription = _client.events.listen(
       _handleClientEvent,
       onError: (_, __) {
@@ -309,9 +317,10 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
   final StreamController<AppMessage> _messagesController =
       StreamController<AppMessage>.broadcast();
   late final StreamSubscription<ndgr_impl.NdgrClientEvent>
-  _clientEventsSubscription;
+      _clientEventsSubscription;
 
   Future<void>? _activeConnectFuture;
+  Completer<void>? _pendingStartupCompleter;
   bool _disconnectRequested = false;
 
   Stream<AppMessage> get messages => _messagesController.stream;
@@ -328,19 +337,25 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
 
     final ndgr_impl.NdgrAt at = _resumeCursorToAt(resumeCursor);
     final int historyCount = _historyCountProvider();
+    final Completer<void> startupCompleter = Completer<void>();
 
     _disconnectRequested = false;
+    _pendingStartupCompleter = startupCompleter;
     _activeConnectFuture = _runConnect(
       viewApiUri,
       historyCount: historyCount,
       at: at,
     );
     unawaited(_activeConnectFuture);
+    await startupCompleter.future;
   }
 
   @override
   Future<void> disconnect() async {
     _disconnectRequested = true;
+    _completeStartupErrorIfPending(
+      StateError('NDGR disconnected before streaming started'),
+    );
     await _client.stop();
 
     final Future<void>? activeConnectFuture = _activeConnectFuture;
@@ -367,16 +382,24 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
     try {
       await _client.connect(viewApiUri, historyCount: historyCount, at: at);
     } catch (_) {
+      _completeStartupErrorIfPending(StateError('Failed to start NDGR stream'));
       _emitDisconnected();
       return;
     }
 
+    _completeStartupErrorIfPending(
+      StateError('NDGR stream disconnected before startup completed'),
+    );
     _emitDisconnected();
   }
 
   void _handleClientEvent(ndgr_impl.NdgrClientEvent event) {
     switch (event.type) {
+      case ndgr_impl.NdgrClientEventType.connected:
+        _completeStartupIfPending();
+        break;
       case ndgr_impl.NdgrClientEventType.message:
+        _completeStartupIfPending();
         final AppMessage? message = event.message;
         if (message == null || _messagesController.isClosed) {
           return;
@@ -384,6 +407,7 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
         _messagesController.add(message);
         break;
       case ndgr_impl.NdgrClientEventType.stalled:
+        _completeStartupIfPending();
         if (_eventsController.isClosed) {
           return;
         }
@@ -421,11 +445,29 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
       const reconnect.NdgrEvent(reconnect.NdgrEventType.disconnected),
     );
   }
+
+  void _completeStartupIfPending() {
+    final Completer<void>? completer = _pendingStartupCompleter;
+    if (completer == null || completer.isCompleted) {
+      return;
+    }
+    completer.complete();
+    _pendingStartupCompleter = null;
+  }
+
+  void _completeStartupErrorIfPending(Object error) {
+    final Completer<void>? completer = _pendingStartupCompleter;
+    if (completer == null || completer.isCompleted) {
+      return;
+    }
+    completer.completeError(error);
+    _pendingStartupCompleter = null;
+  }
 }
 
 class _LegacyCommentClientAdapter implements reconnect.LegacyCommentClient {
   _LegacyCommentClientAdapter({required legacy_impl.LegacyCommentClient client})
-    : _client = client {
+      : _client = client {
     _messageSubscription = _client.messages.listen((AppMessage message) {
       if (_messagesController.isClosed) {
         return;
@@ -452,7 +494,7 @@ class _LegacyCommentClientAdapter implements reconnect.LegacyCommentClient {
       StreamController<AppMessage>.broadcast();
   late final StreamSubscription<AppMessage> _messageSubscription;
   late final StreamSubscription<legacy_impl.LegacyCommentClientError>
-  _errorSubscription;
+      _errorSubscription;
 
   bool _isDisconnecting = false;
 

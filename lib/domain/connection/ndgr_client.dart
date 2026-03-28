@@ -8,10 +8,7 @@ import 'ndgr_message_normalizer.dart';
 import 'ndgr_protobuf_decoder.dart';
 import 'ndgr_stall_detector.dart';
 
-enum NdgrClientEventType {
-  message,
-  stalled,
-}
+enum NdgrClientEventType { connected, message, stalled }
 
 class NdgrClientEvent {
   const NdgrClientEvent._({
@@ -20,14 +17,14 @@ class NdgrClientEvent {
     this.stallDuration,
   });
 
+  const NdgrClientEvent.connected()
+      : this._(type: NdgrClientEventType.connected);
+
   const NdgrClientEvent.message(AppMessage message)
       : this._(type: NdgrClientEventType.message, message: message);
 
   const NdgrClientEvent.stalled(Duration stallDuration)
-      : this._(
-          type: NdgrClientEventType.stalled,
-          stallDuration: stallDuration,
-        );
+      : this._(type: NdgrClientEventType.stalled, stallDuration: stallDuration);
 
   final NdgrClientEventType type;
   final AppMessage? message;
@@ -70,10 +67,7 @@ class NdgrClient {
         _httpClientFactory = httpClientFactory ?? HttpClient.new,
         _protobufDecoder = protobufDecoder ?? NdgrProtobufDecoder(),
         _normalizer = normalizer ?? NdgrMessageNormalizer(),
-        _stallDetector = NdgrStallDetector(
-          threshold: stallThreshold,
-          now: now,
-        ),
+        _stallDetector = NdgrStallDetector(threshold: stallThreshold, now: now),
         _now = now ?? DateTime.now,
         _stallCheckInterval = stallCheckInterval,
         _backwardSegmentInterval = backwardSegmentInterval,
@@ -104,6 +98,7 @@ class NdgrClient {
   Timer? _stallTimer;
   bool _isRunning = false;
   bool _isStopped = false;
+  bool _hasEmittedConnected = false;
   NdgrAt? _lastNextAt;
 
   Stream<NdgrClientEvent> get events => _eventsController.stream;
@@ -114,7 +109,7 @@ class NdgrClient {
   /// Connects to NDGR and streams comments.
   ///
   /// Failure is signaled only by this Future throwing.
-  /// `events` stream emits `message` / `stalled` events only.
+  /// `events` stream emits `connected` / `message` / `stalled` events.
   Future<void> connect(
     Uri viewApiUri, {
     int historyCount = 100,
@@ -129,16 +124,13 @@ class NdgrClient {
 
     _isRunning = true;
     _isStopped = false;
+    _hasEmittedConnected = false;
     _lastNextAt = at;
     _stopStallTimer();
     _stallDetector.reset();
 
     try {
-      await _runHeadLoop(
-        viewApiUri,
-        historyCount: historyCount,
-        at: at,
-      );
+      await _runHeadLoop(viewApiUri, historyCount: historyCount, at: at);
     } catch (error, stackTrace) {
       if (_isStopped) {
         return;
@@ -185,8 +177,9 @@ class NdgrClient {
       final Uri fetchUri = _uriWithAt(viewApiUri, nextAt);
       nextAt = null;
 
-      await for (final NdgrChunkedEntry entry
-          in _streamChunkedEntries(fetchUri)) {
+      await for (final NdgrChunkedEntry entry in _streamChunkedEntries(
+        fetchUri,
+      )) {
         if (_isStopped) {
           return;
         }
@@ -233,7 +226,9 @@ class NdgrClient {
   }
 
   Future<List<NdgrChunkedMessage>> _pullBackwards(
-      Uri fetchUri, int want) async {
+    Uri fetchUri,
+    int want,
+  ) async {
     if (want == 0) {
       return const <NdgrChunkedMessage>[];
     }
@@ -243,12 +238,15 @@ class NdgrClient {
     Uri? current = fetchUri;
 
     while (!_isStopped && current != null && length < want) {
-      final HttpClientResponse response =
-          await _fetch(current, phase: 'backward');
+      final HttpClientResponse response = await _fetch(
+        current,
+        phase: 'backward',
+      );
       final Uint8List bytes = await _readAllBytes(response);
 
-      final NdgrPackedSegment packed =
-          _protobufDecoder.decodePackedSegment(bytes);
+      final NdgrPackedSegment packed = _protobufDecoder.decodePackedSegment(
+        bytes,
+      );
       buffer.insert(0, packed.messages);
       length += packed.messages.length;
 
@@ -274,8 +272,9 @@ class NdgrClient {
   Future<int> _retrieveMessages(Uri uri, {int? limit}) async {
     int emittedCount = 0;
 
-    await for (final NdgrChunkedMessage message
-        in _streamChunkedMessages(uri)) {
+    await for (final NdgrChunkedMessage message in _streamChunkedMessages(
+      uri,
+    )) {
       if (_isStopped) {
         return emittedCount;
       }
@@ -312,6 +311,7 @@ class NdgrClient {
 
   Stream<NdgrChunkedEntry> _streamChunkedEntries(Uri uri) async* {
     final HttpClientResponse response = await _fetch(uri, phase: 'head');
+    _emitConnectedIfNeeded();
     final NdgrLengthDelimitedDecoder decoder = NdgrLengthDelimitedDecoder();
 
     await for (final List<int> chunk in response) {
@@ -463,5 +463,13 @@ class NdgrClient {
 
     active.close(force: true);
     _httpClient = null;
+  }
+
+  void _emitConnectedIfNeeded() {
+    if (_hasEmittedConnected || _eventsController.isClosed) {
+      return;
+    }
+    _hasEmittedConnected = true;
+    _eventsController.add(const NdgrClientEvent.connected());
   }
 }
