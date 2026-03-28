@@ -1,6 +1,9 @@
 package com.example.comerune.speech.infrastructure.player
 
 import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.media.MediaPlayer
 import com.example.comerune.speech.domain.model.PlayerState
 import com.example.comerune.speech.domain.player.WavPlayer
@@ -19,6 +22,36 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
     private var state: PlayerState = PlayerState.IDLE
     private var tempFile: File? = null
     private var released: Boolean = false
+
+    private val audioManager: AudioManager =
+        context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+
+    private val audioAttributes: AudioAttributes =
+        AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+            .build()
+
+    private val focusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+        when (focusChange) {
+            AudioManager.AUDIOFOCUS_LOSS,
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                stopInternal()
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                // Allow ducking; continue playback at reduced volume managed by the system
+            }
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                // No action needed for initial version
+            }
+        }
+    }
+
+    private val audioFocusRequest: AudioFocusRequest =
+        AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+            .setAudioAttributes(audioAttributes)
+            .setOnAudioFocusChangeListener(focusChangeListener)
+            .build()
 
     override suspend fun play(wavBytes: ByteArray): Result<Unit> {
         synchronized(lock) {
@@ -65,6 +98,7 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
                         player.prepare()
 
                         player.setOnCompletionListener {
+                            abandonAudioFocus()
                             synchronized(lock) {
                                 state = PlayerState.IDLE
                             }
@@ -75,6 +109,7 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
                         }
 
                         player.setOnErrorListener { _, what, extra ->
+                            abandonAudioFocus()
                             synchronized(lock) {
                                 state = PlayerState.ERROR
                             }
@@ -89,6 +124,18 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
 
                         continuation.invokeOnCancellation {
                             stopInternal()
+                        }
+
+                        val focusResult = audioManager.requestAudioFocus(audioFocusRequest)
+                        if (focusResult != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                            releaseMediaPlayer()
+                            cleanupTempFile()
+                            if (continuation.isActive) {
+                                continuation.resumeWithException(
+                                    IllegalStateException("Audio focus request denied")
+                                )
+                            }
+                            return@suspendCancellableCoroutine
                         }
 
                         synchronized(lock) {
@@ -147,6 +194,7 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
     }
 
     private fun stopInternal() {
+        abandonAudioFocus()
         synchronized(lock) {
             mediaPlayer?.let { player ->
                 try {
@@ -168,6 +216,10 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
             mediaPlayer?.release()
             mediaPlayer = null
         }
+    }
+
+    private fun abandonAudioFocus() {
+        audioManager.abandonAudioFocusRequest(audioFocusRequest)
     }
 
     private fun cleanupTempFile() {
