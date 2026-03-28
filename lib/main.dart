@@ -1,11 +1,16 @@
 import 'dart:async';
+import 'dart:developer';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'application/settings/settings_store.dart';
 import 'application/settings/shared_preferences_adapter.dart';
 import 'application/timeline/timeline_store.dart';
+import 'data/auth/user_session_store.dart';
+import 'data/connection/program_info_resolver.dart';
 import 'data/connection/web_socket_channel_legacy_web_socket.dart';
+import 'data/user/user_name_resolver.dart';
 import 'domain/connection/connection_clients.dart' as reconnect;
 import 'domain/connection/connection_supervisor.dart';
 import 'domain/connection/legacy_comment_client.dart' as legacy_impl;
@@ -18,12 +23,20 @@ import 'presentation/select/select_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final SettingsStore settingsStore =
-      await createSharedPreferencesSettingsStore();
+  final SharedPreferences prefs = await SharedPreferences.getInstance();
+  final SettingsStore settingsStore = SharedPreferencesSettingsStore(
+    prefs: SharedPreferencesAdapter(prefs),
+  );
   final AppSettings initialSettings = await settingsStore.load();
+  final UserSessionStore userSessionStore =
+      SecureUserSessionStore(prefs: prefs);
 
   runApp(
-    ComeruneApp(settingsStore: settingsStore, initialSettings: initialSettings),
+    ComeruneApp(
+      settingsStore: settingsStore,
+      initialSettings: initialSettings,
+      userSessionStore: userSessionStore,
+    ),
   );
 }
 
@@ -32,10 +45,12 @@ class ComeruneApp extends StatefulWidget {
     super.key,
     required this.settingsStore,
     required this.initialSettings,
+    required this.userSessionStore,
   });
 
   final SettingsStore settingsStore;
   final AppSettings initialSettings;
+  final UserSessionStore userSessionStore;
 
   @override
   State<ComeruneApp> createState() => _ComeruneAppState();
@@ -52,16 +67,26 @@ class _ComeruneAppState extends State<ComeruneApp> {
 
   String _currentLv = '';
   int _ndgrHistoryCount = 100;
+  final ValueNotifier<String?> _programTitleNotifier =
+      ValueNotifier<String?>(null);
+  late final UserNameResolver _userNameResolver;
 
   @override
   void initState() {
     super.initState();
-    _ndgrHistoryCount = _historyCountFrom(
-      widget.initialSettings.pastCommentFetchCount,
-    );
+    _ndgrHistoryCount =
+        widget.initialSettings.pastCommentFetchCount.historyCount;
 
+    _userNameResolver = UserNameResolver();
     _timelineStore = TimelineStore(capacity: _ndgrHistoryCount);
-    _sessionWsClient = _SessionWsClientAdapter(lvProvider: () => _currentLv);
+    _sessionWsClient = _SessionWsClientAdapter(
+      lvProvider: () => _currentLv,
+      userSessionProvider: () => widget.userSessionStore.load(),
+      programInfoResolver: ProgramInfoResolver(),
+      onProgramTitleResolved: (String title) {
+        _programTitleNotifier.value = title;
+      },
+    );
     _ndgrClient = _NdgrClientAdapter(
       client: ndgr_impl.NdgrClient(),
       historyCountProvider: () => _ndgrHistoryCount,
@@ -93,12 +118,15 @@ class _ComeruneAppState extends State<ComeruneApp> {
     unawaited(_ndgrClient.dispose());
     unawaited(_legacyCommentClient.dispose());
     _timelineStore.dispose();
+    _userNameResolver.dispose();
+    _programTitleNotifier.dispose();
     super.dispose();
   }
 
   Future<void> _prepareConnection(String lv, AppSettings settings) async {
     _currentLv = lv;
-    _ndgrHistoryCount = _historyCountFrom(settings.pastCommentFetchCount);
+    _programTitleNotifier.value = null;
+    _ndgrHistoryCount = settings.pastCommentFetchCount.historyCount;
     _timelineStore.setCapacity(_ndgrHistoryCount);
   }
 
@@ -112,29 +140,31 @@ class _ComeruneAppState extends State<ComeruneApp> {
         settingsStore: widget.settingsStore,
         initialSettings: widget.initialSettings,
         onPrepareConnection: _prepareConnection,
+        userSessionStore: widget.userSessionStore,
+        programTitleNotifier: _programTitleNotifier,
+        resolveUserName: _userNameResolver.getCachedName,
+        requestUserNameResolve: _userNameResolver.requestResolve,
+        userNameListenable: _userNameResolver,
       ),
     );
   }
 }
 
-int _historyCountFrom(PastCommentFetchCount value) {
-  switch (value) {
-    case PastCommentFetchCount.count100:
-      return 100;
-    case PastCommentFetchCount.count500:
-      return 500;
-    case PastCommentFetchCount.count1000:
-      return 1000;
-    case PastCommentFetchCount.all:
-      return 10000;
-  }
-}
-
 class _SessionWsClientAdapter implements reconnect.SessionWsClient {
-  _SessionWsClientAdapter({required String Function() lvProvider})
-      : _lvProvider = lvProvider;
+  _SessionWsClientAdapter({
+    required String Function() lvProvider,
+    required Future<String> Function() userSessionProvider,
+    required ProgramInfoResolver programInfoResolver,
+    void Function(String title)? onProgramTitleResolved,
+  })  : _lvProvider = lvProvider,
+        _userSessionProvider = userSessionProvider,
+        _programInfoResolver = programInfoResolver,
+        _onProgramTitleResolved = onProgramTitleResolved;
 
   final String Function() _lvProvider;
+  final Future<String> Function() _userSessionProvider;
+  final ProgramInfoResolver _programInfoResolver;
+  final void Function(String title)? _onProgramTitleResolved;
   final StreamController<reconnect.SessionWsEvent> _eventsController =
       StreamController<reconnect.SessionWsEvent>.broadcast();
 
@@ -155,6 +185,44 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       throw StateError('lv is empty');
     }
 
+    // Try N Air approach: programinfo API → viewUri directly.
+    // Even if viewUri resolution fails (e.g. rooms missing), the exception
+    // may carry the program title so we emit it for the fallback path.
+    // We attempt this even without user_session — the API may return the
+    // title (and possibly viewUri) for public broadcasts without auth.
+    final String userSession = await _userSessionProvider();
+    try {
+      final ProgramInfo programInfo = await _programInfoResolver.resolve(
+        lv: lv,
+        userSession: userSession,
+      );
+      if (programInfo.title != null) {
+        _onProgramTitleResolved?.call(programInfo.title!);
+      }
+      log(
+        'Resolved NDGR endpoint via programinfo API',
+        name: 'SessionWsClientAdapter',
+      );
+      return reconnect.SessionEndpoints(
+        ndgrViewApiUri: programInfo.viewUri,
+      );
+    } on ProgramInfoResolveException catch (error) {
+      if (error.title != null) {
+        _onProgramTitleResolved?.call(error.title!);
+      }
+      log(
+        'programinfo resolution failed, falling back to WebSocket: $error',
+        name: 'SessionWsClientAdapter',
+      );
+    } on Object catch (error) {
+      log(
+        'Unexpected error during programinfo resolution, '
+        'falling back to WebSocket: $error',
+        name: 'SessionWsClientAdapter',
+      );
+    }
+
+    // Fallback: traditional WebSocket handshake flow
     final session_impl.SessionWsClient client = session_impl.SessionWsClient(
       lv: lv,
     );
@@ -220,6 +288,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
 
   Future<void> dispose() async {
     await disconnect();
+    _programInfoResolver.dispose();
     await _eventsController.close();
   }
 
