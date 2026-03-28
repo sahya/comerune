@@ -235,6 +235,8 @@ class SpeechControllerImpl(
             if (released) return
             released = true
             started = false
+            workerJob?.cancel()
+            workerJob = null
         }
         // Stop player before cancelling scope to avoid in-flight playback
         try {
@@ -242,8 +244,6 @@ class SpeechControllerImpl(
         } catch (_: Exception) {
             // Best-effort stop
         }
-        workerJob?.cancel()
-        workerJob = null
         try {
             engine.release()
         } catch (_: Exception) {

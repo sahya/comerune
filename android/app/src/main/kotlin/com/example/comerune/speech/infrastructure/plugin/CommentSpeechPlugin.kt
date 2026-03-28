@@ -80,11 +80,11 @@ class CommentSpeechPlugin :
         eventChannel?.setStreamHandler(null)
         eventChannel = null
 
-        pluginScope?.cancel()
-        pluginScope = null
-
         controller?.release()
         controller = null
+
+        pluginScope?.cancel()
+        pluginScope = null
 
         eventEmitter?.setEventSink(null)
         eventEmitter = null
