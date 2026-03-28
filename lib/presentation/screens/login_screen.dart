@@ -1,6 +1,7 @@
 import 'dart:developer';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../data/auth/user_session_store.dart';
@@ -24,6 +25,8 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   static const String _loginUrl = 'https://account.nicovideo.jp/login';
+  static const MethodChannel _cookieChannel =
+      MethodChannel('com.example.comerune/cookies');
 
   /// Hosts allowed during the login flow.
   static const Set<String> _allowedHosts = <String>{
@@ -95,7 +98,6 @@ class _LoginScreenState extends State<LoginScreen> {
     if (uri == null) {
       return NavigationDecision.prevent;
     }
-    // Allow nicovideo.jp and subdomains
     final String host = uri.host;
     if (_allowedHosts.contains(host) || host.endsWith('.nicovideo.jp')) {
       return NavigationDecision.navigate;
@@ -132,11 +134,8 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // If the user navigated to a post-login page but cookie was not
-    // detected (e.g., httpOnly cookie), show a warning.
     if (_isPostLoginUrl(url)) {
       _postLoginPageCount += 1;
-      // Show warning only once to avoid spamming
       if (_postLoginPageCount == 1 && mounted) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
@@ -154,10 +153,28 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<String?> _extractUserSessionCookie() async {
-    // Use JavaScript to read cookies since WebViewCookieManager
-    // doesn't have a getCookies method in webview_flutter 4.x.
-    // Note: This cannot read httpOnly cookies. Niconico's user_session
-    // cookie is not httpOnly on the login page based on observed behavior.
+    // Try platform channel first (can read httpOnly cookies via
+    // Android's CookieManager), fall back to document.cookie.
+    try {
+      final String cookies = await _cookieChannel.invokeMethod<String>(
+            'getCookies',
+            <String, String>{'url': 'https://nicovideo.jp'},
+          ) ??
+          '';
+      if (cookies.isNotEmpty) {
+        final String? session = parseNicoUserSessionCookie(cookies);
+        if (session != null) {
+          return session;
+        }
+      }
+    } catch (error) {
+      log(
+        'Platform cookie channel failed, trying document.cookie: $error',
+        name: 'LoginScreen',
+      );
+    }
+
+    // Fallback: try document.cookie (cannot read httpOnly cookies)
     try {
       final Object result = await _controller.runJavaScriptReturningResult(
         'document.cookie',
@@ -167,7 +184,7 @@ class _LoginScreenState extends State<LoginScreen> {
       return parseNicoUserSessionCookie(cookieString);
     } catch (error) {
       log(
-        'Failed to extract cookie: $error',
+        'Failed to extract cookie via document.cookie: $error',
         name: 'LoginScreen',
       );
       return null;
