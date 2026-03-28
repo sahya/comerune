@@ -51,8 +51,7 @@ void main() {
 
         final AppSettings loaded = await store.load();
 
-        expect(loaded.commentFontSize, size,
-            reason: '$size should round-trip');
+        expect(loaded.commentFontSize, size, reason: '$size should round-trip');
       }
     });
 
