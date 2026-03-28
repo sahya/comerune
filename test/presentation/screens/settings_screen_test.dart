@@ -32,10 +32,9 @@ void main() {
       );
 
       await _scrollToKey(tester, const Key('engine-voicevox-radio'));
-      final RadioListTile<SpeechEngine> radio = tester.widget(
+      await tester.tap(
         find.byKey(const Key('engine-voicevox-radio'), skipOffstage: false),
       );
-      radio.onChanged!(radio.value);
       await tester.pumpAndSettle();
 
       await _scrollToKey(tester, const Key('voicevox-section'));

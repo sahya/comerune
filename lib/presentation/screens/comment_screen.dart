@@ -207,9 +207,7 @@ class _CommentScreenState extends State<CommentScreen> {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
-      // TODO(PR#20-O2): Flutter 3.24+ で onPopInvoked は deprecated。
-      //   onPopInvokedWithResult に移行する。
-      onPopInvoked: (bool didPop) {
+      onPopInvokedWithResult: (bool didPop, Object? result) {
         unawaited(_handleBackNavigation(didPop));
       },
       // TODO(PR#20-O3): AnimatedBuilder を ListenableBuilder に置き換える。
