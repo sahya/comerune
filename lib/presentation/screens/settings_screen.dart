@@ -748,28 +748,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       },
                     ),
                     const SizedBox(height: 8),
-                    DropdownButtonFormField<CommentFontSize>(
-                      key: const Key('comment-font-size-dropdown'),
-                      value: settings.commentFontSize,
-                      decoration: const InputDecoration(
-                        labelText: 'コメント文字サイズ',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: CommentFontSize.values
-                          .map(
-                            (CommentFontSize value) =>
-                                DropdownMenuItem<CommentFontSize>(
-                              value: value,
-                              child: Text(value.label),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (CommentFontSize? value) {
-                        if (value == null) {
-                          return;
-                        }
+                    _IntSliderField(
+                      key: const Key('comment-font-size-slider'),
+                      label: 'コメント文字サイズ',
+                      value: settings.commentFontSize.round(),
+                      min: commentFontSizeMin.round(),
+                      max: commentFontSizeMax.round(),
+                      divisions:
+                          (commentFontSizeMax - commentFontSizeMin).round(),
+                      suffix: 'px',
+                      onChanged: (int value) {
                         _saveNextSettings(
-                          settings.copyWith(commentFontSize: value),
+                          settings.copyWith(
+                              commentFontSize: value.toDouble()),
                         );
                       },
                     ),
@@ -874,6 +865,7 @@ class _IntSliderField extends StatelessWidget {
     required this.divisions,
     required this.value,
     required this.onChanged,
+    this.suffix = '',
   });
 
   final String label;
@@ -882,6 +874,7 @@ class _IntSliderField extends StatelessWidget {
   final int divisions;
   final int value;
   final ValueChanged<int> onChanged;
+  final String suffix;
 
   @override
   Widget build(BuildContext context) {
@@ -892,7 +885,7 @@ class _IntSliderField extends StatelessWidget {
           children: <Widget>[
             Text(label),
             const Spacer(),
-            Text(value == -1 ? '-1 (既定)' : value.toString()),
+            Text(value == -1 ? '-1 (既定)' : '$value$suffix'),
           ],
         ),
         Slider(

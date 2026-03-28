@@ -689,7 +689,7 @@ void main() {
         _buildScreen(
           supervisor: supervisor,
           messages: messages,
-          commentFontSize: CommentFontSize.xl,
+          commentFontSize: 18,
         ),
       );
 
@@ -961,7 +961,7 @@ Widget _buildScreen({
   String? programTitle,
   String? broadcasterName,
   String? Function(String userId)? resolveUserName,
-  CommentFontSize commentFontSize = CommentFontSize.medium,
+  double commentFontSize = commentFontSizeDefault,
   Set<String> ngUserIds = const <String>{},
 }) {
   return MaterialApp(
