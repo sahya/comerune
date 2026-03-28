@@ -26,9 +26,18 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   static const String _loginUrl = 'https://account.nicovideo.jp/login';
 
+  /// URLs that indicate the user has likely completed login.
+  static const List<String> _postLoginUrlPrefixes = <String>[
+    'https://www.nicovideo.jp',
+    'https://nicovideo.jp',
+    'https://live.nicovideo.jp',
+    'https://account.nicovideo.jp/my',
+  ];
+
   late final WebViewController _controller;
   bool _isLoading = true;
   bool _loginDetected = false;
+  int _postLoginPageCount = 0;
 
   @override
   void initState() {
@@ -57,32 +66,54 @@ class _LoginScreenState extends State<LoginScreen> {
       ..loadRequest(Uri.parse(_loginUrl));
   }
 
+  bool _isPostLoginUrl(String url) {
+    return _postLoginUrlPrefixes.any(
+      (String prefix) => url.startsWith(prefix),
+    );
+  }
+
   Future<void> _checkForUserSession(String url) async {
     if (_loginDetected) {
       return;
     }
 
-    // After login, user is typically redirected away from the login page.
-    // Check cookies on every page load to detect when user_session appears.
     final String? userSession = await _extractUserSessionCookie();
-    if (userSession == null || userSession.isEmpty) {
+    if (userSession != null && userSession.isNotEmpty) {
+      _loginDetected = true;
+      await widget.userSessionStore.save(userSession);
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text('ログインしました')),
+        );
+      Navigator.of(context).pop(true);
       return;
     }
 
-    // user_session_XXXXX is the real session cookie (not user_session_secure)
-    _loginDetected = true;
-    await widget.userSessionStore.save(userSession);
-
-    if (!mounted) {
-      return;
+    // If the user navigated to a post-login page but cookie was not
+    // detected (e.g., httpOnly cookie), show a warning.
+    if (_isPostLoginUrl(url)) {
+      _postLoginPageCount += 1;
+      // Show warning after visiting a post-login page without cookie
+      if (_postLoginPageCount >= 1 && mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text(
+                'ログインが検出できませんでした。'
+                'Cookieの取得に失敗した可能性があります。',
+              ),
+              duration: Duration(seconds: 5),
+            ),
+          );
+      }
     }
-
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        const SnackBar(content: Text('ログインしました')),
-      );
-    Navigator.of(context).pop(true);
   }
 
   Future<String?> _extractUserSessionCookie() async {
