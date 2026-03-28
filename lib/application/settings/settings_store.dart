@@ -57,6 +57,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       'settings.comment.pastFetchCount';
   static const String _kShowUserName = 'settings.comment.showUserName';
   static const String _kResolveUserName = 'settings.comment.resolveUserName';
+  static const String _kCommentFontSize = 'settings.comment.fontSize';
   static const String _kAutoSaveCommentLog =
       'settings.comment.autoSaveCommentLog';
   static const String _kDebugMode = 'settings.debugMode';
@@ -102,6 +103,9 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       showUserName: _prefs.getBool(_kShowUserName) ?? defaults.showUserName,
       resolveUserName:
           _prefs.getBool(_kResolveUserName) ?? defaults.resolveUserName,
+      commentFontSize: CommentFontSizeValue.fromStorageValue(
+        _prefs.getString(_kCommentFontSize),
+      ),
       autoSaveCommentLog:
           _prefs.getBool(_kAutoSaveCommentLog) ?? defaults.autoSaveCommentLog,
       debugMode: _prefs.getBool(_kDebugMode) ?? defaults.debugMode,
@@ -137,6 +141,10 @@ class SharedPreferencesSettingsStore implements SettingsStore {
     );
     await _prefs.setBool(_kShowUserName, settings.showUserName);
     await _prefs.setBool(_kResolveUserName, settings.resolveUserName);
+    await _prefs.setString(
+      _kCommentFontSize,
+      settings.commentFontSize.storageValue,
+    );
     await _prefs.setBool(_kAutoSaveCommentLog, settings.autoSaveCommentLog);
     await _prefs.setBool(_kDebugMode, settings.debugMode);
   }
