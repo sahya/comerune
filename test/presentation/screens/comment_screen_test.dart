@@ -454,6 +454,7 @@ void main() {
                             },
                             onReconnectSameLv: () async {},
                             onDifferentLvConnected: (_, __) async {},
+                            themeMode: AppThemeMode.light,
                           ),
                         ),
                       );
@@ -823,6 +824,7 @@ class _CommentScreenHostState extends State<_CommentScreenHost> {
           previousLv = previous;
           nextLv = next;
         },
+        themeMode: AppThemeMode.light,
       ),
     );
   }
@@ -855,6 +857,7 @@ Widget _buildScreen({
       broadcasterName: broadcasterName,
       resolveUserName: resolveUserName,
       ngUserIds: ngUserIds,
+      themeMode: AppThemeMode.light,
     ),
   );
 }

@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 enum AppThemeMode {
   light,
   dark,
@@ -49,7 +51,12 @@ extension AppThemeModeValue on AppThemeMode {
         return AppThemeMode.tritanopia;
       case 'light':
       case null:
+        return AppThemeMode.light;
       default:
+        developer.log(
+          'Unknown AppThemeMode storage value: "$raw", falling back to light',
+          name: 'AppThemeMode',
+        );
         return AppThemeMode.light;
     }
   }

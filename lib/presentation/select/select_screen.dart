@@ -347,7 +347,10 @@ class _SelectScreenState extends State<SelectScreen> {
     }
 
     _settingsNotifier.value = loaded;
-    widget.themeModeNotifier?.value = loaded.themeMode;
+    if (widget.themeModeNotifier != null &&
+        widget.themeModeNotifier!.value != loaded.themeMode) {
+      widget.themeModeNotifier!.value = loaded.themeMode;
+    }
   }
 
   bool _isTerminalLike(ConnectionStatus status) {
