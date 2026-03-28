@@ -89,6 +89,7 @@ class AppSettings {
     required this.pastCommentFetchCount,
     required this.showUserName,
     required this.resolveUserName,
+    required this.autoSaveCommentLog,
     required this.debugMode,
   });
 
@@ -114,6 +115,7 @@ class AppSettings {
     pastCommentFetchCount: PastCommentFetchCount.count100,
     showUserName: true,
     resolveUserName: true,
+    autoSaveCommentLog: false,
     debugMode: false,
   );
 
@@ -140,6 +142,7 @@ class AppSettings {
   final PastCommentFetchCount pastCommentFetchCount;
   final bool showUserName;
   final bool resolveUserName;
+  final bool autoSaveCommentLog;
   final bool debugMode;
 
   Set<String> get ngUserIdSet {
@@ -200,6 +203,7 @@ class AppSettings {
     PastCommentFetchCount? pastCommentFetchCount,
     bool? showUserName,
     bool? resolveUserName,
+    bool? autoSaveCommentLog,
     bool? debugMode,
   }) {
     return AppSettings(
@@ -225,6 +229,7 @@ class AppSettings {
           pastCommentFetchCount ?? this.pastCommentFetchCount,
       showUserName: showUserName ?? this.showUserName,
       resolveUserName: resolveUserName ?? this.resolveUserName,
+      autoSaveCommentLog: autoSaveCommentLog ?? this.autoSaveCommentLog,
       debugMode: debugMode ?? this.debugMode,
     );
   }

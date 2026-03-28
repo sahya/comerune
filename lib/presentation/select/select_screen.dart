@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../application/settings/settings_store.dart';
 import '../../application/timeline/timeline_store.dart';
 import '../../data/auth/user_session_store.dart';
+import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
@@ -26,6 +27,7 @@ class SelectScreen extends StatefulWidget {
     this.requestUserNameResolve,
     this.userNameListenable,
     this.supplierUserIdNotifier,
+    this.commentLogWriter,
     super.key,
   });
 
@@ -34,6 +36,7 @@ class SelectScreen extends StatefulWidget {
   final SettingsStore? settingsStore;
   final AppSettings initialSettings;
   final UserSessionStore? userSessionStore;
+  final CommentLogWriter? commentLogWriter;
   final Future<void> Function(String lv, AppSettings settings)?
       onPrepareConnection;
   final ValueNotifier<String?>? programTitleNotifier;
@@ -261,6 +264,8 @@ class _SelectScreenState extends State<SelectScreen> {
               nameResolutionEnabled ? widget.resolveUserName : null,
           requestUserNameResolve:
               nameResolutionEnabled ? widget.requestUserNameResolve : null,
+          commentLogWriter: widget.commentLogWriter,
+          autoSaveCommentLog: _settingsNotifier.value.autoSaveCommentLog,
           ngUserIds: _settingsNotifier.value.ngUserIdSet,
           onToggleNgUser: _toggleNgUser,
         );
