@@ -759,8 +759,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       suffix: 'px',
                       onChanged: (int value) {
                         _saveNextSettings(
-                          settings.copyWith(
-                              commentFontSize: value.toDouble()),
+                          settings.copyWith(commentFontSize: value.toDouble()),
                         );
                       },
                     ),
