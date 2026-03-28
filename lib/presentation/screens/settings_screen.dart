@@ -7,6 +7,7 @@ import '../../application/settings/settings_store.dart';
 import '../../data/auth/user_session_store.dart';
 import '../../domain/models/app_settings.dart';
 import 'login_screen.dart';
+import 'ng_user_list_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
@@ -705,6 +706,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         hintText: '例: ^8+\$',
                         border: OutlineInputBorder(),
                       ),
+                    ),
+                    const SizedBox(height: 8),
+                    ListTile(
+                      key: const Key('ng-user-list-tile'),
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.person_off),
+                      title: const Text('NGユーザーID管理'),
+                      subtitle: Text(
+                        settings.ngUserIdSet.isEmpty
+                            ? '未登録'
+                            : '${settings.ngUserIdSet.length}件登録中',
+                      ),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () async {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => NgUserListScreen(
+                              settingsStore: widget.settingsStore,
+                            ),
+                          ),
+                        );
+                        await _loadSettings();
+                      },
                     ),
                   ],
                 ),
