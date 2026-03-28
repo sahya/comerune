@@ -470,7 +470,7 @@ void main() {
       expect(find.byType(CommentScreen), findsNothing);
     });
 
-    testWidgets('displays program title in AppBar when provided', (
+    testWidgets('displays program title bar when provided', (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
@@ -483,10 +483,13 @@ void main() {
         ),
       );
 
-      expect(find.text('テスト番組 (lv345678901)'), findsOneWidget);
+      expect(find.byKey(const Key('program-title-bar')), findsOneWidget);
+      expect(find.text('テスト番組'), findsOneWidget);
+      // lv is in the AppBar title separately.
+      expect(find.text('lv345678901'), findsAtLeast(1));
     });
 
-    testWidgets('displays lv only when program title is null', (
+    testWidgets('hides program title bar when title is null', (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
@@ -498,7 +501,8 @@ void main() {
         ),
       );
 
-      expect(find.text('lv345678901'), findsOneWidget);
+      expect(find.byKey(const Key('program-title-bar')), findsNothing);
+      expect(find.text('lv345678901'), findsAtLeast(1));
     });
 
     testWidgets('sort toggle button reverses comment order', (

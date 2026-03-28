@@ -197,16 +197,9 @@ class _CommentScreenState extends State<CommentScreen> {
           final List<AppMessage> sortedMessages =
               _applySortOrder(visibleMessages);
 
-          final String titleText = widget.programTitle != null
-              ? '${widget.programTitle} (${widget.lv})'
-              : widget.lv;
-
           return Scaffold(
             appBar: AppBar(
-              title: Text(
-                titleText,
-                overflow: TextOverflow.ellipsis,
-              ),
+              title: Text(widget.lv),
               actions: <Widget>[
                 IconButton(
                   key: const Key('sort-toggle-button'),
@@ -238,6 +231,11 @@ class _CommentScreenState extends State<CommentScreen> {
             ),
             body: Column(
               children: <Widget>[
+                if (widget.programTitle != null)
+                  _ProgramTitleBar(
+                    key: const Key('program-title-bar'),
+                    title: widget.programTitle!,
+                  ),
                 _StatusBar(
                   key: const Key('status-bar'),
                   lv: widget.lv,
@@ -252,10 +250,10 @@ class _CommentScreenState extends State<CommentScreen> {
                     itemCount: sortedMessages.length,
                     itemBuilder: (BuildContext context, int index) {
                       final AppMessage message = sortedMessages[index];
-                      final String? userId = message.userId;
-                      final String? resolvedName = userId != null
-                          ? widget.resolveUserName?.call(userId)
-                          : null;
+                      final String? resolvedName = message.userName ??
+                          (message.userId != null
+                              ? widget.resolveUserName?.call(message.userId!)
+                              : null);
                       return _CommentRow(
                         message: message,
                         resolvedUserName: resolvedName,
@@ -561,6 +559,26 @@ class _CommentScreenState extends State<CommentScreen> {
       offset,
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeOut,
+    );
+  }
+}
+
+class _ProgramTitleBar extends StatelessWidget {
+  const _ProgramTitleBar({super.key, required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: Colors.indigo.shade50,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: Text(
+        title,
+        key: const Key('program-title-text'),
+        style: const TextStyle(fontWeight: FontWeight.bold),
+      ),
     );
   }
 }
