@@ -10,6 +10,7 @@ import 'application/timeline/timeline_store.dart';
 import 'data/auth/user_session_store.dart';
 import 'data/connection/program_info_resolver.dart';
 import 'data/connection/web_socket_channel_legacy_web_socket.dart';
+import 'data/user/user_name_resolver.dart';
 import 'domain/connection/connection_clients.dart' as reconnect;
 import 'domain/connection/connection_supervisor.dart';
 import 'domain/connection/legacy_comment_client.dart' as legacy_impl;
@@ -66,6 +67,9 @@ class _ComeruneAppState extends State<ComeruneApp> {
 
   String _currentLv = '';
   int _ndgrHistoryCount = 100;
+  final ValueNotifier<String?> _programTitleNotifier =
+      ValueNotifier<String?>(null);
+  late final UserNameResolver _userNameResolver;
 
   @override
   void initState() {
@@ -73,11 +77,15 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _ndgrHistoryCount =
         widget.initialSettings.pastCommentFetchCount.historyCount;
 
+    _userNameResolver = UserNameResolver();
     _timelineStore = TimelineStore(capacity: _ndgrHistoryCount);
     _sessionWsClient = _SessionWsClientAdapter(
       lvProvider: () => _currentLv,
       userSessionProvider: () => widget.userSessionStore.load(),
       programInfoResolver: ProgramInfoResolver(),
+      onProgramTitleResolved: (String title) {
+        _programTitleNotifier.value = title;
+      },
     );
     _ndgrClient = _NdgrClientAdapter(
       client: ndgr_impl.NdgrClient(),
@@ -110,11 +118,14 @@ class _ComeruneAppState extends State<ComeruneApp> {
     unawaited(_ndgrClient.dispose());
     unawaited(_legacyCommentClient.dispose());
     _timelineStore.dispose();
+    _userNameResolver.dispose();
+    _programTitleNotifier.dispose();
     super.dispose();
   }
 
   Future<void> _prepareConnection(String lv, AppSettings settings) async {
     _currentLv = lv;
+    _programTitleNotifier.value = null;
     _ndgrHistoryCount = settings.pastCommentFetchCount.historyCount;
     _timelineStore.setCapacity(_ndgrHistoryCount);
   }
@@ -130,6 +141,10 @@ class _ComeruneAppState extends State<ComeruneApp> {
         initialSettings: widget.initialSettings,
         onPrepareConnection: _prepareConnection,
         userSessionStore: widget.userSessionStore,
+        programTitleNotifier: _programTitleNotifier,
+        resolveUserName: _userNameResolver.getCachedName,
+        requestUserNameResolve: _userNameResolver.requestResolve,
+        userNameListenable: _userNameResolver,
       ),
     );
   }
@@ -140,13 +155,16 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     required String Function() lvProvider,
     required Future<String> Function() userSessionProvider,
     required ProgramInfoResolver programInfoResolver,
+    void Function(String title)? onProgramTitleResolved,
   })  : _lvProvider = lvProvider,
         _userSessionProvider = userSessionProvider,
-        _programInfoResolver = programInfoResolver;
+        _programInfoResolver = programInfoResolver,
+        _onProgramTitleResolved = onProgramTitleResolved;
 
   final String Function() _lvProvider;
   final Future<String> Function() _userSessionProvider;
   final ProgramInfoResolver _programInfoResolver;
+  final void Function(String title)? _onProgramTitleResolved;
   final StreamController<reconnect.SessionWsEvent> _eventsController =
       StreamController<reconnect.SessionWsEvent>.broadcast();
 
@@ -167,31 +185,41 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       throw StateError('lv is empty');
     }
 
-    // Try N Air approach: programinfo API → viewUri directly
+    // Try N Air approach: programinfo API → viewUri directly.
+    // Even if viewUri resolution fails (e.g. rooms missing), the exception
+    // may carry the program title so we emit it for the fallback path.
+    // We attempt this even without user_session — the API may return the
+    // title (and possibly viewUri) for public broadcasts without auth.
     final String userSession = await _userSessionProvider();
-    if (userSession.isNotEmpty) {
-      try {
-        final Uri viewUri = await _programInfoResolver.resolve(
-          lv: lv,
-          userSession: userSession,
-        );
-        log(
-          'Resolved NDGR endpoint via programinfo API',
-          name: 'SessionWsClientAdapter',
-        );
-        return reconnect.SessionEndpoints(ndgrViewApiUri: viewUri);
-      } on ProgramInfoResolveException catch (error) {
-        log(
-          'programinfo resolution failed, falling back to WebSocket: $error',
-          name: 'SessionWsClientAdapter',
-        );
-      } on Object catch (error) {
-        log(
-          'Unexpected error during programinfo resolution, '
-          'falling back to WebSocket: $error',
-          name: 'SessionWsClientAdapter',
-        );
+    try {
+      final ProgramInfo programInfo = await _programInfoResolver.resolve(
+        lv: lv,
+        userSession: userSession,
+      );
+      if (programInfo.title != null) {
+        _onProgramTitleResolved?.call(programInfo.title!);
       }
+      log(
+        'Resolved NDGR endpoint via programinfo API',
+        name: 'SessionWsClientAdapter',
+      );
+      return reconnect.SessionEndpoints(
+        ndgrViewApiUri: programInfo.viewUri,
+      );
+    } on ProgramInfoResolveException catch (error) {
+      if (error.title != null) {
+        _onProgramTitleResolved?.call(error.title!);
+      }
+      log(
+        'programinfo resolution failed, falling back to WebSocket: $error',
+        name: 'SessionWsClientAdapter',
+      );
+    } on Object catch (error) {
+      log(
+        'Unexpected error during programinfo resolution, '
+        'falling back to WebSocket: $error',
+        name: 'SessionWsClientAdapter',
+      );
     }
 
     // Fallback: traditional WebSocket handshake flow

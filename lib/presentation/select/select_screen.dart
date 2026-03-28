@@ -21,6 +21,10 @@ class SelectScreen extends StatefulWidget {
     this.initialSettings = AppSettings.defaults,
     this.onPrepareConnection,
     this.userSessionStore,
+    this.programTitleNotifier,
+    this.resolveUserName,
+    this.requestUserNameResolve,
+    this.userNameListenable,
     super.key,
   });
 
@@ -31,6 +35,10 @@ class SelectScreen extends StatefulWidget {
   final UserSessionStore? userSessionStore;
   final Future<void> Function(String lv, AppSettings settings)?
       onPrepareConnection;
+  final ValueNotifier<String?>? programTitleNotifier;
+  final String? Function(String userId)? resolveUserName;
+  final void Function(String userId)? requestUserNameResolve;
+  final Listenable? userNameListenable;
 
   @override
   State<SelectScreen> createState() => _SelectScreenState();
@@ -214,6 +222,8 @@ class _SelectScreenState extends State<SelectScreen> {
       widget.connectionSupervisor,
       _settingsNotifier,
       if (widget.timelineStore != null) widget.timelineStore!,
+      if (widget.programTitleNotifier != null) widget.programTitleNotifier!,
+      if (widget.userNameListenable != null) widget.userNameListenable!,
     ];
 
     return ListenableBuilder(
@@ -233,6 +243,13 @@ class _SelectScreenState extends State<SelectScreen> {
               : () => _openSettings(routeContext, widget.userSessionStore),
           debugMode: _settingsNotifier.value.debugMode,
           connectionMethod: _connectionMethod,
+          programTitle: widget.programTitleNotifier?.value,
+          resolveUserName: _settingsNotifier.value.resolveUserName
+              ? widget.resolveUserName
+              : null,
+          requestUserNameResolve: _settingsNotifier.value.resolveUserName
+              ? widget.requestUserNameResolve
+              : null,
         );
       },
     );

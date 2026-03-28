@@ -54,27 +54,25 @@ class ProgramInfoResolver {
     return created;
   }
 
-  /// Resolves the NDGR view URI for the given live program.
+  /// Resolves the NDGR view URI and program title for the given live program.
   ///
   /// [lv] is the live program ID (e.g., "lv350186414").
   /// [userSession] is the value of the user_session cookie.
   ///
-  /// Returns the NDGR view URI to connect to.
+  /// Returns a [ProgramInfo] containing the NDGR view URI and program title.
   /// Throws [ProgramInfoResolveException] on failure.
-  Future<Uri> resolve({
+  Future<ProgramInfo> resolve({
     required String lv,
-    required String userSession,
+    String userSession = '',
   }) async {
-    if (userSession.trim().isEmpty) {
-      throw ProgramInfoResolveException('user_session is empty');
-    }
-
     final Uri uri = Uri.parse('$_live2BaseUrl/watch/$lv/programinfo');
     final HttpClientRequest request = await _activeHttpClient.getUrl(uri);
-    // Send session via both Cookie and X-Niconico-Session headers.
-    // N Air uses Cookie header; some niconico APIs accept X-Niconico-Session.
-    request.headers.set('Cookie', 'user_session=$userSession');
-    request.headers.set('X-Niconico-Session', userSession);
+    if (userSession.trim().isNotEmpty) {
+      // Send session via both Cookie and X-Niconico-Session headers.
+      // N Air uses Cookie header; some niconico APIs accept X-Niconico-Session.
+      request.headers.set('Cookie', 'user_session=$userSession');
+      request.headers.set('X-Niconico-Session', userSession);
+    }
     request.headers.set('User-Agent', _userAgent);
 
     final HttpClientResponse response = await request.close();
@@ -100,10 +98,13 @@ class ProgramInfoResolver {
       );
     }
 
+    final String? title = data['title'] as String?;
+
     final Object? rooms = data['rooms'];
     if (rooms is! List || rooms.isEmpty) {
       throw ProgramInfoResolveException(
         'Program info response has no rooms',
+        title: title,
       );
     }
 
@@ -111,6 +112,7 @@ class ProgramInfoResolver {
     if (firstRoom is! Map<String, dynamic>) {
       throw ProgramInfoResolveException(
         'Program info room entry is not a JSON object',
+        title: title,
       );
     }
 
@@ -118,6 +120,7 @@ class ProgramInfoResolver {
     if (viewUri == null || viewUri.isEmpty) {
       throw ProgramInfoResolveException(
         'Program info room missing "viewUri" field',
+        title: title,
       );
     }
 
@@ -125,6 +128,7 @@ class ProgramInfoResolver {
     if (parsed == null) {
       throw ProgramInfoResolveException(
         'Invalid viewUri: $viewUri',
+        title: title,
       );
     }
 
@@ -132,7 +136,7 @@ class ProgramInfoResolver {
       'Resolved NDGR viewUri for $lv via programinfo',
       name: 'ProgramInfoResolver',
     );
-    return parsed;
+    return ProgramInfo(viewUri: parsed, title: title);
   }
 
   /// Reads at most [_maxErrorBodyBytes] bytes from the response to avoid
@@ -172,10 +176,20 @@ class ProgramInfoResolver {
   }
 }
 
+class ProgramInfo {
+  const ProgramInfo({required this.viewUri, this.title});
+
+  final Uri viewUri;
+  final String? title;
+}
+
 class ProgramInfoResolveException implements Exception {
-  ProgramInfoResolveException(this.message);
+  ProgramInfoResolveException(this.message, {this.title});
 
   final String message;
+
+  /// The program title, if it was successfully extracted before the error.
+  final String? title;
 
   @override
   String toString() => 'ProgramInfoResolveException: $message';

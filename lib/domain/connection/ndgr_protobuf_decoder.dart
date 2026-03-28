@@ -18,12 +18,14 @@ class NdgrChunkedEntry {
 class NdgrChat {
   const NdgrChat({
     required this.content,
+    this.name,
     this.rawUserId,
     this.hashedUserId,
     this.no,
   });
 
   final String content;
+  final String? name;
   final int? rawUserId;
   final String? hashedUserId;
   final int? no;
@@ -319,6 +321,7 @@ class NdgrProtobufDecoder {
     final _ProtoReader reader = _ProtoReader(bytes);
 
     String content = '';
+    String? name;
     int? rawUserId;
     String? hashedUserId;
     int? no;
@@ -332,6 +335,13 @@ class NdgrProtobufDecoder {
         case 1: // Chat.content
           if (wireType == _WireType.lengthDelimited) {
             content = reader.readString();
+          } else {
+            reader.skipField(wireType);
+          }
+          break;
+        case 2: // Chat.name (user nickname from protobuf)
+          if (wireType == _WireType.lengthDelimited) {
+            name = reader.readString();
           } else {
             reader.skipField(wireType);
           }
@@ -364,6 +374,7 @@ class NdgrProtobufDecoder {
 
     return NdgrChat(
       content: content,
+      name: name,
       rawUserId: rawUserId,
       hashedUserId: hashedUserId,
       no: no,

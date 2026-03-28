@@ -674,6 +674,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _Section(
                   title: 'コメント表示',
                   children: <Widget>[
+                    SwitchListTile(
+                      key: const Key('resolve-user-name-switch'),
+                      title: const Text('ユーザーID名前解決'),
+                      subtitle: const Text('数値IDをニックネームに変換'),
+                      contentPadding: EdgeInsets.zero,
+                      value: settings.resolveUserName,
+                      onChanged: (bool value) {
+                        _saveNextSettings(
+                            settings.copyWith(resolveUserName: value));
+                      },
+                    ),
+                    const SizedBox(height: 8),
                     DropdownButtonFormField<PastCommentFetchCount>(
                       key: const Key('past-comment-count-dropdown'),
                       value: settings.pastCommentFetchCount,
