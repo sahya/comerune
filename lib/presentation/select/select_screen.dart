@@ -266,6 +266,8 @@ class _SelectScreenState extends State<SelectScreen> {
               nameResolutionEnabled ? widget.requestUserNameResolve : null,
           commentLogWriter: widget.commentLogWriter,
           autoSaveCommentLog: _settingsNotifier.value.autoSaveCommentLog,
+          ngUserIds: _settingsNotifier.value.ngUserIdSet,
+          onToggleNgUser: _toggleNgUser,
         );
       },
     );
@@ -299,6 +301,18 @@ class _SelectScreenState extends State<SelectScreen> {
       widget.timelineStore?.clear();
     }
     _lastConnectedLv = nextLv;
+  }
+
+  void _toggleNgUser(String userId) {
+    final AppSettings current = _settingsNotifier.value;
+    final AppSettings updated = current.isNgUser(userId)
+        ? current.removeNgUserId(userId)
+        : current.addNgUserId(userId);
+    _settingsNotifier.value = updated;
+    final SettingsStore? settingsStore = widget.settingsStore;
+    if (settingsStore != null) {
+      unawaited(settingsStore.save(updated));
+    }
   }
 
   Future<void> _openSettings(

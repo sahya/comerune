@@ -8,6 +8,7 @@ import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
+import 'user_detail_sheet.dart';
 
 const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
 
@@ -48,6 +49,8 @@ class CommentScreen extends StatefulWidget {
     this.requestUserNameResolve,
     this.commentLogWriter,
     this.autoSaveCommentLog = false,
+    this.ngUserIds = const <String>{},
+    this.onToggleNgUser,
   });
 
   final String lv;
@@ -72,6 +75,12 @@ class CommentScreen extends StatefulWidget {
 
   final CommentLogWriter? commentLogWriter;
   final bool autoSaveCommentLog;
+
+  /// Set of user IDs marked as NG (blocked).
+  final Set<String> ngUserIds;
+
+  /// Called to toggle NG status for a user.
+  final void Function(String userId)? onToggleNgUser;
 
   @override
   State<CommentScreen> createState() => _CommentScreenState();
@@ -275,6 +284,10 @@ class _CommentScreenState extends State<CommentScreen> {
                         message: message,
                         resolvedUserName: _resolveDisplayName(message),
                         showUserName: widget.showUserName,
+                        onLongPress:
+                            message.userId != null && message.userId!.isNotEmpty
+                                ? () => _showUserDetail(message)
+                                : null,
                       );
                     },
                   ),
@@ -285,6 +298,31 @@ class _CommentScreenState extends State<CommentScreen> {
           );
         },
       ),
+    );
+  }
+
+  void _showUserDetail(AppMessage message) {
+    final String? userId = message.userId;
+    if (userId == null || userId.isEmpty) {
+      return;
+    }
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext sheetContext) {
+        final bool isNg = widget.ngUserIds.contains(userId);
+        return UserDetailSheet(
+          userId: userId,
+          resolvedUserName: _resolveDisplayName(message),
+          allMessages: widget.messages,
+          isNgUser: isNg,
+          onToggleNgUser: () {
+            widget.onToggleNgUser?.call(userId);
+            Navigator.of(sheetContext).pop();
+          },
+        );
+      },
     );
   }
 
@@ -530,11 +568,18 @@ class _CommentScreenState extends State<CommentScreen> {
       case AppMessageType.chat:
       case AppMessageType.operator:
       case AppMessageType.notification:
-        return true;
+        break;
       case AppMessageType.gift:
       case AppMessageType.nicoad:
         return false;
     }
+
+    final String? userId = message.userId;
+    if (userId != null && widget.ngUserIds.contains(userId)) {
+      return false;
+    }
+
+    return true;
   }
 
   bool _hasNewMessages(
@@ -838,19 +883,24 @@ class _CommentRow extends StatelessWidget {
     required this.message,
     this.resolvedUserName,
     this.showUserName = true,
+    this.onLongPress,
   });
 
   final AppMessage message;
   final String? resolvedUserName;
   final bool showUserName;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return GestureDetector(
       key: Key('comment-row-${message.id}'),
-      color: _backgroundColor(message),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Text(_lineText(message)),
+      onLongPress: onLongPress,
+      child: Container(
+        color: _backgroundColor(message),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: Text(_lineText(message)),
+      ),
     );
   }
 

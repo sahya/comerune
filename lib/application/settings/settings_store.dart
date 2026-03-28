@@ -52,6 +52,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   static const String _kOmitUrl = 'settings.filter.omitUrl';
   static const String _kSuppressDuplicate = 'settings.filter.suppressDuplicate';
   static const String _kNgWords = 'settings.filter.ngWords';
+  static const String _kNgUserIds = 'settings.filter.ngUserIds';
   static const String _kPastCommentFetchCount =
       'settings.comment.pastFetchCount';
   static const String _kShowUserName = 'settings.comment.showUserName';
@@ -94,6 +95,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       suppressDuplicate:
           _prefs.getBool(_kSuppressDuplicate) ?? defaults.suppressDuplicate,
       ngWords: _prefs.getString(_kNgWords) ?? defaults.ngWords,
+      ngUserIds: _prefs.getString(_kNgUserIds) ?? defaults.ngUserIds,
       pastCommentFetchCount: PastCommentFetchCountValue.fromStorageValue(
         _prefs.getString(_kPastCommentFetchCount),
       ),
@@ -128,6 +130,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
     await _prefs.setBool(_kOmitUrl, settings.omitUrl);
     await _prefs.setBool(_kSuppressDuplicate, settings.suppressDuplicate);
     await _prefs.setString(_kNgWords, settings.ngWords);
+    await _prefs.setString(_kNgUserIds, settings.ngUserIds);
     await _prefs.setString(
       _kPastCommentFetchCount,
       settings.pastCommentFetchCount.storageValue,
