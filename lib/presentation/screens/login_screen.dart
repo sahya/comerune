@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:developer';
 
 import 'package:flutter/material.dart';
@@ -137,7 +136,8 @@ class _LoginScreenState extends State<LoginScreen> {
     // detected (e.g., httpOnly cookie), show a warning.
     if (_isPostLoginUrl(url)) {
       _postLoginPageCount += 1;
-      if (_postLoginPageCount >= 1 && mounted) {
+      // Show warning only once to avoid spamming
+      if (_postLoginPageCount == 1 && mounted) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
