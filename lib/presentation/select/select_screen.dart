@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../application/settings/settings_store.dart';
 import '../../application/timeline/timeline_store.dart';
-import '../../data/auth/access_token_store.dart';
+import '../../data/auth/user_session_store.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
@@ -20,7 +20,7 @@ class SelectScreen extends StatefulWidget {
     this.settingsStore,
     this.initialSettings = AppSettings.defaults,
     this.onPrepareConnection,
-    this.accessTokenStore,
+    this.userSessionStore,
     super.key,
   });
 
@@ -28,7 +28,7 @@ class SelectScreen extends StatefulWidget {
   final TimelineStore? timelineStore;
   final SettingsStore? settingsStore;
   final AppSettings initialSettings;
-  final AccessTokenStore? accessTokenStore;
+  final UserSessionStore? userSessionStore;
   final Future<void> Function(String lv, AppSettings settings)?
       onPrepareConnection;
 
@@ -230,7 +230,7 @@ class _SelectScreenState extends State<SelectScreen> {
           onDifferentLvConnected: _onDifferentLvConnected,
           onOpenSettings: widget.settingsStore == null
               ? null
-              : () => _openSettings(routeContext, widget.accessTokenStore),
+              : () => _openSettings(routeContext, widget.userSessionStore),
           debugMode: _settingsNotifier.value.debugMode,
           connectionMethod: _connectionMethod,
         );
@@ -270,7 +270,7 @@ class _SelectScreenState extends State<SelectScreen> {
 
   Future<void> _openSettings(
     BuildContext context,
-    AccessTokenStore? accessTokenStore,
+    UserSessionStore? userSessionStore,
   ) async {
     final SettingsStore? settingsStore = widget.settingsStore;
     if (settingsStore == null) {
@@ -281,7 +281,7 @@ class _SelectScreenState extends State<SelectScreen> {
       MaterialPageRoute<void>(
         builder: (_) => SettingsScreen(
           settingsStore: settingsStore,
-          accessTokenStore: accessTokenStore,
+          userSessionStore: userSessionStore,
         ),
       ),
     );

@@ -887,54 +887,6 @@ void main() {
       expect(fakeChannel.sentMessages, isEmpty);
     });
 
-    test('uses wsEndpointUri when provided instead of hardcoded URL', () async {
-      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
-      Uri? capturedUri;
-
-      final Uri customEndpoint = Uri.parse(
-        'wss://a.live2.nicovideo.jp/unama/wsapi/v2/watch/11111?audience_token=abc',
-      );
-
-      final SessionWsClient client = SessionWsClient(
-        lv: 'lv123456789',
-        wsEndpointUri: customEndpoint,
-        channelFactory: (Uri uri, Map<String, String> headers) async {
-          capturedUri = uri;
-          return fakeChannel;
-        },
-      );
-
-      await client.connect();
-
-      expect(capturedUri, customEndpoint);
-      expect(capturedUri.toString(), contains('/unama/'));
-      expect(capturedUri.toString(), contains('audience_token=abc'));
-
-      await client.dispose();
-    });
-
-    test('falls back to hardcoded URL when wsEndpointUri is null', () async {
-      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
-      Uri? capturedUri;
-
-      final SessionWsClient client = SessionWsClient(
-        lv: 'lv123456789',
-        channelFactory: (Uri uri, Map<String, String> headers) async {
-          capturedUri = uri;
-          return fakeChannel;
-        },
-      );
-
-      await client.connect();
-
-      expect(capturedUri, isNotNull);
-      expect(
-        capturedUri.toString(),
-        'wss://a.live2.nicovideo.jp/wsapi/v2/watch/lv123456789',
-      );
-
-      await client.dispose();
-    });
   });
 }
 

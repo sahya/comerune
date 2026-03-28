@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../lib/application/settings/settings_store.dart';
-import '../../../lib/data/auth/access_token_store.dart';
+import '../../../lib/data/auth/user_session_store.dart';
 import '../../../lib/domain/models/app_settings.dart';
 import '../../../lib/presentation/screens/settings_screen.dart';
 import '../../helpers/in_memory_shared_preferences.dart';
@@ -121,11 +121,11 @@ void main() {
     ) async {
       final SharedPreferencesSettingsStore settingsStore =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-      final _InMemoryAccessTokenStore accessTokenStore =
-          _InMemoryAccessTokenStore();
+      final _InMemoryUserSessionStore userSessionStore =
+          _InMemoryUserSessionStore();
 
       await tester.pumpWidget(
-        _buildScreen(settingsStore, accessTokenStore: accessTokenStore),
+        _buildScreen(settingsStore, userSessionStore: userSessionStore),
       );
       await tester.pumpAndSettle();
 
@@ -136,7 +136,7 @@ void main() {
       );
       await _focusFieldByKey(tester, const Key('bouyomi-host-field'));
 
-      final String loaded = await accessTokenStore.load();
+      final String loaded = await userSessionStore.load();
       expect(loaded, 'test-oauth-token-123');
     });
 
@@ -168,30 +168,30 @@ void main() {
 
 Widget _buildScreen(
   SettingsStore settingsStore, {
-  AccessTokenStore? accessTokenStore,
+  UserSessionStore? userSessionStore,
 }) {
   return MaterialApp(
     home: SettingsScreen(
       settingsStore: settingsStore,
-      accessTokenStore: accessTokenStore,
+      userSessionStore: userSessionStore,
     ),
   );
 }
 
-class _InMemoryAccessTokenStore implements AccessTokenStore {
-  String _token = '';
+class _InMemoryUserSessionStore implements UserSessionStore {
+  String _session = '';
 
   @override
-  Future<String> load() async => _token;
+  Future<String> load() async => _session;
 
   @override
-  Future<void> save(String token) async {
-    _token = token;
+  Future<void> save(String userSession) async {
+    _session = userSession;
   }
 
   @override
   Future<void> clear() async {
-    _token = '';
+    _session = '';
   }
 }
 

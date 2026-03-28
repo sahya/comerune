@@ -134,7 +134,6 @@ class SessionWsClient {
 
   SessionWsClient({
     required this.lv,
-    Uri? wsEndpointUri,
     SessionWsChannelFactory? channelFactory,
     Duration endpointFallbackDelay = const Duration(milliseconds: 300),
     Duration endpointResolveTimeout = const Duration(seconds: 5),
@@ -143,8 +142,7 @@ class SessionWsClient {
         SessionWsStartWatchingMode.full,
     Map<String, String>? connectHeaders,
     String userAgent = defaultAndroidUserAgent,
-  })  : _wsEndpointUri = wsEndpointUri,
-        _channelFactory = channelFactory ?? _defaultChannelFactory,
+  })  : _channelFactory = channelFactory ?? _defaultChannelFactory,
         _endpointFallbackDelay = endpointFallbackDelay,
         _endpointResolveTimeout = endpointResolveTimeout,
         _startWatchingMode = startWatchingMode,
@@ -166,7 +164,6 @@ class SessionWsClient {
               );
 
   final String lv;
-  final Uri? _wsEndpointUri;
   final SessionWsChannelFactory _channelFactory;
   final Duration _endpointFallbackDelay;
   final Duration _endpointResolveTimeout;
@@ -206,8 +203,7 @@ class SessionWsClient {
     }
     _resetEndpointResolutionState();
 
-    final Uri uri = _wsEndpointUri ??
-        Uri.parse('wss://a.live2.nicovideo.jp/wsapi/v2/watch/$lv');
+    final Uri uri = Uri.parse('wss://a.live2.nicovideo.jp/wsapi/v2/watch/$lv');
     _sessionWsUri = uri;
 
     try {

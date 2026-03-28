@@ -7,9 +7,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'application/settings/settings_store.dart';
 import 'application/settings/shared_preferences_adapter.dart';
 import 'application/timeline/timeline_store.dart';
-import 'data/auth/access_token_store.dart';
+import 'data/auth/user_session_store.dart';
+import 'data/connection/program_info_resolver.dart';
 import 'data/connection/web_socket_channel_legacy_web_socket.dart';
-import 'data/connection/ws_endpoint_resolver.dart';
 import 'domain/connection/connection_clients.dart' as reconnect;
 import 'domain/connection/connection_supervisor.dart';
 import 'domain/connection/legacy_comment_client.dart' as legacy_impl;
@@ -27,14 +27,14 @@ Future<void> main() async {
     prefs: SharedPreferencesAdapter(prefs),
   );
   final AppSettings initialSettings = await settingsStore.load();
-  final AccessTokenStore accessTokenStore =
-      SharedPreferencesAccessTokenStore(prefs);
+  final UserSessionStore userSessionStore =
+      SharedPreferencesUserSessionStore(prefs);
 
   runApp(
     ComeruneApp(
       settingsStore: settingsStore,
       initialSettings: initialSettings,
-      accessTokenStore: accessTokenStore,
+      userSessionStore: userSessionStore,
     ),
   );
 }
@@ -44,12 +44,12 @@ class ComeruneApp extends StatefulWidget {
     super.key,
     required this.settingsStore,
     required this.initialSettings,
-    required this.accessTokenStore,
+    required this.userSessionStore,
   });
 
   final SettingsStore settingsStore;
   final AppSettings initialSettings;
-  final AccessTokenStore accessTokenStore;
+  final UserSessionStore userSessionStore;
 
   @override
   State<ComeruneApp> createState() => _ComeruneAppState();
@@ -65,7 +65,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
   late final StreamSubscription<AppMessage> _legacyMessageSubscription;
 
   String _currentLv = '';
-  String _currentAccessToken = '';
+  String _currentUserSession = '';
   int _ndgrHistoryCount = 100;
 
   @override
@@ -78,8 +78,8 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _timelineStore = TimelineStore(capacity: _ndgrHistoryCount);
     _sessionWsClient = _SessionWsClientAdapter(
       lvProvider: () => _currentLv,
-      accessTokenProvider: () => _currentAccessToken,
-      wsEndpointResolver: WsEndpointResolver(),
+      userSessionProvider: () => _currentUserSession,
+      programInfoResolver: ProgramInfoResolver(),
     );
     _ndgrClient = _NdgrClientAdapter(
       client: ndgr_impl.NdgrClient(),
@@ -117,7 +117,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
 
   Future<void> _prepareConnection(String lv, AppSettings settings) async {
     _currentLv = lv;
-    _currentAccessToken = await widget.accessTokenStore.load();
+    _currentUserSession = await widget.userSessionStore.load();
     _ndgrHistoryCount = _historyCountFrom(settings.pastCommentFetchCount);
     _timelineStore.setCapacity(_ndgrHistoryCount);
   }
@@ -132,7 +132,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
         settingsStore: widget.settingsStore,
         initialSettings: widget.initialSettings,
         onPrepareConnection: _prepareConnection,
-        accessTokenStore: widget.accessTokenStore,
+        userSessionStore: widget.userSessionStore,
       ),
     );
   }
@@ -154,15 +154,15 @@ int _historyCountFrom(PastCommentFetchCount value) {
 class _SessionWsClientAdapter implements reconnect.SessionWsClient {
   _SessionWsClientAdapter({
     required String Function() lvProvider,
-    required String Function() accessTokenProvider,
-    required WsEndpointResolver wsEndpointResolver,
+    required String Function() userSessionProvider,
+    required ProgramInfoResolver programInfoResolver,
   })  : _lvProvider = lvProvider,
-        _accessTokenProvider = accessTokenProvider,
-        _wsEndpointResolver = wsEndpointResolver;
+        _userSessionProvider = userSessionProvider,
+        _programInfoResolver = programInfoResolver;
 
   final String Function() _lvProvider;
-  final String Function() _accessTokenProvider;
-  final WsEndpointResolver _wsEndpointResolver;
+  final String Function() _userSessionProvider;
+  final ProgramInfoResolver _programInfoResolver;
   final StreamController<reconnect.SessionWsEvent> _eventsController =
       StreamController<reconnect.SessionWsEvent>.broadcast();
 
@@ -183,31 +183,36 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       throw StateError('lv is empty');
     }
 
-    Uri? wsEndpointUri;
-    final String accessToken = _accessTokenProvider();
-    if (accessToken.isNotEmpty) {
+    // Try N Air approach: programinfo API → viewUri directly
+    final String userSession = _userSessionProvider();
+    if (userSession.isNotEmpty) {
       try {
-        wsEndpointUri = await _wsEndpointResolver.resolve(
+        final Uri viewUri = await _programInfoResolver.resolve(
           lv: lv,
-          accessToken: accessToken,
+          userSession: userSession,
         );
-      } on WsEndpointResolveException catch (error) {
         log(
-          'WS endpoint resolution failed, falling back to direct URL: $error',
+          'Resolved NDGR endpoint via programinfo API',
+          name: 'SessionWsClientAdapter',
+        );
+        return reconnect.SessionEndpoints(ndgrViewApiUri: viewUri);
+      } on ProgramInfoResolveException catch (error) {
+        log(
+          'programinfo resolution failed, falling back to WebSocket: $error',
           name: 'SessionWsClientAdapter',
         );
       } on Object catch (error) {
         log(
-          'Unexpected error during WS endpoint resolution, '
-          'falling back to direct URL: $error',
+          'Unexpected error during programinfo resolution, '
+          'falling back to WebSocket: $error',
           name: 'SessionWsClientAdapter',
         );
       }
     }
 
+    // Fallback: traditional WebSocket handshake flow
     final session_impl.SessionWsClient client = session_impl.SessionWsClient(
       lv: lv,
-      wsEndpointUri: wsEndpointUri,
     );
     final Completer<reconnect.SessionEndpoints> completer =
         Completer<reconnect.SessionEndpoints>();
@@ -271,7 +276,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
 
   Future<void> dispose() async {
     await disconnect();
-    _wsEndpointResolver.dispose();
+    _programInfoResolver.dispose();
     await _eventsController.close();
   }
 
