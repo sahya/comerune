@@ -153,17 +153,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _saveNgWords();
   }
 
+  bool _isOpeningLogin = false;
+
   Future<void> _openLoginScreen() async {
+    if (_isOpeningLogin) {
+      return;
+    }
     final UserSessionStore? sessionStore = widget.userSessionStore;
     if (sessionStore == null) {
       return;
     }
 
-    await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
-        builder: (_) => LoginScreen(userSessionStore: sessionStore),
-      ),
-    );
+    _isOpeningLogin = true;
+    try {
+      await Navigator.of(context).push<bool>(
+        MaterialPageRoute<bool>(
+          builder: (_) => LoginScreen(userSessionStore: sessionStore),
+        ),
+      );
+    } finally {
+      _isOpeningLogin = false;
+    }
 
     if (mounted) {
       await _refreshLoginState();

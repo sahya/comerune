@@ -32,11 +32,11 @@ class SecureUserSessionStore implements UserSessionStore {
   static const String _secureKey = 'auth.userSession';
   static const String _legacyPrefsKey = 'auth.userSession';
 
-  bool _migrated = false;
+  Future<void>? _migrationFuture;
 
   @override
   Future<String> load() async {
-    await _migrateIfNeeded();
+    await (_migrationFuture ??= _doMigrate());
     return await _secureStorage.read(key: _secureKey) ?? '';
   }
 
@@ -55,12 +55,7 @@ class SecureUserSessionStore implements UserSessionStore {
   /// Migrates from SharedPreferences (plaintext) to secure storage.
   /// Runs at most once per app lifetime. Deletes the legacy key after
   /// successful migration.
-  Future<void> _migrateIfNeeded() async {
-    if (_migrated) {
-      return;
-    }
-    _migrated = true;
-
+  Future<void> _doMigrate() async {
     final String? legacy = _prefs.getString(_legacyPrefsKey);
     if (legacy == null || legacy.isEmpty) {
       return;

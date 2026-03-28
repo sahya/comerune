@@ -26,6 +26,16 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   static const String _loginUrl = 'https://account.nicovideo.jp/login';
 
+  /// Hosts allowed during the login flow.
+  static const Set<String> _allowedHosts = <String>{
+    'account.nicovideo.jp',
+    'nicovideo.jp',
+    'www.nicovideo.jp',
+    'live.nicovideo.jp',
+    'oauth.nicovideo.jp',
+    'secure.nicovideo.jp',
+  };
+
   /// URLs that indicate the user has likely completed login.
   static const List<String> _postLoginUrlPrefixes = <String>[
     'https://www.nicovideo.jp',
@@ -37,6 +47,7 @@ class _LoginScreenState extends State<LoginScreen> {
   late final WebViewController _controller;
   bool _isLoading = true;
   bool _loginDetected = false;
+  bool _hasError = false;
   int _postLoginPageCount = 0;
 
   @override
@@ -46,10 +57,12 @@ class _LoginScreenState extends State<LoginScreen> {
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         NavigationDelegate(
+          onNavigationRequest: _onNavigationRequest,
           onPageStarted: (_) {
             if (mounted) {
               setState(() {
                 _isLoading = true;
+                _hasError = false;
               });
             }
           },
@@ -61,9 +74,34 @@ class _LoginScreenState extends State<LoginScreen> {
             }
             _checkForUserSession(url);
           },
+          onWebResourceError: (WebResourceError error) {
+            log(
+              'WebView error: ${error.description} (${error.errorCode})',
+              name: 'LoginScreen',
+            );
+            if (mounted && error.isForMainFrame == true) {
+              setState(() {
+                _isLoading = false;
+                _hasError = true;
+              });
+            }
+          },
         ),
       )
       ..loadRequest(Uri.parse(_loginUrl));
+  }
+
+  NavigationDecision _onNavigationRequest(NavigationRequest request) {
+    final Uri? uri = Uri.tryParse(request.url);
+    if (uri == null) {
+      return NavigationDecision.prevent;
+    }
+    // Allow nicovideo.jp and subdomains
+    final String host = uri.host;
+    if (_allowedHosts.contains(host) || host.endsWith('.nicovideo.jp')) {
+      return NavigationDecision.navigate;
+    }
+    return NavigationDecision.prevent;
   }
 
   bool _isPostLoginUrl(String url) {
@@ -99,7 +137,6 @@ class _LoginScreenState extends State<LoginScreen> {
     // detected (e.g., httpOnly cookie), show a warning.
     if (_isPostLoginUrl(url)) {
       _postLoginPageCount += 1;
-      // Show warning after visiting a post-login page without cookie
       if (_postLoginPageCount >= 1 && mounted) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
@@ -147,6 +184,14 @@ class _LoginScreenState extends State<LoginScreen> {
     return s;
   }
 
+  Future<void> _retry() async {
+    setState(() {
+      _hasError = false;
+      _isLoading = true;
+    });
+    await _controller.loadRequest(Uri.parse(_loginUrl));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -157,6 +202,23 @@ class _LoginScreenState extends State<LoginScreen> {
         children: <Widget>[
           WebViewWidget(controller: _controller),
           if (_isLoading) const LinearProgressIndicator(),
+          if (_hasError)
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  const Icon(Icons.error_outline, size: 48, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  const Text('ページの読み込みに失敗しました'),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: _retry,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('再試行'),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
