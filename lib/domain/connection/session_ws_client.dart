@@ -260,10 +260,16 @@ class SessionWsClient {
     }
 
     if (broadcastEndState == BroadcastEndDetection.unknown) {
+      final String? reason = SessionWsMessageParser._extractDisconnectReason(
+        decoded,
+      );
       _emit(
-        const SessionWsEvent(
+        SessionWsEvent(
           type: SessionWsEventType.failed,
           errorCode: SessionWsErrorCode.unknownBroadcastEndEvent,
+          error: reason == null || reason.isEmpty
+              ? 'Unknown disconnect event received'
+              : 'Unknown disconnect reason: $reason',
         ),
       );
       unawaited(disconnect());

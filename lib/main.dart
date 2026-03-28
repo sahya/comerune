@@ -141,7 +141,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
   session_impl.SessionWsClient? _activeClient;
   StreamSubscription<session_impl.SessionWsEvent>? _activeSubscription;
   Completer<reconnect.SessionEndpoints>? _pendingEndpointsCompleter;
-  session_impl.SessionWsErrorCode? _lastSessionErrorCode;
+  reconnect.SessionWsConnectException? _lastSessionFailure;
 
   @override
   Stream<reconnect.SessionWsEvent> get events => _eventsController.stream;
@@ -163,20 +163,27 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
 
     _activeClient = client;
     _pendingEndpointsCompleter = completer;
-    _lastSessionErrorCode = null;
+    _lastSessionFailure = null;
     _activeSubscription = client.events.listen(
       (session_impl.SessionWsEvent event) {
         _handleClientEvent(event, completer);
       },
       onError: (Object error, StackTrace stackTrace) {
-        if (!completer.isCompleted) {
-          completer.completeError(
-            const reconnect.SessionWsConnectException(
-              reconnect.SessionWsConnectFailureKind.connectFailed,
-            ),
-            stackTrace,
-          );
-        }
+        _recordSessionFailure(
+          reconnect.SessionWsConnectException(
+            reconnect.SessionWsConnectFailureKind.connectFailed,
+            cause: error,
+          ),
+        );
+        _completeEndpointError(
+          completer,
+          _lastSessionFailure ??
+              reconnect.SessionWsConnectException(
+                reconnect.SessionWsConnectFailureKind.connectFailed,
+                cause: error,
+              ),
+          stackTrace: stackTrace,
+        );
       },
     );
 
@@ -194,12 +201,17 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     final Completer<reconnect.SessionEndpoints>? completer =
         _pendingEndpointsCompleter;
     _pendingEndpointsCompleter = null;
-    final session_impl.SessionWsErrorCode? lastErrorCode =
-        _lastSessionErrorCode;
-    _lastSessionErrorCode = null;
+    final reconnect.SessionWsConnectException? lastFailure =
+        _lastSessionFailure;
+    _lastSessionFailure = null;
     if (completer != null && !completer.isCompleted) {
-      completer.completeError(
-        _mapSessionErrorCodeToConnectException(lastErrorCode),
+      _completeEndpointError(
+        completer,
+        lastFailure ??
+            const reconnect.SessionWsConnectException(
+              reconnect.SessionWsConnectFailureKind.connectFailed,
+              cause: 'Session WS disconnected before endpoint resolution',
+            ),
       );
     }
 
@@ -226,11 +238,16 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       case session_impl.SessionWsEventType.ndgrEndpointResolved:
         final Uri? uri = Uri.tryParse(event.ndgrViewUri ?? '');
         if (uri == null) {
+          final reconnect.SessionWsConnectException failure =
+              reconnect.SessionWsConnectException(
+            reconnect.SessionWsConnectFailureKind.endpointParseFailed,
+            cause:
+                'Invalid NDGR endpoint URI: ${event.ndgrViewUri ?? '(empty)'}',
+          );
+          _recordSessionFailure(failure);
           _completeEndpointError(
             completer,
-            const reconnect.SessionWsConnectException(
-              reconnect.SessionWsConnectFailureKind.endpointResolveFailed,
-            ),
+            failure,
           );
           break;
         }
@@ -241,11 +258,16 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       case session_impl.SessionWsEventType.legacyEndpointResolved:
         final Uri? uri = Uri.tryParse(event.legacyWebSocketUrl ?? '');
         if (uri == null) {
+          final reconnect.SessionWsConnectException failure =
+              reconnect.SessionWsConnectException(
+            reconnect.SessionWsConnectFailureKind.endpointParseFailed,
+            cause:
+                'Invalid legacy endpoint URI: ${event.legacyWebSocketUrl ?? '(empty)'}',
+          );
+          _recordSessionFailure(failure);
           _completeEndpointError(
             completer,
-            const reconnect.SessionWsConnectException(
-              reconnect.SessionWsConnectFailureKind.endpointResolveFailed,
-            ),
+            failure,
           );
           break;
         }
@@ -254,10 +276,14 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
         }
         break;
       case session_impl.SessionWsEventType.disconnected:
-        _lastSessionErrorCode ??= event.errorCode;
+        final reconnect.SessionWsConnectException failure = _failureFromEvent(
+          event,
+          fallbackKind: reconnect.SessionWsConnectFailureKind.connectFailed,
+        );
+        _recordSessionFailure(failure);
         _completeEndpointError(
           completer,
-          _mapSessionErrorCodeToConnectException(_lastSessionErrorCode),
+          failure,
         );
         _emitSessionEvent(
           const reconnect.SessionWsEvent(
@@ -266,12 +292,14 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
         );
         break;
       case session_impl.SessionWsEventType.broadcastEnded:
-        _lastSessionErrorCode ??= event.errorCode;
+        final reconnect.SessionWsConnectException failure = _failureFromEvent(
+          event,
+          fallbackKind: reconnect.SessionWsConnectFailureKind.broadcastEnded,
+        );
+        _recordSessionFailure(failure);
         _completeEndpointError(
           completer,
-          const reconnect.SessionWsConnectException(
-            reconnect.SessionWsConnectFailureKind.endpointResolveFailed,
-          ),
+          failure,
         );
         _emitSessionEvent(
           const reconnect.SessionWsEvent(
@@ -281,7 +309,11 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
         break;
       case session_impl.SessionWsEventType.failed:
       case session_impl.SessionWsEventType.error:
-        _lastSessionErrorCode ??= event.errorCode;
+        final reconnect.SessionWsConnectException failure = _failureFromEvent(
+          event,
+          fallbackKind: reconnect.SessionWsConnectFailureKind.connectFailed,
+        );
+        _recordSessionFailure(failure);
         if (completer.isCompleted) {
           _emitSessionEvent(
             const reconnect.SessionWsEvent(
@@ -289,10 +321,8 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
             ),
           );
         } else {
-          _completeEndpointError(
-            completer,
-            _mapSessionErrorCodeToConnectException(event.errorCode),
-          );
+          _completeEndpointError(completer, failure,
+              stackTrace: event.stackTrace);
         }
         break;
     }
@@ -300,10 +330,11 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
 
   void _completeEndpointError(
     Completer<reconnect.SessionEndpoints> completer,
-    Object error,
-  ) {
+    Object error, {
+    StackTrace? stackTrace,
+  }) {
     if (!completer.isCompleted) {
-      completer.completeError(error);
+      completer.completeError(error, stackTrace);
     }
   }
 
@@ -314,24 +345,70 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     _eventsController.add(event);
   }
 
+  void _recordSessionFailure(reconnect.SessionWsConnectException failure) {
+    _lastSessionFailure = failure;
+  }
+
+  reconnect.SessionWsConnectException _failureFromEvent(
+    session_impl.SessionWsEvent event, {
+    required reconnect.SessionWsConnectFailureKind fallbackKind,
+  }) {
+    return _mapSessionErrorCodeToConnectException(
+      event.errorCode,
+      fallbackKind: fallbackKind,
+      cause: event.error ?? event.debugMessage,
+    );
+  }
+
   reconnect.SessionWsConnectException _mapSessionErrorCodeToConnectException(
-    session_impl.SessionWsErrorCode? errorCode,
-  ) {
+    session_impl.SessionWsErrorCode? errorCode, {
+    required reconnect.SessionWsConnectFailureKind fallbackKind,
+    Object? cause,
+  }) {
     switch (errorCode) {
       case session_impl.SessionWsErrorCode.endpointResolveFailed:
-        return const reconnect.SessionWsConnectException(
+        return reconnect.SessionWsConnectException(
           reconnect.SessionWsConnectFailureKind.endpointResolveTimeout,
+          cause: cause ??
+              _defaultCauseForKind(
+                reconnect.SessionWsConnectFailureKind.endpointResolveTimeout,
+              ),
         );
       case session_impl.SessionWsErrorCode.connectFailed:
       case session_impl.SessionWsErrorCode.keepaliveResponseFailed:
-      case null:
-        return const reconnect.SessionWsConnectException(
+        return reconnect.SessionWsConnectException(
           reconnect.SessionWsConnectFailureKind.connectFailed,
+          cause: cause ??
+              _defaultCauseForKind(
+                reconnect.SessionWsConnectFailureKind.connectFailed,
+              ),
         );
       case session_impl.SessionWsErrorCode.unknownBroadcastEndEvent:
-        return const reconnect.SessionWsConnectException(
-          reconnect.SessionWsConnectFailureKind.endpointResolveFailed,
+        return reconnect.SessionWsConnectException(
+          reconnect.SessionWsConnectFailureKind.connectFailed,
+          cause: cause ??
+              _defaultCauseForKind(
+                reconnect.SessionWsConnectFailureKind.connectFailed,
+              ),
         );
+      case null:
+        return reconnect.SessionWsConnectException(
+          fallbackKind,
+          cause: cause ?? _defaultCauseForKind(fallbackKind),
+        );
+    }
+  }
+
+  String _defaultCauseForKind(reconnect.SessionWsConnectFailureKind kind) {
+    switch (kind) {
+      case reconnect.SessionWsConnectFailureKind.connectFailed:
+        return 'Session WS connection failed';
+      case reconnect.SessionWsConnectFailureKind.endpointResolveTimeout:
+        return 'Session endpoint resolution timed out';
+      case reconnect.SessionWsConnectFailureKind.endpointParseFailed:
+        return 'Session endpoint format was invalid';
+      case reconnect.SessionWsConnectFailureKind.broadcastEnded:
+        return 'Broadcast ended while resolving endpoints';
     }
   }
 }

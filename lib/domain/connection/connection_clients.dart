@@ -12,7 +12,8 @@ class SessionWsEvent {
 enum SessionWsConnectFailureKind {
   connectFailed,
   endpointResolveTimeout,
-  endpointResolveFailed,
+  endpointParseFailed,
+  broadcastEnded,
 }
 
 class SessionWsConnectException implements Exception {
