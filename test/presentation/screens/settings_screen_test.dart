@@ -212,6 +212,35 @@ void main() {
       expect(resolveTile.onChanged, isNull);
     });
 
+    testWidgets('theme dropdown persists selected value', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      // Default should be light
+      AppSettings loaded = await settingsStore.load();
+      expect(loaded.themeMode, AppThemeMode.light);
+
+      // Open the dropdown and select dark
+      await _scrollToKey(tester, const Key('theme-mode-dropdown'));
+      await tester.tap(
+        find.byKey(const Key('theme-mode-dropdown')),
+        warnIfMissed: false,
+      );
+      await tester.pumpAndSettle();
+
+      // Tap the dark option in the dropdown overlay
+      await tester.tap(find.text('ダーク').last);
+      await tester.pumpAndSettle();
+
+      loaded = await settingsStore.load();
+      expect(loaded.themeMode, AppThemeMode.dark);
+    });
+
     testWidgets('saves text fields when focus is lost', (
       WidgetTester tester,
     ) async {

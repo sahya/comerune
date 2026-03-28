@@ -232,7 +232,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _settings = next;
     });
-    widget.themeModeNotifier?.value = next.themeMode;
+    if (widget.themeModeNotifier != null &&
+        widget.themeModeNotifier!.value != next.themeMode) {
+      widget.themeModeNotifier!.value = next.themeMode;
+    }
     unawaited(_saveSettings(next));
   }
 
