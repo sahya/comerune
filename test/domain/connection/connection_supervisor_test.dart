@@ -30,6 +30,7 @@ void main() {
         <String>[
           'LV_PARSE_FAILED',
           'SESSION_WS_CONNECT_FAILED',
+          'SESSION_WS_TIMEOUT',
           'ENDPOINT_RESOLVE_FAILED',
           'NDGR_STREAM_FAILED',
           'LEGACY_WS_FAILED',
@@ -314,6 +315,50 @@ void main() {
       expect(secondStart, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingNdgr);
       expect(ndgrClient.connectedUris.last, secondUri);
+    });
+
+    test('maps session endpoint resolve timeout to SESSION_WS_TIMEOUT',
+        () async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: FakeSessionWsClient(
+          endpointsQueue: <SessionEndpoints>[],
+          connectExceptions: <Object>[
+            const SessionWsConnectException(
+              SessionWsConnectFailureKind.endpointResolveTimeout,
+            ),
+          ],
+        ),
+        ndgrClient: FakeNdgrClient(),
+        legacyCommentClient: FakeLegacyCommentClient(),
+      );
+      addTearDown(supervisor.dispose);
+
+      final bool started = await _startAndDrain(supervisor);
+      expect(started, isTrue);
+      expect(supervisor.status, ConnectionStatus.failed);
+      expect(supervisor.lastError, ConnectionErrorCode.sessionWsTimeout);
+    });
+
+    test('maps session endpoint parse failure to ENDPOINT_RESOLVE_FAILED',
+        () async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: FakeSessionWsClient(
+          endpointsQueue: <SessionEndpoints>[],
+          connectExceptions: <Object>[
+            const SessionWsConnectException(
+              SessionWsConnectFailureKind.endpointResolveFailed,
+            ),
+          ],
+        ),
+        ndgrClient: FakeNdgrClient(),
+        legacyCommentClient: FakeLegacyCommentClient(),
+      );
+      addTearDown(supervisor.dispose);
+
+      final bool started = await _startAndDrain(supervisor);
+      expect(started, isTrue);
+      expect(supervisor.status, ConnectionStatus.failed);
+      expect(supervisor.lastError, ConnectionErrorCode.endpointResolveFailed);
     });
 
     test('reconnects NDGR stall with same URI after disconnecting old stream',
@@ -771,9 +816,11 @@ Future<void> _drainEventLoop() async {
 class FakeSessionWsClient implements SessionWsClient {
   FakeSessionWsClient({
     required this.endpointsQueue,
-  });
+    List<Object>? connectExceptions,
+  }) : _connectExceptions = connectExceptions ?? <Object>[];
 
   final List<SessionEndpoints> endpointsQueue;
+  final List<Object> _connectExceptions;
   final StreamController<SessionWsEvent> _eventsController =
       StreamController<SessionWsEvent>.broadcast();
 
@@ -786,6 +833,9 @@ class FakeSessionWsClient implements SessionWsClient {
   @override
   Future<SessionEndpoints> connectAndResolveEndpoints() async {
     connectCalls += 1;
+    if (_connectExceptions.isNotEmpty) {
+      throw _connectExceptions.removeAt(0);
+    }
     if (endpointsQueue.isEmpty) {
       throw StateError('No endpoints configured');
     }

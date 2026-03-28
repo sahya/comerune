@@ -21,6 +21,7 @@ enum ConnectionStatus {
 enum ConnectionErrorCode {
   lvParseFailed,
   sessionWsConnectFailed,
+  sessionWsTimeout,
   endpointResolveFailed,
   ndgrStreamFailed,
   legacyWsFailed,
@@ -83,6 +84,8 @@ extension ConnectionErrorCodeExtension on ConnectionErrorCode {
         return 'LV_PARSE_FAILED';
       case ConnectionErrorCode.sessionWsConnectFailed:
         return 'SESSION_WS_CONNECT_FAILED';
+      case ConnectionErrorCode.sessionWsTimeout:
+        return 'SESSION_WS_TIMEOUT';
       case ConnectionErrorCode.endpointResolveFailed:
         return 'ENDPOINT_RESOLVE_FAILED';
       case ConnectionErrorCode.ndgrStreamFailed:
@@ -515,6 +518,8 @@ class ConnectionSupervisor extends ChangeNotifier {
     SessionEndpoints endpoints;
     try {
       endpoints = await sessionWsClient.connectAndResolveEndpoints();
+    } on SessionWsConnectException catch (error) {
+      throw _ConnectionFailure(_mapSessionWsConnectFailure(error.kind));
     } catch (_) {
       throw const _ConnectionFailure(
           ConnectionErrorCode.sessionWsConnectFailed);
@@ -542,6 +547,19 @@ class ConnectionSupervisor extends ChangeNotifier {
     }
 
     throw const _ConnectionFailure(ConnectionErrorCode.endpointResolveFailed);
+  }
+
+  ConnectionErrorCode _mapSessionWsConnectFailure(
+    SessionWsConnectFailureKind kind,
+  ) {
+    switch (kind) {
+      case SessionWsConnectFailureKind.connectFailed:
+        return ConnectionErrorCode.sessionWsConnectFailed;
+      case SessionWsConnectFailureKind.endpointResolveTimeout:
+        return ConnectionErrorCode.sessionWsTimeout;
+      case SessionWsConnectFailureKind.endpointResolveFailed:
+        return ConnectionErrorCode.endpointResolveFailed;
+    }
   }
 
   Future<void> _connectNdgr(
