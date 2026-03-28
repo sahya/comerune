@@ -53,22 +53,36 @@ void main() {
       resolver.dispose();
     });
 
-    test('throws when user_session is empty', () async {
+    test('sends request without auth headers when user_session is empty',
+        () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'Public Program',
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri':
+                  'https://mpn.live.nicovideo.jp/api/view/v4/PublicTest',
+            },
+          ],
+        },
+      });
+
       final ProgramInfoResolver resolver = ProgramInfoResolver(
         httpClient: httpClient,
       );
 
-      await expectLater(
-        resolver.resolve(lv: 'lv123', userSession: ''),
-        throwsA(isA<ProgramInfoResolveException>()),
-      );
-      await expectLater(
-        resolver.resolve(lv: 'lv123', userSession: '   '),
-        throwsA(isA<ProgramInfoResolveException>()),
-      );
+      final ProgramInfo result = await resolver.resolve(lv: 'lv123');
+      expect(result.title, 'Public Program');
 
-      expect(httpClient.requests, isEmpty);
+      expect(httpClient.requests, hasLength(1));
+      final _CapturedRequest request = httpClient.requests[0];
+      // No auth headers should be set.
+      expect(request.headers['Cookie'], isNull);
+      expect(request.headers['X-Niconico-Session'], isNull);
+      expect(request.headers['User-Agent'], isNotNull);
+
       resolver.dispose();
     });
 

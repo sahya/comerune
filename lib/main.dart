@@ -188,38 +188,38 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     // Try N Air approach: programinfo API → viewUri directly.
     // Even if viewUri resolution fails (e.g. rooms missing), the exception
     // may carry the program title so we emit it for the fallback path.
+    // We attempt this even without user_session — the API may return the
+    // title (and possibly viewUri) for public broadcasts without auth.
     final String userSession = await _userSessionProvider();
-    if (userSession.isNotEmpty) {
-      try {
-        final ProgramInfo programInfo = await _programInfoResolver.resolve(
-          lv: lv,
-          userSession: userSession,
-        );
-        if (programInfo.title != null) {
-          _onProgramTitleResolved?.call(programInfo.title!);
-        }
-        log(
-          'Resolved NDGR endpoint via programinfo API',
-          name: 'SessionWsClientAdapter',
-        );
-        return reconnect.SessionEndpoints(
-          ndgrViewApiUri: programInfo.viewUri,
-        );
-      } on ProgramInfoResolveException catch (error) {
-        if (error.title != null) {
-          _onProgramTitleResolved?.call(error.title!);
-        }
-        log(
-          'programinfo resolution failed, falling back to WebSocket: $error',
-          name: 'SessionWsClientAdapter',
-        );
-      } on Object catch (error) {
-        log(
-          'Unexpected error during programinfo resolution, '
-          'falling back to WebSocket: $error',
-          name: 'SessionWsClientAdapter',
-        );
+    try {
+      final ProgramInfo programInfo = await _programInfoResolver.resolve(
+        lv: lv,
+        userSession: userSession,
+      );
+      if (programInfo.title != null) {
+        _onProgramTitleResolved?.call(programInfo.title!);
       }
+      log(
+        'Resolved NDGR endpoint via programinfo API',
+        name: 'SessionWsClientAdapter',
+      );
+      return reconnect.SessionEndpoints(
+        ndgrViewApiUri: programInfo.viewUri,
+      );
+    } on ProgramInfoResolveException catch (error) {
+      if (error.title != null) {
+        _onProgramTitleResolved?.call(error.title!);
+      }
+      log(
+        'programinfo resolution failed, falling back to WebSocket: $error',
+        name: 'SessionWsClientAdapter',
+      );
+    } on Object catch (error) {
+      log(
+        'Unexpected error during programinfo resolution, '
+        'falling back to WebSocket: $error',
+        name: 'SessionWsClientAdapter',
+      );
     }
 
     // Fallback: traditional WebSocket handshake flow

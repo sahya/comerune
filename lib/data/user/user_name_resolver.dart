@@ -98,12 +98,17 @@ class UserNameResolver extends ChangeNotifier {
   Future<void> _fetchNickname(String userId) async {
     try {
       final Uri uri = Uri.parse('$_baseUrl/$userId');
+      log('Fetching nickname for $userId', name: 'UserNameResolver');
       final HttpClientRequest request = await _activeHttpClient.getUrl(uri);
       request.headers.set('User-Agent', _userAgent);
       request.headers.set('X-Frontend-Id', '6');
 
       final HttpClientResponse response = await request.close();
       if (response.statusCode != 200) {
+        log(
+          'User $userId: HTTP ${response.statusCode}',
+          name: 'UserNameResolver',
+        );
         await response.drain<void>();
         _pending.remove(userId);
         _onRequestDone();
@@ -113,6 +118,8 @@ class UserNameResolver extends ChangeNotifier {
       final String body = await response.transform(utf8.decoder).join();
       final Object? decoded = jsonDecode(body);
       if (decoded is! Map<String, dynamic>) {
+        log('User $userId: response is not a JSON object',
+            name: 'UserNameResolver');
         _pending.remove(userId);
         _onRequestDone();
         return;
@@ -120,6 +127,7 @@ class UserNameResolver extends ChangeNotifier {
 
       final Object? data = decoded['data'];
       if (data is! Map<String, dynamic>) {
+        log('User $userId: missing "data" field', name: 'UserNameResolver');
         _pending.remove(userId);
         _onRequestDone();
         return;
@@ -127,6 +135,17 @@ class UserNameResolver extends ChangeNotifier {
 
       final Object? user = data['user'];
       if (user is! Map<String, dynamic>) {
+        // Some endpoints return nickname directly in data
+        final String? directNickname = data['nickname'] as String?;
+        if (directNickname != null && directNickname.isNotEmpty && !_disposed) {
+          _cache[userId] = directNickname;
+          _scheduleNotification();
+          log('Resolved user $userId → $directNickname (from data)',
+              name: 'UserNameResolver');
+        } else {
+          log('User $userId: missing "user" field in data',
+              name: 'UserNameResolver');
+        }
         _pending.remove(userId);
         _onRequestDone();
         return;
@@ -137,6 +156,7 @@ class UserNameResolver extends ChangeNotifier {
       if (nickname != null && nickname.isNotEmpty && !_disposed) {
         _cache[userId] = nickname;
         _scheduleNotification();
+        log('Resolved user $userId → $nickname', name: 'UserNameResolver');
       }
       _onRequestDone();
     } catch (error) {
