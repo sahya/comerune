@@ -106,6 +106,7 @@ class ProgramInfoResolver {
     if (rooms is! List || rooms.isEmpty) {
       throw ProgramInfoResolveException(
         'Program info response has no rooms',
+        title: title,
       );
     }
 
@@ -113,6 +114,7 @@ class ProgramInfoResolver {
     if (firstRoom is! Map<String, dynamic>) {
       throw ProgramInfoResolveException(
         'Program info room entry is not a JSON object',
+        title: title,
       );
     }
 
@@ -120,6 +122,7 @@ class ProgramInfoResolver {
     if (viewUri == null || viewUri.isEmpty) {
       throw ProgramInfoResolveException(
         'Program info room missing "viewUri" field',
+        title: title,
       );
     }
 
@@ -127,6 +130,7 @@ class ProgramInfoResolver {
     if (parsed == null) {
       throw ProgramInfoResolveException(
         'Invalid viewUri: $viewUri',
+        title: title,
       );
     }
 
@@ -182,9 +186,12 @@ class ProgramInfo {
 }
 
 class ProgramInfoResolveException implements Exception {
-  ProgramInfoResolveException(this.message);
+  ProgramInfoResolveException(this.message, {this.title});
 
   final String message;
+
+  /// The program title, if it was successfully extracted before the error.
+  final String? title;
 
   @override
   String toString() => 'ProgramInfoResolveException: $message';

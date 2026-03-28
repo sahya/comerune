@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../../application/settings/settings_store.dart';
 import '../../application/timeline/timeline_store.dart';
 import '../../data/auth/user_session_store.dart';
-import '../../data/user/user_name_resolver.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
@@ -22,8 +21,10 @@ class SelectScreen extends StatefulWidget {
     this.initialSettings = AppSettings.defaults,
     this.onPrepareConnection,
     this.userSessionStore,
-    this.programTitle,
-    this.userNameResolver,
+    this.programTitleNotifier,
+    this.resolveUserName,
+    this.requestUserNameResolve,
+    this.userNameListenable,
     super.key,
   });
 
@@ -34,8 +35,10 @@ class SelectScreen extends StatefulWidget {
   final UserSessionStore? userSessionStore;
   final Future<void> Function(String lv, AppSettings settings)?
       onPrepareConnection;
-  final String? programTitle;
-  final UserNameResolver? userNameResolver;
+  final ValueNotifier<String?>? programTitleNotifier;
+  final String? Function(String userId)? resolveUserName;
+  final void Function(String userId)? requestUserNameResolve;
+  final Listenable? userNameListenable;
 
   @override
   State<SelectScreen> createState() => _SelectScreenState();
@@ -219,6 +222,8 @@ class _SelectScreenState extends State<SelectScreen> {
       widget.connectionSupervisor,
       _settingsNotifier,
       if (widget.timelineStore != null) widget.timelineStore!,
+      if (widget.programTitleNotifier != null) widget.programTitleNotifier!,
+      if (widget.userNameListenable != null) widget.userNameListenable!,
     ];
 
     return ListenableBuilder(
@@ -238,8 +243,9 @@ class _SelectScreenState extends State<SelectScreen> {
               : () => _openSettings(routeContext, widget.userSessionStore),
           debugMode: _settingsNotifier.value.debugMode,
           connectionMethod: _connectionMethod,
-          programTitle: widget.programTitle,
-          userNameResolver: widget.userNameResolver,
+          programTitle: widget.programTitleNotifier?.value,
+          resolveUserName: widget.resolveUserName,
+          requestUserNameResolve: widget.requestUserNameResolve,
         );
       },
     );

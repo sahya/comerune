@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
@@ -8,13 +10,17 @@ import 'package:flutter/foundation.dart';
 ///
 /// Uses the nvapi user nickname endpoint (same approach as Hakumai and N Air).
 /// Results are cached in memory to avoid redundant network calls.
+/// Concurrent HTTP requests are capped at [_maxConcurrentRequests] to avoid
+/// rate-limiting or socket exhaustion.
 class UserNameResolver extends ChangeNotifier {
   UserNameResolver({
     HttpClient? httpClient,
     HttpClient Function()? httpClientFactory,
     Duration connectionTimeout = const Duration(seconds: 5),
+    Duration debounceDuration = const Duration(milliseconds: 200),
   })  : _httpClientFactory = httpClientFactory ?? HttpClient.new,
-        _connectionTimeout = connectionTimeout {
+        _connectionTimeout = connectionTimeout,
+        _debounceDuration = debounceDuration {
     if (httpClient != null) {
       _seedHttpClient = httpClient;
     }
@@ -26,14 +32,21 @@ class UserNameResolver extends ChangeNotifier {
       'Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 '
       '(KHTML, like Gecko) Chrome Mobile Safari/537.36';
 
+  static const int _maxConcurrentRequests = 3;
+
   final HttpClient Function() _httpClientFactory;
   final Duration _connectionTimeout;
+  final Duration _debounceDuration;
   HttpClient? _seedHttpClient;
   HttpClient? _httpClient;
 
   final Map<String, String> _cache = <String, String>{};
   final Set<String> _pending = <String>{};
+  final Queue<String> _queue = Queue<String>();
+  int _activeRequests = 0;
   bool _disposed = false;
+  Timer? _debounceTimer;
+  bool _hasPendingNotification = false;
 
   HttpClient get _activeHttpClient {
     final HttpClient? current = _httpClient;
@@ -59,7 +72,7 @@ class UserNameResolver extends ChangeNotifier {
   /// Requests resolution of the given [userId].
   ///
   /// If already cached or pending, this is a no-op.
-  /// When the name is resolved, listeners are notified.
+  /// When the name is resolved, listeners are notified (debounced).
   void requestResolve(String userId) {
     if (_cache.containsKey(userId) || _pending.contains(userId)) {
       return;
@@ -70,7 +83,16 @@ class UserNameResolver extends ChangeNotifier {
     }
 
     _pending.add(userId);
-    _fetchNickname(userId);
+    _queue.add(userId);
+    _drainQueue();
+  }
+
+  void _drainQueue() {
+    while (_activeRequests < _maxConcurrentRequests && _queue.isNotEmpty) {
+      final String userId = _queue.removeFirst();
+      _activeRequests++;
+      _fetchNickname(userId);
+    }
   }
 
   Future<void> _fetchNickname(String userId) async {
@@ -84,6 +106,7 @@ class UserNameResolver extends ChangeNotifier {
       if (response.statusCode != 200) {
         await response.drain<void>();
         _pending.remove(userId);
+        _onRequestDone();
         return;
       }
 
@@ -91,18 +114,21 @@ class UserNameResolver extends ChangeNotifier {
       final Object? decoded = jsonDecode(body);
       if (decoded is! Map<String, dynamic>) {
         _pending.remove(userId);
+        _onRequestDone();
         return;
       }
 
       final Object? data = decoded['data'];
       if (data is! Map<String, dynamic>) {
         _pending.remove(userId);
+        _onRequestDone();
         return;
       }
 
       final Object? user = data['user'];
       if (user is! Map<String, dynamic>) {
         _pending.remove(userId);
+        _onRequestDone();
         return;
       }
 
@@ -110,15 +136,35 @@ class UserNameResolver extends ChangeNotifier {
       _pending.remove(userId);
       if (nickname != null && nickname.isNotEmpty && !_disposed) {
         _cache[userId] = nickname;
-        notifyListeners();
+        _scheduleNotification();
       }
+      _onRequestDone();
     } catch (error) {
       log(
         'Failed to resolve user $userId: $error',
         name: 'UserNameResolver',
       );
       _pending.remove(userId);
+      _onRequestDone();
     }
+  }
+
+  void _onRequestDone() {
+    _activeRequests--;
+    _drainQueue();
+  }
+
+  void _scheduleNotification() {
+    _hasPendingNotification = true;
+    if (_debounceTimer?.isActive ?? false) {
+      return;
+    }
+    _debounceTimer = Timer(_debounceDuration, () {
+      if (_hasPendingNotification && !_disposed) {
+        _hasPendingNotification = false;
+        notifyListeners();
+      }
+    });
   }
 
   static bool _isNumericUserId(String userId) {
@@ -128,11 +174,14 @@ class UserNameResolver extends ChangeNotifier {
   void clearCache() {
     _cache.clear();
     _pending.clear();
+    _queue.clear();
   }
 
   @override
   void dispose() {
     _disposed = true;
+    _debounceTimer?.cancel();
+    _debounceTimer = null;
     _httpClient?.close();
     _httpClient = null;
     _seedHttpClient = null;

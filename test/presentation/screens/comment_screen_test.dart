@@ -470,6 +470,143 @@ void main() {
       expect(find.byType(CommentScreen), findsNothing);
     });
 
+    testWidgets('displays program title in AppBar when provided', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          programTitle: 'テスト番組',
+        ),
+      );
+
+      expect(find.text('テスト番組 (lv345678901)'), findsOneWidget);
+    });
+
+    testWidgets('displays lv only when program title is null', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+        ),
+      );
+
+      expect(find.text('lv345678901'), findsOneWidget);
+    });
+
+    testWidgets('sort toggle button reverses comment order', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'first',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'u1',
+          content: 'first comment',
+          type: AppMessageType.chat,
+        ),
+        AppMessage(
+          id: 'second',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 10),
+          userId: 'u2',
+          content: 'second comment',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+        ),
+      );
+
+      // Default: ascending (first comment is first in list)
+      final Finder firstRow = find.byKey(const Key('comment-row-first'));
+      final Finder secondRow = find.byKey(const Key('comment-row-second'));
+      expect(firstRow, findsOneWidget);
+      expect(secondRow, findsOneWidget);
+
+      // First row should be above second row.
+      final double firstY = tester.getTopLeft(firstRow).dy;
+      final double secondY = tester.getTopLeft(secondRow).dy;
+      expect(firstY, lessThan(secondY));
+
+      // Tap sort toggle to switch to descending.
+      await tester.tap(find.byKey(const Key('sort-toggle-button')));
+      await tester.pumpAndSettle();
+
+      // Now second comment should be above first.
+      final double firstYAfter = tester.getTopLeft(firstRow).dy;
+      final double secondYAfter = tester.getTopLeft(secondRow).dy;
+      expect(secondYAfter, lessThan(firstYAfter));
+    });
+
+    testWidgets('displays resolved user name with user ID', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-name',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: '12345',
+          content: 'hello',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          resolveUserName: (String userId) {
+            if (userId == '12345') {
+              return 'テストさん';
+            }
+            return null;
+          },
+        ),
+      );
+
+      expect(find.textContaining('テストさん (12345)'), findsOneWidget);
+      expect(find.textContaining('hello'), findsOneWidget);
+    });
+
+    testWidgets('displays raw user ID when not resolved', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-raw',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: '99999',
+          content: 'world',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          resolveUserName: (_) => null,
+        ),
+      );
+
+      expect(find.textContaining('99999'), findsOneWidget);
+      expect(find.textContaining('world'), findsOneWidget);
+    });
+
     testWidgets('invokes callback when lv changes (different lv connection)', (
       WidgetTester tester,
     ) async {
@@ -578,6 +715,8 @@ Widget _buildScreen({
   Future<void> Function()? onReconnectSameLv,
   bool debugMode = false,
   ConnectionMethod? connectionMethod,
+  String? programTitle,
+  String? Function(String userId)? resolveUserName,
 }) {
   return MaterialApp(
     home: CommentScreen(
@@ -589,6 +728,8 @@ Widget _buildScreen({
       onDifferentLvConnected: (_, __) async {},
       debugMode: debugMode,
       connectionMethod: connectionMethod,
+      programTitle: programTitle,
+      resolveUserName: resolveUserName,
     ),
   );
 }

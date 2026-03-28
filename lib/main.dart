@@ -67,7 +67,8 @@ class _ComeruneAppState extends State<ComeruneApp> {
 
   String _currentLv = '';
   int _ndgrHistoryCount = 100;
-  String? _programTitle;
+  final ValueNotifier<String?> _programTitleNotifier =
+      ValueNotifier<String?>(null);
   late final UserNameResolver _userNameResolver;
 
   @override
@@ -83,9 +84,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
       userSessionProvider: () => widget.userSessionStore.load(),
       programInfoResolver: ProgramInfoResolver(),
       onProgramTitleResolved: (String title) {
-        setState(() {
-          _programTitle = title;
-        });
+        _programTitleNotifier.value = title;
       },
     );
     _ndgrClient = _NdgrClientAdapter(
@@ -120,12 +119,13 @@ class _ComeruneAppState extends State<ComeruneApp> {
     unawaited(_legacyCommentClient.dispose());
     _timelineStore.dispose();
     _userNameResolver.dispose();
+    _programTitleNotifier.dispose();
     super.dispose();
   }
 
   Future<void> _prepareConnection(String lv, AppSettings settings) async {
     _currentLv = lv;
-    _programTitle = null;
+    _programTitleNotifier.value = null;
     _ndgrHistoryCount = settings.pastCommentFetchCount.historyCount;
     _timelineStore.setCapacity(_ndgrHistoryCount);
   }
@@ -141,8 +141,10 @@ class _ComeruneAppState extends State<ComeruneApp> {
         initialSettings: widget.initialSettings,
         onPrepareConnection: _prepareConnection,
         userSessionStore: widget.userSessionStore,
-        programTitle: _programTitle,
-        userNameResolver: _userNameResolver,
+        programTitleNotifier: _programTitleNotifier,
+        resolveUserName: _userNameResolver.getCachedName,
+        requestUserNameResolve: _userNameResolver.requestResolve,
+        userNameListenable: _userNameResolver,
       ),
     );
   }
@@ -183,7 +185,9 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       throw StateError('lv is empty');
     }
 
-    // Try N Air approach: programinfo API → viewUri directly
+    // Try N Air approach: programinfo API → viewUri directly.
+    // Even if viewUri resolution fails (e.g. rooms missing), the exception
+    // may carry the program title so we emit it for the fallback path.
     final String userSession = await _userSessionProvider();
     if (userSession.isNotEmpty) {
       try {
@@ -202,6 +206,9 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
           ndgrViewApiUri: programInfo.viewUri,
         );
       } on ProgramInfoResolveException catch (error) {
+        if (error.title != null) {
+          _onProgramTitleResolved?.call(error.title!);
+        }
         log(
           'programinfo resolution failed, falling back to WebSocket: $error',
           name: 'SessionWsClientAdapter',

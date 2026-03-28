@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
-import '../../data/user/user_name_resolver.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
@@ -41,7 +40,8 @@ class CommentScreen extends StatefulWidget {
     this.debugMode = false,
     this.connectionMethod,
     this.programTitle,
-    this.userNameResolver,
+    this.resolveUserName,
+    this.requestUserNameResolve,
   });
 
   final String lv;
@@ -55,7 +55,12 @@ class CommentScreen extends StatefulWidget {
   final bool debugMode;
   final ConnectionMethod? connectionMethod;
   final String? programTitle;
-  final UserNameResolver? userNameResolver;
+
+  /// Returns the cached resolved name for a user ID, or null.
+  final String? Function(String userId)? resolveUserName;
+
+  /// Requests asynchronous resolution of a user ID.
+  final void Function(String userId)? requestUserNameResolve;
 
   @override
   State<CommentScreen> createState() => _CommentScreenState();
@@ -76,7 +81,6 @@ class _CommentScreenState extends State<CommentScreen> {
     _scrollController = ScrollController()..addListener(_handleScroll);
     _lastStatus = widget.connectionSupervisor.status;
     widget.connectionSupervisor.addListener(_handleConnectionChanged);
-    widget.userNameResolver?.addListener(_handleUserNameChanged);
 
     _requestUserNameResolution(widget.messages);
 
@@ -93,11 +97,6 @@ class _CommentScreenState extends State<CommentScreen> {
       oldWidget.connectionSupervisor.removeListener(_handleConnectionChanged);
       widget.connectionSupervisor.addListener(_handleConnectionChanged);
       _lastStatus = widget.connectionSupervisor.status;
-    }
-
-    if (oldWidget.userNameResolver != widget.userNameResolver) {
-      oldWidget.userNameResolver?.removeListener(_handleUserNameChanged);
-      widget.userNameResolver?.addListener(_handleUserNameChanged);
     }
 
     if (oldWidget.lv != widget.lv) {
@@ -126,26 +125,21 @@ class _CommentScreenState extends State<CommentScreen> {
   @override
   void dispose() {
     widget.connectionSupervisor.removeListener(_handleConnectionChanged);
-    widget.userNameResolver?.removeListener(_handleUserNameChanged);
     _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
     super.dispose();
   }
 
-  void _handleUserNameChanged() {
-    setState(() {});
-  }
-
   void _requestUserNameResolution(List<AppMessage> messages) {
-    final UserNameResolver? resolver = widget.userNameResolver;
-    if (resolver == null) {
+    final void Function(String)? request = widget.requestUserNameResolve;
+    if (request == null) {
       return;
     }
 
     for (final AppMessage message in messages) {
       final String? userId = message.userId;
       if (userId != null && userId.isNotEmpty) {
-        resolver.requestResolve(userId);
+        request(userId);
       }
     }
   }
@@ -154,17 +148,29 @@ class _CommentScreenState extends State<CommentScreen> {
     List<AppMessage> oldMessages,
     List<AppMessage> newMessages,
   ) {
-    final UserNameResolver? resolver = widget.userNameResolver;
-    if (resolver == null) {
+    final void Function(String)? request = widget.requestUserNameResolve;
+    if (request == null) {
       return;
     }
 
-    final int start =
-        oldMessages.length < newMessages.length ? oldMessages.length : 0;
+    // Find where new messages diverge from old by locating the old tail ID
+    // in the new list. This handles ring-buffer rotation (same length,
+    // head removed + tail appended) correctly.
+    int start = 0;
+    if (oldMessages.isNotEmpty && newMessages.isNotEmpty) {
+      final String oldTailId = oldMessages.last.id;
+      for (int i = newMessages.length - 1; i >= 0; i--) {
+        if (newMessages[i].id == oldTailId) {
+          start = i + 1;
+          break;
+        }
+      }
+    }
+
     for (int i = start; i < newMessages.length; i++) {
       final String? userId = newMessages[i].userId;
       if (userId != null && userId.isNotEmpty) {
-        resolver.requestResolve(userId);
+        request(userId);
       }
     }
   }
@@ -246,9 +252,13 @@ class _CommentScreenState extends State<CommentScreen> {
                     itemCount: sortedMessages.length,
                     itemBuilder: (BuildContext context, int index) {
                       final AppMessage message = sortedMessages[index];
+                      final String? userId = message.userId;
+                      final String? resolvedName = userId != null
+                          ? widget.resolveUserName?.call(userId)
+                          : null;
                       return _CommentRow(
                         message: message,
-                        userNameResolver: widget.userNameResolver,
+                        resolvedUserName: resolvedName,
                       );
                     },
                   ),
@@ -678,11 +688,11 @@ class _StatusBar extends StatelessWidget {
 class _CommentRow extends StatelessWidget {
   const _CommentRow({
     required this.message,
-    this.userNameResolver,
+    this.resolvedUserName,
   });
 
   final AppMessage message;
-  final UserNameResolver? userNameResolver;
+  final String? resolvedUserName;
 
   @override
   Widget build(BuildContext context) {
@@ -702,9 +712,8 @@ class _CommentRow extends StatelessWidget {
       return '$timestamp  ${message.content}';
     }
 
-    final String? resolvedName = userNameResolver?.getCachedName(userId);
     final String displayName =
-        resolvedName != null ? '$resolvedName ($userId)' : userId;
+        resolvedUserName != null ? '$resolvedUserName ($userId)' : userId;
 
     return '$timestamp  $displayName  ${message.content}';
   }
