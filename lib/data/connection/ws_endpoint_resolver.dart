@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer';
 import 'dart:io';
 
 /// Resolves the WebSocket endpoint URL from the niconico API.
@@ -9,11 +10,15 @@ import 'dart:io';
 class WsEndpointResolver {
   WsEndpointResolver({
     HttpClient? httpClient,
+    HttpClient Function()? httpClientFactory,
     String userAgent = defaultUserAgent,
     Duration connectionTimeout = const Duration(seconds: 10),
-  })  : _httpClient = httpClient ?? HttpClient(),
-        _userAgent = userAgent {
-    _httpClient.connectionTimeout = connectionTimeout;
+  })  : _httpClientFactory = httpClientFactory ?? HttpClient.new,
+        _userAgent = userAgent,
+        _connectionTimeout = connectionTimeout {
+    if (httpClient != null) {
+      _seedHttpClient = httpClient;
+    }
   }
 
   static const String defaultUserAgent =
@@ -25,8 +30,29 @@ class WsEndpointResolver {
   static const String _userinfoApiUrl =
       'https://oauth.nicovideo.jp/open_id/userinfo';
 
-  final HttpClient _httpClient;
+  final HttpClient Function() _httpClientFactory;
   final String _userAgent;
+  final Duration _connectionTimeout;
+  HttpClient? _seedHttpClient;
+  HttpClient? _httpClient;
+
+  HttpClient get _activeHttpClient {
+    final HttpClient? current = _httpClient;
+    if (current != null) {
+      return current;
+    }
+    final HttpClient? seed = _seedHttpClient;
+    if (seed != null) {
+      _seedHttpClient = null;
+      _httpClient = seed;
+      seed.connectionTimeout = _connectionTimeout;
+      return seed;
+    }
+    final HttpClient created = _httpClientFactory();
+    created.connectionTimeout = _connectionTimeout;
+    _httpClient = created;
+    return created;
+  }
 
   /// Resolves the WebSocket endpoint URL for the given live program.
   ///
@@ -34,10 +60,14 @@ class WsEndpointResolver {
   /// [accessToken] is the OAuth2 access token.
   ///
   /// Returns the WebSocket URI to connect to.
+  /// Throws [WsEndpointResolveException] on failure.
   Future<Uri> resolve({
     required String lv,
     required String accessToken,
   }) async {
+    if (accessToken.trim().isEmpty) {
+      throw WsEndpointResolveException('Access token is empty');
+    }
     final String userId = await _fetchUserId(accessToken);
     return _fetchWsEndpoint(
       lv: lv,
@@ -48,7 +78,7 @@ class WsEndpointResolver {
 
   Future<String> _fetchUserId(String accessToken) async {
     final Uri uri = Uri.parse(_userinfoApiUrl);
-    final HttpClientRequest request = await _httpClient.getUrl(uri);
+    final HttpClientRequest request = await _activeHttpClient.getUrl(uri);
     request.headers.set('Authorization', 'Bearer $accessToken');
     request.headers.set('User-Agent', _userAgent);
 
@@ -88,7 +118,7 @@ class WsEndpointResolver {
         'userId': userId,
       },
     );
-    final HttpClientRequest request = await _httpClient.getUrl(uri);
+    final HttpClientRequest request = await _activeHttpClient.getUrl(uri);
     request.headers.set('Authorization', 'Bearer $accessToken');
     request.headers.set('User-Agent', _userAgent);
 
@@ -128,11 +158,17 @@ class WsEndpointResolver {
         'Invalid WS endpoint URL: $urlStr',
       );
     }
+    log(
+      'Resolved WS endpoint for $lv',
+      name: 'WsEndpointResolver',
+    );
     return wsUri;
   }
 
   void dispose() {
-    _httpClient.close();
+    _httpClient?.close();
+    _httpClient = null;
+    _seedHttpClient = null;
   }
 }
 

@@ -3,12 +3,18 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../application/settings/settings_store.dart';
+import '../../data/auth/access_token_store.dart';
 import '../../domain/models/app_settings.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key, required this.settingsStore});
+  const SettingsScreen({
+    super.key,
+    required this.settingsStore,
+    this.accessTokenStore,
+  });
 
   final SettingsStore settingsStore;
+  final AccessTokenStore? accessTokenStore;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -91,7 +97,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _queueLimitController.text = loaded.queueLimit.toString();
     _maxDelayController.text = loaded.maxDelaySeconds.toString();
     _ngWordsController.text = loaded.ngWords;
-    _accessTokenController.text = loaded.niconicoAccessToken;
+
+    final AccessTokenStore? tokenStore = widget.accessTokenStore;
+    if (tokenStore != null) {
+      final String token = await tokenStore.load();
+      if (mounted) {
+        _accessTokenController.text = token;
+      }
+    }
 
     setState(() {
       _settings = loaded;
@@ -139,17 +152,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _saveAccessToken() {
-    final AppSettings? current = _settings;
-    if (current == null) {
+    final AccessTokenStore? tokenStore = widget.accessTokenStore;
+    if (tokenStore == null) {
       return;
     }
 
     final String token = _accessTokenController.text.trim();
-    if (token == current.niconicoAccessToken) {
-      return;
-    }
-
-    _saveNextSettings(current.copyWith(niconicoAccessToken: token));
+    unawaited(tokenStore.save(token));
   }
 
   void _saveNextSettings(AppSettings next) {
@@ -303,7 +312,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       decoration: InputDecoration(
                         labelText: 'アクセストークン',
                         border: const OutlineInputBorder(),
-                        helperText: settings.niconicoAccessToken.isEmpty
+                        helperText: _accessTokenController.text.trim().isEmpty
                             ? '未設定（接続にはトークンが必要です）'
                             : '設定済み',
                       ),
