@@ -77,7 +77,7 @@ class _NgUserListScreenState extends State<NgUserListScreen> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        SnackBar(content: Text('ユーザーID「$userId」のNG登録を解除しました')),
+        SnackBar(content: Text('$userId のNGを解除しました')),
       );
   }
 

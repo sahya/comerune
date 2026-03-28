@@ -78,7 +78,7 @@ void main() {
 
       // Snackbar feedback should appear.
       expect(
-        find.text('ユーザーID「user123」のNG登録を解除しました'),
+        find.text('user123 のNGを解除しました'),
         findsOneWidget,
       );
 
