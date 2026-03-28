@@ -753,8 +753,8 @@ class _FollowProgramTile extends StatelessWidget {
             right: 0,
             bottom: 0,
             child: Container(
-              width: 10,
-              height: 10,
+              width: 12,
+              height: 12,
               decoration: BoxDecoration(
                 color: Colors.red,
                 shape: BoxShape.circle,

@@ -59,7 +59,7 @@ class FollowProgramRepository {
       return _parseResponse(body);
     } on Exception catch (e) {
       log(
-        'Error fetching follow programs: $e',
+        'Error fetching follow programs: ${e.runtimeType}',
         name: 'FollowProgramRepository',
       );
       return const <FollowProgram>[];

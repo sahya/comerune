@@ -1,13 +1,16 @@
 /// A live program from a followed broadcaster on niconico.
 class FollowProgram {
-  const FollowProgram({
+  FollowProgram({
     required this.programId,
     required this.title,
     required this.providerName,
     this.providerIconUrl,
-    this.communityName,
+    String? communityName,
     this.beginAt,
-  });
+  }) : communityName =
+            (communityName != null && communityName.isNotEmpty)
+                ? communityName
+                : null;
 
   /// The program ID (e.g., "lv348712105").
   final String programId;
