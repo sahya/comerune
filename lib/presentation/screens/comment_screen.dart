@@ -778,7 +778,7 @@ class _ProgramTitleBar extends StatelessWidget {
   }
 }
 
-class _StatusBar extends StatelessWidget {
+class _StatusBar extends StatefulWidget {
   const _StatusBar({
     super.key,
     required this.lv,
@@ -799,98 +799,147 @@ class _StatusBar extends StatelessWidget {
   final AppThemeColors themeColors;
 
   @override
+  State<_StatusBar> createState() => _StatusBarState();
+}
+
+class _StatusBarState extends State<_StatusBar> {
+  bool _collapsed = false;
+  Timer? _autoCollapseTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _autoCollapseTimer = Timer(const Duration(milliseconds: 1500), () {
+      if (mounted) {
+        setState(() {
+          _collapsed = true;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _autoCollapseTimer?.cancel();
+    super.dispose();
+  }
+
+  void _toggle() {
+    setState(() {
+      _collapsed = !_collapsed;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final Color wifiColor =
-        supervisor.wifiIndicatorColor == WifiIndicatorColor.green
-            ? themeColors.statusConnected
-            : themeColors.statusDisconnected;
+        widget.supervisor.wifiIndicatorColor == WifiIndicatorColor.green
+            ? widget.themeColors.statusConnected
+            : widget.themeColors.statusDisconnected;
 
-    return Container(
-      width: double.infinity,
-      color: themeColors.statusBarBackground,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
+    return GestureDetector(
+      onTap: _toggle,
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        alignment: Alignment.topCenter,
+        child: Container(
+          width: double.infinity,
+          color: widget.themeColors.statusBarBackground,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Icon(
-                Icons.wifi,
-                key: const Key('status-wifi-icon'),
-                color: wifiColor,
-              ),
-              const SizedBox(width: 8),
-              if (broadcasterName != null) ...<Widget>[
-                if (broadcasterIconUrl != null &&
-                    broadcasterIconUrl!.isNotEmpty) ...<Widget>[
-                  _BroadcasterIcon(
-                    url: broadcasterIconUrl,
-                    size: 16,
+              Row(
+                children: <Widget>[
+                  Icon(
+                    Icons.wifi,
+                    key: const Key('status-wifi-icon'),
+                    color: wifiColor,
                   ),
-                  const SizedBox(width: 4),
-                ],
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 100),
-                  child: Text(
-                    broadcasterName!,
-                    key: const Key('status-broadcaster-name'),
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: themeColors.statusConnected.withValues(alpha: 0.7),
+                  const SizedBox(width: 8),
+                  if (widget.broadcasterName != null) ...<Widget>[
+                    if (widget.broadcasterIconUrl != null &&
+                        widget.broadcasterIconUrl!.isNotEmpty) ...<Widget>[
+                      _BroadcasterIcon(
+                        url: widget.broadcasterIconUrl,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 4),
+                    ],
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 120),
+                      child: Text(
+                        widget.broadcasterName!,
+                        key: const Key('status-broadcaster-name'),
+                        style: TextStyle(
+                          color: widget.themeColors.statusConnected,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(width: 8),
-              ],
-              Text(
-                'lv: $lv',
-                key: const Key('status-lv'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Wrap(
-            spacing: 12,
-            runSpacing: 4,
-            children: <Widget>[
-              Text(
-                '最終受信: ${_formatHmsOrDash(supervisor.lastReceivedAt)}',
-                key: const Key('status-last-received'),
-              ),
-              Text(
-                '再接続: ${supervisor.reconnectCount}回',
-                key: const Key('status-reconnect-count'),
-              ),
-              Text(
-                'エラー: ${_errorLabel(supervisor.lastError)}',
-                key: const Key('status-last-error'),
-              ),
-            ],
-          ),
-          if (debugMode) ...<Widget>[
-            const SizedBox(height: 4),
-            Wrap(
-              spacing: 12,
-              runSpacing: 4,
-              children: <Widget>[
-                Text(
-                  '方式: ${_connectionMethodLabel(connectionMethod)}',
-                  key: const Key('status-connection-method'),
-                ),
-                Text(
-                  'フェーズ: ${supervisor.status.code}',
-                  key: const Key('status-phase'),
-                ),
-                if ((supervisor.lastErrorDetail ?? '').isNotEmpty)
+                    const SizedBox(width: 8),
+                  ],
                   Text(
-                    'エラー詳細: ${supervisor.lastErrorDetail}',
-                    key: const Key('status-last-error-detail'),
+                    'lv: ${widget.lv}',
+                    key: const Key('status-lv'),
                   ),
+                  const Spacer(),
+                  Icon(
+                    _collapsed
+                        ? Icons.keyboard_arrow_down
+                        : Icons.keyboard_arrow_up,
+                    size: 16,
+                    color: widget.themeColors.subtleTextColor,
+                  ),
+                ],
+              ),
+              if (!_collapsed) ...<Widget>[
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 4,
+                  children: <Widget>[
+                    Text(
+                      '最終受信: ${_formatHmsOrDash(widget.supervisor.lastReceivedAt)}',
+                      key: const Key('status-last-received'),
+                    ),
+                    Text(
+                      '再接続: ${widget.supervisor.reconnectCount}回',
+                      key: const Key('status-reconnect-count'),
+                    ),
+                    Text(
+                      'エラー: ${_errorLabel(widget.supervisor.lastError)}',
+                      key: const Key('status-last-error'),
+                    ),
+                  ],
+                ),
+                if (widget.debugMode) ...<Widget>[
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 4,
+                    children: <Widget>[
+                      Text(
+                        '方式: ${_connectionMethodLabel(widget.connectionMethod)}',
+                        key: const Key('status-connection-method'),
+                      ),
+                      Text(
+                        'フェーズ: ${widget.supervisor.status.code}',
+                        key: const Key('status-phase'),
+                      ),
+                      if ((widget.supervisor.lastErrorDetail ?? '').isNotEmpty)
+                        Text(
+                          'エラー詳細: ${widget.supervisor.lastErrorDetail}',
+                          key: const Key('status-last-error-detail'),
+                        ),
+                    ],
+                  ),
+                ],
               ],
-            ),
-          ],
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
