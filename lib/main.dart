@@ -65,7 +65,6 @@ class _ComeruneAppState extends State<ComeruneApp> {
   late final StreamSubscription<AppMessage> _legacyMessageSubscription;
 
   String _currentLv = '';
-  String _currentUserSession = '';
   int _ndgrHistoryCount = 100;
 
   @override
@@ -77,7 +76,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _timelineStore = TimelineStore(capacity: _ndgrHistoryCount);
     _sessionWsClient = _SessionWsClientAdapter(
       lvProvider: () => _currentLv,
-      userSessionProvider: () => _currentUserSession,
+      userSessionProvider: () => widget.userSessionStore.load(),
       programInfoResolver: ProgramInfoResolver(),
     );
     _ndgrClient = _NdgrClientAdapter(
@@ -116,7 +115,6 @@ class _ComeruneAppState extends State<ComeruneApp> {
 
   Future<void> _prepareConnection(String lv, AppSettings settings) async {
     _currentLv = lv;
-    _currentUserSession = await widget.userSessionStore.load();
     _ndgrHistoryCount = settings.pastCommentFetchCount.historyCount;
     _timelineStore.setCapacity(_ndgrHistoryCount);
   }
@@ -140,14 +138,14 @@ class _ComeruneAppState extends State<ComeruneApp> {
 class _SessionWsClientAdapter implements reconnect.SessionWsClient {
   _SessionWsClientAdapter({
     required String Function() lvProvider,
-    required String Function() userSessionProvider,
+    required Future<String> Function() userSessionProvider,
     required ProgramInfoResolver programInfoResolver,
   })  : _lvProvider = lvProvider,
         _userSessionProvider = userSessionProvider,
         _programInfoResolver = programInfoResolver;
 
   final String Function() _lvProvider;
-  final String Function() _userSessionProvider;
+  final Future<String> Function() _userSessionProvider;
   final ProgramInfoResolver _programInfoResolver;
   final StreamController<reconnect.SessionWsEvent> _eventsController =
       StreamController<reconnect.SessionWsEvent>.broadcast();
@@ -170,7 +168,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     }
 
     // Try N Air approach: programinfo API → viewUri directly
-    final String userSession = _userSessionProvider();
+    final String userSession = await _userSessionProvider();
     if (userSession.isNotEmpty) {
       try {
         final Uri viewUri = await _programInfoResolver.resolve(

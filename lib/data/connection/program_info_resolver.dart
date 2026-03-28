@@ -77,6 +77,7 @@ class ProgramInfoResolver {
     final HttpClientResponse response = await request.close();
     if (response.statusCode != 200) {
       final String body = await _readLimitedBody(response);
+      await response.drain<void>();
       throw ProgramInfoResolveException(
         'Failed to fetch program info: HTTP ${response.statusCode}: $body',
       );
