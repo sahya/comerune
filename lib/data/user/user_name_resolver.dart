@@ -26,7 +26,10 @@ class UserNameResolver extends ChangeNotifier {
     }
   }
 
-  static const String _baseUrl = 'https://nvapi.nicovideo.jp/v1/users';
+  /// Uses the same endpoint as Hakumai (macOS niconico comment viewer).
+  /// This endpoint does not require authentication.
+  static const String _baseUrl =
+      'https://api.live2.nicovideo.jp/api/v1/user/nickname';
 
   static const String _userAgent =
       'Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 '
@@ -97,11 +100,10 @@ class UserNameResolver extends ChangeNotifier {
 
   Future<void> _fetchNickname(String userId) async {
     try {
-      final Uri uri = Uri.parse('$_baseUrl/$userId');
+      final Uri uri = Uri.parse('$_baseUrl?userId=$userId');
       log('Fetching nickname for $userId', name: 'UserNameResolver');
       final HttpClientRequest request = await _activeHttpClient.getUrl(uri);
       request.headers.set('User-Agent', _userAgent);
-      request.headers.set('X-Frontend-Id', '6');
 
       final HttpClientResponse response = await request.close();
       if (response.statusCode != 200) {
@@ -133,25 +135,8 @@ class UserNameResolver extends ChangeNotifier {
         return;
       }
 
-      final Object? user = data['user'];
-      if (user is! Map<String, dynamic>) {
-        // Some endpoints return nickname directly in data
-        final String? directNickname = data['nickname'] as String?;
-        if (directNickname != null && directNickname.isNotEmpty && !_disposed) {
-          _cache[userId] = directNickname;
-          _scheduleNotification();
-          log('Resolved user $userId → $directNickname (from data)',
-              name: 'UserNameResolver');
-        } else {
-          log('User $userId: missing "user" field in data',
-              name: 'UserNameResolver');
-        }
-        _pending.remove(userId);
-        _onRequestDone();
-        return;
-      }
-
-      final String? nickname = user['nickname'] as String?;
+      // api.live2.nicovideo.jp returns { data: { nickname: "..." } }
+      final String? nickname = data['nickname'] as String?;
       _pending.remove(userId);
       if (nickname != null && nickname.isNotEmpty && !_disposed) {
         _cache[userId] = nickname;
