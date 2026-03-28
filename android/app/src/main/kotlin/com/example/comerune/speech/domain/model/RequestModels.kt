@@ -21,5 +21,5 @@ data class SubmitResult(
 
 data class QueueOfferResult(
     val accepted: Boolean,
-    val reason: String?
+    val reason: String? = null
 )
