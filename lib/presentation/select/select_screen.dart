@@ -257,6 +257,7 @@ class _SelectScreenState extends State<SelectScreen> {
           programTitle: widget.programTitleNotifier?.value,
           broadcasterName: broadcasterName,
           showUserName: _settingsNotifier.value.showUserName,
+          commentFontSize: _settingsNotifier.value.commentFontSize,
           resolveUserName:
               nameResolutionEnabled ? widget.resolveUserName : null,
           requestUserNameResolve:

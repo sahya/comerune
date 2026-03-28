@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
+import '../../domain/models/app_settings.dart';
 
 const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
 
@@ -42,6 +43,7 @@ class CommentScreen extends StatefulWidget {
     this.programTitle,
     this.broadcasterName,
     this.showUserName = true,
+    this.commentFontSize = CommentFontSize.medium,
     this.resolveUserName,
     this.requestUserNameResolve,
   });
@@ -59,6 +61,7 @@ class CommentScreen extends StatefulWidget {
   final String? programTitle;
   final String? broadcasterName;
   final bool showUserName;
+  final CommentFontSize commentFontSize;
 
   /// Returns the cached resolved name for a user ID, or null.
   final String? Function(String userId)? resolveUserName;
@@ -259,6 +262,7 @@ class _CommentScreenState extends State<CommentScreen> {
                         message: message,
                         resolvedUserName: _resolveDisplayName(message),
                         showUserName: widget.showUserName,
+                        fontSize: widget.commentFontSize.pixels,
                       );
                     },
                   ),
@@ -740,11 +744,13 @@ class _CommentRow extends StatelessWidget {
     required this.message,
     this.resolvedUserName,
     this.showUserName = true,
+    this.fontSize,
   });
 
   final AppMessage message;
   final String? resolvedUserName;
   final bool showUserName;
+  final double? fontSize;
 
   @override
   Widget build(BuildContext context) {
@@ -752,7 +758,10 @@ class _CommentRow extends StatelessWidget {
       key: Key('comment-row-${message.id}'),
       color: _backgroundColor(message),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Text(_lineText(message)),
+      child: Text(
+        _lineText(message),
+        style: fontSize != null ? TextStyle(fontSize: fontSize) : null,
+      ),
     );
   }
 

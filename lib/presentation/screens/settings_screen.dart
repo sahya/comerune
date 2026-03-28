@@ -699,6 +699,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           : null,
                     ),
                     const SizedBox(height: 8),
+                    DropdownButtonFormField<CommentFontSize>(
+                      key: const Key('comment-font-size-dropdown'),
+                      value: settings.commentFontSize,
+                      decoration: const InputDecoration(
+                        labelText: 'コメント文字サイズ',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: CommentFontSize.values
+                          .map(
+                            (CommentFontSize value) =>
+                                DropdownMenuItem<CommentFontSize>(
+                              value: value,
+                              child: Text(value.label),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (CommentFontSize? value) {
+                        if (value == null) {
+                          return;
+                        }
+                        _saveNextSettings(
+                          settings.copyWith(commentFontSize: value),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 8),
                     DropdownButtonFormField<PastCommentFetchCount>(
                       key: const Key('past-comment-count-dropdown'),
                       value: settings.pastCommentFetchCount,
