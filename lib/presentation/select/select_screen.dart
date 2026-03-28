@@ -419,7 +419,12 @@ class _LoginStatusBannerState extends State<_LoginStatusBanner> {
       return;
     }
 
-    final String session = await store.load();
+    String session;
+    try {
+      session = await store.load();
+    } on Object {
+      session = '';
+    }
     if (!mounted) {
       return;
     }
