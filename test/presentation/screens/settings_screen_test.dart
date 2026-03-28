@@ -116,7 +116,7 @@ void main() {
       expect(ngWordsField.controller?.text, '^8+\$');
     });
 
-    testWidgets('saves access token when focus is lost', (
+    testWidgets('shows login button when not logged in', (
       WidgetTester tester,
     ) async {
       final SharedPreferencesSettingsStore settingsStore =
@@ -129,15 +129,28 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await _enterTextByKey(
-        tester,
-        const Key('access-token-field'),
-        'test-oauth-token-123',
-      );
-      await _focusFieldByKey(tester, const Key('bouyomi-host-field'));
+      expect(find.byKey(const Key('login-button')), findsOneWidget);
+      expect(find.byKey(const Key('logout-button')), findsNothing);
+      expect(find.text('コメント取得にはログインが必要です'), findsOneWidget);
+    });
 
-      final String loaded = await userSessionStore.load();
-      expect(loaded, 'test-oauth-token-123');
+    testWidgets('shows logout button when logged in', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final _InMemoryUserSessionStore userSessionStore =
+          _InMemoryUserSessionStore();
+      await userSessionStore.save('user_session_abc123');
+
+      await tester.pumpWidget(
+        _buildScreen(settingsStore, userSessionStore: userSessionStore),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('logout-button')), findsOneWidget);
+      expect(find.byKey(const Key('login-button')), findsNothing);
+      expect(find.text('ログイン済み'), findsOneWidget);
     });
 
     testWidgets('saves text fields when focus is lost', (

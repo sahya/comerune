@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../application/settings/settings_store.dart';
 import '../../data/auth/user_session_store.dart';
 import '../../domain/models/app_settings.dart';
+import 'login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
@@ -30,17 +31,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _queueLimitController;
   late final TextEditingController _maxDelayController;
   late final TextEditingController _ngWordsController;
-  late final TextEditingController _accessTokenController;
 
   late final FocusNode _bouyomiHostFocusNode;
   late final FocusNode _queueLimitFocusNode;
   late final FocusNode _maxDelayFocusNode;
   late final FocusNode _ngWordsFocusNode;
-  late final FocusNode _accessTokenFocusNode;
 
   AppSettings? _settings;
   String? _queueLimitError;
   String? _maxDelayError;
+  bool _isLoggedIn = false;
 
   @override
   void initState() {
@@ -49,15 +49,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _queueLimitController = TextEditingController();
     _maxDelayController = TextEditingController();
     _ngWordsController = TextEditingController();
-    _accessTokenController = TextEditingController();
 
     _bouyomiHostFocusNode = FocusNode()
       ..addListener(_onBouyomiHostFocusChanged);
     _queueLimitFocusNode = FocusNode()..addListener(_onQueueLimitFocusChanged);
     _maxDelayFocusNode = FocusNode()..addListener(_onMaxDelayFocusChanged);
     _ngWordsFocusNode = FocusNode()..addListener(_onNgWordsFocusChanged);
-    _accessTokenFocusNode = FocusNode()
-      ..addListener(_onAccessTokenFocusChanged);
 
     _loadSettings();
   }
@@ -76,14 +73,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _ngWordsFocusNode
       ..removeListener(_onNgWordsFocusChanged)
       ..dispose();
-    _accessTokenFocusNode
-      ..removeListener(_onAccessTokenFocusChanged)
-      ..dispose();
     _bouyomiHostController.dispose();
     _queueLimitController.dispose();
     _maxDelayController.dispose();
     _ngWordsController.dispose();
-    _accessTokenController.dispose();
     super.dispose();
   }
 
@@ -102,7 +95,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (sessionStore != null) {
       final String session = await sessionStore.load();
       if (mounted) {
-        _accessTokenController.text = session;
+        _isLoggedIn = session.isNotEmpty;
       }
     }
 
@@ -143,22 +136,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _saveNgWords();
   }
 
-  void _onAccessTokenFocusChanged() {
-    if (_accessTokenFocusNode.hasFocus) {
-      return;
-    }
-
-    _saveAccessToken();
-  }
-
-  void _saveAccessToken() {
+  Future<void> _openLoginScreen() async {
     final UserSessionStore? sessionStore = widget.userSessionStore;
     if (sessionStore == null) {
       return;
     }
 
-    final String session = _accessTokenController.text.trim();
-    unawaited(sessionStore.save(session));
+    final bool? loggedIn = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => LoginScreen(userSessionStore: sessionStore),
+      ),
+    );
+
+    if (loggedIn == true && mounted) {
+      setState(() {
+        _isLoggedIn = true;
+      });
+    }
+  }
+
+  Future<void> _logout() async {
+    final UserSessionStore? sessionStore = widget.userSessionStore;
+    if (sessionStore == null) {
+      return;
+    }
+
+    await sessionStore.clear();
+    if (mounted) {
+      setState(() {
+        _isLoggedIn = false;
+      });
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text('ログアウトしました')),
+        );
+    }
   }
 
   void _saveNextSettings(AppSettings next) {
@@ -304,20 +317,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _Section(
                   title: 'ニコニコアカウント',
                   children: <Widget>[
-                    TextFormField(
-                      key: const Key('access-token-field'),
-                      controller: _accessTokenController,
-                      focusNode: _accessTokenFocusNode,
-                      obscureText: true,
-                      decoration: InputDecoration(
-                        labelText: 'user_session',
-                        border: const OutlineInputBorder(),
-                        helperText: _accessTokenController.text.trim().isEmpty
-                            ? '未設定（ブラウザのCookieから取得）'
-                            : '設定済み',
-                        helperMaxLines: 2,
+                    if (_isLoggedIn) ...<Widget>[
+                      const Row(
+                        children: <Widget>[
+                          Icon(Icons.check_circle, color: Colors.green),
+                          SizedBox(width: 8),
+                          Text('ログイン済み'),
+                        ],
                       ),
-                    ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          key: const Key('logout-button'),
+                          onPressed: _logout,
+                          child: const Text('ログアウト'),
+                        ),
+                      ),
+                    ] else ...<Widget>[
+                      const Text('コメント取得にはログインが必要です'),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          key: const Key('login-button'),
+                          onPressed: widget.userSessionStore != null
+                              ? _openLoginScreen
+                              : null,
+                          icon: const Icon(Icons.login),
+                          label: const Text('ニコニコにログイン'),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 12),
