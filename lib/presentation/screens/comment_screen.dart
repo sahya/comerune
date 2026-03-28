@@ -25,6 +25,8 @@ String _formatHmsOrDash(DateTime? value) {
   return _formatHms(value);
 }
 
+enum CommentSortOrder { ascending, descending }
+
 class CommentScreen extends StatefulWidget {
   const CommentScreen({
     super.key,
@@ -37,6 +39,10 @@ class CommentScreen extends StatefulWidget {
     this.onOpenSettings,
     this.debugMode = false,
     this.connectionMethod,
+    this.programTitle,
+    this.showUserName = true,
+    this.resolveUserName,
+    this.requestUserNameResolve,
   });
 
   final String lv;
@@ -49,6 +55,14 @@ class CommentScreen extends StatefulWidget {
   final Future<void> Function()? onOpenSettings;
   final bool debugMode;
   final ConnectionMethod? connectionMethod;
+  final String? programTitle;
+  final bool showUserName;
+
+  /// Returns the cached resolved name for a user ID, or null.
+  final String? Function(String userId)? resolveUserName;
+
+  /// Requests asynchronous resolution of a user ID.
+  final void Function(String userId)? requestUserNameResolve;
 
   @override
   State<CommentScreen> createState() => _CommentScreenState();
@@ -61,6 +75,7 @@ class _CommentScreenState extends State<CommentScreen> {
   late ConnectionStatus _lastStatus;
   bool _autoScrollEnabled = true;
   bool _isStoppingForExit = false;
+  CommentSortOrder _sortOrder = CommentSortOrder.ascending;
 
   @override
   void initState() {
@@ -69,8 +84,10 @@ class _CommentScreenState extends State<CommentScreen> {
     _lastStatus = widget.connectionSupervisor.status;
     widget.connectionSupervisor.addListener(_handleConnectionChanged);
 
+    _requestUserNameResolution(widget.messages);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scrollToBottom(animated: false);
+      _scrollToEdge(animated: false);
     });
   }
 
@@ -88,16 +105,22 @@ class _CommentScreenState extends State<CommentScreen> {
       _autoScrollEnabled = true;
       unawaited(widget.onDifferentLvConnected(oldWidget.lv, widget.lv));
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollToBottom(animated: false);
+        _scrollToEdge(animated: false);
       });
     }
 
     final bool hasNewMessages =
         _hasNewMessages(oldWidget.messages, widget.messages);
-    if (hasNewMessages && _autoScrollEnabled) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollToBottom();
-      });
+    if (hasNewMessages) {
+      _requestUserNameResolutionForNewMessages(
+        oldWidget.messages,
+        widget.messages,
+      );
+      if (_autoScrollEnabled) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _scrollToEdge();
+        });
+      }
     }
   }
 
@@ -107,6 +130,51 @@ class _CommentScreenState extends State<CommentScreen> {
     _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _requestUserNameResolution(List<AppMessage> messages) {
+    final void Function(String)? request = widget.requestUserNameResolve;
+    if (request == null) {
+      return;
+    }
+
+    for (final AppMessage message in messages) {
+      final String? userId = message.userId;
+      if (userId != null && userId.isNotEmpty) {
+        request(userId);
+      }
+    }
+  }
+
+  void _requestUserNameResolutionForNewMessages(
+    List<AppMessage> oldMessages,
+    List<AppMessage> newMessages,
+  ) {
+    final void Function(String)? request = widget.requestUserNameResolve;
+    if (request == null) {
+      return;
+    }
+
+    // Find where new messages diverge from old by locating the old tail ID
+    // in the new list. This handles ring-buffer rotation (same length,
+    // head removed + tail appended) correctly.
+    int start = 0;
+    if (oldMessages.isNotEmpty && newMessages.isNotEmpty) {
+      final String oldTailId = oldMessages.last.id;
+      for (int i = newMessages.length - 1; i >= 0; i--) {
+        if (newMessages[i].id == oldTailId) {
+          start = i + 1;
+          break;
+        }
+      }
+    }
+
+    for (int i = start; i < newMessages.length; i++) {
+      final String? userId = newMessages[i].userId;
+      if (userId != null && userId.isNotEmpty) {
+        request(userId);
+      }
+    }
   }
 
   @override
@@ -128,10 +196,25 @@ class _CommentScreenState extends State<CommentScreen> {
               .where(_shouldDisplayMessage)
               .toList(growable: false);
 
+          final List<AppMessage> sortedMessages =
+              _applySortOrder(visibleMessages);
+
           return Scaffold(
             appBar: AppBar(
               title: Text(widget.lv),
               actions: <Widget>[
+                IconButton(
+                  key: const Key('sort-toggle-button'),
+                  icon: Icon(
+                    _sortOrder == CommentSortOrder.ascending
+                        ? Icons.arrow_downward
+                        : Icons.arrow_upward,
+                  ),
+                  tooltip: _sortOrder == CommentSortOrder.ascending
+                      ? '新しい順に切替'
+                      : '古い順に切替',
+                  onPressed: _toggleSortOrder,
+                ),
                 PopupMenuButton<String>(
                   onSelected: (_) async {
                     if (widget.onOpenSettings != null) {
@@ -150,6 +233,11 @@ class _CommentScreenState extends State<CommentScreen> {
             ),
             body: Column(
               children: <Widget>[
+                if (widget.programTitle != null)
+                  _ProgramTitleBar(
+                    key: const Key('program-title-bar'),
+                    title: widget.programTitle!,
+                  ),
                 _StatusBar(
                   key: const Key('status-bar'),
                   lv: widget.lv,
@@ -161,10 +249,14 @@ class _CommentScreenState extends State<CommentScreen> {
                   child: ListView.builder(
                     key: const Key('comment-list'),
                     controller: _scrollController,
-                    itemCount: visibleMessages.length,
+                    itemCount: sortedMessages.length,
                     itemBuilder: (BuildContext context, int index) {
-                      final AppMessage message = visibleMessages[index];
-                      return _CommentRow(message: message);
+                      final AppMessage message = sortedMessages[index];
+                      return _CommentRow(
+                        message: message,
+                        resolvedUserName: _resolveDisplayName(message),
+                        showUserName: widget.showUserName,
+                      );
                     },
                   ),
                 ),
@@ -175,6 +267,36 @@ class _CommentScreenState extends State<CommentScreen> {
         },
       ),
     );
+  }
+
+  String? _resolveDisplayName(AppMessage message) {
+    if (message.userName != null) {
+      return message.userName;
+    }
+    final String? userId = message.userId;
+    if (userId == null) {
+      return null;
+    }
+    return widget.resolveUserName?.call(userId);
+  }
+
+  void _toggleSortOrder() {
+    setState(() {
+      _sortOrder = _sortOrder == CommentSortOrder.ascending
+          ? CommentSortOrder.descending
+          : CommentSortOrder.ascending;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToEdge(animated: false);
+    });
+  }
+
+  List<AppMessage> _applySortOrder(List<AppMessage> messages) {
+    if (_sortOrder == CommentSortOrder.ascending) {
+      return messages;
+    }
+
+    return messages.reversed.toList(growable: false);
   }
 
   Future<void> _handleBackNavigation(bool didPop) async {
@@ -343,6 +465,14 @@ class _CommentScreenState extends State<CommentScreen> {
       return;
     }
 
+    if (_sortOrder == CommentSortOrder.ascending) {
+      _handleScrollAscending();
+    } else {
+      _handleScrollDescending();
+    }
+  }
+
+  void _handleScrollAscending() {
     final bool nearBottom = _isNearBottom();
     if (nearBottom && !_autoScrollEnabled) {
       _autoScrollEnabled = true;
@@ -353,6 +483,21 @@ class _CommentScreenState extends State<CommentScreen> {
         !nearBottom &&
         _scrollController.position.userScrollDirection ==
             ScrollDirection.forward) {
+      _autoScrollEnabled = false;
+    }
+  }
+
+  void _handleScrollDescending() {
+    final bool nearTop = _isNearTop();
+    if (nearTop && !_autoScrollEnabled) {
+      _autoScrollEnabled = true;
+      return;
+    }
+
+    if (_autoScrollEnabled &&
+        !nearTop &&
+        _scrollController.position.userScrollDirection ==
+            ScrollDirection.reverse) {
       _autoScrollEnabled = false;
     }
   }
@@ -398,12 +543,23 @@ class _CommentScreenState extends State<CommentScreen> {
     return distanceToBottom <= _autoScrollResumeThreshold;
   }
 
-  void _scrollToBottom({bool animated = true}) {
+  bool _isNearTop() {
+    if (!_scrollController.hasClients) {
+      return true;
+    }
+
+    return _scrollController.position.pixels <= _autoScrollResumeThreshold;
+  }
+
+  void _scrollToEdge({bool animated = true}) {
     if (!_scrollController.hasClients) {
       return;
     }
 
-    final double offset = _scrollController.position.maxScrollExtent;
+    final double offset = _sortOrder == CommentSortOrder.ascending
+        ? _scrollController.position.maxScrollExtent
+        : 0;
+
     if (!animated) {
       _scrollController.jumpTo(offset);
       return;
@@ -413,6 +569,26 @@ class _CommentScreenState extends State<CommentScreen> {
       offset,
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeOut,
+    );
+  }
+}
+
+class _ProgramTitleBar extends StatelessWidget {
+  const _ProgramTitleBar({super.key, required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: Colors.indigo.shade50,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: Text(
+        title,
+        key: const Key('program-title-text'),
+        style: const TextStyle(fontWeight: FontWeight.bold),
+      ),
     );
   }
 }
@@ -538,9 +714,15 @@ class _StatusBar extends StatelessWidget {
 }
 
 class _CommentRow extends StatelessWidget {
-  const _CommentRow({required this.message});
+  const _CommentRow({
+    required this.message,
+    this.resolvedUserName,
+    this.showUserName = true,
+  });
 
   final AppMessage message;
+  final String? resolvedUserName;
+  final bool showUserName;
 
   @override
   Widget build(BuildContext context) {
@@ -554,13 +736,21 @@ class _CommentRow extends StatelessWidget {
 
   String _lineText(AppMessage message) {
     final String timestamp = _formatHms(message.timestamp);
+
+    if (!showUserName) {
+      return '$timestamp  ${message.content}';
+    }
+
     final String userId = message.userId ?? '';
 
     if (userId.isEmpty) {
       return '$timestamp  ${message.content}';
     }
 
-    return '$timestamp  $userId  ${message.content}';
+    final String displayName =
+        resolvedUserName != null ? '$resolvedUserName ($userId)' : userId;
+
+    return '$timestamp  $displayName  ${message.content}';
   }
 
   Color? _backgroundColor(AppMessage message) {

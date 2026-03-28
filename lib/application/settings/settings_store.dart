@@ -54,6 +54,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   static const String _kNgWords = 'settings.filter.ngWords';
   static const String _kPastCommentFetchCount =
       'settings.comment.pastFetchCount';
+  static const String _kShowUserName = 'settings.comment.showUserName';
+  static const String _kResolveUserName = 'settings.comment.resolveUserName';
   static const String _kDebugMode = 'settings.debugMode';
 
   @override
@@ -93,6 +95,9 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       pastCommentFetchCount: PastCommentFetchCountValue.fromStorageValue(
         _prefs.getString(_kPastCommentFetchCount),
       ),
+      showUserName: _prefs.getBool(_kShowUserName) ?? defaults.showUserName,
+      resolveUserName:
+          _prefs.getBool(_kResolveUserName) ?? defaults.resolveUserName,
       debugMode: _prefs.getBool(_kDebugMode) ?? defaults.debugMode,
     );
   }
@@ -123,6 +128,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       _kPastCommentFetchCount,
       settings.pastCommentFetchCount.storageValue,
     );
+    await _prefs.setBool(_kShowUserName, settings.showUserName);
+    await _prefs.setBool(_kResolveUserName, settings.resolveUserName);
     await _prefs.setBool(_kDebugMode, settings.debugMode);
   }
 }

@@ -11,6 +11,7 @@ class AppMessage {
     required this.id,
     required this.timestamp,
     this.userId,
+    this.userName,
     required this.content,
     required this.type,
     this.raw,
@@ -19,6 +20,9 @@ class AppMessage {
   final String id;
   final DateTime timestamp;
   final String? userId;
+
+  /// User nickname from the NDGR protobuf (chat.name field).
+  final String? userName;
   final String content;
   final AppMessageType type;
   final Object? raw;
@@ -37,12 +41,13 @@ class AppMessage {
         other.id == id &&
         other.timestamp == timestamp &&
         other.userId == userId &&
+        other.userName == userName &&
         other.content == content &&
         other.type == type;
   }
 
   @override
   int get hashCode {
-    return Object.hash(id, timestamp, userId, content, type);
+    return Object.hash(id, timestamp, userId, userName, content, type);
   }
 }
