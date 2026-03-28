@@ -81,7 +81,8 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _ndgrHistoryCount =
         widget.initialSettings.pastCommentFetchCount.historyCount;
     _themeModeNotifier =
-        ValueNotifier<AppThemeMode>(widget.initialSettings.themeMode);
+        ValueNotifier<AppThemeMode>(widget.initialSettings.themeMode)
+          ..addListener(_onThemeModeChanged);
 
     _userNameResolver = UserNameResolver();
     _timelineStore = TimelineStore(capacity: _ndgrHistoryCount);
@@ -131,8 +132,14 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _userNameResolver.dispose();
     _programTitleNotifier.dispose();
     _supplierUserIdNotifier.dispose();
-    _themeModeNotifier.dispose();
+    _themeModeNotifier
+      ..removeListener(_onThemeModeChanged)
+      ..dispose();
     super.dispose();
+  }
+
+  void _onThemeModeChanged() {
+    setState(() {});
   }
 
   Future<void> _prepareConnection(String lv, AppSettings settings) async {
@@ -145,28 +152,23 @@ class _ComeruneAppState extends State<ComeruneApp> {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<AppThemeMode>(
-      valueListenable: _themeModeNotifier,
-      builder: (BuildContext context, AppThemeMode themeMode, Widget? _) {
-        return MaterialApp(
-          title: 'comerune',
-          theme: AppTheme.themeDataFor(themeMode),
-          home: SelectScreen(
-            connectionSupervisor: _connectionSupervisor,
-            timelineStore: _timelineStore,
-            settingsStore: widget.settingsStore,
-            initialSettings: widget.initialSettings,
-            onPrepareConnection: _prepareConnection,
-            userSessionStore: widget.userSessionStore,
-            programTitleNotifier: _programTitleNotifier,
-            resolveUserName: _userNameResolver.getCachedName,
-            requestUserNameResolve: _userNameResolver.requestResolve,
-            userNameListenable: _userNameResolver,
-            supplierUserIdNotifier: _supplierUserIdNotifier,
-            themeModeNotifier: _themeModeNotifier,
-          ),
-        );
-      },
+    return MaterialApp(
+      title: 'comerune',
+      theme: AppTheme.themeDataFor(_themeModeNotifier.value),
+      home: SelectScreen(
+        connectionSupervisor: _connectionSupervisor,
+        timelineStore: _timelineStore,
+        settingsStore: widget.settingsStore,
+        initialSettings: widget.initialSettings,
+        onPrepareConnection: _prepareConnection,
+        userSessionStore: widget.userSessionStore,
+        programTitleNotifier: _programTitleNotifier,
+        resolveUserName: _userNameResolver.getCachedName,
+        requestUserNameResolve: _userNameResolver.requestResolve,
+        userNameListenable: _userNameResolver,
+        supplierUserIdNotifier: _supplierUserIdNotifier,
+        themeModeNotifier: _themeModeNotifier,
+      ),
     );
   }
 }
