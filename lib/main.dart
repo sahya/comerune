@@ -246,13 +246,16 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
         _onProgramTitleResolved?.call(programInfo.title!);
       }
       if (programInfo.supplierUserId != null) {
-        _onSupplierUserIdResolved?.call(programInfo.supplierUserId!);
+        // Seed the cache with the broadcaster name BEFORE requesting
+        // resolution, so that requestResolve() sees the cached entry
+        // and skips the redundant HTTP call.
         if (programInfo.broadcasterName != null) {
           _onBroadcasterNameResolved?.call(
             programInfo.supplierUserId!,
             programInfo.broadcasterName!,
           );
         }
+        _onSupplierUserIdResolved?.call(programInfo.supplierUserId!);
       }
       log(
         'Resolved NDGR endpoint via programinfo API',
