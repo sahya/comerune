@@ -49,7 +49,7 @@ class CommentScreen extends StatefulWidget {
     this.requestUserNameResolve,
     this.ngUserIds = const <String>{},
     this.onToggleNgUser,
-    this.themeMode = AppThemeMode.light,
+    required this.themeMode,
   });
 
   final String lv;
