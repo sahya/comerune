@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
+import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
@@ -44,6 +45,8 @@ class CommentScreen extends StatefulWidget {
     this.showUserName = true,
     this.resolveUserName,
     this.requestUserNameResolve,
+    this.commentLogWriter,
+    this.autoSaveCommentLog = false,
   });
 
   final String lv;
@@ -66,6 +69,9 @@ class CommentScreen extends StatefulWidget {
   /// Requests asynchronous resolution of a user ID.
   final void Function(String userId)? requestUserNameResolve;
 
+  final CommentLogWriter? commentLogWriter;
+  final bool autoSaveCommentLog;
+
   @override
   State<CommentScreen> createState() => _CommentScreenState();
 }
@@ -77,6 +83,7 @@ class _CommentScreenState extends State<CommentScreen> {
   late ConnectionStatus _lastStatus;
   bool _autoScrollEnabled = true;
   bool _isStoppingForExit = false;
+  bool _isSavingLog = false;
   CommentSortOrder _sortOrder = CommentSortOrder.ascending;
 
   @override
@@ -205,6 +212,14 @@ class _CommentScreenState extends State<CommentScreen> {
             appBar: AppBar(
               title: Text(widget.lv),
               actions: <Widget>[
+                if (widget.commentLogWriter != null)
+                  IconButton(
+                    key: const Key('save-comment-log-button'),
+                    icon: const Icon(Icons.save),
+                    tooltip: 'コメントログを保存',
+                    onPressed:
+                        _isSavingLog ? null : () => unawaited(_saveLogManual()),
+                  ),
                 IconButton(
                   key: const Key('sort-toggle-button'),
                   icon: Icon(
@@ -396,6 +411,10 @@ class _CommentScreenState extends State<CommentScreen> {
   void _handleConnectionChanged() {
     final ConnectionStatus currentStatus = widget.connectionSupervisor.status;
 
+    if (widget.autoSaveCommentLog && _isAutoSaveTrigger(currentStatus)) {
+      unawaited(_saveLogAuto());
+    }
+
     if (_lastStatus != ConnectionStatus.failed &&
         currentStatus == ConnectionStatus.failed) {
       final String message = _buildFailedSnackbarMessage();
@@ -552,6 +571,83 @@ class _CommentScreenState extends State<CommentScreen> {
     }
 
     return _scrollController.position.pixels <= _autoScrollResumeThreshold;
+  }
+
+  bool _isAutoSaveTrigger(ConnectionStatus status) {
+    if (_lastStatus == status) {
+      return false;
+    }
+    switch (status) {
+      case ConnectionStatus.stopped:
+      case ConnectionStatus.ended:
+      case ConnectionStatus.failed:
+        return true;
+      case ConnectionStatus.idle:
+      case ConnectionStatus.connectingSessionWs:
+      case ConnectionStatus.resolvingEndpoints:
+      case ConnectionStatus.streamingNdgr:
+      case ConnectionStatus.streamingLegacy:
+      case ConnectionStatus.reconnecting:
+        return false;
+    }
+  }
+
+  Future<void> _saveLogManual() async {
+    final bool hasMessages =
+        widget.messages.any(_shouldDisplayMessage);
+    if (!hasMessages) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            const SnackBar(content: Text('保存するコメントがありません')),
+          );
+      }
+      return;
+    }
+
+    final String? path = await _saveLog();
+    if (!mounted) {
+      return;
+    }
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    if (path != null) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('コメントログを保存しました: $path')),
+      );
+    } else {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('コメントログの保存に失敗しました')),
+      );
+    }
+  }
+
+  Future<void> _saveLogAuto() async {
+    await _saveLog();
+  }
+
+  Future<String?> _saveLog() async {
+    final CommentLogWriter? writer = widget.commentLogWriter;
+    if (writer == null) {
+      return null;
+    }
+
+    setState(() {
+      _isSavingLog = true;
+    });
+
+    try {
+      final List<AppMessage> messages =
+          widget.messages.where(_shouldDisplayMessage).toList(growable: false);
+      return await writer.save(lv: widget.lv, messages: messages);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSavingLog = false;
+        });
+      }
+    }
   }
 
   void _scrollToEdge({bool animated = true}) {

@@ -1,13 +1,16 @@
 import 'dart:async';
 import 'dart:developer';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'application/settings/settings_store.dart';
 import 'application/settings/shared_preferences_adapter.dart';
 import 'application/timeline/timeline_store.dart';
 import 'data/auth/user_session_store.dart';
+import 'data/comment_log/comment_log_writer.dart';
 import 'data/connection/program_info_resolver.dart';
 import 'data/connection/web_socket_channel_legacy_web_socket.dart';
 import 'data/user/user_name_resolver.dart';
@@ -31,11 +34,17 @@ Future<void> main() async {
   final UserSessionStore userSessionStore =
       SecureUserSessionStore(prefs: prefs);
 
+  final Directory appDocDir = await getApplicationDocumentsDirectory();
+  final CommentLogWriter commentLogWriter = FileCommentLogWriter(
+    directory: Directory('${appDocDir.path}/comment_logs'),
+  );
+
   runApp(
     ComeruneApp(
       settingsStore: settingsStore,
       initialSettings: initialSettings,
       userSessionStore: userSessionStore,
+      commentLogWriter: commentLogWriter,
     ),
   );
 }
@@ -46,11 +55,13 @@ class ComeruneApp extends StatefulWidget {
     required this.settingsStore,
     required this.initialSettings,
     required this.userSessionStore,
+    this.commentLogWriter,
   });
 
   final SettingsStore settingsStore;
   final AppSettings initialSettings;
   final UserSessionStore userSessionStore;
+  final CommentLogWriter? commentLogWriter;
 
   @override
   State<ComeruneApp> createState() => _ComeruneAppState();
@@ -154,6 +165,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
         requestUserNameResolve: _userNameResolver.requestResolve,
         userNameListenable: _userNameResolver,
         supplierUserIdNotifier: _supplierUserIdNotifier,
+        commentLogWriter: widget.commentLogWriter,
       ),
     );
   }
