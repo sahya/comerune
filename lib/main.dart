@@ -1,17 +1,20 @@
 import 'dart:async';
+import 'dart:developer';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'application/settings/settings_store.dart';
 import 'application/settings/shared_preferences_adapter.dart';
 import 'application/timeline/timeline_store.dart';
+import 'data/auth/access_token_store.dart';
 import 'data/connection/web_socket_channel_legacy_web_socket.dart';
+import 'data/connection/ws_endpoint_resolver.dart';
 import 'domain/connection/connection_clients.dart' as reconnect;
 import 'domain/connection/connection_supervisor.dart';
 import 'domain/connection/legacy_comment_client.dart' as legacy_impl;
 import 'domain/connection/ndgr_client.dart' as ndgr_impl;
 import 'domain/connection/session_ws_client.dart' as session_impl;
-import 'domain/connection/ws_endpoint_resolver.dart';
 import 'domain/models/app_message.dart';
 import 'domain/models/app_settings.dart';
 import 'presentation/select/select_screen.dart';
@@ -19,12 +22,20 @@ import 'presentation/select/select_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final SettingsStore settingsStore =
-      await createSharedPreferencesSettingsStore();
+  final SharedPreferences prefs = await SharedPreferences.getInstance();
+  final SettingsStore settingsStore = SharedPreferencesSettingsStore(
+    prefs: SharedPreferencesAdapter(prefs),
+  );
   final AppSettings initialSettings = await settingsStore.load();
+  final AccessTokenStore accessTokenStore =
+      SharedPreferencesAccessTokenStore(prefs);
 
   runApp(
-    ComeruneApp(settingsStore: settingsStore, initialSettings: initialSettings),
+    ComeruneApp(
+      settingsStore: settingsStore,
+      initialSettings: initialSettings,
+      accessTokenStore: accessTokenStore,
+    ),
   );
 }
 
@@ -33,10 +44,12 @@ class ComeruneApp extends StatefulWidget {
     super.key,
     required this.settingsStore,
     required this.initialSettings,
+    required this.accessTokenStore,
   });
 
   final SettingsStore settingsStore;
   final AppSettings initialSettings;
+  final AccessTokenStore accessTokenStore;
 
   @override
   State<ComeruneApp> createState() => _ComeruneAppState();
@@ -66,6 +79,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _sessionWsClient = _SessionWsClientAdapter(
       lvProvider: () => _currentLv,
       accessTokenProvider: () => _currentAccessToken,
+      wsEndpointResolver: WsEndpointResolver(),
     );
     _ndgrClient = _NdgrClientAdapter(
       client: ndgr_impl.NdgrClient(),
@@ -103,7 +117,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
 
   Future<void> _prepareConnection(String lv, AppSettings settings) async {
     _currentLv = lv;
-    _currentAccessToken = settings.niconicoAccessToken;
+    _currentAccessToken = await widget.accessTokenStore.load();
     _ndgrHistoryCount = _historyCountFrom(settings.pastCommentFetchCount);
     _timelineStore.setCapacity(_ndgrHistoryCount);
   }
@@ -118,6 +132,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
         settingsStore: widget.settingsStore,
         initialSettings: widget.initialSettings,
         onPrepareConnection: _prepareConnection,
+        accessTokenStore: widget.accessTokenStore,
       ),
     );
   }
@@ -140,12 +155,14 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
   _SessionWsClientAdapter({
     required String Function() lvProvider,
     required String Function() accessTokenProvider,
+    required WsEndpointResolver wsEndpointResolver,
   })  : _lvProvider = lvProvider,
-        _accessTokenProvider = accessTokenProvider;
+        _accessTokenProvider = accessTokenProvider,
+        _wsEndpointResolver = wsEndpointResolver;
 
   final String Function() _lvProvider;
   final String Function() _accessTokenProvider;
-  final WsEndpointResolver _wsEndpointResolver = WsEndpointResolver();
+  final WsEndpointResolver _wsEndpointResolver;
   final StreamController<reconnect.SessionWsEvent> _eventsController =
       StreamController<reconnect.SessionWsEvent>.broadcast();
 
@@ -174,8 +191,17 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
           lv: lv,
           accessToken: accessToken,
         );
-      } catch (_) {
-        // Fall back to hardcoded URL if API resolution fails
+      } on WsEndpointResolveException catch (error) {
+        log(
+          'WS endpoint resolution failed, falling back to direct URL: $error',
+          name: 'SessionWsClientAdapter',
+        );
+      } on Object catch (error) {
+        log(
+          'Unexpected error during WS endpoint resolution, '
+          'falling back to direct URL: $error',
+          name: 'SessionWsClientAdapter',
+        );
       }
     }
 

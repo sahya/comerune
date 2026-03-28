@@ -55,8 +55,6 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   static const String _kPastCommentFetchCount =
       'settings.comment.pastFetchCount';
   static const String _kDebugMode = 'settings.debugMode';
-  static const String _kNiconicoAccessToken =
-      'settings.niconico.accessToken';
 
   @override
   Future<AppSettings> load() async {
@@ -96,8 +94,6 @@ class SharedPreferencesSettingsStore implements SettingsStore {
         _prefs.getString(_kPastCommentFetchCount),
       ),
       debugMode: _prefs.getBool(_kDebugMode) ?? defaults.debugMode,
-      niconicoAccessToken: _prefs.getString(_kNiconicoAccessToken) ??
-          defaults.niconicoAccessToken,
     );
   }
 
@@ -128,9 +124,5 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       settings.pastCommentFetchCount.storageValue,
     );
     await _prefs.setBool(_kDebugMode, settings.debugMode);
-    await _prefs.setString(
-      _kNiconicoAccessToken,
-      settings.niconicoAccessToken,
-    );
   }
 }

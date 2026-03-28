@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../lib/application/settings/settings_store.dart';
+import '../../../lib/data/auth/access_token_store.dart';
 import '../../../lib/domain/models/app_settings.dart';
 import '../../../lib/presentation/screens/settings_screen.dart';
 import '../../helpers/in_memory_shared_preferences.dart';
@@ -120,8 +121,12 @@ void main() {
     ) async {
       final SharedPreferencesSettingsStore settingsStore =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final _InMemoryAccessTokenStore accessTokenStore =
+          _InMemoryAccessTokenStore();
 
-      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpWidget(
+        _buildScreen(settingsStore, accessTokenStore: accessTokenStore),
+      );
       await tester.pumpAndSettle();
 
       await _enterTextByKey(
@@ -131,8 +136,8 @@ void main() {
       );
       await _focusFieldByKey(tester, const Key('bouyomi-host-field'));
 
-      final AppSettings loaded = await settingsStore.load();
-      expect(loaded.niconicoAccessToken, 'test-oauth-token-123');
+      final String loaded = await accessTokenStore.load();
+      expect(loaded, 'test-oauth-token-123');
     });
 
     testWidgets('saves text fields when focus is lost', (
@@ -161,10 +166,33 @@ void main() {
   });
 }
 
-Widget _buildScreen(SettingsStore settingsStore) {
+Widget _buildScreen(
+  SettingsStore settingsStore, {
+  AccessTokenStore? accessTokenStore,
+}) {
   return MaterialApp(
-    home: SettingsScreen(settingsStore: settingsStore),
+    home: SettingsScreen(
+      settingsStore: settingsStore,
+      accessTokenStore: accessTokenStore,
+    ),
   );
+}
+
+class _InMemoryAccessTokenStore implements AccessTokenStore {
+  String _token = '';
+
+  @override
+  Future<String> load() async => _token;
+
+  @override
+  Future<void> save(String token) async {
+    _token = token;
+  }
+
+  @override
+  Future<void> clear() async {
+    _token = '';
+  }
 }
 
 Future<void> _scrollToKey(WidgetTester tester, Key key) async {

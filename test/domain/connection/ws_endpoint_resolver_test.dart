@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:comerune/domain/connection/ws_endpoint_resolver.dart';
+import 'package:comerune/data/connection/ws_endpoint_resolver.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -61,6 +61,27 @@ void main() {
         wsEndpointRequest.headers['Authorization'],
         'Bearer test-token',
       );
+
+      resolver.dispose();
+    });
+
+    test('throws when access token is empty', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+
+      final WsEndpointResolver resolver = WsEndpointResolver(
+        httpClient: httpClient,
+      );
+
+      await expectLater(
+        resolver.resolve(lv: 'lv123', accessToken: ''),
+        throwsA(isA<WsEndpointResolveException>()),
+      );
+      await expectLater(
+        resolver.resolve(lv: 'lv123', accessToken: '   '),
+        throwsA(isA<WsEndpointResolveException>()),
+      );
+
+      expect(httpClient.requests, isEmpty);
 
       resolver.dispose();
     });
