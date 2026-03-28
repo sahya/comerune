@@ -799,6 +799,8 @@ void main() {
             event.type == SessionWsEventType.error &&
             event.errorCode == SessionWsErrorCode.connectFailed,
       );
+      expect(errorEvent.error, isA<StateError>());
+      expect(errorEvent.error.toString(), contains('factory failed'));
       expect(errorEvent.errorDetail, isNotNull);
       expect(
         errorEvent.errorDetail!.phase,
