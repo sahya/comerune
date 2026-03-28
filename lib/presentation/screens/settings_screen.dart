@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../application/settings/settings_store.dart';
 import '../../data/auth/user_session_store.dart';
@@ -57,12 +58,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _ngWordsFocusNode = FocusNode()..addListener(_onNgWordsFocusChanged);
 
     _loadSettings();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _refreshLoginState();
   }
 
   @override
@@ -217,6 +212,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     await sessionStore.clear();
+    // Also clear WebView cookies so re-login doesn't reuse stale session
+    await WebViewCookieManager().clearCookies();
     if (mounted) {
       setState(() {
         _isLoggedIn = false;

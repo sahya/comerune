@@ -71,6 +71,9 @@ class ProgramInfoResolver {
 
     final Uri uri = Uri.parse('$_live2BaseUrl/watch/$lv/programinfo');
     final HttpClientRequest request = await _activeHttpClient.getUrl(uri);
+    // Send session via both Cookie and X-Niconico-Session headers.
+    // N Air uses Cookie header; some niconico APIs accept X-Niconico-Session.
+    request.headers.set('Cookie', 'user_session=$userSession');
     request.headers.set('X-Niconico-Session', userSession);
     request.headers.set('User-Agent', _userAgent);
 

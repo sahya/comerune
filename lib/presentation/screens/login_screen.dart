@@ -111,13 +111,37 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  bool _isCheckingSession = false;
+
   Future<void> _checkForUserSession(String url) async {
-    if (_loginDetected) {
+    if (_loginDetected || _isCheckingSession) {
       return;
     }
+    _isCheckingSession = true;
 
-    final String? userSession = await _extractUserSessionCookie();
-    if (userSession != null && userSession.isNotEmpty) {
+    try {
+      final String? userSession = await _extractUserSessionCookie();
+      if (userSession == null || userSession.isEmpty) {
+        // Not logged in yet — check if we're on a post-login page
+        if (_isPostLoginUrl(url)) {
+          _postLoginPageCount += 1;
+          if (_postLoginPageCount == 1 && mounted) {
+            ScaffoldMessenger.of(context)
+              ..hideCurrentSnackBar()
+              ..showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'ログインが検出できませんでした。'
+                    'Cookieの取得に失敗した可能性があります。',
+                  ),
+                  duration: Duration(seconds: 5),
+                ),
+              );
+          }
+        }
+        return;
+      }
+
       _loginDetected = true;
       await widget.userSessionStore.save(userSession);
 
@@ -131,24 +155,8 @@ class _LoginScreenState extends State<LoginScreen> {
           const SnackBar(content: Text('ログインしました')),
         );
       Navigator.of(context).pop(true);
-      return;
-    }
-
-    if (_isPostLoginUrl(url)) {
-      _postLoginPageCount += 1;
-      if (_postLoginPageCount == 1 && mounted) {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(
-            const SnackBar(
-              content: Text(
-                'ログインが検出できませんでした。'
-                'Cookieの取得に失敗した可能性があります。',
-              ),
-              duration: Duration(seconds: 5),
-            ),
-          );
-      }
+    } finally {
+      _isCheckingSession = false;
     }
   }
 
