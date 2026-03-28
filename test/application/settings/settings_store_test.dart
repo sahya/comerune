@@ -29,5 +29,28 @@ void main() {
 
       expect(loaded.showUserName, isFalse);
     });
+
+    test('autoSaveCommentLog defaults to false when not stored', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.autoSaveCommentLog, isFalse);
+    });
+
+    test('round-trips autoSaveCommentLog value', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        autoSaveCommentLog: true,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.autoSaveCommentLog, isTrue);
+    });
   });
 }
