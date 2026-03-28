@@ -7,16 +7,46 @@ import com.example.comerune.speech.domain.model.SpeechSettings
 class DefaultCommentNormalizer : CommentNormalizer {
 
     override fun normalize(raw: RawComment, settings: SpeechSettings): NormalizedComment {
+        // Step 1: Preprocessing (existing)
         val preprocessed = preprocess(raw.text)
 
-        val skipReason = detectSkipReason(preprocessed, settings)
+        // Step 2: URL processing
+        val urlSkipReason = detectUrlSkipReason(preprocessed, settings)
+        if (urlSkipReason != null) {
+            val priority = if (raw.isOwner) OWNER_PRIORITY else DEFAULT_PRIORITY
+            return NormalizedComment(
+                id = raw.id,
+                originalText = raw.text,
+                normalizedText = preprocessed,
+                priority = priority,
+                skipReason = urlSkipReason
+            )
+        }
+        val afterUrl = replaceUrls(preprocessed, settings)
+
+        // Step 3: Symbol compression
+        val afterSymbol = compressSymbols(afterUrl)
+
+        // Step 4: Emoji processing
+        val afterEmoji = removeEmoji(afterSymbol)
+
+        // Step 5: Skip detection
+        // If symbol compression produced readable text but emoji removal left it blank,
+        // use the post-symbol text instead.
+        val finalText = if (afterEmoji.isBlank() && afterSymbol.isNotBlank()) {
+            afterSymbol
+        } else {
+            afterEmoji
+        }
+
+        val skipReason = detectSkipReason(finalText, settings)
 
         val priority = if (raw.isOwner) OWNER_PRIORITY else DEFAULT_PRIORITY
 
         return NormalizedComment(
             id = raw.id,
             originalText = raw.text,
-            normalizedText = preprocessed,
+            normalizedText = finalText,
             priority = priority,
             skipReason = skipReason
         )
@@ -115,6 +145,57 @@ class DefaultCommentNormalizer : CommentNormalizer {
             codePoint in 0xE0020..0xE007F         // Tags
     }
 
+    /**
+     * URL processing (spec Section 3.5.2):
+     * Returns "url_only" skip reason if the entire comment is a URL and settings.skipUrlOnly is true.
+     */
+    internal fun detectUrlSkipReason(text: String, settings: SpeechSettings): String? {
+        if (settings.skipUrlOnly && URL_PATTERN.matches(text)) {
+            return SKIP_URL_ONLY
+        }
+        return null
+    }
+
+    /**
+     * Replaces URLs in mixed text with settings.replaceUrlWith.
+     */
+    internal fun replaceUrls(text: String, settings: SpeechSettings): String {
+        return URL_PATTERN.replace(text, settings.replaceUrlWith).trim()
+    }
+
+    /**
+     * Symbol compression (spec Section 3.5.3):
+     * Compresses repeated symbols into speech-friendly words.
+     */
+    internal fun compressSymbols(text: String): String {
+        var result = text
+        result = PATTERN_W.replace(result, "わら")
+        result = PATTERN_KUSA.replace(result, "くさ")
+        result = PATTERN_EIGHT.replace(result, "はくしゅ")
+        result = PATTERN_EXCLAMATION.replace(result, "びっくり")
+        result = PATTERN_QUESTION.replace(result, "はてな")
+        result = PATTERN_PROLONGED.replace(result, "のばし")
+        return result
+    }
+
+    /**
+     * Emoji processing (spec Section 3.5.4):
+     * Removes emoji characters from mixed text.
+     */
+    internal fun removeEmoji(text: String): String {
+        val sb = StringBuilder()
+        var i = 0
+        while (i < text.length) {
+            val codePoint = Character.codePointAt(text, i)
+            val charCount = Character.charCount(codePoint)
+            if (!isEmojiCodePoint(codePoint)) {
+                sb.appendCodePoint(codePoint)
+            }
+            i += charCount
+        }
+        return sb.toString().trim()
+    }
+
     private fun isReadableCodePoint(codePoint: Int): Boolean {
         val type = Character.getType(codePoint)
         return type == Character.UPPERCASE_LETTER.toInt() ||
@@ -130,9 +211,21 @@ class DefaultCommentNormalizer : CommentNormalizer {
     companion object {
         private val CONSECUTIVE_SPACES = Regex(" {2,}")
 
+        // URL pattern (spec Section 3.5.2)
+        internal val URL_PATTERN = Regex("""https?://[\w/:%#$&?()~.=+\-]+""")
+
+        // Symbol compression patterns (spec Section 3.5.3)
+        private val PATTERN_W = Regex("""[wW]{2,}""")
+        private val PATTERN_KUSA = Regex("""草{2,}""")
+        private val PATTERN_EIGHT = Regex("""[8８]{3,}""")
+        private val PATTERN_EXCLAMATION = Regex("""[!！]{2,}""")
+        private val PATTERN_QUESTION = Regex("""[?？]{2,}""")
+        private val PATTERN_PROLONGED = Regex("""[ー～〜]{3,}""")
+
         const val SKIP_BLANK = "blank"
         const val SKIP_EMOJI_ONLY = "emoji_only"
         const val SKIP_SYMBOL_ONLY = "symbol_only"
+        const val SKIP_URL_ONLY = "url_only"
 
         private const val OWNER_PRIORITY = 10
         private const val DEFAULT_PRIORITY = 0
