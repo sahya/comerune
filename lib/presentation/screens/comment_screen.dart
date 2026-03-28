@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:share_plus/share_plus.dart';
 
+import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
@@ -47,6 +49,8 @@ class CommentScreen extends StatefulWidget {
     this.commentFontSize = CommentFontSize.medium,
     this.resolveUserName,
     this.requestUserNameResolve,
+    this.commentLogWriter,
+    this.autoSaveCommentLog = false,
     this.ngUserIds = const <String>{},
     this.onToggleNgUser,
   });
@@ -72,6 +76,9 @@ class CommentScreen extends StatefulWidget {
   /// Requests asynchronous resolution of a user ID.
   final void Function(String userId)? requestUserNameResolve;
 
+  final CommentLogWriter? commentLogWriter;
+  final bool autoSaveCommentLog;
+
   /// Set of user IDs marked as NG (blocked).
   final Set<String> ngUserIds;
 
@@ -89,6 +96,7 @@ class _CommentScreenState extends State<CommentScreen> {
   late ConnectionStatus _lastStatus;
   bool _autoScrollEnabled = true;
   bool _isStoppingForExit = false;
+  bool _isSavingLog = false;
   CommentSortOrder _sortOrder = CommentSortOrder.ascending;
 
   @override
@@ -215,8 +223,24 @@ class _CommentScreenState extends State<CommentScreen> {
 
           return Scaffold(
             appBar: AppBar(
-              title: Text(widget.lv),
+              toolbarHeight: 44,
+              title: Text(
+                widget.broadcasterName != null
+                    ? '${widget.broadcasterName} | ${widget.lv}'
+                    : widget.lv,
+                key: const Key('appbar-title-text'),
+                style: const TextStyle(fontSize: 15),
+                overflow: TextOverflow.ellipsis,
+              ),
               actions: <Widget>[
+                if (widget.commentLogWriter != null)
+                  IconButton(
+                    key: const Key('save-comment-log-button'),
+                    icon: const Icon(Icons.ios_share),
+                    tooltip: 'コメントログを共有',
+                    onPressed:
+                        _isSavingLog ? null : () => unawaited(_saveLogManual()),
+                  ),
                 IconButton(
                   key: const Key('sort-toggle-button'),
                   icon: Icon(
@@ -251,7 +275,6 @@ class _CommentScreenState extends State<CommentScreen> {
                   _ProgramTitleBar(
                     key: const Key('program-title-bar'),
                     title: widget.programTitle!,
-                    broadcasterName: widget.broadcasterName,
                   ),
                 _StatusBar(
                   key: const Key('status-bar'),
@@ -438,6 +461,10 @@ class _CommentScreenState extends State<CommentScreen> {
   void _handleConnectionChanged() {
     final ConnectionStatus currentStatus = widget.connectionSupervisor.status;
 
+    if (widget.autoSaveCommentLog && _isAutoSaveTrigger(currentStatus)) {
+      unawaited(_saveLogAuto());
+    }
+
     if (_lastStatus != ConnectionStatus.failed &&
         currentStatus == ConnectionStatus.failed) {
       final String message = _buildFailedSnackbarMessage();
@@ -603,6 +630,84 @@ class _CommentScreenState extends State<CommentScreen> {
     return _scrollController.position.pixels <= _autoScrollResumeThreshold;
   }
 
+  bool _isAutoSaveTrigger(ConnectionStatus status) {
+    if (_lastStatus == status) {
+      return false;
+    }
+    switch (status) {
+      case ConnectionStatus.stopped:
+      case ConnectionStatus.ended:
+      case ConnectionStatus.failed:
+        return true;
+      case ConnectionStatus.idle:
+      case ConnectionStatus.connectingSessionWs:
+      case ConnectionStatus.resolvingEndpoints:
+      case ConnectionStatus.streamingNdgr:
+      case ConnectionStatus.streamingLegacy:
+      case ConnectionStatus.reconnecting:
+        return false;
+    }
+  }
+
+  Future<void> _saveLogManual() async {
+    final bool hasMessages = widget.messages.any(_shouldDisplayMessage);
+    if (!hasMessages) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            const SnackBar(content: Text('保存するコメントがありません')),
+          );
+      }
+      return;
+    }
+
+    final CommentLogWriter? writer = widget.commentLogWriter;
+    if (writer == null) {
+      return;
+    }
+
+    setState(() {
+      _isSavingLog = true;
+    });
+
+    try {
+      final List<AppMessage> messages =
+          widget.messages.where(_shouldDisplayMessage).toList(growable: false);
+      final String? tempPath =
+          await writer.writeToTempFile(lv: widget.lv, messages: messages);
+      if (tempPath == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+            ..clearSnackBars()
+            ..showSnackBar(
+              const SnackBar(content: Text('コメントログの保存に失敗しました')),
+            );
+        }
+        return;
+      }
+
+      await Share.shareXFiles(<XFile>[XFile(tempPath)]);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSavingLog = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _saveLogAuto() async {
+    final CommentLogWriter? writer = widget.commentLogWriter;
+    if (writer == null) {
+      return;
+    }
+
+    final List<AppMessage> messages =
+        widget.messages.where(_shouldDisplayMessage).toList(growable: false);
+    await writer.save(lv: widget.lv, messages: messages);
+  }
+
   void _scrollToEdge({bool animated = true}) {
     if (!_scrollController.hasClients) {
       return;
@@ -629,11 +734,9 @@ class _ProgramTitleBar extends StatelessWidget {
   const _ProgramTitleBar({
     super.key,
     required this.title,
-    this.broadcasterName,
   });
 
   final String title;
-  final String? broadcasterName;
 
   @override
   Widget build(BuildContext context) {
@@ -641,24 +744,10 @@ class _ProgramTitleBar extends StatelessWidget {
       width: double.infinity,
       color: Colors.indigo.shade50,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            title,
-            key: const Key('program-title-text'),
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          if (broadcasterName != null)
-            Text(
-              '配信者: $broadcasterName',
-              key: const Key('broadcaster-name-text'),
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade700,
-              ),
-            ),
-        ],
+      child: Text(
+        title,
+        key: const Key('program-title-text'),
+        style: const TextStyle(fontWeight: FontWeight.bold),
       ),
     );
   }

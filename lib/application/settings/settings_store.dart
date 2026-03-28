@@ -58,6 +58,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   static const String _kShowUserName = 'settings.comment.showUserName';
   static const String _kResolveUserName = 'settings.comment.resolveUserName';
   static const String _kCommentFontSize = 'settings.comment.fontSize';
+  static const String _kAutoSaveCommentLog =
+      'settings.comment.autoSaveCommentLog';
   static const String _kDebugMode = 'settings.debugMode';
 
   @override
@@ -104,6 +106,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       commentFontSize: CommentFontSizeValue.fromStorageValue(
         _prefs.getString(_kCommentFontSize),
       ),
+      autoSaveCommentLog:
+          _prefs.getBool(_kAutoSaveCommentLog) ?? defaults.autoSaveCommentLog,
       debugMode: _prefs.getBool(_kDebugMode) ?? defaults.debugMode,
     );
   }
@@ -141,6 +145,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       _kCommentFontSize,
       settings.commentFontSize.storageValue,
     );
+    await _prefs.setBool(_kAutoSaveCommentLog, settings.autoSaveCommentLog);
     await _prefs.setBool(_kDebugMode, settings.debugMode);
   }
 }

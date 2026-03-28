@@ -171,6 +171,7 @@ class AppSettings {
     required this.showUserName,
     required this.resolveUserName,
     required this.commentFontSize,
+    required this.autoSaveCommentLog,
     required this.debugMode,
   });
 
@@ -197,6 +198,7 @@ class AppSettings {
     showUserName: true,
     resolveUserName: true,
     commentFontSize: CommentFontSize.medium,
+    autoSaveCommentLog: false,
     debugMode: false,
   );
 
@@ -224,6 +226,7 @@ class AppSettings {
   final bool showUserName;
   final bool resolveUserName;
   final CommentFontSize commentFontSize;
+  final bool autoSaveCommentLog;
   final bool debugMode;
 
   Set<String> get ngUserIdSet {
@@ -285,6 +288,7 @@ class AppSettings {
     bool? showUserName,
     bool? resolveUserName,
     CommentFontSize? commentFontSize,
+    bool? autoSaveCommentLog,
     bool? debugMode,
   }) {
     return AppSettings(
@@ -311,6 +315,7 @@ class AppSettings {
       showUserName: showUserName ?? this.showUserName,
       resolveUserName: resolveUserName ?? this.resolveUserName,
       commentFontSize: commentFontSize ?? this.commentFontSize,
+      autoSaveCommentLog: autoSaveCommentLog ?? this.autoSaveCommentLog,
       debugMode: debugMode ?? this.debugMode,
     );
   }

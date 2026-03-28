@@ -698,6 +698,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             }
                           : null,
                     ),
+                    SwitchListTile(
+                      key: const Key('auto-save-comment-log-switch'),
+                      title: const Text('コメントログ自動保存'),
+                      subtitle: const Text('接続終了時にコメントをファイルに保存'),
+                      contentPadding: EdgeInsets.zero,
+                      value: settings.autoSaveCommentLog,
+                      onChanged: (bool value) {
+                        _saveNextSettings(
+                            settings.copyWith(autoSaveCommentLog: value));
+                      },
+                    ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<CommentFontSize>(
                       key: const Key('comment-font-size-dropdown'),
