@@ -105,7 +105,10 @@ abstract class SessionWsChannel {
   Future<void> close([int? code, String? reason]);
 }
 
-typedef SessionWsChannelFactory = FutureOr<SessionWsChannel> Function(Uri uri);
+typedef SessionWsChannelFactory = FutureOr<SessionWsChannel> Function(
+  Uri uri,
+  Map<String, String> headers,
+);
 
 class WebSocketSessionWsChannel implements SessionWsChannel {
   WebSocketSessionWsChannel(this._inner);
@@ -139,7 +142,7 @@ class SessionWsClient {
         SessionWsStartWatchingMode.full,
     Map<String, String>? connectHeaders,
     String userAgent = defaultAndroidUserAgent,
-  })  : _channelFactory = channelFactory,
+  })  : _channelFactory = channelFactory ?? _defaultChannelFactory,
         _endpointFallbackDelay = endpointFallbackDelay,
         _endpointResolveTimeout = endpointResolveTimeout,
         _startWatchingMode = startWatchingMode,
@@ -161,11 +164,11 @@ class SessionWsClient {
               );
 
   final String lv;
-  final SessionWsChannelFactory? _channelFactory;
+  final SessionWsChannelFactory _channelFactory;
   final Duration _endpointFallbackDelay;
   final Duration _endpointResolveTimeout;
   final SessionWsStartWatchingMode _startWatchingMode;
-  final Map<String, dynamic> _connectHeaders;
+  final Map<String, String> _connectHeaders;
   final Map<String, Map<String, Object>> _keepaliveResponses;
 
   final StreamController<SessionWsEvent> _eventsController =
@@ -188,8 +191,8 @@ class SessionWsClient {
 
   Stream<SessionWsEvent> get events => _eventsController.stream;
   SessionWsStartWatchingMode get startWatchingMode => _startWatchingMode;
-  Map<String, dynamic> get connectHeaders =>
-      Map<String, dynamic>.unmodifiable(_connectHeaders);
+  Map<String, String> get connectHeaders =>
+      Map<String, String>.unmodifiable(_connectHeaders);
 
   Future<void> connect() async {
     if (_isDisposed) {
@@ -204,9 +207,10 @@ class SessionWsClient {
     _sessionWsUri = uri;
 
     try {
-      final SessionWsChannel channel = await (_channelFactory == null
-          ? _defaultChannelFactory(uri, _connectHeaders)
-          : _channelFactory!(uri));
+      final SessionWsChannel channel = await _channelFactory(
+        uri,
+        _connectHeaders,
+      );
       _channel = channel;
       _subscription = channel.stream.listen(
         _handleIncoming,
@@ -490,7 +494,7 @@ class SessionWsClient {
 
   static Future<SessionWsChannel> _defaultChannelFactory(
     Uri uri,
-    Map<String, dynamic> headers,
+    Map<String, String> headers,
   ) async {
     final IOWebSocketChannel channel = IOWebSocketChannel.connect(
       uri,
@@ -499,11 +503,11 @@ class SessionWsClient {
     return WebSocketSessionWsChannel(channel);
   }
 
-  static Map<String, dynamic> _buildConnectHeaders({
+  static Map<String, String> _buildConnectHeaders({
     required Map<String, String>? connectHeaders,
     required String userAgent,
   }) {
-    final Map<String, dynamic> headers = <String, dynamic>{
+    final Map<String, String> headers = <String, String>{
       if (connectHeaders != null) ...connectHeaders,
     };
     final bool hasUserAgentHeader = headers.keys.any(

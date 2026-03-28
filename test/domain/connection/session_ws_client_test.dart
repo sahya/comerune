@@ -206,11 +206,36 @@ void main() {
       expect(client.connectHeaders['User-Agent'], 'comerune-test-agent');
     });
 
+    test('passes resolved headers to custom channelFactory', () async {
+      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+      Map<String, String>? capturedHeaders;
+
+      final SessionWsClient client = SessionWsClient(
+        lv: 'lv123456789',
+        userAgent: 'custom-test-agent',
+        connectHeaders: const <String, String>{
+          'X-Custom-Header': 'enabled',
+        },
+        channelFactory: (_, Map<String, String> headers) async {
+          capturedHeaders = Map<String, String>.from(headers);
+          return fakeChannel;
+        },
+      );
+
+      await client.connect();
+
+      expect(capturedHeaders, isNotNull);
+      expect(capturedHeaders!['X-Custom-Header'], 'enabled');
+      expect(capturedHeaders!['User-Agent'], 'custom-test-agent');
+
+      await client.dispose();
+    });
+
     test('sends startWatching on connect and pong on keepalive', () async {
       final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
       final SessionWsClient client = SessionWsClient(
         lv: 'lv123456789',
-        channelFactory: (_) async => fakeChannel,
+        channelFactory: (_, __) async => fakeChannel,
       );
       final List<SessionWsEvent> events = <SessionWsEvent>[];
       final StreamSubscription<SessionWsEvent> subscription =
@@ -256,7 +281,7 @@ void main() {
       final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
       final SessionWsClient client = SessionWsClient(
         lv: 'lv123456789',
-        channelFactory: (_) async => fakeChannel,
+        channelFactory: (_, __) async => fakeChannel,
         startWatchingMode: SessionWsStartWatchingMode.minimal,
       );
 
@@ -280,7 +305,7 @@ void main() {
         );
         final SessionWsClient client = SessionWsClient(
           lv: 'lv123456789',
-          channelFactory: (_) async => fakeChannel,
+          channelFactory: (_, __) async => fakeChannel,
         );
         final List<SessionWsEvent> events = <SessionWsEvent>[];
         final StreamSubscription<SessionWsEvent> subscription =
@@ -315,7 +340,7 @@ void main() {
       final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
       final SessionWsClient client = SessionWsClient(
         lv: 'lv123456789',
-        channelFactory: (_) async => fakeChannel,
+        channelFactory: (_, __) async => fakeChannel,
       );
 
       await client.connect();
@@ -338,7 +363,7 @@ void main() {
         final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
         final SessionWsClient client = SessionWsClient(
           lv: 'lv123456789',
-          channelFactory: (_) async => fakeChannel,
+          channelFactory: (_, __) async => fakeChannel,
         );
 
         await client.connect();
@@ -369,7 +394,7 @@ void main() {
         );
         final SessionWsClient client = SessionWsClient(
           lv: 'lv123456789',
-          channelFactory: (_) async => fakeChannel,
+          channelFactory: (_, __) async => fakeChannel,
         );
         final List<SessionWsEvent> events = <SessionWsEvent>[];
         final StreamSubscription<SessionWsEvent> subscription =
@@ -411,7 +436,7 @@ void main() {
         final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
         final SessionWsClient client = SessionWsClient(
           lv: 'lv123456789',
-          channelFactory: (_) async => fakeChannel,
+          channelFactory: (_, __) async => fakeChannel,
         );
         final List<SessionWsEvent> events = <SessionWsEvent>[];
         final StreamSubscription<SessionWsEvent> subscription =
@@ -455,7 +480,7 @@ void main() {
         final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
         final SessionWsClient client = SessionWsClient(
           lv: 'lv123456789',
-          channelFactory: (_) async => fakeChannel,
+          channelFactory: (_, __) async => fakeChannel,
           endpointFallbackDelay: const Duration(milliseconds: 50),
         );
         final List<SessionWsEvent> events = <SessionWsEvent>[];
@@ -507,7 +532,7 @@ void main() {
         final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
         final SessionWsClient client = SessionWsClient(
           lv: 'lv123456789',
-          channelFactory: (_) async => fakeChannel,
+          channelFactory: (_, __) async => fakeChannel,
           endpointFallbackDelay: const Duration(milliseconds: 10),
         );
         final List<SessionWsEvent> events = <SessionWsEvent>[];
@@ -546,7 +571,7 @@ void main() {
         final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
         final SessionWsClient client = SessionWsClient(
           lv: 'lv123456789',
-          channelFactory: (_) async => fakeChannel,
+          channelFactory: (_, __) async => fakeChannel,
           endpointFallbackDelay: const Duration(milliseconds: 50),
         );
         final List<SessionWsEvent> events = <SessionWsEvent>[];
@@ -592,7 +617,7 @@ void main() {
       final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
       final SessionWsClient client = SessionWsClient(
         lv: 'lv123456789',
-        channelFactory: (_) async => fakeChannel,
+        channelFactory: (_, __) async => fakeChannel,
       );
       final List<SessionWsEvent> events = <SessionWsEvent>[];
       final StreamSubscription<SessionWsEvent> subscription =
@@ -642,7 +667,7 @@ void main() {
       final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
       final SessionWsClient client = SessionWsClient(
         lv: 'lv123456789',
-        channelFactory: (_) async => fakeChannel,
+        channelFactory: (_, __) async => fakeChannel,
         endpointResolveTimeout: const Duration(milliseconds: 20),
       );
       final List<SessionWsEvent> events = <SessionWsEvent>[];
@@ -698,7 +723,7 @@ void main() {
 
       final SessionWsClient client = SessionWsClient(
         lv: 'lv123456789',
-        channelFactory: (_) async {
+        channelFactory: (_, __) async {
           factoryCallCount += 1;
           if (factoryCallCount == 1) {
             return firstChannel;
@@ -751,7 +776,7 @@ void main() {
       int factoryCallCount = 0;
       final SessionWsClient client = SessionWsClient(
         lv: 'lv123456789',
-        channelFactory: (_) async {
+        channelFactory: (_, __) async {
           factoryCallCount += 1;
           if (factoryCallCount == 1) {
             return firstChannel;
@@ -777,7 +802,7 @@ void main() {
     test('emits connectFailed when channelFactory throws', () async {
       final SessionWsClient client = SessionWsClient(
         lv: 'lv123456789',
-        channelFactory: (_) => throw StateError('factory failed'),
+        channelFactory: (_, __) => throw StateError('factory failed'),
       );
       final List<SessionWsEvent> events = <SessionWsEvent>[];
       final StreamSubscription<SessionWsEvent> subscription =
@@ -823,7 +848,7 @@ void main() {
       );
       final SessionWsClient client = SessionWsClient(
         lv: 'lv123456789',
-        channelFactory: (_) async => fakeChannel,
+        channelFactory: (_, __) async => fakeChannel,
       );
       final List<SessionWsEvent> events = <SessionWsEvent>[];
       final StreamSubscription<SessionWsEvent> subscription =
@@ -853,7 +878,7 @@ void main() {
       final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
       final SessionWsClient client = SessionWsClient(
         lv: 'lv123456789',
-        channelFactory: (_) async => fakeChannel,
+        channelFactory: (_, __) async => fakeChannel,
       );
 
       await client.dispose();
