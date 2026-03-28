@@ -29,11 +29,11 @@ extension AppThemeModeValue on AppThemeMode {
       case AppThemeMode.dark:
         return 'ダーク';
       case AppThemeMode.protanopia:
-        return '1型色覚（P型）';
+        return '赤が見えにくい方向け（P型）';
       case AppThemeMode.deuteranopia:
-        return '2型色覚（D型）';
+        return '緑が見えにくい方向け（D型）';
       case AppThemeMode.tritanopia:
-        return '3型色覚（T型）';
+        return '青黄の区別サポート（T型）';
     }
   }
 

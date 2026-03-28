@@ -4,7 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:comerune/domain/connection/connection_method.dart';
 import 'package:comerune/domain/connection/connection_supervisor.dart';
 import 'package:comerune/domain/models/app_message.dart';
+import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/presentation/screens/comment_screen.dart';
+import 'package:comerune/presentation/theme/app_theme.dart';
 
 void main() {
   group('CommentScreen', () {
@@ -20,14 +22,15 @@ void main() {
         ),
       );
 
+      final AppThemeColors themeColors = AppTheme.colorsFor(AppThemeMode.light);
       Icon wifiIcon = tester.widget(find.byKey(const Key('status-wifi-icon')));
-      expect(wifiIcon.color, Colors.green);
+      expect(wifiIcon.color, themeColors.statusConnected);
 
       expect(supervisor.endBroadcast(), isTrue);
       await tester.pumpAndSettle();
 
       wifiIcon = tester.widget(find.byKey(const Key('status-wifi-icon')));
-      expect(wifiIcon.color, Colors.red);
+      expect(wifiIcon.color, themeColors.statusDisconnected);
     });
 
     testWidgets('status bar shows normal and debug fields', (

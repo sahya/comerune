@@ -327,6 +327,7 @@ class _SelectScreenState extends State<SelectScreen> {
         builder: (_) => SettingsScreen(
           settingsStore: settingsStore,
           userSessionStore: userSessionStore,
+          themeModeNotifier: widget.themeModeNotifier,
         ),
       ),
     );

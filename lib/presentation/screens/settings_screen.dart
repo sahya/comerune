@@ -13,10 +13,12 @@ class SettingsScreen extends StatefulWidget {
     super.key,
     required this.settingsStore,
     this.userSessionStore,
+    this.themeModeNotifier,
   });
 
   final SettingsStore settingsStore;
   final UserSessionStore? userSessionStore;
+  final ValueNotifier<AppThemeMode>? themeModeNotifier;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -230,6 +232,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _settings = next;
     });
+    widget.themeModeNotifier?.value = next.themeMode;
     unawaited(_saveSettings(next));
   }
 
