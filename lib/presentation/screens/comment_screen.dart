@@ -111,7 +111,10 @@ class _CommentScreenState extends State<CommentScreen> {
     final bool hasNewMessages =
         _hasNewMessages(oldWidget.messages, widget.messages);
     if (hasNewMessages) {
-      _requestUserNameResolution(widget.messages);
+      _requestUserNameResolutionForNewMessages(
+        oldWidget.messages,
+        widget.messages,
+      );
       if (_autoScrollEnabled) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _scrollToEdge();
@@ -141,6 +144,26 @@ class _CommentScreenState extends State<CommentScreen> {
 
     for (final AppMessage message in messages) {
       final String? userId = message.userId;
+      if (userId != null && userId.isNotEmpty) {
+        resolver.requestResolve(userId);
+      }
+    }
+  }
+
+  void _requestUserNameResolutionForNewMessages(
+    List<AppMessage> oldMessages,
+    List<AppMessage> newMessages,
+  ) {
+    final UserNameResolver? resolver = widget.userNameResolver;
+    if (resolver == null) {
+      return;
+    }
+
+    final int start = oldMessages.length < newMessages.length
+        ? oldMessages.length
+        : 0;
+    for (int i = start; i < newMessages.length; i++) {
+      final String? userId = newMessages[i].userId;
       if (userId != null && userId.isNotEmpty) {
         resolver.requestResolve(userId);
       }
