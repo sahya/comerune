@@ -104,7 +104,7 @@ class FileCommentLogWriter implements CommentLogWriter {
     final String h = value.hour.toString().padLeft(2, '0');
     final String mi = value.minute.toString().padLeft(2, '0');
     final String s = value.second.toString().padLeft(2, '0');
-    return '${y}${mo}${d}_$h$mi$s';
+    return '$y$mo${d}_$h$mi$s';
   }
 
   String _formatHms(DateTime value) {

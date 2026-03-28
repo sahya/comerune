@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../../lib/domain/models/app_settings.dart';
+import 'package:comerune/domain/models/app_settings.dart';
 
 void main() {
   group('AppThemeModeValue.fromStorageValue', () {
