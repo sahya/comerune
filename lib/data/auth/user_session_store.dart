@@ -30,7 +30,10 @@ class SecureUserSessionStore implements UserSessionStore {
   final FlutterSecureStorage _secureStorage;
 
   static const String _secureKey = 'auth.userSession';
-  static const String _legacyPrefsKey = 'auth.userSession';
+
+  /// Legacy key used by the old SharedPreferences-only implementation.
+  /// Same key name is reused in secure storage for simplicity.
+  static const String _legacyPrefsKey = _secureKey;
 
   Future<void>? _migrationFuture;
 
