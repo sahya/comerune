@@ -20,8 +20,7 @@ class UserNameResolver extends ChangeNotifier {
     }
   }
 
-  static const String _baseUrl =
-      'https://nvapi.nicovideo.jp/v1/users';
+  static const String _baseUrl = 'https://nvapi.nicovideo.jp/v1/users';
 
   static const String _userAgent =
       'Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 '
