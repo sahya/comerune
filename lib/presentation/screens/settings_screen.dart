@@ -372,7 +372,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: <Widget>[
                     DropdownButtonFormField<AppThemeMode>(
                       key: const Key('theme-mode-dropdown'),
-                      initialValue: settings.themeMode,
+                      value: settings.themeMode,
                       decoration: const InputDecoration(
                         labelText: '配色テーマ',
                         border: OutlineInputBorder(),
@@ -457,31 +457,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       },
                     ),
                     const Text('読み上げエンジン'),
-                    RadioGroup<SpeechEngine>(
-                      groupValue: settings.speechEngine,
-                      onChanged: (SpeechEngine? value) {
-                        if (value == null) {
-                          return;
-                        }
-                        _saveNextSettings(
-                            settings.copyWith(speechEngine: value));
-                      },
-                      child: const Column(
-                        children: <Widget>[
-                          RadioListTile<SpeechEngine>(
-                            key: Key('engine-bouyomi-radio'),
-                            title: Text('棒読みちゃん'),
-                            contentPadding: EdgeInsets.zero,
-                            value: SpeechEngine.bouyomi,
-                          ),
-                          RadioListTile<SpeechEngine>(
-                            key: Key('engine-voicevox-radio'),
-                            title: Text('VOICEVOX'),
-                            contentPadding: EdgeInsets.zero,
-                            value: SpeechEngine.voicevox,
-                          ),
-                        ],
-                      ),
+                    Column(
+                      children: <Widget>[
+                        RadioListTile<SpeechEngine>(
+                          key: const Key('engine-bouyomi-radio'),
+                          title: const Text('棒読みちゃん'),
+                          contentPadding: EdgeInsets.zero,
+                          value: SpeechEngine.bouyomi,
+                          groupValue: settings.speechEngine,
+                          onChanged: (SpeechEngine? value) {
+                            if (value == null) return;
+                            _saveNextSettings(
+                                settings.copyWith(speechEngine: value));
+                          },
+                        ),
+                        RadioListTile<SpeechEngine>(
+                          key: const Key('engine-voicevox-radio'),
+                          title: const Text('VOICEVOX'),
+                          contentPadding: EdgeInsets.zero,
+                          value: SpeechEngine.voicevox,
+                          groupValue: settings.speechEngine,
+                          onChanged: (SpeechEngine? value) {
+                            if (value == null) return;
+                            _saveNextSettings(
+                                settings.copyWith(speechEngine: value));
+                          },
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -539,7 +541,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       DropdownButtonFormField<int>(
                         key: const Key('bouyomi-voice-dropdown'),
-                        initialValue: settings.bouyomiVoice,
+                        value: settings.bouyomiVoice,
                         decoration: const InputDecoration(
                           labelText: '声質',
                           border: OutlineInputBorder(),
@@ -570,7 +572,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: <Widget>[
                       DropdownButtonFormField<int>(
                         key: const Key('voicevox-speaker-dropdown'),
-                        initialValue: settings.voicevoxSpeaker,
+                        value: settings.voicevoxSpeaker,
                         decoration: const InputDecoration(
                           labelText: '話者',
                           border: OutlineInputBorder(),
@@ -788,7 +790,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(height: 8),
                     DropdownButtonFormField<PastCommentFetchCount>(
                       key: const Key('past-comment-count-dropdown'),
-                      initialValue: settings.pastCommentFetchCount,
+                      value: settings.pastCommentFetchCount,
                       decoration: const InputDecoration(
                         labelText: '過去コメント取得件数',
                         border: OutlineInputBorder(),

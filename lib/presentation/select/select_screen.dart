@@ -591,9 +591,18 @@ class _FollowProgramList extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
             children: <Widget>[
+              const Icon(Icons.sensors, size: 16, color: Colors.red),
+              const SizedBox(width: 6),
               Text(
                 'フォロー中の放送',
                 style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${programs.length}件',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
               ),
               const Spacer(),
               SizedBox(
@@ -615,6 +624,7 @@ class _FollowProgramList extends StatelessWidget {
           child: RefreshIndicator(
             onRefresh: onRefresh,
             child: ListView.separated(
+              padding: const EdgeInsets.symmetric(vertical: 4),
               itemCount: programs.length,
               separatorBuilder: (_, __) => const Divider(height: 1),
               itemBuilder: (BuildContext context, int index) {
@@ -647,73 +657,113 @@ class _FollowProgramTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final String? elapsed = program.elapsedLabel();
+    final String semanticsLabel = _buildSemanticsLabel(elapsed);
 
-    return InkWell(
-      onTap: enabled ? onTap : null,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(
-          children: <Widget>[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: _buildIcon(),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Text(
-                    program.title,
-                    style: theme.textTheme.bodyMedium,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Row(
-                    children: <Widget>[
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                        ),
+    return Semantics(
+      button: true,
+      label: semanticsLabel,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(
+            children: <Widget>[
+              _buildIconWithLiveIndicator(theme),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      program.title,
+                      style: theme.textTheme.bodyMedium,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _formatProviderInfo(),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
-                      const SizedBox(width: 4),
-                      Flexible(
-                        child: Text(
-                          program.providerName,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (elapsed != null) ...<Widget>[
-                        const SizedBox(width: 8),
-                        Text(
-                          elapsed,
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: theme.colorScheme.outline,
-                          ),
-                        ),
-                      ],
-                    ],
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (elapsed != null) ...<Widget>[
+                Icon(Icons.access_time,
+                    size: 11, color: theme.colorScheme.outline),
+                const SizedBox(width: 3),
+                Text(
+                  elapsed,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.outline,
                   ),
-                ],
+                ),
+                const SizedBox(width: 8),
+              ],
+              Icon(
+                Icons.play_circle_outline,
+                size: 20,
+                color:
+                    enabled ? theme.colorScheme.primary : theme.disabledColor,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _buildSemanticsLabel(String? elapsed) {
+    final StringBuffer sb = StringBuffer('${program.providerName}の放送');
+    sb.write(' ${program.title}');
+    if (elapsed != null) {
+      sb.write(' $elapsed経過');
+    }
+    sb.write(' タップして接続');
+    return sb.toString();
+  }
+
+  String _formatProviderInfo() {
+    final String? community = program.communityName;
+    if (community != null && community.isNotEmpty) {
+      return '${program.providerName} / $community - ${program.programId}';
+    }
+    return '${program.providerName} - ${program.programId}';
+  }
+
+  Widget _buildIconWithLiveIndicator(ThemeData theme) {
+    return SizedBox(
+      width: 40,
+      height: 40,
+      child: Stack(
+        children: <Widget>[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: _buildIcon(),
+          ),
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: Colors.red,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: theme.colorScheme.surface,
+                  width: 1.5,
+                ),
               ),
             ),
-            const SizedBox(width: 8),
-            Icon(
-              Icons.play_circle_outline,
-              size: 20,
-              color: enabled ? theme.colorScheme.primary : theme.disabledColor,
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -723,9 +773,11 @@ class _FollowProgramTile extends StatelessWidget {
     if (iconUrl != null && iconUrl.isNotEmpty) {
       return Image.network(
         iconUrl,
-        width: 36,
-        height: 36,
+        width: 40,
+        height: 40,
         fit: BoxFit.cover,
+        cacheWidth: 80,
+        cacheHeight: 80,
         errorBuilder: (_, __, ___) => _buildFallbackIcon(),
       );
     }
@@ -734,10 +786,10 @@ class _FollowProgramTile extends StatelessWidget {
 
   static Widget _buildFallbackIcon() {
     return Container(
-      width: 36,
-      height: 36,
+      width: 40,
+      height: 40,
       color: Colors.grey.shade300,
-      child: const Icon(Icons.person, size: 20, color: Colors.grey),
+      child: const Icon(Icons.person, size: 22, color: Colors.grey),
     );
   }
 }

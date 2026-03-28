@@ -59,7 +59,7 @@ class FollowProgramRepository {
       return _parseResponse(body);
     } on Exception catch (e) {
       log(
-        'Error fetching follow programs: $e',
+        'Error fetching follow programs: ${e.runtimeType}',
         name: 'FollowProgramRepository',
       );
       return const <FollowProgram>[];
@@ -143,11 +143,11 @@ class FollowProgramRepository {
     final Object? provider = item['programProvider'];
     if (provider is Map<String, dynamic>) {
       final Object? iconSmall = provider['iconSmall'];
-      if (iconSmall is String && iconSmall.isNotEmpty) {
+      if (iconSmall is String && _isHttpsUrl(iconSmall)) {
         return iconSmall;
       }
       final Object? icon = provider['icon'];
-      if (icon is String && icon.isNotEmpty) {
+      if (icon is String && _isHttpsUrl(icon)) {
         return icon;
       }
     }
@@ -157,17 +157,21 @@ class FollowProgramRepository {
       final Object? icons = supplier['icons'];
       if (icons is Map<String, dynamic>) {
         final Object? uri50 = icons['uri50x50'];
-        if (uri50 is String && uri50.isNotEmpty) {
+        if (uri50 is String && _isHttpsUrl(uri50)) {
           return uri50;
         }
         final Object? uri150 = icons['uri150x150'];
-        if (uri150 is String && uri150.isNotEmpty) {
+        if (uri150 is String && _isHttpsUrl(uri150)) {
           return uri150;
         }
       }
     }
 
     return null;
+  }
+
+  static bool _isHttpsUrl(String url) {
+    return url.isNotEmpty && url.startsWith('https://');
   }
 
   static String? _extractCommunityName(Map<String, dynamic> item) {
