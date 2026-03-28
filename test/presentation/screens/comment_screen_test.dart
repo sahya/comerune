@@ -495,7 +495,7 @@ void main() {
       expect(find.text('lv345678901'), findsAtLeast(1));
     });
 
-    testWidgets('shows broadcaster name with label in program title bar', (
+    testWidgets('shows broadcaster name in AppBar with lv subtitle', (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
@@ -509,16 +509,25 @@ void main() {
         ),
       );
 
-      expect(find.byKey(const Key('program-title-bar')), findsOneWidget);
-      expect(find.text('テスト番組'), findsOneWidget);
+      // Broadcaster name is shown as the main AppBar title.
       expect(
-        find.byKey(const Key('broadcaster-name-text')),
+        find.byKey(const Key('appbar-title-text')),
         findsOneWidget,
       );
-      expect(find.text('配信者: テスト配信者'), findsOneWidget);
+      expect(find.text('テスト配信者'), findsOneWidget);
+
+      // lv is shown as a subtitle in the AppBar.
+      expect(
+        find.byKey(const Key('appbar-lv-subtitle')),
+        findsOneWidget,
+      );
+
+      // Program title bar shows only the title, no broadcaster name.
+      expect(find.byKey(const Key('program-title-bar')), findsOneWidget);
+      expect(find.text('テスト番組'), findsOneWidget);
     });
 
-    testWidgets('hides broadcaster name when broadcasterName is null', (
+    testWidgets('shows lv as AppBar title when broadcasterName is null', (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
@@ -531,12 +540,21 @@ void main() {
         ),
       );
 
-      expect(find.byKey(const Key('program-title-bar')), findsOneWidget);
-      expect(find.text('タイトルのみ'), findsOneWidget);
+      // lv is shown as the main title when no broadcaster name.
       expect(
-        find.byKey(const Key('broadcaster-name-text')),
+        find.byKey(const Key('appbar-title-text')),
+        findsOneWidget,
+      );
+      expect(find.text('lv345678901'), findsAtLeast(1));
+
+      // No subtitle when broadcaster name is absent.
+      expect(
+        find.byKey(const Key('appbar-lv-subtitle')),
         findsNothing,
       );
+
+      expect(find.byKey(const Key('program-title-bar')), findsOneWidget);
+      expect(find.text('タイトルのみ'), findsOneWidget);
     });
 
     testWidgets('hides program title bar when title is null', (

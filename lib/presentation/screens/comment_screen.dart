@@ -220,7 +220,29 @@ class _CommentScreenState extends State<CommentScreen> {
 
           return Scaffold(
             appBar: AppBar(
-              title: Text(widget.lv),
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    widget.broadcasterName ?? widget.lv,
+                    key: const Key('appbar-title-text'),
+                    style: const TextStyle(fontSize: 18),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (widget.broadcasterName != null)
+                    Text(
+                      widget.lv,
+                      key: const Key('appbar-lv-subtitle'),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withAlpha(153),
+                      ),
+                    ),
+                ],
+              ),
               actions: <Widget>[
                 if (widget.commentLogWriter != null)
                   IconButton(
@@ -264,7 +286,6 @@ class _CommentScreenState extends State<CommentScreen> {
                   _ProgramTitleBar(
                     key: const Key('program-title-bar'),
                     title: widget.programTitle!,
-                    broadcasterName: widget.broadcasterName,
                   ),
                 _StatusBar(
                   key: const Key('status-bar'),
@@ -723,11 +744,9 @@ class _ProgramTitleBar extends StatelessWidget {
   const _ProgramTitleBar({
     super.key,
     required this.title,
-    this.broadcasterName,
   });
 
   final String title;
-  final String? broadcasterName;
 
   @override
   Widget build(BuildContext context) {
@@ -735,24 +754,10 @@ class _ProgramTitleBar extends StatelessWidget {
       width: double.infinity,
       color: Colors.indigo.shade50,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            title,
-            key: const Key('program-title-text'),
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          if (broadcasterName != null)
-            Text(
-              '配信者: $broadcasterName',
-              key: const Key('broadcaster-name-text'),
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade700,
-              ),
-            ),
-        ],
+      child: Text(
+        title,
+        key: const Key('program-title-text'),
+        style: const TextStyle(fontWeight: FontWeight.bold),
       ),
     );
   }
