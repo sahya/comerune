@@ -13,7 +13,20 @@ class DefaultCommentNormalizer(
         // Step 1: Preprocessing (existing)
         val preprocessed = preprocess(raw.text)
 
-        // Step 2: URL processing
+        // Step 2: NG word check (on preprocessed text, before other transforms)
+        val ngSkipReason = detectNgWord(preprocessed, settings)
+        if (ngSkipReason != null) {
+            val priority = if (raw.isOwner) OWNER_PRIORITY else DEFAULT_PRIORITY
+            return NormalizedComment(
+                id = raw.id,
+                originalText = raw.text,
+                normalizedText = preprocessed,
+                priority = priority,
+                skipReason = ngSkipReason
+            )
+        }
+
+        // Step 3: URL processing
         val urlSkipReason = detectUrlSkipReason(preprocessed, settings)
         if (urlSkipReason != null) {
             val priority = if (raw.isOwner) OWNER_PRIORITY else DEFAULT_PRIORITY
@@ -27,26 +40,32 @@ class DefaultCommentNormalizer(
         }
         val afterUrl = replaceUrls(preprocessed, settings)
 
-        // Step 3: Symbol compression
+        // Step 4: Symbol compression
         val afterSymbol = compressSymbols(afterUrl)
 
-        // Step 4: Emoji processing
+        // Step 5: Emoji processing
         val afterEmoji = removeEmoji(afterSymbol)
 
-        // Step 5: Skip detection
+        // Step 6: Dictionary replacement
+        val afterDict = applyDictionaryRules(afterEmoji, settings)
+
+        // Step 7: Text length truncation
+        val afterTruncate = truncateText(afterDict, settings)
+
+        // Step 8: Skip detection
         // If symbol compression produced readable text but emoji removal left it blank,
         // use the post-symbol text instead.
-        val finalText = if (afterEmoji.isBlank() && afterSymbol.isNotBlank()) {
-            afterSymbol
+        val finalText = if (afterTruncate.isBlank() && afterSymbol.isNotBlank()) {
+            truncateText(applyDictionaryRules(afterSymbol, settings), settings)
         } else {
-            afterEmoji
+            afterTruncate
         }
 
         val skipReason = detectSkipReason(finalText, settings)
 
         val priority = if (raw.isOwner) OWNER_PRIORITY else DEFAULT_PRIORITY
 
-        // Step 6: Duplicate detection
+        // Step 9: Duplicate detection
         if (duplicateDetector != null && skipReason == null) {
             val now = timeProvider()
             val isDup = duplicateDetector.isDuplicate(finalText, raw.userId, now)
@@ -215,6 +234,50 @@ class DefaultCommentNormalizer(
         return sb.toString().trim()
     }
 
+    /**
+     * NG word check (spec Section 3.5.5):
+     * Checks if preprocessed text contains any NG word (partial match, case-insensitive).
+     * Returns "ng_word" skip reason if match found, null otherwise.
+     */
+    internal fun detectNgWord(text: String, settings: SpeechSettings): String? {
+        if (settings.ngWords.isEmpty()) return null
+        val lowerText = text.lowercase()
+        return if (settings.ngWords.any { lowerText.contains(it.lowercase()) }) {
+            SKIP_NG_WORD
+        } else {
+            null
+        }
+    }
+
+    /**
+     * Dictionary replacement (spec Section 3.5.6):
+     * Applies enabled dictionary rules in order. Each rule is a regex pattern → replacement.
+     * Invalid regex patterns are silently skipped.
+     */
+    internal fun applyDictionaryRules(text: String, settings: SpeechSettings): String {
+        if (settings.dictionaryRules.isEmpty()) return text
+        var result = text
+        for (rule in settings.dictionaryRules) {
+            if (!rule.enabled) continue
+            val regex = runCatching { Regex(rule.pattern) }.getOrNull() ?: continue
+            result = regex.replace(result, rule.replacement)
+        }
+        return result
+    }
+
+    /**
+     * Text length truncation (spec Section 3.5.7):
+     * If text exceeds maxTextLength, truncates and appends trimLongTextSuffix.
+     */
+    internal fun truncateText(text: String, settings: SpeechSettings): String {
+        val maxLen = settings.maxTextLength.coerceAtLeast(1)
+        return if (text.length > maxLen) {
+            text.take(maxLen) + settings.trimLongTextSuffix
+        } else {
+            text
+        }
+    }
+
     private fun isReadableCodePoint(codePoint: Int): Boolean {
         val type = Character.getType(codePoint)
         return type == Character.UPPERCASE_LETTER.toInt() ||
@@ -246,6 +309,7 @@ class DefaultCommentNormalizer(
         const val SKIP_SYMBOL_ONLY = "symbol_only"
         const val SKIP_URL_ONLY = "url_only"
         const val SKIP_DUPLICATE = "duplicate"
+        const val SKIP_NG_WORD = "ng_word"
 
         private const val OWNER_PRIORITY = 10
         private const val DEFAULT_PRIORITY = 0

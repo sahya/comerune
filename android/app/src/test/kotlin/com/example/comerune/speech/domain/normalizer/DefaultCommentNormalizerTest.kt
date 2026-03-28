@@ -2,6 +2,7 @@ package com.example.comerune.speech.domain.normalizer
 
 import com.example.comerune.speech.domain.model.RawComment
 import com.example.comerune.speech.domain.model.SpeechSettings
+import com.example.comerune.speech.domain.model.ReplaceRule
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Before
@@ -181,5 +182,161 @@ class DefaultCommentNormalizerTest {
     fun `uppercase W is also compressed`() {
         val result = normalizer.normalize(raw("WWWW"), defaultSettings)
         assertEquals("わら", result.normalizedText)
+    }
+
+    // --- Text Length Truncation Tests ---
+
+    @Test
+    fun `AC1 - 50 char text is not truncated`() {
+        val text = "あ".repeat(50)
+        val result = normalizer.normalize(raw(text), defaultSettings)
+        assertEquals(text, result.normalizedText)
+        assertNull(result.skipReason)
+    }
+
+    @Test
+    fun `AC2 - 51 char text is truncated to 50 chars plus suffix`() {
+        val text = "あ".repeat(51)
+        val result = normalizer.normalize(raw(text), defaultSettings)
+        assertEquals("あ".repeat(50) + "、以下省略", result.normalizedText)
+        assertNull(result.skipReason)
+    }
+
+    @Test
+    fun `truncation with custom maxTextLength and suffix`() {
+        val settings = defaultSettings.copy(maxTextLength = 10, trimLongTextSuffix = "...")
+        val text = "あ".repeat(15)
+        val result = normalizer.normalize(raw(text), settings)
+        assertEquals("あ".repeat(10) + "...", result.normalizedText)
+    }
+
+    @Test
+    fun `maxTextLength coerced to at least 1`() {
+        val settings = defaultSettings.copy(maxTextLength = 0)
+        val text = "abc"
+        val result = normalizer.normalize(raw(text), settings)
+        assertEquals("a、以下省略", result.normalizedText)
+    }
+
+    // --- Dictionary Replacement Tests ---
+
+    @Test
+    fun `AC3 - dictionary rule replaces matching text`() {
+        val settings = defaultSettings.copy(
+            dictionaryRules = listOf(ReplaceRule(pattern = "初見", replacement = "しょけん"))
+        )
+        val result = normalizer.normalize(raw("初見です"), settings)
+        assertEquals("しょけんです", result.normalizedText)
+        assertNull(result.skipReason)
+    }
+
+    @Test
+    fun `AC4 - disabled dictionary rule is skipped`() {
+        val settings = defaultSettings.copy(
+            dictionaryRules = listOf(
+                ReplaceRule(pattern = "初見", replacement = "しょけん", enabled = false)
+            )
+        )
+        val result = normalizer.normalize(raw("初見です"), settings)
+        assertEquals("初見です", result.normalizedText)
+    }
+
+    @Test
+    fun `multiple dictionary rules applied in order`() {
+        val settings = defaultSettings.copy(
+            dictionaryRules = listOf(
+                ReplaceRule(pattern = "ABC", replacement = "DEF"),
+                ReplaceRule(pattern = "DEF", replacement = "GHI")
+            )
+        )
+        val result = normalizer.normalize(raw("ABC"), settings)
+        assertEquals("GHI", result.normalizedText)
+    }
+
+    @Test
+    fun `AC7 - invalid regex in dictionary rule does not crash`() {
+        val settings = defaultSettings.copy(
+            dictionaryRules = listOf(
+                ReplaceRule(pattern = "[invalid", replacement = "replaced")
+            )
+        )
+        val result = normalizer.normalize(raw("test"), settings)
+        assertEquals("test", result.normalizedText)
+        assertNull(result.skipReason)
+    }
+
+    @Test
+    fun `empty dictionary rules list is no-op`() {
+        val settings = defaultSettings.copy(dictionaryRules = emptyList())
+        val result = normalizer.normalize(raw("テスト"), settings)
+        assertEquals("テスト", result.normalizedText)
+    }
+
+    // --- NG Word Tests ---
+
+    @Test
+    fun `AC5 - NG word in comment results in ng_word skip`() {
+        val settings = defaultSettings.copy(ngWords = listOf("NG例"))
+        val result = normalizer.normalize(raw("これはNG例です"), settings)
+        assertEquals("ng_word", result.skipReason)
+    }
+
+    @Test
+    fun `AC6 - NG word check is case-insensitive`() {
+        val settings = defaultSettings.copy(ngWords = listOf("badword"))
+        val result = normalizer.normalize(raw("This has BADWORD in it"), settings)
+        assertEquals("ng_word", result.skipReason)
+    }
+
+    @Test
+    fun `NG word partial match works`() {
+        val settings = defaultSettings.copy(ngWords = listOf("spam"))
+        val result = normalizer.normalize(raw("nospamhere"), settings)
+        assertEquals("ng_word", result.skipReason)
+    }
+
+    @Test
+    fun `no NG word match returns no skip`() {
+        val settings = defaultSettings.copy(ngWords = listOf("spam"))
+        val result = normalizer.normalize(raw("clean text"), settings)
+        assertNull(result.skipReason)
+    }
+
+    @Test
+    fun `empty NG word list means no check`() {
+        val settings = defaultSettings.copy(ngWords = emptyList())
+        val result = normalizer.normalize(raw("anything goes"), settings)
+        assertNull(result.skipReason)
+    }
+
+    @Test
+    fun `NG word check happens before other transforms`() {
+        // NG word should be checked on preprocessed text, not after URL/symbol/emoji processing
+        val settings = defaultSettings.copy(ngWords = listOf("badsite"))
+        val result = normalizer.normalize(raw("visit badsite https://example.com"), settings)
+        assertEquals("ng_word", result.skipReason)
+        // normalizedText should be the preprocessed text, not the URL-replaced text
+        assertEquals("visit badsite https://example.com", result.normalizedText)
+    }
+
+    // --- Processing Order Tests ---
+
+    @Test
+    fun `dictionary replacement happens after emoji removal`() {
+        val settings = defaultSettings.copy(
+            dictionaryRules = listOf(ReplaceRule(pattern = "テスト", replacement = "test"))
+        )
+        val result = normalizer.normalize(raw("テスト\uD83D\uDE0A"), settings)
+        assertEquals("test", result.normalizedText)
+    }
+
+    @Test
+    fun `truncation happens after dictionary replacement`() {
+        val settings = defaultSettings.copy(
+            maxTextLength = 5,
+            dictionaryRules = listOf(ReplaceRule(pattern = "AB", replacement = "ABCDEFGHIJ"))
+        )
+        val result = normalizer.normalize(raw("AB"), settings)
+        assertEquals("ABCDE、以下省略", result.normalizedText)
     }
 }
