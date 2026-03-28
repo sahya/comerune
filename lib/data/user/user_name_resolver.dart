@@ -72,6 +72,18 @@ class UserNameResolver extends ChangeNotifier {
   /// Returns the cached nickname for [userId], or null if not yet resolved.
   String? getCachedName(String userId) => _cache[userId];
 
+  /// Pre-populates the cache with a known name (e.g. from the programinfo
+  /// API `broadcaster[0].name` field). This avoids the need for an additional
+  /// HTTP request to the nickname endpoint.
+  void seedCache(String userId, String name) {
+    if (name.isEmpty || _disposed) {
+      return;
+    }
+    _cache[userId] = name;
+    _pending.remove(userId);
+    _scheduleNotification();
+  }
+
   /// Requests resolution of the given [userId].
   ///
   /// If already cached or pending, this is a no-op.

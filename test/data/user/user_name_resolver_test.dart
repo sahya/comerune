@@ -236,6 +236,54 @@ void main() {
 
       resolver.dispose();
     });
+
+    test('seedCache pre-populates name without HTTP request', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      final UserNameResolver resolver = UserNameResolver(
+        httpClient: httpClient,
+        debounceDuration: Duration.zero,
+      );
+
+      int notifyCount = 0;
+      resolver.addListener(() {
+        notifyCount++;
+      });
+
+      resolver.seedCache('99999', 'プリセット名');
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(resolver.getCachedName('99999'), 'プリセット名');
+      expect(notifyCount, 1);
+      // No HTTP requests should have been made.
+      expect(httpClient.requests, isEmpty);
+
+      resolver.dispose();
+    });
+
+    test('seedCache prevents subsequent requestResolve HTTP call', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'data': <String, Object?>{'nickname': 'HTTP名前'},
+      });
+
+      final UserNameResolver resolver = UserNameResolver(
+        httpClient: httpClient,
+        debounceDuration: Duration.zero,
+      );
+
+      // Pre-populate cache first.
+      resolver.seedCache('77777', 'API名前');
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      // requestResolve should be a no-op since the name is already cached.
+      resolver.requestResolve('77777');
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(resolver.getCachedName('77777'), 'API名前');
+      expect(httpClient.requests, isEmpty);
+
+      resolver.dispose();
+    });
   });
 }
 

@@ -7,6 +7,7 @@ import '../../application/settings/settings_store.dart';
 import '../../data/auth/user_session_store.dart';
 import '../../domain/models/app_settings.dart';
 import 'login_screen.dart';
+import 'ng_user_list_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
@@ -371,7 +372,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: <Widget>[
                     DropdownButtonFormField<AppThemeMode>(
                       key: const Key('theme-mode-dropdown'),
-                      value: settings.themeMode,
+                      initialValue: settings.themeMode,
                       decoration: const InputDecoration(
                         labelText: '配色テーマ',
                         border: OutlineInputBorder(),
@@ -456,11 +457,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       },
                     ),
                     const Text('読み上げエンジン'),
-                    RadioListTile<SpeechEngine>(
-                      key: const Key('engine-bouyomi-radio'),
-                      title: const Text('棒読みちゃん'),
-                      contentPadding: EdgeInsets.zero,
-                      value: SpeechEngine.bouyomi,
+                    RadioGroup<SpeechEngine>(
                       groupValue: settings.speechEngine,
                       onChanged: (SpeechEngine? value) {
                         if (value == null) {
@@ -469,20 +466,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         _saveNextSettings(
                             settings.copyWith(speechEngine: value));
                       },
-                    ),
-                    RadioListTile<SpeechEngine>(
-                      key: const Key('engine-voicevox-radio'),
-                      title: const Text('VOICEVOX'),
-                      contentPadding: EdgeInsets.zero,
-                      value: SpeechEngine.voicevox,
-                      groupValue: settings.speechEngine,
-                      onChanged: (SpeechEngine? value) {
-                        if (value == null) {
-                          return;
-                        }
-                        _saveNextSettings(
-                            settings.copyWith(speechEngine: value));
-                      },
+                      child: const Column(
+                        children: <Widget>[
+                          RadioListTile<SpeechEngine>(
+                            key: Key('engine-bouyomi-radio'),
+                            title: Text('棒読みちゃん'),
+                            contentPadding: EdgeInsets.zero,
+                            value: SpeechEngine.bouyomi,
+                          ),
+                          RadioListTile<SpeechEngine>(
+                            key: Key('engine-voicevox-radio'),
+                            title: Text('VOICEVOX'),
+                            contentPadding: EdgeInsets.zero,
+                            value: SpeechEngine.voicevox,
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -540,7 +539,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       DropdownButtonFormField<int>(
                         key: const Key('bouyomi-voice-dropdown'),
-                        value: settings.bouyomiVoice,
+                        initialValue: settings.bouyomiVoice,
                         decoration: const InputDecoration(
                           labelText: '声質',
                           border: OutlineInputBorder(),
@@ -571,7 +570,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: <Widget>[
                       DropdownButtonFormField<int>(
                         key: const Key('voicevox-speaker-dropdown'),
-                        value: settings.voicevoxSpeaker,
+                        initialValue: settings.voicevoxSpeaker,
                         decoration: const InputDecoration(
                           labelText: '話者',
                           border: OutlineInputBorder(),
@@ -706,6 +705,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         border: OutlineInputBorder(),
                       ),
                     ),
+                    const SizedBox(height: 8),
+                    ListTile(
+                      key: const Key('ng-user-list-tile'),
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.person_off),
+                      title: const Text('NGユーザーID管理'),
+                      subtitle: Text(
+                        settings.ngUserIdSet.isEmpty
+                            ? '未登録'
+                            : '${settings.ngUserIdSet.length}件登録中',
+                      ),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () async {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => NgUserListScreen(
+                              settingsStore: widget.settingsStore,
+                            ),
+                          ),
+                        );
+                        await _loadSettings();
+                      },
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -748,35 +770,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       },
                     ),
                     const SizedBox(height: 8),
-                    DropdownButtonFormField<CommentFontSize>(
-                      key: const Key('comment-font-size-dropdown'),
-                      value: settings.commentFontSize,
-                      decoration: const InputDecoration(
-                        labelText: 'コメント文字サイズ',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: CommentFontSize.values
-                          .map(
-                            (CommentFontSize value) =>
-                                DropdownMenuItem<CommentFontSize>(
-                              value: value,
-                              child: Text(value.label),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (CommentFontSize? value) {
-                        if (value == null) {
-                          return;
-                        }
+                    _IntSliderField(
+                      key: const Key('comment-font-size-slider'),
+                      label: 'コメント文字サイズ',
+                      value: settings.commentFontSize.round(),
+                      min: commentFontSizeMin.round(),
+                      max: commentFontSizeMax.round(),
+                      divisions:
+                          (commentFontSizeMax - commentFontSizeMin).round(),
+                      suffix: 'px',
+                      onChanged: (int value) {
                         _saveNextSettings(
-                          settings.copyWith(commentFontSize: value),
+                          settings.copyWith(commentFontSize: value.toDouble()),
                         );
                       },
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<PastCommentFetchCount>(
                       key: const Key('past-comment-count-dropdown'),
-                      value: settings.pastCommentFetchCount,
+                      initialValue: settings.pastCommentFetchCount,
                       decoration: const InputDecoration(
                         labelText: '過去コメント取得件数',
                         border: OutlineInputBorder(),
@@ -874,6 +886,7 @@ class _IntSliderField extends StatelessWidget {
     required this.divisions,
     required this.value,
     required this.onChanged,
+    this.suffix = '',
   });
 
   final String label;
@@ -882,6 +895,7 @@ class _IntSliderField extends StatelessWidget {
   final int divisions;
   final int value;
   final ValueChanged<int> onChanged;
+  final String suffix;
 
   @override
   Widget build(BuildContext context) {
@@ -892,7 +906,7 @@ class _IntSliderField extends StatelessWidget {
           children: <Widget>[
             Text(label),
             const Spacer(),
-            Text(value == -1 ? '-1 (既定)' : value.toString()),
+            Text(value == -1 ? '-1 (既定)' : '$value$suffix'),
           ],
         ),
         Slider(
@@ -900,6 +914,8 @@ class _IntSliderField extends StatelessWidget {
           max: max.toDouble(),
           divisions: divisions,
           value: value.toDouble(),
+          semanticFormatterCallback:
+              suffix.isNotEmpty ? (double v) => '${v.round()}$suffix' : null,
           onChanged: (double next) {
             onChanged(next.round());
           },

@@ -67,84 +67,45 @@ enum SpeechEngine {
   voicevox,
 }
 
-enum CommentFontSize {
-  xs,
-  small,
-  medium,
-  large,
-  xl,
-  xxl,
-}
+/// コメント文字サイズの最小値 (px)。
+const double commentFontSizeMin = 10;
 
-extension CommentFontSizeValue on CommentFontSize {
-  String get storageValue {
-    switch (this) {
-      case CommentFontSize.xs:
-        return 'xs';
-      case CommentFontSize.small:
-        return 'small';
-      case CommentFontSize.medium:
-        return 'medium';
-      case CommentFontSize.large:
-        return 'large';
-      case CommentFontSize.xl:
-        return 'xl';
-      case CommentFontSize.xxl:
-        return 'xxl';
-    }
+/// コメント文字サイズの最大値 (px)。
+const double commentFontSizeMax = 48;
+
+/// コメント文字サイズのデフォルト値 (px)。
+const double commentFontSizeDefault = 14;
+
+/// 旧 enum 形式の保存値を px 値に変換する。
+///
+/// 以前のバージョンでは `CommentFontSize` enum の `storageValue` (文字列)
+/// で保存していたため、後方互換性のために変換をサポートする。
+double commentFontSizeFromStorageValue(String? raw) {
+  if (raw == null) {
+    return commentFontSizeDefault;
   }
 
-  String get label {
-    switch (this) {
-      case CommentFontSize.xs:
-        return '極小 (10px)';
-      case CommentFontSize.small:
-        return '小 (12px)';
-      case CommentFontSize.medium:
-        return '標準 (14px)';
-      case CommentFontSize.large:
-        return '大 (16px)';
-      case CommentFontSize.xl:
-        return '特大 (18px)';
-      case CommentFontSize.xxl:
-        return '最大 (20px)';
-    }
+  // 数値として直接パースを試みる (新形式)。
+  final double? parsed = double.tryParse(raw);
+  if (parsed != null) {
+    return parsed.clamp(commentFontSizeMin, commentFontSizeMax);
   }
 
-  double get pixels {
-    switch (this) {
-      case CommentFontSize.xs:
-        return 10;
-      case CommentFontSize.small:
-        return 12;
-      case CommentFontSize.medium:
-        return 14;
-      case CommentFontSize.large:
-        return 16;
-      case CommentFontSize.xl:
-        return 18;
-      case CommentFontSize.xxl:
-        return 20;
-    }
-  }
-
-  static CommentFontSize fromStorageValue(String? raw) {
-    switch (raw) {
-      case 'xs':
-        return CommentFontSize.xs;
-      case 'small':
-        return CommentFontSize.small;
-      case 'large':
-        return CommentFontSize.large;
-      case 'xl':
-        return CommentFontSize.xl;
-      case 'xxl':
-        return CommentFontSize.xxl;
-      case 'medium':
-      case null:
-      default:
-        return CommentFontSize.medium;
-    }
+  // 旧 enum 形式のフォールバック。
+  switch (raw) {
+    case 'xs':
+      return 10;
+    case 'small':
+      return 12;
+    case 'large':
+      return 16;
+    case 'xl':
+      return 18;
+    case 'xxl':
+      return 20;
+    case 'medium':
+    default:
+      return commentFontSizeDefault;
   }
 }
 
@@ -238,7 +199,12 @@ class AppSettings {
     required this.commentFontSize,
     required this.autoSaveCommentLog,
     required this.debugMode,
-  });
+  }) : assert(
+          commentFontSize >= commentFontSizeMin &&
+              commentFontSize <= commentFontSizeMax,
+          'commentFontSize must be between $commentFontSizeMin and $commentFontSizeMax, '
+          'but was $commentFontSize',
+        );
 
   static const AppSettings defaults = AppSettings(
     themeMode: AppThemeMode.light,
@@ -263,7 +229,7 @@ class AppSettings {
     pastCommentFetchCount: PastCommentFetchCount.count100,
     showUserName: true,
     resolveUserName: true,
-    commentFontSize: CommentFontSize.medium,
+    commentFontSize: commentFontSizeDefault,
     autoSaveCommentLog: false,
     debugMode: false,
   );
@@ -292,7 +258,7 @@ class AppSettings {
   final PastCommentFetchCount pastCommentFetchCount;
   final bool showUserName;
   final bool resolveUserName;
-  final CommentFontSize commentFontSize;
+  final double commentFontSize;
   final bool autoSaveCommentLog;
   final bool debugMode;
 
@@ -355,7 +321,7 @@ class AppSettings {
     PastCommentFetchCount? pastCommentFetchCount,
     bool? showUserName,
     bool? resolveUserName,
-    CommentFontSize? commentFontSize,
+    double? commentFontSize,
     bool? autoSaveCommentLog,
     bool? debugMode,
   }) {
