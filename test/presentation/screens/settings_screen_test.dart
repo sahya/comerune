@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../../lib/application/settings/settings_store.dart';
-import '../../../lib/data/auth/user_session_store.dart';
-import '../../../lib/domain/models/app_settings.dart';
-import '../../../lib/presentation/screens/settings_screen.dart';
+import 'package:comerune/application/settings/settings_store.dart';
+import 'package:comerune/data/auth/user_session_store.dart';
+import 'package:comerune/domain/models/app_settings.dart';
+import 'package:comerune/presentation/screens/settings_screen.dart';
+
 import '../../helpers/in_memory_shared_preferences.dart';
+import '../../helpers/in_memory_user_session_store.dart';
 
 void main() {
   group('SettingsScreen', () {
@@ -121,8 +123,8 @@ void main() {
     ) async {
       final SharedPreferencesSettingsStore settingsStore =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-      final _InMemoryUserSessionStore userSessionStore =
-          _InMemoryUserSessionStore();
+      final InMemoryUserSessionStore userSessionStore =
+          InMemoryUserSessionStore();
 
       await tester.pumpWidget(
         _buildScreen(settingsStore, userSessionStore: userSessionStore),
@@ -139,8 +141,8 @@ void main() {
     ) async {
       final SharedPreferencesSettingsStore settingsStore =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-      final _InMemoryUserSessionStore userSessionStore =
-          _InMemoryUserSessionStore();
+      final InMemoryUserSessionStore userSessionStore =
+          InMemoryUserSessionStore();
       await userSessionStore.save('user_session_abc123');
 
       await tester.pumpWidget(
@@ -189,23 +191,6 @@ Widget _buildScreen(
       userSessionStore: userSessionStore,
     ),
   );
-}
-
-class _InMemoryUserSessionStore implements UserSessionStore {
-  String _session = '';
-
-  @override
-  Future<String> load() async => _session;
-
-  @override
-  Future<void> save(String userSession) async {
-    _session = userSession;
-  }
-
-  @override
-  Future<void> clear() async {
-    _session = '';
-  }
 }
 
 Future<void> _scrollToKey(WidgetTester tester, Key key) async {

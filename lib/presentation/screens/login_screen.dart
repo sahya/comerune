@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -24,7 +25,6 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   static const String _loginUrl = 'https://account.nicovideo.jp/login';
-  static const String _userSessionCookieName = 'user_session';
 
   late final WebViewController _controller;
   bool _isLoading = true;
@@ -88,42 +88,32 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<String?> _extractUserSessionCookie() async {
     // Use JavaScript to read cookies since WebViewCookieManager
     // doesn't have a getCookies method in webview_flutter 4.x.
-    // The user_session cookie may not be httpOnly on the login page.
+    // Note: This cannot read httpOnly cookies. Niconico's user_session
+    // cookie is not httpOnly on the login page based on observed behavior.
     try {
       final Object result = await _controller.runJavaScriptReturningResult(
         'document.cookie',
       );
       final String cookieString =
           result is String ? _unquote(result) : result.toString();
-      return _parseCookieValue(cookieString, _userSessionCookieName);
-    } catch (_) {
+      return parseNicoUserSessionCookie(cookieString);
+    } catch (error) {
+      log(
+        'Failed to extract cookie: $error',
+        name: 'LoginScreen',
+      );
       return null;
     }
   }
 
   /// Remove surrounding quotes from JavaScript string result.
-  String _unquote(String s) {
-    if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) {
+  static String _unquote(String s) {
+    if (s.length >= 2 &&
+        ((s.startsWith('"') && s.endsWith('"')) ||
+            (s.startsWith("'") && s.endsWith("'")))) {
       return s.substring(1, s.length - 1);
     }
     return s;
-  }
-
-  String? _parseCookieValue(String cookieString, String name) {
-    // Cookie string format: "name1=value1; name2=value2; ..."
-    final List<String> parts = cookieString.split(';');
-    for (final String part in parts) {
-      final String trimmed = part.trim();
-      // Match user_session but not user_session_secure
-      if (trimmed.startsWith('$name=') &&
-          !trimmed.startsWith('${name}_secure=')) {
-        final int eqIndex = trimmed.indexOf('=');
-        if (eqIndex >= 0) {
-          return trimmed.substring(eqIndex + 1);
-        }
-      }
-    }
-    return null;
   }
 
   @override
@@ -140,4 +130,33 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
+}
+
+/// Parses the user_session cookie value from a cookie string.
+///
+/// Niconico uses cookie names like `user_session` or `user_session_XXXXX`.
+/// This matches any cookie starting with `user_session` but excludes
+/// `user_session_secure` variants.
+String? parseNicoUserSessionCookie(String cookieString) {
+  const String prefix = 'user_session';
+  // Cookie string format: "name1=value1; name2=value2; ..."
+  final List<String> parts = cookieString.split(';');
+  for (final String part in parts) {
+    final String trimmed = part.trim();
+    final int eqIndex = trimmed.indexOf('=');
+    if (eqIndex < 0) {
+      continue;
+    }
+    final String name = trimmed.substring(0, eqIndex);
+    // Match user_session or user_session_XXXXX, but not user_session_secure*
+    if (name == prefix ||
+        (name.startsWith('${prefix}_') &&
+            !name.startsWith('${prefix}_secure'))) {
+      final String value = trimmed.substring(eqIndex + 1);
+      if (value.isNotEmpty) {
+        return value;
+      }
+    }
+  }
+  return null;
 }

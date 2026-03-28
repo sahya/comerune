@@ -27,3 +27,7 @@ doc/api/
 
 .flutter-plugins
 .flutter-plugins-dependencies
+
+# Android generated files
+android/local.properties
+android/**/GeneratedPluginRegistrant.java
