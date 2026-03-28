@@ -77,8 +77,10 @@ class ProgramInfoResolver {
     final HttpClientResponse response = await request.close();
     if (response.statusCode != 200) {
       final String body = await response.transform(utf8.decoder).join();
+      final String truncated =
+          body.length > 200 ? '${body.substring(0, 200)}...' : body;
       throw ProgramInfoResolveException(
-        'Failed to fetch program info: HTTP ${response.statusCode}: $body',
+        'Failed to fetch program info: HTTP ${response.statusCode}: $truncated',
       );
     }
 
