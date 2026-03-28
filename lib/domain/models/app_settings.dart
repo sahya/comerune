@@ -166,6 +166,7 @@ class AppSettings {
     required this.omitUrl,
     required this.suppressDuplicate,
     required this.ngWords,
+    required this.ngUserIds,
     required this.pastCommentFetchCount,
     required this.showUserName,
     required this.resolveUserName,
@@ -191,6 +192,7 @@ class AppSettings {
     omitUrl: true,
     suppressDuplicate: true,
     ngWords: '',
+    ngUserIds: '',
     pastCommentFetchCount: PastCommentFetchCount.count100,
     showUserName: true,
     resolveUserName: true,
@@ -215,11 +217,50 @@ class AppSettings {
   final bool omitUrl;
   final bool suppressDuplicate;
   final String ngWords;
+
+  /// Newline-separated user IDs to filter out from display.
+  final String ngUserIds;
   final PastCommentFetchCount pastCommentFetchCount;
   final bool showUserName;
   final bool resolveUserName;
   final CommentFontSize commentFontSize;
   final bool debugMode;
+
+  Set<String> get ngUserIdSet {
+    if (ngUserIds.trim().isEmpty) {
+      return const <String>{};
+    }
+    return ngUserIds
+        .split('\n')
+        .map((String id) => id.trim())
+        .where((String id) => id.isNotEmpty)
+        .toSet();
+  }
+
+  bool isNgUser(String? userId) {
+    if (userId == null || userId.isEmpty) {
+      return false;
+    }
+    return ngUserIdSet.contains(userId);
+  }
+
+  AppSettings addNgUserId(String userId) {
+    final Set<String> current = ngUserIdSet;
+    if (current.contains(userId)) {
+      return this;
+    }
+    final String updated = <String>[...current, userId].join('\n');
+    return copyWith(ngUserIds: updated);
+  }
+
+  AppSettings removeNgUserId(String userId) {
+    final Set<String> current = ngUserIdSet;
+    if (!current.contains(userId)) {
+      return this;
+    }
+    final Set<String> updated = Set<String>.from(current)..remove(userId);
+    return copyWith(ngUserIds: updated.join('\n'));
+  }
 
   AppSettings copyWith({
     bool? autoReadEnabled,
@@ -239,6 +280,7 @@ class AppSettings {
     bool? omitUrl,
     bool? suppressDuplicate,
     String? ngWords,
+    String? ngUserIds,
     PastCommentFetchCount? pastCommentFetchCount,
     bool? showUserName,
     bool? resolveUserName,
@@ -263,6 +305,7 @@ class AppSettings {
       omitUrl: omitUrl ?? this.omitUrl,
       suppressDuplicate: suppressDuplicate ?? this.suppressDuplicate,
       ngWords: ngWords ?? this.ngWords,
+      ngUserIds: ngUserIds ?? this.ngUserIds,
       pastCommentFetchCount:
           pastCommentFetchCount ?? this.pastCommentFetchCount,
       showUserName: showUserName ?? this.showUserName,
