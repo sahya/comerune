@@ -355,6 +355,35 @@ void main() {
       );
     });
 
+    testWidgets('shows failure detail in snackbar and debug status bar', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          debugMode: true,
+        ),
+      );
+
+      expect(
+        supervisor.fail(
+          ConnectionErrorCode.sessionWsConnectFailed,
+          errorDetail: 'HandshakeException: 401 Unauthorized',
+        ),
+        isTrue,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.textContaining('原因: HandshakeException: 401 Unauthorized'),
+          findsOneWidget);
+      expect(find.byKey(const Key('status-last-error-detail')), findsOneWidget);
+      expect(find.textContaining('エラー詳細: HandshakeException'), findsOneWidget);
+    });
+
     testWidgets('shows reconnect button on FAILED and allows retry tap', (
       WidgetTester tester,
     ) async {

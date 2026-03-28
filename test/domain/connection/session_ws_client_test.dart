@@ -576,6 +576,12 @@ void main() {
         ),
         isTrue,
       );
+      final SessionWsEvent failedEvent = events.firstWhere(
+        (SessionWsEvent e) =>
+            e.type == SessionWsEventType.failed &&
+            e.errorCode == SessionWsErrorCode.unknownBroadcastEndEvent,
+      );
+      expect(failedEvent.error, contains('MAINTENANCE'));
       expect(
         events.any(
           (SessionWsEvent e) =>

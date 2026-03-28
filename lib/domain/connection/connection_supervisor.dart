@@ -227,6 +227,7 @@ class ConnectionSupervisor extends ChangeNotifier {
   bool _isReconnectLoopRunning = false;
   DateTime? _lastReceivedAt;
   ConnectionErrorCode? _lastError;
+  String? _lastErrorDetail;
   Uri? _currentNdgrViewApiUri;
   NdgrResumeCursor? _lastNdgrResumeCursor;
   Uri? _currentLegacyWsUrl;
@@ -240,6 +241,7 @@ class ConnectionSupervisor extends ChangeNotifier {
   int get reconnectCount => _reconnectCount;
   DateTime? get lastReceivedAt => _lastReceivedAt;
   ConnectionErrorCode? get lastError => _lastError;
+  String? get lastErrorDetail => _lastErrorDetail;
   WifiIndicatorColor get wifiIndicatorColor => _status.usesGreenWifiIcon
       ? WifiIndicatorColor.green
       : WifiIndicatorColor.red;
@@ -413,10 +415,11 @@ class ConnectionSupervisor extends ChangeNotifier {
     return true;
   }
 
-  bool endBroadcast() {
+  bool endBroadcast({String? errorDetail}) {
     final bool transitioned = _transitionTo(
       ConnectionStatus.ended,
       errorCode: ConnectionErrorCode.broadcastEnded,
+      errorDetail: errorDetail,
     );
     if (!transitioned) {
       return false;
@@ -428,10 +431,11 @@ class ConnectionSupervisor extends ChangeNotifier {
     return true;
   }
 
-  bool fail(ConnectionErrorCode errorCode) {
+  bool fail(ConnectionErrorCode errorCode, {String? errorDetail}) {
     return _transitionTo(
       ConnectionStatus.failed,
       errorCode: errorCode,
+      errorDetail: errorDetail,
     );
   }
 
@@ -444,8 +448,9 @@ class ConnectionSupervisor extends ChangeNotifier {
     notifyListeners();
   }
 
-  void recordError(ConnectionErrorCode errorCode) {
+  void recordError(ConnectionErrorCode errorCode, {String? errorDetail}) {
     _lastError = errorCode;
+    _lastErrorDetail = errorDetail;
     notifyListeners();
   }
 
@@ -461,7 +466,11 @@ class ConnectionSupervisor extends ChangeNotifier {
     try {
       await _resolveEndpointsAndConnect();
     } on _ConnectionFailure catch (failure) {
-      fail(failure.errorCode);
+      if (failure.errorCode == ConnectionErrorCode.broadcastEnded) {
+        endBroadcast(errorDetail: failure.errorDetail);
+        return;
+      }
+      fail(failure.errorCode, errorDetail: failure.errorDetail);
     } catch (_) {
       fail(ConnectionErrorCode.sessionWsConnectFailed);
     }
@@ -519,7 +528,10 @@ class ConnectionSupervisor extends ChangeNotifier {
     try {
       endpoints = await sessionWsClient.connectAndResolveEndpoints();
     } on SessionWsConnectException catch (error) {
-      throw _ConnectionFailure(_mapSessionWsConnectFailure(error.kind));
+      throw _ConnectionFailure(
+        _mapSessionWsConnectFailure(error.kind),
+        errorDetail: error.cause?.toString(),
+      );
     } catch (_) {
       throw const _ConnectionFailure(
           ConnectionErrorCode.sessionWsConnectFailed);
@@ -557,8 +569,10 @@ class ConnectionSupervisor extends ChangeNotifier {
         return ConnectionErrorCode.sessionWsConnectFailed;
       case SessionWsConnectFailureKind.endpointResolveTimeout:
         return ConnectionErrorCode.sessionWsTimeout;
-      case SessionWsConnectFailureKind.endpointResolveFailed:
+      case SessionWsConnectFailureKind.endpointParseFailed:
         return ConnectionErrorCode.endpointResolveFailed;
+      case SessionWsConnectFailureKind.broadcastEnded:
+        return ConnectionErrorCode.broadcastEnded;
     }
   }
 
@@ -675,6 +689,7 @@ class ConnectionSupervisor extends ChangeNotifier {
         : _transitionTo(
             ConnectionStatus.reconnecting,
             errorCode: errorCode,
+            errorDetail: _lastErrorDetail,
           );
     if (!toReconnecting) {
       return false;
@@ -691,6 +706,7 @@ class ConnectionSupervisor extends ChangeNotifier {
 
         _reconnectCount += 1;
         _lastError = errorCode;
+        _lastErrorDetail = null;
         notifyListeners();
 
         await _delayExecutor(backoffDelayForAttempt(_reconnectCount));
@@ -703,19 +719,23 @@ class ConnectionSupervisor extends ChangeNotifier {
           return true;
         } on _ConnectionFailure catch (failure) {
           _lastError = failure.errorCode;
+          _lastErrorDetail = failure.errorDetail;
           if (_status != ConnectionStatus.reconnecting) {
             _transitionTo(
               ConnectionStatus.reconnecting,
               errorCode: failure.errorCode,
+              errorDetail: failure.errorDetail,
             );
           }
           notifyListeners();
         } catch (_) {
           _lastError = errorCode;
+          _lastErrorDetail = null;
           if (_status != ConnectionStatus.reconnecting) {
             _transitionTo(
               ConnectionStatus.reconnecting,
               errorCode: errorCode,
+              errorDetail: null,
             );
           }
           notifyListeners();
@@ -770,6 +790,7 @@ class ConnectionSupervisor extends ChangeNotifier {
   bool _transitionTo(
     ConnectionStatus next, {
     ConnectionErrorCode? errorCode,
+    String? errorDetail,
     bool incrementReconnectCount = false,
     bool resetDiagnostics = false,
     bool notify = true,
@@ -786,6 +807,7 @@ class ConnectionSupervisor extends ChangeNotifier {
       _legacyConsecutiveFailures = 0;
       _lastReceivedAt = null;
       _lastError = null;
+      _lastErrorDetail = null;
       _lastNdgrResumeCursor = null;
       _currentNdgrViewApiUri = null;
       _currentLegacyWsUrl = null;
@@ -797,6 +819,7 @@ class ConnectionSupervisor extends ChangeNotifier {
 
     if (errorCode != null) {
       _lastError = errorCode;
+      _lastErrorDetail = errorDetail;
     }
 
     _status = next;
@@ -815,7 +838,11 @@ class ConnectionSupervisor extends ChangeNotifier {
 }
 
 class _ConnectionFailure implements Exception {
-  const _ConnectionFailure(this.errorCode);
+  const _ConnectionFailure(
+    this.errorCode, {
+    this.errorDetail,
+  });
 
   final ConnectionErrorCode errorCode;
+  final String? errorDetail;
 }

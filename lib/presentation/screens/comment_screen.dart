@@ -273,8 +273,11 @@ class _CommentScreenState extends State<CommentScreen> {
 
     if (_lastStatus != ConnectionStatus.failed &&
         currentStatus == ConnectionStatus.failed) {
+      final String detail = widget.connectionSupervisor.lastErrorDetail ?? '';
+      final String detailSuffix =
+          detail.isEmpty ? '' : ' 原因: ${_compactSingleLine(detail)}';
       final String message =
-          '${_failedMessage(widget.connectionSupervisor.lastError)} 再接続ボタンで再試行できます。';
+          '${_failedMessage(widget.connectionSupervisor.lastError)}$detailSuffix 再接続ボタンで再試行できます。';
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) {
           return;
@@ -310,10 +313,15 @@ class _CommentScreenState extends State<CommentScreen> {
       case ConnectionErrorCode.speechBouyomiFailed:
       case ConnectionErrorCode.speechVoicevoxFailed:
       case ConnectionErrorCode.userStopped:
-      case ConnectionErrorCode.broadcastEnded:
       case null:
         return '接続に失敗しました';
+      case ConnectionErrorCode.broadcastEnded:
+        return '放送が終了しました';
     }
+  }
+
+  String _compactSingleLine(String value) {
+    return value.replaceAll('\n', ' ').trim();
   }
 
   void _handleScroll() {
@@ -470,6 +478,11 @@ class _StatusBar extends StatelessWidget {
                   'フェーズ: ${supervisor.status.code}',
                   key: const Key('status-phase'),
                 ),
+                if ((supervisor.lastErrorDetail ?? '').isNotEmpty)
+                  Text(
+                    'エラー詳細: ${supervisor.lastErrorDetail}',
+                    key: const Key('status-last-error-detail'),
+                  ),
               ],
             ),
           ],

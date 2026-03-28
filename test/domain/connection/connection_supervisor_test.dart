@@ -346,7 +346,7 @@ void main() {
           endpointsQueue: <SessionEndpoints>[],
           connectExceptions: <Object>[
             const SessionWsConnectException(
-              SessionWsConnectFailureKind.endpointResolveFailed,
+              SessionWsConnectFailureKind.endpointParseFailed,
             ),
           ],
         ),
@@ -359,6 +359,53 @@ void main() {
       expect(started, isTrue);
       expect(supervisor.status, ConnectionStatus.failed);
       expect(supervisor.lastError, ConnectionErrorCode.endpointResolveFailed);
+    });
+
+    test('treats session broadcastEnded as ENDED during endpoint resolution',
+        () async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: FakeSessionWsClient(
+          endpointsQueue: <SessionEndpoints>[],
+          connectExceptions: <Object>[
+            const SessionWsConnectException(
+              SessionWsConnectFailureKind.broadcastEnded,
+              cause: 'END_PROGRAM',
+            ),
+          ],
+        ),
+        ndgrClient: FakeNdgrClient(),
+        legacyCommentClient: FakeLegacyCommentClient(),
+      );
+      addTearDown(supervisor.dispose);
+
+      final bool started = await _startAndDrain(supervisor);
+      expect(started, isTrue);
+      expect(supervisor.status, ConnectionStatus.ended);
+      expect(supervisor.lastError, ConnectionErrorCode.broadcastEnded);
+      expect(supervisor.lastErrorDetail, contains('END_PROGRAM'));
+    });
+
+    test('preserves connectFailed cause for diagnostics', () async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: FakeSessionWsClient(
+          endpointsQueue: <SessionEndpoints>[],
+          connectExceptions: <Object>[
+            SessionWsConnectException(
+              SessionWsConnectFailureKind.connectFailed,
+              cause: StateError('HandshakeException: 401 Unauthorized'),
+            ),
+          ],
+        ),
+        ndgrClient: FakeNdgrClient(),
+        legacyCommentClient: FakeLegacyCommentClient(),
+      );
+      addTearDown(supervisor.dispose);
+
+      final bool started = await _startAndDrain(supervisor);
+      expect(started, isTrue);
+      expect(supervisor.status, ConnectionStatus.failed);
+      expect(supervisor.lastError, ConnectionErrorCode.sessionWsConnectFailed);
+      expect(supervisor.lastErrorDetail, contains('HandshakeException'));
     });
 
     test('reconnects NDGR stall with same URI after disconnecting old stream',
