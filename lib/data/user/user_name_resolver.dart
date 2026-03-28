@@ -155,6 +155,9 @@ class UserNameResolver extends ChangeNotifier {
   }
 
   void _onRequestDone() {
+    if (_disposed) {
+      return;
+    }
     _activeRequests--;
     _drainQueue();
   }
