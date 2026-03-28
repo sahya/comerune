@@ -65,7 +65,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
 
   @override
   Future<AppSettings> load() async {
-    final AppSettings defaults = AppSettings.defaults;
+    const AppSettings defaults = AppSettings.defaults;
     final String? engineValue = _prefs.getString(_kSpeechEngine);
     final SpeechEngine speechEngine = engineValue == 'voicevox'
         ? SpeechEngine.voicevox

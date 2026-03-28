@@ -38,8 +38,8 @@ void main() {
       final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
       final DateTime receivedAt = DateTime.parse('2026-03-22T11:00:00Z');
 
-      final NdgrChunkedMessage source = NdgrChunkedMessage(
-        chat: const NdgrChat(
+      const NdgrChunkedMessage source = NdgrChunkedMessage(
+        chat: NdgrChat(
           content: 'content',
           hashedUserId: 'hashed-user',
           no: 77,

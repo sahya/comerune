@@ -107,7 +107,7 @@ void main() {
       expect(reset, isFalse);
       expect(supervisor.status, ConnectionStatus.idle);
 
-      final bool ended = await supervisor.endBroadcast();
+      final bool ended = supervisor.endBroadcast();
       expect(ended, isFalse);
       expect(supervisor.status, ConnectionStatus.idle);
     });
@@ -130,7 +130,7 @@ void main() {
       final bool started = await _startAndDrain(supervisor);
       expect(started, isTrue);
 
-      final bool ended = await supervisor.endBroadcast();
+      final bool ended = supervisor.endBroadcast();
       expect(ended, isTrue);
       expect(supervisor.status, ConnectionStatus.ended);
 
@@ -221,7 +221,7 @@ void main() {
       expect(failed, isTrue);
       expect(supervisor.canRetryFromTerminal, isTrue);
 
-      final bool retried = await supervisor.retryConnectionFromTerminal();
+      final bool retried = supervisor.retryConnectionFromTerminal();
       await _drainEventLoop();
       expect(retried, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingNdgr);
@@ -247,7 +247,7 @@ void main() {
       );
       addTearDown(supervisor.dispose);
 
-      final bool retried = await supervisor.retryConnectionFromTerminal();
+      final bool retried = supervisor.retryConnectionFromTerminal();
       expect(retried, isFalse);
       expect(supervisor.status, ConnectionStatus.idle);
     });
@@ -274,7 +274,7 @@ void main() {
       expect(started, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingNdgr);
 
-      final bool stopped = await supervisor.stopByUser();
+      final bool stopped = supervisor.stopByUser();
       expect(stopped, isTrue);
       expect(supervisor.status, ConnectionStatus.stopped);
 
@@ -307,7 +307,7 @@ void main() {
       expect(firstStart, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingNdgr);
 
-      final bool stopped = await supervisor.stopByUser();
+      final bool stopped = supervisor.stopByUser();
       expect(stopped, isTrue);
       expect(supervisor.status, ConnectionStatus.stopped);
 
@@ -463,7 +463,7 @@ void main() {
       expect(started, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingLegacy);
 
-      final bool ended = await supervisor.endBroadcast();
+      final bool ended = supervisor.endBroadcast();
       expect(ended, isTrue);
       expect(supervisor.status, ConnectionStatus.ended);
 
@@ -709,7 +709,7 @@ void main() {
       await _drainEventLoop();
       expect(supervisor.status, ConnectionStatus.reconnecting);
 
-      final bool stopped = await supervisor.stopByUser();
+      final bool stopped = supervisor.stopByUser();
       expect(stopped, isTrue);
       expect(supervisor.status, ConnectionStatus.stopped);
 
@@ -743,7 +743,7 @@ void main() {
       await _drainEventLoop();
       expect(supervisor.status, ConnectionStatus.reconnecting);
 
-      final bool ended = await supervisor.endBroadcast();
+      final bool ended = supervisor.endBroadcast();
       expect(ended, isTrue);
       expect(supervisor.status, ConnectionStatus.ended);
 

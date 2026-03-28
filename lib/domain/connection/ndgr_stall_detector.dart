@@ -1,9 +1,8 @@
 class NdgrStallDetector {
   NdgrStallDetector({
-    Duration threshold = const Duration(seconds: 15),
+    this.threshold = const Duration(seconds: 15),
     DateTime Function()? now,
-  })  : threshold = threshold,
-        _now = now ?? DateTime.now;
+  }) : _now = now ?? DateTime.now;
 
   final Duration threshold;
   final DateTime Function() _now;
