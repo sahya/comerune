@@ -1,0 +1,50 @@
+package com.example.comerune.speech.domain.queue
+
+import com.example.comerune.speech.domain.model.QueueOfferResult
+import com.example.comerune.speech.domain.model.SpeechQueueItem
+
+/**
+ * In-memory FIFO queue for speech items with max size control
+ * and duplicate text rejection.
+ */
+class InMemorySpeechQueueManager(
+    private val maxSize: Int = 20
+) : SpeechQueueManager {
+
+    init {
+        require(maxSize > 0) { "maxSize must be positive, but was $maxSize" }
+    }
+
+    private val queue = ArrayDeque<SpeechQueueItem>()
+
+    @Synchronized
+    override fun offer(item: SpeechQueueItem): QueueOfferResult {
+        if (queue.any { it.text == item.text }) {
+            return QueueOfferResult(accepted = false, reason = "duplicate")
+        }
+
+        if (queue.size >= maxSize) {
+            return QueueOfferResult(accepted = false, reason = "queue_full")
+        }
+
+        queue.addLast(item)
+        return QueueOfferResult(accepted = true)
+    }
+
+    @Synchronized
+    override fun poll(): SpeechQueueItem? = queue.removeFirstOrNull()
+
+    @Synchronized
+    override fun peek(): SpeechQueueItem? = queue.firstOrNull()
+
+    @Synchronized
+    override fun clear() {
+        queue.clear()
+    }
+
+    @Synchronized
+    override fun size(): Int = queue.size
+
+    @Synchronized
+    override fun isEmpty(): Boolean = queue.isEmpty()
+}
