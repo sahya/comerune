@@ -592,9 +592,18 @@ class _FollowProgramList extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
             children: <Widget>[
+              const Icon(Icons.sensors, size: 16, color: Colors.red),
+              const SizedBox(width: 6),
               Text(
                 'フォロー中の放送',
                 style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${programs.length}件',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
               ),
               const Spacer(),
               SizedBox(
@@ -616,6 +625,7 @@ class _FollowProgramList extends StatelessWidget {
           child: RefreshIndicator(
             onRefresh: onRefresh,
             child: ListView.separated(
+              padding: const EdgeInsets.symmetric(vertical: 4),
               itemCount: programs.length,
               separatorBuilder: (_, __) => const Divider(height: 1),
               itemBuilder: (BuildContext context, int index) {
@@ -652,14 +662,11 @@ class _FollowProgramTile extends StatelessWidget {
     return InkWell(
       onTap: enabled ? onTap : null,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         child: Row(
           children: <Widget>[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: _buildIcon(),
-            ),
-            const SizedBox(width: 12),
+            _buildIconWithLiveBadge(),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -674,18 +681,9 @@ class _FollowProgramTile extends StatelessWidget {
                   const SizedBox(height: 2),
                   Row(
                     children: <Widget>[
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
                       Flexible(
                         child: Text(
-                          program.providerName,
+                          _buildSubtitle(),
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
@@ -693,21 +691,29 @@ class _FollowProgramTile extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      if (elapsed != null) ...<Widget>[
-                        const SizedBox(width: 8),
-                        Text(
-                          elapsed,
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: theme.colorScheme.outline,
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
+            if (elapsed != null) ...<Widget>[
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(Icons.access_time, size: 11,
+                      color: theme.colorScheme.outline),
+                  const SizedBox(width: 3),
+                  Text(
+                    elapsed,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.outline,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 6),
+            ],
             Icon(
               Icons.play_circle_outline,
               size: 20,
@@ -721,13 +727,53 @@ class _FollowProgramTile extends StatelessWidget {
     );
   }
 
+  /// Builds subtitle combining provider name, community name, and program ID.
+  String _buildSubtitle() {
+    final StringBuffer sb = StringBuffer(program.providerName);
+    final String? community = program.communityName;
+    if (community != null && community.isNotEmpty) {
+      sb.write(' / $community');
+    }
+    sb.write(' - ${program.programId}');
+    return sb.toString();
+  }
+
+  /// Builds icon with a small red live indicator dot in the bottom-right.
+  Widget _buildIconWithLiveBadge() {
+    return SizedBox(
+      width: 40,
+      height: 40,
+      child: Stack(
+        children: <Widget>[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: _buildIcon(),
+          ),
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                color: Colors.red,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 1.5),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildIcon() {
     final String? iconUrl = program.providerIconUrl;
     if (iconUrl != null && iconUrl.isNotEmpty) {
       return Image.network(
         iconUrl,
-        width: 36,
-        height: 36,
+        width: 40,
+        height: 40,
         fit: BoxFit.cover,
         errorBuilder: (_, __, ___) => _buildFallbackIcon(),
       );
@@ -737,10 +783,10 @@ class _FollowProgramTile extends StatelessWidget {
 
   static Widget _buildFallbackIcon() {
     return Container(
-      width: 36,
-      height: 36,
+      width: 40,
+      height: 40,
       color: Colors.grey.shade300,
-      child: const Icon(Icons.person, size: 20, color: Colors.grey),
+      child: const Icon(Icons.person, size: 22, color: Colors.grey),
     );
   }
 }
