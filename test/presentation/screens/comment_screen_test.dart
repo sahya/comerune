@@ -96,16 +96,22 @@ void main() {
         ),
       );
 
-      final Container operatorRow =
-          tester.widget(find.byKey(const Key('comment-row-operator-1')));
+      final Container operatorRow = tester.widget(find.descendant(
+        of: find.byKey(const Key('comment-row-operator-1')),
+        matching: find.byType(Container),
+      ));
       expect(operatorRow.color, Colors.yellow.shade100);
 
-      final Container notificationRow =
-          tester.widget(find.byKey(const Key('comment-row-notification-1')));
+      final Container notificationRow = tester.widget(find.descendant(
+        of: find.byKey(const Key('comment-row-notification-1')),
+        matching: find.byType(Container),
+      ));
       expect(notificationRow.color, Colors.lightBlue.shade50);
 
-      final Container legacyRow =
-          tester.widget(find.byKey(const Key('comment-row-legacy-1')));
+      final Container legacyRow = tester.widget(find.descendant(
+        of: find.byKey(const Key('comment-row-legacy-1')),
+        matching: find.byType(Container),
+      ));
       expect(legacyRow.color, Colors.lightBlue.shade50);
       expect(
           find.textContaining(kLegacyUnsupportedFormatMessage), findsOneWidget);
@@ -655,6 +661,70 @@ void main() {
       expect(find.textContaining('world'), findsOneWidget);
     });
 
+    testWidgets('hides NG user comments from display', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'chat-visible',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-ok',
+          content: '表示コメント',
+          type: AppMessageType.chat,
+        ),
+        AppMessage(
+          id: 'chat-hidden',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 1),
+          userId: 'user-ng',
+          content: 'NGコメント',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngUserIds: const <String>{'user-ng'},
+        ),
+      );
+
+      expect(find.byKey(const Key('comment-row-chat-visible')), findsOneWidget);
+      expect(find.byKey(const Key('comment-row-chat-hidden')), findsNothing);
+      expect(find.text('NGコメント'), findsNothing);
+    });
+
+    testWidgets('long-press on comment row opens user detail sheet', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-lp',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: '12345',
+          content: 'long-press test',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          resolveUserName: (_) => 'テストさん',
+        ),
+      );
+
+      await tester.longPress(find.byKey(const Key('comment-row-msg-lp')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('ユーザー詳細'), findsOneWidget);
+      expect(find.text('ID: 12345'), findsOneWidget);
+      expect(find.text('名前: テストさん'), findsOneWidget);
+    });
+
     testWidgets('invokes callback when lv changes (different lv connection)', (
       WidgetTester tester,
     ) async {
@@ -766,6 +836,7 @@ Widget _buildScreen({
   String? programTitle,
   String? broadcasterName,
   String? Function(String userId)? resolveUserName,
+  Set<String> ngUserIds = const <String>{},
 }) {
   return MaterialApp(
     home: CommentScreen(
@@ -780,6 +851,7 @@ Widget _buildScreen({
       programTitle: programTitle,
       broadcasterName: broadcasterName,
       resolveUserName: resolveUserName,
+      ngUserIds: ngUserIds,
     ),
   );
 }
