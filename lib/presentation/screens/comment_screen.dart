@@ -250,13 +250,9 @@ class _CommentScreenState extends State<CommentScreen> {
                     itemCount: sortedMessages.length,
                     itemBuilder: (BuildContext context, int index) {
                       final AppMessage message = sortedMessages[index];
-                      final String? resolvedName = message.userName ??
-                          (message.userId != null
-                              ? widget.resolveUserName?.call(message.userId!)
-                              : null);
                       return _CommentRow(
                         message: message,
-                        resolvedUserName: resolvedName,
+                        resolvedUserName: _resolveDisplayName(message),
                       );
                     },
                   ),
@@ -268,6 +264,17 @@ class _CommentScreenState extends State<CommentScreen> {
         },
       ),
     );
+  }
+
+  String? _resolveDisplayName(AppMessage message) {
+    if (message.userName != null) {
+      return message.userName;
+    }
+    final String? userId = message.userId;
+    if (userId == null) {
+      return null;
+    }
+    return widget.resolveUserName?.call(userId);
   }
 
   void _toggleSortOrder() {

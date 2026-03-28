@@ -41,12 +41,13 @@ class AppMessage {
         other.id == id &&
         other.timestamp == timestamp &&
         other.userId == userId &&
+        other.userName == userName &&
         other.content == content &&
         other.type == type;
   }
 
   @override
   int get hashCode {
-    return Object.hash(id, timestamp, userId, content, type);
+    return Object.hash(id, timestamp, userId, userName, content, type);
   }
 }
