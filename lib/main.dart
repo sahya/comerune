@@ -110,6 +110,9 @@ class _ComeruneAppState extends State<ComeruneApp> {
         _supplierUserIdNotifier.value = userId;
         _userNameResolver.requestResolve(userId);
       },
+      onBroadcasterNameResolved: (String userId, String name) {
+        _userNameResolver.seedCache(userId, name);
+      },
     );
     _ndgrClient = _NdgrClientAdapter(
       client: ndgr_impl.NdgrClient(),
@@ -194,17 +197,20 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     required ProgramInfoResolver programInfoResolver,
     void Function(String title)? onProgramTitleResolved,
     void Function(String userId)? onSupplierUserIdResolved,
+    void Function(String userId, String name)? onBroadcasterNameResolved,
   })  : _lvProvider = lvProvider,
         _userSessionProvider = userSessionProvider,
         _programInfoResolver = programInfoResolver,
         _onProgramTitleResolved = onProgramTitleResolved,
-        _onSupplierUserIdResolved = onSupplierUserIdResolved;
+        _onSupplierUserIdResolved = onSupplierUserIdResolved,
+        _onBroadcasterNameResolved = onBroadcasterNameResolved;
 
   final String Function() _lvProvider;
   final Future<String> Function() _userSessionProvider;
   final ProgramInfoResolver _programInfoResolver;
   final void Function(String title)? _onProgramTitleResolved;
   final void Function(String userId)? _onSupplierUserIdResolved;
+  final void Function(String userId, String name)? _onBroadcasterNameResolved;
   final StreamController<reconnect.SessionWsEvent> _eventsController =
       StreamController<reconnect.SessionWsEvent>.broadcast();
 
@@ -241,6 +247,12 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       }
       if (programInfo.supplierUserId != null) {
         _onSupplierUserIdResolved?.call(programInfo.supplierUserId!);
+        if (programInfo.broadcasterName != null) {
+          _onBroadcasterNameResolved?.call(
+            programInfo.supplierUserId!,
+            programInfo.broadcasterName!,
+          );
+        }
       }
       log(
         'Resolved NDGR endpoint via programinfo API',
