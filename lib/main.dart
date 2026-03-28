@@ -22,6 +22,7 @@ import 'domain/connection/session_ws_client.dart' as session_impl;
 import 'domain/models/app_message.dart';
 import 'domain/models/app_settings.dart';
 import 'presentation/select/select_screen.dart';
+import 'presentation/theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -84,6 +85,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
       ValueNotifier<String?>(null);
   final ValueNotifier<String?> _supplierUserIdNotifier =
       ValueNotifier<String?>(null);
+  late final ValueNotifier<AppThemeMode> _themeModeNotifier;
   late final UserNameResolver _userNameResolver;
 
   @override
@@ -91,6 +93,9 @@ class _ComeruneAppState extends State<ComeruneApp> {
     super.initState();
     _ndgrHistoryCount =
         widget.initialSettings.pastCommentFetchCount.historyCount;
+    _themeModeNotifier =
+        ValueNotifier<AppThemeMode>(widget.initialSettings.themeMode)
+          ..addListener(_onThemeModeChanged);
 
     _userNameResolver = UserNameResolver();
     _timelineStore = TimelineStore(capacity: _ndgrHistoryCount);
@@ -140,7 +145,14 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _userNameResolver.dispose();
     _programTitleNotifier.dispose();
     _supplierUserIdNotifier.dispose();
+    _themeModeNotifier
+      ..removeListener(_onThemeModeChanged)
+      ..dispose();
     super.dispose();
+  }
+
+  void _onThemeModeChanged() {
+    setState(() {});
   }
 
   Future<void> _prepareConnection(String lv, AppSettings settings) async {
@@ -155,6 +167,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'comerune',
+      theme: AppTheme.themeDataFor(_themeModeNotifier.value),
       home: SelectScreen(
         connectionSupervisor: _connectionSupervisor,
         timelineStore: _timelineStore,
@@ -168,6 +181,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
         userNameListenable: _userNameResolver,
         supplierUserIdNotifier: _supplierUserIdNotifier,
         commentLogWriter: widget.commentLogWriter,
+        themeModeNotifier: _themeModeNotifier,
       ),
     );
   }

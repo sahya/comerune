@@ -13,10 +13,12 @@ class SettingsScreen extends StatefulWidget {
     super.key,
     required this.settingsStore,
     this.userSessionStore,
+    this.themeModeNotifier,
   });
 
   final SettingsStore settingsStore;
   final UserSessionStore? userSessionStore;
+  final ValueNotifier<AppThemeMode>? themeModeNotifier;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -224,6 +226,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _settings = next;
     });
+    if (widget.themeModeNotifier != null &&
+        widget.themeModeNotifier!.value != next.themeMode) {
+      widget.themeModeNotifier!.value = next.themeMode;
+    }
     unawaited(_saveSettings(next));
   }
 
@@ -361,14 +367,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
               children: <Widget>[
                 _Section(
+                  title: 'テーマ',
+                  children: <Widget>[
+                    DropdownButtonFormField<AppThemeMode>(
+                      key: const Key('theme-mode-dropdown'),
+                      value: settings.themeMode,
+                      decoration: const InputDecoration(
+                        labelText: '配色テーマ',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: AppThemeMode.values
+                          .map(
+                            (AppThemeMode mode) =>
+                                DropdownMenuItem<AppThemeMode>(
+                              value: mode,
+                              child: Text(mode.label),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (AppThemeMode? value) {
+                        if (value == null) {
+                          return;
+                        }
+                        _saveNextSettings(
+                          settings.copyWith(themeMode: value),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'ダークモードは夜間の視認性を向上します。\n'
+                      '色覚テーマは色の区別が難しい方に配慮した配色です。',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _Section(
                   title: 'ニコニコアカウント',
                   children: <Widget>[
                     if (_isLoggedIn) ...<Widget>[
-                      const Row(
+                      Row(
                         children: <Widget>[
-                          Icon(Icons.check_circle, color: Colors.green),
-                          SizedBox(width: 8),
-                          Text('ログイン済み'),
+                          Icon(Icons.check_circle,
+                              color: Theme.of(context).colorScheme.primary),
+                          const SizedBox(width: 8),
+                          const Text('ログイン済み'),
                         ],
                       ),
                       const SizedBox(height: 8),
