@@ -88,6 +88,71 @@ void main() {
       resolver.dispose();
     });
 
+    test('returns null supplierUserId when supplier has no programProviderId',
+        () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'No Provider ID',
+          'supplier': <String, Object?>{
+            'name': 'テスト配信者',
+          },
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri':
+                  'https://mpn.live.nicovideo.jp/api/view/v4/NoProviderId',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv888',
+        userSession: 'session',
+      );
+
+      expect(result.title, 'No Provider ID');
+      expect(result.supplierUserId, isNull);
+
+      resolver.dispose();
+    });
+
+    test('returns null supplierUserId when supplier is not a map', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'Supplier Not Map',
+          'supplier': 'invalid',
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri':
+                  'https://mpn.live.nicovideo.jp/api/view/v4/SupplierNotMap',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv777',
+        userSession: 'session',
+      );
+
+      expect(result.title, 'Supplier Not Map');
+      expect(result.supplierUserId, isNull);
+
+      resolver.dispose();
+    });
+
     test('sends request without auth headers when user_session is empty',
         () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();

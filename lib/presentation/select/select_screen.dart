@@ -235,11 +235,14 @@ class _SelectScreenState extends State<SelectScreen> {
       builder: (BuildContext context, Widget? _) {
         final List<AppMessage> messages =
             widget.timelineStore?.messages ?? const <AppMessage>[];
+        final bool nameResolutionEnabled =
+            _settingsNotifier.value.resolveUserName;
         final String? supplierUserId =
             widget.supplierUserIdNotifier?.value;
-        final String? broadcasterName = supplierUserId != null
-            ? widget.resolveUserName?.call(supplierUserId)
-            : null;
+        final String? broadcasterName =
+            nameResolutionEnabled && supplierUserId != null
+                ? widget.resolveUserName?.call(supplierUserId)
+                : null;
 
         return CommentScreen(
           lv: lv,
@@ -255,10 +258,10 @@ class _SelectScreenState extends State<SelectScreen> {
           connectionMethod: _connectionMethod,
           programTitle: widget.programTitleNotifier?.value,
           broadcasterName: broadcasterName,
-          resolveUserName: _settingsNotifier.value.resolveUserName
+          resolveUserName: nameResolutionEnabled
               ? widget.resolveUserName
               : null,
-          requestUserNameResolve: _settingsNotifier.value.resolveUserName
+          requestUserNameResolve: nameResolutionEnabled
               ? widget.requestUserNameResolve
               : null,
         );

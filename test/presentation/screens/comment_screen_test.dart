@@ -489,6 +489,51 @@ void main() {
       expect(find.text('lv345678901'), findsAtLeast(1));
     });
 
+    testWidgets('shows broadcaster name with label in program title bar', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          programTitle: 'テスト番組',
+          broadcasterName: 'テスト配信者',
+        ),
+      );
+
+      expect(find.byKey(const Key('program-title-bar')), findsOneWidget);
+      expect(find.text('テスト番組'), findsOneWidget);
+      expect(
+        find.byKey(const Key('broadcaster-name-text')),
+        findsOneWidget,
+      );
+      expect(find.text('配信者: テスト配信者'), findsOneWidget);
+    });
+
+    testWidgets(
+        'hides broadcaster name when broadcasterName is null', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          programTitle: 'タイトルのみ',
+        ),
+      );
+
+      expect(find.byKey(const Key('program-title-bar')), findsOneWidget);
+      expect(find.text('タイトルのみ'), findsOneWidget);
+      expect(
+        find.byKey(const Key('broadcaster-name-text')),
+        findsNothing,
+      );
+    });
+
     testWidgets('hides program title bar when title is null', (
       WidgetTester tester,
     ) async {
@@ -720,6 +765,7 @@ Widget _buildScreen({
   bool debugMode = false,
   ConnectionMethod? connectionMethod,
   String? programTitle,
+  String? broadcasterName,
   String? Function(String userId)? resolveUserName,
 }) {
   return MaterialApp(
@@ -733,6 +779,7 @@ Widget _buildScreen({
       debugMode: debugMode,
       connectionMethod: connectionMethod,
       programTitle: programTitle,
+      broadcasterName: broadcasterName,
       resolveUserName: resolveUserName,
     ),
   );
