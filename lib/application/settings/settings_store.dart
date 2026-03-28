@@ -107,7 +107,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       showUserName: _prefs.getBool(_kShowUserName) ?? defaults.showUserName,
       resolveUserName:
           _prefs.getBool(_kResolveUserName) ?? defaults.resolveUserName,
-      commentFontSize: CommentFontSizeValue.fromStorageValue(
+      commentFontSize: commentFontSizeFromStorageValue(
         _prefs.getString(_kCommentFontSize),
       ),
       autoSaveCommentLog:
@@ -148,7 +148,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
     await _prefs.setBool(_kResolveUserName, settings.resolveUserName);
     await _prefs.setString(
       _kCommentFontSize,
-      settings.commentFontSize.storageValue,
+      settings.commentFontSize.toString(),
     );
     await _prefs.setBool(_kAutoSaveCommentLog, settings.autoSaveCommentLog);
     await _prefs.setBool(_kDebugMode, settings.debugMode);
