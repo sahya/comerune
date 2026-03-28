@@ -129,8 +129,8 @@ class WebSocketSessionWsChannel implements SessionWsChannel {
 
 class SessionWsClient {
   static const String defaultAndroidUserAgent =
-      'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 '
-      '(KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36';
+      'Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 '
+      '(KHTML, like Gecko) Chrome Mobile Safari/537.36';
 
   SessionWsClient({
     required this.lv,
