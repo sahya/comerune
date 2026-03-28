@@ -6,6 +6,7 @@ import com.example.comerune.speech.domain.event.SpeechEventEmitter
 
 class FlutterSpeechEventEmitter : SpeechEventEmitter {
     private val mainHandler = Handler(Looper.getMainLooper())
+    @Volatile
     private var eventSink: ((Map<String, Any?>) -> Unit)? = null
 
     fun setEventSink(sink: ((Map<String, Any?>) -> Unit)?) {

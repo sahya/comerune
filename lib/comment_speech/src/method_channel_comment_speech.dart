@@ -14,6 +14,12 @@ class MethodChannelCommentSpeech implements CommentSpeechPlatform {
       MethodChannel('jp.example.comment_speech/methods');
   static const _eventChannel = EventChannel('jp.example.comment_speech/events');
 
+  late final Stream<SpeechEvent> _events = _eventChannel
+      .receiveBroadcastStream()
+      .map(
+        (event) => SpeechEvent.fromMap(Map<dynamic, dynamic>.from(event)),
+      );
+
   @override
   Future<void> initialize() async {
     await _methodChannel.invokeMethod<void>('initialize');
@@ -45,7 +51,13 @@ class MethodChannelCommentSpeech implements CommentSpeechPlatform {
       'submitComment',
       comment.toMap(),
     );
-    return SubmitResult.fromMap(result!);
+    if (result == null) {
+      throw PlatformException(
+        code: 'NULL_RESPONSE',
+        message: 'submitComment returned null from the platform channel',
+      );
+    }
+    return SubmitResult.fromMap(result);
   }
 
   @override
@@ -61,7 +73,13 @@ class MethodChannelCommentSpeech implements CommentSpeechPlatform {
     final result = await _methodChannel.invokeMapMethod<String, dynamic>(
       'getStatus',
     );
-    return SpeechRuntimeStatus.fromMap(result!);
+    if (result == null) {
+      throw PlatformException(
+        code: 'NULL_RESPONSE',
+        message: 'getStatus returned null from the platform channel',
+      );
+    }
+    return SpeechRuntimeStatus.fromMap(result);
   }
 
   @override
@@ -70,7 +88,5 @@ class MethodChannelCommentSpeech implements CommentSpeechPlatform {
   }
 
   @override
-  Stream<SpeechEvent> get events => _eventChannel
-      .receiveBroadcastStream()
-      .map((event) => SpeechEvent.fromMap(Map<dynamic, dynamic>.from(event)));
+  Stream<SpeechEvent> get events => _events;
 }

@@ -9,6 +9,9 @@ class DefaultCommentNormalizer(
     private val timeProvider: () -> Long = System::currentTimeMillis
 ) : CommentNormalizer {
 
+    /** Cache of compiled Regex objects keyed by pattern string. */
+    private val regexCache = mutableMapOf<String, Regex>()
+
     override fun normalize(raw: RawComment, settings: SpeechSettings): NormalizedComment {
         // Step 1: Preprocessing (existing)
         val preprocessed = preprocess(raw.text)
@@ -65,10 +68,10 @@ class DefaultCommentNormalizer(
 
         val priority = if (raw.isOwner) OWNER_PRIORITY else DEFAULT_PRIORITY
 
-        // Step 9: Duplicate detection
+        // Step 9: Duplicate detection (atomic check-and-record)
         if (duplicateDetector != null && skipReason == null) {
             val now = timeProvider()
-            val isDup = duplicateDetector.isDuplicate(finalText, raw.userId, now)
+            val isDup = duplicateDetector.checkAndRecord(finalText, raw.userId, now)
             if (isDup) {
                 return NormalizedComment(
                     id = raw.id,
@@ -78,7 +81,6 @@ class DefaultCommentNormalizer(
                     skipReason = SKIP_DUPLICATE
                 )
             }
-            duplicateDetector.record(finalText, raw.userId, now)
         }
 
         return NormalizedComment(
@@ -259,8 +261,16 @@ class DefaultCommentNormalizer(
         var result = text
         for (rule in settings.dictionaryRules) {
             if (!rule.enabled) continue
-            val regex = runCatching { Regex(rule.pattern) }.getOrNull() ?: continue
-            result = regex.replace(result, rule.replacement)
+            val regex = regexCache.getOrPut(rule.pattern) {
+                runCatching { Regex(rule.pattern) }.getOrNull() ?: continue
+            }
+            val safeReplacement = Regex.escapeReplacement(rule.replacement)
+            result = try {
+                regex.replace(result, safeReplacement)
+            } catch (_: Exception) {
+                // Guard against regex execution errors (e.g. catastrophic backtracking)
+                result
+            }
         }
         return result
     }

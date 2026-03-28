@@ -16,12 +16,14 @@ import com.example.comerune.speech.domain.player.WavPlayer
 import com.example.comerune.speech.domain.queue.SpeechQueueManager
 import com.example.comerune.speech.domain.settings.SettingsRepository
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -31,11 +33,14 @@ class SpeechControllerImpl(
     private val engine: VoicevoxEngine,
     private val player: WavPlayer,
     private val settingsRepository: SettingsRepository,
-    private val eventEmitter: SpeechEventEmitter
+    private val eventEmitter: SpeechEventEmitter,
+    dispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val timeProvider: () -> Long = System::currentTimeMillis
 ) : SpeechController {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private val processingMutex = Mutex()
+    private val workerMutex = Mutex()
 
     @Volatile
     private var started = false
@@ -49,7 +54,6 @@ class SpeechControllerImpl(
     @Volatile
     private var currentText: String? = null
 
-    private val workerLock = Any()
     private var workerJob: Job? = null
 
     override suspend fun initialize(): Result<Unit> {
@@ -167,7 +171,7 @@ class SpeechControllerImpl(
             commentId = normalized.id,
             text = normalized.normalizedText,
             priority = normalized.priority,
-            createdAt = System.currentTimeMillis()
+            createdAt = timeProvider()
         )
 
         val offerResult = queueManager.offer(queueItem)
@@ -227,9 +231,17 @@ class SpeechControllerImpl(
     }
 
     override fun release() {
-        if (released) return
-        released = true
-        started = false
+        synchronized(this) {
+            if (released) return
+            released = true
+            started = false
+        }
+        // Stop player before cancelling scope to avoid in-flight playback
+        try {
+            runBlocking { player.stop() }
+        } catch (_: Exception) {
+            // Best-effort stop
+        }
         workerJob?.cancel()
         workerJob = null
         try {
@@ -245,8 +257,8 @@ class SpeechControllerImpl(
         scope.cancel()
     }
 
-    private fun startWorkerIfNeeded() {
-        synchronized(workerLock) {
+    private suspend fun startWorkerIfNeeded() {
+        workerMutex.withLock {
             val currentJob = workerJob
             if (currentJob != null && currentJob.isActive) return
 

@@ -5,6 +5,8 @@ import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
+import android.os.Build
+import androidx.annotation.RequiresApi
 import com.example.comerune.speech.domain.model.PlayerState
 import com.example.comerune.speech.domain.player.WavPlayer
 import kotlinx.coroutines.Dispatchers
@@ -15,6 +17,7 @@ import java.io.IOException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+@RequiresApi(Build.VERSION_CODES.O)
 class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
 
     private val lock = Any()
@@ -54,6 +57,14 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
             .build()
 
     override suspend fun play(wavBytes: ByteArray): Result<Unit> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return Result.failure(
+                UnsupportedOperationException(
+                    "AudioFocusRequest requires API 26+, current SDK: ${Build.VERSION.SDK_INT}"
+                )
+            )
+        }
+
         synchronized(lock) {
             if (released) {
                 return Result.failure(IllegalStateException("Player has been released"))

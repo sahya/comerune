@@ -6,7 +6,9 @@ class SpeechEvent {
   const SpeechEvent({required this.type, required this.payload});
 
   factory SpeechEvent.fromMap(Map<dynamic, dynamic> map) => SpeechEvent(
-        type: map['type'] as String,
-        payload: Map<String, dynamic>.from(map['payload'] as Map),
+        type: (map['type'] as String?) ?? 'unknown',
+        payload: map['payload'] != null
+            ? Map<String, dynamic>.from(map['payload'] as Map)
+            : const {},
       );
 }

@@ -80,14 +80,14 @@ class CommentSpeechPlugin :
         eventChannel?.setStreamHandler(null)
         eventChannel = null
 
+        pluginScope?.cancel()
+        pluginScope = null
+
         controller?.release()
         controller = null
 
         eventEmitter?.setEventSink(null)
         eventEmitter = null
-
-        pluginScope?.cancel()
-        pluginScope = null
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -121,8 +121,16 @@ class CommentSpeechPlugin :
                 Result.success(status.toMap())
             }
             "release" -> {
-                ctrl.release()
-                result.success(mapOf("ok" to true))
+                try {
+                    ctrl.release()
+                    result.success(mapOf("ok" to true))
+                } catch (e: Exception) {
+                    result.error(
+                        "RELEASE_ERROR",
+                        e.message ?: "Unknown error during release",
+                        null
+                    )
+                }
             }
             else -> result.notImplemented()
         }

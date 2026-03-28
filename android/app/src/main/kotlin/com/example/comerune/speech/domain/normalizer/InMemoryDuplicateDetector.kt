@@ -57,6 +57,15 @@ class InMemoryDuplicateDetector(
     }
 
     @Synchronized
+    override fun checkAndRecord(normalizedText: String, userId: String?, currentTimeMs: Long): Boolean {
+        if (isDuplicate(normalizedText, userId, currentTimeMs)) {
+            return true
+        }
+        record(normalizedText, userId, currentTimeMs)
+        return false
+    }
+
+    @Synchronized
     override fun clear() {
         history.clear()
     }

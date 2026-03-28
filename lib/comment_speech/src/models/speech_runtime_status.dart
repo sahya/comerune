@@ -20,12 +20,12 @@ class SpeechRuntimeStatus {
 
   factory SpeechRuntimeStatus.fromMap(Map<String, dynamic> map) =>
       SpeechRuntimeStatus(
-        enabled: map['enabled'] as bool,
-        engineState: map['engineState'] as String,
-        playerState: map['playerState'] as String,
-        queueSize: map['queueSize'] as int,
+        enabled: (map['enabled'] as bool?) ?? false,
+        engineState: (map['engineState'] as String?) ?? 'UNKNOWN',
+        playerState: (map['playerState'] as String?) ?? 'UNKNOWN',
+        queueSize: (map['queueSize'] as int?) ?? 0,
         currentCommentId: map['currentCommentId'] as String?,
         currentText: map['currentText'] as String?,
-        currentSpeakerId: map['currentSpeakerId'] as int,
+        currentSpeakerId: (map['currentSpeakerId'] as int?) ?? 0,
       );
 }
