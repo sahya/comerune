@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:comerune/domain/connection/connection_method.dart';
 import 'package:comerune/domain/connection/connection_supervisor.dart';
 import 'package:comerune/domain/models/app_message.dart';
+import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/presentation/screens/comment_screen.dart';
 
 void main() {
@@ -96,16 +97,22 @@ void main() {
         ),
       );
 
-      final Container operatorRow =
-          tester.widget(find.byKey(const Key('comment-row-operator-1')));
+      final Container operatorRow = tester.widget(find.descendant(
+        of: find.byKey(const Key('comment-row-operator-1')),
+        matching: find.byType(Container),
+      ));
       expect(operatorRow.color, Colors.yellow.shade100);
 
-      final Container notificationRow =
-          tester.widget(find.byKey(const Key('comment-row-notification-1')));
+      final Container notificationRow = tester.widget(find.descendant(
+        of: find.byKey(const Key('comment-row-notification-1')),
+        matching: find.byType(Container),
+      ));
       expect(notificationRow.color, Colors.lightBlue.shade50);
 
-      final Container legacyRow =
-          tester.widget(find.byKey(const Key('comment-row-legacy-1')));
+      final Container legacyRow = tester.widget(find.descendant(
+        of: find.byKey(const Key('comment-row-legacy-1')),
+        matching: find.byType(Container),
+      ));
       expect(legacyRow.color, Colors.lightBlue.shade50);
       expect(
           find.textContaining(kLegacyUnsupportedFormatMessage), findsOneWidget);
@@ -489,7 +496,7 @@ void main() {
       expect(find.text('lv345678901'), findsAtLeast(1));
     });
 
-    testWidgets('shows broadcaster name with label in program title bar', (
+    testWidgets('shows broadcaster name with lv in AppBar title', (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
@@ -503,16 +510,19 @@ void main() {
         ),
       );
 
-      expect(find.byKey(const Key('program-title-bar')), findsOneWidget);
-      expect(find.text('テスト番組'), findsOneWidget);
+      // AppBar shows "放送者名 ─ lv" in a single line.
       expect(
-        find.byKey(const Key('broadcaster-name-text')),
+        find.byKey(const Key('appbar-title-text')),
         findsOneWidget,
       );
-      expect(find.text('配信者: テスト配信者'), findsOneWidget);
+      expect(find.text('テスト配信者 | lv345678901'), findsOneWidget);
+
+      // Program title bar shows only the title, no broadcaster name.
+      expect(find.byKey(const Key('program-title-bar')), findsOneWidget);
+      expect(find.text('テスト番組'), findsOneWidget);
     });
 
-    testWidgets('hides broadcaster name when broadcasterName is null', (
+    testWidgets('shows lv only in AppBar when broadcasterName is null', (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
@@ -525,12 +535,15 @@ void main() {
         ),
       );
 
+      // lv is shown as the title when no broadcaster name.
+      expect(
+        find.byKey(const Key('appbar-title-text')),
+        findsOneWidget,
+      );
+      expect(find.text('lv345678901'), findsAtLeast(1));
+
       expect(find.byKey(const Key('program-title-bar')), findsOneWidget);
       expect(find.text('タイトルのみ'), findsOneWidget);
-      expect(
-        find.byKey(const Key('broadcaster-name-text')),
-        findsNothing,
-      );
     });
 
     testWidgets('hides program title bar when title is null', (
@@ -653,6 +666,131 @@ void main() {
 
       expect(find.textContaining('99999'), findsOneWidget);
       expect(find.textContaining('world'), findsOneWidget);
+    });
+
+    testWidgets('applies configured font size to comment rows', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'font-msg',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'u1',
+          content: 'font size test',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          commentFontSize: CommentFontSize.xl,
+        ),
+      );
+
+      final Text textWidget = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('comment-row-font-msg')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(textWidget.style?.fontSize, 18);
+    });
+
+    testWidgets('default font size is medium (14px)', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'default-font-msg',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'u1',
+          content: 'default font test',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+        ),
+      );
+
+      final Text textWidget = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('comment-row-default-font-msg')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(textWidget.style?.fontSize, 14);
+    });
+
+    testWidgets('hides NG user comments from display', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'chat-visible',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-ok',
+          content: '表示コメント',
+          type: AppMessageType.chat,
+        ),
+        AppMessage(
+          id: 'chat-hidden',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 1),
+          userId: 'user-ng',
+          content: 'NGコメント',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngUserIds: const <String>{'user-ng'},
+        ),
+      );
+
+      expect(find.byKey(const Key('comment-row-chat-visible')), findsOneWidget);
+      expect(find.byKey(const Key('comment-row-chat-hidden')), findsNothing);
+      expect(find.text('NGコメント'), findsNothing);
+    });
+
+    testWidgets('long-press on comment row opens user detail sheet', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-lp',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: '12345',
+          content: 'long-press test',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          resolveUserName: (_) => 'テストさん',
+        ),
+      );
+
+      await tester.longPress(find.byKey(const Key('comment-row-msg-lp')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('ユーザー詳細'), findsOneWidget);
+      expect(find.text('ID: 12345'), findsOneWidget);
+      expect(find.text('名前: テストさん'), findsOneWidget);
     });
 
     testWidgets('shows settings button when onOpenSettings is provided', (
@@ -798,6 +936,8 @@ Widget _buildScreen({
   String? programTitle,
   String? broadcasterName,
   String? Function(String userId)? resolveUserName,
+  CommentFontSize commentFontSize = CommentFontSize.medium,
+  Set<String> ngUserIds = const <String>{},
 }) {
   return MaterialApp(
     home: CommentScreen(
@@ -813,6 +953,8 @@ Widget _buildScreen({
       programTitle: programTitle,
       broadcasterName: broadcasterName,
       resolveUserName: resolveUserName,
+      commentFontSize: commentFontSize,
+      ngUserIds: ngUserIds,
     ),
   );
 }

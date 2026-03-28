@@ -3,6 +3,87 @@ enum SpeechEngine {
   voicevox,
 }
 
+enum CommentFontSize {
+  xs,
+  small,
+  medium,
+  large,
+  xl,
+  xxl,
+}
+
+extension CommentFontSizeValue on CommentFontSize {
+  String get storageValue {
+    switch (this) {
+      case CommentFontSize.xs:
+        return 'xs';
+      case CommentFontSize.small:
+        return 'small';
+      case CommentFontSize.medium:
+        return 'medium';
+      case CommentFontSize.large:
+        return 'large';
+      case CommentFontSize.xl:
+        return 'xl';
+      case CommentFontSize.xxl:
+        return 'xxl';
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case CommentFontSize.xs:
+        return '極小 (10px)';
+      case CommentFontSize.small:
+        return '小 (12px)';
+      case CommentFontSize.medium:
+        return '標準 (14px)';
+      case CommentFontSize.large:
+        return '大 (16px)';
+      case CommentFontSize.xl:
+        return '特大 (18px)';
+      case CommentFontSize.xxl:
+        return '最大 (20px)';
+    }
+  }
+
+  double get pixels {
+    switch (this) {
+      case CommentFontSize.xs:
+        return 10;
+      case CommentFontSize.small:
+        return 12;
+      case CommentFontSize.medium:
+        return 14;
+      case CommentFontSize.large:
+        return 16;
+      case CommentFontSize.xl:
+        return 18;
+      case CommentFontSize.xxl:
+        return 20;
+    }
+  }
+
+  static CommentFontSize fromStorageValue(String? raw) {
+    switch (raw) {
+      case 'xs':
+        return CommentFontSize.xs;
+      case 'small':
+        return CommentFontSize.small;
+      case 'large':
+        return CommentFontSize.large;
+      case 'xl':
+        return CommentFontSize.xl;
+      case 'xxl':
+        return CommentFontSize.xxl;
+      case 'medium':
+      case null:
+      default:
+        return CommentFontSize.medium;
+    }
+  }
+}
+
 enum PastCommentFetchCount {
   count100,
   count500,
@@ -85,9 +166,12 @@ class AppSettings {
     required this.omitUrl,
     required this.suppressDuplicate,
     required this.ngWords,
+    required this.ngUserIds,
     required this.pastCommentFetchCount,
     required this.showUserName,
     required this.resolveUserName,
+    required this.commentFontSize,
+    required this.autoSaveCommentLog,
     required this.debugMode,
   });
 
@@ -109,9 +193,12 @@ class AppSettings {
     omitUrl: true,
     suppressDuplicate: true,
     ngWords: '',
+    ngUserIds: '',
     pastCommentFetchCount: PastCommentFetchCount.count100,
     showUserName: true,
     resolveUserName: true,
+    commentFontSize: CommentFontSize.medium,
+    autoSaveCommentLog: false,
     debugMode: false,
   );
 
@@ -132,10 +219,51 @@ class AppSettings {
   final bool omitUrl;
   final bool suppressDuplicate;
   final String ngWords;
+
+  /// Newline-separated user IDs to filter out from display.
+  final String ngUserIds;
   final PastCommentFetchCount pastCommentFetchCount;
   final bool showUserName;
   final bool resolveUserName;
+  final CommentFontSize commentFontSize;
+  final bool autoSaveCommentLog;
   final bool debugMode;
+
+  Set<String> get ngUserIdSet {
+    if (ngUserIds.trim().isEmpty) {
+      return const <String>{};
+    }
+    return ngUserIds
+        .split('\n')
+        .map((String id) => id.trim())
+        .where((String id) => id.isNotEmpty)
+        .toSet();
+  }
+
+  bool isNgUser(String? userId) {
+    if (userId == null || userId.isEmpty) {
+      return false;
+    }
+    return ngUserIdSet.contains(userId);
+  }
+
+  AppSettings addNgUserId(String userId) {
+    final Set<String> current = ngUserIdSet;
+    if (current.contains(userId)) {
+      return this;
+    }
+    final String updated = <String>[...current, userId].join('\n');
+    return copyWith(ngUserIds: updated);
+  }
+
+  AppSettings removeNgUserId(String userId) {
+    final Set<String> current = ngUserIdSet;
+    if (!current.contains(userId)) {
+      return this;
+    }
+    final Set<String> updated = Set<String>.from(current)..remove(userId);
+    return copyWith(ngUserIds: updated.join('\n'));
+  }
 
   AppSettings copyWith({
     bool? autoReadEnabled,
@@ -155,9 +283,12 @@ class AppSettings {
     bool? omitUrl,
     bool? suppressDuplicate,
     String? ngWords,
+    String? ngUserIds,
     PastCommentFetchCount? pastCommentFetchCount,
     bool? showUserName,
     bool? resolveUserName,
+    CommentFontSize? commentFontSize,
+    bool? autoSaveCommentLog,
     bool? debugMode,
   }) {
     return AppSettings(
@@ -178,10 +309,13 @@ class AppSettings {
       omitUrl: omitUrl ?? this.omitUrl,
       suppressDuplicate: suppressDuplicate ?? this.suppressDuplicate,
       ngWords: ngWords ?? this.ngWords,
+      ngUserIds: ngUserIds ?? this.ngUserIds,
       pastCommentFetchCount:
           pastCommentFetchCount ?? this.pastCommentFetchCount,
       showUserName: showUserName ?? this.showUserName,
       resolveUserName: resolveUserName ?? this.resolveUserName,
+      commentFontSize: commentFontSize ?? this.commentFontSize,
+      autoSaveCommentLog: autoSaveCommentLog ?? this.autoSaveCommentLog,
       debugMode: debugMode ?? this.debugMode,
     );
   }

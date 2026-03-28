@@ -2,10 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:share_plus/share_plus.dart';
 
+import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
+import '../../domain/models/app_settings.dart';
+import 'user_detail_sheet.dart';
 
 const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
 
@@ -42,8 +46,13 @@ class CommentScreen extends StatefulWidget {
     this.programTitle,
     this.broadcasterName,
     this.showUserName = true,
+    this.commentFontSize = CommentFontSize.medium,
     this.resolveUserName,
     this.requestUserNameResolve,
+    this.commentLogWriter,
+    this.autoSaveCommentLog = false,
+    this.ngUserIds = const <String>{},
+    this.onToggleNgUser,
   });
 
   final String lv;
@@ -59,12 +68,22 @@ class CommentScreen extends StatefulWidget {
   final String? programTitle;
   final String? broadcasterName;
   final bool showUserName;
+  final CommentFontSize commentFontSize;
 
   /// Returns the cached resolved name for a user ID, or null.
   final String? Function(String userId)? resolveUserName;
 
   /// Requests asynchronous resolution of a user ID.
   final void Function(String userId)? requestUserNameResolve;
+
+  final CommentLogWriter? commentLogWriter;
+  final bool autoSaveCommentLog;
+
+  /// Set of user IDs marked as NG (blocked).
+  final Set<String> ngUserIds;
+
+  /// Called to toggle NG status for a user.
+  final void Function(String userId)? onToggleNgUser;
 
   @override
   State<CommentScreen> createState() => _CommentScreenState();
@@ -77,6 +96,7 @@ class _CommentScreenState extends State<CommentScreen> {
   late ConnectionStatus _lastStatus;
   bool _autoScrollEnabled = true;
   bool _isStoppingForExit = false;
+  bool _isSavingLog = false;
   CommentSortOrder _sortOrder = CommentSortOrder.ascending;
 
   @override
@@ -203,8 +223,24 @@ class _CommentScreenState extends State<CommentScreen> {
 
           return Scaffold(
             appBar: AppBar(
-              title: Text(widget.lv),
+              toolbarHeight: 44,
+              title: Text(
+                widget.broadcasterName != null
+                    ? '${widget.broadcasterName} | ${widget.lv}'
+                    : widget.lv,
+                key: const Key('appbar-title-text'),
+                style: const TextStyle(fontSize: 15),
+                overflow: TextOverflow.ellipsis,
+              ),
               actions: <Widget>[
+                if (widget.commentLogWriter != null)
+                  IconButton(
+                    key: const Key('save-comment-log-button'),
+                    icon: const Icon(Icons.ios_share),
+                    tooltip: 'コメントログを共有',
+                    onPressed:
+                        _isSavingLog ? null : () => unawaited(_saveLogManual()),
+                  ),
                 IconButton(
                   key: const Key('sort-toggle-button'),
                   icon: Icon(
@@ -234,7 +270,6 @@ class _CommentScreenState extends State<CommentScreen> {
                   _ProgramTitleBar(
                     key: const Key('program-title-bar'),
                     title: widget.programTitle!,
-                    broadcasterName: widget.broadcasterName,
                   ),
                 _StatusBar(
                   key: const Key('status-bar'),
@@ -254,6 +289,11 @@ class _CommentScreenState extends State<CommentScreen> {
                         message: message,
                         resolvedUserName: _resolveDisplayName(message),
                         showUserName: widget.showUserName,
+                        fontSize: widget.commentFontSize.pixels,
+                        onLongPress:
+                            message.userId != null && message.userId!.isNotEmpty
+                                ? () => _showUserDetail(message)
+                                : null,
                       );
                     },
                   ),
@@ -264,6 +304,31 @@ class _CommentScreenState extends State<CommentScreen> {
           );
         },
       ),
+    );
+  }
+
+  void _showUserDetail(AppMessage message) {
+    final String? userId = message.userId;
+    if (userId == null || userId.isEmpty) {
+      return;
+    }
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext sheetContext) {
+        final bool isNg = widget.ngUserIds.contains(userId);
+        return UserDetailSheet(
+          userId: userId,
+          resolvedUserName: _resolveDisplayName(message),
+          allMessages: widget.messages,
+          isNgUser: isNg,
+          onToggleNgUser: () {
+            widget.onToggleNgUser?.call(userId);
+            Navigator.of(sheetContext).pop();
+          },
+        );
+      },
     );
   }
 
@@ -391,6 +456,10 @@ class _CommentScreenState extends State<CommentScreen> {
   void _handleConnectionChanged() {
     final ConnectionStatus currentStatus = widget.connectionSupervisor.status;
 
+    if (widget.autoSaveCommentLog && _isAutoSaveTrigger(currentStatus)) {
+      unawaited(_saveLogAuto());
+    }
+
     if (_lastStatus != ConnectionStatus.failed &&
         currentStatus == ConnectionStatus.failed) {
       final String message = _buildFailedSnackbarMessage();
@@ -505,11 +574,18 @@ class _CommentScreenState extends State<CommentScreen> {
       case AppMessageType.chat:
       case AppMessageType.operator:
       case AppMessageType.notification:
-        return true;
+        break;
       case AppMessageType.gift:
       case AppMessageType.nicoad:
         return false;
     }
+
+    final String? userId = message.userId;
+    if (userId != null && widget.ngUserIds.contains(userId)) {
+      return false;
+    }
+
+    return true;
   }
 
   bool _hasNewMessages(
@@ -549,6 +625,84 @@ class _CommentScreenState extends State<CommentScreen> {
     return _scrollController.position.pixels <= _autoScrollResumeThreshold;
   }
 
+  bool _isAutoSaveTrigger(ConnectionStatus status) {
+    if (_lastStatus == status) {
+      return false;
+    }
+    switch (status) {
+      case ConnectionStatus.stopped:
+      case ConnectionStatus.ended:
+      case ConnectionStatus.failed:
+        return true;
+      case ConnectionStatus.idle:
+      case ConnectionStatus.connectingSessionWs:
+      case ConnectionStatus.resolvingEndpoints:
+      case ConnectionStatus.streamingNdgr:
+      case ConnectionStatus.streamingLegacy:
+      case ConnectionStatus.reconnecting:
+        return false;
+    }
+  }
+
+  Future<void> _saveLogManual() async {
+    final bool hasMessages = widget.messages.any(_shouldDisplayMessage);
+    if (!hasMessages) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            const SnackBar(content: Text('保存するコメントがありません')),
+          );
+      }
+      return;
+    }
+
+    final CommentLogWriter? writer = widget.commentLogWriter;
+    if (writer == null) {
+      return;
+    }
+
+    setState(() {
+      _isSavingLog = true;
+    });
+
+    try {
+      final List<AppMessage> messages =
+          widget.messages.where(_shouldDisplayMessage).toList(growable: false);
+      final String? tempPath =
+          await writer.writeToTempFile(lv: widget.lv, messages: messages);
+      if (tempPath == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+            ..clearSnackBars()
+            ..showSnackBar(
+              const SnackBar(content: Text('コメントログの保存に失敗しました')),
+            );
+        }
+        return;
+      }
+
+      await Share.shareXFiles(<XFile>[XFile(tempPath)]);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSavingLog = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _saveLogAuto() async {
+    final CommentLogWriter? writer = widget.commentLogWriter;
+    if (writer == null) {
+      return;
+    }
+
+    final List<AppMessage> messages =
+        widget.messages.where(_shouldDisplayMessage).toList(growable: false);
+    await writer.save(lv: widget.lv, messages: messages);
+  }
+
   void _scrollToEdge({bool animated = true}) {
     if (!_scrollController.hasClients) {
       return;
@@ -575,11 +729,9 @@ class _ProgramTitleBar extends StatelessWidget {
   const _ProgramTitleBar({
     super.key,
     required this.title,
-    this.broadcasterName,
   });
 
   final String title;
-  final String? broadcasterName;
 
   @override
   Widget build(BuildContext context) {
@@ -587,24 +739,10 @@ class _ProgramTitleBar extends StatelessWidget {
       width: double.infinity,
       color: Colors.indigo.shade50,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            title,
-            key: const Key('program-title-text'),
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          if (broadcasterName != null)
-            Text(
-              '配信者: $broadcasterName',
-              key: const Key('broadcaster-name-text'),
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade700,
-              ),
-            ),
-        ],
+      child: Text(
+        title,
+        key: const Key('program-title-text'),
+        style: const TextStyle(fontWeight: FontWeight.bold),
       ),
     );
   }
@@ -735,19 +873,29 @@ class _CommentRow extends StatelessWidget {
     required this.message,
     this.resolvedUserName,
     this.showUserName = true,
+    required this.fontSize,
+    this.onLongPress,
   });
 
   final AppMessage message;
   final String? resolvedUserName;
   final bool showUserName;
+  final double fontSize;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return GestureDetector(
       key: Key('comment-row-${message.id}'),
-      color: _backgroundColor(message),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Text(_lineText(message)),
+      onLongPress: onLongPress,
+      child: Container(
+        color: _backgroundColor(message),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: Text(
+          _lineText(message),
+          style: TextStyle(fontSize: fontSize),
+        ),
+      ),
     );
   }
 

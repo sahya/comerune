@@ -692,6 +692,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             }
                           : null,
                     ),
+                    SwitchListTile(
+                      key: const Key('auto-save-comment-log-switch'),
+                      title: const Text('コメントログ自動保存'),
+                      subtitle: const Text('接続終了時にコメントをファイルに保存'),
+                      contentPadding: EdgeInsets.zero,
+                      value: settings.autoSaveCommentLog,
+                      onChanged: (bool value) {
+                        _saveNextSettings(
+                            settings.copyWith(autoSaveCommentLog: value));
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<CommentFontSize>(
+                      key: const Key('comment-font-size-dropdown'),
+                      value: settings.commentFontSize,
+                      decoration: const InputDecoration(
+                        labelText: 'コメント文字サイズ',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: CommentFontSize.values
+                          .map(
+                            (CommentFontSize value) =>
+                                DropdownMenuItem<CommentFontSize>(
+                              value: value,
+                              child: Text(value.label),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (CommentFontSize? value) {
+                        if (value == null) {
+                          return;
+                        }
+                        _saveNextSettings(
+                          settings.copyWith(commentFontSize: value),
+                        );
+                      },
+                    ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<PastCommentFetchCount>(
                       key: const Key('past-comment-count-dropdown'),

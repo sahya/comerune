@@ -52,10 +52,14 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   static const String _kOmitUrl = 'settings.filter.omitUrl';
   static const String _kSuppressDuplicate = 'settings.filter.suppressDuplicate';
   static const String _kNgWords = 'settings.filter.ngWords';
+  static const String _kNgUserIds = 'settings.filter.ngUserIds';
   static const String _kPastCommentFetchCount =
       'settings.comment.pastFetchCount';
   static const String _kShowUserName = 'settings.comment.showUserName';
   static const String _kResolveUserName = 'settings.comment.resolveUserName';
+  static const String _kCommentFontSize = 'settings.comment.fontSize';
+  static const String _kAutoSaveCommentLog =
+      'settings.comment.autoSaveCommentLog';
   static const String _kDebugMode = 'settings.debugMode';
 
   @override
@@ -92,12 +96,18 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       suppressDuplicate:
           _prefs.getBool(_kSuppressDuplicate) ?? defaults.suppressDuplicate,
       ngWords: _prefs.getString(_kNgWords) ?? defaults.ngWords,
+      ngUserIds: _prefs.getString(_kNgUserIds) ?? defaults.ngUserIds,
       pastCommentFetchCount: PastCommentFetchCountValue.fromStorageValue(
         _prefs.getString(_kPastCommentFetchCount),
       ),
       showUserName: _prefs.getBool(_kShowUserName) ?? defaults.showUserName,
       resolveUserName:
           _prefs.getBool(_kResolveUserName) ?? defaults.resolveUserName,
+      commentFontSize: CommentFontSizeValue.fromStorageValue(
+        _prefs.getString(_kCommentFontSize),
+      ),
+      autoSaveCommentLog:
+          _prefs.getBool(_kAutoSaveCommentLog) ?? defaults.autoSaveCommentLog,
       debugMode: _prefs.getBool(_kDebugMode) ?? defaults.debugMode,
     );
   }
@@ -124,12 +134,18 @@ class SharedPreferencesSettingsStore implements SettingsStore {
     await _prefs.setBool(_kOmitUrl, settings.omitUrl);
     await _prefs.setBool(_kSuppressDuplicate, settings.suppressDuplicate);
     await _prefs.setString(_kNgWords, settings.ngWords);
+    await _prefs.setString(_kNgUserIds, settings.ngUserIds);
     await _prefs.setString(
       _kPastCommentFetchCount,
       settings.pastCommentFetchCount.storageValue,
     );
     await _prefs.setBool(_kShowUserName, settings.showUserName);
     await _prefs.setBool(_kResolveUserName, settings.resolveUserName);
+    await _prefs.setString(
+      _kCommentFontSize,
+      settings.commentFontSize.storageValue,
+    );
+    await _prefs.setBool(_kAutoSaveCommentLog, settings.autoSaveCommentLog);
     await _prefs.setBool(_kDebugMode, settings.debugMode);
   }
 }
