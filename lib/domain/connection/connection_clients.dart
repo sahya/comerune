@@ -9,6 +9,22 @@ class SessionWsEvent {
   final SessionWsEventType type;
 }
 
+enum SessionWsConnectFailureKind {
+  connectFailed,
+  endpointResolveTimeout,
+  endpointResolveFailed,
+}
+
+class SessionWsConnectException implements Exception {
+  const SessionWsConnectException(
+    this.kind, {
+    this.cause,
+  });
+
+  final SessionWsConnectFailureKind kind;
+  final Object? cause;
+}
+
 abstract class SessionWsClient {
   Stream<SessionWsEvent> get events;
 

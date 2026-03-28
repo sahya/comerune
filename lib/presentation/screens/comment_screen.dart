@@ -298,6 +298,8 @@ class _CommentScreenState extends State<CommentScreen> {
     switch (errorCode) {
       case ConnectionErrorCode.sessionWsConnectFailed:
         return 'セッション接続に失敗しました';
+      case ConnectionErrorCode.sessionWsTimeout:
+        return 'セッション接続がタイムアウトしました';
       case ConnectionErrorCode.endpointResolveFailed:
         return 'コメントサーバーの取得に失敗しました';
       case ConnectionErrorCode.ndgrStreamFailed:
@@ -497,6 +499,7 @@ class _StatusBar extends StatelessWidget {
         return '-';
       case ConnectionErrorCode.lvParseFailed:
       case ConnectionErrorCode.sessionWsConnectFailed:
+      case ConnectionErrorCode.sessionWsTimeout:
       case ConnectionErrorCode.endpointResolveFailed:
       case ConnectionErrorCode.ndgrStreamFailed:
       case ConnectionErrorCode.legacyWsFailed:
