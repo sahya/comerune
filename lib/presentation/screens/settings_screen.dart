@@ -161,6 +161,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('ログアウト'),
+          content: const Text('ログアウトしますか？再度ログインが必要になります。'),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('キャンセル'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('ログアウト'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
     await sessionStore.clear();
     if (mounted) {
       setState(() {

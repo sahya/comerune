@@ -2,15 +2,17 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/application/settings/settings_store.dart';
-import 'helpers/in_memory_user_session_store.dart';
 import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/main.dart';
+
+import 'helpers/in_memory_shared_preferences.dart';
+import 'helpers/in_memory_user_session_store.dart';
 
 void main() {
   testWidgets('ComeruneApp boots to select screen',
       (WidgetTester tester) async {
     final SettingsStore settingsStore = SharedPreferencesSettingsStore(
-      prefs: _InMemorySharedPreferences(),
+      prefs: InMemorySharedPreferences(),
     );
 
     await tester.pumpWidget(
@@ -29,44 +31,4 @@ void main() {
     );
     expect(find.text('接続開始'), findsOneWidget);
   });
-}
-
-class _InMemorySharedPreferences implements SharedPreferencesLike {
-  final Map<String, Object> _values = <String, Object>{};
-
-  @override
-  bool? getBool(String key) => _values[key] as bool?;
-
-  @override
-  double? getDouble(String key) => _values[key] as double?;
-
-  @override
-  int? getInt(String key) => _values[key] as int?;
-
-  @override
-  String? getString(String key) => _values[key] as String?;
-
-  @override
-  Future<bool> setBool(String key, bool value) async {
-    _values[key] = value;
-    return true;
-  }
-
-  @override
-  Future<bool> setDouble(String key, double value) async {
-    _values[key] = value;
-    return true;
-  }
-
-  @override
-  Future<bool> setInt(String key, int value) async {
-    _values[key] = value;
-    return true;
-  }
-
-  @override
-  Future<bool> setString(String key, String value) async {
-    _values[key] = value;
-    return true;
-  }
 }

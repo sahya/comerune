@@ -155,7 +155,7 @@ class _SelectScreenState extends State<SelectScreen> {
       widget.timelineStore?.clear();
     }
     widget.timelineStore?.setCapacity(
-      _historyCountFrom(settings.pastCommentFetchCount),
+      settings.pastCommentFetchCount.historyCount,
     );
     await widget.onPrepareConnection?.call(lv, settings);
 
@@ -250,7 +250,7 @@ class _SelectScreenState extends State<SelectScreen> {
 
     final AppSettings settings = _settingsNotifier.value;
     widget.timelineStore?.setCapacity(
-      _historyCountFrom(settings.pastCommentFetchCount),
+      settings.pastCommentFetchCount.historyCount,
     );
     await widget.onPrepareConnection?.call(lv, settings);
 
@@ -316,19 +316,6 @@ class _SelectScreenState extends State<SelectScreen> {
       case ConnectionStatus.streamingLegacy:
       case ConnectionStatus.reconnecting:
         return false;
-    }
-  }
-
-  int _historyCountFrom(PastCommentFetchCount value) {
-    switch (value) {
-      case PastCommentFetchCount.count100:
-        return 100;
-      case PastCommentFetchCount.count500:
-        return 500;
-      case PastCommentFetchCount.count1000:
-        return 1000;
-      case PastCommentFetchCount.all:
-        return 10000;
     }
   }
 }

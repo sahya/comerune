@@ -37,6 +37,19 @@ extension PastCommentFetchCountValue on PastCommentFetchCount {
     }
   }
 
+  int get historyCount {
+    switch (this) {
+      case PastCommentFetchCount.count100:
+        return 100;
+      case PastCommentFetchCount.count500:
+        return 500;
+      case PastCommentFetchCount.count1000:
+        return 1000;
+      case PastCommentFetchCount.all:
+        return 10000;
+    }
+  }
+
   static PastCommentFetchCount fromStorageValue(String? raw) {
     switch (raw) {
       case '500':

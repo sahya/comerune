@@ -71,9 +71,8 @@ class _ComeruneAppState extends State<ComeruneApp> {
   @override
   void initState() {
     super.initState();
-    _ndgrHistoryCount = _historyCountFrom(
-      widget.initialSettings.pastCommentFetchCount,
-    );
+    _ndgrHistoryCount =
+        widget.initialSettings.pastCommentFetchCount.historyCount;
 
     _timelineStore = TimelineStore(capacity: _ndgrHistoryCount);
     _sessionWsClient = _SessionWsClientAdapter(
@@ -118,7 +117,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
   Future<void> _prepareConnection(String lv, AppSettings settings) async {
     _currentLv = lv;
     _currentUserSession = await widget.userSessionStore.load();
-    _ndgrHistoryCount = _historyCountFrom(settings.pastCommentFetchCount);
+    _ndgrHistoryCount = settings.pastCommentFetchCount.historyCount;
     _timelineStore.setCapacity(_ndgrHistoryCount);
   }
 
@@ -135,19 +134,6 @@ class _ComeruneAppState extends State<ComeruneApp> {
         userSessionStore: widget.userSessionStore,
       ),
     );
-  }
-}
-
-int _historyCountFrom(PastCommentFetchCount value) {
-  switch (value) {
-    case PastCommentFetchCount.count100:
-      return 100;
-    case PastCommentFetchCount.count500:
-      return 500;
-    case PastCommentFetchCount.count1000:
-      return 1000;
-    case PastCommentFetchCount.all:
-      return 10000;
   }
 }
 
