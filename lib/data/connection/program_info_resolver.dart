@@ -76,11 +76,9 @@ class ProgramInfoResolver {
 
     final HttpClientResponse response = await request.close();
     if (response.statusCode != 200) {
-      final String body = await response.transform(utf8.decoder).join();
-      final String truncated =
-          body.length > 200 ? '${body.substring(0, 200)}...' : body;
+      final String body = await _readLimitedBody(response);
       throw ProgramInfoResolveException(
-        'Failed to fetch program info: HTTP ${response.statusCode}: $truncated',
+        'Failed to fetch program info: HTTP ${response.statusCode}: $body',
       );
     }
 
@@ -132,6 +130,27 @@ class ProgramInfoResolver {
       name: 'ProgramInfoResolver',
     );
     return parsed;
+  }
+
+  /// Reads at most [_maxErrorBodyBytes] bytes from the response to avoid
+  /// consuming excessive memory on large error responses.
+  static const int _maxErrorBodyBytes = 512;
+
+  Future<String> _readLimitedBody(HttpClientResponse response) async {
+    final List<int> bytes = <int>[];
+    await for (final List<int> chunk in response) {
+      bytes.addAll(chunk);
+      if (bytes.length >= _maxErrorBodyBytes) {
+        break;
+      }
+    }
+    final String result = utf8.decode(
+      bytes.length > _maxErrorBodyBytes
+          ? bytes.sublist(0, _maxErrorBodyBytes)
+          : bytes,
+      allowMalformed: true,
+    );
+    return bytes.length >= _maxErrorBodyBytes ? '$result...' : result;
   }
 
   void dispose() {

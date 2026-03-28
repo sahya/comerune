@@ -60,6 +60,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _refreshLoginState();
+  }
+
+  @override
   void dispose() {
     _bouyomiHostFocusNode
       ..removeListener(_onBouyomiHostFocusChanged)
@@ -91,17 +97,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _maxDelayController.text = loaded.maxDelaySeconds.toString();
     _ngWordsController.text = loaded.ngWords;
 
-    final UserSessionStore? sessionStore = widget.userSessionStore;
-    if (sessionStore != null) {
-      final String session = await sessionStore.load();
-      if (mounted) {
-        _isLoggedIn = session.isNotEmpty;
-      }
-    }
+    await _refreshLoginState();
 
     setState(() {
       _settings = loaded;
     });
+  }
+
+  Future<void> _refreshLoginState() async {
+    final UserSessionStore? sessionStore = widget.userSessionStore;
+    if (sessionStore == null) {
+      return;
+    }
+    final String session = await sessionStore.load();
+    if (!mounted) {
+      return;
+    }
+    final bool loggedIn = session.isNotEmpty;
+    if (loggedIn != _isLoggedIn) {
+      setState(() {
+        _isLoggedIn = loggedIn;
+      });
+    }
   }
 
   void _onBouyomiHostFocusChanged() {
@@ -142,16 +159,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
-    final bool? loggedIn = await Navigator.of(context).push<bool>(
+    await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         builder: (_) => LoginScreen(userSessionStore: sessionStore),
       ),
     );
 
-    if (loggedIn == true && mounted) {
-      setState(() {
-        _isLoggedIn = true;
-      });
+    if (mounted) {
+      await _refreshLoginState();
     }
   }
 
