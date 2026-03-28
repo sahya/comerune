@@ -1,0 +1,280 @@
+package com.example.comerune.speech.infrastructure.plugin
+
+import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.plugin.common.EventChannel
+import io.flutter.plugin.common.MethodCall
+import io.flutter.plugin.common.MethodChannel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import com.example.comerune.speech.domain.controller.SpeechController
+import com.example.comerune.speech.domain.controller.SpeechControllerImpl
+import com.example.comerune.speech.domain.model.RawComment
+import com.example.comerune.speech.domain.model.ReplaceRule
+import com.example.comerune.speech.domain.model.SpeechRuntimeStatus
+import com.example.comerune.speech.domain.model.SpeechSettings
+import com.example.comerune.speech.domain.model.SubmitResult
+import com.example.comerune.speech.domain.normalizer.DefaultCommentNormalizer
+import com.example.comerune.speech.domain.normalizer.InMemoryDuplicateDetector
+import com.example.comerune.speech.domain.queue.InMemorySpeechQueueManager
+import com.example.comerune.speech.domain.settings.InMemorySettingsRepository
+import com.example.comerune.speech.infrastructure.engine.StubVoicevoxEngine
+import com.example.comerune.speech.infrastructure.event.FlutterSpeechEventEmitter
+import com.example.comerune.speech.infrastructure.player.MediaPlayerWavPlayer
+
+class CommentSpeechPlugin :
+    FlutterPlugin,
+    MethodChannel.MethodCallHandler,
+    EventChannel.StreamHandler {
+
+    companion object {
+        const val METHOD_CHANNEL = "jp.example.comment_speech/methods"
+        const val EVENT_CHANNEL = "jp.example.comment_speech/events"
+    }
+
+    private var methodChannel: MethodChannel? = null
+    private var eventChannel: EventChannel? = null
+    private var controller: SpeechController? = null
+    private var eventEmitter: FlutterSpeechEventEmitter? = null
+    private var pluginScope: CoroutineScope? = null
+
+    override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        val messenger = binding.binaryMessenger
+
+        methodChannel = MethodChannel(messenger, METHOD_CHANNEL).also {
+            it.setMethodCallHandler(this)
+        }
+        eventChannel = EventChannel(messenger, EVENT_CHANNEL).also {
+            it.setStreamHandler(this)
+        }
+
+        val duplicateDetector = InMemoryDuplicateDetector()
+        val normalizer = DefaultCommentNormalizer(duplicateDetector)
+        val queueManager = InMemorySpeechQueueManager(maxSize = 20)
+        val settingsRepository = InMemorySettingsRepository()
+        val emitter = FlutterSpeechEventEmitter()
+        val engine = StubVoicevoxEngine()
+        val context = binding.applicationContext
+        val player = MediaPlayerWavPlayer(context)
+
+        eventEmitter = emitter
+
+        controller = SpeechControllerImpl(
+            normalizer = normalizer,
+            queueManager = queueManager,
+            engine = engine,
+            player = player,
+            settingsRepository = settingsRepository,
+            eventEmitter = emitter
+        )
+
+        pluginScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    }
+
+    override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        methodChannel?.setMethodCallHandler(null)
+        methodChannel = null
+
+        eventChannel?.setStreamHandler(null)
+        eventChannel = null
+
+        controller?.release()
+        controller = null
+
+        eventEmitter?.setEventSink(null)
+        eventEmitter = null
+
+        pluginScope?.cancel()
+        pluginScope = null
+    }
+
+    override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+        val ctrl = controller
+        if (ctrl == null) {
+            result.error("NOT_INITIALIZED", "Plugin not attached to engine", null)
+            return
+        }
+
+        when (call.method) {
+            "initialize" -> handleAsync(result) { ctrl.initialize() }
+            "start" -> handleAsync(result) { ctrl.start() }
+            "stop" -> {
+                val clearQueue = call.argument<Boolean>("clearQueue") ?: false
+                handleAsync(result) { ctrl.stop(clearQueue) }
+            }
+            "skip" -> handleAsync(result) { ctrl.skip() }
+            "clearQueue" -> handleAsync(result) { ctrl.clearQueue() }
+            "submitComment" -> {
+                val rawComment = parseRawComment(call, result) ?: return
+                handleAsync(result) {
+                    ctrl.submitComment(rawComment).map { it.toMap() }
+                }
+            }
+            "updateSettings" -> {
+                val settings = parseSpeechSettings(call)
+                handleAsync(result) { ctrl.updateSettings(settings) }
+            }
+            "getStatus" -> handleAsync(result) {
+                val status = ctrl.getStatus()
+                Result.success(status.toMap())
+            }
+            "release" -> {
+                ctrl.release()
+                result.success(mapOf("ok" to true))
+            }
+            else -> result.notImplemented()
+        }
+    }
+
+    override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+        eventEmitter?.setEventSink(
+            if (events != null) { event -> events.success(event) } else null
+        )
+    }
+
+    override fun onCancel(arguments: Any?) {
+        eventEmitter?.setEventSink(null)
+    }
+
+    // --- Argument parsing ---
+
+    private fun parseRawComment(
+        call: MethodCall,
+        result: MethodChannel.Result
+    ): RawComment? {
+        val id = call.argument<String>("id")
+        if (id == null) {
+            result.error(
+                "INVALID_ARGUMENT",
+                "Required field 'id' is missing or not a String",
+                null
+            )
+            return null
+        }
+
+        val text = call.argument<String>("text")
+        if (text == null) {
+            result.error(
+                "INVALID_ARGUMENT",
+                "Required field 'text' is missing or not a String",
+                null
+            )
+            return null
+        }
+
+        val postedAtEpochMs = call.argument<Number>("postedAtEpochMs")
+        if (postedAtEpochMs == null) {
+            result.error(
+                "INVALID_ARGUMENT",
+                "Required field 'postedAtEpochMs' is missing or not a number",
+                null
+            )
+            return null
+        }
+
+        return RawComment(
+            id = id,
+            text = text,
+            userId = call.argument<String>("userId"),
+            postedAtEpochMs = postedAtEpochMs.toLong(),
+            score = call.argument<Number>("score")?.toInt(),
+            isOwner = call.argument<Boolean>("isOwner") ?: false
+        )
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun parseSpeechSettings(call: MethodCall): SpeechSettings {
+        val rawRules = call.argument<List<Map<String, Any?>>>("dictionaryRules")
+        val dictionaryRules = rawRules?.mapNotNull { map ->
+            val pattern = map["pattern"] as? String ?: return@mapNotNull null
+            val replacement = map["replacement"] as? String ?: return@mapNotNull null
+            val enabled = map["enabled"] as? Boolean ?: true
+            ReplaceRule(pattern = pattern, replacement = replacement, enabled = enabled)
+        } ?: emptyList()
+
+        val ngWords = call.argument<List<String>>("ngWords") ?: emptyList()
+
+        return SpeechSettings(
+            enabled = call.argument<Boolean>("enabled") ?: true,
+            speakerId = call.argument<Number>("speakerId")?.toInt() ?: 0,
+            speedScale = call.argument<Number>("speedScale")?.toFloat() ?: 1.15f,
+            pitchScale = call.argument<Number>("pitchScale")?.toFloat() ?: 0.0f,
+            intonationScale = call.argument<Number>("intonationScale")?.toFloat() ?: 1.0f,
+            volumeScale = call.argument<Number>("volumeScale")?.toFloat() ?: 1.0f,
+            prePhonemeLength = call.argument<Number>("prePhonemeLength")?.toFloat() ?: 0.1f,
+            postPhonemeLength = call.argument<Number>("postPhonemeLength")?.toFloat() ?: 0.1f,
+            maxTextLength = call.argument<Number>("maxTextLength")?.toInt() ?: 50,
+            maxQueueSize = call.argument<Number>("maxQueueSize")?.toInt() ?: 20,
+            duplicateWindowMs = call.argument<Number>("duplicateWindowMs")?.toLong() ?: 5000L,
+            skipEmojiOnly = call.argument<Boolean>("skipEmojiOnly") ?: true,
+            skipUrlOnly = call.argument<Boolean>("skipUrlOnly") ?: true,
+            replaceUrlWith = call.argument<String>("replaceUrlWith") ?: "URL省略",
+            trimLongTextSuffix = call.argument<String>("trimLongTextSuffix") ?: "、以下省略",
+            dictionaryRules = dictionaryRules,
+            ngWords = ngWords
+        )
+    }
+
+    // --- Serialization extensions ---
+
+    private fun SubmitResult.toMap(): Map<String, Any?> = mapOf(
+        "accepted" to accepted,
+        "skipped" to skipped,
+        "normalizedText" to normalizedText,
+        "skipReason" to skipReason,
+        "queueSize" to queueSize
+    )
+
+    private fun SpeechRuntimeStatus.toMap(): Map<String, Any?> = mapOf(
+        "enabled" to enabled,
+        "engineState" to engineState.name,
+        "playerState" to playerState.name,
+        "queueSize" to queueSize,
+        "currentCommentId" to currentCommentId,
+        "currentText" to currentText,
+        "currentSpeakerId" to currentSpeakerId
+    )
+
+    // --- Async helper ---
+
+    private fun handleAsync(
+        result: MethodChannel.Result,
+        block: suspend () -> Result<Any?>
+    ) {
+        val scope = pluginScope
+        if (scope == null) {
+            result.error("NOT_INITIALIZED", "Plugin coroutine scope not available", null)
+            return
+        }
+
+        scope.launch {
+            try {
+                val outcome = block()
+                outcome.fold(
+                    onSuccess = { value ->
+                        if (value is Map<*, *>) {
+                            result.success(value)
+                        } else {
+                            result.success(mapOf("ok" to true))
+                        }
+                    },
+                    onFailure = { e ->
+                        result.error(
+                            "SPEECH_ERROR",
+                            e.message ?: "Unknown error",
+                            null
+                        )
+                    }
+                )
+            } catch (e: Exception) {
+                result.error(
+                    "SPEECH_ERROR",
+                    e.message ?: "Unknown error",
+                    null
+                )
+            }
+        }
+    }
+}
