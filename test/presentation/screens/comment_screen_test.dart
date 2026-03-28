@@ -514,7 +514,7 @@ void main() {
         find.byKey(const Key('appbar-title-text')),
         findsOneWidget,
       );
-      expect(find.text('テスト配信者 ─ lv345678901'), findsOneWidget);
+      expect(find.text('テスト配信者 | lv345678901'), findsOneWidget);
 
       // Program title bar shows only the title, no broadcaster name.
       expect(find.byKey(const Key('program-title-bar')), findsOneWidget);
