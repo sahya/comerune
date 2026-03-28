@@ -4,7 +4,10 @@ import com.example.comerune.speech.domain.model.NormalizedComment
 import com.example.comerune.speech.domain.model.RawComment
 import com.example.comerune.speech.domain.model.SpeechSettings
 
-class DefaultCommentNormalizer : CommentNormalizer {
+class DefaultCommentNormalizer(
+    private val duplicateDetector: DuplicateDetector? = null,
+    private val timeProvider: () -> Long = System::currentTimeMillis
+) : CommentNormalizer {
 
     override fun normalize(raw: RawComment, settings: SpeechSettings): NormalizedComment {
         // Step 1: Preprocessing (existing)
@@ -42,6 +45,22 @@ class DefaultCommentNormalizer : CommentNormalizer {
         val skipReason = detectSkipReason(finalText, settings)
 
         val priority = if (raw.isOwner) OWNER_PRIORITY else DEFAULT_PRIORITY
+
+        // Step 6: Duplicate detection
+        if (duplicateDetector != null && skipReason == null) {
+            val now = timeProvider()
+            val isDup = duplicateDetector.isDuplicate(finalText, raw.userId, now)
+            if (isDup) {
+                return NormalizedComment(
+                    id = raw.id,
+                    originalText = raw.text,
+                    normalizedText = finalText,
+                    priority = priority,
+                    skipReason = SKIP_DUPLICATE
+                )
+            }
+            duplicateDetector.record(finalText, raw.userId, now)
+        }
 
         return NormalizedComment(
             id = raw.id,
@@ -226,6 +245,7 @@ class DefaultCommentNormalizer : CommentNormalizer {
         const val SKIP_EMOJI_ONLY = "emoji_only"
         const val SKIP_SYMBOL_ONLY = "symbol_only"
         const val SKIP_URL_ONLY = "url_only"
+        const val SKIP_DUPLICATE = "duplicate"
 
         private const val OWNER_PRIORITY = 10
         private const val DEFAULT_PRIORITY = 0
