@@ -718,6 +718,10 @@ class ConnectionSupervisor extends ChangeNotifier {
           await reconnectOperation(_reconnectCount);
           return true;
         } on _ConnectionFailure catch (failure) {
+          if (failure.errorCode == ConnectionErrorCode.broadcastEnded) {
+            endBroadcast(errorDetail: failure.errorDetail);
+            return false;
+          }
           _lastError = failure.errorCode;
           _lastErrorDetail = failure.errorDetail;
           if (_status != ConnectionStatus.reconnecting) {

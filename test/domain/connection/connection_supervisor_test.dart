@@ -579,6 +579,44 @@ void main() {
       expect(ndgrClient.connectedUris.last, secondNdgrUri);
     });
 
+    test(
+        'stops reconnect loop immediately when session reconnect ends broadcast',
+        () async {
+      final Uri firstNdgrUri =
+          Uri.parse('https://example.com/api/view/v4/stream/1');
+      final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
+        endpointsQueue: <SessionEndpoints>[
+          SessionEndpoints(ndgrViewApiUri: firstNdgrUri),
+        ],
+      );
+      final FakeNdgrClient ndgrClient = FakeNdgrClient();
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: sessionWsClient,
+        ndgrClient: ndgrClient,
+        legacyCommentClient: FakeLegacyCommentClient(),
+        delayExecutor: (_) async {},
+        jitterProvider: (_) => Duration.zero,
+      );
+      addTearDown(supervisor.dispose);
+
+      final bool started = await _startAndDrain(supervisor);
+      expect(started, isTrue);
+      expect(supervisor.status, ConnectionStatus.streamingNdgr);
+
+      sessionWsClient.queueConnectException(
+        const SessionWsConnectException(
+          SessionWsConnectFailureKind.broadcastEnded,
+          cause: 'END_PROGRAM',
+        ),
+      );
+      final bool reconnected = await supervisor.onSessionWsDisconnected();
+      expect(reconnected, isFalse);
+      expect(supervisor.status, ConnectionStatus.ended);
+      expect(supervisor.lastError, ConnectionErrorCode.broadcastEnded);
+      expect(supervisor.lastErrorDetail, contains('END_PROGRAM'));
+      expect(supervisor.reconnectCount, 1);
+    });
+
     test('legacy reconnect falls back to session after 3 consecutive failures',
         () async {
       final Uri originalLegacyUrl = Uri.parse('wss://example.com/legacy/1');
@@ -892,6 +930,10 @@ class FakeSessionWsClient implements SessionWsClient {
   @override
   Future<void> disconnect() async {
     disconnectCalls += 1;
+  }
+
+  void queueConnectException(Object exception) {
+    _connectExceptions.add(exception);
   }
 
   void emitDisconnected() {
