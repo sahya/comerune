@@ -27,3 +27,15 @@ doc/api/
 
 .flutter-plugins
 .flutter-plugins-dependencies
+
+# Android generated files
+android/local.properties
+android/**/GeneratedPluginRegistrant.java
+
+# IDE files
+.idea/
+*.iml
+.metadata
+
+# Analysis options (auto-generated)
+analysis_options.yaml

@@ -35,6 +35,12 @@ dependencies:
   # 設定永続化（読み上げエンジン選択・接続設定）
   shared_preferences: ^2.3.3
 
+  # WebView（ニコニコログイン画面でuser_sessionクッキー取得）
+  webview_flutter: ^4.10.0
+
+  # 認証情報の暗号化保存（Android Keystore / iOS Keychain）
+  flutter_secure_storage: ^10.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
