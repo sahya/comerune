@@ -6,7 +6,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../../application/settings/settings_store.dart';
 import '../../data/auth/user_session_store.dart';
 import '../../domain/models/app_settings.dart';
-import '../../data/user/user_nickname_store.dart';
+import '../../data/user/user_attribute_store.dart';
 import 'login_screen.dart';
 import 'favorite_user_list_screen.dart';
 import 'ng_user_list_screen.dart';
@@ -18,13 +18,15 @@ class SettingsScreen extends StatefulWidget {
     required this.settingsStore,
     this.userSessionStore,
     this.themeModeNotifier,
-    this.userNicknameStore,
+    this.userAttributeStore,
+    this.broadcasterId,
   });
 
   final SettingsStore settingsStore;
   final UserSessionStore? userSessionStore;
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
-  final UserNicknameStore? userNicknameStore;
+  final UserAttributeStore? userAttributeStore;
+  final String? broadcasterId;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -783,7 +785,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         );
                       },
                     ),
-                    if (widget.userNicknameStore != null)
+                    if (widget.userAttributeStore != null &&
+                        widget.broadcasterId != null)
                       ListTile(
                         key: const Key('nickname-list-tile'),
                         contentPadding: EdgeInsets.zero,
@@ -794,7 +797,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           await Navigator.of(context).push(
                             MaterialPageRoute<void>(
                               builder: (_) => NicknameListScreen(
-                                userNicknameStore: widget.userNicknameStore!,
+                                userAttributeStore: widget.userAttributeStore!,
+                                broadcasterId: widget.broadcasterId!,
                               ),
                             ),
                           );

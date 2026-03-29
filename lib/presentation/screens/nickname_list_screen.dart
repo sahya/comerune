@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 
-import '../../data/user/user_nickname_store.dart';
+import '../../data/user/user_attribute_store.dart';
 
 class NicknameListScreen extends StatefulWidget {
   const NicknameListScreen({
     super.key,
-    required this.userNicknameStore,
+    required this.userAttributeStore,
+    required this.broadcasterId,
   });
 
-  final UserNicknameStore userNicknameStore;
+  final UserAttributeStore userAttributeStore;
+  final String broadcasterId;
 
   @override
   State<NicknameListScreen> createState() => _NicknameListScreenState();
@@ -26,7 +28,7 @@ class _NicknameListScreenState extends State<NicknameListScreen> {
 
   Future<void> _loadNicknames() async {
     final Map<String, String> nicknames =
-        await widget.userNicknameStore.loadAll();
+        await widget.userAttributeStore.loadNicknames(widget.broadcasterId);
     if (!mounted) {
       return;
     }
@@ -82,9 +84,13 @@ class _NicknameListScreenState extends State<NicknameListScreen> {
     }
 
     if (result.isEmpty) {
-      await widget.userNicknameStore.removeNickname(userId);
+      await widget.userAttributeStore.removeNickname(
+        broadcasterId: widget.broadcasterId,
+        userId: userId,
+      );
     } else {
-      await widget.userNicknameStore.setNickname(
+      await widget.userAttributeStore.setNickname(
+        broadcasterId: widget.broadcasterId,
         userId: userId,
         nickname: result,
       );
@@ -119,7 +125,10 @@ class _NicknameListScreenState extends State<NicknameListScreen> {
       return;
     }
 
-    await widget.userNicknameStore.removeNickname(userId);
+    await widget.userAttributeStore.removeNickname(
+      broadcasterId: widget.broadcasterId,
+      userId: userId,
+    );
     await _loadNicknames();
 
     if (!mounted) {
