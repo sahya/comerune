@@ -17,6 +17,7 @@ import '../../domain/models/app_settings.dart';
 import '../../domain/utils/lv_parser.dart';
 import '../screens/comment_screen.dart';
 import '../screens/settings_screen.dart';
+import '../theme/app_theme.dart';
 
 /// Builds a niconico user icon URL from a numeric user ID.
 ///
@@ -270,6 +271,7 @@ class _SelectScreenState extends State<SelectScreen> {
               builder: (BuildContext context, bool? isLoggedIn, Widget? _) {
                 return _LoginStatusBanner(
                   isLoggedIn: isLoggedIn,
+                  themeMode: _settingsNotifier.value.themeMode,
                   onTapLogin: () =>
                       _openSettings(context, widget.userSessionStore),
                 );
@@ -635,10 +637,12 @@ class _SelectScreenState extends State<SelectScreen> {
 class _LoginStatusBanner extends StatelessWidget {
   const _LoginStatusBanner({
     required this.isLoggedIn,
+    required this.themeMode,
     required this.onTapLogin,
   });
 
   final bool? isLoggedIn;
+  final AppThemeMode themeMode;
   final VoidCallback onTapLogin;
 
   @override
@@ -648,19 +652,25 @@ class _LoginStatusBanner extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    final AppThemeColors colors = AppTheme.colorsFor(themeMode);
+
     if (loggedIn) {
       return Semantics(
         label: 'ニコニコ ログイン済み',
         child: Container(
           key: const Key('login-status-banner-ok'),
           width: double.infinity,
-          color: Colors.green.shade50,
+          color: colors.loginBannerOkBackground,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: const Row(
+          child: Row(
             children: <Widget>[
-              Icon(Icons.check_circle, color: Colors.green, size: 18),
-              SizedBox(width: 8),
-              Text('ニコニコ ログイン済み'),
+              Icon(Icons.check_circle,
+                  color: colors.loginBannerOkIcon, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                'ニコニコ ログイン済み',
+                style: TextStyle(color: colors.loginBannerOkForeground),
+              ),
             ],
           ),
         ),
@@ -672,7 +682,7 @@ class _LoginStatusBanner extends StatelessWidget {
       label: 'ログインが必要です。タップして設定を開く',
       child: Material(
         key: const Key('login-status-banner-required'),
-        color: Colors.orange.shade50,
+        color: colors.loginBannerWarningBackground,
         child: InkWell(
           onTap: onTapLogin,
           child: Container(
@@ -681,12 +691,17 @@ class _LoginStatusBanner extends StatelessWidget {
             child: Row(
               children: <Widget>[
                 Icon(Icons.warning_amber_rounded,
-                    color: Colors.orange.shade700, size: 18),
+                    color: colors.loginBannerWarningIcon, size: 18),
                 const SizedBox(width: 8),
-                const Expanded(
-                  child: Text('ログインが必要です。タップして設定を開く'),
+                Expanded(
+                  child: Text(
+                    'ログインが必要です。タップして設定を開く',
+                    style: TextStyle(
+                        color: colors.loginBannerWarningForeground),
+                  ),
                 ),
-                Icon(Icons.chevron_right, color: Colors.orange.shade700),
+                Icon(Icons.chevron_right,
+                    color: colors.loginBannerWarningIcon),
               ],
             ),
           ),
