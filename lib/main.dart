@@ -15,7 +15,7 @@ import 'data/comment_log/comment_log_writer.dart';
 import 'data/connection/program_info_resolver.dart';
 import 'data/follow/follow_program_repository.dart';
 import 'data/connection/web_socket_channel_legacy_web_socket.dart';
-import 'data/user/user_color_store.dart';
+import 'data/user/user_attribute_store.dart';
 import 'data/user/user_name_resolver.dart';
 import 'domain/connection/connection_clients.dart' as reconnect;
 import 'domain/connection/connection_supervisor.dart';
@@ -44,11 +44,12 @@ Future<void> main() async {
     directory: Directory('${appDocDir.path}/comment_logs'),
     tempDirectory: Directory('${tempDir.path}/comment_logs'),
   );
-  final UserColorStore userColorStore = SharedPreferencesUserColorStore(
+  final UserAttributeStore userAttributeStore =
+      SharedPreferencesUserAttributeStore(
     prefs: SharedPreferencesAdapter(prefs),
   );
-  // Remove user color entries not accessed for over 1 year.
-  unawaited(userColorStore.cleanup());
+  // Remove user attribute entries not accessed for over 1 year.
+  unawaited(userAttributeStore.cleanup());
 
   runApp(
     ComeruneApp(
@@ -56,7 +57,7 @@ Future<void> main() async {
       initialSettings: initialSettings,
       userSessionStore: userSessionStore,
       commentLogWriter: commentLogWriter,
-      userColorStore: userColorStore,
+      userAttributeStore: userAttributeStore,
     ),
   );
 }
@@ -68,14 +69,14 @@ class ComeruneApp extends StatefulWidget {
     required this.initialSettings,
     required this.userSessionStore,
     this.commentLogWriter,
-    this.userColorStore,
+    this.userAttributeStore,
   });
 
   final SettingsStore settingsStore;
   final AppSettings initialSettings;
   final UserSessionStore userSessionStore;
   final CommentLogWriter? commentLogWriter;
-  final UserColorStore? userColorStore;
+  final UserAttributeStore? userAttributeStore;
 
   @override
   State<ComeruneApp> createState() => _ComeruneAppState();
@@ -197,9 +198,16 @@ class _ComeruneAppState extends State<ComeruneApp> {
 
   @override
   Widget build(BuildContext context) {
+    final AppThemeMode currentMode = _themeModeNotifier.value;
     return MaterialApp(
       title: 'comerune',
-      theme: AppTheme.themeDataFor(_themeModeNotifier.value),
+      theme: AppTheme.themeDataFor(currentMode),
+      darkTheme: currentMode == AppThemeMode.system
+          ? AppTheme.themeDataFor(AppThemeMode.dark)
+          : null,
+      themeMode: currentMode == AppThemeMode.system
+          ? ThemeMode.system
+          : ThemeMode.light,
       home: SelectScreen(
         connectionSupervisor: _connectionSupervisor,
         timelineStore: _timelineStore,
@@ -216,7 +224,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
         commentLogWriter: widget.commentLogWriter,
         themeModeNotifier: _themeModeNotifier,
         followProgramRepository: _followProgramRepository,
-        userColorStore: widget.userColorStore,
+        userAttributeStore: widget.userAttributeStore,
       ),
     );
   }

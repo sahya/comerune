@@ -10,7 +10,7 @@ import '../../data/auth/user_session_store.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../data/follow/follow_program.dart';
 import '../../data/follow/follow_program_repository.dart';
-import '../../data/user/user_color_store.dart';
+import '../../data/user/user_attribute_store.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
@@ -52,7 +52,7 @@ class SelectScreen extends StatefulWidget {
     this.commentLogWriter,
     this.themeModeNotifier,
     this.followProgramRepository,
-    this.userColorStore,
+    this.userAttributeStore,
     super.key,
   });
 
@@ -72,7 +72,7 @@ class SelectScreen extends StatefulWidget {
   final ValueNotifier<String?>? supplierUserIdNotifier;
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
   final FollowProgramRepository? followProgramRepository;
-  final UserColorStore? userColorStore;
+  final UserAttributeStore? userAttributeStore;
 
   @override
   State<SelectScreen> createState() => _SelectScreenState();
@@ -92,6 +92,7 @@ class _SelectScreenState extends State<SelectScreen> {
   bool _isLoadingFollowPrograms = false;
   Timer? _followRefreshTimer;
   Map<String, int> _userColorMap = const <String, int>{};
+  Map<String, String> _userNicknameMap = const <String, String>{};
   String? _currentBroadcasterId;
 
   static const Duration _followRefreshInterval = Duration(seconds: 60);
@@ -383,12 +384,20 @@ class _SelectScreenState extends State<SelectScreen> {
           commentLogWriter: widget.commentLogWriter,
           autoSaveCommentLog: _settingsNotifier.value.autoSaveCommentLog,
           ngUserIds: _settingsNotifier.value.ngUserIdSet,
+          ngWords: _settingsNotifier.value.ngWordList,
           onToggleNgUser: _toggleNgUser,
           userColorMap: _userColorMap,
           onUserColorChanged:
-              widget.userColorStore != null ? _onUserColorChanged : null,
+              widget.userAttributeStore != null ? _onUserColorChanged : null,
           onUserColorRemoved:
-              widget.userColorStore != null ? _onUserColorRemoved : null,
+              widget.userAttributeStore != null ? _onUserColorRemoved : null,
+          userNicknameMap: _userNicknameMap,
+          onNicknameChanged:
+              widget.userAttributeStore != null ? _onNicknameChanged : null,
+          onNicknameRemoved:
+              widget.userAttributeStore != null ? _onNicknameRemoved : null,
+          autoNicknameRegistration:
+              _settingsNotifier.value.autoNicknameRegistration,
           themeMode: _settingsNotifier.value.themeMode,
           statisticsEnabled: _settingsNotifier.value.statisticsEnabled,
           statisticsViewerCommentEnabled:
@@ -438,37 +447,40 @@ class _SelectScreenState extends State<SelectScreen> {
   void _onSupplierUserIdChanged() {
     final String? supplierUserId = widget.supplierUserIdNotifier?.value;
     if (supplierUserId != null && supplierUserId != _currentBroadcasterId) {
-      unawaited(_loadUserColors(supplierUserId));
+      unawaited(_loadUserAttributes(supplierUserId));
     }
   }
 
-  Future<void> _loadUserColors(String? broadcasterId) async {
+  Future<void> _loadUserAttributes(String? broadcasterId) async {
     if (broadcasterId == null ||
         broadcasterId == _currentBroadcasterId ||
-        widget.userColorStore == null) {
+        widget.userAttributeStore == null) {
       return;
     }
     _currentBroadcasterId = broadcasterId;
     final Map<String, int> colors =
-        await widget.userColorStore!.load(broadcasterId);
+        await widget.userAttributeStore!.loadColors(broadcasterId);
+    final Map<String, String> nicknames =
+        await widget.userAttributeStore!.loadNicknames(broadcasterId);
     if (!mounted || _currentBroadcasterId != broadcasterId) {
       return;
     }
     setState(() {
       _userColorMap = colors;
+      _userNicknameMap = nicknames;
     });
   }
 
   void _onUserColorChanged(String userId, int colorValue) {
     final String? broadcasterId = _currentBroadcasterId;
-    if (broadcasterId == null || widget.userColorStore == null) {
+    if (broadcasterId == null || widget.userAttributeStore == null) {
       return;
     }
     setState(() {
       _userColorMap = Map<String, int>.from(_userColorMap)
         ..[userId] = colorValue;
     });
-    unawaited(widget.userColorStore!.setColor(
+    unawaited(widget.userAttributeStore!.setColor(
       broadcasterId: broadcasterId,
       userId: userId,
       colorValue: colorValue,
@@ -477,13 +489,44 @@ class _SelectScreenState extends State<SelectScreen> {
 
   void _onUserColorRemoved(String userId) {
     final String? broadcasterId = _currentBroadcasterId;
-    if (broadcasterId == null || widget.userColorStore == null) {
+    if (broadcasterId == null || widget.userAttributeStore == null) {
       return;
     }
     setState(() {
       _userColorMap = Map<String, int>.from(_userColorMap)..remove(userId);
     });
-    unawaited(widget.userColorStore!.removeColor(
+    unawaited(widget.userAttributeStore!.removeColor(
+      broadcasterId: broadcasterId,
+      userId: userId,
+    ));
+  }
+
+  void _onNicknameChanged(String userId, String nickname) {
+    final String? broadcasterId = _currentBroadcasterId;
+    if (broadcasterId == null || widget.userAttributeStore == null) {
+      return;
+    }
+    setState(() {
+      _userNicknameMap = Map<String, String>.from(_userNicknameMap)
+        ..[userId] = nickname;
+    });
+    unawaited(widget.userAttributeStore!.setNickname(
+      broadcasterId: broadcasterId,
+      userId: userId,
+      nickname: nickname,
+    ));
+  }
+
+  void _onNicknameRemoved(String userId) {
+    final String? broadcasterId = _currentBroadcasterId;
+    if (broadcasterId == null || widget.userAttributeStore == null) {
+      return;
+    }
+    setState(() {
+      _userNicknameMap = Map<String, String>.from(_userNicknameMap)
+        ..remove(userId);
+    });
+    unawaited(widget.userAttributeStore!.removeNickname(
       broadcasterId: broadcasterId,
       userId: userId,
     ));
@@ -516,6 +559,8 @@ class _SelectScreenState extends State<SelectScreen> {
           settingsStore: settingsStore,
           userSessionStore: userSessionStore,
           themeModeNotifier: widget.themeModeNotifier,
+          userAttributeStore: widget.userAttributeStore,
+          broadcasterId: _currentBroadcasterId,
         ),
       ),
     );
@@ -523,6 +568,12 @@ class _SelectScreenState extends State<SelectScreen> {
     await _reloadSettingsFromStore();
     await _refreshLoginState();
     await _fetchFollowPrograms();
+    // Reload user attributes in case nicknames were edited in settings.
+    if (_currentBroadcasterId != null) {
+      final String broadcasterId = _currentBroadcasterId!;
+      _currentBroadcasterId = null;
+      await _loadUserAttributes(broadcasterId);
+    }
   }
 
   Future<void> _refreshLoginState() async {
@@ -664,7 +715,11 @@ class _LoginStatusBanner extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    final AppThemeColors colors = AppTheme.colorsFor(themeMode);
+    final AppThemeMode effectiveMode = AppTheme.resolveEffectiveMode(
+      themeMode,
+      MediaQuery.platformBrightnessOf(context),
+    );
+    final AppThemeColors colors = AppTheme.colorsFor(effectiveMode);
 
     if (loggedIn) {
       return Semantics(

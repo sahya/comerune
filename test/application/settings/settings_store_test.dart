@@ -130,6 +130,29 @@ void main() {
       expect(loaded.autoSaveCommentLog, isTrue);
     });
 
+    test('autoNicknameRegistration defaults to true when not stored', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.autoNicknameRegistration, isTrue);
+    });
+
+    test('round-trips autoNicknameRegistration value', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        autoNicknameRegistration: false,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.autoNicknameRegistration, isFalse);
+    });
+
     test('themeMode defaults to light when not stored', () async {
       final SharedPreferencesSettingsStore store =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
