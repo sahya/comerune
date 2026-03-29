@@ -126,15 +126,15 @@ void main() {
       expect(settings.ngWordList, isEmpty);
     });
 
-    test('parses newline-separated NG words', () {
+    test('parses newline-separated NG words and lower-cases them', () {
       final AppSettings settings =
-          AppSettings.defaults.copyWith(ngWords: 'spam\nbad\ntest');
+          AppSettings.defaults.copyWith(ngWords: 'Spam\nBad\nTEST');
       expect(settings.ngWordList, <String>['spam', 'bad', 'test']);
     });
 
     test('trims whitespace and ignores blank lines', () {
       final AppSettings settings =
-          AppSettings.defaults.copyWith(ngWords: ' spam \n\n bad \n');
+          AppSettings.defaults.copyWith(ngWords: ' Spam \n\n Bad \n');
       expect(settings.ngWordList, <String>['spam', 'bad']);
     });
   });

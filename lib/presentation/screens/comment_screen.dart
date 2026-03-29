@@ -648,7 +648,7 @@ class _CommentScreenState extends State<CommentScreen> {
     if (widget.ngWords.isNotEmpty) {
       final String lowerContent = message.content.toLowerCase();
       for (final String word in widget.ngWords) {
-        if (lowerContent.contains(word.toLowerCase())) {
+        if (lowerContent.contains(word)) {
           return false;
         }
       }

@@ -697,12 +697,11 @@ class _LoginStatusBanner extends StatelessWidget {
                 Expanded(
                   child: Text(
                     'ログインが必要です。タップして設定を開く',
-                    style: TextStyle(
-                        color: colors.loginBannerWarningForeground),
+                    style:
+                        TextStyle(color: colors.loginBannerWarningForeground),
                   ),
                 ),
-                Icon(Icons.chevron_right,
-                    color: colors.loginBannerWarningIcon),
+                Icon(Icons.chevron_right, color: colors.loginBannerWarningIcon),
               ],
             ),
           ),

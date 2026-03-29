@@ -267,9 +267,11 @@ class AppSettings {
   final bool autoSaveCommentLog;
   final bool debugMode;
 
-  /// Parses [ngWords] into a list of individual NG word strings.
+  /// Parses [ngWords] into a list of lower-cased NG word strings.
   ///
-  /// Each line is trimmed; blank lines are ignored.
+  /// Each line is trimmed and lower-cased; blank lines are ignored.
+  /// The result is pre-lowered so that callers can compare with a single
+  /// [String.contains] against lower-cased content.
   List<String> get ngWordList {
     if (ngWords.trim().isEmpty) {
       return const <String>[];
@@ -278,6 +280,7 @@ class AppSettings {
         .split('\n')
         .map((String w) => w.trim())
         .where((String w) => w.isNotEmpty)
+        .map((String w) => w.toLowerCase())
         .toList();
   }
 
@@ -291,7 +294,7 @@ class AppSettings {
     }
     final String lowerContent = content.toLowerCase();
     return words.any(
-      (String word) => lowerContent.contains(word.toLowerCase()),
+      (String word) => lowerContent.contains(word),
     );
   }
 

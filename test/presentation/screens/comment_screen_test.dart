@@ -882,6 +882,39 @@ void main() {
       expect(find.byKey(const Key('comment-row-chat-upper')), findsNothing);
     });
 
+    testWidgets('filters by second NG word in multi-word list', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'chat-ok',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '普通のコメント',
+          type: AppMessageType.chat,
+        ),
+        AppMessage(
+          id: 'chat-bad',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 1),
+          userId: 'user-2',
+          content: 'この広告を見て',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngWords: const <String>['spam', '広告'],
+        ),
+      );
+
+      expect(find.byKey(const Key('comment-row-chat-ok')), findsOneWidget);
+      expect(find.byKey(const Key('comment-row-chat-bad')), findsNothing);
+    });
+
     testWidgets('empty NG words list does not filter any comments', (
       WidgetTester tester,
     ) async {
