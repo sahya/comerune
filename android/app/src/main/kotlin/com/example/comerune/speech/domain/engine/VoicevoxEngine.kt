@@ -12,5 +12,8 @@ interface VoicevoxEngine {
     /** Returns the current internal state of the TTS engine. */
     fun currentState(): TtsEngineState
 
+    /** Load a VVM model file into the engine at runtime. */
+    suspend fun loadModel(modelPath: String): Result<Unit>
+
     fun release()
 }

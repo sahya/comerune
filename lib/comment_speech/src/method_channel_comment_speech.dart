@@ -110,4 +110,37 @@ class MethodChannelCommentSpeech implements CommentSpeechPlatform {
 
   @override
   Stream<SpeechEvent> get events => _events;
+
+  @override
+  Future<List<Map<String, dynamic>>> getAvailableModels() async {
+    final result = await _methodChannel.invokeListMethod<Map<dynamic, dynamic>>(
+      'getAvailableModels',
+    );
+    if (result == null) return [];
+    return result.map((m) => Map<String, dynamic>.from(m)).toList();
+  }
+
+  @override
+  Future<void> downloadModel(String modelId) async {
+    await _methodChannel
+        .invokeMethod<void>('downloadModel', {'modelId': modelId});
+  }
+
+  @override
+  Future<void> deleteModel(String modelId) async {
+    await _methodChannel
+        .invokeMethod<void>('deleteModel', {'modelId': modelId});
+  }
+
+  @override
+  Future<List<String>> getDownloadedModels() async {
+    final result =
+        await _methodChannel.invokeListMethod<String>('getDownloadedModels');
+    return result ?? [];
+  }
+
+  @override
+  Future<void> loadModel(String modelId) async {
+    await _methodChannel.invokeMethod<void>('loadModel', {'modelId': modelId});
+  }
 }

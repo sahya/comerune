@@ -19,4 +19,10 @@ abstract class CommentSpeechPlatform {
   Future<SpeechRuntimeStatus> getStatus();
   Future<void> release();
   Stream<SpeechEvent> get events;
+
+  Future<List<Map<String, dynamic>>> getAvailableModels();
+  Future<void> downloadModel(String modelId);
+  Future<void> deleteModel(String modelId);
+  Future<List<String>> getDownloadedModels();
+  Future<void> loadModel(String modelId);
 }

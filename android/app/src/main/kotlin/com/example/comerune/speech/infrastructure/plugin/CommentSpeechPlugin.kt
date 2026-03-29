@@ -13,18 +13,22 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import com.example.comerune.speech.domain.controller.SpeechController
 import com.example.comerune.speech.domain.controller.SpeechControllerImpl
+import com.example.comerune.speech.domain.engine.VoicevoxEngine
 import com.example.comerune.speech.domain.model.RawComment
 import com.example.comerune.speech.domain.model.ReplaceRule
 import com.example.comerune.speech.domain.model.SpeechRuntimeStatus
 import com.example.comerune.speech.domain.model.SpeechSettings
 import com.example.comerune.speech.domain.model.SubmitResult
+import com.example.comerune.speech.domain.model.VoicevoxModelManifest
 import com.example.comerune.speech.domain.normalizer.DefaultCommentNormalizer
 import com.example.comerune.speech.domain.normalizer.InMemoryDuplicateDetector
 import com.example.comerune.speech.domain.queue.InMemorySpeechQueueManager
+import com.example.comerune.speech.domain.repository.VoicevoxModelRepository
 import com.example.comerune.speech.domain.settings.InMemorySettingsRepository
 import com.example.comerune.speech.infrastructure.engine.VoicevoxEngineImpl
 import com.example.comerune.speech.infrastructure.event.FlutterSpeechEventEmitter
 import com.example.comerune.speech.infrastructure.player.MediaPlayerWavPlayer
+import com.example.comerune.speech.infrastructure.repository.VoicevoxModelRepositoryImpl
 
 class CommentSpeechPlugin :
     FlutterPlugin,
@@ -42,6 +46,8 @@ class CommentSpeechPlugin :
     private var controller: SpeechController? = null
     private var eventEmitter: FlutterSpeechEventEmitter? = null
     private var pluginScope: CoroutineScope? = null
+    private var modelRepository: VoicevoxModelRepository? = null
+    private var engine: VoicevoxEngine? = null
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         val messenger = binding.binaryMessenger
@@ -59,16 +65,20 @@ class CommentSpeechPlugin :
         val settingsRepository = InMemorySettingsRepository()
         val emitter = FlutterSpeechEventEmitter()
         val context = binding.applicationContext
-        val engine = VoicevoxEngineImpl(context)
-        engine.onDownloadEvent = { event -> emitter.emit(event) }
+        val voicevoxEngine = VoicevoxEngineImpl(context)
+        voicevoxEngine.onDownloadEvent = { event -> emitter.emit(event) }
         val player = MediaPlayerWavPlayer(context)
 
         eventEmitter = emitter
+        engine = voicevoxEngine
+
+        val repository = VoicevoxModelRepositoryImpl(context)
+        modelRepository = repository
 
         controller = SpeechControllerImpl(
             normalizer = normalizer,
             queueManager = queueManager,
-            engine = engine,
+            engine = voicevoxEngine,
             player = player,
             settingsRepository = settingsRepository,
             eventEmitter = emitter,
@@ -93,6 +103,9 @@ class CommentSpeechPlugin :
 
         eventEmitter?.setEventSink(null)
         eventEmitter = null
+
+        modelRepository = null
+        engine = null
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -107,7 +120,26 @@ class CommentSpeechPlugin :
         when (call.method) {
             "initialize" -> {
                 Log.d(TAG, "[onMethodCall] → initialize")
-                handleAsync(result) { ctrl.initialize() }
+                handleAsync(result) {
+                    val initResult = ctrl.initialize()
+                    if (initResult.isSuccess) {
+                        // Ensure bundled models are available and load them
+                        val repo = modelRepository
+                        val eng = engine
+                        if (repo != null && eng != null) {
+                            for (model in VoicevoxModelManifest.models.filter { it.isBundled }) {
+                                if (repo is VoicevoxModelRepositoryImpl) {
+                                    repo.ensureBundledModel(model)
+                                }
+                                val modelFile = repo.getModelFile(model.modelId)
+                                if (modelFile != null) {
+                                    eng.loadModel(modelFile.absolutePath)
+                                }
+                            }
+                        }
+                    }
+                    initResult
+                }
             }
             "start" -> {
                 Log.d(TAG, "[onMethodCall] → start")
@@ -154,6 +186,135 @@ class CommentSpeechPlugin :
                         e.message ?: "Unknown error during release",
                         null
                     )
+                }
+            }
+            "getAvailableModels" -> {
+                val repo = modelRepository
+                if (repo == null) {
+                    result.error("NOT_INITIALIZED", "Model repository not available", null)
+                } else {
+                    result.success(repo.getAvailableModels().map { it.toMap() })
+                }
+            }
+            "downloadModel" -> {
+                val modelId = call.argument<String>("modelId")
+                if (modelId == null) {
+                    result.error("INVALID_ARGUMENT", "Required field 'modelId' is missing", null)
+                    return
+                }
+                val repo = modelRepository
+                val emitter = eventEmitter
+                if (repo == null) {
+                    result.error("NOT_INITIALIZED", "Model repository not available", null)
+                    return
+                }
+                val modelInfo = VoicevoxModelManifest.findByModelId(modelId)
+                handleAsync(result) {
+                    emitter?.emit(
+                        mapOf(
+                            "type" to "model_download_started",
+                            "payload" to mapOf(
+                                "modelId" to modelId,
+                                "fileName" to (modelInfo?.vvmFileName ?: "")
+                            )
+                        )
+                    )
+                    val downloadResult = repo.downloadModel(modelId) { bytesDownloaded, totalBytes ->
+                        emitter?.emit(
+                            mapOf(
+                                "type" to "model_download_progress",
+                                "payload" to mapOf(
+                                    "modelId" to modelId,
+                                    "bytesDownloaded" to bytesDownloaded,
+                                    "totalBytes" to totalBytes
+                                )
+                            )
+                        )
+                    }
+                    if (downloadResult.isSuccess) {
+                        emitter?.emit(
+                            mapOf(
+                                "type" to "model_download_completed",
+                                "payload" to mapOf("modelId" to modelId)
+                            )
+                        )
+                    } else {
+                        emitter?.emit(
+                            mapOf(
+                                "type" to "model_download_failed",
+                                "payload" to mapOf(
+                                    "modelId" to modelId,
+                                    "error" to (downloadResult.exceptionOrNull()?.message ?: "Unknown error")
+                                )
+                            )
+                        )
+                    }
+                    downloadResult
+                }
+            }
+            "deleteModel" -> {
+                val modelId = call.argument<String>("modelId")
+                if (modelId == null) {
+                    result.error("INVALID_ARGUMENT", "Required field 'modelId' is missing", null)
+                    return
+                }
+                val repo = modelRepository
+                val emitter = eventEmitter
+                if (repo == null) {
+                    result.error("NOT_INITIALIZED", "Model repository not available", null)
+                    return
+                }
+                val deleteResult = repo.deleteModel(modelId)
+                if (deleteResult.isSuccess) {
+                    emitter?.emit(
+                        mapOf(
+                            "type" to "model_deleted",
+                            "payload" to mapOf("modelId" to modelId)
+                        )
+                    )
+                    result.success(mapOf("ok" to true))
+                } else {
+                    result.error(
+                        "DELETE_ERROR",
+                        deleteResult.exceptionOrNull()?.message ?: "Unknown error",
+                        null
+                    )
+                }
+            }
+            "getDownloadedModels" -> {
+                val repo = modelRepository
+                if (repo == null) {
+                    result.error("NOT_INITIALIZED", "Model repository not available", null)
+                } else {
+                    val downloadedIds = VoicevoxModelManifest.models
+                        .filter { repo.isModelDownloaded(it.modelId) }
+                        .map { it.modelId }
+                    result.success(downloadedIds)
+                }
+            }
+            "loadModel" -> {
+                val modelId = call.argument<String>("modelId")
+                if (modelId == null) {
+                    result.error("INVALID_ARGUMENT", "Required field 'modelId' is missing", null)
+                    return
+                }
+                val repo = modelRepository
+                val eng = engine
+                if (repo == null || eng == null) {
+                    result.error("NOT_INITIALIZED", "Plugin not fully initialized", null)
+                    return
+                }
+                val modelFile = repo.getModelFile(modelId)
+                if (modelFile == null) {
+                    result.error(
+                        "MODEL_NOT_FOUND",
+                        "Model $modelId is not downloaded",
+                        null
+                    )
+                    return
+                }
+                handleAsync(result) {
+                    eng.loadModel(modelFile.absolutePath)
                 }
             }
             else -> result.notImplemented()
