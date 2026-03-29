@@ -1006,6 +1006,96 @@ void main() {
       expect(find.text('名前: テストさん'), findsOneWidget);
     });
 
+    testWidgets('statistics row is hidden when statisticsEnabled is false', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          statisticsEnabled: false,
+          viewerCount: 100,
+          totalCommentCount: 50,
+          activeUserCount: 10,
+        ),
+      );
+
+      expect(find.byKey(const Key('status-viewer-count')), findsNothing);
+      expect(find.byKey(const Key('status-comment-count')), findsNothing);
+      expect(find.byKey(const Key('status-active-user-count')), findsNothing);
+    });
+
+    testWidgets('statistics row shows all stats when enabled', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          statisticsEnabled: true,
+          statisticsViewerCommentEnabled: true,
+          statisticsActiveUserEnabled: true,
+          viewerCount: 100,
+          totalCommentCount: 50,
+          activeUserCount: 10,
+        ),
+      );
+
+      expect(find.text('リスナー: 100'), findsOneWidget);
+      expect(find.text('コメント: 50'), findsOneWidget);
+      expect(find.text('5分アクティブ: 10'), findsOneWidget);
+    });
+
+    testWidgets('statistics hides viewer/comment when child toggle is off', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          statisticsEnabled: true,
+          statisticsViewerCommentEnabled: false,
+          statisticsActiveUserEnabled: true,
+          viewerCount: 100,
+          totalCommentCount: 50,
+          activeUserCount: 10,
+        ),
+      );
+
+      expect(find.byKey(const Key('status-viewer-count')), findsNothing);
+      expect(find.byKey(const Key('status-comment-count')), findsNothing);
+      expect(find.text('5分アクティブ: 10'), findsOneWidget);
+    });
+
+    testWidgets('statistics hides active user when child toggle is off', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          statisticsEnabled: true,
+          statisticsViewerCommentEnabled: true,
+          statisticsActiveUserEnabled: false,
+          viewerCount: 100,
+          totalCommentCount: 50,
+          activeUserCount: 10,
+        ),
+      );
+
+      expect(find.text('リスナー: 100'), findsOneWidget);
+      expect(find.text('コメント: 50'), findsOneWidget);
+      expect(find.byKey(const Key('status-active-user-count')), findsNothing);
+    });
+
     testWidgets('pin comment from actions sheet shows pinned section', (
       WidgetTester tester,
     ) async {
@@ -1585,6 +1675,12 @@ Widget _buildScreen({
   List<String> ngWords = const <String>[],
   Map<String, int> userColorMap = const <String, int>{},
   Map<String, String> userNicknameMap = const <String, String>{},
+  bool statisticsEnabled = false,
+  bool statisticsViewerCommentEnabled = true,
+  bool statisticsActiveUserEnabled = true,
+  int? viewerCount,
+  int totalCommentCount = 0,
+  int activeUserCount = 0,
 }) {
   return MaterialApp(
     home: CommentScreen(
@@ -1606,6 +1702,12 @@ Widget _buildScreen({
       userColorMap: userColorMap,
       userNicknameMap: userNicknameMap,
       themeMode: AppThemeMode.light,
+      statisticsEnabled: statisticsEnabled,
+      statisticsViewerCommentEnabled: statisticsViewerCommentEnabled,
+      statisticsActiveUserEnabled: statisticsActiveUserEnabled,
+      viewerCount: viewerCount,
+      totalCommentCount: totalCommentCount,
+      activeUserCount: activeUserCount,
     ),
   );
 }

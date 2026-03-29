@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import 'package:flutter/foundation.dart';
 
 import '../../domain/models/app_message.dart';
@@ -14,18 +16,15 @@ class StatisticsStore extends ChangeNotifier {
 
   int _totalCommentCount = 0;
   int? _viewerCount;
-  final List<_TimestampedUserId> _recentUserEvents = <_TimestampedUserId>[];
+  final Queue<_UserActivity> _recentActivities = Queue<_UserActivity>();
+  final Map<String, DateTime> _latestActivityByUser = <String, DateTime>{};
 
   int get totalCommentCount => _totalCommentCount;
   int? get viewerCount => _viewerCount;
 
   int get activeUserCount {
-    _pruneExpired();
-    final Set<String> uniqueIds = <String>{};
-    for (final _TimestampedUserId entry in _recentUserEvents) {
-      uniqueIds.add(entry.userId);
-    }
-    return uniqueIds.length;
+    _purgeExpired();
+    return _latestActivityByUser.length;
   }
 
   void recordComment(AppMessage message) {
@@ -33,14 +32,9 @@ class StatisticsStore extends ChangeNotifier {
 
     final String? userId = message.userId;
     if (userId != null && userId.isNotEmpty) {
-      _recentUserEvents.add(
-        _TimestampedUserId(userId: userId, timestamp: _now()),
-      );
-    }
-
-    // Prune periodically to avoid unbounded growth during long streams.
-    if (_totalCommentCount % 100 == 0) {
-      _pruneExpired();
+      final DateTime timestamp = _now();
+      _recentActivities.addLast(_UserActivity(userId, timestamp));
+      _latestActivityByUser[userId] = timestamp;
     }
 
     notifyListeners();
@@ -57,23 +51,27 @@ class StatisticsStore extends ChangeNotifier {
   void reset() {
     _totalCommentCount = 0;
     _viewerCount = null;
-    _recentUserEvents.clear();
+    _recentActivities.clear();
+    _latestActivityByUser.clear();
     notifyListeners();
   }
 
-  void _pruneExpired() {
+  void _purgeExpired() {
     final DateTime cutoff = _now().subtract(_activeWindow);
-    _recentUserEvents.removeWhere(
-      (_TimestampedUserId entry) => entry.timestamp.isBefore(cutoff),
-    );
+
+    while (_recentActivities.isNotEmpty &&
+        _recentActivities.first.timestamp.isBefore(cutoff)) {
+      final _UserActivity removed = _recentActivities.removeFirst();
+      final DateTime? latest = _latestActivityByUser[removed.userId];
+      if (latest != null && !latest.isAfter(cutoff)) {
+        _latestActivityByUser.remove(removed.userId);
+      }
+    }
   }
 }
 
-class _TimestampedUserId {
-  const _TimestampedUserId({
-    required this.userId,
-    required this.timestamp,
-  });
+class _UserActivity {
+  const _UserActivity(this.userId, this.timestamp);
 
   final String userId;
   final DateTime timestamp;

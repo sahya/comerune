@@ -69,6 +69,39 @@ void main() {
       expect(store.activeUserCount, 0);
     });
 
+    test('all users expire when window fully elapses', () {
+      DateTime fakeNow = DateTime.parse('2026-03-29T12:00:00Z');
+      final StatisticsStore store = StatisticsStore(
+        activeWindow: const Duration(minutes: 5),
+        now: () => fakeNow,
+      );
+
+      store.recordComment(_chatMessage(id: '1', userId: 'u1'));
+      store.recordComment(_chatMessage(id: '2', userId: 'u2'));
+
+      fakeNow = fakeNow.add(const Duration(minutes: 10));
+      expect(store.activeUserCount, 0);
+    });
+
+    test('user with renewed activity stays active after old activity expires',
+        () {
+      DateTime fakeNow = DateTime.parse('2026-03-29T12:00:00Z');
+      final StatisticsStore store = StatisticsStore(
+        activeWindow: const Duration(minutes: 5),
+        now: () => fakeNow,
+      );
+
+      store.recordComment(_chatMessage(id: '1', userId: 'u1'));
+
+      // u1 comments again at 3 minutes
+      fakeNow = fakeNow.add(const Duration(minutes: 3));
+      store.recordComment(_chatMessage(id: '2', userId: 'u1'));
+
+      // At 6 minutes, old activity expired but u1 has recent activity
+      fakeNow = fakeNow.add(const Duration(minutes: 3));
+      expect(store.activeUserCount, 1);
+    });
+
     test('updateViewerCount sets viewerCount', () {
       final StatisticsStore store = StatisticsStore();
 
@@ -101,50 +134,6 @@ void main() {
       expect(store.totalCommentCount, 0);
       expect(store.viewerCount, isNull);
       expect(store.activeUserCount, 0);
-    });
-
-    test('periodic pruning removes expired entries every 100 comments', () {
-      DateTime fakeNow = DateTime.parse('2026-03-29T12:00:00Z');
-      final StatisticsStore store = StatisticsStore(
-        activeWindow: const Duration(minutes: 5),
-        now: () => fakeNow,
-      );
-
-      // Add an entry that will expire.
-      store.recordComment(_chatMessage(id: '0', userId: 'old-user'));
-      fakeNow = fakeNow.add(const Duration(minutes: 6));
-
-      // Add 99 more comments (total 100) to trigger periodic pruning.
-      for (int i = 1; i < 100; i++) {
-        store.recordComment(_chatMessage(id: '$i', userId: 'new-user'));
-      }
-
-      // The 100th comment triggers pruning inside recordComment.
-      // After pruning, only 'new-user' entries remain.
-      expect(store.activeUserCount, 1);
-      expect(store.totalCommentCount, 100);
-    });
-
-    test('periodic pruning fires even when 100th comment has null userId', () {
-      DateTime fakeNow = DateTime.parse('2026-03-29T12:00:00Z');
-      final StatisticsStore store = StatisticsStore(
-        activeWindow: const Duration(minutes: 5),
-        now: () => fakeNow,
-      );
-
-      // Add an entry that will expire.
-      store.recordComment(_chatMessage(id: '0', userId: 'old-user'));
-      fakeNow = fakeNow.add(const Duration(minutes: 6));
-
-      // Add 98 more comments with userId, then 1 with null userId (total 100).
-      for (int i = 1; i < 99; i++) {
-        store.recordComment(_chatMessage(id: '$i', userId: 'new-user'));
-      }
-      // The 100th comment has null userId but should still trigger pruning.
-      store.recordComment(_chatMessage(id: '99', userId: null));
-
-      expect(store.activeUserCount, 1);
-      expect(store.totalCommentCount, 100);
     });
 
     test('notifies listeners on recordComment', () {
