@@ -34,6 +34,16 @@ data class SpeechRuntimeStatus(
     val currentSpeakerId: Int
 )
 
+/**
+ * Represents a speech-related event emitted to the Flutter side via EventChannel.
+ *
+ * @property type The event type identifier (e.g., "speech_started", "queue_updated",
+ *   "comment_skipped"). See [com.example.comerune.speech.domain.event.SpeechEvents]
+ *   for the full set of factory methods and their type strings.
+ * @property payload A map of event-specific data. The keys and value types depend
+ *   on [type]. For example, "speech_started" includes "commentId" and "text",
+ *   while "queue_updated" includes "size".
+ */
 data class SpeechEvent(
     val type: String,
     val payload: Map<String, Any?>

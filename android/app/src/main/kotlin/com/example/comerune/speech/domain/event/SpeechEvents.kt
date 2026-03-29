@@ -10,6 +10,9 @@ object SpeechEvents {
     fun commentSkipped(commentId: String, reason: String): Map<String, Any?> =
         mapOf("type" to "comment_skipped", "payload" to mapOf("commentId" to commentId, "reason" to reason))
 
+    // Privacy note: text is included in this event so the Flutter UI can display
+    // which comment is currently being spoken. The text has already been normalized
+    // (NG words filtered, URLs replaced, etc.) before reaching this point.
     fun speechStarted(commentId: String, text: String): Map<String, Any?> =
         mapOf("type" to "speech_started", "payload" to mapOf("commentId" to commentId, "text" to text))
 

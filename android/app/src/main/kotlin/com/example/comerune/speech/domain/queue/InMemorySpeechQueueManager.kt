@@ -39,7 +39,7 @@ class InMemorySpeechQueueManager(
     @Synchronized
     override fun offer(item: SpeechQueueItem): QueueOfferResult {
         if (queue.any { it.text == item.text }) {
-            return QueueOfferResult(accepted = false, reason = "duplicate")
+            return QueueOfferResult(accepted = false, reason = "queue_duplicate")
         }
 
         if (queue.size >= currentMaxSize) {

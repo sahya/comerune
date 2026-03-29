@@ -51,15 +51,17 @@ class InMemoryDuplicateDetector(
 
             if (!withinWindow) continue
 
-            // Rule 1: Exact text match within window
+            // Rule 1: Exact text match within window (any user)
             if (entry.normalizedText == normalizedText) {
                 return true
             }
 
-            // Rule 2: Same userId rapid-fire within window
-            if (userId != null && entry.userId == userId) {
-                return true
-            }
+            // Rule 2: Same user posting the same text within window
+            // Note: Rule 1 already covers exact text matches, so Rule 2
+            // is effectively subsumed. Kept for clarity and potential
+            // future differentiation (e.g., different windows per rule).
+            // Importantly, same-user *different* text is NOT suppressed —
+            // this is a duplicate detector, not a rate limiter.
         }
 
         return false
