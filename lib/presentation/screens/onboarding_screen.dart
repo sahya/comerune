@@ -23,6 +23,7 @@ class OnboardingScreen extends StatefulWidget {
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
+  bool _isCompleting = false;
 
   static const int _pageCount = 4;
 
@@ -33,6 +34,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Future<void> _completeOnboarding() async {
+    if (_isCompleting) return;
+    setState(() {
+      _isCompleting = true;
+    });
     await widget.onboardingStore.markCompleted();
     widget.onCompleted();
   }
