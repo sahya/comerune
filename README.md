@@ -1,4 +1,5 @@
 # comerune
+A mobile comment viewer for Nico live streams with optional voice reading.
 
 <p align="center">
   <img src="icon_source.png" alt="comerune" width="128" />
