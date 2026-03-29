@@ -100,6 +100,7 @@ class _SelectScreenState extends State<SelectScreen> {
     _previousStatus = widget.connectionSupervisor.status;
     _controller.addListener(_onInputChanged);
     widget.connectionSupervisor.addListener(_onSupervisorChanged);
+    widget.supplierUserIdNotifier?.addListener(_onSupplierUserIdChanged);
     if (widget.settingsStore != null) {
       unawaited(_reloadSettingsFromStore());
     }
@@ -114,6 +115,13 @@ class _SelectScreenState extends State<SelectScreen> {
       oldWidget.connectionSupervisor.removeListener(_onSupervisorChanged);
       widget.connectionSupervisor.addListener(_onSupervisorChanged);
       _previousStatus = widget.connectionSupervisor.status;
+    }
+
+    if (oldWidget.supplierUserIdNotifier != widget.supplierUserIdNotifier) {
+      oldWidget.supplierUserIdNotifier?.removeListener(
+        _onSupplierUserIdChanged,
+      );
+      widget.supplierUserIdNotifier?.addListener(_onSupplierUserIdChanged);
     }
 
     if (oldWidget.initialSettings != widget.initialSettings &&
@@ -131,6 +139,7 @@ class _SelectScreenState extends State<SelectScreen> {
   void dispose() {
     _followRefreshTimer?.cancel();
     widget.connectionSupervisor.removeListener(_onSupervisorChanged);
+    widget.supplierUserIdNotifier?.removeListener(_onSupplierUserIdChanged);
     _loginStateNotifier.dispose();
     _settingsNotifier.dispose();
     _controller
@@ -343,11 +352,6 @@ class _SelectScreenState extends State<SelectScreen> {
         final String? broadcasterIconUrl = _followBroadcasterIconUrl ??
             _buildIconUrlFromUserId(supplierUserId);
 
-        // Load user colors for the current broadcaster if not yet loaded.
-        if (supplierUserId != null && supplierUserId != _currentBroadcasterId) {
-          unawaited(_loadUserColors(supplierUserId));
-        }
-
         return CommentScreen(
           lv: lv,
           connectionSupervisor: widget.connectionSupervisor,
@@ -417,6 +421,13 @@ class _SelectScreenState extends State<SelectScreen> {
     _lastConnectedLv = nextLv;
   }
 
+  void _onSupplierUserIdChanged() {
+    final String? supplierUserId = widget.supplierUserIdNotifier?.value;
+    if (supplierUserId != null && supplierUserId != _currentBroadcasterId) {
+      unawaited(_loadUserColors(supplierUserId));
+    }
+  }
+
   Future<void> _loadUserColors(String? broadcasterId) async {
     if (broadcasterId == null ||
         broadcasterId == _currentBroadcasterId ||
@@ -426,7 +437,7 @@ class _SelectScreenState extends State<SelectScreen> {
     _currentBroadcasterId = broadcasterId;
     final Map<String, int> colors =
         await widget.userColorStore!.load(broadcasterId);
-    if (!mounted) {
+    if (!mounted || _currentBroadcasterId != broadcasterId) {
       return;
     }
     setState(() {

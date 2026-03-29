@@ -4,21 +4,27 @@ import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
 import '../theme/app_theme.dart';
 
-/// Predefined color palette for user comment colors.
-const List<Color> kUserColorPalette = <Color>[
-  Color(0xFFE53935), // red
-  Color(0xFFD81B60), // pink
-  Color(0xFF8E24AA), // purple
-  Color(0xFF3949AB), // indigo
-  Color(0xFF1E88E5), // blue
-  Color(0xFF00ACC1), // cyan
-  Color(0xFF00897B), // teal
-  Color(0xFF43A047), // green
-  Color(0xFFFF8F00), // amber
-  Color(0xFFFF6D00), // orange
-  Color(0xFF6D4C41), // brown
-  Color(0xFF546E7A), // blue grey
+/// Predefined color palette entries with Japanese labels for accessibility.
+const List<({Color color, String label})> kUserColorPaletteEntries =
+    <({Color color, String label})>[
+  (color: Color(0xFFE53935), label: '赤'),
+  (color: Color(0xFFD81B60), label: 'ピンク'),
+  (color: Color(0xFF8E24AA), label: '紫'),
+  (color: Color(0xFF3949AB), label: '藍'),
+  (color: Color(0xFF1E88E5), label: '青'),
+  (color: Color(0xFF00ACC1), label: '水色'),
+  (color: Color(0xFF00897B), label: '青緑'),
+  (color: Color(0xFF43A047), label: '緑'),
+  (color: Color(0xFFFF8F00), label: '琥珀'),
+  (color: Color(0xFFFF6D00), label: 'オレンジ'),
+  (color: Color(0xFF6D4C41), label: '茶'),
+  (color: Color(0xFF546E7A), label: '灰青'),
 ];
+
+/// Predefined color palette for user comment colors.
+List<Color> get kUserColorPalette => kUserColorPaletteEntries
+    .map((({Color color, String label}) e) => e.color)
+    .toList();
 
 class UserDetailSheet extends StatelessWidget {
   const UserDetailSheet({
@@ -266,14 +272,25 @@ class _ColorPaletteRow extends StatelessWidget {
               ),
               const Spacer(),
               if (currentColorValue != null)
-                GestureDetector(
-                  key: const Key('user-color-reset-button'),
-                  onTap: onColorRemoved,
-                  child: Text(
-                    'リセット',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context).colorScheme.primary,
+                Semantics(
+                  button: true,
+                  label: 'コメント色をリセット',
+                  child: InkWell(
+                    key: const Key('user-color-reset-button'),
+                    onTap: onColorRemoved,
+                    borderRadius: BorderRadius.circular(4),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 2,
+                      ),
+                      child: Text(
+                        'リセット',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -284,12 +301,14 @@ class _ColorPaletteRow extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: <Widget>[
-              for (final Color color in kUserColorPalette)
+              for (final ({Color color, String label}) entry
+                  in kUserColorPaletteEntries)
                 _ColorCircle(
-                  key: Key('user-color-${color.toARGB32()}'),
-                  color: color,
-                  isSelected: currentColorValue == color.toARGB32(),
-                  onTap: () => onColorChanged(color.toARGB32()),
+                  key: Key('user-color-${entry.color.toARGB32()}'),
+                  color: entry.color,
+                  colorLabel: entry.label,
+                  isSelected: currentColorValue == entry.color.toARGB32(),
+                  onTap: () => onColorChanged(entry.color.toARGB32()),
                 ),
             ],
           ),
@@ -303,11 +322,13 @@ class _ColorCircle extends StatelessWidget {
   const _ColorCircle({
     super.key,
     required this.color,
+    required this.colorLabel,
     required this.isSelected,
     required this.onTap,
   });
 
   final Color color;
+  final String colorLabel;
   final bool isSelected;
   final VoidCallback onTap;
 
@@ -315,7 +336,7 @@ class _ColorCircle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
-      label: isSelected ? 'コメント色 選択中' : 'コメント色',
+      label: isSelected ? '$colorLabel 選択中' : colorLabel,
       child: GestureDetector(
         onTap: onTap,
         child: Container(

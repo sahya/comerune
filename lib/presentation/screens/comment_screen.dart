@@ -94,7 +94,7 @@ class CommentScreen extends StatefulWidget {
   /// Called to toggle NG status for a user.
   final void Function(String userId)? onToggleNgUser;
 
-  /// Per-user comment color map. Keys are user IDs, values are Color.value.
+  /// Per-user comment color map. Keys are user IDs, values are ARGB32 ints.
   final Map<String, int> userColorMap;
 
   /// Called when the user sets a custom comment color for a user.
@@ -318,6 +318,7 @@ class _CommentScreenState extends State<CommentScreen> {
                         resolvedUserName: _resolveDisplayName(message),
                         showUserName: widget.showUserName,
                         fontSize: widget.commentFontSize,
+                        // ignore: deprecated_member_use
                         userColor: userColor != null ? Color(userColor) : null,
                         onLongPress:
                             message.userId != null && message.userId!.isNotEmpty

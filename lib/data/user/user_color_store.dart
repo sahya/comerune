@@ -4,12 +4,12 @@ import '../../application/settings/settings_store.dart';
 
 /// Persists per-user comment color settings, scoped by broadcaster ID.
 ///
-/// Colors are stored as integer values corresponding to [Color.value].
+/// Colors are stored as ARGB32 integer values (see `Color.toARGB32()`).
 /// A `null` color means "use default" (i.e. no custom color).
 abstract class UserColorStore {
   /// Returns the color map for all users under the given broadcaster.
   ///
-  /// Keys are user IDs, values are [Color.value] integers.
+  /// Keys are user IDs, values are ARGB32 integers.
   Future<Map<String, int>> load(String broadcasterId);
 
   /// Sets a custom color for a user under the given broadcaster.

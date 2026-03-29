@@ -778,6 +778,7 @@ void main() {
           matching: find.byType(Text),
         ),
       );
+      // ignore: deprecated_member_use
       expect(coloredText.style?.color, const Color(0xFFE53935));
 
       final Text defaultText = tester.widget(
