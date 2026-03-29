@@ -124,9 +124,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
           _prefs.getBool(_kAutoSaveCommentLog) ?? defaults.autoSaveCommentLog,
       statisticsEnabled:
           _prefs.getBool(_kStatisticsEnabled) ?? defaults.statisticsEnabled,
-      showViewerCommentCount:
-          _prefs.getBool(_kShowViewerCommentCount) ??
-              defaults.showViewerCommentCount,
+      showViewerCommentCount: _prefs.getBool(_kShowViewerCommentCount) ??
+          defaults.showViewerCommentCount,
       showActiveUserCount:
           _prefs.getBool(_kShowActiveUserCount) ?? defaults.showActiveUserCount,
       debugMode: _prefs.getBool(_kDebugMode) ?? defaults.debugMode,

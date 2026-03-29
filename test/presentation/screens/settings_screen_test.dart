@@ -271,8 +271,7 @@ void main() {
       themeNotifier.dispose();
     });
 
-    testWidgets(
-        'disables statistics child toggles when parent toggle is off', (
+    testWidgets('disables statistics child toggles when parent toggle is off', (
       WidgetTester tester,
     ) async {
       final SharedPreferencesSettingsStore settingsStore =
@@ -282,8 +281,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Parent is off by default; child toggles should be disabled
-      await _scrollToKey(
-          tester, const Key('show-viewer-comment-count-switch'));
+      await _scrollToKey(tester, const Key('show-viewer-comment-count-switch'));
       SwitchListTile viewerTile = tester.widget(
         find.byKey(
           const Key('show-viewer-comment-count-switch'),
@@ -302,12 +300,10 @@ void main() {
       expect(activeTile.onChanged, isNull);
 
       // Turn on parent
-      await _toggleSwitchByKey(
-          tester, const Key('statistics-enabled-switch'));
+      await _toggleSwitchByKey(tester, const Key('statistics-enabled-switch'));
 
       // Child toggles should now be enabled
-      await _scrollToKey(
-          tester, const Key('show-viewer-comment-count-switch'));
+      await _scrollToKey(tester, const Key('show-viewer-comment-count-switch'));
       viewerTile = tester.widget(
         find.byKey(
           const Key('show-viewer-comment-count-switch'),

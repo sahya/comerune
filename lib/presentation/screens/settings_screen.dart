@@ -881,8 +881,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       value: settings.showActiveUserCount,
                       onChanged: settings.statisticsEnabled
                           ? (bool value) {
-                              _saveNextSettings(
-                                  settings.copyWith(showActiveUserCount: value));
+                              _saveNextSettings(settings.copyWith(
+                                  showActiveUserCount: value));
                             }
                           : null,
                     ),

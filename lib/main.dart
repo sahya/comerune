@@ -149,7 +149,8 @@ class _ComeruneAppState extends State<ComeruneApp> {
       legacyCommentClient: _legacyCommentClient,
     );
 
-    _ndgrMessageSubscription = _ndgrClient.messages.listen((AppMessage message) {
+    _ndgrMessageSubscription =
+        _ndgrClient.messages.listen((AppMessage message) {
       _timelineStore.add(message);
       widget.statisticsStore?.recordComment(userId: message.userId);
     });
