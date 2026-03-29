@@ -3,6 +3,7 @@ import 'dart:developer';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -13,6 +14,7 @@ import 'data/auth/user_session_store.dart';
 import 'data/comment_log/comment_log_writer.dart';
 import 'data/connection/program_info_resolver.dart';
 import 'data/follow/follow_program_repository.dart';
+import 'data/foreground_service/foreground_service_manager.dart';
 import 'data/connection/web_socket_channel_legacy_web_socket.dart';
 import 'data/user/user_color_store.dart';
 import 'data/user/user_name_resolver.dart';
@@ -49,6 +51,12 @@ Future<void> main() async {
   // Remove user color entries not accessed for over 1 year.
   unawaited(userColorStore.cleanup());
 
+  ForegroundServiceManager? foregroundServiceManager;
+  if (Platform.isAndroid) {
+    foregroundServiceManager = ForegroundServiceManager();
+    foregroundServiceManager.init();
+  }
+
   runApp(
     ComeruneApp(
       settingsStore: settingsStore,
@@ -56,6 +64,7 @@ Future<void> main() async {
       userSessionStore: userSessionStore,
       commentLogWriter: commentLogWriter,
       userColorStore: userColorStore,
+      foregroundServiceManager: foregroundServiceManager,
     ),
   );
 }
@@ -68,6 +77,7 @@ class ComeruneApp extends StatefulWidget {
     required this.userSessionStore,
     this.commentLogWriter,
     this.userColorStore,
+    this.foregroundServiceManager,
   });
 
   final SettingsStore settingsStore;
@@ -75,6 +85,7 @@ class ComeruneApp extends StatefulWidget {
   final UserSessionStore userSessionStore;
   final CommentLogWriter? commentLogWriter;
   final UserColorStore? userColorStore;
+  final ForegroundServiceManager? foregroundServiceManager;
 
   @override
   State<ComeruneApp> createState() => _ComeruneAppState();
@@ -98,6 +109,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
   late final ValueNotifier<AppThemeMode> _themeModeNotifier;
   late final UserNameResolver _userNameResolver;
   late final FollowProgramRepository _followProgramRepository;
+  ConnectionStatus? _lastForegroundServiceStatus;
 
   @override
   void initState() {
@@ -111,6 +123,9 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _userNameResolver = UserNameResolver();
     _followProgramRepository = FollowProgramRepository();
     _timelineStore = TimelineStore(capacity: _ndgrHistoryCount);
+
+    _programTitleNotifier.addListener(_onProgramTitleChanged);
+
     _sessionWsClient = _SessionWsClientAdapter(
       lvProvider: () => _currentLv,
       userSessionProvider: () => widget.userSessionStore.load(),
@@ -141,6 +156,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
       ndgrClient: _ndgrClient,
       legacyCommentClient: _legacyCommentClient,
     );
+    _connectionSupervisor.addListener(_onConnectionStatusChanged);
 
     _ndgrMessageSubscription = _ndgrClient.messages.listen(_timelineStore.add);
     _legacyMessageSubscription = _legacyCommentClient.messages.listen(
@@ -150,6 +166,9 @@ class _ComeruneAppState extends State<ComeruneApp> {
 
   @override
   void dispose() {
+    _connectionSupervisor.removeListener(_onConnectionStatusChanged);
+    _programTitleNotifier.removeListener(_onProgramTitleChanged);
+    unawaited(widget.foregroundServiceManager?.stop());
     unawaited(_ndgrMessageSubscription.cancel());
     unawaited(_legacyMessageSubscription.cancel());
     _connectionSupervisor.dispose();
@@ -171,6 +190,83 @@ class _ComeruneAppState extends State<ComeruneApp> {
     setState(() {});
   }
 
+  void _onConnectionStatusChanged() {
+    final ConnectionStatus current = _connectionSupervisor.status;
+    if (current == _lastForegroundServiceStatus) {
+      return;
+    }
+    _lastForegroundServiceStatus = current;
+
+    final ForegroundServiceManager? manager =
+        widget.foregroundServiceManager;
+    if (manager == null) {
+      return;
+    }
+
+    switch (current) {
+      case ConnectionStatus.connectingSessionWs:
+      case ConnectionStatus.resolvingEndpoints:
+      case ConnectionStatus.streamingNdgr:
+      case ConnectionStatus.streamingLegacy:
+      case ConnectionStatus.reconnecting:
+        if (!manager.isRunning) {
+          final String title =
+              _programTitleNotifier.value ?? 'comerune';
+          unawaited(manager.start(
+            title: title,
+            text: _notificationTextForStatus(current),
+          ));
+        } else {
+          unawaited(manager.updateNotification(
+            title: _programTitleNotifier.value ?? 'comerune',
+            text: _notificationTextForStatus(current),
+          ));
+        }
+        break;
+      case ConnectionStatus.idle:
+      case ConnectionStatus.stopped:
+      case ConnectionStatus.ended:
+      case ConnectionStatus.failed:
+        if (manager.isRunning) {
+          unawaited(manager.stop());
+        }
+        break;
+    }
+  }
+
+  void _onProgramTitleChanged() {
+    final ForegroundServiceManager? manager =
+        widget.foregroundServiceManager;
+    if (manager == null || !manager.isRunning) {
+      return;
+    }
+    final String title =
+        _programTitleNotifier.value ?? 'comerune';
+    final ConnectionStatus current = _connectionSupervisor.status;
+    unawaited(manager.updateNotification(
+      title: title,
+      text: _notificationTextForStatus(current),
+    ));
+  }
+
+  String _notificationTextForStatus(ConnectionStatus status) {
+    switch (status) {
+      case ConnectionStatus.connectingSessionWs:
+      case ConnectionStatus.resolvingEndpoints:
+        return '接続中...';
+      case ConnectionStatus.streamingNdgr:
+      case ConnectionStatus.streamingLegacy:
+        return 'コメント受信中';
+      case ConnectionStatus.reconnecting:
+        return '再接続中...';
+      case ConnectionStatus.idle:
+      case ConnectionStatus.stopped:
+      case ConnectionStatus.ended:
+      case ConnectionStatus.failed:
+        return '';
+    }
+  }
+
   Future<void> _prepareConnection(String lv, AppSettings settings) async {
     _currentLv = lv;
     _programTitleNotifier.value = null;
@@ -181,25 +277,27 @@ class _ComeruneAppState extends State<ComeruneApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'comerune',
-      theme: AppTheme.themeDataFor(_themeModeNotifier.value),
-      home: SelectScreen(
-        connectionSupervisor: _connectionSupervisor,
-        timelineStore: _timelineStore,
-        settingsStore: widget.settingsStore,
-        initialSettings: widget.initialSettings,
-        onPrepareConnection: _prepareConnection,
-        userSessionStore: widget.userSessionStore,
-        programTitleNotifier: _programTitleNotifier,
-        resolveUserName: _userNameResolver.getCachedName,
-        requestUserNameResolve: _userNameResolver.requestResolve,
-        userNameListenable: _userNameResolver,
-        supplierUserIdNotifier: _supplierUserIdNotifier,
-        commentLogWriter: widget.commentLogWriter,
-        themeModeNotifier: _themeModeNotifier,
-        followProgramRepository: _followProgramRepository,
-        userColorStore: widget.userColorStore,
+    return WithForegroundTask(
+      child: MaterialApp(
+        title: 'comerune',
+        theme: AppTheme.themeDataFor(_themeModeNotifier.value),
+        home: SelectScreen(
+          connectionSupervisor: _connectionSupervisor,
+          timelineStore: _timelineStore,
+          settingsStore: widget.settingsStore,
+          initialSettings: widget.initialSettings,
+          onPrepareConnection: _prepareConnection,
+          userSessionStore: widget.userSessionStore,
+          programTitleNotifier: _programTitleNotifier,
+          resolveUserName: _userNameResolver.getCachedName,
+          requestUserNameResolve: _userNameResolver.requestResolve,
+          userNameListenable: _userNameResolver,
+          supplierUserIdNotifier: _supplierUserIdNotifier,
+          commentLogWriter: widget.commentLogWriter,
+          themeModeNotifier: _themeModeNotifier,
+          followProgramRepository: _followProgramRepository,
+          userColorStore: widget.userColorStore,
+        ),
       ),
     );
   }
