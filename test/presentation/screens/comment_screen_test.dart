@@ -1807,6 +1807,64 @@ void main() {
     });
   });
 
+  group('Comment timestamp elapsed display', () {
+    testWidgets('shows elapsed time in comment row when beginAt is provided', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final DateTime beginAt = DateTime(2026, 3, 22, 10, 0, 0);
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'elapsed-msg',
+          timestamp: DateTime(2026, 3, 22, 11, 23, 45),
+          userId: 'u1',
+          content: 'hello',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          beginAt: beginAt,
+        ),
+      );
+
+      // Elapsed from 10:00:00 to 11:23:45 = 1:23:45
+      expect(find.textContaining('1:23:45'), findsOneWidget);
+    });
+
+    testWidgets('falls back to local time when beginAt is null', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final DateTime msgTime = DateTime(2026, 3, 22, 14, 30, 15);
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'local-msg',
+          timestamp: msgTime,
+          userId: 'u1',
+          content: 'world',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+        ),
+      );
+
+      final DateTime local = msgTime.toLocal();
+      final String hh = local.hour.toString().padLeft(2, '0');
+      final String mm = local.minute.toString().padLeft(2, '0');
+      final String ss = local.second.toString().padLeft(2, '0');
+      expect(find.textContaining('$hh:$mm:$ss'), findsOneWidget);
+    });
+  });
+
   group('Comment log stats', () {
     testWidgets('shows stats sheet when connection ends with messages', (
       WidgetTester tester,

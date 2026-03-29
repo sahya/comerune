@@ -60,7 +60,8 @@ void main() {
           .subtract(const Duration(hours: 1, minutes: 2, seconds: 3));
       final String? result = formatElapsed(start);
       expect(result, isNotNull);
-      expect(result, '1:02:03');
+      // Allow ±1 second tolerance due to test execution time.
+      expect(result, anyOf('1:02:03', '1:02:02', '1:02:04'));
     });
   });
 }
