@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../comment_speech/comment_speech.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/comment_log/comment_log_stats.dart';
 import '../../domain/utils/elapsed_formatter.dart';
@@ -112,6 +113,8 @@ class CommentScreen extends StatefulWidget {
     this.viewerCount,
     this.totalCommentCount = 0,
     this.activeUserCount = 0,
+    this.speechPlatform,
+    this.speechSettings = const SpeechSettings(enabled: false),
   });
 
   final String lv;
@@ -183,6 +186,14 @@ class CommentScreen extends StatefulWidget {
   final int totalCommentCount;
   final int activeUserCount;
 
+  /// The platform channel bridge for VoiceVox speech synthesis.
+  /// Null when the speech plugin is not available.
+  final CommentSpeechPlatform? speechPlatform;
+
+  /// VoiceVox speech configuration. [SpeechSettings.enabled] reflects
+  /// whether auto-read is active with the VoiceVox engine.
+  final SpeechSettings speechSettings;
+
   @override
   State<CommentScreen> createState() => _CommentScreenState();
 }
@@ -198,6 +209,12 @@ class _CommentScreenState extends State<CommentScreen> {
   CommentSortOrder _sortOrder = CommentSortOrder.ascending;
   final Set<String> _pinnedMessageIds = <String>{};
 
+  bool _speechInitializing = false;
+  bool _speechInitialized = false;
+  bool _speechStarted = false;
+  String _speechEngineState = '';
+  StreamSubscription<SpeechEvent>? _speechEventSub;
+
   @override
   void initState() {
     super.initState();
@@ -206,6 +223,14 @@ class _CommentScreenState extends State<CommentScreen> {
     widget.connectionSupervisor.addListener(_handleConnectionChanged);
 
     _requestUserNameResolution(widget.messages);
+
+    if (widget.speechSettings.enabled && widget.speechPlatform != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          unawaited(_initializeAndStartSpeech());
+        }
+      });
+    }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToEdge(animated: false);
@@ -235,6 +260,10 @@ class _CommentScreenState extends State<CommentScreen> {
       _cleanUpStalePinnedIds();
     }
 
+    if (oldWidget.speechSettings != widget.speechSettings) {
+      unawaited(_handleSpeechSettingsChanged(oldWidget.speechSettings));
+    }
+
     final bool hasNewMessages =
         _hasNewMessages(oldWidget.messages, widget.messages);
     if (hasNewMessages) {
@@ -243,6 +272,9 @@ class _CommentScreenState extends State<CommentScreen> {
         widget.messages,
       );
       _processNicknameComments(oldWidget.messages, widget.messages);
+      if (_speechStarted && widget.speechSettings.enabled) {
+        _submitNewCommentsForSpeech(oldWidget.messages, widget.messages);
+      }
       if (_autoScrollEnabled) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _scrollToEdge();
@@ -253,6 +285,10 @@ class _CommentScreenState extends State<CommentScreen> {
 
   @override
   void dispose() {
+    _speechEventSub?.cancel();
+    if (_speechStarted) {
+      unawaited(widget.speechPlatform?.stop(clearQueue: true));
+    }
     widget.connectionSupervisor.removeListener(_handleConnectionChanged);
     _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
@@ -301,6 +337,160 @@ class _CommentScreenState extends State<CommentScreen> {
       if (userId != null && userId.isNotEmpty) {
         request(userId);
       }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Speech (VoiceVox) integration
+  // ---------------------------------------------------------------------------
+
+  Future<void> _initializeAndStartSpeech() async {
+    if (_speechInitializing) {
+      return;
+    }
+    final CommentSpeechPlatform? platform = widget.speechPlatform;
+    if (platform == null) {
+      return;
+    }
+    _speechInitializing = true;
+
+    // Check if engine is already ready from a previous session.
+    if (!_speechInitialized) {
+      try {
+        final SpeechRuntimeStatus status = await platform.getStatus();
+        if (status.engineState == 'READY') {
+          _speechInitialized = true;
+        }
+      } catch (_) {
+        // Engine not yet initialized — proceed to setup dialog.
+      }
+    }
+
+    // Show setup dialog for first-time download & initialization.
+    if (!_speechInitialized) {
+      if (!mounted) {
+        _speechInitializing = false;
+        return;
+      }
+      final bool success = await VoicevoxSetupDialog.show(context, platform);
+      if (!success || !mounted) {
+        _speechInitializing = false;
+        return;
+      }
+      _speechInitialized = true;
+    }
+
+    // Configure, subscribe to events, and start.
+    try {
+      await platform.updateSettings(widget.speechSettings);
+      await platform.start();
+
+      _speechEventSub?.cancel();
+      _speechEventSub = platform.events.listen(_onSpeechEvent);
+
+      if (mounted) {
+        setState(() {
+          _speechStarted = true;
+          _speechEngineState = 'READY';
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _speechEngineState = 'ERROR';
+        });
+      }
+    } finally {
+      _speechInitializing = false;
+    }
+  }
+
+  Future<void> _handleSpeechSettingsChanged(
+    SpeechSettings oldSettings,
+  ) async {
+    if (!oldSettings.enabled && widget.speechSettings.enabled) {
+      // Speech just enabled.
+      await _initializeAndStartSpeech();
+    } else if (oldSettings.enabled && !widget.speechSettings.enabled) {
+      // Speech just disabled.
+      await _stopSpeech();
+    } else if (widget.speechSettings.enabled && _speechStarted) {
+      // Settings changed while active — push update to the engine.
+      try {
+        await widget.speechPlatform?.updateSettings(widget.speechSettings);
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _stopSpeech() async {
+    if (_speechStarted) {
+      try {
+        await widget.speechPlatform?.stop(clearQueue: true);
+      } catch (_) {}
+      if (mounted) {
+        setState(() {
+          _speechStarted = false;
+          _speechEngineState = '';
+        });
+      }
+    }
+  }
+
+  void _onSpeechEvent(SpeechEvent event) {
+    if (event.type == SpeechEventType.engineStateChanged) {
+      final String state = event.payload['state'] as String? ?? '';
+      if (mounted) {
+        setState(() {
+          _speechEngineState = state;
+        });
+      }
+    }
+  }
+
+  void _submitNewCommentsForSpeech(
+    List<AppMessage> oldMessages,
+    List<AppMessage> newMessages,
+  ) {
+    final CommentSpeechPlatform? platform = widget.speechPlatform;
+    if (platform == null) {
+      return;
+    }
+
+    int start = 0;
+    if (oldMessages.isNotEmpty && newMessages.isNotEmpty) {
+      final String oldTailId = oldMessages.last.id;
+      for (int i = newMessages.length - 1; i >= 0; i--) {
+        if (newMessages[i].id == oldTailId) {
+          start = i + 1;
+          break;
+        }
+      }
+    }
+
+    for (int i = start; i < newMessages.length; i++) {
+      final AppMessage message = newMessages[i];
+      if (message.type != AppMessageType.chat) {
+        continue;
+      }
+      // Skip NG users.
+      final String? userId = message.userId;
+      if (userId != null && widget.ngUserIds.contains(userId)) {
+        continue;
+      }
+      // Skip star-prefix hidden comments.
+      if (widget.starPrefixHidingEnabled && message.content.startsWith('☆')) {
+        continue;
+      }
+
+      final RawComment comment = RawComment(
+        id: message.id,
+        text: message.content,
+        userId: message.userId,
+        postedAtEpochMs: message.timestamp.millisecondsSinceEpoch,
+      );
+      unawaited(
+        platform.submitComment(comment).then((_) {}).catchError((_) {}),
+      );
     }
   }
 
@@ -379,6 +569,14 @@ class _CommentScreenState extends State<CommentScreen> {
                 overflow: TextOverflow.ellipsis,
               ),
               actions: <Widget>[
+                if (widget.speechSettings.enabled)
+                  _SpeechStatusIcon(
+                    key: const Key('speech-status-icon'),
+                    engineState: _speechEngineState,
+                    isStarted: _speechStarted,
+                    isInitialized: _speechInitialized,
+                    themeColors: themeColors,
+                  ),
                 if (widget.commentLogWriter != null)
                   IconButton(
                     key: const Key('save-comment-log-button'),
@@ -1698,5 +1896,53 @@ class _CommentRowState extends State<_CommentRow> {
 
     return message.type == AppMessageType.notification &&
         message.content == kLegacyUnsupportedFormatMessage;
+  }
+}
+
+class _SpeechStatusIcon extends StatelessWidget {
+  const _SpeechStatusIcon({
+    super.key,
+    required this.engineState,
+    required this.isStarted,
+    required this.isInitialized,
+    required this.themeColors,
+  });
+
+  final String engineState;
+  final bool isStarted;
+  final bool isInitialized;
+  final AppThemeColors themeColors;
+
+  @override
+  Widget build(BuildContext context) {
+    final IconData icon;
+    final Color color;
+    final String tooltip;
+
+    if (!isInitialized) {
+      icon = Icons.hourglass_top;
+      color = themeColors.subtleTextColor;
+      tooltip = '読み上げ: 初期化中';
+    } else if (!isStarted) {
+      icon = Icons.volume_off;
+      color = themeColors.subtleTextColor;
+      tooltip = '読み上げ: 停止中';
+    } else if (engineState == 'ERROR') {
+      icon = Icons.volume_off;
+      color = themeColors.statusDisconnected;
+      tooltip = '読み上げ: エラー';
+    } else {
+      icon = Icons.volume_up;
+      color = themeColors.statusConnected;
+      tooltip = '読み上げ: 準備完了';
+    }
+
+    return Tooltip(
+      message: tooltip,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Icon(icon, size: 20, color: color),
+      ),
+    );
   }
 }

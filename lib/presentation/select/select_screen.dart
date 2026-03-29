@@ -15,6 +15,7 @@ import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
+import '../../comment_speech/comment_speech.dart';
 import '../../domain/utils/lv_parser.dart';
 import '../screens/comment_screen.dart';
 import '../screens/settings_screen.dart';
@@ -98,6 +99,8 @@ class _SelectScreenState extends State<SelectScreen> {
     (colors: const <String, int>{}, nicknames: const <String, String>{}),
   );
   String? _currentBroadcasterId;
+  final MethodChannelCommentSpeech _speechPlatform =
+      MethodChannelCommentSpeech();
 
   static const Duration _followRefreshInterval = Duration(seconds: 60);
 
@@ -417,8 +420,26 @@ class _SelectScreenState extends State<SelectScreen> {
           viewerCount: widget.statisticsStore?.viewerCount,
           totalCommentCount: widget.statisticsStore?.totalCommentCount ?? 0,
           activeUserCount: widget.statisticsStore?.activeUserCount ?? 0,
+          speechPlatform: _speechPlatform,
+          speechSettings: _buildSpeechSettings(),
         );
       },
+    );
+  }
+
+  SpeechSettings _buildSpeechSettings() {
+    final AppSettings s = _settingsNotifier.value;
+    final bool active =
+        s.autoReadEnabled && s.speechEngine == SpeechEngine.voicevox;
+    return SpeechSettings(
+      enabled: active,
+      speakerId: s.voicevoxSpeaker,
+      speedScale: s.voicevoxSpeed,
+      pitchScale: s.voicevoxPitch,
+      intonationScale: s.voicevoxIntonation,
+      volumeScale: s.voicevoxVolume,
+      maxQueueSize: s.queueLimit,
+      ngWords: s.ngWordList,
     );
   }
 
