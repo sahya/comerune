@@ -1,10 +1,7 @@
-# リリースノート (2026-03-28 16:00 JST以降)
+# リリースノート (2026-03-28)
 
 ## 新機能
 
-- WebViewによるニコニコログイン画面を追加し、programinfo API方式での接続に移行 (fix-websocket-upgrade)
-- プログラムタイトル表示、コメント昇順/降順ソート切り替え、ユーザー名解決機能を追加 (resolve-ids-sort-comments)
-- ユーザー名解決のオン/オフ設定を追加
 - フォロー中の放送者リストを接続画面に追加。アイコン・タイトル・経過時間を表示し、タップで即接続 (#94)
 - ロングタップでユーザー詳細表示。NG登録/解除、コメント履歴の確認が可能 (#80)
 - NGユーザーID管理画面を設定に追加。配信終了後でもNG解除が可能に (#91)
@@ -20,16 +17,9 @@
 - 放送者名をprograminfo APIから直接取得し、AppBarに即時表示 (#86)
 - コメント行の表示間隔を縮小し、一画面の表示コメント数を増加 (#96)
 
-## セキュリティ・認証
-
-- ユーザーセッション情報をflutter_secure_storageに移行
-- AndroidのhttpOnly Cookie抽出にCookieManagerを使用
-
 ## 内部改善
 
 - flutter analyze の info 指摘を全件解消 (#93)
-- CI/CDパイプライン (flutter analyze/format/test) を追加 (#64)
-- Renovate設定を追加・強化 (#53)
+- CI/CDパイプライン・Renovate初期設定を追加 (#64)
 - GitHub ActionsをコミットSHAに固定 (pinact) (#62)
 - Trivyによるセキュリティスキャンワークフローを追加 (#65)
-- CLAUDE.mdにpost-code-update要件を追加 (#51)
