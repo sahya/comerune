@@ -80,11 +80,16 @@ void main() {
       );
       expect(
         supervisor.backoffDelayForAttempt(5),
-        const Duration(seconds: 16, milliseconds: 50),
+        const Duration(seconds: 8, milliseconds: 50),
       );
       expect(
-        supervisor.backoffDelayForAttempt(6),
-        const Duration(seconds: 16, milliseconds: 60),
+        supervisor.backoffDelayForAttempt(9),
+        const Duration(seconds: 30, milliseconds: 90),
+      );
+      // Beyond array length → clamps to last value.
+      expect(
+        supervisor.backoffDelayForAttempt(10),
+        const Duration(seconds: 30, milliseconds: 100),
       );
     });
 
@@ -786,7 +791,7 @@ void main() {
       expect(supervisor.lastError, ConnectionErrorCode.ndgrStreamFailed);
     });
 
-    test('uses 6 as default max reconnect attempts', () async {
+    test('uses 9 as default max reconnect attempts', () async {
       final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
         endpointsQueue: <SessionEndpoints>[
           SessionEndpoints(
@@ -795,7 +800,9 @@ void main() {
         ],
       );
       final FakeNdgrClient ndgrClient = FakeNdgrClient(
-        connectResults: <bool>[true, false, false, false, false, false, false],
+        connectResults: <bool>[
+          true, false, false, false, false, false, false, false, false, false,
+        ],
       );
       final ConnectionSupervisor supervisor = ConnectionSupervisor(
         sessionWsClient: sessionWsClient,
@@ -809,7 +816,7 @@ void main() {
       expect(await _startAndDrain(supervisor), isTrue);
       expect(await supervisor.onNdgrStreamStalled(), isFalse);
       expect(supervisor.status, ConnectionStatus.failed);
-      expect(supervisor.reconnectCount, 5);
+      expect(supervisor.reconnectCount, 9);
       expect(supervisor.lastError, ConnectionErrorCode.ndgrStreamFailed);
     });
 
