@@ -1,6 +1,7 @@
 import 'dart:developer' as developer;
 
 enum AppThemeMode {
+  system,
   light,
   dark,
   protanopia,
@@ -11,6 +12,8 @@ enum AppThemeMode {
 extension AppThemeModeValue on AppThemeMode {
   String get storageValue {
     switch (this) {
+      case AppThemeMode.system:
+        return 'system';
       case AppThemeMode.light:
         return 'light';
       case AppThemeMode.dark:
@@ -26,6 +29,8 @@ extension AppThemeModeValue on AppThemeMode {
 
   String get label {
     switch (this) {
+      case AppThemeMode.system:
+        return 'システム設定に従う';
       case AppThemeMode.light:
         return 'ライト';
       case AppThemeMode.dark:
@@ -41,6 +46,8 @@ extension AppThemeModeValue on AppThemeMode {
 
   static AppThemeMode fromStorageValue(String? raw) {
     switch (raw) {
+      case 'system':
+        return AppThemeMode.system;
       case 'dark':
         return AppThemeMode.dark;
       case 'protanopia':
@@ -198,6 +205,7 @@ class AppSettings {
     required this.showUserName,
     required this.resolveUserName,
     required this.commentFontSize,
+    required this.autoNicknameRegistration,
     required this.autoSaveCommentLog,
     required this.debugMode,
   }) : assert(
@@ -232,6 +240,7 @@ class AppSettings {
     showUserName: true,
     resolveUserName: true,
     commentFontSize: commentFontSizeDefault,
+    autoNicknameRegistration: true,
     autoSaveCommentLog: false,
     debugMode: false,
   );
@@ -264,8 +273,40 @@ class AppSettings {
   final bool showUserName;
   final bool resolveUserName;
   final double commentFontSize;
+  final bool autoNicknameRegistration;
   final bool autoSaveCommentLog;
   final bool debugMode;
+
+  /// Parses [ngWords] into a list of lower-cased NG word strings.
+  ///
+  /// Each line is trimmed and lower-cased; blank lines are ignored.
+  /// The result is pre-lowered so that callers can compare with a single
+  /// [String.contains] against lower-cased content.
+  List<String> get ngWordList {
+    if (ngWords.trim().isEmpty) {
+      return const <String>[];
+    }
+    return ngWords
+        .split('\n')
+        .map((String w) => w.trim())
+        .where((String w) => w.isNotEmpty)
+        .map((String w) => w.toLowerCase())
+        .toList();
+  }
+
+  /// Returns `true` when [content] contains any of the configured NG words.
+  ///
+  /// Matching is case-insensitive and uses plain substring search.
+  bool containsNgWord(String content) {
+    final List<String> words = ngWordList;
+    if (words.isEmpty) {
+      return false;
+    }
+    final String lowerContent = content.toLowerCase();
+    return words.any(
+      (String word) => lowerContent.contains(word),
+    );
+  }
 
   Set<String> get ngUserIdSet {
     if (ngUserIds.trim().isEmpty) {
@@ -357,6 +398,7 @@ class AppSettings {
     bool? showUserName,
     bool? resolveUserName,
     double? commentFontSize,
+    bool? autoNicknameRegistration,
     bool? autoSaveCommentLog,
     bool? debugMode,
   }) {
@@ -386,6 +428,8 @@ class AppSettings {
       showUserName: showUserName ?? this.showUserName,
       resolveUserName: resolveUserName ?? this.resolveUserName,
       commentFontSize: commentFontSize ?? this.commentFontSize,
+      autoNicknameRegistration:
+          autoNicknameRegistration ?? this.autoNicknameRegistration,
       autoSaveCommentLog: autoSaveCommentLog ?? this.autoSaveCommentLog,
       debugMode: debugMode ?? this.debugMode,
     );

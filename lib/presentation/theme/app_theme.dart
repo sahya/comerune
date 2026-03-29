@@ -150,8 +150,23 @@ class AppTheme {
     pinnedMessageBackground: Color(0xFFFFEBEE),
   );
 
+  /// Resolves [AppThemeMode.system] to a concrete mode based on [brightness].
+  /// Non-system modes are returned as-is.
+  static AppThemeMode resolveEffectiveMode(
+    AppThemeMode mode,
+    Brightness brightness,
+  ) {
+    if (mode == AppThemeMode.system) {
+      return brightness == Brightness.dark
+          ? AppThemeMode.dark
+          : AppThemeMode.light;
+    }
+    return mode;
+  }
+
   static AppThemeColors colorsFor(AppThemeMode mode) {
     switch (mode) {
+      case AppThemeMode.system:
       case AppThemeMode.light:
         return _lightColors;
       case AppThemeMode.dark:
@@ -167,6 +182,7 @@ class AppTheme {
 
   static ThemeData themeDataFor(AppThemeMode mode) {
     switch (mode) {
+      case AppThemeMode.system:
       case AppThemeMode.light:
         return _lightTheme;
       case AppThemeMode.dark:

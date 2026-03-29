@@ -5,11 +5,13 @@ import 'package:flutter/rendering.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../data/comment_log/comment_log_writer.dart';
+import '../../domain/comment_log/comment_log_stats.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
 import '../theme/app_theme.dart';
+import 'comment_log_stats_sheet.dart';
 import 'user_detail_sheet.dart';
 
 const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
@@ -89,10 +91,15 @@ class CommentScreen extends StatefulWidget {
     this.commentLogWriter,
     this.autoSaveCommentLog = false,
     this.ngUserIds = const <String>{},
+    this.ngWords = const <String>[],
     this.onToggleNgUser,
     this.userColorMap = const <String, int>{},
     this.onUserColorChanged,
     this.onUserColorRemoved,
+    this.userNicknameMap = const <String, String>{},
+    this.onNicknameChanged,
+    this.onNicknameRemoved,
+    this.autoNicknameRegistration = true,
     required this.themeMode,
   });
 
@@ -125,6 +132,9 @@ class CommentScreen extends StatefulWidget {
   /// Set of user IDs marked as NG (blocked).
   final Set<String> ngUserIds;
 
+  /// List of NG words for content-based filtering (case-insensitive).
+  final List<String> ngWords;
+
   /// Called to toggle NG status for a user.
   final void Function(String userId)? onToggleNgUser;
 
@@ -136,6 +146,18 @@ class CommentScreen extends StatefulWidget {
 
   /// Called when the user removes a custom comment color.
   final void Function(String userId)? onUserColorRemoved;
+
+  /// Per-user nickname (コテハン) map. Keys are user IDs, values are nicknames.
+  final Map<String, String> userNicknameMap;
+
+  /// Called when a nickname is set or updated for a user.
+  final void Function(String userId, String nickname)? onNicknameChanged;
+
+  /// Called when a nickname is removed for a user.
+  final void Function(String userId)? onNicknameRemoved;
+
+  /// Whether automatic nickname registration via `@name` comments is enabled.
+  final bool autoNicknameRegistration;
 
   final AppThemeMode themeMode;
 
@@ -198,6 +220,7 @@ class _CommentScreenState extends State<CommentScreen> {
         oldWidget.messages,
         widget.messages,
       );
+      _processNicknameComments(oldWidget.messages, widget.messages);
       if (_autoScrollEnabled) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _scrollToEdge();
@@ -259,6 +282,48 @@ class _CommentScreenState extends State<CommentScreen> {
     }
   }
 
+  void _processNicknameComments(
+    List<AppMessage> oldMessages,
+    List<AppMessage> newMessages,
+  ) {
+    if (!widget.autoNicknameRegistration || widget.onNicknameChanged == null) {
+      return;
+    }
+
+    int start = 0;
+    if (oldMessages.isNotEmpty && newMessages.isNotEmpty) {
+      final String oldTailId = oldMessages.last.id;
+      for (int i = newMessages.length - 1; i >= 0; i--) {
+        if (newMessages[i].id == oldTailId) {
+          start = i + 1;
+          break;
+        }
+      }
+    }
+
+    for (int i = start; i < newMessages.length; i++) {
+      final AppMessage message = newMessages[i];
+      if (message.type != AppMessageType.chat) {
+        continue;
+      }
+      final String? userId = message.userId;
+      if (userId == null || userId.isEmpty) {
+        continue;
+      }
+      final String content = message.content;
+      if (!content.startsWith('@')) {
+        continue;
+      }
+      final String nickname = content.substring(1).trim();
+      if (nickname.isEmpty) {
+        // `@` のみ → コテハン解除
+        widget.onNicknameRemoved?.call(userId);
+      } else {
+        widget.onNicknameChanged!.call(userId, nickname);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -278,8 +343,11 @@ class _CommentScreenState extends State<CommentScreen> {
 
           final List<AppMessage> sortedMessages =
               _applySortOrder(visibleMessages);
-          final AppThemeColors themeColors =
-              AppTheme.colorsFor(widget.themeMode);
+          final AppThemeMode effectiveMode = AppTheme.resolveEffectiveMode(
+            widget.themeMode,
+            MediaQuery.platformBrightnessOf(context),
+          );
+          final AppThemeColors themeColors = AppTheme.colorsFor(effectiveMode);
 
           return Scaffold(
             appBar: AppBar(
@@ -416,6 +484,19 @@ class _CommentScreenState extends State<CommentScreen> {
                   Navigator.of(sheetContext).pop();
                 }
               : null,
+          nickname: widget.userNicknameMap[userId],
+          onNicknameChanged: widget.onNicknameChanged != null
+              ? (String nickname) {
+                  widget.onNicknameChanged!.call(userId, nickname);
+                  Navigator.of(sheetContext).pop();
+                }
+              : null,
+          onNicknameRemoved: widget.onNicknameRemoved != null
+              ? () {
+                  widget.onNicknameRemoved!.call(userId);
+                  Navigator.of(sheetContext).pop();
+                }
+              : null,
           onToggleNgUser: () {
             widget.onToggleNgUser?.call(userId);
             Navigator.of(sheetContext).pop();
@@ -496,10 +577,14 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   String? _resolveDisplayName(AppMessage message) {
+    final String? userId = message.userId;
+    // Nickname (コテハン) takes highest priority.
+    if (userId != null && widget.userNicknameMap.containsKey(userId)) {
+      return widget.userNicknameMap[userId];
+    }
     if (message.userName != null) {
       return message.userName;
     }
-    final String? userId = message.userId;
     if (userId == null) {
       return null;
     }
@@ -621,6 +706,10 @@ class _CommentScreenState extends State<CommentScreen> {
 
     if (widget.autoSaveCommentLog && _isAutoSaveTrigger(currentStatus)) {
       unawaited(_saveLogAuto());
+    }
+
+    if (!_isStoppingForExit && _isStatsTrigger(currentStatus)) {
+      _showStatsSheet();
     }
 
     if (_lastStatus != ConnectionStatus.failed &&
@@ -748,6 +837,15 @@ class _CommentScreenState extends State<CommentScreen> {
       return false;
     }
 
+    if (widget.ngWords.isNotEmpty) {
+      final String lowerContent = message.content.toLowerCase();
+      for (final String word in widget.ngWords) {
+        if (lowerContent.contains(word)) {
+          return false;
+        }
+      }
+    }
+
     return true;
   }
 
@@ -805,6 +903,55 @@ class _CommentScreenState extends State<CommentScreen> {
       case ConnectionStatus.reconnecting:
         return false;
     }
+  }
+
+  bool _isStatsTrigger(ConnectionStatus status) {
+    if (_lastStatus == status) {
+      return false;
+    }
+    switch (status) {
+      case ConnectionStatus.stopped:
+      case ConnectionStatus.ended:
+        return true;
+      case ConnectionStatus.idle:
+      case ConnectionStatus.connectingSessionWs:
+      case ConnectionStatus.resolvingEndpoints:
+      case ConnectionStatus.streamingNdgr:
+      case ConnectionStatus.streamingLegacy:
+      case ConnectionStatus.reconnecting:
+      case ConnectionStatus.failed:
+        return false;
+    }
+  }
+
+  void _showStatsSheet() {
+    final bool hasMessages = widget.messages.any(_shouldDisplayMessage);
+    if (!hasMessages) {
+      return;
+    }
+
+    final CommentLogStats stats = CommentLogStats.fromMessages(
+      widget.messages,
+      ngUserIds: widget.ngUserIds,
+    );
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        builder: (BuildContext sheetContext) {
+          return CommentLogStatsSheet(
+            stats: stats,
+            themeMode: widget.themeMode,
+            programTitle: widget.programTitle,
+            lv: widget.lv,
+          );
+        },
+      );
+    });
   }
 
   Future<void> _saveLogManual() async {
