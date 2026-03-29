@@ -20,6 +20,15 @@ package com.example.comerune.speech.infrastructure.engine
 object NativeVoicevoxBridge {
 
     init {
+        // Load ONNX Runtime first so that it is already in the process when
+        // voicevox_core calls dlopen(). Without this, Android's linker
+        // namespace isolation prevents the C++ dlopen from finding the library.
+        try {
+            System.loadLibrary("voicevox_onnxruntime")
+        } catch (_: UnsatisfiedLinkError) {
+            // Library may not be available on all architectures (e.g. emulator).
+            // voicevox_core will report a clear error in nativeInitialize().
+        }
         System.loadLibrary("voicevox_jni")
     }
 
