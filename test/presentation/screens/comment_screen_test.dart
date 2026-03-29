@@ -1841,6 +1841,8 @@ void main() {
       // Verify the periodic timer is running after late beginAt.
       await tester.pump(const Duration(seconds: 1));
       expect(elapsedFinder, findsOneWidget);
+      final Text updated = tester.widget(elapsedFinder);
+      expect(updated.data, matches(RegExp(r'^\d+:\d{2}:\d{2}$')));
     });
   });
 
