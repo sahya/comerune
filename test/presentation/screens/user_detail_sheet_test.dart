@@ -148,6 +148,117 @@ void main() {
 
       expect(toggleCount, 1);
     });
+
+    testWidgets('shows color palette when onColorChanged is provided', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildSheet(
+          userId: '12345',
+          allMessages: const <AppMessage>[],
+          onColorChanged: (_) {},
+        ),
+      );
+      await openSheet(tester);
+
+      expect(find.text('コメント色'), findsOneWidget);
+      expect(find.byKey(const Key('user-color-palette')), findsOneWidget);
+    });
+
+    testWidgets('hides color palette when onColorChanged is null', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildSheet(
+          userId: '12345',
+          allMessages: const <AppMessage>[],
+        ),
+      );
+      await openSheet(tester);
+
+      expect(find.text('コメント色'), findsNothing);
+      expect(find.byKey(const Key('user-color-palette')), findsNothing);
+    });
+
+    testWidgets('tapping a color calls onColorChanged', (
+      WidgetTester tester,
+    ) async {
+      int? selectedColor;
+
+      await tester.pumpWidget(
+        _buildSheet(
+          userId: '12345',
+          allMessages: const <AppMessage>[],
+          onColorChanged: (int value) {
+            selectedColor = value;
+          },
+        ),
+      );
+      await openSheet(tester);
+
+      // Tap the first color in the palette.
+      final int firstColorValue = kUserColorPalette.first.toARGB32();
+      await tester.tap(find.byKey(Key('user-color-$firstColorValue')));
+      await tester.pumpAndSettle();
+
+      expect(selectedColor, firstColorValue);
+    });
+
+    testWidgets('shows reset button when currentColorValue is set', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildSheet(
+          userId: '12345',
+          allMessages: const <AppMessage>[],
+          currentColorValue: kUserColorPalette.first.toARGB32(),
+          onColorChanged: (_) {},
+          onColorRemoved: () {},
+        ),
+      );
+      await openSheet(tester);
+
+      expect(find.text('リセット'), findsOneWidget);
+    });
+
+    testWidgets('hides reset button when currentColorValue is null', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildSheet(
+          userId: '12345',
+          allMessages: const <AppMessage>[],
+          onColorChanged: (_) {},
+        ),
+      );
+      await openSheet(tester);
+
+      expect(find.text('リセット'), findsNothing);
+    });
+
+    testWidgets('tapping reset calls onColorRemoved', (
+      WidgetTester tester,
+    ) async {
+      bool removeCalled = false;
+
+      await tester.pumpWidget(
+        _buildSheet(
+          userId: '12345',
+          allMessages: const <AppMessage>[],
+          currentColorValue: kUserColorPalette.first.toARGB32(),
+          onColorChanged: (_) {},
+          onColorRemoved: () {
+            removeCalled = true;
+          },
+        ),
+      );
+      await openSheet(tester);
+
+      await tester.tap(find.byKey(const Key('user-color-reset-button')));
+      await tester.pumpAndSettle();
+
+      expect(removeCalled, isTrue);
+    });
   });
 }
 
@@ -157,6 +268,9 @@ Widget _buildSheet({
   required List<AppMessage> allMessages,
   bool isNgUser = false,
   VoidCallback? onToggleNgUser,
+  int? currentColorValue,
+  void Function(int)? onColorChanged,
+  VoidCallback? onColorRemoved,
 }) {
   return MaterialApp(
     home: Scaffold(
@@ -173,6 +287,9 @@ Widget _buildSheet({
                   allMessages: allMessages,
                   isNgUser: isNgUser,
                   onToggleNgUser: onToggleNgUser ?? () {},
+                  currentColorValue: currentColorValue,
+                  onColorChanged: onColorChanged,
+                  onColorRemoved: onColorRemoved,
                 ),
               );
             },
