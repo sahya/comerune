@@ -10,7 +10,6 @@ import com.example.comerune.speech.domain.model.SpeechRuntimeStatus
 import com.example.comerune.speech.domain.model.SpeechSettings
 import com.example.comerune.speech.domain.model.SubmitResult
 import com.example.comerune.speech.domain.model.TtsEngineState
-import com.example.comerune.speech.domain.model.VoicevoxConfig
 import com.example.comerune.speech.domain.normalizer.CommentNormalizer
 import com.example.comerune.speech.domain.normalizer.DuplicateDetector
 import com.example.comerune.speech.domain.player.WavPlayer
@@ -62,12 +61,7 @@ class SpeechControllerImpl(
         if (released) {
             return Result.failure(IllegalStateException("Controller has been released"))
         }
-        val config = VoicevoxConfig(
-            openJtalkDictDir = "",
-            modelDir = "",
-            defaultSpeakerId = 0
-        )
-        val result = engine.initialize(config)
+        val result = engine.initialize()
         if (result.isSuccess) {
             eventEmitter.emit(
                 SpeechEvents.engineStateChanged(TtsEngineState.READY.name)

@@ -5,7 +5,6 @@ import android.util.Log
 import com.example.comerune.speech.domain.engine.VoicevoxEngine
 import com.example.comerune.speech.domain.model.SpeechRequest
 import com.example.comerune.speech.domain.model.TtsEngineState
-import com.example.comerune.speech.domain.model.VoicevoxConfig
 import com.example.comerune.speech.domain.model.WavSynthesisResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -44,7 +43,7 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
 
     private val mutex = Mutex()
 
-    override suspend fun initialize(config: VoicevoxConfig): Result<Unit> =
+    override suspend fun initialize(): Result<Unit> =
         mutex.withLock {
             if (state == TtsEngineState.READY) {
                 return@withLock Result.success(Unit)

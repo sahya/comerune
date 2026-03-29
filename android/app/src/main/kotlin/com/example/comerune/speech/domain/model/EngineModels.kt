@@ -1,5 +1,7 @@
 package com.example.comerune.speech.domain.model
 
+// TODO: VoicevoxConfig is unused after initialize() was decoupled from config.
+//  Retained for future use when external configuration of dict/model paths is needed.
 data class VoicevoxConfig(
     val openJtalkDictDir: String,
     val modelDir: String,
