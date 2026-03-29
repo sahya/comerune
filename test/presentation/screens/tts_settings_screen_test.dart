@@ -12,7 +12,7 @@ const Key _listKey = Key('tts-settings-list');
 
 void main() {
   group('TtsSettingsScreen', () {
-    testWidgets('switches engine-specific section by radio selection', (
+    testWidgets('shows VOICEVOX section without engine selection', (
       WidgetTester tester,
     ) async {
       final SettingsStore settingsStore = SharedPreferencesSettingsStore(
@@ -22,27 +22,18 @@ void main() {
       await tester.pumpWidget(_buildScreen(settingsStore));
       await tester.pumpAndSettle();
 
-      await scrollToKeyInList(tester, _listKey, const Key('bouyomi-section'));
-      expect(
-        find.byKey(const Key('bouyomi-section'), skipOffstage: false),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('voicevox-section'), skipOffstage: false),
-        findsNothing,
-      );
-
-      await scrollToKeyInList(
-          tester, _listKey, const Key('engine-voicevox-radio'));
-      await tester.tap(
-        find.byKey(const Key('engine-voicevox-radio'), skipOffstage: false),
-      );
-      await tester.pumpAndSettle();
-
       await scrollToKeyInList(tester, _listKey, const Key('voicevox-section'));
       expect(
         find.byKey(const Key('voicevox-section'), skipOffstage: false),
         findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('engine-bouyomi-radio'), skipOffstage: false),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('engine-voicevox-radio'), skipOffstage: false),
+        findsNothing,
       );
       expect(
         find.byKey(const Key('bouyomi-section'), skipOffstage: false),
@@ -120,19 +111,10 @@ void main() {
       await tester.pumpAndSettle();
 
       await enterTextByKey(
-        tester,
-        _listKey,
-        const Key('bouyomi-host-field'),
-        '192.168.0.10',
-      );
-      await focusFieldByKey(tester, _listKey, const Key('queue-limit-field'));
-
-      await enterTextByKey(
           tester, _listKey, const Key('ng-words-field'), '^w+\$');
       await focusFieldByKey(tester, _listKey, const Key('max-delay-field'));
 
       final AppSettings loaded = await settingsStore.load();
-      expect(loaded.bouyomiHost, '192.168.0.10');
       expect(loaded.ngWords, '^w+\$');
     });
 
