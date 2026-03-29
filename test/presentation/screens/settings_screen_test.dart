@@ -21,14 +21,31 @@ void main() {
       await tester.pumpWidget(_buildScreen(settingsStore));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('bouyomi-section')), findsOneWidget);
-      expect(find.byKey(const Key('voicevox-section')), findsNothing);
+      await _scrollToKey(tester, const Key('bouyomi-section'));
+      expect(
+        find.byKey(const Key('bouyomi-section'), skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('voicevox-section'), skipOffstage: false),
+        findsNothing,
+      );
 
-      await tester.tap(find.byKey(const Key('engine-voicevox-radio')));
+      await _scrollToKey(tester, const Key('engine-voicevox-radio'));
+      await tester.tap(
+        find.byKey(const Key('engine-voicevox-radio'), skipOffstage: false),
+      );
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('voicevox-section')), findsOneWidget);
-      expect(find.byKey(const Key('bouyomi-section')), findsNothing);
+      await _scrollToKey(tester, const Key('voicevox-section'));
+      expect(
+        find.byKey(const Key('voicevox-section'), skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('bouyomi-section'), skipOffstage: false),
+        findsNothing,
+      );
     });
 
     testWidgets('shows validation error and does not save invalid queue limit',
@@ -194,6 +211,66 @@ void main() {
       expect(resolveTile.onChanged, isNull);
     });
 
+    testWidgets('theme dropdown persists selected value', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      // Default should be light
+      AppSettings loaded = await settingsStore.load();
+      expect(loaded.themeMode, AppThemeMode.light);
+
+      // Open the dropdown and select dark
+      await _scrollToKey(tester, const Key('theme-mode-dropdown'));
+      await tester.tap(
+        find.byKey(const Key('theme-mode-dropdown')),
+        warnIfMissed: false,
+      );
+      await tester.pumpAndSettle();
+
+      // Tap the dark option in the dropdown overlay
+      await tester.tap(find.text('ダーク').last);
+      await tester.pumpAndSettle();
+
+      loaded = await settingsStore.load();
+      expect(loaded.themeMode, AppThemeMode.dark);
+    });
+
+    testWidgets('theme dropdown updates themeModeNotifier immediately', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final ValueNotifier<AppThemeMode> themeNotifier =
+          ValueNotifier<AppThemeMode>(AppThemeMode.light);
+
+      await tester.pumpWidget(
+        _buildScreen(settingsStore, themeModeNotifier: themeNotifier),
+      );
+      await tester.pumpAndSettle();
+
+      expect(themeNotifier.value, AppThemeMode.light);
+
+      // Open dropdown and select dark
+      await _scrollToKey(tester, const Key('theme-mode-dropdown'));
+      await tester.tap(
+        find.byKey(const Key('theme-mode-dropdown')),
+        warnIfMissed: false,
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('ダーク').last);
+      await tester.pumpAndSettle();
+
+      expect(themeNotifier.value, AppThemeMode.dark);
+
+      themeNotifier.dispose();
+    });
+
     testWidgets('saves text fields when focus is lost', (
       WidgetTester tester,
     ) async {
@@ -223,11 +300,13 @@ void main() {
 Widget _buildScreen(
   SettingsStore settingsStore, {
   UserSessionStore? userSessionStore,
+  ValueNotifier<AppThemeMode>? themeModeNotifier,
 }) {
   return MaterialApp(
     home: SettingsScreen(
       settingsStore: settingsStore,
       userSessionStore: userSessionStore,
+      themeModeNotifier: themeModeNotifier,
     ),
   );
 }

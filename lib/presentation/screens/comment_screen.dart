@@ -2,10 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:share_plus/share_plus.dart';
 
+import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
+import '../../domain/models/app_settings.dart';
+import '../theme/app_theme.dart';
+import 'user_detail_sheet.dart';
 
 const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
 
@@ -41,9 +46,17 @@ class CommentScreen extends StatefulWidget {
     this.connectionMethod,
     this.programTitle,
     this.broadcasterName,
+    this.broadcasterIconUrl,
+    this.beginAt,
     this.showUserName = true,
+    this.commentFontSize = commentFontSizeDefault,
     this.resolveUserName,
     this.requestUserNameResolve,
+    this.commentLogWriter,
+    this.autoSaveCommentLog = false,
+    this.ngUserIds = const <String>{},
+    this.onToggleNgUser,
+    required this.themeMode,
   });
 
   final String lv;
@@ -58,13 +71,27 @@ class CommentScreen extends StatefulWidget {
   final ConnectionMethod? connectionMethod;
   final String? programTitle;
   final String? broadcasterName;
+  final String? broadcasterIconUrl;
+  final DateTime? beginAt;
   final bool showUserName;
+  final double commentFontSize;
 
   /// Returns the cached resolved name for a user ID, or null.
   final String? Function(String userId)? resolveUserName;
 
   /// Requests asynchronous resolution of a user ID.
   final void Function(String userId)? requestUserNameResolve;
+
+  final CommentLogWriter? commentLogWriter;
+  final bool autoSaveCommentLog;
+
+  /// Set of user IDs marked as NG (blocked).
+  final Set<String> ngUserIds;
+
+  /// Called to toggle NG status for a user.
+  final void Function(String userId)? onToggleNgUser;
+
+  final AppThemeMode themeMode;
 
   @override
   State<CommentScreen> createState() => _CommentScreenState();
@@ -77,6 +104,7 @@ class _CommentScreenState extends State<CommentScreen> {
   late ConnectionStatus _lastStatus;
   bool _autoScrollEnabled = true;
   bool _isStoppingForExit = false;
+  bool _isSavingLog = false;
   CommentSortOrder _sortOrder = CommentSortOrder.ascending;
 
   @override
@@ -183,9 +211,7 @@ class _CommentScreenState extends State<CommentScreen> {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
-      // TODO(PR#20-O2): Flutter 3.24+ で onPopInvoked は deprecated。
-      //   onPopInvokedWithResult に移行する。
-      onPopInvoked: (bool didPop) {
+      onPopInvokedWithResult: (bool didPop, Object? result) {
         unawaited(_handleBackNavigation(didPop));
       },
       // TODO(PR#20-O3): AnimatedBuilder を ListenableBuilder に置き換える。
@@ -200,11 +226,27 @@ class _CommentScreenState extends State<CommentScreen> {
 
           final List<AppMessage> sortedMessages =
               _applySortOrder(visibleMessages);
+          final AppThemeColors themeColors =
+              AppTheme.colorsFor(widget.themeMode);
 
           return Scaffold(
             appBar: AppBar(
-              title: Text(widget.lv),
+              toolbarHeight: 44,
+              title: Text(
+                widget.broadcasterName ?? widget.lv,
+                key: const Key('appbar-title-text'),
+                style: const TextStyle(fontSize: 15),
+                overflow: TextOverflow.ellipsis,
+              ),
               actions: <Widget>[
+                if (widget.commentLogWriter != null)
+                  IconButton(
+                    key: const Key('save-comment-log-button'),
+                    icon: const Icon(Icons.ios_share),
+                    tooltip: 'コメントログを共有',
+                    onPressed:
+                        _isSavingLog ? null : () => unawaited(_saveLogManual()),
+                  ),
                 IconButton(
                   key: const Key('sort-toggle-button'),
                   icon: Icon(
@@ -217,20 +259,15 @@ class _CommentScreenState extends State<CommentScreen> {
                       : '古い順に切替',
                   onPressed: _toggleSortOrder,
                 ),
-                PopupMenuButton<String>(
-                  onSelected: (_) async {
-                    if (widget.onOpenSettings != null) {
+                if (widget.onOpenSettings != null)
+                  IconButton(
+                    key: const Key('settings-button'),
+                    icon: const Icon(Icons.settings),
+                    tooltip: '設定',
+                    onPressed: () async {
                       await widget.onOpenSettings!.call();
-                    }
-                  },
-                  itemBuilder: (BuildContext context) =>
-                      <PopupMenuEntry<String>>[
-                    const PopupMenuItem<String>(
-                      value: 'settings',
-                      child: Text('設定'),
-                    ),
-                  ],
-                ),
+                    },
+                  ),
               ],
             ),
             body: Column(
@@ -239,7 +276,8 @@ class _CommentScreenState extends State<CommentScreen> {
                   _ProgramTitleBar(
                     key: const Key('program-title-bar'),
                     title: widget.programTitle!,
-                    broadcasterName: widget.broadcasterName,
+                    broadcasterIconUrl: widget.broadcasterIconUrl,
+                    themeColors: themeColors,
                   ),
                 _StatusBar(
                   key: const Key('status-bar'),
@@ -247,6 +285,10 @@ class _CommentScreenState extends State<CommentScreen> {
                   supervisor: widget.connectionSupervisor,
                   debugMode: widget.debugMode,
                   connectionMethod: widget.connectionMethod,
+                  broadcasterName: widget.broadcasterName,
+                  broadcasterIconUrl: widget.broadcasterIconUrl,
+                  beginAt: widget.beginAt,
+                  themeColors: themeColors,
                 ),
                 Expanded(
                   child: ListView.builder(
@@ -257,8 +299,14 @@ class _CommentScreenState extends State<CommentScreen> {
                       final AppMessage message = sortedMessages[index];
                       return _CommentRow(
                         message: message,
+                        themeColors: themeColors,
                         resolvedUserName: _resolveDisplayName(message),
                         showUserName: widget.showUserName,
+                        fontSize: widget.commentFontSize,
+                        onLongPress:
+                            message.userId != null && message.userId!.isNotEmpty
+                                ? () => _showUserDetail(message)
+                                : null,
                       );
                     },
                   ),
@@ -269,6 +317,32 @@ class _CommentScreenState extends State<CommentScreen> {
           );
         },
       ),
+    );
+  }
+
+  void _showUserDetail(AppMessage message) {
+    final String? userId = message.userId;
+    if (userId == null || userId.isEmpty) {
+      return;
+    }
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext sheetContext) {
+        final bool isNg = widget.ngUserIds.contains(userId);
+        return UserDetailSheet(
+          userId: userId,
+          resolvedUserName: _resolveDisplayName(message),
+          allMessages: widget.messages,
+          isNgUser: isNg,
+          themeMode: widget.themeMode,
+          onToggleNgUser: () {
+            widget.onToggleNgUser?.call(userId);
+            Navigator.of(sheetContext).pop();
+          },
+        );
+      },
     );
   }
 
@@ -396,6 +470,10 @@ class _CommentScreenState extends State<CommentScreen> {
   void _handleConnectionChanged() {
     final ConnectionStatus currentStatus = widget.connectionSupervisor.status;
 
+    if (widget.autoSaveCommentLog && _isAutoSaveTrigger(currentStatus)) {
+      unawaited(_saveLogAuto());
+    }
+
     if (_lastStatus != ConnectionStatus.failed &&
         currentStatus == ConnectionStatus.failed) {
       final String message = _buildFailedSnackbarMessage();
@@ -510,11 +588,18 @@ class _CommentScreenState extends State<CommentScreen> {
       case AppMessageType.chat:
       case AppMessageType.operator:
       case AppMessageType.notification:
-        return true;
+        break;
       case AppMessageType.gift:
       case AppMessageType.nicoad:
         return false;
     }
+
+    final String? userId = message.userId;
+    if (userId != null && widget.ngUserIds.contains(userId)) {
+      return false;
+    }
+
+    return true;
   }
 
   bool _hasNewMessages(
@@ -554,6 +639,84 @@ class _CommentScreenState extends State<CommentScreen> {
     return _scrollController.position.pixels <= _autoScrollResumeThreshold;
   }
 
+  bool _isAutoSaveTrigger(ConnectionStatus status) {
+    if (_lastStatus == status) {
+      return false;
+    }
+    switch (status) {
+      case ConnectionStatus.stopped:
+      case ConnectionStatus.ended:
+      case ConnectionStatus.failed:
+        return true;
+      case ConnectionStatus.idle:
+      case ConnectionStatus.connectingSessionWs:
+      case ConnectionStatus.resolvingEndpoints:
+      case ConnectionStatus.streamingNdgr:
+      case ConnectionStatus.streamingLegacy:
+      case ConnectionStatus.reconnecting:
+        return false;
+    }
+  }
+
+  Future<void> _saveLogManual() async {
+    final bool hasMessages = widget.messages.any(_shouldDisplayMessage);
+    if (!hasMessages) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            const SnackBar(content: Text('保存するコメントがありません')),
+          );
+      }
+      return;
+    }
+
+    final CommentLogWriter? writer = widget.commentLogWriter;
+    if (writer == null) {
+      return;
+    }
+
+    setState(() {
+      _isSavingLog = true;
+    });
+
+    try {
+      final List<AppMessage> messages =
+          widget.messages.where(_shouldDisplayMessage).toList(growable: false);
+      final String? tempPath =
+          await writer.writeToTempFile(lv: widget.lv, messages: messages);
+      if (tempPath == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+            ..clearSnackBars()
+            ..showSnackBar(
+              const SnackBar(content: Text('コメントログの保存に失敗しました')),
+            );
+        }
+        return;
+      }
+
+      await Share.shareXFiles(<XFile>[XFile(tempPath)]);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSavingLog = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _saveLogAuto() async {
+    final CommentLogWriter? writer = widget.commentLogWriter;
+    if (writer == null) {
+      return;
+    }
+
+    final List<AppMessage> messages =
+        widget.messages.where(_shouldDisplayMessage).toList(growable: false);
+    await writer.save(lv: widget.lv, messages: messages);
+  }
+
   void _scrollToEdge({bool animated = true}) {
     if (!_scrollController.hasClients) {
       return;
@@ -580,125 +743,260 @@ class _ProgramTitleBar extends StatelessWidget {
   const _ProgramTitleBar({
     super.key,
     required this.title,
-    this.broadcasterName,
+    this.broadcasterIconUrl,
+    required this.themeColors,
   });
 
   final String title;
-  final String? broadcasterName;
+  final String? broadcasterIconUrl;
+  final AppThemeColors themeColors;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      color: Colors.indigo.shade50,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      color: themeColors.programTitleBarBackground,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+      child: Row(
         children: <Widget>[
-          Text(
-            title,
-            key: const Key('program-title-text'),
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          if (broadcasterName != null)
-            Text(
-              '配信者: $broadcasterName',
-              key: const Key('broadcaster-name-text'),
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade700,
-              ),
+          if (broadcasterIconUrl != null &&
+              broadcasterIconUrl!.isNotEmpty) ...<Widget>[
+            _BroadcasterIcon(
+              url: broadcasterIconUrl,
+              size: 20,
             ),
+            const SizedBox(width: 8),
+          ],
+          Expanded(
+            child: Text(
+              title,
+              key: const Key('program-title-text'),
+              style: const TextStyle(fontWeight: FontWeight.bold),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _StatusBar extends StatelessWidget {
+class _StatusBar extends StatefulWidget {
   const _StatusBar({
     super.key,
     required this.lv,
     required this.supervisor,
     required this.debugMode,
     required this.connectionMethod,
+    this.broadcasterName,
+    this.broadcasterIconUrl,
+    this.beginAt,
+    required this.themeColors,
   });
 
   final String lv;
   final ConnectionSupervisor supervisor;
   final bool debugMode;
   final ConnectionMethod? connectionMethod;
+  final String? broadcasterName;
+  final String? broadcasterIconUrl;
+  final DateTime? beginAt;
+  final AppThemeColors themeColors;
+
+  @override
+  State<_StatusBar> createState() => _StatusBarState();
+}
+
+class _StatusBarState extends State<_StatusBar> {
+  bool _collapsed = false;
+  Timer? _autoCollapseTimer;
+  Timer? _elapsedTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _autoCollapseTimer = Timer(const Duration(milliseconds: 1500), () {
+      if (mounted) {
+        setState(() {
+          _collapsed = true;
+        });
+      }
+    });
+    if (widget.beginAt != null) {
+      _elapsedTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+        if (mounted) {
+          setState(() {});
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _autoCollapseTimer?.cancel();
+    _elapsedTimer?.cancel();
+    super.dispose();
+  }
+
+  String? _elapsedLabel() {
+    final DateTime? start = widget.beginAt;
+    if (start == null) {
+      return null;
+    }
+    final Duration elapsed = DateTime.now().difference(start);
+    if (elapsed.isNegative) {
+      return null;
+    }
+    final int totalMinutes = elapsed.inMinutes;
+    if (totalMinutes < 1) {
+      return '開始直後';
+    }
+    if (totalMinutes < 60) {
+      return '$totalMinutes分経過';
+    }
+    final int hours = totalMinutes ~/ 60;
+    final int minutes = totalMinutes % 60;
+    if (minutes == 0) {
+      return '$hours時間経過';
+    }
+    return '$hours時間$minutes分経過';
+  }
+
+  void _toggle() {
+    setState(() {
+      _collapsed = !_collapsed;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final Color wifiColor =
-        supervisor.wifiIndicatorColor == WifiIndicatorColor.green
-            ? Colors.green
-            : Colors.red;
+        widget.supervisor.wifiIndicatorColor == WifiIndicatorColor.green
+            ? widget.themeColors.statusConnected
+            : widget.themeColors.statusDisconnected;
 
-    return Container(
-      width: double.infinity,
-      color: Colors.grey.shade200,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              Icon(
-                Icons.wifi,
-                key: const Key('status-wifi-icon'),
-                color: wifiColor,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'lv: $lv',
-                key: const Key('status-lv'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Wrap(
-            spacing: 12,
-            runSpacing: 4,
-            children: <Widget>[
-              Text(
-                '最終受信: ${_formatHmsOrDash(supervisor.lastReceivedAt)}',
-                key: const Key('status-last-received'),
-              ),
-              Text(
-                '再接続: ${supervisor.reconnectCount}回',
-                key: const Key('status-reconnect-count'),
-              ),
-              Text(
-                'エラー: ${_errorLabel(supervisor.lastError)}',
-                key: const Key('status-last-error'),
-              ),
-            ],
-          ),
-          if (debugMode) ...<Widget>[
-            const SizedBox(height: 4),
-            Wrap(
-              spacing: 12,
-              runSpacing: 4,
+    return Semantics(
+      button: true,
+      label: _collapsed ? 'ステータスバーを展開' : 'ステータスバーを折りたたみ',
+      child: GestureDetector(
+        onTap: _toggle,
+        child: AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          alignment: Alignment.topCenter,
+          child: Container(
+            width: double.infinity,
+            color: widget.themeColors.statusBarBackground,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(
-                  '方式: ${_connectionMethodLabel(connectionMethod)}',
-                  key: const Key('status-connection-method'),
+                Row(
+                  children: <Widget>[
+                    Icon(
+                      Icons.wifi,
+                      key: const Key('status-wifi-icon'),
+                      color: wifiColor,
+                    ),
+                    const SizedBox(width: 8),
+                    if (widget.broadcasterName != null) ...<Widget>[
+                      if (widget.broadcasterIconUrl != null &&
+                          widget.broadcasterIconUrl!.isNotEmpty) ...<Widget>[
+                        _BroadcasterIcon(
+                          url: widget.broadcasterIconUrl,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 120),
+                        child: Text(
+                          widget.broadcasterName!,
+                          key: const Key('status-broadcaster-name'),
+                          style: TextStyle(
+                            color: widget.themeColors.statusConnected,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Flexible(
+                      child: Text(
+                        'lv: ${widget.lv}',
+                        key: const Key('status-lv'),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (_elapsedLabel() case final String elapsed) ...<Widget>[
+                      const SizedBox(width: 8),
+                      Text(
+                        elapsed,
+                        key: const Key('status-elapsed'),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: widget.themeColors.subtleTextColor,
+                        ),
+                      ),
+                    ],
+                    const Spacer(),
+                    Icon(
+                      _collapsed
+                          ? Icons.keyboard_arrow_down
+                          : Icons.keyboard_arrow_up,
+                      size: 16,
+                      color: widget.themeColors.subtleTextColor,
+                    ),
+                  ],
                 ),
-                Text(
-                  'フェーズ: ${supervisor.status.code}',
-                  key: const Key('status-phase'),
-                ),
-                if ((supervisor.lastErrorDetail ?? '').isNotEmpty)
-                  Text(
-                    'エラー詳細: ${supervisor.lastErrorDetail}',
-                    key: const Key('status-last-error-detail'),
+                if (!_collapsed) ...<Widget>[
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 4,
+                    children: <Widget>[
+                      Text(
+                        '最終受信: ${_formatHmsOrDash(widget.supervisor.lastReceivedAt)}',
+                        key: const Key('status-last-received'),
+                      ),
+                      Text(
+                        '再接続: ${widget.supervisor.reconnectCount}回',
+                        key: const Key('status-reconnect-count'),
+                      ),
+                      Text(
+                        'エラー: ${_errorLabel(widget.supervisor.lastError)}',
+                        key: const Key('status-last-error'),
+                      ),
+                    ],
                   ),
+                  if (widget.debugMode) ...<Widget>[
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 4,
+                      children: <Widget>[
+                        Text(
+                          '方式: ${_connectionMethodLabel(widget.connectionMethod)}',
+                          key: const Key('status-connection-method'),
+                        ),
+                        Text(
+                          'フェーズ: ${widget.supervisor.status.code}',
+                          key: const Key('status-phase'),
+                        ),
+                        if ((widget.supervisor.lastErrorDetail ?? '')
+                            .isNotEmpty)
+                          Text(
+                            'エラー詳細: ${widget.supervisor.lastErrorDetail}',
+                            key: const Key('status-last-error-detail'),
+                          ),
+                      ],
+                    ),
+                  ],
+                ],
               ],
             ),
-          ],
-        ],
+          ),
+        ),
       ),
     );
   }
@@ -735,24 +1033,73 @@ class _StatusBar extends StatelessWidget {
   }
 }
 
-class _CommentRow extends StatelessWidget {
-  const _CommentRow({
-    required this.message,
-    this.resolvedUserName,
-    this.showUserName = true,
+class _BroadcasterIcon extends StatelessWidget {
+  const _BroadcasterIcon({
+    required this.url,
+    required this.size,
   });
 
-  final AppMessage message;
-  final String? resolvedUserName;
-  final bool showUserName;
+  final String? url;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return ClipOval(
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: url != null && url!.isNotEmpty
+            ? Image.network(
+                url!,
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+                cacheWidth: (size * 2).round(),
+                cacheHeight: (size * 2).round(),
+                errorBuilder: (_, __, ___) => Icon(
+                  Icons.person,
+                  size: size,
+                ),
+              )
+            : Icon(
+                Icons.person,
+                size: size,
+              ),
+      ),
+    );
+  }
+}
+
+class _CommentRow extends StatelessWidget {
+  const _CommentRow({
+    required this.message,
+    required this.themeColors,
+    this.resolvedUserName,
+    this.showUserName = true,
+    required this.fontSize,
+    this.onLongPress,
+  });
+
+  final AppMessage message;
+  final AppThemeColors themeColors;
+  final String? resolvedUserName;
+  final bool showUserName;
+  final double fontSize;
+  final VoidCallback? onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
       key: Key('comment-row-${message.id}'),
-      color: _backgroundColor(message),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Text(_lineText(message)),
+      onLongPress: onLongPress,
+      child: Container(
+        color: _backgroundColor(message),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+        child: Text(
+          _lineText(message),
+          style: TextStyle(fontSize: fontSize),
+        ),
+      ),
     );
   }
 
@@ -777,14 +1124,14 @@ class _CommentRow extends StatelessWidget {
 
   Color? _backgroundColor(AppMessage message) {
     if (_isLegacyUnsupportedSystemMessage(message)) {
-      return Colors.lightBlue.shade50;
+      return themeColors.notificationMessageBackground;
     }
 
     switch (message.type) {
       case AppMessageType.operator:
-        return Colors.yellow.shade100;
+        return themeColors.operatorMessageBackground;
       case AppMessageType.notification:
-        return Colors.lightBlue.shade50;
+        return themeColors.notificationMessageBackground;
       case AppMessageType.chat:
       // TODO(PR#20-O1): gift/nicoad は _shouldDisplayMessage で除外済みのため
       //   ここには到達しない。将来 gift/nicoad を表示する際に背景色を定義する。

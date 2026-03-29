@@ -11,6 +11,9 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # Dartアノテーション（@visibleForTesting等）
+  meta: ^1.9.0
+
   # WebSocket（入口WS: wss://a.live2.nicovideo.jp/wsapi/v2/watch/{lv}）
   web_socket_channel: ^3.0.1
 
@@ -40,6 +43,12 @@ dependencies:
 
   # 認証情報の暗号化保存（Android Keystore / iOS Keychain）
   flutter_secure_storage: ^10.0.0
+
+  # コメントログのファイル保存先ディレクトリ取得
+  path_provider: ^2.1.0
+
+  # コメントログの共有（Google Drive等の外部ストレージへの保存）
+  share_plus: ^10.0.0
 
 dev_dependencies:
   flutter_test:

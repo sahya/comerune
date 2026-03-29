@@ -7,16 +7,20 @@ import '../../application/settings/settings_store.dart';
 import '../../data/auth/user_session_store.dart';
 import '../../domain/models/app_settings.dart';
 import 'login_screen.dart';
+import 'favorite_user_list_screen.dart';
+import 'ng_user_list_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
     super.key,
     required this.settingsStore,
     this.userSessionStore,
+    this.themeModeNotifier,
   });
 
   final SettingsStore settingsStore;
   final UserSessionStore? userSessionStore;
+  final ValueNotifier<AppThemeMode>? themeModeNotifier;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -160,9 +164,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     _isOpeningLogin = true;
-    bool? loggedIn;
     try {
-      loggedIn = await Navigator.of(context).push<bool>(
+      await Navigator.of(context).push<bool>(
         MaterialPageRoute<bool>(
           builder: (_) => LoginScreen(userSessionStore: sessionStore),
         ),
@@ -173,11 +176,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (mounted) {
       await _refreshLoginState();
-      // After successful login, pop settings screen so the user
-      // returns to the previous screen (select or comment screen).
-      if (loggedIn == true && mounted) {
-        Navigator.of(context).pop();
-      }
     }
   }
 
@@ -230,6 +228,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _settings = next;
     });
+    if (widget.themeModeNotifier != null &&
+        widget.themeModeNotifier!.value != next.themeMode) {
+      widget.themeModeNotifier!.value = next.themeMode;
+    }
     unawaited(_saveSettings(next));
   }
 
@@ -367,14 +369,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
               children: <Widget>[
                 _Section(
+                  title: 'テーマ',
+                  children: <Widget>[
+                    DropdownButtonFormField<AppThemeMode>(
+                      key: const Key('theme-mode-dropdown'),
+                      value: settings.themeMode,
+                      decoration: const InputDecoration(
+                        labelText: '配色テーマ',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: AppThemeMode.values
+                          .map(
+                            (AppThemeMode mode) =>
+                                DropdownMenuItem<AppThemeMode>(
+                              value: mode,
+                              child: Text(mode.label),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (AppThemeMode? value) {
+                        if (value == null) {
+                          return;
+                        }
+                        _saveNextSettings(
+                          settings.copyWith(themeMode: value),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'ダークモードは夜間の視認性を向上します。\n'
+                      '色覚テーマは色の区別が難しい方に配慮した配色です。',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _Section(
                   title: 'ニコニコアカウント',
                   children: <Widget>[
                     if (_isLoggedIn) ...<Widget>[
-                      const Row(
+                      Row(
                         children: <Widget>[
-                          Icon(Icons.check_circle, color: Colors.green),
-                          SizedBox(width: 8),
-                          Text('ログイン済み'),
+                          Icon(Icons.check_circle,
+                              color: Theme.of(context).colorScheme.primary),
+                          const SizedBox(width: 8),
+                          const Text('ログイン済み'),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -418,33 +458,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       },
                     ),
                     const Text('読み上げエンジン'),
-                    RadioListTile<SpeechEngine>(
-                      key: const Key('engine-bouyomi-radio'),
-                      title: const Text('棒読みちゃん'),
-                      contentPadding: EdgeInsets.zero,
-                      value: SpeechEngine.bouyomi,
-                      groupValue: settings.speechEngine,
-                      onChanged: (SpeechEngine? value) {
-                        if (value == null) {
-                          return;
-                        }
-                        _saveNextSettings(
-                            settings.copyWith(speechEngine: value));
-                      },
-                    ),
-                    RadioListTile<SpeechEngine>(
-                      key: const Key('engine-voicevox-radio'),
-                      title: const Text('VOICEVOX'),
-                      contentPadding: EdgeInsets.zero,
-                      value: SpeechEngine.voicevox,
-                      groupValue: settings.speechEngine,
-                      onChanged: (SpeechEngine? value) {
-                        if (value == null) {
-                          return;
-                        }
-                        _saveNextSettings(
-                            settings.copyWith(speechEngine: value));
-                      },
+                    Column(
+                      children: <Widget>[
+                        RadioListTile<SpeechEngine>(
+                          key: const Key('engine-bouyomi-radio'),
+                          title: const Text('棒読みちゃん'),
+                          contentPadding: EdgeInsets.zero,
+                          value: SpeechEngine.bouyomi,
+                          groupValue: settings.speechEngine,
+                          onChanged: (SpeechEngine? value) {
+                            if (value == null) return;
+                            _saveNextSettings(
+                                settings.copyWith(speechEngine: value));
+                          },
+                        ),
+                        RadioListTile<SpeechEngine>(
+                          key: const Key('engine-voicevox-radio'),
+                          title: const Text('VOICEVOX'),
+                          contentPadding: EdgeInsets.zero,
+                          value: SpeechEngine.voicevox,
+                          groupValue: settings.speechEngine,
+                          onChanged: (SpeechEngine? value) {
+                            if (value == null) return;
+                            _saveNextSettings(
+                                settings.copyWith(speechEngine: value));
+                          },
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -668,6 +708,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         border: OutlineInputBorder(),
                       ),
                     ),
+                    const SizedBox(height: 8),
+                    ListTile(
+                      key: const Key('ng-user-list-tile'),
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.person_off),
+                      title: const Text('NGユーザーID管理'),
+                      subtitle: Text(
+                        settings.ngUserIdSet.isEmpty
+                            ? '未登録'
+                            : '${settings.ngUserIdSet.length}件登録中',
+                      ),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () async {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => NgUserListScreen(
+                              settingsStore: widget.settingsStore,
+                            ),
+                          ),
+                        );
+                        await _loadSettings();
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _Section(
+                  title: 'お気に入りユーザー',
+                  children: <Widget>[
+                    ListTile(
+                      key: const Key('favorite-user-list-tile'),
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.person_add),
+                      title: const Text('お気に入りユーザーID管理'),
+                      subtitle: Text(
+                        settings.favoriteUserIdSet.isEmpty
+                            ? '未登録'
+                            : '${settings.favoriteUserIdSet.length}件登録中',
+                      ),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () async {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => FavoriteUserListScreen(
+                              settingsStore: widget.settingsStore,
+                            ),
+                          ),
+                        );
+                        await _loadSettings();
+                      },
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -697,6 +788,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   settings.copyWith(resolveUserName: value));
                             }
                           : null,
+                    ),
+                    SwitchListTile(
+                      key: const Key('auto-save-comment-log-switch'),
+                      title: const Text('コメントログ自動保存'),
+                      subtitle: const Text('接続終了時にコメントをファイルに保存'),
+                      contentPadding: EdgeInsets.zero,
+                      value: settings.autoSaveCommentLog,
+                      onChanged: (bool value) {
+                        _saveNextSettings(
+                            settings.copyWith(autoSaveCommentLog: value));
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    _IntSliderField(
+                      key: const Key('comment-font-size-slider'),
+                      label: 'コメント文字サイズ',
+                      value: settings.commentFontSize.round(),
+                      min: commentFontSizeMin.round(),
+                      max: commentFontSizeMax.round(),
+                      divisions:
+                          (commentFontSizeMax - commentFontSizeMin).round(),
+                      suffix: 'px',
+                      sweetSpotMin: 12,
+                      sweetSpotMax: 18,
+                      sweetSpotLabel: 'おすすめ',
+                      onChanged: (int value) {
+                        _saveNextSettings(
+                          settings.copyWith(commentFontSize: value.toDouble()),
+                        );
+                      },
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<PastCommentFetchCount>(
@@ -799,6 +920,10 @@ class _IntSliderField extends StatelessWidget {
     required this.divisions,
     required this.value,
     required this.onChanged,
+    this.suffix = '',
+    this.sweetSpotMin,
+    this.sweetSpotMax,
+    this.sweetSpotLabel,
   });
 
   final String label;
@@ -807,9 +932,15 @@ class _IntSliderField extends StatelessWidget {
   final int divisions;
   final int value;
   final ValueChanged<int> onChanged;
+  final String suffix;
+  final int? sweetSpotMin;
+  final int? sweetSpotMax;
+  final String? sweetSpotLabel;
 
   @override
   Widget build(BuildContext context) {
+    final bool hasSweetSpot = sweetSpotMin != null && sweetSpotMax != null;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -817,19 +948,118 @@ class _IntSliderField extends StatelessWidget {
           children: <Widget>[
             Text(label),
             const Spacer(),
-            Text(value == -1 ? '-1 (既定)' : value.toString()),
+            Text(value == -1 ? '-1 (既定)' : '$value$suffix'),
           ],
         ),
-        Slider(
-          min: min.toDouble(),
-          max: max.toDouble(),
-          divisions: divisions,
-          value: value.toDouble(),
-          onChanged: (double next) {
-            onChanged(next.round());
-          },
-        ),
+        if (hasSweetSpot)
+          _SweetSpotSlider(
+            min: min,
+            max: max,
+            divisions: divisions,
+            value: value,
+            suffix: suffix,
+            sweetSpotMin: sweetSpotMin!,
+            sweetSpotMax: sweetSpotMax!,
+            sweetSpotLabel: sweetSpotLabel,
+            onChanged: onChanged,
+          )
+        else
+          Slider(
+            min: min.toDouble(),
+            max: max.toDouble(),
+            divisions: divisions,
+            value: value.toDouble(),
+            semanticFormatterCallback:
+                suffix.isNotEmpty ? (double v) => '${v.round()}$suffix' : null,
+            onChanged: (double next) {
+              onChanged(next.round());
+            },
+          ),
       ],
+    );
+  }
+}
+
+class _SweetSpotSlider extends StatelessWidget {
+  const _SweetSpotSlider({
+    required this.min,
+    required this.max,
+    required this.divisions,
+    required this.value,
+    required this.suffix,
+    required this.sweetSpotMin,
+    required this.sweetSpotMax,
+    this.sweetSpotLabel,
+    required this.onChanged,
+  });
+
+  final int min;
+  final int max;
+  final int divisions;
+  final int value;
+  final String suffix;
+  final int sweetSpotMin;
+  final int sweetSpotMax;
+  final String? sweetSpotLabel;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        // Slider has 24px horizontal padding on each side by default.
+        const double sliderPadding = 24.0;
+        final double trackWidth = constraints.maxWidth - sliderPadding * 2;
+        final double range = (max - min).toDouble();
+        final double leftFraction = (sweetSpotMin - min) / range;
+        final double rightFraction = (sweetSpotMax - min) / range;
+        final double left = sliderPadding + trackWidth * leftFraction;
+        final double width = trackWidth * (rightFraction - leftFraction);
+
+        return Stack(
+          clipBehavior: Clip.none,
+          children: <Widget>[
+            Positioned(
+              left: left,
+              top: 16,
+              width: width,
+              height: 20,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: const Color(0x1A4CAF50),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+            Slider(
+              min: min.toDouble(),
+              max: max.toDouble(),
+              divisions: divisions,
+              value: value.toDouble(),
+              semanticFormatterCallback: suffix.isNotEmpty
+                  ? (double v) => '${v.round()}$suffix'
+                  : null,
+              onChanged: (double next) {
+                onChanged(next.round());
+              },
+            ),
+            if (sweetSpotLabel != null)
+              Positioned(
+                left: left,
+                top: 40,
+                width: width,
+                child: Text(
+                  sweetSpotLabel!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.grey.shade500,
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
