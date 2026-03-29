@@ -17,6 +17,24 @@ void main() {
       expect(manager.isRunning, isFalse);
     });
 
+    test('init calls operations with expected channel configuration', () {
+      manager.init();
+
+      expect(fakeOps.initCallCount, 1);
+      expect(
+        fakeOps.lastAndroidNotificationOptions?.channelId,
+        'comerune_foreground_service',
+      );
+      expect(
+        fakeOps.lastAndroidNotificationOptions?.channelImportance,
+        NotificationChannelImportance.LOW,
+      );
+      expect(
+        fakeOps.lastForegroundTaskOptions?.autoRunOnBoot,
+        isFalse,
+      );
+    });
+
     test('start sets isRunning to true and calls operations', () async {
       await manager.start(title: 'Test', text: 'body');
 
@@ -80,10 +98,39 @@ void main() {
       expect(fakeOps.startCallCount, 2);
       expect(fakeOps.lastStartTitle, 'B');
     });
+
+    test('start catches exception from operations and remains not running',
+        () async {
+      fakeOps.startException = Exception('platform error');
+      await manager.start(title: 'Test', text: 'body');
+
+      expect(manager.isRunning, isFalse);
+      expect(fakeOps.startCallCount, 1);
+    });
+
+    test('stop catches exception from operations and sets isRunning false',
+        () async {
+      await manager.start(title: 'Test', text: 'body');
+      fakeOps.stopException = Exception('platform error');
+      await manager.stop();
+
+      expect(manager.isRunning, isFalse);
+    });
+
+    test(
+        'updateNotification catches exception from operations '
+        'and remains running', () async {
+      await manager.start(title: 'Test', text: 'body');
+      fakeOps.updateException = Exception('platform error');
+      await manager.updateNotification(title: 'New', text: 'updated');
+
+      expect(manager.isRunning, isTrue);
+    });
   });
 }
 
 class FakeForegroundTaskOperations extends ForegroundTaskOperations {
+  int initCallCount = 0;
   int startCallCount = 0;
   int stopCallCount = 0;
   int updateCallCount = 0;
@@ -92,13 +139,22 @@ class FakeForegroundTaskOperations extends ForegroundTaskOperations {
   String? lastUpdateTitle;
   String? lastUpdateText;
   bool canStartResult = true;
+  AndroidNotificationOptions? lastAndroidNotificationOptions;
+  ForegroundTaskOptions? lastForegroundTaskOptions;
+  Exception? startException;
+  Exception? stopException;
+  Exception? updateException;
 
   @override
   void init({
     required AndroidNotificationOptions androidNotificationOptions,
     required IOSNotificationOptions iosNotificationOptions,
     required ForegroundTaskOptions foregroundTaskOptions,
-  }) {}
+  }) {
+    initCallCount++;
+    lastAndroidNotificationOptions = androidNotificationOptions;
+    lastForegroundTaskOptions = foregroundTaskOptions;
+  }
 
   @override
   Future<bool> canStart() async => canStartResult;
@@ -112,6 +168,9 @@ class FakeForegroundTaskOperations extends ForegroundTaskOperations {
     startCallCount++;
     lastStartTitle = notificationTitle;
     lastStartText = notificationText;
+    if (startException != null) {
+      throw startException!;
+    }
   }
 
   @override
@@ -122,10 +181,16 @@ class FakeForegroundTaskOperations extends ForegroundTaskOperations {
     updateCallCount++;
     lastUpdateTitle = notificationTitle;
     lastUpdateText = notificationText;
+    if (updateException != null) {
+      throw updateException!;
+    }
   }
 
   @override
   Future<void> stop() async {
     stopCallCount++;
+    if (stopException != null) {
+      throw stopException!;
+    }
   }
 }

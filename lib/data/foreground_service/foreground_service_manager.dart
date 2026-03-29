@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:meta/meta.dart';
 
@@ -33,7 +35,6 @@ class ForegroundServiceManager {
         channelDescription: 'コメント接続を維持するためのサービス',
         channelImportance: NotificationChannelImportance.LOW,
         priority: NotificationPriority.LOW,
-        isSticky: false,
       ),
       iosNotificationOptions: const IOSNotificationOptions(),
       foregroundTaskOptions: ForegroundTaskOptions(
@@ -60,17 +61,26 @@ class ForegroundServiceManager {
       return;
     }
 
-    final bool canStart = await _ops.canStart();
-    if (!canStart) {
-      return;
-    }
+    try {
+      final bool canStart = await _ops.canStart();
+      if (!canStart) {
+        return;
+      }
 
-    await _ops.start(
-      notificationTitle: title,
-      notificationText: text,
-      callback: _foregroundTaskCallback,
-    );
-    _isRunning = true;
+      await _ops.start(
+        notificationTitle: title,
+        notificationText: text,
+        callback: _foregroundTaskCallback,
+      );
+      _isRunning = true;
+    } catch (error, stackTrace) {
+      developer.log(
+        'Failed to start foreground service',
+        name: 'ForegroundServiceManager',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
   }
 
   /// Updates the notification content while the service is running.
@@ -84,10 +94,19 @@ class ForegroundServiceManager {
       return;
     }
 
-    await _ops.update(
-      notificationTitle: title,
-      notificationText: text,
-    );
+    try {
+      await _ops.update(
+        notificationTitle: title,
+        notificationText: text,
+      );
+    } catch (error, stackTrace) {
+      developer.log(
+        'Failed to update foreground service notification',
+        name: 'ForegroundServiceManager',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
   }
 
   /// Stops the foreground service.
@@ -98,8 +117,17 @@ class ForegroundServiceManager {
       return;
     }
 
-    await _ops.stop();
     _isRunning = false;
+    try {
+      await _ops.stop();
+    } catch (error, stackTrace) {
+      developer.log(
+        'Failed to stop foreground service',
+        name: 'ForegroundServiceManager',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
   }
 }
 

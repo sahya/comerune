@@ -197,8 +197,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
     }
     _lastForegroundServiceStatus = current;
 
-    final ForegroundServiceManager? manager =
-        widget.foregroundServiceManager;
+    final ForegroundServiceManager? manager = widget.foregroundServiceManager;
     if (manager == null) {
       return;
     }
@@ -210,8 +209,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
       case ConnectionStatus.streamingLegacy:
       case ConnectionStatus.reconnecting:
         if (!manager.isRunning) {
-          final String title =
-              _programTitleNotifier.value ?? 'comerune';
+          final String title = _programTitleNotifier.value ?? 'comerune';
           unawaited(manager.start(
             title: title,
             text: _notificationTextForStatus(current),
@@ -235,13 +233,11 @@ class _ComeruneAppState extends State<ComeruneApp> {
   }
 
   void _onProgramTitleChanged() {
-    final ForegroundServiceManager? manager =
-        widget.foregroundServiceManager;
+    final ForegroundServiceManager? manager = widget.foregroundServiceManager;
     if (manager == null || !manager.isRunning) {
       return;
     }
-    final String title =
-        _programTitleNotifier.value ?? 'comerune';
+    final String title = _programTitleNotifier.value ?? 'comerune';
     final ConnectionStatus current = _connectionSupervisor.status;
     unawaited(manager.updateNotification(
       title: title,
