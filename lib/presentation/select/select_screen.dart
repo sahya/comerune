@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -446,8 +445,7 @@ class _SelectScreenState extends State<SelectScreen> {
 
   Future<void> _onDifferentLvConnected(String previousLv, String nextLv) {
     if (previousLv != nextLv) {
-      log('Resetting user attributes: lv changed from $previousLv to $nextLv',
-          name: 'UserAttr');
+      debugPrint('[UserAttr] Resetting user attributes: lv changed from $previousLv to $nextLv');
       widget.timelineStore?.clear();
       _currentBroadcasterId = null;
       _userAttrNotifier.value = (
@@ -461,23 +459,21 @@ class _SelectScreenState extends State<SelectScreen> {
 
   void _onSupplierUserIdChanged() {
     final String? supplierUserId = widget.supplierUserIdNotifier?.value;
-    log('Supplier user ID changed: $supplierUserId', name: 'UserAttr');
+    debugPrint('[UserAttr] Supplier user ID changed: $supplierUserId');
     if (supplierUserId != null && supplierUserId != _currentBroadcasterId) {
       unawaited(_loadUserAttributes(supplierUserId));
     }
   }
 
   Future<void> _loadUserAttributes(String? broadcasterId) async {
-    log('Loading user attributes for broadcaster: $broadcasterId',
-        name: 'UserAttr');
+    debugPrint('[UserAttr] Loading user attributes for broadcaster: $broadcasterId');
     if (broadcasterId == null ||
         broadcasterId == _currentBroadcasterId ||
         widget.userAttributeStore == null) {
-      log(
-        'Skipping load: broadcasterId=$broadcasterId, '
+      debugPrint(
+        '[UserAttr] Skipping load: broadcasterId=$broadcasterId, '
         'current=$_currentBroadcasterId, '
         'storeExists=${widget.userAttributeStore != null}',
-        name: 'UserAttr',
       );
       return;
     }
@@ -487,24 +483,21 @@ class _SelectScreenState extends State<SelectScreen> {
     final Map<String, String> nicknames =
         await widget.userAttributeStore!.loadNicknames(broadcasterId);
     if (!mounted || _currentBroadcasterId != broadcasterId) {
-      log(
-        'Discarding loaded attributes: mounted=$mounted, '
+      debugPrint(
+        '[UserAttr] Discarding loaded attributes: mounted=$mounted, '
         'broadcaster changed=${_currentBroadcasterId != broadcasterId}',
-        name: 'UserAttr',
       );
       return;
     }
-    log(
-      'Loaded ${colors.length} colors and ${nicknames.length} nicknames '
+    debugPrint(
+      '[UserAttr] Loaded ${colors.length} colors and ${nicknames.length} nicknames '
       'for broadcaster $broadcasterId',
-      name: 'UserAttr',
     );
     _userAttrNotifier.value = (colors: colors, nicknames: nicknames);
   }
 
   void _onUserColorChanged(String userId, int colorValue) {
-    log('Color changed: userId=$userId, colorValue=$colorValue',
-        name: 'UserAttr');
+    debugPrint('[UserAttr] Color changed: userId=$userId, colorValue=$colorValue');
     final ({Map<String, int> colors, Map<String, String> nicknames}) prev =
         _userAttrNotifier.value;
     _userAttrNotifier.value = (
@@ -522,7 +515,7 @@ class _SelectScreenState extends State<SelectScreen> {
   }
 
   void _onUserColorRemoved(String userId) {
-    log('Color removed: userId=$userId', name: 'UserAttr');
+    debugPrint('[UserAttr] Color removed: userId=$userId');
     final ({Map<String, int> colors, Map<String, String> nicknames}) prev =
         _userAttrNotifier.value;
     _userAttrNotifier.value = (
@@ -539,8 +532,7 @@ class _SelectScreenState extends State<SelectScreen> {
   }
 
   void _onNicknameChanged(String userId, String nickname) {
-    log('Nickname changed: userId=$userId, nickname=$nickname',
-        name: 'UserAttr');
+    debugPrint('[UserAttr] Nickname changed: userId=$userId, nickname=$nickname');
     final ({Map<String, int> colors, Map<String, String> nicknames}) prev =
         _userAttrNotifier.value;
     _userAttrNotifier.value = (
@@ -558,7 +550,7 @@ class _SelectScreenState extends State<SelectScreen> {
   }
 
   void _onNicknameRemoved(String userId) {
-    log('Nickname removed: userId=$userId', name: 'UserAttr');
+    debugPrint('[UserAttr] Nickname removed: userId=$userId');
     final ({Map<String, int> colors, Map<String, String> nicknames}) prev =
         _userAttrNotifier.value;
     _userAttrNotifier.value = (

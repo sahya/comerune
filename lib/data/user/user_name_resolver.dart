@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
-import 'dart:developer';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -77,16 +76,12 @@ class UserNameResolver extends ChangeNotifier {
   /// HTTP request to the nickname endpoint.
   void seedCache(String userId, String name) {
     if (name.isEmpty || _disposed) {
-      log(
-        'seedCache skipped: userId=$userId, name=$name, disposed=$_disposed',
-        name: 'UserNameResolver',
+      debugPrint(
+        '[UserNameResolver] seedCache skipped: userId=$userId, name=$name, disposed=$_disposed',
       );
       return;
     }
-    log(
-      'seedCache: userId=$userId, name=$name',
-      name: 'UserNameResolver',
-    );
+    debugPrint('[UserNameResolver] seedCache: userId=$userId, name=$name');
     _cache[userId] = name;
     _pending.remove(userId);
     _scheduleNotification();
@@ -98,33 +93,25 @@ class UserNameResolver extends ChangeNotifier {
   /// When the name is resolved, listeners are notified (debounced).
   void requestResolve(String userId) {
     if (_cache.containsKey(userId)) {
-      log(
-        'requestResolve: userId=$userId already cached '
+      debugPrint(
+        '[UserNameResolver] requestResolve: userId=$userId already cached '
         'as "${_cache[userId]}", skip',
-        name: 'UserNameResolver',
       );
       return;
     }
     if (_pending.contains(userId)) {
-      log(
-        'requestResolve: userId=$userId already pending, skip',
-        name: 'UserNameResolver',
-      );
+      debugPrint('[UserNameResolver] requestResolve: userId=$userId already pending, skip');
       return;
     }
 
     if (!_isNumericUserId(userId)) {
-      log(
-        'requestResolve: userId=$userId is not numeric, skip',
-        name: 'UserNameResolver',
-      );
+      debugPrint('[UserNameResolver] requestResolve: userId=$userId is not numeric, skip');
       return;
     }
 
-    log(
-      'requestResolve: queuing userId=$userId '
+    debugPrint(
+      '[UserNameResolver] requestResolve: queuing userId=$userId '
       '(queue=${_queue.length}, active=$_activeRequests)',
-      name: 'UserNameResolver',
     );
     _pending.add(userId);
     _queue.add(userId);
@@ -142,16 +129,13 @@ class UserNameResolver extends ChangeNotifier {
   Future<void> _fetchNickname(String userId) async {
     try {
       final Uri uri = Uri.parse('$_baseUrl?userId=$userId');
-      log('Fetching nickname for $userId', name: 'UserNameResolver');
+      debugPrint('[UserNameResolver] Fetching nickname for $userId');
       final HttpClientRequest request = await _activeHttpClient.getUrl(uri);
       request.headers.set('User-Agent', _userAgent);
 
       final HttpClientResponse response = await request.close();
       if (response.statusCode != 200) {
-        log(
-          'User $userId: HTTP ${response.statusCode}',
-          name: 'UserNameResolver',
-        );
+        debugPrint('[UserNameResolver] User $userId: HTTP ${response.statusCode}');
         await response.drain<void>();
         _pending.remove(userId);
         _onRequestDone();
@@ -161,8 +145,7 @@ class UserNameResolver extends ChangeNotifier {
       final String body = await response.transform(utf8.decoder).join();
       final Object? decoded = jsonDecode(body);
       if (decoded is! Map<String, dynamic>) {
-        log('User $userId: response is not a JSON object',
-            name: 'UserNameResolver');
+        debugPrint('[UserNameResolver] User $userId: response is not a JSON object');
         _pending.remove(userId);
         _onRequestDone();
         return;
@@ -170,7 +153,7 @@ class UserNameResolver extends ChangeNotifier {
 
       final Object? data = decoded['data'];
       if (data is! Map<String, dynamic>) {
-        log('User $userId: missing "data" field', name: 'UserNameResolver');
+        debugPrint('[UserNameResolver] User $userId: missing "data" field');
         _pending.remove(userId);
         _onRequestDone();
         return;
@@ -182,14 +165,11 @@ class UserNameResolver extends ChangeNotifier {
       if (nickname != null && nickname.isNotEmpty && !_disposed) {
         _cache[userId] = nickname;
         _scheduleNotification();
-        log('Resolved user $userId → $nickname', name: 'UserNameResolver');
+        debugPrint('[UserNameResolver] Resolved user $userId → $nickname');
       }
       _onRequestDone();
     } catch (error) {
-      log(
-        'Failed to resolve user $userId: $error',
-        name: 'UserNameResolver',
-      );
+      debugPrint('[UserNameResolver] Failed to resolve user $userId: $error');
       _pending.remove(userId);
       _onRequestDone();
     }

@@ -1,6 +1,7 @@
 import 'dart:convert';
-import 'dart:developer';
 import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 
 /// Resolves the NDGR view URI from the niconico programinfo API.
 ///
@@ -144,11 +145,10 @@ class ProgramInfoResolver {
     final ({String? userId, String? name}) broadcasterInfo =
         _extractBroadcasterInfo(data);
 
-    log(
-      'Resolved $lv: viewUri=$viewUri, title=$title, '
+    debugPrint(
+      '[ProgramInfoResolver] Resolved $lv: viewUri=$viewUri, title=$title, '
       'supplierUserId=${broadcasterInfo.userId}, '
       'broadcasterName=${broadcasterInfo.name}',
-      name: 'ProgramInfoResolver',
     );
     return ProgramInfo(
       viewUri: parsed,
@@ -176,17 +176,15 @@ class ProgramInfoResolver {
         final Object? name = first['name'];
         final String? nameStr = name is String && name.isNotEmpty ? name : null;
         if (id != null) {
-          log(
-            'Extracted broadcaster from data.broadcaster[0]: '
+          debugPrint(
+            '[ProgramInfoResolver] Extracted broadcaster from data.broadcaster[0]: '
             'id=$id, name=$nameStr',
-            name: 'ProgramInfoResolver',
           );
           return (userId: id.toString(), name: nameStr);
         }
       }
-      log(
-        'data.broadcaster exists but no valid id: $broadcaster',
-        name: 'ProgramInfoResolver',
+      debugPrint(
+        '[ProgramInfoResolver] data.broadcaster exists but no valid id: $broadcaster',
       );
     }
 
@@ -195,19 +193,15 @@ class ProgramInfoResolver {
     if (supplier is Map<String, dynamic>) {
       final Object? providerId = supplier['programProviderId'];
       if (providerId != null) {
-        log(
-          'Extracted broadcaster from data.supplier fallback: '
+        debugPrint(
+          '[ProgramInfoResolver] Extracted broadcaster from data.supplier fallback: '
           'programProviderId=$providerId',
-          name: 'ProgramInfoResolver',
         );
         return (userId: providerId.toString(), name: null);
       }
     }
 
-    log(
-      'No broadcaster info found in response',
-      name: 'ProgramInfoResolver',
-    );
+    debugPrint('[ProgramInfoResolver] No broadcaster info found in response');
     return (userId: null, name: null);
   }
 

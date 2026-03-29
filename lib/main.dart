@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -134,19 +133,16 @@ class _ComeruneAppState extends State<ComeruneApp> {
       userSessionProvider: () => widget.userSessionStore.load(),
       programInfoResolver: ProgramInfoResolver(),
       onProgramTitleResolved: (String title) {
-        log('Program title resolved: $title', name: 'App');
+        debugPrint('[App] Program title resolved: $title');
         _programTitleNotifier.value = title;
       },
       onSupplierUserIdResolved: (String userId) {
-        log('Supplier user ID resolved: $userId', name: 'App');
+        debugPrint('[App] Supplier user ID resolved: $userId');
         _supplierUserIdNotifier.value = userId;
         _userNameResolver.requestResolve(userId);
       },
       onBroadcasterNameResolved: (String userId, String name) {
-        log(
-          'Broadcaster name resolved: userId=$userId, name=$name',
-          name: 'App',
-        );
+        debugPrint('[App] Broadcaster name resolved: userId=$userId, name=$name');
         _userNameResolver.seedCache(userId, name);
       },
     );
@@ -316,10 +312,10 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
         _onProgramTitleResolved?.call(programInfo.title!);
       }
       if (programInfo.supplierUserId != null) {
-        log(
-          'Broadcasting callbacks: supplierUserId=${programInfo.supplierUserId}, '
+        debugPrint(
+          '[SessionWsClientAdapter] Broadcasting callbacks: '
+          'supplierUserId=${programInfo.supplierUserId}, '
           'broadcasterName=${programInfo.broadcasterName}',
-          name: 'SessionWsClientAdapter',
         );
         // Seed the cache with the broadcaster name BEFORE requesting
         // resolution, so that requestResolve() sees the cached entry
@@ -332,16 +328,12 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
         }
         _onSupplierUserIdResolved?.call(programInfo.supplierUserId!);
       } else {
-        log(
-          'No supplierUserId in programInfo — '
+        debugPrint(
+          '[SessionWsClientAdapter] No supplierUserId in programInfo — '
           'broadcaster callbacks will NOT fire',
-          name: 'SessionWsClientAdapter',
         );
       }
-      log(
-        'Resolved NDGR endpoint via programinfo API',
-        name: 'SessionWsClientAdapter',
-      );
+      debugPrint('[SessionWsClientAdapter] Resolved NDGR endpoint via programinfo API');
       return reconnect.SessionEndpoints(
         ndgrViewApiUri: programInfo.viewUri,
       );
@@ -349,15 +341,14 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       if (error.title != null) {
         _onProgramTitleResolved?.call(error.title!);
       }
-      log(
-        'programinfo resolution failed, falling back to WebSocket: $error',
-        name: 'SessionWsClientAdapter',
+      debugPrint(
+        '[SessionWsClientAdapter] programinfo resolution failed, '
+        'falling back to WebSocket: $error',
       );
     } on Object catch (error) {
-      log(
-        'Unexpected error during programinfo resolution, '
+      debugPrint(
+        '[SessionWsClientAdapter] Unexpected error during programinfo resolution, '
         'falling back to WebSocket: $error',
-        name: 'SessionWsClientAdapter',
       );
     }
 
