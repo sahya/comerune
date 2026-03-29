@@ -71,6 +71,10 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       'settings.statistics.viewerComment';
   static const String _kStatisticsActiveUserEnabled =
       'settings.statistics.activeUser';
+  static const String _kStarPrefixHidingEnabled =
+      'settings.filter.starPrefixHiding';
+  static const String _kSlashPrefixSkipEnabled =
+      'settings.filter.slashPrefixSkip';
   static const String _kDebugMode = 'settings.debugMode';
 
   @override
@@ -134,6 +138,10 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       statisticsActiveUserEnabled:
           _prefs.getBool(_kStatisticsActiveUserEnabled) ??
               defaults.statisticsActiveUserEnabled,
+      starPrefixHidingEnabled: _prefs.getBool(_kStarPrefixHidingEnabled) ??
+          defaults.starPrefixHidingEnabled,
+      slashPrefixSkipEnabled: _prefs.getBool(_kSlashPrefixSkipEnabled) ??
+          defaults.slashPrefixSkipEnabled,
       debugMode: _prefs.getBool(_kDebugMode) ?? defaults.debugMode,
     );
   }
@@ -186,6 +194,14 @@ class SharedPreferencesSettingsStore implements SettingsStore {
     await _prefs.setBool(
       _kStatisticsActiveUserEnabled,
       settings.statisticsActiveUserEnabled,
+    );
+    await _prefs.setBool(
+      _kStarPrefixHidingEnabled,
+      settings.starPrefixHidingEnabled,
+    );
+    await _prefs.setBool(
+      _kSlashPrefixSkipEnabled,
+      settings.slashPrefixSkipEnabled,
     );
     await _prefs.setBool(_kDebugMode, settings.debugMode);
   }

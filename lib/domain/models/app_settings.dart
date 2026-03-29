@@ -210,6 +210,8 @@ class AppSettings {
     required this.statisticsEnabled,
     required this.statisticsViewerCommentEnabled,
     required this.statisticsActiveUserEnabled,
+    required this.starPrefixHidingEnabled,
+    required this.slashPrefixSkipEnabled,
     required this.debugMode,
   }) : assert(
           commentFontSize >= commentFontSizeMin &&
@@ -248,6 +250,8 @@ class AppSettings {
     statisticsEnabled: false,
     statisticsViewerCommentEnabled: true,
     statisticsActiveUserEnabled: true,
+    starPrefixHidingEnabled: false,
+    slashPrefixSkipEnabled: true,
     debugMode: false,
   );
 
@@ -284,6 +288,15 @@ class AppSettings {
   final bool statisticsEnabled;
   final bool statisticsViewerCommentEnabled;
   final bool statisticsActiveUserEnabled;
+
+  /// When true, comments starting with `☆` have their body hidden
+  /// (tap to reveal) and are skipped for TTS.
+  final bool starPrefixHidingEnabled;
+
+  /// When true, comments starting with `/` are skipped for TTS
+  /// but displayed normally.
+  final bool slashPrefixSkipEnabled;
+
   final bool debugMode;
 
   /// Parses [ngWords] into a list of lower-cased NG word strings.
@@ -412,6 +425,8 @@ class AppSettings {
     bool? statisticsEnabled,
     bool? statisticsViewerCommentEnabled,
     bool? statisticsActiveUserEnabled,
+    bool? starPrefixHidingEnabled,
+    bool? slashPrefixSkipEnabled,
     bool? debugMode,
   }) {
     return AppSettings(
@@ -448,6 +463,10 @@ class AppSettings {
           statisticsViewerCommentEnabled ?? this.statisticsViewerCommentEnabled,
       statisticsActiveUserEnabled:
           statisticsActiveUserEnabled ?? this.statisticsActiveUserEnabled,
+      starPrefixHidingEnabled:
+          starPrefixHidingEnabled ?? this.starPrefixHidingEnabled,
+      slashPrefixSkipEnabled:
+          slashPrefixSkipEnabled ?? this.slashPrefixSkipEnabled,
       debugMode: debugMode ?? this.debugMode,
     );
   }
