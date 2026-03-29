@@ -74,8 +74,7 @@ class _CommentDisplaySettingsScreenState
                       contentPadding: EdgeInsets.zero,
                       value: settings.showUserName,
                       onChanged: (bool value) {
-                        _updateAndSave(
-                            settings.copyWith(showUserName: value));
+                        _updateAndSave(settings.copyWith(showUserName: value));
                       },
                     ),
                     SwitchListTile(

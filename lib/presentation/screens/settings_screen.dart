@@ -255,9 +255,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     leading: const Icon(Icons.record_voice_over),
                     title: const Text('読み上げ設定'),
                     subtitle: Text(
-                      settings.autoReadEnabled
-                          ? '自動読み上げ: ON'
-                          : '自動読み上げ: OFF',
+                      settings.autoReadEnabled ? '自動読み上げ: ON' : '自動読み上げ: OFF',
                     ),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () async {

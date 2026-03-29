@@ -103,8 +103,7 @@ void main() {
       AppSettings loaded = await settingsStore.load();
       expect(loaded.maxDelaySeconds, AppSettings.defaults.maxDelaySeconds);
 
-      await enterTextByKey(
-          tester, _listKey, const Key('max-delay-field'), '0');
+      await enterTextByKey(tester, _listKey, const Key('max-delay-field'), '0');
       await focusFieldByKey(tester, _listKey, const Key('queue-limit-field'));
 
       loaded = await settingsStore.load();

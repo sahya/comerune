@@ -329,8 +329,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                         divisions: 301,
                         value: settings.bouyomiTone,
                         onChanged: (int value) {
-                          _updateAndSave(
-                              settings.copyWith(bouyomiTone: value));
+                          _updateAndSave(settings.copyWith(bouyomiTone: value));
                         },
                       ),
                       SettingsIntSliderField(
