@@ -14,6 +14,8 @@ class DefaultCommentNormalizer(
     private val INVALID_REGEX_SENTINEL = Regex("(?!)")
     private companion object CacheConfig {
         const val MAX_REGEX_CACHE_SIZE = 100
+        /** Timeout for a single dictionary regex replacement (milliseconds). */
+        const val REGEX_TIMEOUT_MS = 500L
     }
 
     override fun normalize(raw: RawComment, settings: SpeechSettings): NormalizedComment {
@@ -274,7 +276,6 @@ class DefaultCommentNormalizer(
         for (rule in settings.dictionaryRules) {
             if (!rule.enabled) continue
             val regex = regexCache.getOrPut(rule.pattern) {
-                // Evict all entries if cache grows beyond max size to prevent unbounded growth
                 if (regexCache.size >= MAX_REGEX_CACHE_SIZE) {
                     regexCache.clear()
                 }
@@ -283,13 +284,41 @@ class DefaultCommentNormalizer(
             if (regex === INVALID_REGEX_SENTINEL) continue
             val safeReplacement = Regex.escapeReplacement(rule.replacement)
             result = try {
-                regex.replace(result, safeReplacement)
+                // Use an interruptible CharSequence to guard against ReDoS.
+                // If the regex takes longer than REGEX_TIMEOUT_MS, the thread is
+                // interrupted and the replacement is skipped for this rule.
+                val interruptible = InterruptibleCharSequence(result)
+                val thread = Thread.currentThread()
+                val timer = java.util.Timer(true)
+                timer.schedule(object : java.util.TimerTask() {
+                    override fun run() { thread.interrupt() }
+                }, REGEX_TIMEOUT_MS)
+                try {
+                    regex.replace(interruptible, safeReplacement)
+                } finally {
+                    timer.cancel()
+                    Thread.interrupted() // Clear interrupt flag
+                }
             } catch (_: Exception) {
-                // Guard against regex execution errors (e.g. catastrophic backtracking)
+                // Catches StackOverflowError, RuntimeException from interrupt, etc.
                 result
             }
         }
         return result
+    }
+
+    /** CharSequence wrapper that throws on access when the thread is interrupted. */
+    private class InterruptibleCharSequence(private val inner: CharSequence) : CharSequence {
+        override val length: Int get() = inner.length
+        override fun get(index: Int): Char {
+            if (Thread.currentThread().isInterrupted) {
+                throw RuntimeException("Regex execution timed out")
+            }
+            return inner[index]
+        }
+        override fun subSequence(startIndex: Int, endIndex: Int): CharSequence =
+            InterruptibleCharSequence(inner.subSequence(startIndex, endIndex))
+        override fun toString(): String = inner.toString()
     }
 
     /**

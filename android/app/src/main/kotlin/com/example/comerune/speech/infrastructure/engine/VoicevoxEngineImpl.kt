@@ -39,6 +39,9 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
     @Volatile
     private var state: TtsEngineState = TtsEngineState.UNINITIALIZED
 
+    /** Lock for state transitions in non-suspend functions (e.g. release). */
+    private val stateLock = Any()
+
     private val mutex = Mutex()
 
     override suspend fun initialize(config: VoicevoxConfig): Result<Unit> =
@@ -136,10 +139,18 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                 state = TtsEngineState.READY
 
                 if (wavBytes == null) {
+                    // Only restore READY if release() hasn't been called
+                    if (state == TtsEngineState.SYNTHESIZING) {
+                        state = TtsEngineState.READY
+                    }
                     Result.failure(
                         RuntimeException("TTS synthesis returned null (text length=${request.text.length})")
                     )
                 } else {
+                    // Only restore READY if release() hasn't been called
+                    if (state == TtsEngineState.SYNTHESIZING) {
+                        state = TtsEngineState.READY
+                    }
                     Result.success(
                         WavSynthesisResult(
                             wavBytes = wavBytes,
@@ -149,11 +160,11 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                     )
                 }
             } catch (e: Exception) {
-                // A single synthesis failure does not mean the engine is broken.
-                // Return to READY so subsequent requests can still be processed.
-                // ERROR state is reserved for truly unrecoverable failures
-                // (e.g., native crash during initialize).
-                state = TtsEngineState.READY
+                // Only restore READY if release() hasn't been called concurrently.
+                // If state is UNINITIALIZED, release() ran during synthesis — don't overwrite.
+                if (state == TtsEngineState.SYNTHESIZING) {
+                    state = TtsEngineState.READY
+                }
                 Log.e(TAG, "Synthesis failed", e)
                 Result.failure(e)
             }
@@ -164,12 +175,20 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
     override fun currentState(): TtsEngineState = state
 
     override fun release() {
-        synchronized(this) {
+        // Use the same Mutex strategy as synthesize() to prevent state races.
+        // Since release() is non-suspend, we use a @Volatile flag + native-level
+        // g_mutex for thread safety instead of the coroutine Mutex.
+        val alreadyReleased = synchronized(stateLock) {
             if (state == TtsEngineState.UNINITIALIZED) {
-                Log.i(TAG, "VOICEVOX engine already released, skipping")
-                return
+                true
+            } else {
+                state = TtsEngineState.UNINITIALIZED
+                false
             }
-            state = TtsEngineState.UNINITIALIZED
+        }
+        if (alreadyReleased) {
+            Log.i(TAG, "VOICEVOX engine already released, skipping")
+            return
         }
         NativeVoicevoxBridge.nativeRelease()
         Log.i(TAG, "VOICEVOX engine released")

@@ -124,10 +124,8 @@ class SpeechControllerImpl(
     }
 
     override suspend fun submitComment(rawComment: RawComment): Result<SubmitResult> {
-        synchronized(this) {
-            if (released) {
-                return Result.failure(IllegalStateException("Controller has been released"))
-            }
+        if (released) {
+            return Result.failure(IllegalStateException("Controller has been released"))
         }
 
         val settings = settingsRepository.get()
