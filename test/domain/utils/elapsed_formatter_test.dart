@@ -56,8 +56,8 @@ void main() {
     });
 
     test('returns elapsed time for past start', () {
-      final DateTime start =
-          DateTime.now().subtract(const Duration(hours: 1, minutes: 2, seconds: 3));
+      final DateTime start = DateTime.now()
+          .subtract(const Duration(hours: 1, minutes: 2, seconds: 3));
       final String? result = formatElapsed(start);
       expect(result, isNotNull);
       expect(result, '1:02:03');
