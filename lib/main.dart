@@ -11,6 +11,7 @@ import 'application/settings/shared_preferences_adapter.dart';
 import 'application/timeline/timeline_store.dart';
 import 'data/auth/user_session_store.dart';
 import 'data/comment_log/comment_log_writer.dart';
+import 'data/connection/foreground_service_channel.dart';
 import 'data/connection/program_info_resolver.dart';
 import 'data/follow/follow_program_repository.dart';
 import 'data/connection/web_socket_channel_legacy_web_socket.dart';
@@ -88,6 +89,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
   late final ConnectionSupervisor _connectionSupervisor;
   late final StreamSubscription<AppMessage> _ndgrMessageSubscription;
   late final StreamSubscription<AppMessage> _legacyMessageSubscription;
+  late final ForegroundServiceChannel _foregroundServiceChannel;
 
   String _currentLv = '';
   int _ndgrHistoryCount = 100;
@@ -142,6 +144,10 @@ class _ComeruneAppState extends State<ComeruneApp> {
       legacyCommentClient: _legacyCommentClient,
     );
 
+    _foregroundServiceChannel = ForegroundServiceChannel();
+
+    _connectionSupervisor.addListener(_onConnectionStatusChanged);
+
     _ndgrMessageSubscription = _ndgrClient.messages.listen(_timelineStore.add);
     _legacyMessageSubscription = _legacyCommentClient.messages.listen(
       _timelineStore.add,
@@ -152,7 +158,9 @@ class _ComeruneAppState extends State<ComeruneApp> {
   void dispose() {
     unawaited(_ndgrMessageSubscription.cancel());
     unawaited(_legacyMessageSubscription.cancel());
+    _connectionSupervisor.removeListener(_onConnectionStatusChanged);
     _connectionSupervisor.dispose();
+    unawaited(_foregroundServiceChannel.stopService());
     unawaited(_sessionWsClient.dispose());
     unawaited(_ndgrClient.dispose());
     unawaited(_legacyCommentClient.dispose());
@@ -169,6 +177,44 @@ class _ComeruneAppState extends State<ComeruneApp> {
 
   void _onThemeModeChanged() {
     setState(() {});
+  }
+
+  void _onConnectionStatusChanged() {
+    final ConnectionStatus status = _connectionSupervisor.status;
+    switch (status) {
+      case ConnectionStatus.streamingNdgr:
+      case ConnectionStatus.streamingLegacy:
+        final String title = _programTitleNotifier.value ?? _currentLv;
+        if (_foregroundServiceChannel.isRunning) {
+          unawaited(_foregroundServiceChannel.updateNotification(
+            title: title,
+            body: 'コメント受信中',
+          ));
+        } else {
+          unawaited(_foregroundServiceChannel.startService(
+            title: title,
+            body: 'コメント受信中',
+          ));
+        }
+        break;
+      case ConnectionStatus.connectingSessionWs:
+      case ConnectionStatus.resolvingEndpoints:
+      case ConnectionStatus.reconnecting:
+        if (!_foregroundServiceChannel.isRunning) {
+          final String title = _programTitleNotifier.value ?? _currentLv;
+          unawaited(_foregroundServiceChannel.startService(
+            title: title,
+            body: '接続中...',
+          ));
+        }
+        break;
+      case ConnectionStatus.idle:
+      case ConnectionStatus.stopped:
+      case ConnectionStatus.ended:
+      case ConnectionStatus.failed:
+        unawaited(_foregroundServiceChannel.stopService());
+        break;
+    }
   }
 
   Future<void> _prepareConnection(String lv, AppSettings settings) async {
