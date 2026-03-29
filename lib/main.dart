@@ -1,15 +1,24 @@
 import 'dart:async';
 import 'dart:developer';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'application/foreground_service/foreground_service_controller.dart';
 import 'application/settings/settings_store.dart';
 import 'application/settings/shared_preferences_adapter.dart';
+import 'application/statistics/statistics_store.dart';
 import 'application/timeline/timeline_store.dart';
 import 'data/auth/user_session_store.dart';
+import 'data/comment_log/comment_log_writer.dart';
 import 'data/connection/program_info_resolver.dart';
+import 'data/follow/follow_program_repository.dart';
+import 'data/foreground_service/foreground_service_manager.dart';
 import 'data/connection/web_socket_channel_legacy_web_socket.dart';
+import 'data/user/user_attribute_store.dart';
 import 'data/user/user_name_resolver.dart';
 import 'domain/connection/connection_clients.dart' as reconnect;
 import 'domain/connection/connection_supervisor.dart';
@@ -19,6 +28,7 @@ import 'domain/connection/session_ws_client.dart' as session_impl;
 import 'domain/models/app_message.dart';
 import 'domain/models/app_settings.dart';
 import 'presentation/select/select_screen.dart';
+import 'presentation/theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,11 +41,33 @@ Future<void> main() async {
   final UserSessionStore userSessionStore =
       SecureUserSessionStore(prefs: prefs);
 
+  final Directory appDocDir = await getApplicationDocumentsDirectory();
+  final Directory tempDir = await getTemporaryDirectory();
+  final CommentLogWriter commentLogWriter = FileCommentLogWriter(
+    directory: Directory('${appDocDir.path}/comment_logs'),
+    tempDirectory: Directory('${tempDir.path}/comment_logs'),
+  );
+  final UserAttributeStore userAttributeStore =
+      SharedPreferencesUserAttributeStore(
+    prefs: SharedPreferencesAdapter(prefs),
+  );
+  // Remove user attribute entries not accessed for over 1 year.
+  unawaited(userAttributeStore.cleanup());
+
+  ForegroundServiceManager? foregroundServiceManager;
+  if (Platform.isAndroid) {
+    foregroundServiceManager = ForegroundServiceManager();
+    foregroundServiceManager.init();
+  }
+
   runApp(
     ComeruneApp(
       settingsStore: settingsStore,
       initialSettings: initialSettings,
       userSessionStore: userSessionStore,
+      commentLogWriter: commentLogWriter,
+      userAttributeStore: userAttributeStore,
+      foregroundServiceManager: foregroundServiceManager,
     ),
   );
 }
@@ -46,11 +78,17 @@ class ComeruneApp extends StatefulWidget {
     required this.settingsStore,
     required this.initialSettings,
     required this.userSessionStore,
+    this.commentLogWriter,
+    this.userAttributeStore,
+    this.foregroundServiceManager,
   });
 
   final SettingsStore settingsStore;
   final AppSettings initialSettings;
   final UserSessionStore userSessionStore;
+  final CommentLogWriter? commentLogWriter;
+  final UserAttributeStore? userAttributeStore;
+  final ForegroundServiceManager? foregroundServiceManager;
 
   @override
   State<ComeruneApp> createState() => _ComeruneAppState();
@@ -58,33 +96,52 @@ class ComeruneApp extends StatefulWidget {
 
 class _ComeruneAppState extends State<ComeruneApp> {
   late final TimelineStore _timelineStore;
+  late final StatisticsStore _statisticsStore;
   late final _SessionWsClientAdapter _sessionWsClient;
   late final _NdgrClientAdapter _ndgrClient;
   late final _LegacyCommentClientAdapter _legacyCommentClient;
   late final ConnectionSupervisor _connectionSupervisor;
   late final StreamSubscription<AppMessage> _ndgrMessageSubscription;
   late final StreamSubscription<AppMessage> _legacyMessageSubscription;
+  late final StreamSubscription<int?> _ndgrViewerCountSubscription;
 
   String _currentLv = '';
   int _ndgrHistoryCount = 100;
   final ValueNotifier<String?> _programTitleNotifier =
       ValueNotifier<String?>(null);
+  final ValueNotifier<String?> _supplierUserIdNotifier =
+      ValueNotifier<String?>(null);
+  late final ValueNotifier<AppThemeMode> _themeModeNotifier;
   late final UserNameResolver _userNameResolver;
+  late final FollowProgramRepository _followProgramRepository;
+  ForegroundServiceController? _foregroundServiceController;
 
   @override
   void initState() {
     super.initState();
     _ndgrHistoryCount =
         widget.initialSettings.pastCommentFetchCount.historyCount;
+    _themeModeNotifier =
+        ValueNotifier<AppThemeMode>(widget.initialSettings.themeMode)
+          ..addListener(_onThemeModeChanged);
 
     _userNameResolver = UserNameResolver();
+    _followProgramRepository = FollowProgramRepository();
     _timelineStore = TimelineStore(capacity: _ndgrHistoryCount);
+    _statisticsStore = StatisticsStore();
     _sessionWsClient = _SessionWsClientAdapter(
       lvProvider: () => _currentLv,
       userSessionProvider: () => widget.userSessionStore.load(),
       programInfoResolver: ProgramInfoResolver(),
       onProgramTitleResolved: (String title) {
         _programTitleNotifier.value = title;
+      },
+      onSupplierUserIdResolved: (String userId) {
+        _supplierUserIdNotifier.value = userId;
+        _userNameResolver.requestResolve(userId);
+      },
+      onBroadcasterNameResolved: (String userId, String name) {
+        _userNameResolver.seedCache(userId, name);
       },
     );
     _ndgrClient = _NdgrClientAdapter(
@@ -103,48 +160,95 @@ class _ComeruneAppState extends State<ComeruneApp> {
       legacyCommentClient: _legacyCommentClient,
     );
 
-    _ndgrMessageSubscription = _ndgrClient.messages.listen(_timelineStore.add);
-    _legacyMessageSubscription = _legacyCommentClient.messages.listen(
-      _timelineStore.add,
+    if (widget.foregroundServiceManager != null) {
+      _foregroundServiceController = ForegroundServiceController(
+        foregroundServiceManager: widget.foregroundServiceManager!,
+        connectionSupervisor: _connectionSupervisor,
+        programTitleNotifier: _programTitleNotifier,
+      );
+    }
+
+    _ndgrMessageSubscription =
+        _ndgrClient.messages.listen((AppMessage message) {
+      _timelineStore.add(message);
+      _statisticsStore.recordComment(message);
+    });
+    _legacyMessageSubscription =
+        _legacyCommentClient.messages.listen((AppMessage message) {
+      _timelineStore.add(message);
+      _statisticsStore.recordComment(message);
+    });
+    _ndgrViewerCountSubscription = _ndgrClient.viewerCounts.listen(
+      _statisticsStore.updateViewerCount,
     );
   }
 
   @override
   void dispose() {
+    _foregroundServiceController?.dispose();
     unawaited(_ndgrMessageSubscription.cancel());
     unawaited(_legacyMessageSubscription.cancel());
+    unawaited(_ndgrViewerCountSubscription.cancel());
     _connectionSupervisor.dispose();
     unawaited(_sessionWsClient.dispose());
     unawaited(_ndgrClient.dispose());
     unawaited(_legacyCommentClient.dispose());
     _timelineStore.dispose();
+    _statisticsStore.dispose();
     _userNameResolver.dispose();
+    _followProgramRepository.dispose();
     _programTitleNotifier.dispose();
+    _supplierUserIdNotifier.dispose();
+    _themeModeNotifier
+      ..removeListener(_onThemeModeChanged)
+      ..dispose();
     super.dispose();
+  }
+
+  void _onThemeModeChanged() {
+    setState(() {});
   }
 
   Future<void> _prepareConnection(String lv, AppSettings settings) async {
     _currentLv = lv;
     _programTitleNotifier.value = null;
+    _supplierUserIdNotifier.value = null;
     _ndgrHistoryCount = settings.pastCommentFetchCount.historyCount;
     _timelineStore.setCapacity(_ndgrHistoryCount);
+    _statisticsStore.reset();
   }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'comerune',
-      home: SelectScreen(
-        connectionSupervisor: _connectionSupervisor,
-        timelineStore: _timelineStore,
-        settingsStore: widget.settingsStore,
-        initialSettings: widget.initialSettings,
-        onPrepareConnection: _prepareConnection,
-        userSessionStore: widget.userSessionStore,
-        programTitleNotifier: _programTitleNotifier,
-        resolveUserName: _userNameResolver.getCachedName,
-        requestUserNameResolve: _userNameResolver.requestResolve,
-        userNameListenable: _userNameResolver,
+    final AppThemeMode currentMode = _themeModeNotifier.value;
+    return WithForegroundTask(
+      child: MaterialApp(
+        title: 'comerune',
+        theme: AppTheme.themeDataFor(currentMode),
+        darkTheme: currentMode == AppThemeMode.system
+            ? AppTheme.themeDataFor(AppThemeMode.dark)
+            : null,
+        themeMode: currentMode == AppThemeMode.system
+            ? ThemeMode.system
+            : ThemeMode.light,
+        home: SelectScreen(
+          connectionSupervisor: _connectionSupervisor,
+          timelineStore: _timelineStore,
+          statisticsStore: _statisticsStore,
+          settingsStore: widget.settingsStore,
+          initialSettings: widget.initialSettings,
+          onPrepareConnection: _prepareConnection,
+          userSessionStore: widget.userSessionStore,
+          programTitleNotifier: _programTitleNotifier,
+          resolveUserName: _userNameResolver.getCachedName,
+          requestUserNameResolve: _userNameResolver.requestResolve,
+          userNameListenable: _userNameResolver,
+          supplierUserIdNotifier: _supplierUserIdNotifier,
+          commentLogWriter: widget.commentLogWriter,
+          themeModeNotifier: _themeModeNotifier,
+          followProgramRepository: _followProgramRepository,
+          userAttributeStore: widget.userAttributeStore,
+        ),
       ),
     );
   }
@@ -156,15 +260,21 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     required Future<String> Function() userSessionProvider,
     required ProgramInfoResolver programInfoResolver,
     void Function(String title)? onProgramTitleResolved,
+    void Function(String userId)? onSupplierUserIdResolved,
+    void Function(String userId, String name)? onBroadcasterNameResolved,
   })  : _lvProvider = lvProvider,
         _userSessionProvider = userSessionProvider,
         _programInfoResolver = programInfoResolver,
-        _onProgramTitleResolved = onProgramTitleResolved;
+        _onProgramTitleResolved = onProgramTitleResolved,
+        _onSupplierUserIdResolved = onSupplierUserIdResolved,
+        _onBroadcasterNameResolved = onBroadcasterNameResolved;
 
   final String Function() _lvProvider;
   final Future<String> Function() _userSessionProvider;
   final ProgramInfoResolver _programInfoResolver;
   final void Function(String title)? _onProgramTitleResolved;
+  final void Function(String userId)? _onSupplierUserIdResolved;
+  final void Function(String userId, String name)? _onBroadcasterNameResolved;
   final StreamController<reconnect.SessionWsEvent> _eventsController =
       StreamController<reconnect.SessionWsEvent>.broadcast();
 
@@ -198,6 +308,18 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       );
       if (programInfo.title != null) {
         _onProgramTitleResolved?.call(programInfo.title!);
+      }
+      if (programInfo.supplierUserId != null) {
+        // Seed the cache with the broadcaster name BEFORE requesting
+        // resolution, so that requestResolve() sees the cached entry
+        // and skips the redundant HTTP call.
+        if (programInfo.broadcasterName != null) {
+          _onBroadcasterNameResolved?.call(
+            programInfo.supplierUserId!,
+            programInfo.broadcasterName!,
+          );
+        }
+        _onSupplierUserIdResolved?.call(programInfo.supplierUserId!);
       }
       log(
         'Resolved NDGR endpoint via programinfo API',
@@ -507,6 +629,8 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
       StreamController<reconnect.NdgrEvent>.broadcast();
   final StreamController<AppMessage> _messagesController =
       StreamController<AppMessage>.broadcast();
+  final StreamController<int?> _viewerCountController =
+      StreamController<int?>.broadcast();
   late final StreamSubscription<ndgr_impl.NdgrClientEvent>
       _clientEventsSubscription;
 
@@ -515,6 +639,7 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
   bool _disconnectRequested = false;
 
   Stream<AppMessage> get messages => _messagesController.stream;
+  Stream<int?> get viewerCounts => _viewerCountController.stream;
 
   @override
   Stream<reconnect.NdgrEvent> get events => _eventsController.stream;
@@ -563,6 +688,7 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
     _client.dispose();
     await _eventsController.close();
     await _messagesController.close();
+    await _viewerCountController.close();
   }
 
   Future<void> _runConnect(
@@ -609,6 +735,11 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
             resumeCursor: reconnect.NdgrResumeCursor(at: at, next: at),
           ),
         );
+        break;
+      case ndgr_impl.NdgrClientEventType.statistics:
+        if (!_viewerCountController.isClosed) {
+          _viewerCountController.add(event.viewerCount);
+        }
         break;
     }
   }

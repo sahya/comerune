@@ -120,10 +120,28 @@ Use [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): 
 Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`
 Breaking changes: append `!` to type or add `BREAKING CHANGE:` in footer.
 
+### Pull Request Rules
+PR を作成する際、対応する Issue 番号がある場合は必ず PR の本文に記載すること。
+- `Closes #123` や `Fixes #456` のようなキーワードを使い、GitHub の自動リンクを活用する
+- 複数の Issue に対応する場合はすべて記載する（例: `Closes #123, Closes #124`）
+- Issue 番号が不明な場合や Issue なしで作業している場合は記載不要
+
 ## Issue Lifecycle
 - Agents must not close issues.
 - Only the human owner may close an issue, after confirming the implementation satisfies the acceptance criteria.
 - When implementation is complete, the agent should state that the issue is ready for human review and closure, not close it directly.
+
+## リリースノート作成ルール
+
+リリースノートを作成する際は、外部公開を前提として以下を遵守すること:
+
+- PR番号・Issue番号を記載しない
+- API名・エンドポイント名・内部実装の詳細を記載しない
+- ツール固有名（CI/CDツール名、スキャナー名等）を記載しない
+- セキュリティ修正の具体的な脆弱性内容を記載しない
+- 認証・認可の実装詳細（ストレージ方式、Cookie処理等）を記載しない
+- ユーザー向けの平易な表現を使い、技術的パラメータは必要最低限にする
+- カテゴリは「新機能」「UI改善」「品質・安定性向上」等のユーザー視点で分類する
 
 ## Forbidden Behavior
 Agents must not:

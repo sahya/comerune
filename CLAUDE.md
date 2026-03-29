@@ -122,6 +122,12 @@ Use [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): 
 Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`
 Breaking changes: append `!` to type or add `BREAKING CHANGE:` in footer.
 
+### Pull Request Rules
+PR を作成する際、対応する Issue 番号がある場合は必ず PR の本文に記載すること。
+- `Closes #123` や `Fixes #456` のようなキーワードを使い、GitHub の自動リンクを活用する
+- 複数の Issue に対応する場合はすべて記載する（例: `Closes #123, Closes #124`）
+- Issue 番号が不明な場合や Issue なしで作業している場合は記載不要
+
 ## Issue Lifecycle
 - Do not close issues.
 - Only the human owner may close an issue, after confirming that acceptance criteria are met.
@@ -134,6 +140,18 @@ Breaking changes: append `!` to type or add `BREAKING CHANGE:` in footer.
 - When a change is acceptable, say so clearly.
 - When a change is risky, explain why in terms of future breakage, not taste.
 - Also follow the rules in `.ai/flutter_rules.md`.
+
+## 環境前提チェック
+
+Flutter コマンド（`flutter analyze`、`flutter test`、`dart format` など）を実行する前に、必ず `flutter --version` を実行して Flutter SDK がインストールされているか確認すること。
+
+Flutter SDK が見つからない場合（コマンドが存在しない、PATH が通っていないなど）:
+1. **作業を中断する** — Flutter が必要な操作（ビルド、テスト、解析、フォーマット）を一切実行してはならない
+2. **ユーザーに確認する** — 「Flutter SDK がインストールされていません。インストールしてもよろしいですか？」と必ず許可を求める
+3. **許可が得られた場合のみ** インストール手順を案内または実行する
+4. **許可が得られなかった場合** — Flutter を必要とするタスクはスキップし、その旨をユーザーに報告する
+
+この確認はセッションごとに最低1回行うこと。Flutter の存在を仮定して進めてはならない。
 
 ## Post-Code-Update Requirements
 
@@ -154,3 +172,15 @@ Breaking changes: append `!` to type or add `BREAKING CHANGE:` in footer.
 5. **新人開発者** — 可読性、命名の分かりやすさ、コメントの過不足を重点的に指摘する
 
 各レビューで問題が見つかった場合は修正を行い、修正後に再度「必須チェック」を実行すること。
+
+## リリースノート作成ルール
+
+リリースノートを作成する際は、外部公開を前提として以下を遵守すること:
+
+- **PR番号・Issue番号を記載しない** — 内部の開発管理情報は非公開とする
+- **API名・エンドポイント名・内部実装の詳細を記載しない** — 攻撃面の露出を防ぐ
+- **ツール固有名（CI/CDツール名、スキャナー名等）を記載しない** — 「セキュリティスキャンを自動化」等の一般的な表現を使う
+- **セキュリティ修正の具体的な脆弱性内容を記載しない** — 「セキュリティを強化」等の抽象的な表現にとどめる
+- **認証・認可の実装詳細を記載しない** — ストレージ方式やCookie処理等の具体的手法を含めない
+- **ユーザー向けの平易な表現を使う** — 技術的なパラメータ（px値、高さ等）は必要最低限にする
+- **カテゴリは「新機能」「UI改善」「品質・安定性向上」等のユーザー視点で分類する**

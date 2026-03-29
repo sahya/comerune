@@ -31,16 +31,24 @@ class NdgrChat {
   final int? no;
 }
 
+class NdgrStatistics {
+  const NdgrStatistics({this.viewers});
+
+  final int? viewers;
+}
+
 class NdgrChunkedMessage {
   const NdgrChunkedMessage({
     this.id,
     this.serverTimestamp,
     this.chat,
+    this.statistics,
   });
 
   final String? id;
   final DateTime? serverTimestamp;
   final NdgrChat? chat;
+  final NdgrStatistics? statistics;
 }
 
 class NdgrPackedSegment {
@@ -192,6 +200,7 @@ class NdgrProtobufDecoder {
     String? id;
     DateTime? serverTimestamp;
     NdgrChat? chat;
+    NdgrStatistics? statistics;
 
     while (!reader.isAtEnd) {
       final int tag = reader.readVarint();
@@ -212,7 +221,10 @@ class NdgrProtobufDecoder {
           break;
         case 2: // ChunkedMessage.message (oneof NicoliveMessage)
           if (wireType == _WireType.lengthDelimited) {
-            chat = _decodeNicoliveMessageChat(reader.readLengthDelimited());
+            final _NicoliveMessageResult result =
+                _decodeNicoliveMessage(reader.readLengthDelimited());
+            chat = result.chat;
+            statistics = result.statistics;
           } else {
             reader.skipField(wireType);
           }
@@ -226,6 +238,7 @@ class NdgrProtobufDecoder {
       id: id,
       serverTimestamp: serverTimestamp,
       chat: chat,
+      statistics: statistics,
     );
   }
 
@@ -297,8 +310,11 @@ class NdgrProtobufDecoder {
     return _ChunkedMessageMeta(id: id, serverTimestamp: serverTimestamp);
   }
 
-  NdgrChat? _decodeNicoliveMessageChat(Uint8List bytes) {
+  _NicoliveMessageResult _decodeNicoliveMessage(Uint8List bytes) {
     final _ProtoReader reader = _ProtoReader(bytes);
+
+    NdgrChat? chat;
+    NdgrStatistics? statistics;
 
     while (!reader.isAtEnd) {
       final int tag = reader.readVarint();
@@ -308,13 +324,42 @@ class NdgrProtobufDecoder {
       if ((fieldNumber == 1 || fieldNumber == 20) &&
           wireType == _WireType.lengthDelimited) {
         // NicoliveMessage.chat / NicoliveMessage.overflowed_chat
-        return _decodeChat(reader.readLengthDelimited());
+        chat = _decodeChat(reader.readLengthDelimited());
+      } else if (fieldNumber == 8 && wireType == _WireType.lengthDelimited) {
+        // NicoliveMessage.statistics
+        statistics = _decodeStatistics(reader.readLengthDelimited());
+      } else {
+        reader.skipField(wireType);
       }
-
-      reader.skipField(wireType);
     }
 
-    return null;
+    return _NicoliveMessageResult(chat: chat, statistics: statistics);
+  }
+
+  NdgrStatistics _decodeStatistics(Uint8List bytes) {
+    final _ProtoReader reader = _ProtoReader(bytes);
+
+    int? viewers;
+
+    while (!reader.isAtEnd) {
+      final int tag = reader.readVarint();
+      final int fieldNumber = tag >> 3;
+      final int wireType = tag & 0x07;
+
+      switch (fieldNumber) {
+        case 1: // Statistics.viewers
+          if (wireType == _WireType.varint) {
+            viewers = reader.readVarint();
+          } else {
+            reader.skipField(wireType);
+          }
+          break;
+        default:
+          reader.skipField(wireType);
+      }
+    }
+
+    return NdgrStatistics(viewers: viewers);
   }
 
   NdgrChat _decodeChat(Uint8List bytes) {
@@ -591,6 +636,16 @@ class _ChunkedMessageMeta {
 
   final String? id;
   final DateTime? serverTimestamp;
+}
+
+class _NicoliveMessageResult {
+  const _NicoliveMessageResult({
+    this.chat,
+    this.statistics,
+  });
+
+  final NdgrChat? chat;
+  final NdgrStatistics? statistics;
 }
 
 class _VarintReadResult {

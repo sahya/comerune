@@ -132,11 +132,63 @@ class ProgramInfoResolver {
       );
     }
 
+    // Extract broadcaster info if available.
+    //
+    // The programinfo API returns broadcaster info in `data.broadcaster`
+    // (array of {id, name}), as defined in N Air's ProgramInfo type.
+    // The `name` field provides the display name directly, avoiding an
+    // additional HTTP request to the nickname API.
+    // Some responses may also include `data.supplier.programProviderId`
+    // (undocumented but observed in related APIs). We try `broadcaster`
+    // first, then fall back to `supplier` for the user ID.
+    final ({String? userId, String? name}) broadcasterInfo =
+        _extractBroadcasterInfo(data);
+
     log(
       'Resolved NDGR viewUri for $lv via programinfo',
       name: 'ProgramInfoResolver',
     );
-    return ProgramInfo(viewUri: parsed, title: title);
+    return ProgramInfo(
+      viewUri: parsed,
+      title: title,
+      supplierUserId: broadcasterInfo.userId,
+      broadcasterName: broadcasterInfo.name,
+    );
+  }
+
+  /// Extracts the broadcaster user ID and display name from the programinfo
+  /// response data.
+  ///
+  /// Tries `data.broadcaster[0]` first (N Air's documented field) for both
+  /// `id` and `name`, then falls back to `data.supplier.programProviderId`
+  /// for the user ID only.
+  static ({String? userId, String? name}) _extractBroadcasterInfo(
+    Map<String, dynamic> data,
+  ) {
+    // Primary: data.broadcaster (array of {id, name}).
+    final Object? broadcaster = data['broadcaster'];
+    if (broadcaster is List && broadcaster.isNotEmpty) {
+      final Object? first = broadcaster[0];
+      if (first is Map<String, dynamic>) {
+        final Object? id = first['id'];
+        final Object? name = first['name'];
+        final String? nameStr = name is String && name.isNotEmpty ? name : null;
+        if (id != null) {
+          return (userId: id.toString(), name: nameStr);
+        }
+      }
+    }
+
+    // Fallback: data.supplier.programProviderId (undocumented but observed).
+    final Object? supplier = data['supplier'];
+    if (supplier is Map<String, dynamic>) {
+      final Object? providerId = supplier['programProviderId'];
+      if (providerId != null) {
+        return (userId: providerId.toString(), name: null);
+      }
+    }
+
+    return (userId: null, name: null);
   }
 
   /// Reads at most [_maxErrorBodyBytes] bytes from the response to avoid
@@ -177,10 +229,23 @@ class ProgramInfoResolver {
 }
 
 class ProgramInfo {
-  const ProgramInfo({required this.viewUri, this.title});
+  const ProgramInfo({
+    required this.viewUri,
+    this.title,
+    this.supplierUserId,
+    this.broadcasterName,
+  });
 
   final Uri viewUri;
   final String? title;
+
+  /// The broadcaster's user ID, extracted from `broadcaster[0].id`
+  /// or `supplier.programProviderId`.
+  final String? supplierUserId;
+
+  /// The broadcaster's display name, extracted from `broadcaster[0].name`.
+  /// Available immediately without an additional HTTP request.
+  final String? broadcasterName;
 }
 
 class ProgramInfoResolveException implements Exception {

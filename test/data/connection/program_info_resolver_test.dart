@@ -37,6 +37,8 @@ void main() {
         'https://mpn.live.nicovideo.jp/api/view/v4/BBzh6D87sTyy',
       );
       expect(result.title, 'Test Program');
+      expect(result.supplierUserId, isNull);
+      expect(result.broadcasterName, isNull);
 
       expect(httpClient.requests, hasLength(1));
       final _CapturedRequest request = httpClient.requests[0];
@@ -49,6 +51,149 @@ void main() {
         'user_session_abc123',
       );
       expect(request.headers['User-Agent'], isNotNull);
+
+      resolver.dispose();
+    });
+
+    test('extracts broadcaster user ID from broadcaster array', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'Broadcaster Program',
+          'broadcaster': <Object?>[
+            <String, Object?>{'id': 67890, 'name': '配信者A'},
+          ],
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri':
+                  'https://mpn.live.nicovideo.jp/api/view/v4/Broadcaster',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv1000',
+        userSession: 'session',
+      );
+
+      expect(result.title, 'Broadcaster Program');
+      expect(result.supplierUserId, '67890');
+      expect(result.broadcasterName, '配信者A');
+
+      resolver.dispose();
+    });
+
+    test('falls back to supplier when broadcaster is absent', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'Supplier Fallback',
+          'supplier': <String, Object?>{
+            'name': 'テスト配信者',
+            'programProviderId': 12345,
+          },
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri':
+                  'https://mpn.live.nicovideo.jp/api/view/v4/TestSupplier',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv999',
+        userSession: 'session',
+      );
+
+      expect(result.title, 'Supplier Fallback');
+      expect(result.supplierUserId, '12345');
+      expect(result.broadcasterName, isNull);
+
+      resolver.dispose();
+    });
+
+    test('prefers broadcaster over supplier when both exist', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'Both Present',
+          'broadcaster': <Object?>[
+            <String, Object?>{'id': 11111, 'name': '配信者B'},
+          ],
+          'supplier': <String, Object?>{
+            'programProviderId': 22222,
+          },
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri':
+                  'https://mpn.live.nicovideo.jp/api/view/v4/BothPresent',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv1001',
+        userSession: 'session',
+      );
+
+      expect(result.supplierUserId, '11111');
+      expect(result.broadcasterName, '配信者B');
+
+      resolver.dispose();
+    });
+
+    test(
+        'returns null supplierUserId when neither broadcaster nor supplier has ID',
+        () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'No IDs',
+          'broadcaster': <Object?>[
+            <String, Object?>{'name': '名前だけ'},
+          ],
+          'supplier': <String, Object?>{
+            'name': 'テスト配信者',
+          },
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/NoIds',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv888',
+        userSession: 'session',
+      );
+
+      expect(result.title, 'No IDs');
+      expect(result.supplierUserId, isNull);
+      expect(result.broadcasterName, isNull);
 
       resolver.dispose();
     });

@@ -79,12 +79,17 @@ void main() {
         const Duration(seconds: 2, milliseconds: 20),
       );
       expect(
-        supervisor.backoffDelayForAttempt(6),
-        const Duration(seconds: 30, milliseconds: 60),
+        supervisor.backoffDelayForAttempt(5),
+        const Duration(seconds: 8, milliseconds: 50),
       );
       expect(
-        supervisor.backoffDelayForAttempt(7),
-        const Duration(seconds: 30, milliseconds: 70),
+        supervisor.backoffDelayForAttempt(9),
+        const Duration(seconds: 30, milliseconds: 90),
+      );
+      // Beyond array length → clamps to last value.
+      expect(
+        supervisor.backoffDelayForAttempt(10),
+        const Duration(seconds: 30, milliseconds: 100),
       );
     });
 
@@ -107,7 +112,7 @@ void main() {
       expect(reset, isFalse);
       expect(supervisor.status, ConnectionStatus.idle);
 
-      final bool ended = await supervisor.endBroadcast();
+      final bool ended = supervisor.endBroadcast();
       expect(ended, isFalse);
       expect(supervisor.status, ConnectionStatus.idle);
     });
@@ -130,7 +135,7 @@ void main() {
       final bool started = await _startAndDrain(supervisor);
       expect(started, isTrue);
 
-      final bool ended = await supervisor.endBroadcast();
+      final bool ended = supervisor.endBroadcast();
       expect(ended, isTrue);
       expect(supervisor.status, ConnectionStatus.ended);
 
@@ -221,7 +226,7 @@ void main() {
       expect(failed, isTrue);
       expect(supervisor.canRetryFromTerminal, isTrue);
 
-      final bool retried = await supervisor.retryConnectionFromTerminal();
+      final bool retried = supervisor.retryConnectionFromTerminal();
       await _drainEventLoop();
       expect(retried, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingNdgr);
@@ -247,7 +252,7 @@ void main() {
       );
       addTearDown(supervisor.dispose);
 
-      final bool retried = await supervisor.retryConnectionFromTerminal();
+      final bool retried = supervisor.retryConnectionFromTerminal();
       expect(retried, isFalse);
       expect(supervisor.status, ConnectionStatus.idle);
     });
@@ -274,7 +279,7 @@ void main() {
       expect(started, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingNdgr);
 
-      final bool stopped = await supervisor.stopByUser();
+      final bool stopped = supervisor.stopByUser();
       expect(stopped, isTrue);
       expect(supervisor.status, ConnectionStatus.stopped);
 
@@ -307,7 +312,7 @@ void main() {
       expect(firstStart, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingNdgr);
 
-      final bool stopped = await supervisor.stopByUser();
+      final bool stopped = supervisor.stopByUser();
       expect(stopped, isTrue);
       expect(supervisor.status, ConnectionStatus.stopped);
 
@@ -463,7 +468,7 @@ void main() {
       expect(started, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingLegacy);
 
-      final bool ended = await supervisor.endBroadcast();
+      final bool ended = supervisor.endBroadcast();
       expect(ended, isTrue);
       expect(supervisor.status, ConnectionStatus.ended);
 
@@ -709,7 +714,7 @@ void main() {
       await _drainEventLoop();
       expect(supervisor.status, ConnectionStatus.reconnecting);
 
-      final bool stopped = await supervisor.stopByUser();
+      final bool stopped = supervisor.stopByUser();
       expect(stopped, isTrue);
       expect(supervisor.status, ConnectionStatus.stopped);
 
@@ -743,7 +748,7 @@ void main() {
       await _drainEventLoop();
       expect(supervisor.status, ConnectionStatus.reconnecting);
 
-      final bool ended = await supervisor.endBroadcast();
+      final bool ended = supervisor.endBroadcast();
       expect(ended, isTrue);
       expect(supervisor.status, ConnectionStatus.ended);
 
@@ -786,7 +791,7 @@ void main() {
       expect(supervisor.lastError, ConnectionErrorCode.ndgrStreamFailed);
     });
 
-    test('uses 6 as default max reconnect attempts', () async {
+    test('uses 9 as default max reconnect attempts', () async {
       final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
         endpointsQueue: <SessionEndpoints>[
           SessionEndpoints(
@@ -795,7 +800,18 @@ void main() {
         ],
       );
       final FakeNdgrClient ndgrClient = FakeNdgrClient(
-        connectResults: <bool>[true, false, false, false, false, false, false],
+        connectResults: <bool>[
+          true,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+        ],
       );
       final ConnectionSupervisor supervisor = ConnectionSupervisor(
         sessionWsClient: sessionWsClient,
@@ -809,7 +825,7 @@ void main() {
       expect(await _startAndDrain(supervisor), isTrue);
       expect(await supervisor.onNdgrStreamStalled(), isFalse);
       expect(supervisor.status, ConnectionStatus.failed);
-      expect(supervisor.reconnectCount, 6);
+      expect(supervisor.reconnectCount, 9);
       expect(supervisor.lastError, ConnectionErrorCode.ndgrStreamFailed);
     });
 

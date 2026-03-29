@@ -1,0 +1,272 @@
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:comerune/application/settings/settings_store.dart';
+import 'package:comerune/domain/models/app_settings.dart';
+
+import '../../helpers/in_memory_shared_preferences.dart';
+
+void main() {
+  group('SharedPreferencesSettingsStore', () {
+    test('showUserName defaults to true when not stored', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.showUserName, isTrue);
+    });
+
+    test('round-trips showUserName value', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        showUserName: false,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.showUserName, isFalse);
+    });
+
+    test('commentFontSize defaults to 14 when not stored', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.commentFontSize, commentFontSizeDefault);
+    });
+
+    test('round-trips commentFontSize value', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      for (final double size in <double>[10, 14, 24, 36, 48]) {
+        final AppSettings original = AppSettings.defaults.copyWith(
+          commentFontSize: size,
+        );
+        await store.save(original);
+
+        final AppSettings loaded = await store.load();
+
+        expect(loaded.commentFontSize, size, reason: '$size should round-trip');
+      }
+    });
+
+    test('migrates legacy enum commentFontSize values', () async {
+      final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: prefs);
+
+      // Simulate a legacy stored value.
+      await prefs.setString('settings.comment.fontSize', 'xl');
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.commentFontSize, 18);
+    });
+
+    test('clamps out-of-range commentFontSize to valid bounds', () async {
+      final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: prefs);
+
+      // Below minimum → clamp to min.
+      await prefs.setString('settings.comment.fontSize', '0');
+      AppSettings loaded = await store.load();
+      expect(loaded.commentFontSize, commentFontSizeMin);
+
+      // Above maximum → clamp to max.
+      await prefs.setString('settings.comment.fontSize', '100');
+      loaded = await store.load();
+      expect(loaded.commentFontSize, commentFontSizeMax);
+    });
+
+    test('falls back to default for invalid commentFontSize strings', () async {
+      final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: prefs);
+
+      for (final String invalid in <String>['abc', '', 'unknown']) {
+        await prefs.setString('settings.comment.fontSize', invalid);
+        final AppSettings loaded = await store.load();
+        expect(loaded.commentFontSize, commentFontSizeDefault,
+            reason: '"$invalid" should fall back to default');
+      }
+    });
+
+    test('parses fractional commentFontSize correctly', () async {
+      final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: prefs);
+
+      await prefs.setString('settings.comment.fontSize', '14.5');
+      final AppSettings loaded = await store.load();
+      expect(loaded.commentFontSize, 14.5);
+    });
+
+    test('autoSaveCommentLog defaults to false when not stored', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.autoSaveCommentLog, isFalse);
+    });
+
+    test('round-trips autoSaveCommentLog value', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        autoSaveCommentLog: true,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.autoSaveCommentLog, isTrue);
+    });
+
+    test('autoNicknameRegistration defaults to true when not stored', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.autoNicknameRegistration, isTrue);
+    });
+
+    test('round-trips autoNicknameRegistration value', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        autoNicknameRegistration: false,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.autoNicknameRegistration, isFalse);
+    });
+
+    test('starPrefixHidingEnabled defaults to false when not stored', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.starPrefixHidingEnabled, isFalse);
+    });
+
+    test('round-trips starPrefixHidingEnabled value', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        starPrefixHidingEnabled: true,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.starPrefixHidingEnabled, isTrue);
+    });
+
+    test('slashPrefixSkipEnabled defaults to true when not stored', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.slashPrefixSkipEnabled, isTrue);
+    });
+
+    test('round-trips slashPrefixSkipEnabled value', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        slashPrefixSkipEnabled: false,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.slashPrefixSkipEnabled, isFalse);
+    });
+
+    test('themeMode defaults to light when not stored', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.themeMode, AppThemeMode.light);
+    });
+
+    test('round-trips themeMode value', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      for (final AppThemeMode mode in AppThemeMode.values) {
+        final AppSettings original =
+            AppSettings.defaults.copyWith(themeMode: mode);
+        await store.save(original);
+
+        final AppSettings loaded = await store.load();
+
+        expect(loaded.themeMode, mode);
+      }
+    });
+    test('statisticsEnabled defaults to false when not stored', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.statisticsEnabled, isFalse);
+    });
+
+    test('statisticsViewerCommentEnabled defaults to true when not stored',
+        () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.statisticsViewerCommentEnabled, isTrue);
+    });
+
+    test('statisticsActiveUserEnabled defaults to true when not stored',
+        () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.statisticsActiveUserEnabled, isTrue);
+    });
+
+    test('round-trips statistics settings', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        statisticsEnabled: true,
+        statisticsViewerCommentEnabled: false,
+        statisticsActiveUserEnabled: false,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.statisticsEnabled, isTrue);
+      expect(loaded.statisticsViewerCommentEnabled, isFalse);
+      expect(loaded.statisticsActiveUserEnabled, isFalse);
+    });
+  });
+}

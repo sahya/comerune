@@ -21,14 +21,31 @@ void main() {
       await tester.pumpWidget(_buildScreen(settingsStore));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('bouyomi-section')), findsOneWidget);
-      expect(find.byKey(const Key('voicevox-section')), findsNothing);
+      await _scrollToKey(tester, const Key('bouyomi-section'));
+      expect(
+        find.byKey(const Key('bouyomi-section'), skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('voicevox-section'), skipOffstage: false),
+        findsNothing,
+      );
 
-      await tester.tap(find.byKey(const Key('engine-voicevox-radio')));
+      await _scrollToKey(tester, const Key('engine-voicevox-radio'));
+      await tester.tap(
+        find.byKey(const Key('engine-voicevox-radio'), skipOffstage: false),
+      );
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('voicevox-section')), findsOneWidget);
-      expect(find.byKey(const Key('bouyomi-section')), findsNothing);
+      await _scrollToKey(tester, const Key('voicevox-section'));
+      expect(
+        find.byKey(const Key('voicevox-section'), skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('bouyomi-section'), skipOffstage: false),
+        findsNothing,
+      );
     });
 
     testWidgets('shows validation error and does not save invalid queue limit',
@@ -155,6 +172,194 @@ void main() {
       expect(find.text('ログイン済み'), findsOneWidget);
     });
 
+    testWidgets('toggles showUserName and persists value', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      // Default is true
+      AppSettings loaded = await settingsStore.load();
+      expect(loaded.showUserName, isTrue);
+
+      await _toggleSwitchByKey(tester, const Key('show-user-name-switch'));
+
+      loaded = await settingsStore.load();
+      expect(loaded.showUserName, isFalse);
+    });
+
+    testWidgets('disables resolveUserName switch when showUserName is off', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      // Turn off showUserName
+      await _toggleSwitchByKey(tester, const Key('show-user-name-switch'));
+
+      // resolveUserName switch should now be disabled
+      await _scrollToKey(tester, const Key('resolve-user-name-switch'));
+      final SwitchListTile resolveTile = tester.widget(
+        find.byKey(const Key('resolve-user-name-switch'), skipOffstage: false),
+      );
+      expect(resolveTile.onChanged, isNull);
+    });
+
+    testWidgets('theme dropdown persists selected value', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      // Default should be light
+      AppSettings loaded = await settingsStore.load();
+      expect(loaded.themeMode, AppThemeMode.light);
+
+      // Open the dropdown and select dark
+      await _scrollToKey(tester, const Key('theme-mode-dropdown'));
+      await tester.tap(
+        find.byKey(const Key('theme-mode-dropdown')),
+        warnIfMissed: false,
+      );
+      await tester.pumpAndSettle();
+
+      // Tap the dark option in the dropdown overlay
+      await tester.tap(find.text('ダーク').last);
+      await tester.pumpAndSettle();
+
+      loaded = await settingsStore.load();
+      expect(loaded.themeMode, AppThemeMode.dark);
+    });
+
+    testWidgets('theme dropdown updates themeModeNotifier immediately', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final ValueNotifier<AppThemeMode> themeNotifier =
+          ValueNotifier<AppThemeMode>(AppThemeMode.light);
+
+      await tester.pumpWidget(
+        _buildScreen(settingsStore, themeModeNotifier: themeNotifier),
+      );
+      await tester.pumpAndSettle();
+
+      expect(themeNotifier.value, AppThemeMode.light);
+
+      // Open dropdown and select dark
+      await _scrollToKey(tester, const Key('theme-mode-dropdown'));
+      await tester.tap(
+        find.byKey(const Key('theme-mode-dropdown')),
+        warnIfMissed: false,
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('ダーク').last);
+      await tester.pumpAndSettle();
+
+      expect(themeNotifier.value, AppThemeMode.dark);
+
+      themeNotifier.dispose();
+    });
+
+    testWidgets('disables statistics child toggles when parent toggle is off', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      // Parent is off by default; child toggles should be disabled.
+      await _scrollToKey(tester, const Key('statistics-viewer-comment-switch'));
+      SwitchListTile viewerTile = tester.widget(
+        find.byKey(
+          const Key('statistics-viewer-comment-switch'),
+          skipOffstage: false,
+        ),
+      );
+      expect(viewerTile.onChanged, isNull);
+
+      await _scrollToKey(tester, const Key('statistics-active-user-switch'));
+      SwitchListTile activeTile = tester.widget(
+        find.byKey(
+          const Key('statistics-active-user-switch'),
+          skipOffstage: false,
+        ),
+      );
+      expect(activeTile.onChanged, isNull);
+
+      // Turn on parent.
+      await _toggleSwitchByKey(tester, const Key('statistics-enabled-switch'));
+
+      // Child toggles should now be enabled.
+      await _scrollToKey(tester, const Key('statistics-viewer-comment-switch'));
+      viewerTile = tester.widget(
+        find.byKey(
+          const Key('statistics-viewer-comment-switch'),
+          skipOffstage: false,
+        ),
+      );
+      expect(viewerTile.onChanged, isNotNull);
+
+      await _scrollToKey(tester, const Key('statistics-active-user-switch'));
+      activeTile = tester.widget(
+        find.byKey(
+          const Key('statistics-active-user-switch'),
+          skipOffstage: false,
+        ),
+      );
+      expect(activeTile.onChanged, isNotNull);
+    });
+
+    testWidgets('slash prefix skip toggle persists value (default ON)', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      // Default should be ON
+      AppSettings loaded = await settingsStore.load();
+      expect(loaded.slashPrefixSkipEnabled, isTrue);
+
+      await _toggleSwitchByKey(tester, const Key('slash-prefix-skip-switch'));
+
+      loaded = await settingsStore.load();
+      expect(loaded.slashPrefixSkipEnabled, isFalse);
+    });
+
+    testWidgets('star prefix hiding toggle persists value (default OFF)', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      // Default should be OFF
+      AppSettings loaded = await settingsStore.load();
+      expect(loaded.starPrefixHidingEnabled, isFalse);
+
+      await _toggleSwitchByKey(tester, const Key('star-prefix-hiding-switch'));
+
+      loaded = await settingsStore.load();
+      expect(loaded.starPrefixHidingEnabled, isTrue);
+    });
+
     testWidgets('saves text fields when focus is lost', (
       WidgetTester tester,
     ) async {
@@ -184,11 +389,13 @@ void main() {
 Widget _buildScreen(
   SettingsStore settingsStore, {
   UserSessionStore? userSessionStore,
+  ValueNotifier<AppThemeMode>? themeModeNotifier,
 }) {
   return MaterialApp(
     home: SettingsScreen(
       settingsStore: settingsStore,
       userSessionStore: userSessionStore,
+      themeModeNotifier: themeModeNotifier,
     ),
   );
 }
