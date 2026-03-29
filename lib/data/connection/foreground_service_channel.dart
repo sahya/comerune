@@ -11,10 +11,9 @@ class ForegroundServiceChannel {
   ForegroundServiceChannel({
     MethodChannel? channel,
     @visibleForTesting bool? platformOverride,
-  }) : _channel =
-           channel ??
-           const MethodChannel('com.example.comerune/foreground_service'),
-       _isAndroid = platformOverride ?? Platform.isAndroid;
+  })  : _channel = channel ??
+            const MethodChannel('com.example.comerune/foreground_service'),
+        _isAndroid = platformOverride ?? Platform.isAndroid;
 
   final MethodChannel _channel;
   final bool _isAndroid;

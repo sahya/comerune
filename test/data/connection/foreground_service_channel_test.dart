@@ -16,9 +16,9 @@ void main() {
     );
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(methodChannel, (MethodCall call) async {
-          log.add(call);
-          return null;
-        });
+      log.add(call);
+      return null;
+    });
   });
 
   tearDown(() {
@@ -133,8 +133,8 @@ void main() {
     test('startService handles exception without crashing', () async {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(methodChannel, (MethodCall call) async {
-            throw PlatformException(code: 'ERROR', message: 'test error');
-          });
+        throw PlatformException(code: 'ERROR', message: 'test error');
+      });
 
       await channel.startService(title: 'T', body: 'B');
       expect(channel.isRunning, isFalse);
@@ -148,8 +148,8 @@ void main() {
       // Now mock a failure for stop.
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(methodChannel, (MethodCall call) async {
-            throw PlatformException(code: 'ERROR', message: 'test error');
-          });
+        throw PlatformException(code: 'ERROR', message: 'test error');
+      });
 
       await channel.stopService();
       // isRunning remains true because stop failed.
@@ -161,8 +161,8 @@ void main() {
 
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(methodChannel, (MethodCall call) async {
-            throw PlatformException(code: 'ERROR', message: 'test error');
-          });
+        throw PlatformException(code: 'ERROR', message: 'test error');
+      });
 
       await channel.updateNotification(title: 'T', body: 'B');
       // Should not crash; isRunning remains true.
