@@ -1,3 +1,5 @@
+import '../../domain/utils/elapsed_formatter.dart';
+
 /// A live program from a followed broadcaster on niconico.
 class FollowProgram {
   FollowProgram({
@@ -29,31 +31,7 @@ class FollowProgram {
   /// When the broadcast started (ISO 8601 or Unix timestamp from API).
   final DateTime? beginAt;
 
-  /// Returns a human-readable elapsed time string (e.g., "15分", "1時間23分").
-  String? elapsedLabel() {
-    final DateTime? start = beginAt;
-    if (start == null) {
-      return null;
-    }
-
-    final Duration elapsed = DateTime.now().difference(start);
-    if (elapsed.isNegative) {
-      return null;
-    }
-
-    final int totalMinutes = elapsed.inMinutes;
-    if (totalMinutes < 1) {
-      return '開始直後';
-    }
-    if (totalMinutes < 60) {
-      return '$totalMinutes分';
-    }
-
-    final int hours = totalMinutes ~/ 60;
-    final int minutes = totalMinutes % 60;
-    if (minutes == 0) {
-      return '$hours時間';
-    }
-    return '$hours時間$minutes分';
-  }
+  /// Returns an elapsed time string in `H:MM:SS` format, or null if
+  /// [beginAt] is null or in the future.
+  String? elapsedLabel() => formatElapsed(beginAt);
 }

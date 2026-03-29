@@ -936,7 +936,7 @@ class _FollowProgramTile extends StatelessWidget {
     final StringBuffer sb = StringBuffer('${program.providerName}の放送');
     sb.write(' ${program.title}');
     if (elapsed != null) {
-      sb.write(' $elapsed経過');
+      sb.write(' 経過$elapsed');
     }
     sb.write(' タップして接続');
     return sb.toString();

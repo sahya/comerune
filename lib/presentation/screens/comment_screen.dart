@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/comment_log/comment_log_stats.dart';
+import '../../domain/utils/elapsed_formatter.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
@@ -1127,7 +1128,7 @@ class _StatusBarState extends State<_StatusBar> {
       }
     });
     if (widget.beginAt != null) {
-      _elapsedTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _elapsedTimer = Timer.periodic(const Duration(seconds: 1), (_) {
         if (mounted) {
           setState(() {});
         }
@@ -1142,29 +1143,7 @@ class _StatusBarState extends State<_StatusBar> {
     super.dispose();
   }
 
-  String? _elapsedLabel() {
-    final DateTime? start = widget.beginAt;
-    if (start == null) {
-      return null;
-    }
-    final Duration elapsed = DateTime.now().difference(start);
-    if (elapsed.isNegative) {
-      return null;
-    }
-    final int totalMinutes = elapsed.inMinutes;
-    if (totalMinutes < 1) {
-      return '開始直後';
-    }
-    if (totalMinutes < 60) {
-      return '$totalMinutes分経過';
-    }
-    final int hours = totalMinutes ~/ 60;
-    final int minutes = totalMinutes % 60;
-    if (minutes == 0) {
-      return '$hours時間経過';
-    }
-    return '$hours時間$minutes分経過';
-  }
+  String? _elapsedLabel() => formatElapsed(widget.beginAt);
 
   void _toggle() {
     setState(() {
