@@ -353,10 +353,8 @@ class _CommentScreenState extends State<CommentScreen> {
       onPopInvokedWithResult: (bool didPop, Object? result) {
         unawaited(_handleBackNavigation(didPop));
       },
-      // TODO(PR#20-O3): AnimatedBuilder を ListenableBuilder に置き換える。
-      //   Flutter 3.10+ で非アニメーション用途には ListenableBuilder が推奨。
-      child: AnimatedBuilder(
-        animation: widget.connectionSupervisor,
+      child: ListenableBuilder(
+        listenable: widget.connectionSupervisor,
         builder: (BuildContext context, _) {
           final ConnectionStatus status = widget.connectionSupervisor.status;
           final List<AppMessage> visibleMessages = widget.messages
