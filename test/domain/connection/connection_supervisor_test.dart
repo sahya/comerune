@@ -79,12 +79,12 @@ void main() {
         const Duration(seconds: 2, milliseconds: 20),
       );
       expect(
-        supervisor.backoffDelayForAttempt(6),
-        const Duration(seconds: 30, milliseconds: 60),
+        supervisor.backoffDelayForAttempt(5),
+        const Duration(seconds: 16, milliseconds: 50),
       );
       expect(
-        supervisor.backoffDelayForAttempt(7),
-        const Duration(seconds: 30, milliseconds: 70),
+        supervisor.backoffDelayForAttempt(6),
+        const Duration(seconds: 16, milliseconds: 60),
       );
     });
 
@@ -809,7 +809,7 @@ void main() {
       expect(await _startAndDrain(supervisor), isTrue);
       expect(await supervisor.onNdgrStreamStalled(), isFalse);
       expect(supervisor.status, ConnectionStatus.failed);
-      expect(supervisor.reconnectCount, 6);
+      expect(supervisor.reconnectCount, 5);
       expect(supervisor.lastError, ConnectionErrorCode.ndgrStreamFailed);
     });
 

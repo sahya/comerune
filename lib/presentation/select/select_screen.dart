@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -63,6 +64,7 @@ class _SelectScreenState extends State<SelectScreen> {
   String? _lastConnectedLv;
   String? _followBroadcasterName;
   String? _followBroadcasterIconUrl;
+  DateTime? _followBeginAt;
   final ValueNotifier<bool?> _loginStateNotifier = ValueNotifier<bool?>(null);
   List<FollowProgram> _followPrograms = const <FollowProgram>[];
   bool _isLoadingFollowPrograms = false;
@@ -164,6 +166,7 @@ class _SelectScreenState extends State<SelectScreen> {
   void _onSubmit(String _) {
     _followBroadcasterName = null;
     _followBroadcasterIconUrl = null;
+    _followBeginAt = null;
     unawaited(_connect());
   }
 
@@ -200,12 +203,16 @@ class _SelectScreenState extends State<SelectScreen> {
 
     _lastConnectedLv = lv;
 
-    Navigator.of(context).push(
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (BuildContext routeContext) =>
             _buildCommentScreen(routeContext, lv),
       ),
     );
+
+    if (mounted) {
+      unawaited(_fetchFollowPrograms());
+    }
   }
 
   @override
@@ -262,6 +269,7 @@ class _SelectScreenState extends State<SelectScreen> {
                         ? () {
                             _followBroadcasterName = null;
                             _followBroadcasterIconUrl = null;
+                            _followBeginAt = null;
                             unawaited(_connect());
                           }
                         : null,
@@ -280,6 +288,10 @@ class _SelectScreenState extends State<SelectScreen> {
               onRefresh: _fetchFollowPrograms,
             ),
           ),
+          if (_settingsNotifier.value.favoriteUserIdSet.isNotEmpty)
+            _FavoriteUserSection(
+              userIds: _settingsNotifier.value.favoriteUserIdSet,
+            ),
         ],
       ),
     );
@@ -308,6 +320,8 @@ class _SelectScreenState extends State<SelectScreen> {
                 ? widget.resolveUserName?.call(supplierUserId)
                 : null;
         final String? broadcasterName = resolvedName ?? _followBroadcasterName;
+        final String? broadcasterIconUrl = _followBroadcasterIconUrl ??
+            _buildIconUrlFromUserId(supplierUserId);
 
         return CommentScreen(
           lv: lv,
@@ -323,7 +337,8 @@ class _SelectScreenState extends State<SelectScreen> {
           connectionMethod: _connectionMethod,
           programTitle: widget.programTitleNotifier?.value,
           broadcasterName: broadcasterName,
-          broadcasterIconUrl: _followBroadcasterIconUrl,
+          broadcasterIconUrl: broadcasterIconUrl,
+          beginAt: _followBeginAt,
           showUserName: _settingsNotifier.value.showUserName,
           commentFontSize: _settingsNotifier.value.commentFontSize,
           resolveUserName:
@@ -443,8 +458,21 @@ class _SelectScreenState extends State<SelectScreen> {
       userSession = '';
     }
 
-    final List<FollowProgram> programs =
-        await repository.fetchOnAirPrograms(userSession: userSession);
+    List<FollowProgram> programs = const <FollowProgram>[];
+    for (int attempt = 0; attempt < 3; attempt++) {
+      programs = await repository.fetchOnAirPrograms(userSession: userSession);
+      if (programs.isNotEmpty || !mounted) {
+        break;
+      }
+      if (attempt < 2) {
+        await Future<void>.delayed(
+          Duration(seconds: math.pow(2, attempt).toInt()),
+        );
+        if (!mounted) {
+          return;
+        }
+      }
+    }
 
     if (!mounted) {
       return;
@@ -460,9 +488,22 @@ class _SelectScreenState extends State<SelectScreen> {
         Timer(_followRefreshInterval, () => unawaited(_fetchFollowPrograms()));
   }
 
+  static String? _buildIconUrlFromUserId(String? userId) {
+    if (userId == null || userId.isEmpty) {
+      return null;
+    }
+    final int? numericId = int.tryParse(userId);
+    if (numericId == null) {
+      return null;
+    }
+    final int prefix = numericId ~/ 10000;
+    return 'https://secure-dcdn.cdn.nimg.jp/nicoaccount/usericon/$prefix/$numericId.jpg';
+  }
+
   void _connectToProgram(FollowProgram program) {
     _followBroadcasterName = program.providerName;
     _followBroadcasterIconUrl = program.providerIconUrl;
+    _followBeginAt = program.beginAt;
     _controller.text = program.programId;
     unawaited(_connect());
   }
@@ -802,6 +843,74 @@ class _FollowProgramTile extends StatelessWidget {
       height: 40,
       color: Colors.grey.shade300,
       child: const Icon(Icons.person, size: 22, color: Colors.grey),
+    );
+  }
+}
+
+class _FavoriteUserSection extends StatelessWidget {
+  const _FavoriteUserSection({
+    required this.userIds,
+  });
+
+  final Set<String> userIds;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        const Divider(height: 1),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: <Widget>[
+              const Icon(Icons.person_add, size: 16),
+              const SizedBox(width: 6),
+              Text(
+                'お気に入りユーザー',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${userIds.length}件',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        ...userIds.map((String userId) {
+          final String? iconUrl =
+              _SelectScreenState._buildIconUrlFromUserId(userId);
+          return ListTile(
+            dense: true,
+            leading: ClipOval(
+              child: SizedBox(
+                width: 32,
+                height: 32,
+                child: iconUrl != null
+                    ? Image.network(
+                        iconUrl,
+                        width: 32,
+                        height: 32,
+                        fit: BoxFit.cover,
+                        cacheWidth: 64,
+                        cacheHeight: 64,
+                        errorBuilder: (_, __, ___) =>
+                            const Icon(Icons.person, size: 20),
+                      )
+                    : const Icon(Icons.person, size: 20),
+              ),
+            ),
+            title: Text(
+              userId,
+              style: const TextStyle(fontSize: 13),
+            ),
+          );
+        }),
+      ],
     );
   }
 }

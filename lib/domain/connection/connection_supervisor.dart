@@ -112,7 +112,7 @@ class ConnectionSupervisor extends ChangeNotifier {
     SessionWsClient? sessionWsClient,
     NdgrClient? ndgrClient,
     LegacyCommentClient? legacyCommentClient,
-    int maxReconnectAttempts = 6,
+    int maxReconnectAttempts = 5,
     int legacySameUrlFailureThreshold = 3,
     DelayExecutor? delayExecutor,
     JitterProvider? jitterProvider,
@@ -141,7 +141,7 @@ class ConnectionSupervisor extends ChangeNotifier {
     }
   }
 
-  static const List<int> _backoffSeconds = <int>[1, 2, 4, 8, 16, 30];
+  static const List<int> _backoffSeconds = <int>[1, 2, 4, 8, 16];
   static final math.Random _random = math.Random();
 
   static const Map<ConnectionStatus, Set<ConnectionStatus>>

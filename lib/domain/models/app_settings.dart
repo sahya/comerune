@@ -193,6 +193,7 @@ class AppSettings {
     required this.suppressDuplicate,
     required this.ngWords,
     required this.ngUserIds,
+    required this.favoriteUserIds,
     required this.pastCommentFetchCount,
     required this.showUserName,
     required this.resolveUserName,
@@ -226,6 +227,7 @@ class AppSettings {
     suppressDuplicate: true,
     ngWords: '',
     ngUserIds: '',
+    favoriteUserIds: '',
     pastCommentFetchCount: PastCommentFetchCount.count100,
     showUserName: true,
     resolveUserName: true,
@@ -255,6 +257,9 @@ class AppSettings {
 
   /// Newline-separated user IDs to filter out from display.
   final String ngUserIds;
+
+  /// Newline-separated user IDs to monitor in the connection list.
+  final String favoriteUserIds;
   final PastCommentFetchCount pastCommentFetchCount;
   final bool showUserName;
   final bool resolveUserName;
@@ -298,6 +303,35 @@ class AppSettings {
     return copyWith(ngUserIds: updated.join('\n'));
   }
 
+  Set<String> get favoriteUserIdSet {
+    if (favoriteUserIds.trim().isEmpty) {
+      return const <String>{};
+    }
+    return favoriteUserIds
+        .split('\n')
+        .map((String id) => id.trim())
+        .where((String id) => id.isNotEmpty)
+        .toSet();
+  }
+
+  AppSettings addFavoriteUserId(String userId) {
+    final Set<String> current = favoriteUserIdSet;
+    if (current.contains(userId)) {
+      return this;
+    }
+    final String updated = <String>[...current, userId].join('\n');
+    return copyWith(favoriteUserIds: updated);
+  }
+
+  AppSettings removeFavoriteUserId(String userId) {
+    final Set<String> current = favoriteUserIdSet;
+    if (!current.contains(userId)) {
+      return this;
+    }
+    final Set<String> updated = Set<String>.from(current)..remove(userId);
+    return copyWith(favoriteUserIds: updated.join('\n'));
+  }
+
   AppSettings copyWith({
     AppThemeMode? themeMode,
     bool? autoReadEnabled,
@@ -318,6 +352,7 @@ class AppSettings {
     bool? suppressDuplicate,
     String? ngWords,
     String? ngUserIds,
+    String? favoriteUserIds,
     PastCommentFetchCount? pastCommentFetchCount,
     bool? showUserName,
     bool? resolveUserName,
@@ -345,6 +380,7 @@ class AppSettings {
       suppressDuplicate: suppressDuplicate ?? this.suppressDuplicate,
       ngWords: ngWords ?? this.ngWords,
       ngUserIds: ngUserIds ?? this.ngUserIds,
+      favoriteUserIds: favoriteUserIds ?? this.favoriteUserIds,
       pastCommentFetchCount:
           pastCommentFetchCount ?? this.pastCommentFetchCount,
       showUserName: showUserName ?? this.showUserName,

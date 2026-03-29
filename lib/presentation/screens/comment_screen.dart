@@ -47,6 +47,7 @@ class CommentScreen extends StatefulWidget {
     this.programTitle,
     this.broadcasterName,
     this.broadcasterIconUrl,
+    this.beginAt,
     this.showUserName = true,
     this.commentFontSize = commentFontSizeDefault,
     this.resolveUserName,
@@ -71,6 +72,7 @@ class CommentScreen extends StatefulWidget {
   final String? programTitle;
   final String? broadcasterName;
   final String? broadcasterIconUrl;
+  final DateTime? beginAt;
   final bool showUserName;
   final double commentFontSize;
 
@@ -285,6 +287,7 @@ class _CommentScreenState extends State<CommentScreen> {
                   connectionMethod: widget.connectionMethod,
                   broadcasterName: widget.broadcasterName,
                   broadcasterIconUrl: widget.broadcasterIconUrl,
+                  beginAt: widget.beginAt,
                   themeColors: themeColors,
                 ),
                 Expanded(
@@ -787,6 +790,7 @@ class _StatusBar extends StatefulWidget {
     required this.connectionMethod,
     this.broadcasterName,
     this.broadcasterIconUrl,
+    this.beginAt,
     required this.themeColors,
   });
 
@@ -796,6 +800,7 @@ class _StatusBar extends StatefulWidget {
   final ConnectionMethod? connectionMethod;
   final String? broadcasterName;
   final String? broadcasterIconUrl;
+  final DateTime? beginAt;
   final AppThemeColors themeColors;
 
   @override
@@ -805,6 +810,7 @@ class _StatusBar extends StatefulWidget {
 class _StatusBarState extends State<_StatusBar> {
   bool _collapsed = false;
   Timer? _autoCollapseTimer;
+  Timer? _elapsedTimer;
 
   @override
   void initState() {
@@ -816,12 +822,44 @@ class _StatusBarState extends State<_StatusBar> {
         });
       }
     });
+    if (widget.beginAt != null) {
+      _elapsedTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+        if (mounted) {
+          setState(() {});
+        }
+      });
+    }
   }
 
   @override
   void dispose() {
     _autoCollapseTimer?.cancel();
+    _elapsedTimer?.cancel();
     super.dispose();
+  }
+
+  String? _elapsedLabel() {
+    final DateTime? start = widget.beginAt;
+    if (start == null) {
+      return null;
+    }
+    final Duration elapsed = DateTime.now().difference(start);
+    if (elapsed.isNegative) {
+      return null;
+    }
+    final int totalMinutes = elapsed.inMinutes;
+    if (totalMinutes < 1) {
+      return '開始直後';
+    }
+    if (totalMinutes < 60) {
+      return '$totalMinutes分経過';
+    }
+    final int hours = totalMinutes ~/ 60;
+    final int minutes = totalMinutes % 60;
+    if (minutes == 0) {
+      return '$hours時間経過';
+    }
+    return '$hours時間$minutes分経過';
   }
 
   void _toggle() {
@@ -880,10 +918,24 @@ class _StatusBarState extends State<_StatusBar> {
                     ),
                     const SizedBox(width: 8),
                   ],
-                  Text(
-                    'lv: ${widget.lv}',
-                    key: const Key('status-lv'),
+                  Flexible(
+                    child: Text(
+                      'lv: ${widget.lv}',
+                      key: const Key('status-lv'),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
+                  if (_elapsedLabel() != null) ...<Widget>[
+                    const SizedBox(width: 8),
+                    Text(
+                      _elapsedLabel()!,
+                      key: const Key('status-elapsed'),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: widget.themeColors.subtleTextColor,
+                      ),
+                    ),
+                  ],
                   const Spacer(),
                   Icon(
                     _collapsed
