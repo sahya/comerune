@@ -286,10 +286,10 @@ class _ColorPaletteRow extends StatelessWidget {
             children: <Widget>[
               for (final Color color in kUserColorPalette)
                 _ColorCircle(
-                  key: Key('user-color-${color.value}'),
+                  key: Key('user-color-${color.toARGB32()}'),
                   color: color,
-                  isSelected: currentColorValue == color.value,
-                  onTap: () => onColorChanged(color.value),
+                  isSelected: currentColorValue == color.toARGB32(),
+                  onTap: () => onColorChanged(color.toARGB32()),
                 ),
             ],
           ),
@@ -324,9 +324,8 @@ class _ColorCircle extends StatelessWidget {
           decoration: BoxDecoration(
             color: color,
             shape: BoxShape.circle,
-            border: isSelected
-                ? Border.all(color: Colors.white, width: 2)
-                : null,
+            border:
+                isSelected ? Border.all(color: Colors.white, width: 2) : null,
             boxShadow: isSelected
                 ? <BoxShadow>[
                     BoxShadow(

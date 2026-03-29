@@ -318,9 +318,7 @@ class _CommentScreenState extends State<CommentScreen> {
                         resolvedUserName: _resolveDisplayName(message),
                         showUserName: widget.showUserName,
                         fontSize: widget.commentFontSize,
-                        userColor: userColor != null
-                            ? Color(userColor)
-                            : null,
+                        userColor: userColor != null ? Color(userColor) : null,
                         onLongPress:
                             message.userId != null && message.userId!.isNotEmpty
                                 ? () => _showUserDetail(message)

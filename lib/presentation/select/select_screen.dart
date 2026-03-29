@@ -344,8 +344,7 @@ class _SelectScreenState extends State<SelectScreen> {
             _buildIconUrlFromUserId(supplierUserId);
 
         // Load user colors for the current broadcaster if not yet loaded.
-        if (supplierUserId != null &&
-            supplierUserId != _currentBroadcasterId) {
+        if (supplierUserId != null && supplierUserId != _currentBroadcasterId) {
           unawaited(_loadUserColors(supplierUserId));
         }
 
@@ -376,12 +375,10 @@ class _SelectScreenState extends State<SelectScreen> {
           ngUserIds: _settingsNotifier.value.ngUserIdSet,
           onToggleNgUser: _toggleNgUser,
           userColorMap: _userColorMap,
-          onUserColorChanged: widget.userColorStore != null
-              ? _onUserColorChanged
-              : null,
-          onUserColorRemoved: widget.userColorStore != null
-              ? _onUserColorRemoved
-              : null,
+          onUserColorChanged:
+              widget.userColorStore != null ? _onUserColorChanged : null,
+          onUserColorRemoved:
+              widget.userColorStore != null ? _onUserColorRemoved : null,
           themeMode: _settingsNotifier.value.themeMode,
         );
       },

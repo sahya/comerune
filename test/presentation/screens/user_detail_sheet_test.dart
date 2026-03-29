@@ -197,7 +197,7 @@ void main() {
       await openSheet(tester);
 
       // Tap the first color in the palette.
-      final int firstColorValue = kUserColorPalette.first.value;
+      final int firstColorValue = kUserColorPalette.first.toARGB32();
       await tester.tap(find.byKey(Key('user-color-$firstColorValue')));
       await tester.pumpAndSettle();
 
@@ -211,7 +211,7 @@ void main() {
         _buildSheet(
           userId: '12345',
           allMessages: const <AppMessage>[],
-          currentColorValue: kUserColorPalette.first.value,
+          currentColorValue: kUserColorPalette.first.toARGB32(),
           onColorChanged: (_) {},
           onColorRemoved: () {},
         ),
@@ -245,7 +245,7 @@ void main() {
         _buildSheet(
           userId: '12345',
           allMessages: const <AppMessage>[],
-          currentColorValue: kUserColorPalette.first.value,
+          currentColorValue: kUserColorPalette.first.toARGB32(),
           onColorChanged: (_) {},
           onColorRemoved: () {
             removeCalled = true;
