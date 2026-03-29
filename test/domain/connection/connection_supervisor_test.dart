@@ -801,7 +801,16 @@ void main() {
       );
       final FakeNdgrClient ndgrClient = FakeNdgrClient(
         connectResults: <bool>[
-          true, false, false, false, false, false, false, false, false, false,
+          true,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
         ],
       );
       final ConnectionSupervisor supervisor = ConnectionSupervisor(

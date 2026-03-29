@@ -74,6 +74,15 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
       return;
     }
 
+    if (int.tryParse(userId) == null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text('ユーザーIDは数値で入力してください')),
+        );
+      return;
+    }
+
     final AppSettings current = await widget.settingsStore.load();
     final AppSettings updated = current.addFavoriteUserId(userId);
     await widget.settingsStore.save(updated);

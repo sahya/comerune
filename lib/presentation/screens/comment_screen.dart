@@ -875,121 +875,126 @@ class _StatusBarState extends State<_StatusBar> {
             ? widget.themeColors.statusConnected
             : widget.themeColors.statusDisconnected;
 
-    return GestureDetector(
-      onTap: _toggle,
-      child: AnimatedSize(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
-        alignment: Alignment.topCenter,
-        child: Container(
-          width: double.infinity,
-          color: widget.themeColors.statusBarBackground,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Row(
-                children: <Widget>[
-                  Icon(
-                    Icons.wifi,
-                    key: const Key('status-wifi-icon'),
-                    color: wifiColor,
-                  ),
-                  const SizedBox(width: 8),
-                  if (widget.broadcasterName != null) ...<Widget>[
-                    if (widget.broadcasterIconUrl != null &&
-                        widget.broadcasterIconUrl!.isNotEmpty) ...<Widget>[
-                      _BroadcasterIcon(
-                        url: widget.broadcasterIconUrl,
-                        size: 16,
-                      ),
-                      const SizedBox(width: 4),
-                    ],
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 120),
-                      child: Text(
-                        widget.broadcasterName!,
-                        key: const Key('status-broadcaster-name'),
-                        style: TextStyle(
-                          color: widget.themeColors.statusConnected,
+    return Semantics(
+      button: true,
+      label: _collapsed ? 'ステータスバーを展開' : 'ステータスバーを折りたたみ',
+      child: GestureDetector(
+        onTap: _toggle,
+        child: AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          alignment: Alignment.topCenter,
+          child: Container(
+            width: double.infinity,
+            color: widget.themeColors.statusBarBackground,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Icon(
+                      Icons.wifi,
+                      key: const Key('status-wifi-icon'),
+                      color: wifiColor,
+                    ),
+                    const SizedBox(width: 8),
+                    if (widget.broadcasterName != null) ...<Widget>[
+                      if (widget.broadcasterIconUrl != null &&
+                          widget.broadcasterIconUrl!.isNotEmpty) ...<Widget>[
+                        _BroadcasterIcon(
+                          url: widget.broadcasterIconUrl,
+                          size: 16,
                         ),
+                        const SizedBox(width: 4),
+                      ],
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 120),
+                        child: Text(
+                          widget.broadcasterName!,
+                          key: const Key('status-broadcaster-name'),
+                          style: TextStyle(
+                            color: widget.themeColors.statusConnected,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Flexible(
+                      child: Text(
+                        'lv: ${widget.lv}',
+                        key: const Key('status-lv'),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                  ],
-                  Flexible(
-                    child: Text(
-                      'lv: ${widget.lv}',
-                      key: const Key('status-lv'),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (_elapsedLabel() != null) ...<Widget>[
-                    const SizedBox(width: 8),
-                    Text(
-                      _elapsedLabel()!,
-                      key: const Key('status-elapsed'),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: widget.themeColors.subtleTextColor,
+                    if (_elapsedLabel() case final String elapsed) ...<Widget>[
+                      const SizedBox(width: 8),
+                      Text(
+                        elapsed,
+                        key: const Key('status-elapsed'),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: widget.themeColors.subtleTextColor,
+                        ),
                       ),
-                    ),
-                  ],
-                  const Spacer(),
-                  Icon(
-                    _collapsed
-                        ? Icons.keyboard_arrow_down
-                        : Icons.keyboard_arrow_up,
-                    size: 16,
-                    color: widget.themeColors.subtleTextColor,
-                  ),
-                ],
-              ),
-              if (!_collapsed) ...<Widget>[
-                const SizedBox(height: 4),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 4,
-                  children: <Widget>[
-                    Text(
-                      '最終受信: ${_formatHmsOrDash(widget.supervisor.lastReceivedAt)}',
-                      key: const Key('status-last-received'),
-                    ),
-                    Text(
-                      '再接続: ${widget.supervisor.reconnectCount}回',
-                      key: const Key('status-reconnect-count'),
-                    ),
-                    Text(
-                      'エラー: ${_errorLabel(widget.supervisor.lastError)}',
-                      key: const Key('status-last-error'),
+                    ],
+                    const Spacer(),
+                    Icon(
+                      _collapsed
+                          ? Icons.keyboard_arrow_down
+                          : Icons.keyboard_arrow_up,
+                      size: 16,
+                      color: widget.themeColors.subtleTextColor,
                     ),
                   ],
                 ),
-                if (widget.debugMode) ...<Widget>[
+                if (!_collapsed) ...<Widget>[
                   const SizedBox(height: 4),
                   Wrap(
                     spacing: 12,
                     runSpacing: 4,
                     children: <Widget>[
                       Text(
-                        '方式: ${_connectionMethodLabel(widget.connectionMethod)}',
-                        key: const Key('status-connection-method'),
+                        '最終受信: ${_formatHmsOrDash(widget.supervisor.lastReceivedAt)}',
+                        key: const Key('status-last-received'),
                       ),
                       Text(
-                        'フェーズ: ${widget.supervisor.status.code}',
-                        key: const Key('status-phase'),
+                        '再接続: ${widget.supervisor.reconnectCount}回',
+                        key: const Key('status-reconnect-count'),
                       ),
-                      if ((widget.supervisor.lastErrorDetail ?? '').isNotEmpty)
-                        Text(
-                          'エラー詳細: ${widget.supervisor.lastErrorDetail}',
-                          key: const Key('status-last-error-detail'),
-                        ),
+                      Text(
+                        'エラー: ${_errorLabel(widget.supervisor.lastError)}',
+                        key: const Key('status-last-error'),
+                      ),
                     ],
                   ),
+                  if (widget.debugMode) ...<Widget>[
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 4,
+                      children: <Widget>[
+                        Text(
+                          '方式: ${_connectionMethodLabel(widget.connectionMethod)}',
+                          key: const Key('status-connection-method'),
+                        ),
+                        Text(
+                          'フェーズ: ${widget.supervisor.status.code}',
+                          key: const Key('status-phase'),
+                        ),
+                        if ((widget.supervisor.lastErrorDetail ?? '')
+                            .isNotEmpty)
+                          Text(
+                            'エラー詳細: ${widget.supervisor.lastErrorDetail}',
+                            key: const Key('status-last-error-detail'),
+                          ),
+                      ],
+                    ),
+                  ],
                 ],
               ],
-            ],
+            ),
           ),
         ),
       ),

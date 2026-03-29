@@ -17,6 +17,21 @@ import '../../domain/utils/lv_parser.dart';
 import '../screens/comment_screen.dart';
 import '../screens/settings_screen.dart';
 
+/// Builds a niconico user icon URL from a numeric user ID.
+///
+/// Returns `null` for non-numeric IDs (e.g. anonymous `a:xxx` format).
+String? buildNicoIconUrl(String? userId) {
+  if (userId == null || userId.isEmpty) {
+    return null;
+  }
+  final int? numericId = int.tryParse(userId);
+  if (numericId == null) {
+    return null;
+  }
+  final int prefix = numericId ~/ 10000;
+  return 'https://secure-dcdn.cdn.nimg.jp/nicoaccount/usericon/$prefix/$numericId.jpg';
+}
+
 class SelectScreen extends StatefulWidget {
   const SelectScreen({
     required this.connectionSupervisor,
@@ -458,13 +473,20 @@ class _SelectScreenState extends State<SelectScreen> {
       userSession = '';
     }
 
+    // Retry up to 3 times on first load only. Once we have a result
+    // (even empty), it is authoritative — the user may simply have no
+    // followed broadcasts on air.
     List<FollowProgram> programs = const <FollowProgram>[];
-    for (int attempt = 0; attempt < 3; attempt++) {
+    const int maxAttempts = 3;
+    for (int attempt = 0; attempt < maxAttempts; attempt++) {
       programs = await repository.fetchOnAirPrograms(userSession: userSession);
-      if (programs.isNotEmpty || !mounted) {
+      if (!mounted) {
+        return;
+      }
+      if (programs.isNotEmpty || _followPrograms.isNotEmpty) {
         break;
       }
-      if (attempt < 2) {
+      if (attempt < maxAttempts - 1) {
         await Future<void>.delayed(
           Duration(seconds: math.pow(2, attempt).toInt()),
         );
@@ -489,15 +511,7 @@ class _SelectScreenState extends State<SelectScreen> {
   }
 
   static String? _buildIconUrlFromUserId(String? userId) {
-    if (userId == null || userId.isEmpty) {
-      return null;
-    }
-    final int? numericId = int.tryParse(userId);
-    if (numericId == null) {
-      return null;
-    }
-    final int prefix = numericId ~/ 10000;
-    return 'https://secure-dcdn.cdn.nimg.jp/nicoaccount/usericon/$prefix/$numericId.jpg';
+    return buildNicoIconUrl(userId);
   }
 
   void _connectToProgram(FollowProgram program) {
@@ -882,8 +896,7 @@ class _FavoriteUserSection extends StatelessWidget {
         ),
         const Divider(height: 1),
         ...userIds.map((String userId) {
-          final String? iconUrl =
-              _SelectScreenState._buildIconUrlFromUserId(userId);
+          final String? iconUrl = buildNicoIconUrl(userId);
           return ListTile(
             dense: true,
             leading: ClipOval(
