@@ -103,6 +103,28 @@ void main() {
       expect(store.activeUserCount, 0);
     });
 
+    test('periodic pruning removes expired entries every 100 comments', () {
+      DateTime fakeNow = DateTime.parse('2026-03-29T12:00:00Z');
+      final StatisticsStore store = StatisticsStore(
+        activeWindow: const Duration(minutes: 5),
+        now: () => fakeNow,
+      );
+
+      // Add an entry that will expire.
+      store.recordComment(_chatMessage(id: '0', userId: 'old-user'));
+      fakeNow = fakeNow.add(const Duration(minutes: 6));
+
+      // Add 99 more comments (total 100) to trigger periodic pruning.
+      for (int i = 1; i < 100; i++) {
+        store.recordComment(_chatMessage(id: '$i', userId: 'new-user'));
+      }
+
+      // The 100th comment triggers pruning inside recordComment.
+      // After pruning, only 'new-user' entries remain.
+      expect(store.activeUserCount, 1);
+      expect(store.totalCommentCount, 100);
+    });
+
     test('notifies listeners on recordComment', () {
       final StatisticsStore store = StatisticsStore();
       int notifyCount = 0;
