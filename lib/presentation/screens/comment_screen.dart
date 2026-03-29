@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -394,7 +395,13 @@ class _CommentScreenState extends State<CommentScreen> {
           _speechEngineState = 'READY';
         });
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      developer.log(
+        'Failed to start speech engine: $e',
+        name: 'CommentScreen',
+        error: e,
+        stackTrace: stackTrace,
+      );
       if (mounted) {
         setState(() {
           _speechEngineState = 'ERROR';
@@ -418,7 +425,12 @@ class _CommentScreenState extends State<CommentScreen> {
       // Settings changed while active — push update to the engine.
       try {
         await widget.speechPlatform?.updateSettings(widget.speechSettings);
-      } catch (_) {}
+      } catch (e) {
+        developer.log(
+          'Failed to update speech settings: $e',
+          name: 'CommentScreen',
+        );
+      }
     }
   }
 
@@ -426,7 +438,9 @@ class _CommentScreenState extends State<CommentScreen> {
     if (_speechStarted) {
       try {
         await widget.speechPlatform?.stop(clearQueue: true);
-      } catch (_) {}
+      } catch (e) {
+        developer.log('Failed to stop speech: $e', name: 'CommentScreen');
+      }
       if (mounted) {
         setState(() {
           _speechStarted = false;
@@ -489,7 +503,12 @@ class _CommentScreenState extends State<CommentScreen> {
         postedAtEpochMs: message.timestamp.millisecondsSinceEpoch,
       );
       unawaited(
-        platform.submitComment(comment).then((_) {}).catchError((_) {}),
+        platform.submitComment(comment).then((_) {}).catchError((Object e) {
+          developer.log(
+            'Failed to submit comment for speech: $e',
+            name: 'CommentScreen',
+          );
+        }),
       );
     }
   }
