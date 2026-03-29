@@ -194,6 +194,18 @@ class _CommentDisplaySettingsScreenState
                             }
                           : null,
                     ),
+                    SwitchListTile(
+                      key: const Key('highlight-pickup-switch'),
+                      title: const Text('放送終了時の盛り上がりピックアップ'),
+                      subtitle: const Text('放送終了時にピーク時間帯のコメントを自動表示'),
+                      contentPadding: EdgeInsets.zero,
+                      value: settings.highlightPickupEnabled,
+                      onChanged: (bool value) {
+                        _updateAndSave(
+                          settings.copyWith(highlightPickupEnabled: value),
+                        );
+                      },
+                    ),
                   ],
                 ),
               ],
