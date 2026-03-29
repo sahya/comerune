@@ -137,7 +137,7 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
 
                 if (wavBytes == null) {
                     Result.failure(
-                        RuntimeException("TTS synthesis returned null for: ${request.text}")
+                        RuntimeException("TTS synthesis returned null (text length=${request.text.length})")
                     )
                 } else {
                     Result.success(

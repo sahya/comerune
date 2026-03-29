@@ -40,7 +40,8 @@ class SpeechControllerImpl(
     dispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val timeProvider: () -> Long = System::currentTimeMillis,
     private val duplicateDetector: InMemoryDuplicateDetector? = null,
-    private val inMemoryQueueManager: InMemorySpeechQueueManager? = null
+    private val inMemoryQueueManager: InMemorySpeechQueueManager? = null,
+    private val defaultNormalizer: DefaultCommentNormalizer? = null
 ) : SpeechController {
 
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
@@ -223,7 +224,7 @@ class SpeechControllerImpl(
         duplicateDetector?.updateDuplicateWindowMs(settings.duplicateWindowMs)
 
         // Clear regex cache when dictionary rules may have changed
-        (normalizer as? DefaultCommentNormalizer)?.clearRegexCache()
+        defaultNormalizer?.clearRegexCache()
 
         return Result.success(Unit)
     }
