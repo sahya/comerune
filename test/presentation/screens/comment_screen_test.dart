@@ -1368,6 +1368,90 @@ void main() {
       expect(find.textContaining('ネタバレ防止: タップで表示'), findsOneWidget);
     });
 
+    testWidgets('star prefix hidden comment uses italic grey style', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'star-style',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '☆隠されるコメント',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          starPrefixHidingEnabled: true,
+        ),
+      );
+
+      final Text textWidget = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('comment-row-star-style')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(textWidget.style?.fontStyle, FontStyle.italic);
+      expect(textWidget.style?.color, Colors.grey);
+    });
+
+    testWidgets('star prefix revealed state resets when message ID changes', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final GlobalKey<_CommentScreenHostState> hostKey =
+          GlobalKey<_CommentScreenHostState>();
+
+      await tester.pumpWidget(
+        _CommentScreenHost(
+          key: hostKey,
+          supervisor: supervisor,
+          initialLv: 'lv-star-reset',
+          initialMessages: <AppMessage>[
+            AppMessage(
+              id: 'star-reset-1',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+              userId: 'user-1',
+              content: '☆最初のネタバレ',
+              type: AppMessageType.chat,
+            ),
+          ],
+          starPrefixHidingEnabled: true,
+        ),
+      );
+
+      // Initially hidden
+      expect(find.textContaining('ネタバレ防止: タップで表示'), findsOneWidget);
+
+      // Tap to reveal
+      await tester.tap(find.byKey(const Key('comment-row-star-reset-1')));
+      await tester.pumpAndSettle();
+
+      // Now revealed
+      expect(find.textContaining('☆最初のネタバレ'), findsOneWidget);
+
+      // Replace with a different message (simulating new message at same index)
+      hostKey.currentState!.replaceMessages(<AppMessage>[
+        AppMessage(
+          id: 'star-reset-2',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 1),
+          userId: 'user-1',
+          content: '☆次のネタバレ',
+          type: AppMessageType.chat,
+        ),
+      ]);
+      await tester.pumpAndSettle();
+
+      // New message should be hidden again (revealed state reset)
+      expect(find.textContaining('ネタバレ防止: タップで表示'), findsOneWidget);
+      expect(find.textContaining('☆次のネタバレ'), findsNothing);
+    });
+
     testWidgets('invokes callback when lv changes (different lv connection)', (
       WidgetTester tester,
     ) async {
@@ -1657,11 +1741,13 @@ class _CommentScreenHost extends StatefulWidget {
     required this.supervisor,
     required this.initialLv,
     required this.initialMessages,
+    this.starPrefixHidingEnabled = false,
   });
 
   final ConnectionSupervisor supervisor;
   final String initialLv;
   final List<AppMessage> initialMessages;
+  final bool starPrefixHidingEnabled;
 
   @override
   State<_CommentScreenHost> createState() => _CommentScreenHostState();
@@ -1714,6 +1800,7 @@ class _CommentScreenHostState extends State<_CommentScreenHost> {
           previousLv = previous;
           nextLv = next;
         },
+        starPrefixHidingEnabled: widget.starPrefixHidingEnabled,
         themeMode: AppThemeMode.light,
       ),
     );
