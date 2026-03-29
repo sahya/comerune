@@ -4,6 +4,7 @@ import 'package:comerune/application/settings/settings_store.dart';
 import 'package:comerune/application/timeline/timeline_store.dart';
 import 'package:comerune/data/follow/follow_program.dart';
 import 'package:comerune/data/follow/follow_program_repository.dart';
+import 'package:comerune/data/user/user_attribute_store.dart';
 import 'package:comerune/domain/connection/connection_supervisor.dart';
 import 'package:comerune/domain/models/app_message.dart';
 import 'package:comerune/presentation/select/select_screen.dart';
@@ -414,6 +415,138 @@ void main() {
     );
   });
 
+  testWidgets(
+      'reflects nickname and color changes in comment screen immediately',
+      (WidgetTester tester) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+    final TimelineStore timelineStore = TimelineStore();
+    final ValueNotifier<String?> supplierUserIdNotifier =
+        ValueNotifier<String?>(null);
+    final _FakeUserAttributeStore userAttributeStore =
+        _FakeUserAttributeStore();
+
+    timelineStore.add(
+      AppMessage(
+        id: 'msg-1',
+        timestamp: DateTime(2026, 3, 29, 20, 0, 0),
+        userId: 'user-1',
+        content: 'hello',
+        type: AppMessageType.chat,
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SelectScreen(
+          connectionSupervisor: supervisor,
+          timelineStore: timelineStore,
+          supplierUserIdNotifier: supplierUserIdNotifier,
+          userAttributeStore: userAttributeStore,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.enterText(inputField(), 'lv345678901');
+    await tester.pump();
+    await tester.tap(connectButton());
+    await tester.pumpAndSettle();
+
+    supplierUserIdNotifier.value = 'broadcaster-1';
+    await tester.pumpAndSettle();
+
+    CommentScreen commentScreen = tester.widget<CommentScreen>(
+      find.byType(CommentScreen),
+    );
+    commentScreen.onNicknameChanged?.call('user-1', 'コテハン名');
+    await tester.pump();
+
+    expect(find.textContaining('コテハン名 (user-1)'), findsOneWidget);
+
+    commentScreen = tester.widget<CommentScreen>(find.byType(CommentScreen));
+    commentScreen.onUserColorChanged?.call('user-1', 0xFFE53935);
+    await tester.pump();
+
+    final Text textWidget = tester.widget(
+      find.descendant(
+        of: find.byKey(const Key('comment-row-msg-1')),
+        matching: find.byType(Text),
+      ),
+    );
+    expect(textWidget.style?.color, colorFromARGB32(0xFFE53935));
+  });
+
+  testWidgets('resets user color and nickname maps when connected lv changes',
+      (WidgetTester tester) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+    final TimelineStore timelineStore = TimelineStore();
+    final ValueNotifier<String?> supplierUserIdNotifier =
+        ValueNotifier<String?>(null);
+    final _FakeUserAttributeStore userAttributeStore = _FakeUserAttributeStore(
+      colorsByBroadcaster: <String, Map<String, int>>{
+        'broadcaster-1': <String, int>{'user-1': 0xFFE53935},
+      },
+      nicknamesByBroadcaster: <String, Map<String, String>>{
+        'broadcaster-1': <String, String>{'user-1': '初期コテハン'},
+      },
+    );
+
+    timelineStore.add(
+      AppMessage(
+        id: 'msg-1',
+        timestamp: DateTime(2026, 3, 29, 20, 0, 0),
+        userId: 'user-1',
+        content: 'hello',
+        type: AppMessageType.chat,
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SelectScreen(
+          connectionSupervisor: supervisor,
+          timelineStore: timelineStore,
+          supplierUserIdNotifier: supplierUserIdNotifier,
+          userAttributeStore: userAttributeStore,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.enterText(inputField(), 'lv345678901');
+    await tester.pump();
+    await tester.tap(connectButton());
+    await tester.pumpAndSettle();
+
+    supplierUserIdNotifier.value = 'broadcaster-1';
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('初期コテハン (user-1)'), findsOneWidget);
+
+    final Text coloredText = tester.widget(
+      find.descendant(
+        of: find.byKey(const Key('comment-row-msg-1')),
+        matching: find.byType(Text),
+      ),
+    );
+    expect(coloredText.style?.color, colorFromARGB32(0xFFE53935));
+
+    final CommentScreen commentScreen = tester.widget<CommentScreen>(
+      find.byType(CommentScreen),
+    );
+    await commentScreen.onDifferentLvConnected('lv345678901', 'lv999999999');
+    await tester.pump();
+
+    final CommentScreen updated = tester.widget<CommentScreen>(
+      find.byType(CommentScreen),
+    );
+    expect(updated.userColorMap, isEmpty);
+    expect(updated.userNicknameMap, isEmpty);
+
+    expect(find.byKey(const Key('comment-row-msg-1')), findsNothing);
+    expect(find.textContaining('初期コテハン (user-1)'), findsNothing);
+  });
+
   group('follow program list', () {
     Future<void> pumpWithFollowPrograms(
       WidgetTester tester, {
@@ -584,5 +717,89 @@ class _FakeFollowProgramRepository extends FollowProgramRepository {
     required String userSession,
   }) async {
     return _programs;
+  }
+}
+
+class _FakeUserAttributeStore implements UserAttributeStore {
+  _FakeUserAttributeStore({
+    Map<String, Map<String, int>> colorsByBroadcaster =
+        const <String, Map<String, int>>{},
+    Map<String, Map<String, String>> nicknamesByBroadcaster =
+        const <String, Map<String, String>>{},
+  })  : _colorsByBroadcaster = colorsByBroadcaster.map(
+          (String broadcasterId, Map<String, int> colors) =>
+              MapEntry<String, Map<String, int>>(
+            broadcasterId,
+            Map<String, int>.from(colors),
+          ),
+        ),
+        _nicknamesByBroadcaster = nicknamesByBroadcaster.map(
+          (String broadcasterId, Map<String, String> nicknames) =>
+              MapEntry<String, Map<String, String>>(
+            broadcasterId,
+            Map<String, String>.from(nicknames),
+          ),
+        );
+
+  final Map<String, Map<String, int>> _colorsByBroadcaster;
+  final Map<String, Map<String, String>> _nicknamesByBroadcaster;
+
+  @override
+  Future<Map<String, int>> loadColors(String broadcasterId) async {
+    return Map<String, int>.from(
+      _colorsByBroadcaster[broadcasterId] ?? const <String, int>{},
+    );
+  }
+
+  @override
+  Future<Map<String, String>> loadNicknames(String broadcasterId) async {
+    return Map<String, String>.from(
+      _nicknamesByBroadcaster[broadcasterId] ?? const <String, String>{},
+    );
+  }
+
+  @override
+  Future<void> setColor({
+    required String broadcasterId,
+    required String userId,
+    required int colorValue,
+  }) async {
+    final Map<String, int> colors =
+        _colorsByBroadcaster.putIfAbsent(broadcasterId, () => <String, int>{});
+    colors[userId] = colorValue;
+  }
+
+  @override
+  Future<void> removeColor({
+    required String broadcasterId,
+    required String userId,
+  }) async {
+    _colorsByBroadcaster[broadcasterId]?.remove(userId);
+  }
+
+  @override
+  Future<void> setNickname({
+    required String broadcasterId,
+    required String userId,
+    required String nickname,
+  }) async {
+    final Map<String, String> nicknames = _nicknamesByBroadcaster.putIfAbsent(
+      broadcasterId,
+      () => <String, String>{},
+    );
+    nicknames[userId] = nickname;
+  }
+
+  @override
+  Future<void> removeNickname({
+    required String broadcasterId,
+    required String userId,
+  }) async {
+    _nicknamesByBroadcaster[broadcasterId]?.remove(userId);
+  }
+
+  @override
+  Future<int> cleanup({Duration maxAge = const Duration(days: 365)}) async {
+    return 0;
   }
 }
