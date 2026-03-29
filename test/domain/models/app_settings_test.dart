@@ -25,6 +25,13 @@ void main() {
       );
     });
 
+    test('returns system for "system" string', () {
+      expect(
+        AppThemeModeValue.fromStorageValue('system'),
+        AppThemeMode.system,
+      );
+    });
+
     test('round-trips all enum values via storageValue', () {
       for (final AppThemeMode mode in AppThemeMode.values) {
         expect(
