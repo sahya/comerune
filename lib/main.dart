@@ -7,6 +7,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'application/foreground_service/foreground_service_controller.dart';
 import 'application/settings/settings_store.dart';
 import 'application/settings/shared_preferences_adapter.dart';
 import 'application/timeline/timeline_store.dart';
@@ -109,7 +110,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
   late final ValueNotifier<AppThemeMode> _themeModeNotifier;
   late final UserNameResolver _userNameResolver;
   late final FollowProgramRepository _followProgramRepository;
-  ConnectionStatus? _lastForegroundServiceStatus;
+  ForegroundServiceController? _foregroundServiceController;
 
   @override
   void initState() {
@@ -123,9 +124,6 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _userNameResolver = UserNameResolver();
     _followProgramRepository = FollowProgramRepository();
     _timelineStore = TimelineStore(capacity: _ndgrHistoryCount);
-
-    _programTitleNotifier.addListener(_onProgramTitleChanged);
-
     _sessionWsClient = _SessionWsClientAdapter(
       lvProvider: () => _currentLv,
       userSessionProvider: () => widget.userSessionStore.load(),
@@ -156,7 +154,14 @@ class _ComeruneAppState extends State<ComeruneApp> {
       ndgrClient: _ndgrClient,
       legacyCommentClient: _legacyCommentClient,
     );
-    _connectionSupervisor.addListener(_onConnectionStatusChanged);
+
+    if (widget.foregroundServiceManager != null) {
+      _foregroundServiceController = ForegroundServiceController(
+        foregroundServiceManager: widget.foregroundServiceManager!,
+        connectionSupervisor: _connectionSupervisor,
+        programTitleNotifier: _programTitleNotifier,
+      );
+    }
 
     _ndgrMessageSubscription = _ndgrClient.messages.listen(_timelineStore.add);
     _legacyMessageSubscription = _legacyCommentClient.messages.listen(
@@ -166,9 +171,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
 
   @override
   void dispose() {
-    _connectionSupervisor.removeListener(_onConnectionStatusChanged);
-    _programTitleNotifier.removeListener(_onProgramTitleChanged);
-    unawaited(widget.foregroundServiceManager?.stop());
+    _foregroundServiceController?.dispose();
     unawaited(_ndgrMessageSubscription.cancel());
     unawaited(_legacyMessageSubscription.cancel());
     _connectionSupervisor.dispose();
@@ -188,79 +191,6 @@ class _ComeruneAppState extends State<ComeruneApp> {
 
   void _onThemeModeChanged() {
     setState(() {});
-  }
-
-  void _onConnectionStatusChanged() {
-    final ConnectionStatus current = _connectionSupervisor.status;
-    if (current == _lastForegroundServiceStatus) {
-      return;
-    }
-    _lastForegroundServiceStatus = current;
-
-    final ForegroundServiceManager? manager = widget.foregroundServiceManager;
-    if (manager == null) {
-      return;
-    }
-
-    switch (current) {
-      case ConnectionStatus.connectingSessionWs:
-      case ConnectionStatus.resolvingEndpoints:
-      case ConnectionStatus.streamingNdgr:
-      case ConnectionStatus.streamingLegacy:
-      case ConnectionStatus.reconnecting:
-        if (!manager.isRunning) {
-          final String title = _programTitleNotifier.value ?? 'comerune';
-          unawaited(manager.start(
-            title: title,
-            text: _notificationTextForStatus(current),
-          ));
-        } else {
-          unawaited(manager.updateNotification(
-            title: _programTitleNotifier.value ?? 'comerune',
-            text: _notificationTextForStatus(current),
-          ));
-        }
-        break;
-      case ConnectionStatus.idle:
-      case ConnectionStatus.stopped:
-      case ConnectionStatus.ended:
-      case ConnectionStatus.failed:
-        if (manager.isRunning) {
-          unawaited(manager.stop());
-        }
-        break;
-    }
-  }
-
-  void _onProgramTitleChanged() {
-    final ForegroundServiceManager? manager = widget.foregroundServiceManager;
-    if (manager == null || !manager.isRunning) {
-      return;
-    }
-    final String title = _programTitleNotifier.value ?? 'comerune';
-    final ConnectionStatus current = _connectionSupervisor.status;
-    unawaited(manager.updateNotification(
-      title: title,
-      text: _notificationTextForStatus(current),
-    ));
-  }
-
-  String _notificationTextForStatus(ConnectionStatus status) {
-    switch (status) {
-      case ConnectionStatus.connectingSessionWs:
-      case ConnectionStatus.resolvingEndpoints:
-        return '接続中...';
-      case ConnectionStatus.streamingNdgr:
-      case ConnectionStatus.streamingLegacy:
-        return 'コメント受信中';
-      case ConnectionStatus.reconnecting:
-        return '再接続中...';
-      case ConnectionStatus.idle:
-      case ConnectionStatus.stopped:
-      case ConnectionStatus.ended:
-      case ConnectionStatus.failed:
-        return '';
-    }
   }
 
   Future<void> _prepareConnection(String lv, AppSettings settings) async {
