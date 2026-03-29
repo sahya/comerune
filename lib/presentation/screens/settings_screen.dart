@@ -261,84 +261,72 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                SettingsSection(
-                  title: '読み上げ設定',
-                  children: <Widget>[
-                    ListTile(
-                      key: const Key('tts-settings-tile'),
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.record_voice_over),
-                      title: const Text('読み上げ設定'),
-                      subtitle: Text(
-                        settings.autoReadEnabled
-                            ? '自動読み上げ: ON'
-                            : '自動読み上げ: OFF',
-                      ),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () async {
-                        await Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => TtsSettingsScreen(
-                              settingsStore: widget.settingsStore,
-                            ),
-                          ),
-                        );
-                        await _loadSettings();
-                      },
+                Card(
+                  child: ListTile(
+                    key: const Key('tts-settings-tile'),
+                    leading: const Icon(Icons.record_voice_over),
+                    title: const Text('読み上げ設定'),
+                    subtitle: Text(
+                      settings.autoReadEnabled
+                          ? '自動読み上げ: ON'
+                          : '自動読み上げ: OFF',
                     ),
-                  ],
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => TtsSettingsScreen(
+                            settingsStore: widget.settingsStore,
+                          ),
+                        ),
+                      );
+                      await _loadSettings();
+                    },
+                  ),
                 ),
                 const SizedBox(height: 12),
-                SettingsSection(
-                  title: 'コメント表示',
-                  children: <Widget>[
-                    ListTile(
-                      key: const Key('comment-display-settings-tile'),
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.chat_bubble_outline),
-                      title: const Text('コメント表示設定'),
-                      subtitle: Text(
-                        'フォントサイズ: ${settings.commentFontSize.round()}px',
-                      ),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () async {
-                        await Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => CommentDisplaySettingsScreen(
-                              settingsStore: widget.settingsStore,
-                            ),
-                          ),
-                        );
-                        await _loadSettings();
-                      },
+                Card(
+                  child: ListTile(
+                    key: const Key('comment-display-settings-tile'),
+                    leading: const Icon(Icons.chat_bubble_outline),
+                    title: const Text('コメント表示設定'),
+                    subtitle: Text(
+                      'フォントサイズ: ${settings.commentFontSize.round()}px',
                     ),
-                  ],
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => CommentDisplaySettingsScreen(
+                            settingsStore: widget.settingsStore,
+                          ),
+                        ),
+                      );
+                      await _loadSettings();
+                    },
+                  ),
                 ),
                 const SizedBox(height: 12),
-                SettingsSection(
-                  title: 'ユーザー管理',
-                  children: <Widget>[
-                    ListTile(
-                      key: const Key('user-management-settings-tile'),
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.people_outline),
-                      title: const Text('ユーザー管理'),
-                      subtitle: const Text('お気に入り・コテハン'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () async {
-                        await Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => UserManagementSettingsScreen(
-                              settingsStore: widget.settingsStore,
-                              userAttributeStore: widget.userAttributeStore,
-                              broadcasterId: widget.broadcasterId,
-                            ),
+                Card(
+                  child: ListTile(
+                    key: const Key('user-management-settings-tile'),
+                    leading: const Icon(Icons.people_outline),
+                    title: const Text('ユーザー管理'),
+                    subtitle: const Text('お気に入り・コテハン'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => UserManagementSettingsScreen(
+                            settingsStore: widget.settingsStore,
+                            userAttributeStore: widget.userAttributeStore,
+                            broadcasterId: widget.broadcasterId,
                           ),
-                        );
-                        await _loadSettings();
-                      },
-                    ),
-                  ],
+                        ),
+                      );
+                      await _loadSettings();
+                    },
+                  ),
                 ),
                 const SizedBox(height: 12),
                 SettingsSection(

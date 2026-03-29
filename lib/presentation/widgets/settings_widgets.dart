@@ -218,6 +218,8 @@ class SettingsDoubleSliderField extends StatelessWidget {
           max: max,
           divisions: divisions,
           value: value,
+          semanticFormatterCallback: (double v) =>
+              '$label ${v.toStringAsFixed(2)}',
           onChanged: (double next) {
             onChanged(double.parse(next.toStringAsFixed(2)));
           },

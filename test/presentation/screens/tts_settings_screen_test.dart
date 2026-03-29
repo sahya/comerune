@@ -126,6 +126,29 @@ void main() {
       expect(loaded.ngWords, '^w+\$');
     });
 
+    testWidgets('persists values and reloads on reopened screen', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      await _toggleSwitchByKey(tester, const Key('auto-read-switch'));
+      await _enterTextByKey(tester, const Key('ng-words-field'), '^8+\$');
+      await _focusFieldByKey(tester, const Key('queue-limit-field'));
+
+      // Re-open the screen to verify values are reloaded from store
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      await _scrollToKey(tester, const Key('ng-words-field'));
+      final TextFormField ngWordsField = tester
+          .widget(find.byKey(const Key('ng-words-field'), skipOffstage: false));
+      expect(ngWordsField.controller?.text, '^8+\$');
+    });
+
     testWidgets('auto-read toggle persists value', (
       WidgetTester tester,
     ) async {
