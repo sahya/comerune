@@ -321,7 +321,6 @@ class _SelectScreenState extends State<SelectScreen> {
           Expanded(
             child: _FollowProgramList(
               programs: _followPrograms,
-
               enabled: !_isConnectionInProgress,
               onTap: _connectToProgram,
               onRefresh: _fetchFollowPrograms,
