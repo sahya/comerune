@@ -113,4 +113,62 @@ void main() {
       expect(identical(updated, initial), isTrue);
     });
   });
+
+  group('ngWordList', () {
+    test('returns empty list for empty string', () {
+      const AppSettings settings = AppSettings.defaults;
+      expect(settings.ngWordList, isEmpty);
+    });
+
+    test('returns empty list for whitespace-only string', () {
+      final AppSettings settings =
+          AppSettings.defaults.copyWith(ngWords: '  \n  \n  ');
+      expect(settings.ngWordList, isEmpty);
+    });
+
+    test('parses newline-separated NG words', () {
+      final AppSettings settings =
+          AppSettings.defaults.copyWith(ngWords: 'spam\nbad\ntest');
+      expect(settings.ngWordList, <String>['spam', 'bad', 'test']);
+    });
+
+    test('trims whitespace and ignores blank lines', () {
+      final AppSettings settings =
+          AppSettings.defaults.copyWith(ngWords: ' spam \n\n bad \n');
+      expect(settings.ngWordList, <String>['spam', 'bad']);
+    });
+  });
+
+  group('containsNgWord', () {
+    test('returns false when no NG words configured', () {
+      const AppSettings settings = AppSettings.defaults;
+      expect(settings.containsNgWord('hello world'), isFalse);
+    });
+
+    test('returns true when content contains an NG word', () {
+      final AppSettings settings =
+          AppSettings.defaults.copyWith(ngWords: 'spam\nbad');
+      expect(settings.containsNgWord('this is spam content'), isTrue);
+    });
+
+    test('matching is case-insensitive', () {
+      final AppSettings settings =
+          AppSettings.defaults.copyWith(ngWords: 'Spam');
+      expect(settings.containsNgWord('SPAM message'), isTrue);
+      expect(settings.containsNgWord('spam message'), isTrue);
+      expect(settings.containsNgWord('SpAm message'), isTrue);
+    });
+
+    test('returns false when content does not match any NG word', () {
+      final AppSettings settings =
+          AppSettings.defaults.copyWith(ngWords: 'spam\nbad');
+      expect(settings.containsNgWord('hello world'), isFalse);
+    });
+
+    test('matches partial words (substring match)', () {
+      final AppSettings settings =
+          AppSettings.defaults.copyWith(ngWords: 'spam');
+      expect(settings.containsNgWord('antispam filter'), isTrue);
+    });
+  });
 }

@@ -823,6 +823,93 @@ void main() {
       expect(find.text('NGコメント'), findsNothing);
     });
 
+    testWidgets('hides comments containing NG words', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'chat-clean',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '普通のコメント',
+          type: AppMessageType.chat,
+        ),
+        AppMessage(
+          id: 'chat-ng',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 1),
+          userId: 'user-2',
+          content: 'これはspamです',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngWords: const <String>['spam'],
+        ),
+      );
+
+      expect(find.byKey(const Key('comment-row-chat-clean')), findsOneWidget);
+      expect(find.byKey(const Key('comment-row-chat-ng')), findsNothing);
+      expect(find.text('これはspamです'), findsNothing);
+    });
+
+    testWidgets('NG word matching is case-insensitive', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'chat-upper',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: 'SPAM message',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngWords: const <String>['spam'],
+        ),
+      );
+
+      expect(find.byKey(const Key('comment-row-chat-upper')), findsNothing);
+    });
+
+    testWidgets('empty NG words list does not filter any comments', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'chat-normal',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: 'spam message',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngWords: const <String>[],
+        ),
+      );
+
+      expect(
+        find.byKey(const Key('comment-row-chat-normal')),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('long-press on comment row opens user detail sheet', (
       WidgetTester tester,
     ) async {
@@ -1020,6 +1107,7 @@ Widget _buildScreen({
   String? Function(String userId)? resolveUserName,
   double commentFontSize = commentFontSizeDefault,
   Set<String> ngUserIds = const <String>{},
+  List<String> ngWords = const <String>[],
   Map<String, int> userColorMap = const <String, int>{},
 }) {
   return MaterialApp(
@@ -1038,6 +1126,7 @@ Widget _buildScreen({
       resolveUserName: resolveUserName,
       commentFontSize: commentFontSize,
       ngUserIds: ngUserIds,
+      ngWords: ngWords,
       userColorMap: userColorMap,
       themeMode: AppThemeMode.light,
     ),

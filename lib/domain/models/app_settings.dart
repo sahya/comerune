@@ -267,6 +267,34 @@ class AppSettings {
   final bool autoSaveCommentLog;
   final bool debugMode;
 
+  /// Parses [ngWords] into a list of individual NG word strings.
+  ///
+  /// Each line is trimmed; blank lines are ignored.
+  List<String> get ngWordList {
+    if (ngWords.trim().isEmpty) {
+      return const <String>[];
+    }
+    return ngWords
+        .split('\n')
+        .map((String w) => w.trim())
+        .where((String w) => w.isNotEmpty)
+        .toList();
+  }
+
+  /// Returns `true` when [content] contains any of the configured NG words.
+  ///
+  /// Matching is case-insensitive and uses plain substring search.
+  bool containsNgWord(String content) {
+    final List<String> words = ngWordList;
+    if (words.isEmpty) {
+      return false;
+    }
+    final String lowerContent = content.toLowerCase();
+    return words.any(
+      (String word) => lowerContent.contains(word.toLowerCase()),
+    );
+  }
+
   Set<String> get ngUserIdSet {
     if (ngUserIds.trim().isEmpty) {
       return const <String>{};

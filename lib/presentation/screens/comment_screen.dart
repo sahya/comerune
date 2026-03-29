@@ -66,6 +66,7 @@ class CommentScreen extends StatefulWidget {
     this.commentLogWriter,
     this.autoSaveCommentLog = false,
     this.ngUserIds = const <String>{},
+    this.ngWords = const <String>[],
     this.onToggleNgUser,
     this.userColorMap = const <String, int>{},
     this.onUserColorChanged,
@@ -101,6 +102,9 @@ class CommentScreen extends StatefulWidget {
 
   /// Set of user IDs marked as NG (blocked).
   final Set<String> ngUserIds;
+
+  /// List of NG words for content-based filtering (case-insensitive).
+  final List<String> ngWords;
 
   /// Called to toggle NG status for a user.
   final void Function(String userId)? onToggleNgUser;
@@ -639,6 +643,15 @@ class _CommentScreenState extends State<CommentScreen> {
     final String? userId = message.userId;
     if (userId != null && widget.ngUserIds.contains(userId)) {
       return false;
+    }
+
+    if (widget.ngWords.isNotEmpty) {
+      final String lowerContent = message.content.toLowerCase();
+      for (final String word in widget.ngWords) {
+        if (lowerContent.contains(word.toLowerCase())) {
+          return false;
+        }
+      }
     }
 
     return true;
