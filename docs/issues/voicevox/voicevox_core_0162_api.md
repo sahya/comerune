@@ -54,6 +54,34 @@ This means we use `voicevox_onnxruntime_load_once()` to load ONNX Runtime dynami
 - `VoicevoxResultCode` = `int32_t` (0 = OK)
 - `VoicevoxTtsOptions` = `{ bool enable_interrogative_upspeak; }` (only field in 0.16.2)
 
+## Asset Download on First Use
+
+The OpenJTalk dictionary and VVM model files are **not** bundled in the APK to keep it small (~160 MB savings). Instead, they are downloaded from GitHub releases the first time the VOICEVOX engine is initialized.
+
+### Download URLs
+- **OpenJTalk dictionary**: `https://github.com/r9y9/open_jtalk/releases/download/v1.11.1/open_jtalk_dic_utf_8-1.11.tar.gz`
+- **VVM model (0.vvm)**: `https://github.com/VOICEVOX/voicevox_vvm/releases/download/0.16.2/0.vvm`
+
+### Cache and Version Management
+- Assets are stored in `{filesDir}/voicevox/`.
+- A version marker file (`.asset_version`) tracks the current asset version.
+- If the version marker does not match `ASSET_VERSION` in `VoicevoxEngineImpl`, all stale assets are deleted and re-downloaded.
+- Increment `ASSET_VERSION` when remote assets change to force re-download on existing installs.
+
+### Download Flow
+1. `VoicevoxEngineImpl.initialize()` calls `ensureAssetsAvailable()`.
+2. If assets are already present and the version marker matches, initialization proceeds immediately.
+3. Otherwise, the OpenJTalk dictionary (tar.gz) and VVM model are downloaded sequentially.
+4. Download progress events (`download_started`, `download_progress`, `download_completed`) are emitted via `onDownloadEvent` and forwarded to Flutter through the `FlutterSpeechEventEmitter`.
+5. If download fails (network error, timeout), an `IOException` is caught and a user-facing Japanese error message is returned: "VOICEVOXモデルのダウンロードに失敗しました。ネットワーク接続を確認してください。"
+
+### What stays in the APK
+- `libvoicevox_core.so` in `jniLibs/arm64-v8a/` (required at compile/link time via `System.loadLibrary`).
+- `README.txt` and `TERMS.txt` in `assets/voicevox_models/` (small text files with license information).
+
+### Tar Extraction
+A minimal TAR parser is implemented directly in `VoicevoxEngineImpl` to extract the OpenJTalk dictionary tar.gz archive. It supports regular files and directories, strips the leading prefix directory, and includes a path traversal security check.
+
 ## Design Decisions
 
 ### Q13: TTS Method - One-shot (`voicevox_synthesizer_tts`)

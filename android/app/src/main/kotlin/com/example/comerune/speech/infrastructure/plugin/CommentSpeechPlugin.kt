@@ -58,6 +58,7 @@ class CommentSpeechPlugin :
         val emitter = FlutterSpeechEventEmitter()
         val context = binding.applicationContext
         val engine = VoicevoxEngineImpl(context)
+        engine.onDownloadEvent = { event -> emitter.emit(event) }
         val player = MediaPlayerWavPlayer(context)
 
         eventEmitter = emitter

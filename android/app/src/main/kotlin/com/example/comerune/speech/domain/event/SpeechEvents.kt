@@ -25,6 +25,22 @@ object SpeechEvents {
     fun playerStateChanged(state: String): Map<String, Any?> =
         mapOf("type" to "player_state_changed", "payload" to mapOf("state" to state))
 
+    fun downloadStarted(fileName: String): Map<String, Any?> =
+        mapOf("type" to "download_started", "payload" to mapOf("fileName" to fileName))
+
+    fun downloadProgress(bytesDownloaded: Long, totalBytes: Long, fileName: String): Map<String, Any?> =
+        mapOf(
+            "type" to "download_progress",
+            "payload" to mapOf(
+                "bytesDownloaded" to bytesDownloaded,
+                "totalBytes" to totalBytes,
+                "fileName" to fileName
+            )
+        )
+
+    fun downloadCompleted(): Map<String, Any?> =
+        mapOf("type" to "download_completed", "payload" to mapOf<String, Any?>())
+
     fun error(code: String, message: String): Map<String, Any?> =
         mapOf("type" to "error", "payload" to mapOf("code" to code, "message" to message))
 }
