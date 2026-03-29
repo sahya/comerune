@@ -4,10 +4,7 @@ import '../../application/settings/settings_store.dart';
 import '../../domain/models/app_settings.dart';
 
 class FavoriteUserListScreen extends StatefulWidget {
-  const FavoriteUserListScreen({
-    super.key,
-    required this.settingsStore,
-  });
+  const FavoriteUserListScreen({super.key, required this.settingsStore});
 
   final SettingsStore settingsStore;
 
@@ -47,9 +44,7 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
             key: const Key('favorite-user-id-input'),
             controller: controller,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              hintText: 'ユーザーIDを入力',
-            ),
+            decoration: const InputDecoration(hintText: 'ユーザーIDを入力'),
             autofocus: true,
           ),
           actions: <Widget>[
@@ -77,9 +72,7 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
     if (int.tryParse(userId) == null) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('ユーザーIDは数値で入力してください')),
-        );
+        ..showSnackBar(const SnackBar(content: Text('ユーザーIDは数値で入力してください')));
       return;
     }
 
@@ -97,9 +90,7 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text('$userId を追加しました')),
-      );
+      ..showSnackBar(SnackBar(content: Text('$userId を追加しました')));
   }
 
   Future<void> _removeFavoriteUserId(String userId) async {
@@ -142,17 +133,13 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text('$userId を削除しました')),
-      );
+      ..showSnackBar(SnackBar(content: Text('$userId を削除しました')));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('お気に入りユーザー管理'),
-      ),
+      appBar: AppBar(title: const Text('お気に入りユーザー管理')),
       floatingActionButton: FloatingActionButton(
         key: const Key('favorite-add-button'),
         onPressed: _addFavoriteUserId,
@@ -161,42 +148,39 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _favoriteUserIds.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text(
-                      key: Key('favorite-user-list-empty'),
-                      'お気に入りユーザーIDは登録されていません\n'
-                      '右下のボタンからユーザーIDを追加すると\n'
-                      '接続画面に放送中の番組が表示されます',
-                      style: TextStyle(fontSize: 14),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                )
-              : ListView.separated(
-                  key: const Key('favorite-user-id-list'),
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: _favoriteUserIds.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (BuildContext context, int index) {
-                    final String userId = _favoriteUserIds[index];
-                    return ListTile(
-                      key: Key('favorite-user-tile-$index'),
-                      leading: const Icon(Icons.person, size: 20),
-                      title: Text(
-                        userId,
-                        style: const TextStyle(fontSize: 14),
-                      ),
-                      trailing: IconButton(
-                        key: Key('favorite-user-remove-$index'),
-                        icon: const Icon(Icons.delete_outline),
-                        tooltip: '削除',
-                        onPressed: () => _removeFavoriteUserId(userId),
-                      ),
-                    );
-                  },
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  key: Key('favorite-user-list-empty'),
+                  'お気に入りユーザーIDは登録されていません\n'
+                  '右下のボタンからユーザーIDを追加すると\n'
+                  '接続画面に放送中の番組が表示されます',
+                  style: TextStyle(fontSize: 14),
+                  textAlign: TextAlign.center,
                 ),
+              ),
+            )
+          : ListView.separated(
+              key: const Key('favorite-user-id-list'),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              itemCount: _favoriteUserIds.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (BuildContext context, int index) {
+                final String userId = _favoriteUserIds[index];
+                return ListTile(
+                  key: Key('favorite-user-tile-$index'),
+                  leading: const Icon(Icons.person, size: 20),
+                  title: Text(userId, style: const TextStyle(fontSize: 14)),
+                  trailing: IconButton(
+                    key: Key('favorite-user-remove-$index'),
+                    icon: const Icon(Icons.delete_outline),
+                    tooltip: '削除',
+                    onPressed: () => _removeFavoriteUserId(userId),
+                  ),
+                );
+              },
+            ),
     );
   }
 }

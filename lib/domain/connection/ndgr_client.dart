@@ -18,13 +18,13 @@ class NdgrClientEvent {
   });
 
   const NdgrClientEvent.connected()
-      : this._(type: NdgrClientEventType.connected);
+    : this._(type: NdgrClientEventType.connected);
 
   const NdgrClientEvent.message(AppMessage message)
-      : this._(type: NdgrClientEventType.message, message: message);
+    : this._(type: NdgrClientEventType.message, message: message);
 
   const NdgrClientEvent.stalled(Duration stallDuration)
-      : this._(type: NdgrClientEventType.stalled, stallDuration: stallDuration);
+    : this._(type: NdgrClientEventType.stalled, stallDuration: stallDuration);
 
   final NdgrClientEventType type;
   final AppMessage? message;
@@ -63,15 +63,15 @@ class NdgrClient {
     Duration backwardSegmentInterval = const Duration(milliseconds: 7),
     Duration connectionTimeout = const Duration(seconds: 15),
     DateTime Function()? now,
-  })  : _seedHttpClient = httpClient,
-        _httpClientFactory = httpClientFactory ?? HttpClient.new,
-        _protobufDecoder = protobufDecoder ?? NdgrProtobufDecoder(),
-        _normalizer = normalizer ?? NdgrMessageNormalizer(),
-        _stallDetector = NdgrStallDetector(threshold: stallThreshold, now: now),
-        _now = now ?? DateTime.now,
-        _stallCheckInterval = stallCheckInterval,
-        _backwardSegmentInterval = backwardSegmentInterval,
-        _connectionTimeout = connectionTimeout {
+  }) : _seedHttpClient = httpClient,
+       _httpClientFactory = httpClientFactory ?? HttpClient.new,
+       _protobufDecoder = protobufDecoder ?? NdgrProtobufDecoder(),
+       _normalizer = normalizer ?? NdgrMessageNormalizer(),
+       _stallDetector = NdgrStallDetector(threshold: stallThreshold, now: now),
+       _now = now ?? DateTime.now,
+       _stallCheckInterval = stallCheckInterval,
+       _backwardSegmentInterval = backwardSegmentInterval,
+       _connectionTimeout = connectionTimeout {
     if (connectionTimeout <= Duration.zero) {
       throw ArgumentError.value(
         connectionTimeout,
@@ -259,8 +259,9 @@ class NdgrClient {
       current = Uri.parse(packed.nextUri!);
     }
 
-    final List<NdgrChunkedMessage> flattened =
-        buffer.expand((List<NdgrChunkedMessage> messages) => messages).toList();
+    final List<NdgrChunkedMessage> flattened = buffer
+        .expand((List<NdgrChunkedMessage> messages) => messages)
+        .toList();
 
     if (flattened.length <= want) {
       return flattened;

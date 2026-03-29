@@ -1,12 +1,6 @@
 import 'dart:developer' as developer;
 
-enum AppThemeMode {
-  light,
-  dark,
-  protanopia,
-  deuteranopia,
-  tritanopia,
-}
+enum AppThemeMode { light, dark, protanopia, deuteranopia, tritanopia }
 
 extension AppThemeModeValue on AppThemeMode {
   String get storageValue {
@@ -62,10 +56,7 @@ extension AppThemeModeValue on AppThemeMode {
   }
 }
 
-enum SpeechEngine {
-  bouyomi,
-  voicevox,
-}
+enum SpeechEngine { bouyomi, voicevox }
 
 /// コメント文字サイズの最小値 (px)。
 const double commentFontSizeMin = 10;
@@ -109,12 +100,7 @@ double commentFontSizeFromStorageValue(String? raw) {
   }
 }
 
-enum PastCommentFetchCount {
-  count100,
-  count500,
-  count1000,
-  all,
-}
+enum PastCommentFetchCount { count100, count500, count1000, all }
 
 extension PastCommentFetchCountValue on PastCommentFetchCount {
   String get storageValue {
@@ -201,11 +187,11 @@ class AppSettings {
     required this.autoSaveCommentLog,
     required this.debugMode,
   }) : assert(
-          commentFontSize >= commentFontSizeMin &&
-              commentFontSize <= commentFontSizeMax,
-          'commentFontSize must be between $commentFontSizeMin and $commentFontSizeMax, '
-          'but was $commentFontSize',
-        );
+         commentFontSize >= commentFontSizeMin &&
+             commentFontSize <= commentFontSizeMax,
+         'commentFontSize must be between $commentFontSizeMin and $commentFontSizeMax, '
+         'but was $commentFontSize',
+       );
 
   static const AppSettings defaults = AppSettings(
     themeMode: AppThemeMode.light,

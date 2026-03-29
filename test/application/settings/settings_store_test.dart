@@ -92,8 +92,11 @@ void main() {
       for (final String invalid in <String>['abc', '', 'unknown']) {
         await prefs.setString('settings.comment.fontSize', invalid);
         final AppSettings loaded = await store.load();
-        expect(loaded.commentFontSize, commentFontSizeDefault,
-            reason: '"$invalid" should fall back to default');
+        expect(
+          loaded.commentFontSize,
+          commentFontSizeDefault,
+          reason: '"$invalid" should fall back to default',
+        );
       }
     });
 
@@ -144,8 +147,9 @@ void main() {
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
       for (final AppThemeMode mode in AppThemeMode.values) {
-        final AppSettings original =
-            AppSettings.defaults.copyWith(themeMode: mode);
+        final AppSettings original = AppSettings.defaults.copyWith(
+          themeMode: mode,
+        );
         await store.save(original);
 
         final AppSettings loaded = await store.load();

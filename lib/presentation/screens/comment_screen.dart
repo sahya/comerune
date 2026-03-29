@@ -79,7 +79,7 @@ class CommentScreen extends StatefulWidget {
   final Future<void> Function() onStopAllConnections;
   final Future<void> Function() onReconnectSameLv;
   final Future<void> Function(String previousLv, String nextLv)
-      onDifferentLvConnected;
+  onDifferentLvConnected;
   final Future<void> Function()? onOpenSettings;
   final bool debugMode;
   final ConnectionMethod? connectionMethod;
@@ -162,8 +162,10 @@ class _CommentScreenState extends State<CommentScreen> {
       });
     }
 
-    final bool hasNewMessages =
-        _hasNewMessages(oldWidget.messages, widget.messages);
+    final bool hasNewMessages = _hasNewMessages(
+      oldWidget.messages,
+      widget.messages,
+    );
     if (hasNewMessages) {
       _requestUserNameResolutionForNewMessages(
         oldWidget.messages,
@@ -247,10 +249,12 @@ class _CommentScreenState extends State<CommentScreen> {
               .where(_shouldDisplayMessage)
               .toList(growable: false);
 
-          final List<AppMessage> sortedMessages =
-              _applySortOrder(visibleMessages);
-          final AppThemeColors themeColors =
-              AppTheme.colorsFor(widget.themeMode);
+          final List<AppMessage> sortedMessages = _applySortOrder(
+            visibleMessages,
+          );
+          final AppThemeColors themeColors = AppTheme.colorsFor(
+            widget.themeMode,
+          );
 
           return Scaffold(
             appBar: AppBar(
@@ -267,8 +271,9 @@ class _CommentScreenState extends State<CommentScreen> {
                     key: const Key('save-comment-log-button'),
                     icon: const Icon(Icons.ios_share),
                     tooltip: 'コメントログを共有',
-                    onPressed:
-                        _isSavingLog ? null : () => unawaited(_saveLogManual()),
+                    onPressed: _isSavingLog
+                        ? null
+                        : () => unawaited(_saveLogManual()),
                   ),
                 IconButton(
                   key: const Key('sort-toggle-button'),
@@ -334,8 +339,8 @@ class _CommentScreenState extends State<CommentScreen> {
                             : null,
                         onLongPress:
                             message.userId != null && message.userId!.isNotEmpty
-                                ? () => _showUserDetail(message)
-                                : null,
+                            ? () => _showUserDetail(message)
+                            : null,
                       );
                     },
                   ),
@@ -543,16 +548,18 @@ class _CommentScreenState extends State<CommentScreen> {
         widget.connectionSupervisor.lastError;
     final String base = _failedMessage(errorCode);
     final String detail = widget.connectionSupervisor.lastErrorDetail ?? '';
-    final String compactDetail =
-        detail.isEmpty ? '-' : _compactSingleLine(detail);
+    final String compactDetail = detail.isEmpty
+        ? '-'
+        : _compactSingleLine(detail);
 
     if (widget.debugMode) {
       final String code = errorCode?.code ?? 'UNKNOWN_ERROR';
       return '$base [code: $code] 原因: $compactDetail 再接続ボタンで再試行できます。';
     }
 
-    final String detailSuffix =
-        detail.isEmpty ? '' : ' 原因: ${_compactSingleLine(detail)}';
+    final String detailSuffix = detail.isEmpty
+        ? ''
+        : ' 原因: ${_compactSingleLine(detail)}';
     return '$base$detailSuffix 再接続ボタンで再試行できます。';
   }
 
@@ -644,10 +651,7 @@ class _CommentScreenState extends State<CommentScreen> {
     return true;
   }
 
-  bool _hasNewMessages(
-    List<AppMessage> previous,
-    List<AppMessage> current,
-  ) {
+  bool _hasNewMessages(List<AppMessage> previous, List<AppMessage> current) {
     if (identical(previous, current)) {
       return false;
     }
@@ -668,7 +672,8 @@ class _CommentScreenState extends State<CommentScreen> {
       return true;
     }
 
-    final double distanceToBottom = _scrollController.position.maxScrollExtent -
+    final double distanceToBottom =
+        _scrollController.position.maxScrollExtent -
         _scrollController.position.pixels;
     return distanceToBottom <= _autoScrollResumeThreshold;
   }
@@ -706,9 +711,7 @@ class _CommentScreenState extends State<CommentScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context)
           ..clearSnackBars()
-          ..showSnackBar(
-            const SnackBar(content: Text('保存するコメントがありません')),
-          );
+          ..showSnackBar(const SnackBar(content: Text('保存するコメントがありません')));
       }
       return;
     }
@@ -723,17 +726,18 @@ class _CommentScreenState extends State<CommentScreen> {
     });
 
     try {
-      final List<AppMessage> messages =
-          widget.messages.where(_shouldDisplayMessage).toList(growable: false);
-      final String? tempPath =
-          await writer.writeToTempFile(lv: widget.lv, messages: messages);
+      final List<AppMessage> messages = widget.messages
+          .where(_shouldDisplayMessage)
+          .toList(growable: false);
+      final String? tempPath = await writer.writeToTempFile(
+        lv: widget.lv,
+        messages: messages,
+      );
       if (tempPath == null) {
         if (mounted) {
           ScaffoldMessenger.of(context)
             ..clearSnackBars()
-            ..showSnackBar(
-              const SnackBar(content: Text('コメントログの保存に失敗しました')),
-            );
+            ..showSnackBar(const SnackBar(content: Text('コメントログの保存に失敗しました')));
         }
         return;
       }
@@ -754,8 +758,9 @@ class _CommentScreenState extends State<CommentScreen> {
       return;
     }
 
-    final List<AppMessage> messages =
-        widget.messages.where(_shouldDisplayMessage).toList(growable: false);
+    final List<AppMessage> messages = widget.messages
+        .where(_shouldDisplayMessage)
+        .toList(growable: false);
     await writer.save(lv: widget.lv, messages: messages);
   }
 
@@ -803,10 +808,7 @@ class _ProgramTitleBar extends StatelessWidget {
         children: <Widget>[
           if (broadcasterIconUrl != null &&
               broadcasterIconUrl!.isNotEmpty) ...<Widget>[
-            _BroadcasterIcon(
-              url: broadcasterIconUrl,
-              size: 20,
-            ),
+            _BroadcasterIcon(url: broadcasterIconUrl, size: 20),
             const SizedBox(width: 8),
           ],
           Expanded(
@@ -914,8 +916,8 @@ class _StatusBarState extends State<_StatusBar> {
   Widget build(BuildContext context) {
     final Color wifiColor =
         widget.supervisor.wifiIndicatorColor == WifiIndicatorColor.green
-            ? widget.themeColors.statusConnected
-            : widget.themeColors.statusDisconnected;
+        ? widget.themeColors.statusConnected
+        : widget.themeColors.statusDisconnected;
 
     return Semantics(
       button: true,
@@ -1076,10 +1078,7 @@ class _StatusBarState extends State<_StatusBar> {
 }
 
 class _BroadcasterIcon extends StatelessWidget {
-  const _BroadcasterIcon({
-    required this.url,
-    required this.size,
-  });
+  const _BroadcasterIcon({required this.url, required this.size});
 
   final String? url;
   final double size;
@@ -1098,15 +1097,9 @@ class _BroadcasterIcon extends StatelessWidget {
                 fit: BoxFit.cover,
                 cacheWidth: (size * 2).round(),
                 cacheHeight: (size * 2).round(),
-                errorBuilder: (_, __, ___) => Icon(
-                  Icons.person,
-                  size: size,
-                ),
+                errorBuilder: (_, __, ___) => Icon(Icons.person, size: size),
               )
-            : Icon(
-                Icons.person,
-                size: size,
-              ),
+            : Icon(Icons.person, size: size),
       ),
     );
   }
@@ -1141,10 +1134,7 @@ class _CommentRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
         child: Text(
           _lineText(message),
-          style: TextStyle(
-            fontSize: fontSize,
-            color: userColor,
-          ),
+          style: TextStyle(fontSize: fontSize, color: userColor),
         ),
       ),
     );
@@ -1163,8 +1153,9 @@ class _CommentRow extends StatelessWidget {
       return '$timestamp  ${message.content}';
     }
 
-    final String displayName =
-        resolvedUserName != null ? '$resolvedUserName ($userId)' : userId;
+    final String displayName = resolvedUserName != null
+        ? '$resolvedUserName ($userId)'
+        : userId;
 
     return '$timestamp  $displayName  ${message.content}';
   }

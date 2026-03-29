@@ -352,50 +352,40 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const Key('login-status-banner-ok')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('login-status-banner-ok')), findsOneWidget);
     expect(find.text('ニコニコ ログイン済み'), findsOneWidget);
-    expect(
-      find.byKey(const Key('login-status-banner-required')),
-      findsNothing,
-    );
+    expect(find.byKey(const Key('login-status-banner-required')), findsNothing);
   });
 
   testWidgets(
-      'hides login banner when settingsStore is provided but userSessionStore is null',
-      (
-    WidgetTester tester,
-  ) async {
-    final ConnectionSupervisor supervisor = ConnectionSupervisor();
-    final SettingsStore settingsStore = SharedPreferencesSettingsStore(
-      prefs: InMemorySharedPreferences(),
-    );
+    'hides login banner when settingsStore is provided but userSessionStore is null',
+    (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+      final SettingsStore settingsStore = SharedPreferencesSettingsStore(
+        prefs: InMemorySharedPreferences(),
+      );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: SelectScreen(
-          connectionSupervisor: supervisor,
-          settingsStore: settingsStore,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: supervisor,
+            settingsStore: settingsStore,
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const Key('login-status-banner-ok')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const Key('login-status-banner-required')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const Key('select_screen_settings_button')),
-      findsOneWidget,
-    );
-  });
+      expect(find.byKey(const Key('login-status-banner-ok')), findsNothing);
+      expect(
+        find.byKey(const Key('login-status-banner-required')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('select_screen_settings_button')),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('hides login banner when settingsStore is null', (
     WidgetTester tester,
@@ -404,14 +394,8 @@ void main() {
 
     await pumpSelectScreen(tester, supervisor);
 
-    expect(
-      find.byKey(const Key('login-status-banner-ok')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const Key('login-status-banner-required')),
-      findsNothing,
-    );
+    expect(find.byKey(const Key('login-status-banner-ok')), findsNothing);
+    expect(find.byKey(const Key('login-status-banner-required')), findsNothing);
   });
 
   group('follow program list', () {
@@ -459,10 +443,7 @@ void main() {
       );
 
       expect(find.text('テスト放送タイトル'), findsOneWidget);
-      expect(
-        find.text('テスト放送者 / テストコミュニティ - lv123456789'),
-        findsOneWidget,
-      );
+      expect(find.text('テスト放送者 / テストコミュニティ - lv123456789'), findsOneWidget);
     });
 
     testWidgets('shows provider info without community when absent', (
@@ -482,22 +463,12 @@ void main() {
       expect(find.text('放送者A - lv987654321'), findsOneWidget);
     });
 
-    testWidgets('shows program count in header', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('shows program count in header', (WidgetTester tester) async {
       await pumpWithFollowPrograms(
         tester,
         programs: <FollowProgram>[
-          FollowProgram(
-            programId: 'lv111',
-            title: '放送1',
-            providerName: '放送者1',
-          ),
-          FollowProgram(
-            programId: 'lv222',
-            title: '放送2',
-            providerName: '放送者2',
-          ),
+          FollowProgram(programId: 'lv111', title: '放送1', providerName: '放送者1'),
+          FollowProgram(programId: 'lv222', title: '放送2', providerName: '放送者2'),
         ],
       );
 
@@ -564,10 +535,7 @@ void main() {
     testWidgets('hides list when programs are empty', (
       WidgetTester tester,
     ) async {
-      await pumpWithFollowPrograms(
-        tester,
-        programs: <FollowProgram>[],
-      );
+      await pumpWithFollowPrograms(tester, programs: <FollowProgram>[]);
 
       expect(find.text('フォロー中の放送'), findsNothing);
     });

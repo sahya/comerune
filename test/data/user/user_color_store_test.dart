@@ -74,14 +74,8 @@ void main() {
         colorValue: 0xFF1E88E5,
       );
 
-      expect(
-        await store.load('b1'),
-        <String, int>{'u1': 0xFFE53935},
-      );
-      expect(
-        await store.load('b2'),
-        <String, int>{'u1': 0xFF1E88E5},
-      );
+      expect(await store.load('b1'), <String, int>{'u1': 0xFFE53935});
+      expect(await store.load('b2'), <String, int>{'u1': 0xFF1E88E5});
     });
 
     test('removeColor removes the color for a user', () async {
@@ -227,16 +221,18 @@ void main() {
         expect(removed, 0);
       });
 
-      test('removes entry with missing _lastUsedAt (treated as epoch 0)',
-          () async {
-        await prefs.setString('usercolor.no_ts', '{"u1": 123}');
-        await prefs.setString('usercolor._index', '["no_ts"]');
+      test(
+        'removes entry with missing _lastUsedAt (treated as epoch 0)',
+        () async {
+          await prefs.setString('usercolor.no_ts', '{"u1": 123}');
+          await prefs.setString('usercolor._index', '["no_ts"]');
 
-        final int removed = await store.cleanup();
+          final int removed = await store.cleanup();
 
-        expect(removed, 1);
-        expect(prefs.getString('usercolor.no_ts'), isNull);
-      });
+          expect(removed, 1);
+          expect(prefs.getString('usercolor.no_ts'), isNull);
+        },
+      );
 
       test('custom maxAge is respected', () async {
         // Entry from 10 days ago.
@@ -253,10 +249,7 @@ void main() {
         expect(await store.cleanup(), 0);
 
         // maxAge=5 days: should remove.
-        expect(
-          await store.cleanup(maxAge: const Duration(days: 5)),
-          1,
-        );
+        expect(await store.cleanup(maxAge: const Duration(days: 5)), 1);
         expect(prefs.getString('usercolor.ten_days'), isNull);
       });
     });

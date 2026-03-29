@@ -61,7 +61,7 @@ class SelectScreen extends StatefulWidget {
   final UserSessionStore? userSessionStore;
   final CommentLogWriter? commentLogWriter;
   final Future<void> Function(String lv, AppSettings settings)?
-      onPrepareConnection;
+  onPrepareConnection;
   final ValueNotifier<String?>? programTitleNotifier;
   final String? Function(String userId)? resolveUserName;
   final void Function(String userId)? requestUserNameResolve;
@@ -348,10 +348,11 @@ class _SelectScreenState extends State<SelectScreen> {
         final String? supplierUserId = widget.supplierUserIdNotifier?.value;
         final String? resolvedName =
             nameResolutionEnabled && supplierUserId != null
-                ? widget.resolveUserName?.call(supplierUserId)
-                : null;
+            ? widget.resolveUserName?.call(supplierUserId)
+            : null;
         final String? broadcasterName = resolvedName ?? _followBroadcasterName;
-        final String? broadcasterIconUrl = _followBroadcasterIconUrl ??
+        final String? broadcasterIconUrl =
+            _followBroadcasterIconUrl ??
             _buildIconUrlFromUserId(supplierUserId);
 
         return CommentScreen(
@@ -372,19 +373,23 @@ class _SelectScreenState extends State<SelectScreen> {
           beginAt: _followBeginAt,
           showUserName: _settingsNotifier.value.showUserName,
           commentFontSize: _settingsNotifier.value.commentFontSize,
-          resolveUserName:
-              nameResolutionEnabled ? widget.resolveUserName : null,
-          requestUserNameResolve:
-              nameResolutionEnabled ? widget.requestUserNameResolve : null,
+          resolveUserName: nameResolutionEnabled
+              ? widget.resolveUserName
+              : null,
+          requestUserNameResolve: nameResolutionEnabled
+              ? widget.requestUserNameResolve
+              : null,
           commentLogWriter: widget.commentLogWriter,
           autoSaveCommentLog: _settingsNotifier.value.autoSaveCommentLog,
           ngUserIds: _settingsNotifier.value.ngUserIdSet,
           onToggleNgUser: _toggleNgUser,
           userColorMap: _userColorMap,
-          onUserColorChanged:
-              widget.userColorStore != null ? _onUserColorChanged : null,
-          onUserColorRemoved:
-              widget.userColorStore != null ? _onUserColorRemoved : null,
+          onUserColorChanged: widget.userColorStore != null
+              ? _onUserColorChanged
+              : null,
+          onUserColorRemoved: widget.userColorStore != null
+              ? _onUserColorRemoved
+              : null,
           themeMode: _settingsNotifier.value.themeMode,
         );
       },
@@ -407,8 +412,8 @@ class _SelectScreenState extends State<SelectScreen> {
     );
     await widget.onPrepareConnection?.call(lv, settings);
 
-    final bool retried =
-        widget.connectionSupervisor.retryConnectionFromTerminal();
+    final bool retried = widget.connectionSupervisor
+        .retryConnectionFromTerminal();
     if (!retried && widget.connectionSupervisor.canStartConnection) {
       widget.connectionSupervisor.startConnection();
     }
@@ -437,8 +442,9 @@ class _SelectScreenState extends State<SelectScreen> {
       return;
     }
     _currentBroadcasterId = broadcasterId;
-    final Map<String, int> colors =
-        await widget.userColorStore!.load(broadcasterId);
+    final Map<String, int> colors = await widget.userColorStore!.load(
+      broadcasterId,
+    );
     if (!mounted || _currentBroadcasterId != broadcasterId) {
       return;
     }
@@ -456,11 +462,13 @@ class _SelectScreenState extends State<SelectScreen> {
       _userColorMap = Map<String, int>.from(_userColorMap)
         ..[userId] = colorValue;
     });
-    unawaited(widget.userColorStore!.setColor(
-      broadcasterId: broadcasterId,
-      userId: userId,
-      colorValue: colorValue,
-    ));
+    unawaited(
+      widget.userColorStore!.setColor(
+        broadcasterId: broadcasterId,
+        userId: userId,
+        colorValue: colorValue,
+      ),
+    );
   }
 
   void _onUserColorRemoved(String userId) {
@@ -471,10 +479,12 @@ class _SelectScreenState extends State<SelectScreen> {
     setState(() {
       _userColorMap = Map<String, int>.from(_userColorMap)..remove(userId);
     });
-    unawaited(widget.userColorStore!.removeColor(
-      broadcasterId: broadcasterId,
-      userId: userId,
-    ));
+    unawaited(
+      widget.userColorStore!.removeColor(
+        broadcasterId: broadcasterId,
+        userId: userId,
+      ),
+    );
   }
 
   void _toggleNgUser(String userId) {
@@ -583,8 +593,10 @@ class _SelectScreenState extends State<SelectScreen> {
     });
 
     _followRefreshTimer?.cancel();
-    _followRefreshTimer =
-        Timer(_followRefreshInterval, () => unawaited(_fetchFollowPrograms()));
+    _followRefreshTimer = Timer(
+      _followRefreshInterval,
+      () => unawaited(_fetchFollowPrograms()),
+    );
   }
 
   static String? _buildIconUrlFromUserId(String? userId) {
@@ -664,8 +676,11 @@ class _LoginStatusBanner extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             children: <Widget>[
-              Icon(Icons.check_circle,
-                  color: colors.loginBannerOkIcon, size: 18),
+              Icon(
+                Icons.check_circle,
+                color: colors.loginBannerOkIcon,
+                size: 18,
+              ),
               const SizedBox(width: 8),
               Text(
                 'ニコニコ ログイン済み',
@@ -690,18 +705,21 @@ class _LoginStatusBanner extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
               children: <Widget>[
-                Icon(Icons.warning_amber_rounded,
-                    color: colors.loginBannerWarningIcon, size: 18),
+                Icon(
+                  Icons.warning_amber_rounded,
+                  color: colors.loginBannerWarningIcon,
+                  size: 18,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'ログインが必要です。タップして設定を開く',
                     style: TextStyle(
-                        color: colors.loginBannerWarningForeground),
+                      color: colors.loginBannerWarningForeground,
+                    ),
                   ),
                 ),
-                Icon(Icons.chevron_right,
-                    color: colors.loginBannerWarningIcon),
+                Icon(Icons.chevron_right, color: colors.loginBannerWarningIcon),
               ],
             ),
           ),
@@ -750,16 +768,13 @@ class _FollowProgramList extends StatelessWidget {
             children: <Widget>[
               const Icon(Icons.sensors, size: 16, color: Colors.red),
               const SizedBox(width: 6),
-              Text(
-                'フォロー中の放送',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
+              Text('フォロー中の放送', style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(width: 8),
               Text(
                 '${programs.length}件',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.outline,
-                    ),
+                  color: Theme.of(context).colorScheme.outline,
+                ),
               ),
               const Spacer(),
               SizedBox(
@@ -852,8 +867,11 @@ class _FollowProgramTile extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               if (elapsed != null) ...<Widget>[
-                Icon(Icons.access_time,
-                    size: 11, color: theme.colorScheme.outline),
+                Icon(
+                  Icons.access_time,
+                  size: 11,
+                  color: theme.colorScheme.outline,
+                ),
                 const SizedBox(width: 3),
                 Text(
                   elapsed,
@@ -866,8 +884,9 @@ class _FollowProgramTile extends StatelessWidget {
               Icon(
                 Icons.play_circle_outline,
                 size: 20,
-                color:
-                    enabled ? theme.colorScheme.primary : theme.disabledColor,
+                color: enabled
+                    ? theme.colorScheme.primary
+                    : theme.disabledColor,
               ),
             ],
           ),
@@ -952,9 +971,7 @@ class _FollowProgramTile extends StatelessWidget {
 }
 
 class _FavoriteUserSection extends StatelessWidget {
-  const _FavoriteUserSection({
-    required this.userIds,
-  });
+  const _FavoriteUserSection({required this.userIds});
 
   final Set<String> userIds;
 
@@ -970,16 +987,13 @@ class _FavoriteUserSection extends StatelessWidget {
             children: <Widget>[
               const Icon(Icons.person_add, size: 16),
               const SizedBox(width: 6),
-              Text(
-                'お気に入りユーザー',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
+              Text('お気に入りユーザー', style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(width: 8),
               Text(
                 '${userIds.length}件',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.outline,
-                    ),
+                  color: Theme.of(context).colorScheme.outline,
+                ),
               ),
             ],
           ),
@@ -1007,10 +1021,7 @@ class _FavoriteUserSection extends StatelessWidget {
                     : const Icon(Icons.person, size: 20),
               ),
             ),
-            title: Text(
-              userId,
-              style: const TextStyle(fontSize: 13),
-            ),
+            title: Text(userId, style: const TextStyle(fontSize: 13)),
           );
         }),
       ],

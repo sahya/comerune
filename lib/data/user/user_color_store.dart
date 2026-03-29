@@ -40,9 +40,8 @@ abstract class UserColorStore {
 }
 
 class SharedPreferencesUserColorStore implements UserColorStore {
-  const SharedPreferencesUserColorStore({
-    required SharedPreferencesLike prefs,
-  }) : _prefs = prefs;
+  const SharedPreferencesUserColorStore({required SharedPreferencesLike prefs})
+    : _prefs = prefs;
 
   final SharedPreferencesLike _prefs;
 
@@ -104,8 +103,9 @@ class SharedPreferencesUserColorStore implements UserColorStore {
 
     for (final String broadcasterId in index) {
       final Map<String, dynamic> raw = _readRaw(broadcasterId);
-      final int lastUsedAt =
-          raw[_lastUsedAtField] is int ? raw[_lastUsedAtField] as int : 0;
+      final int lastUsedAt = raw[_lastUsedAtField] is int
+          ? raw[_lastUsedAtField] as int
+          : 0;
 
       if (lastUsedAt < cutoff) {
         await _prefs.remove(_key(broadcasterId));

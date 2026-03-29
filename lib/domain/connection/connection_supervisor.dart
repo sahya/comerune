@@ -31,10 +31,7 @@ enum ConnectionErrorCode {
   broadcastEnded,
 }
 
-enum WifiIndicatorColor {
-  green,
-  red,
-}
+enum WifiIndicatorColor { green, red }
 
 extension ConnectionStatusCode on ConnectionStatus {
   String get code {
@@ -116,28 +113,30 @@ class ConnectionSupervisor extends ChangeNotifier {
     int legacySameUrlFailureThreshold = 3,
     DelayExecutor? delayExecutor,
     JitterProvider? jitterProvider,
-  })  : assert(
-          (sessionWsClient == null &&
-                  ndgrClient == null &&
-                  legacyCommentClient == null) ||
-              (sessionWsClient != null &&
-                  ndgrClient != null &&
-                  legacyCommentClient != null),
-          'Provide all reconnect clients together or none.',
-        ),
-        _sessionWsClient = sessionWsClient,
-        _ndgrClient = ndgrClient,
-        _legacyCommentClient = legacyCommentClient,
-        _maxReconnectAttempts = maxReconnectAttempts,
-        _legacySameUrlFailureThreshold = legacySameUrlFailureThreshold,
-        _delayExecutor = delayExecutor ?? _defaultDelayExecutor,
-        _jitterProvider = jitterProvider ?? _defaultJitterProvider {
+  }) : assert(
+         (sessionWsClient == null &&
+                 ndgrClient == null &&
+                 legacyCommentClient == null) ||
+             (sessionWsClient != null &&
+                 ndgrClient != null &&
+                 legacyCommentClient != null),
+         'Provide all reconnect clients together or none.',
+       ),
+       _sessionWsClient = sessionWsClient,
+       _ndgrClient = ndgrClient,
+       _legacyCommentClient = legacyCommentClient,
+       _maxReconnectAttempts = maxReconnectAttempts,
+       _legacySameUrlFailureThreshold = legacySameUrlFailureThreshold,
+       _delayExecutor = delayExecutor ?? _defaultDelayExecutor,
+       _jitterProvider = jitterProvider ?? _defaultJitterProvider {
     if (_hasReconnectClients) {
-      _sessionEventSubscription =
-          _sessionWsClient!.events.listen(_onSessionWsEvent);
+      _sessionEventSubscription = _sessionWsClient!.events.listen(
+        _onSessionWsEvent,
+      );
       _ndgrEventSubscription = _ndgrClient!.events.listen(_onNdgrEvent);
-      _legacyEventSubscription =
-          _legacyCommentClient!.events.listen(_onLegacyEvent);
+      _legacyEventSubscription = _legacyCommentClient!.events.listen(
+        _onLegacyEvent,
+      );
     }
   }
 
@@ -145,7 +144,7 @@ class ConnectionSupervisor extends ChangeNotifier {
   static final math.Random _random = math.Random();
 
   static const Map<ConnectionStatus, Set<ConnectionStatus>>
-      _allowedTransitions = <ConnectionStatus, Set<ConnectionStatus>>{
+  _allowedTransitions = <ConnectionStatus, Set<ConnectionStatus>>{
     ConnectionStatus.idle: <ConnectionStatus>{
       ConnectionStatus.connectingSessionWs,
     },
@@ -190,15 +189,9 @@ class ConnectionSupervisor extends ChangeNotifier {
       ConnectionStatus.ended,
       ConnectionStatus.failed,
     },
-    ConnectionStatus.stopped: <ConnectionStatus>{
-      ConnectionStatus.idle,
-    },
-    ConnectionStatus.ended: <ConnectionStatus>{
-      ConnectionStatus.idle,
-    },
-    ConnectionStatus.failed: <ConnectionStatus>{
-      ConnectionStatus.idle,
-    },
+    ConnectionStatus.stopped: <ConnectionStatus>{ConnectionStatus.idle},
+    ConnectionStatus.ended: <ConnectionStatus>{ConnectionStatus.idle},
+    ConnectionStatus.failed: <ConnectionStatus>{ConnectionStatus.idle},
   };
 
   static Future<void> _defaultDelayExecutor(Duration delay) {
@@ -267,7 +260,10 @@ class ConnectionSupervisor extends ChangeNotifier {
   Duration backoffDelayForAttempt(int attempt) {
     if (attempt <= 0) {
       throw ArgumentError.value(
-          attempt, 'attempt', 'must be greater than zero');
+        attempt,
+        'attempt',
+        'must be greater than zero',
+      );
     }
 
     final int index = math.min(attempt - 1, _backoffSeconds.length - 1);
@@ -368,9 +364,7 @@ class ConnectionSupervisor extends ChangeNotifier {
     );
   }
 
-  Future<bool> onNdgrStreamStalled({
-    NdgrResumeCursor? resumeCursor,
-  }) {
+  Future<bool> onNdgrStreamStalled({NdgrResumeCursor? resumeCursor}) {
     if (resumeCursor != null) {
       _lastNdgrResumeCursor = resumeCursor;
     }
@@ -534,7 +528,8 @@ class ConnectionSupervisor extends ChangeNotifier {
       );
     } catch (_) {
       throw const _ConnectionFailure(
-          ConnectionErrorCode.sessionWsConnectFailed);
+        ConnectionErrorCode.sessionWsConnectFailed,
+      );
     }
 
     final bool toResolving = _transitionTo(ConnectionStatus.resolvingEndpoints);
@@ -583,10 +578,7 @@ class ConnectionSupervisor extends ChangeNotifier {
     final NdgrClient ndgrClient = _ndgrClient!;
 
     try {
-      await ndgrClient.connect(
-        viewApiUri,
-        resumeCursor: resumeCursor,
-      );
+      await ndgrClient.connect(viewApiUri, resumeCursor: resumeCursor);
     } catch (_) {
       throw const _ConnectionFailure(ConnectionErrorCode.ndgrStreamFailed);
     }
@@ -617,11 +609,13 @@ class ConnectionSupervisor extends ChangeNotifier {
   Future<void> _reconnectViaSessionWsOperation(int _) async {
     await _disconnectAllClients();
 
-    final bool toConnecting =
-        _transitionTo(ConnectionStatus.connectingSessionWs);
+    final bool toConnecting = _transitionTo(
+      ConnectionStatus.connectingSessionWs,
+    );
     if (!toConnecting) {
       throw const _ConnectionFailure(
-          ConnectionErrorCode.sessionWsConnectFailed);
+        ConnectionErrorCode.sessionWsConnectFailed,
+      );
     }
 
     await _resolveEndpointsAndConnect();
@@ -630,20 +624,14 @@ class ConnectionSupervisor extends ChangeNotifier {
   Future<void> _reconnectToNdgrStreamOperation(int _) async {
     final NdgrClient ndgrClient = _ndgrClient!;
 
-    await _safeDisconnect(
-      ndgrClient.disconnect,
-      'ndgr stream',
-    );
+    await _safeDisconnect(ndgrClient.disconnect, 'ndgr stream');
 
     final Uri? viewApiUri = _currentNdgrViewApiUri;
     if (viewApiUri == null) {
       throw const _ConnectionFailure(ConnectionErrorCode.endpointResolveFailed);
     }
 
-    await _connectNdgr(
-      viewApiUri,
-      resumeCursor: _lastNdgrResumeCursor,
-    );
+    await _connectNdgr(viewApiUri, resumeCursor: _lastNdgrResumeCursor);
   }
 
   Future<void> _reconnectLegacyWithFallbackOperation(int _) async {
@@ -659,10 +647,7 @@ class ConnectionSupervisor extends ChangeNotifier {
     }
 
     final LegacyCommentClient legacyCommentClient = _legacyCommentClient!;
-    await _safeDisconnect(
-      legacyCommentClient.disconnect,
-      'legacy stream',
-    );
+    await _safeDisconnect(legacyCommentClient.disconnect, 'legacy stream');
 
     try {
       await _connectLegacy(legacyWsUrl);
@@ -758,18 +743,9 @@ class ConnectionSupervisor extends ChangeNotifier {
     }
 
     await Future.wait<void>(<Future<void>>[
-      _safeDisconnect(
-        _sessionWsClient!.disconnect,
-        'session ws',
-      ),
-      _safeDisconnect(
-        _ndgrClient!.disconnect,
-        'ndgr stream',
-      ),
-      _safeDisconnect(
-        _legacyCommentClient!.disconnect,
-        'legacy stream',
-      ),
+      _safeDisconnect(_sessionWsClient!.disconnect, 'session ws'),
+      _safeDisconnect(_ndgrClient!.disconnect, 'ndgr stream'),
+      _safeDisconnect(_legacyCommentClient!.disconnect, 'legacy stream'),
     ]);
   }
 
@@ -842,10 +818,7 @@ class ConnectionSupervisor extends ChangeNotifier {
 }
 
 class _ConnectionFailure implements Exception {
-  const _ConnectionFailure(
-    this.errorCode, {
-    this.errorDetail,
-  });
+  const _ConnectionFailure(this.errorCode, {this.errorDetail});
 
   final ConnectionErrorCode errorCode;
   final String? errorDetail;

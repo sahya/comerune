@@ -32,11 +32,7 @@ class NdgrChat {
 }
 
 class NdgrChunkedMessage {
-  const NdgrChunkedMessage({
-    this.id,
-    this.serverTimestamp,
-    this.chat,
-  });
+  const NdgrChunkedMessage({this.id, this.serverTimestamp, this.chat});
 
   final String? id;
   final DateTime? serverTimestamp;
@@ -44,10 +40,7 @@ class NdgrChunkedMessage {
 }
 
 class NdgrPackedSegment {
-  const NdgrPackedSegment({
-    required this.messages,
-    this.nextUri,
-  });
+  const NdgrPackedSegment({required this.messages, this.nextUri});
 
   final List<NdgrChunkedMessage> messages;
   final String? nextUri;
@@ -160,8 +153,9 @@ class NdgrProtobufDecoder {
           break;
         case 3: // Entry.previous (MessageSegment)
           if (wireType == _WireType.lengthDelimited) {
-            previousUri =
-                _decodeMessageSegmentUri(reader.readLengthDelimited());
+            previousUri = _decodeMessageSegmentUri(
+              reader.readLengthDelimited(),
+            );
           } else {
             reader.skipField(wireType);
           }
@@ -584,20 +578,14 @@ class _ProtoReader {
 }
 
 class _ChunkedMessageMeta {
-  const _ChunkedMessageMeta({
-    this.id,
-    this.serverTimestamp,
-  });
+  const _ChunkedMessageMeta({this.id, this.serverTimestamp});
 
   final String? id;
   final DateTime? serverTimestamp;
 }
 
 class _VarintReadResult {
-  const _VarintReadResult({
-    required this.value,
-    required this.bytesRead,
-  });
+  const _VarintReadResult({required this.value, required this.bytesRead});
 
   final int value;
   final int bytesRead;
@@ -614,10 +602,7 @@ _VarintReadResult? _tryReadVarintFromList(List<int> buffer, int start) {
 
     index += 1;
     if ((byte & 0x80) == 0) {
-      return _VarintReadResult(
-        value: value,
-        bytesRead: index - start,
-      );
+      return _VarintReadResult(value: value, bytesRead: index - start);
     }
 
     shift += 7;

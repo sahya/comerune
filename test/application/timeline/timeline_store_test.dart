@@ -6,8 +6,9 @@ import 'package:comerune/domain/models/app_message.dart';
 AppMessage _message(int index) {
   return AppMessage(
     id: 'id-$index',
-    timestamp:
-        DateTime.parse('2026-03-22T00:00:00Z').add(Duration(seconds: index)),
+    timestamp: DateTime.parse(
+      '2026-03-22T00:00:00Z',
+    ).add(Duration(seconds: index)),
     userId: 'user-$index',
     content: 'content-$index',
     type: AppMessageType.chat,

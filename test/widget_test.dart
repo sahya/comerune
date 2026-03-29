@@ -9,8 +9,9 @@ import 'helpers/in_memory_shared_preferences.dart';
 import 'helpers/in_memory_user_session_store.dart';
 
 void main() {
-  testWidgets('ComeruneApp boots to select screen',
-      (WidgetTester tester) async {
+  testWidgets('ComeruneApp boots to select screen', (
+    WidgetTester tester,
+  ) async {
     final SettingsStore settingsStore = SharedPreferencesSettingsStore(
       prefs: InMemorySharedPreferences(),
     );

@@ -12,10 +12,7 @@ import '../../data/auth/user_session_store.dart';
 /// and saved to the [UserSessionStore].
 /// This follows the same approach as N Air (official niconico streaming tool).
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({
-    super.key,
-    required this.userSessionStore,
-  });
+  const LoginScreen({super.key, required this.userSessionStore});
 
   final UserSessionStore userSessionStore;
 
@@ -25,8 +22,9 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   static const String _loginUrl = 'https://account.nicovideo.jp/login';
-  static const MethodChannel _cookieChannel =
-      MethodChannel('com.example.comerune/cookies');
+  static const MethodChannel _cookieChannel = MethodChannel(
+    'com.example.comerune/cookies',
+  );
 
   /// Hosts allowed during the login flow.
   static const Set<String> _allowedHosts = <String>{
@@ -106,9 +104,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   bool _isPostLoginUrl(String url) {
-    return _postLoginUrlPrefixes.any(
-      (String prefix) => url.startsWith(prefix),
-    );
+    return _postLoginUrlPrefixes.any((String prefix) => url.startsWith(prefix));
   }
 
   bool _isCheckingSession = false;
@@ -151,9 +147,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('ログインしました')),
-        );
+        ..showSnackBar(const SnackBar(content: Text('ログインしました')));
       Navigator.of(context).pop(true);
     } finally {
       _isCheckingSession = false;
@@ -164,7 +158,8 @@ class _LoginScreenState extends State<LoginScreen> {
     // Try platform channel first (can read httpOnly cookies via
     // Android's CookieManager), fall back to document.cookie.
     try {
-      final String cookies = await _cookieChannel.invokeMethod<String>(
+      final String cookies =
+          await _cookieChannel.invokeMethod<String>(
             'getCookies',
             <String, String>{'url': 'https://nicovideo.jp'},
           ) ??
@@ -187,8 +182,9 @@ class _LoginScreenState extends State<LoginScreen> {
       final Object result = await _controller.runJavaScriptReturningResult(
         'document.cookie',
       );
-      final String cookieString =
-          result is String ? _unquote(result) : result.toString();
+      final String cookieString = result is String
+          ? _unquote(result)
+          : result.toString();
       return parseNicoUserSessionCookie(cookieString);
     } catch (error) {
       log(
@@ -220,9 +216,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('ニコニコログイン'),
-      ),
+      appBar: AppBar(title: const Text('ニコニコログイン')),
       body: Stack(
         children: <Widget>[
           WebViewWidget(controller: _controller),

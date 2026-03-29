@@ -27,9 +27,7 @@ void main() {
         ..._varintField(8, 99),
       ];
 
-      final List<int> nicoliveMessage = <int>[
-        ..._bytesField(1, chat),
-      ];
+      final List<int> nicoliveMessage = <int>[..._bytesField(1, chat)];
 
       final Uint8List bytes = Uint8List.fromList(<int>[
         ..._bytesField(1, meta),
@@ -56,12 +54,8 @@ void main() {
     test('decodes overflowed chat payload as chat', () {
       final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
 
-      final List<int> chat = <int>[
-        ..._stringField(1, 'overflowed-body'),
-      ];
-      final List<int> nicoliveMessage = <int>[
-        ..._bytesField(20, chat),
-      ];
+      final List<int> chat = <int>[..._stringField(1, 'overflowed-body')];
+      final List<int> nicoliveMessage = <int>[..._bytesField(20, chat)];
 
       final Uint8List bytes = Uint8List.fromList(<int>[
         ..._bytesField(2, nicoliveMessage),
@@ -81,13 +75,9 @@ void main() {
         Uint8List.fromList(_utf8('https://example.com/backward-segment')),
       );
 
-      final List<int> backward = <int>[
-        ..._bytesField(2, packedSegmentNext),
-      ];
+      final List<int> backward = <int>[..._bytesField(2, packedSegmentNext)];
 
-      final List<int> next = <int>[
-        ..._varintField(1, 12345),
-      ];
+      final List<int> next = <int>[..._varintField(1, 12345)];
 
       final Uint8List bytes = Uint8List.fromList(<int>[
         ..._bytesField(2, backward),
@@ -105,19 +95,13 @@ void main() {
     test('decodes packed segment messages and next uri', () {
       final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
 
-      final List<int> timestamp = <int>[
-        ..._varintField(1, 1700000000),
-      ];
+      final List<int> timestamp = <int>[..._varintField(1, 1700000000)];
       final List<int> meta = <int>[
         ..._stringField(1, 'm-1'),
         ..._bytesField(2, timestamp),
       ];
-      final List<int> chat = <int>[
-        ..._stringField(1, 'chat-body'),
-      ];
-      final List<int> nicoliveMessage = <int>[
-        ..._bytesField(1, chat),
-      ];
+      final List<int> chat = <int>[..._stringField(1, 'chat-body')];
+      final List<int> nicoliveMessage = <int>[..._bytesField(1, chat)];
 
       final List<int> chunkedMessage = <int>[
         ..._bytesField(1, meta),

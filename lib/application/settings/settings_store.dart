@@ -32,7 +32,7 @@ abstract class SharedPreferencesLike {
 
 class SharedPreferencesSettingsStore implements SettingsStore {
   const SharedPreferencesSettingsStore({required SharedPreferencesLike prefs})
-      : _prefs = prefs;
+    : _prefs = prefs;
 
   final SharedPreferencesLike _prefs;
 

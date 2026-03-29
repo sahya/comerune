@@ -18,9 +18,9 @@ class UserNameResolver extends ChangeNotifier {
     HttpClient Function()? httpClientFactory,
     Duration connectionTimeout = const Duration(seconds: 5),
     Duration debounceDuration = const Duration(milliseconds: 200),
-  })  : _httpClientFactory = httpClientFactory ?? HttpClient.new,
-        _connectionTimeout = connectionTimeout,
-        _debounceDuration = debounceDuration {
+  }) : _httpClientFactory = httpClientFactory ?? HttpClient.new,
+       _connectionTimeout = connectionTimeout,
+       _debounceDuration = debounceDuration {
     if (httpClient != null) {
       _seedHttpClient = httpClient;
     }
@@ -132,8 +132,10 @@ class UserNameResolver extends ChangeNotifier {
       final String body = await response.transform(utf8.decoder).join();
       final Object? decoded = jsonDecode(body);
       if (decoded is! Map<String, dynamic>) {
-        log('User $userId: response is not a JSON object',
-            name: 'UserNameResolver');
+        log(
+          'User $userId: response is not a JSON object',
+          name: 'UserNameResolver',
+        );
         _pending.remove(userId);
         _onRequestDone();
         return;
@@ -157,10 +159,7 @@ class UserNameResolver extends ChangeNotifier {
       }
       _onRequestDone();
     } catch (error) {
-      log(
-        'Failed to resolve user $userId: $error',
-        name: 'UserNameResolver',
-      );
+      log('Failed to resolve user $userId: $error', name: 'UserNameResolver');
       _pending.remove(userId);
       _onRequestDone();
     }

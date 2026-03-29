@@ -7,19 +7,19 @@ import '../theme/app_theme.dart';
 /// Predefined color palette entries with Japanese labels for accessibility.
 const List<({Color color, String label})> kUserColorPaletteEntries =
     <({Color color, String label})>[
-  (color: Color(0xFFE53935), label: '赤'),
-  (color: Color(0xFFD81B60), label: 'ピンク'),
-  (color: Color(0xFF8E24AA), label: '紫'),
-  (color: Color(0xFF3949AB), label: '藍'),
-  (color: Color(0xFF1E88E5), label: '青'),
-  (color: Color(0xFF00ACC1), label: '水色'),
-  (color: Color(0xFF00897B), label: '青緑'),
-  (color: Color(0xFF43A047), label: '緑'),
-  (color: Color(0xFFFF8F00), label: '琥珀'),
-  (color: Color(0xFFFF6D00), label: 'オレンジ'),
-  (color: Color(0xFF6D4C41), label: '茶'),
-  (color: Color(0xFF546E7A), label: '灰青'),
-];
+      (color: Color(0xFFE53935), label: '赤'),
+      (color: Color(0xFFD81B60), label: 'ピンク'),
+      (color: Color(0xFF8E24AA), label: '紫'),
+      (color: Color(0xFF3949AB), label: '藍'),
+      (color: Color(0xFF1E88E5), label: '青'),
+      (color: Color(0xFF00ACC1), label: '水色'),
+      (color: Color(0xFF00897B), label: '青緑'),
+      (color: Color(0xFF43A047), label: '緑'),
+      (color: Color(0xFFFF8F00), label: '琥珀'),
+      (color: Color(0xFFFF6D00), label: 'オレンジ'),
+      (color: Color(0xFF6D4C41), label: '茶'),
+      (color: Color(0xFF546E7A), label: '灰青'),
+    ];
 
 /// Predefined color palette for user comment colors.
 List<Color> get kUserColorPalette => kUserColorPaletteEntries
@@ -165,10 +165,7 @@ class UserDetailSheet extends StatelessWidget {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(16),
-          child: Text(
-            'この放送でのコメントはありません',
-            key: Key('user-detail-no-comments'),
-          ),
+          child: Text('この放送でのコメントはありません', key: Key('user-detail-no-comments')),
         ),
       );
     }
@@ -266,10 +263,7 @@ class _ColorPaletteRow extends StatelessWidget {
         children: <Widget>[
           Row(
             children: <Widget>[
-              Text(
-                'コメント色',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
+              Text('コメント色', style: Theme.of(context).textTheme.titleSmall),
               const Spacer(),
               if (currentColorValue != null)
                 Semantics(
@@ -345,8 +339,9 @@ class _ColorCircle extends StatelessWidget {
           decoration: BoxDecoration(
             color: color,
             shape: BoxShape.circle,
-            border:
-                isSelected ? Border.all(color: Colors.white, width: 2) : null,
+            border: isSelected
+                ? Border.all(color: Colors.white, width: 2)
+                : null,
             boxShadow: isSelected
                 ? <BoxShadow>[
                     BoxShadow(
@@ -399,10 +394,7 @@ class _UserCommentRow extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              message.content,
-              style: const TextStyle(fontSize: 13),
-            ),
+            child: Text(message.content, style: const TextStyle(fontSize: 13)),
           ),
         ],
       ),

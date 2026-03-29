@@ -30,8 +30,8 @@ class LegacyCommentClient {
   LegacyCommentClient({
     required LegacyWebSocketConnector webSocketConnector,
     MessageNormalizer? messageNormalizer,
-  })  : _messageNormalizer = messageNormalizer ?? MessageNormalizer(),
-        _webSocketConnector = webSocketConnector;
+  }) : _messageNormalizer = messageNormalizer ?? MessageNormalizer(),
+       _webSocketConnector = webSocketConnector;
 
   final MessageNormalizer _messageNormalizer;
   final LegacyWebSocketConnector _webSocketConnector;
@@ -112,8 +112,9 @@ class LegacyCommentClient {
       return;
     }
 
-    final AppMessage? normalized =
-        _messageNormalizer.normalizeLegacyJson(rawJson);
+    final AppMessage? normalized = _messageNormalizer.normalizeLegacyJson(
+      rawJson,
+    );
     if (normalized != null && !_messages.isClosed) {
       _messages.add(normalized);
     }

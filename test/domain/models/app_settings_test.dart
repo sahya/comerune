@@ -5,32 +5,20 @@ import 'package:comerune/domain/models/app_settings.dart';
 void main() {
   group('AppThemeModeValue.fromStorageValue', () {
     test('returns light for null', () {
-      expect(
-        AppThemeModeValue.fromStorageValue(null),
-        AppThemeMode.light,
-      );
+      expect(AppThemeModeValue.fromStorageValue(null), AppThemeMode.light);
     });
 
     test('returns light for unknown value', () {
-      expect(
-        AppThemeModeValue.fromStorageValue('garbage'),
-        AppThemeMode.light,
-      );
+      expect(AppThemeModeValue.fromStorageValue('garbage'), AppThemeMode.light);
     });
 
     test('returns light for empty string', () {
-      expect(
-        AppThemeModeValue.fromStorageValue(''),
-        AppThemeMode.light,
-      );
+      expect(AppThemeModeValue.fromStorageValue(''), AppThemeMode.light);
     });
 
     test('round-trips all enum values via storageValue', () {
       for (final AppThemeMode mode in AppThemeMode.values) {
-        expect(
-          AppThemeModeValue.fromStorageValue(mode.storageValue),
-          mode,
-        );
+        expect(AppThemeModeValue.fromStorageValue(mode.storageValue), mode);
       }
     });
   });
@@ -57,14 +45,16 @@ void main() {
     });
 
     test('parses newline-separated user IDs', () {
-      final AppSettings settings =
-          AppSettings.defaults.copyWith(ngUserIds: '123\n456\n789');
+      final AppSettings settings = AppSettings.defaults.copyWith(
+        ngUserIds: '123\n456\n789',
+      );
       expect(settings.ngUserIdSet, <String>{'123', '456', '789'});
     });
 
     test('trims whitespace and ignores blank lines', () {
-      final AppSettings settings =
-          AppSettings.defaults.copyWith(ngUserIds: ' 123 \n\n 456 \n');
+      final AppSettings settings = AppSettings.defaults.copyWith(
+        ngUserIds: ' 123 \n\n 456 \n',
+      );
       expect(settings.ngUserIdSet, <String>{'123', '456'});
     });
   });
@@ -76,8 +66,9 @@ void main() {
     });
 
     test('returns true for registered NG user', () {
-      final AppSettings settings =
-          AppSettings.defaults.copyWith(ngUserIds: '123\n456');
+      final AppSettings settings = AppSettings.defaults.copyWith(
+        ngUserIds: '123\n456',
+      );
       expect(settings.isNgUser('123'), isTrue);
       expect(settings.isNgUser('456'), isTrue);
       expect(settings.isNgUser('789'), isFalse);
@@ -91,8 +82,9 @@ void main() {
     });
 
     test('does not duplicate existing ID', () {
-      final AppSettings initial =
-          AppSettings.defaults.copyWith(ngUserIds: '123');
+      final AppSettings initial = AppSettings.defaults.copyWith(
+        ngUserIds: '123',
+      );
       final AppSettings updated = initial.addNgUserId('123');
       expect(identical(updated, initial), isTrue);
     });
@@ -100,15 +92,17 @@ void main() {
 
   group('removeNgUserId', () {
     test('removes existing user ID', () {
-      final AppSettings initial =
-          AppSettings.defaults.copyWith(ngUserIds: '123\n456');
+      final AppSettings initial = AppSettings.defaults.copyWith(
+        ngUserIds: '123\n456',
+      );
       final AppSettings updated = initial.removeNgUserId('123');
       expect(updated.ngUserIdSet, <String>{'456'});
     });
 
     test('returns same instance if ID not present', () {
-      final AppSettings initial =
-          AppSettings.defaults.copyWith(ngUserIds: '123');
+      final AppSettings initial = AppSettings.defaults.copyWith(
+        ngUserIds: '123',
+      );
       final AppSettings updated = initial.removeNgUserId('999');
       expect(identical(updated, initial), isTrue);
     });

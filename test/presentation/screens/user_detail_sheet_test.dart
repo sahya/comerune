@@ -31,10 +31,7 @@ void main() {
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(
-        _buildSheet(
-          userId: '99999',
-          allMessages: const <AppMessage>[],
-        ),
+        _buildSheet(userId: '99999', allMessages: const <AppMessage>[]),
       );
       await openSheet(tester);
 
@@ -46,10 +43,7 @@ void main() {
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(
-        _buildSheet(
-          userId: '12345',
-          allMessages: const <AppMessage>[],
-        ),
+        _buildSheet(userId: '12345', allMessages: const <AppMessage>[]),
       );
       await openSheet(tester);
 
@@ -84,10 +78,7 @@ void main() {
       ];
 
       await tester.pumpWidget(
-        _buildSheet(
-          userId: '12345',
-          allMessages: messages,
-        ),
+        _buildSheet(userId: '12345', allMessages: messages),
       );
       await openSheet(tester);
 
@@ -169,10 +160,7 @@ void main() {
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(
-        _buildSheet(
-          userId: '12345',
-          allMessages: const <AppMessage>[],
-        ),
+        _buildSheet(userId: '12345', allMessages: const <AppMessage>[]),
       );
       await openSheet(tester);
 

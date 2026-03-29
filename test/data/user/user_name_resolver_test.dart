@@ -10,9 +10,7 @@ void main() {
     test('resolves numeric user ID to nickname', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
-        'data': <String, Object?>{
-          'nickname': 'テストユーザー',
-        },
+        'data': <String, Object?>{'nickname': 'テストユーザー'},
       });
 
       final UserNameResolver resolver = UserNameResolver(
@@ -50,9 +48,7 @@ void main() {
     test('does not re-request already cached IDs', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
-        'data': <String, Object?>{
-          'nickname': 'UserA',
-        },
+        'data': <String, Object?>{'nickname': 'UserA'},
       });
 
       final UserNameResolver resolver = UserNameResolver(
@@ -75,9 +71,7 @@ void main() {
       final Completer<void> responseCompleter = Completer<void>();
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
-        'data': <String, Object?>{
-          'nickname': 'Delayed',
-        },
+        'data': <String, Object?>{'nickname': 'Delayed'},
       });
       httpClient.responseDelay = responseCompleter.future;
 
@@ -124,9 +118,7 @@ void main() {
     test('clearCache removes all cached and pending data', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
-        'data': <String, Object?>{
-          'nickname': 'CachedUser',
-        },
+        'data': <String, Object?>{'nickname': 'CachedUser'},
       });
 
       final UserNameResolver resolver = UserNameResolver(
@@ -147,12 +139,11 @@ void main() {
     test('does not notifyListeners after dispose', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
-        'data': <String, Object?>{
-          'nickname': 'Late',
-        },
+        'data': <String, Object?>{'nickname': 'Late'},
       });
-      httpClient.responseDelay =
-          Future<void>.delayed(const Duration(milliseconds: 100));
+      httpClient.responseDelay = Future<void>.delayed(
+        const Duration(milliseconds: 100),
+      );
 
       final UserNameResolver resolver = UserNameResolver(
         httpClient: httpClient,
@@ -176,9 +167,7 @@ void main() {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       final Completer<void> gate = Completer<void>();
       httpClient.responseBody = jsonEncode(<String, Object?>{
-        'data': <String, Object?>{
-          'nickname': 'User',
-        },
+        'data': <String, Object?>{'nickname': 'User'},
       });
       httpClient.responseDelay = gate.future;
 
@@ -207,9 +196,7 @@ void main() {
     test('notifies listeners with debounce', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
-        'data': <String, Object?>{
-          'nickname': 'User',
-        },
+        'data': <String, Object?>{'nickname': 'User'},
       });
 
       final UserNameResolver resolver = UserNameResolver(
@@ -382,7 +369,7 @@ class _FakeHttpHeaders implements HttpHeaders {
 class _FakeHttpClientResponse extends Stream<List<int>>
     implements HttpClientResponse {
   _FakeHttpClientResponse({required this.statusCode, required String body})
-      : _body = body;
+    : _body = body;
 
   @override
   final int statusCode;

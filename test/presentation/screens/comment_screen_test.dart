@@ -16,10 +16,7 @@ void main() {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
 
       await tester.pumpWidget(
-        _buildScreen(
-          supervisor: supervisor,
-          messages: const <AppMessage>[],
-        ),
+        _buildScreen(supervisor: supervisor, messages: const <AppMessage>[]),
       );
 
       final AppThemeColors themeColors = AppTheme.colorsFor(AppThemeMode.light);
@@ -59,8 +56,9 @@ void main() {
       expect(find.text('方式: NDGR'), findsOneWidget);
       expect(find.text('フェーズ: RECONNECTING'), findsOneWidget);
 
-      final Text lastReceived =
-          tester.widget(find.byKey(const Key('status-last-received')));
+      final Text lastReceived = tester.widget(
+        find.byKey(const Key('status-last-received')),
+      );
       expect(lastReceived.data, isNot('最終受信: -'));
       expect(lastReceived.data, contains(':'));
     });
@@ -70,11 +68,7 @@ void main() {
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
       final List<AppMessage> messages = <AppMessage>[
-        _message(
-          id: 'chat-1',
-          type: AppMessageType.chat,
-          content: '通常コメント',
-        ),
+        _message(id: 'chat-1', type: AppMessageType.chat, content: '通常コメント'),
         _message(
           id: 'operator-1',
           type: AppMessageType.operator,
@@ -93,31 +87,36 @@ void main() {
       ];
 
       await tester.pumpWidget(
-        _buildScreen(
-          supervisor: supervisor,
-          messages: messages,
-        ),
+        _buildScreen(supervisor: supervisor, messages: messages),
       );
 
-      final Container operatorRow = tester.widget(find.descendant(
-        of: find.byKey(const Key('comment-row-operator-1')),
-        matching: find.byType(Container),
-      ));
+      final Container operatorRow = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('comment-row-operator-1')),
+          matching: find.byType(Container),
+        ),
+      );
       expect(operatorRow.color, Colors.yellow.shade100);
 
-      final Container notificationRow = tester.widget(find.descendant(
-        of: find.byKey(const Key('comment-row-notification-1')),
-        matching: find.byType(Container),
-      ));
+      final Container notificationRow = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('comment-row-notification-1')),
+          matching: find.byType(Container),
+        ),
+      );
       expect(notificationRow.color, Colors.lightBlue.shade50);
 
-      final Container legacyRow = tester.widget(find.descendant(
-        of: find.byKey(const Key('comment-row-legacy-1')),
-        matching: find.byType(Container),
-      ));
+      final Container legacyRow = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('comment-row-legacy-1')),
+          matching: find.byType(Container),
+        ),
+      );
       expect(legacyRow.color, Colors.lightBlue.shade50);
       expect(
-          find.textContaining(kLegacyUnsupportedFormatMessage), findsOneWidget);
+        find.textContaining(kLegacyUnsupportedFormatMessage),
+        findsOneWidget,
+      );
     });
 
     testWidgets('does not render gift and nicoad messages on v1.2', (
@@ -130,11 +129,7 @@ void main() {
           type: AppMessageType.chat,
           content: '通常コメント',
         ),
-        _message(
-          id: 'gift-hidden',
-          type: AppMessageType.gift,
-          content: 'ギフト',
-        ),
+        _message(id: 'gift-hidden', type: AppMessageType.gift, content: 'ギフト'),
         _message(
           id: 'nicoad-hidden',
           type: AppMessageType.nicoad,
@@ -143,10 +138,7 @@ void main() {
       ];
 
       await tester.pumpWidget(
-        _buildScreen(
-          supervisor: supervisor,
-          messages: messages,
-        ),
+        _buildScreen(supervisor: supervisor, messages: messages),
       );
 
       expect(find.byKey(const Key('comment-row-chat-visible')), findsOneWidget);
@@ -205,141 +197,147 @@ void main() {
       expect(reconnectCalls, 1);
     });
 
-    testWidgets('stop button is disabled while idle',
-        (WidgetTester tester) async {
+    testWidgets('stop button is disabled while idle', (
+      WidgetTester tester,
+    ) async {
       final ConnectionSupervisor supervisor = ConnectionSupervisor();
 
       await tester.pumpWidget(
-        _buildScreen(
-          supervisor: supervisor,
-          messages: const <AppMessage>[],
-        ),
+        _buildScreen(supervisor: supervisor, messages: const <AppMessage>[]),
       );
 
-      final ElevatedButton stopButton =
-          tester.widget(find.byKey(const Key('stop-button')));
+      final ElevatedButton stopButton = tester.widget(
+        find.byKey(const Key('stop-button')),
+      );
       expect(stopButton.onPressed, isNull);
     });
 
     testWidgets(
-        'auto-scroll pauses while user scrolls up and resumes at bottom', (
-      WidgetTester tester,
-    ) async {
-      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-      final GlobalKey<_CommentScreenHostState> hostKey =
-          GlobalKey<_CommentScreenHostState>();
+      'auto-scroll pauses while user scrolls up and resumes at bottom',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_CommentScreenHostState> hostKey =
+            GlobalKey<_CommentScreenHostState>();
 
-      await tester.pumpWidget(
-        _CommentScreenHost(
-          key: hostKey,
-          supervisor: supervisor,
-          initialLv: 'lv100',
-          initialMessages: List<AppMessage>.generate(
-            40,
-            (int index) => _message(
-              id: 'initial-$index',
-              type: AppMessageType.chat,
-              content: 'comment-$index',
+        await tester.pumpWidget(
+          _CommentScreenHost(
+            key: hostKey,
+            supervisor: supervisor,
+            initialLv: 'lv100',
+            initialMessages: List<AppMessage>.generate(
+              40,
+              (int index) => _message(
+                id: 'initial-$index',
+                type: AppMessageType.chat,
+                content: 'comment-$index',
+              ),
             ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      final ListView listView =
-          tester.widget(find.byKey(const Key('comment-list')));
-      final ScrollController controller = listView.controller!;
+        final ListView listView = tester.widget(
+          find.byKey(const Key('comment-list')),
+        );
+        final ScrollController controller = listView.controller!;
 
-      expect(
-        (controller.position.maxScrollExtent - controller.offset).abs() < 2,
-        isTrue,
-      );
+        expect(
+          (controller.position.maxScrollExtent - controller.offset).abs() < 2,
+          isTrue,
+        );
 
-      await tester.drag(
-          find.byKey(const Key('comment-list')), const Offset(0, 300));
-      await tester.pumpAndSettle();
-      final double pausedOffset = controller.offset;
+        await tester.drag(
+          find.byKey(const Key('comment-list')),
+          const Offset(0, 300),
+        );
+        await tester.pumpAndSettle();
+        final double pausedOffset = controller.offset;
 
-      hostKey.currentState!.addMessage(
-        _message(
-          id: 'new-1',
-          type: AppMessageType.chat,
-          content: 'new-comment-1',
-        ),
-      );
-      await tester.pumpAndSettle();
+        hostKey.currentState!.addMessage(
+          _message(
+            id: 'new-1',
+            type: AppMessageType.chat,
+            content: 'new-comment-1',
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      expect(controller.offset, closeTo(pausedOffset, 2));
+        expect(controller.offset, closeTo(pausedOffset, 2));
 
-      await tester.drag(
-          find.byKey(const Key('comment-list')), const Offset(0, -1200));
-      await tester.pumpAndSettle();
+        await tester.drag(
+          find.byKey(const Key('comment-list')),
+          const Offset(0, -1200),
+        );
+        await tester.pumpAndSettle();
 
-      hostKey.currentState!.addMessage(
-        _message(
-          id: 'new-2',
-          type: AppMessageType.chat,
-          content: 'new-comment-2',
-        ),
-      );
-      await tester.pumpAndSettle();
+        hostKey.currentState!.addMessage(
+          _message(
+            id: 'new-2',
+            type: AppMessageType.chat,
+            content: 'new-comment-2',
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      expect(
-        (controller.position.maxScrollExtent - controller.offset).abs() < 2,
-        isTrue,
-      );
-    });
+        expect(
+          (controller.position.maxScrollExtent - controller.offset).abs() < 2,
+          isTrue,
+        );
+      },
+    );
 
     testWidgets(
-        'auto-scroll keeps working when ring-buffer update keeps same length',
-        (WidgetTester tester) async {
-      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-      final GlobalKey<_CommentScreenHostState> hostKey =
-          GlobalKey<_CommentScreenHostState>();
+      'auto-scroll keeps working when ring-buffer update keeps same length',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_CommentScreenHostState> hostKey =
+            GlobalKey<_CommentScreenHostState>();
 
-      final List<AppMessage> initialMessages = List<AppMessage>.generate(
-        40,
-        (int index) => _message(
-          id: 'rb-initial-$index',
-          type: AppMessageType.chat,
-          content: 'comment-$index',
-        ),
-      );
+        final List<AppMessage> initialMessages = List<AppMessage>.generate(
+          40,
+          (int index) => _message(
+            id: 'rb-initial-$index',
+            type: AppMessageType.chat,
+            content: 'comment-$index',
+          ),
+        );
 
-      await tester.pumpWidget(
-        _CommentScreenHost(
-          key: hostKey,
-          supervisor: supervisor,
-          initialLv: 'lv-ring',
-          initialMessages: initialMessages,
-        ),
-      );
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(
+          _CommentScreenHost(
+            key: hostKey,
+            supervisor: supervisor,
+            initialLv: 'lv-ring',
+            initialMessages: initialMessages,
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      final ListView listView =
-          tester.widget(find.byKey(const Key('comment-list')));
-      final ScrollController controller = listView.controller!;
-      expect(
-        (controller.position.maxScrollExtent - controller.offset).abs() < 2,
-        isTrue,
-      );
+        final ListView listView = tester.widget(
+          find.byKey(const Key('comment-list')),
+        );
+        final ScrollController controller = listView.controller!;
+        expect(
+          (controller.position.maxScrollExtent - controller.offset).abs() < 2,
+          isTrue,
+        );
 
-      final List<AppMessage> rotated = <AppMessage>[
-        ...initialMessages.sublist(1),
-        _message(
-          id: 'rb-new-tail',
-          type: AppMessageType.chat,
-          content: 'new tail\nline2\nline3\nline4\nline5',
-        ),
-      ];
-      hostKey.currentState!.replaceMessages(rotated);
-      await tester.pumpAndSettle();
+        final List<AppMessage> rotated = <AppMessage>[
+          ...initialMessages.sublist(1),
+          _message(
+            id: 'rb-new-tail',
+            type: AppMessageType.chat,
+            content: 'new tail\nline2\nline3\nline4\nline5',
+          ),
+        ];
+        hostKey.currentState!.replaceMessages(rotated);
+        await tester.pumpAndSettle();
 
-      expect(
-        (controller.position.maxScrollExtent - controller.offset).abs() < 2,
-        isTrue,
-      );
-    });
+        expect(
+          (controller.position.maxScrollExtent - controller.offset).abs() < 2,
+          isTrue,
+        );
+      },
+    );
 
     testWidgets('shows snackbar on transition to FAILED', (
       WidgetTester tester,
@@ -347,21 +345,17 @@ void main() {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
 
       await tester.pumpWidget(
-        _buildScreen(
-          supervisor: supervisor,
-          messages: const <AppMessage>[],
-        ),
+        _buildScreen(supervisor: supervisor, messages: const <AppMessage>[]),
       );
 
       expect(
-          supervisor.fail(ConnectionErrorCode.endpointResolveFailed), isTrue);
+        supervisor.fail(ConnectionErrorCode.endpointResolveFailed),
+        isTrue,
+      );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      expect(
-        find.text('コメントサーバーの取得に失敗しました 再接続ボタンで再試行できます。'),
-        findsOneWidget,
-      );
+      expect(find.text('コメントサーバーの取得に失敗しました 再接続ボタンで再試行できます。'), findsOneWidget);
     });
 
     testWidgets('shows failure detail in snackbar and debug status bar', (
@@ -391,8 +385,10 @@ void main() {
         find.textContaining('code: SESSION_WS_CONNECT_FAILED'),
         findsOneWidget,
       );
-      expect(find.textContaining('原因: HandshakeException: 401 Unauthorized'),
-          findsOneWidget);
+      expect(
+        find.textContaining('原因: HandshakeException: 401 Unauthorized'),
+        findsOneWidget,
+      );
       expect(find.byKey(const Key('status-last-error-detail')), findsOneWidget);
       expect(find.textContaining('エラー詳細: HandshakeException'), findsOneWidget);
     });
@@ -414,7 +410,9 @@ void main() {
       );
 
       expect(
-          supervisor.fail(ConnectionErrorCode.endpointResolveFailed), isTrue);
+        supervisor.fail(ConnectionErrorCode.endpointResolveFailed),
+        isTrue,
+      );
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('reconnect-button')), findsOneWidget);
@@ -524,10 +522,7 @@ void main() {
       expect(find.text('テスト番組'), findsOneWidget);
 
       // Status bar also shows the broadcaster name.
-      expect(
-        find.byKey(const Key('status-broadcaster-name')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('status-broadcaster-name')), findsOneWidget);
     });
 
     testWidgets('shows lv only in AppBar when broadcasterName is null', (
@@ -544,20 +539,14 @@ void main() {
       );
 
       // lv is shown as the title when no broadcaster name.
-      expect(
-        find.byKey(const Key('appbar-title-text')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('appbar-title-text')), findsOneWidget);
       expect(find.text('lv345678901'), findsAtLeast(1));
 
       expect(find.byKey(const Key('program-title-bar')), findsOneWidget);
       expect(find.text('タイトルのみ'), findsOneWidget);
 
       // Status bar does not show broadcaster name when null.
-      expect(
-        find.byKey(const Key('status-broadcaster-name')),
-        findsNothing,
-      );
+      expect(find.byKey(const Key('status-broadcaster-name')), findsNothing);
     });
 
     testWidgets('hides program title bar when title is null', (
@@ -566,10 +555,7 @@ void main() {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
 
       await tester.pumpWidget(
-        _buildScreen(
-          supervisor: supervisor,
-          messages: const <AppMessage>[],
-        ),
+        _buildScreen(supervisor: supervisor, messages: const <AppMessage>[]),
       );
 
       expect(find.byKey(const Key('program-title-bar')), findsNothing);
@@ -598,10 +584,7 @@ void main() {
       ];
 
       await tester.pumpWidget(
-        _buildScreen(
-          supervisor: supervisor,
-          messages: messages,
-        ),
+        _buildScreen(supervisor: supervisor, messages: messages),
       );
 
       // Default: ascending (first comment is first in list)
@@ -728,10 +711,7 @@ void main() {
       ];
 
       await tester.pumpWidget(
-        _buildScreen(
-          supervisor: supervisor,
-          messages: messages,
-        ),
+        _buildScreen(supervisor: supervisor, messages: messages),
       );
 
       final Text textWidget = tester.widget(
@@ -896,10 +876,7 @@ void main() {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
 
       await tester.pumpWidget(
-        _buildScreen(
-          supervisor: supervisor,
-          messages: const <AppMessage>[],
-        ),
+        _buildScreen(supervisor: supervisor, messages: const <AppMessage>[]),
       );
 
       expect(find.byKey(const Key('settings-button')), findsNothing);

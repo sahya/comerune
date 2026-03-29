@@ -48,39 +48,43 @@ void main() {
       );
     });
 
-    testWidgets('shows validation error and does not save invalid queue limit',
-        (
-      WidgetTester tester,
-    ) async {
-      final SharedPreferencesSettingsStore settingsStore =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+    testWidgets(
+      'shows validation error and does not save invalid queue limit',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
-      await tester.pumpWidget(_buildScreen(settingsStore));
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
 
-      await _enterTextByKey(tester, const Key('queue-limit-field'), 'abc');
-      await _focusFieldByKey(tester, const Key('max-delay-field'));
+        await _enterTextByKey(tester, const Key('queue-limit-field'), 'abc');
+        await _focusFieldByKey(tester, const Key('max-delay-field'));
 
-      expect(find.text('数値を入力してください', skipOffstage: false), findsOneWidget);
-      AppSettings loaded = await settingsStore.load();
-      expect(loaded.queueLimit, AppSettings.defaults.queueLimit);
+        expect(find.text('数値を入力してください', skipOffstage: false), findsOneWidget);
+        AppSettings loaded = await settingsStore.load();
+        expect(loaded.queueLimit, AppSettings.defaults.queueLimit);
 
-      await _enterTextByKey(tester, const Key('queue-limit-field'), '0');
-      await _focusFieldByKey(tester, const Key('max-delay-field'));
+        await _enterTextByKey(tester, const Key('queue-limit-field'), '0');
+        await _focusFieldByKey(tester, const Key('max-delay-field'));
 
-      expect(
-          find.text('1〜100 の範囲で入力してください', skipOffstage: false), findsOneWidget);
-      loaded = await settingsStore.load();
-      expect(loaded.queueLimit, AppSettings.defaults.queueLimit);
+        expect(
+          find.text('1〜100 の範囲で入力してください', skipOffstage: false),
+          findsOneWidget,
+        );
+        loaded = await settingsStore.load();
+        expect(loaded.queueLimit, AppSettings.defaults.queueLimit);
 
-      await _enterTextByKey(tester, const Key('queue-limit-field'), '35');
-      await _focusFieldByKey(tester, const Key('max-delay-field'));
+        await _enterTextByKey(tester, const Key('queue-limit-field'), '35');
+        await _focusFieldByKey(tester, const Key('max-delay-field'));
 
-      loaded = await settingsStore.load();
-      expect(loaded.queueLimit, 35);
-      expect(
-          find.text('1〜100 の範囲で入力してください', skipOffstage: false), findsNothing);
-    });
+        loaded = await settingsStore.load();
+        expect(loaded.queueLimit, 35);
+        expect(
+          find.text('1〜100 の範囲で入力してください', skipOffstage: false),
+          findsNothing,
+        );
+      },
+    );
 
     testWidgets('shows validation error and does not save invalid max delay', (
       WidgetTester tester,
@@ -130,8 +134,9 @@ void main() {
       expect(debugSwitch.value, isTrue);
 
       await _scrollToKey(tester, const Key('ng-words-field'));
-      final TextFormField ngWordsField = tester
-          .widget(find.byKey(const Key('ng-words-field'), skipOffstage: false));
+      final TextFormField ngWordsField = tester.widget(
+        find.byKey(const Key('ng-words-field'), skipOffstage: false),
+      );
       expect(ngWordsField.controller?.text, '^8+\$');
     });
 
@@ -321,17 +326,9 @@ Future<void> _scrollToKey(WidgetTester tester, Key key) async {
       .first;
   if (target.evaluate().isEmpty) {
     try {
-      await tester.scrollUntilVisible(
-        target,
-        -120,
-        scrollable: scrollable,
-      );
+      await tester.scrollUntilVisible(target, -120, scrollable: scrollable);
     } on StateError {
-      await tester.scrollUntilVisible(
-        target,
-        120,
-        scrollable: scrollable,
-      );
+      await tester.scrollUntilVisible(target, 120, scrollable: scrollable);
     }
   }
   await tester.pumpAndSettle();
@@ -351,8 +348,9 @@ Future<void> _enterTextByKey(WidgetTester tester, Key key, String text) async {
 
 Future<void> _toggleSwitchByKey(WidgetTester tester, Key key) async {
   await _scrollToKey(tester, key);
-  final SwitchListTile tile =
-      tester.widget(find.byKey(key, skipOffstage: false));
+  final SwitchListTile tile = tester.widget(
+    find.byKey(key, skipOffstage: false),
+  );
   // TODO(issue-12-followup): off-screen 要素のヒットテスト制約を解消したら、
   // 直接 callback 呼び出しではなく tester.tap ベースに統一する。
   tile.onChanged!.call(!tile.value);

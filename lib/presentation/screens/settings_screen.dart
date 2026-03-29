@@ -218,9 +218,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       });
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('ログアウトしました')),
-        );
+        ..showSnackBar(const SnackBar(content: Text('ログアウトしました')));
     }
   }
 
@@ -359,9 +357,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final AppSettings? settings = _settings;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('設定'),
-      ),
+      appBar: AppBar(title: const Text('設定')),
       body: settings == null
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -382,18 +378,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           .map(
                             (AppThemeMode mode) =>
                                 DropdownMenuItem<AppThemeMode>(
-                              value: mode,
-                              child: Text(mode.label),
-                            ),
+                                  value: mode,
+                                  child: Text(mode.label),
+                                ),
                           )
                           .toList(),
                       onChanged: (AppThemeMode? value) {
                         if (value == null) {
                           return;
                         }
-                        _saveNextSettings(
-                          settings.copyWith(themeMode: value),
-                        );
+                        _saveNextSettings(settings.copyWith(themeMode: value));
                       },
                     ),
                     const SizedBox(height: 8),
@@ -411,8 +405,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     if (_isLoggedIn) ...<Widget>[
                       Row(
                         children: <Widget>[
-                          Icon(Icons.check_circle,
-                              color: Theme.of(context).colorScheme.primary),
+                          Icon(
+                            Icons.check_circle,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
                           const SizedBox(width: 8),
                           const Text('ログイン済み'),
                         ],
@@ -454,7 +450,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       value: settings.autoReadEnabled,
                       onChanged: (bool value) {
                         _saveNextSettings(
-                            settings.copyWith(autoReadEnabled: value));
+                          settings.copyWith(autoReadEnabled: value),
+                        );
                       },
                     ),
                     const Text('読み上げエンジン'),
@@ -469,7 +466,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           onChanged: (SpeechEngine? value) {
                             if (value == null) return;
                             _saveNextSettings(
-                                settings.copyWith(speechEngine: value));
+                              settings.copyWith(speechEngine: value),
+                            );
                           },
                         ),
                         RadioListTile<SpeechEngine>(
@@ -481,7 +479,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           onChanged: (SpeechEngine? value) {
                             if (value == null) return;
                             _saveNextSettings(
-                                settings.copyWith(speechEngine: value));
+                              settings.copyWith(speechEngine: value),
+                            );
                           },
                         ),
                       ],
@@ -513,7 +512,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         value: settings.bouyomiSpeed,
                         onChanged: (int value) {
                           _saveNextSettings(
-                              settings.copyWith(bouyomiSpeed: value));
+                            settings.copyWith(bouyomiSpeed: value),
+                          );
                         },
                       ),
                       _IntSliderField(
@@ -525,7 +525,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         value: settings.bouyomiTone,
                         onChanged: (int value) {
                           _saveNextSettings(
-                              settings.copyWith(bouyomiTone: value));
+                            settings.copyWith(bouyomiTone: value),
+                          );
                         },
                       ),
                       _IntSliderField(
@@ -537,7 +538,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         value: settings.bouyomiVolume,
                         onChanged: (int value) {
                           _saveNextSettings(
-                              settings.copyWith(bouyomiVolume: value));
+                            settings.copyWith(bouyomiVolume: value),
+                          );
                         },
                       ),
                       DropdownButtonFormField<int>(
@@ -551,9 +553,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             .map(
                               (MapEntry<int, String> entry) =>
                                   DropdownMenuItem<int>(
-                                value: entry.key,
-                                child: Text(entry.value),
-                              ),
+                                    value: entry.key,
+                                    child: Text(entry.value),
+                                  ),
                             )
                             .toList(),
                         onChanged: (int? value) {
@@ -561,7 +563,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             return;
                           }
                           _saveNextSettings(
-                              settings.copyWith(bouyomiVoice: value));
+                            settings.copyWith(bouyomiVoice: value),
+                          );
                         },
                       ),
                     ],
@@ -589,7 +592,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             return;
                           }
                           _saveNextSettings(
-                              settings.copyWith(voicevoxSpeaker: value));
+                            settings.copyWith(voicevoxSpeaker: value),
+                          );
                         },
                       ),
                       const SizedBox(height: 12),
@@ -602,7 +606,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         value: settings.voicevoxSpeed,
                         onChanged: (double value) {
                           _saveNextSettings(
-                              settings.copyWith(voicevoxSpeed: value));
+                            settings.copyWith(voicevoxSpeed: value),
+                          );
                         },
                       ),
                       _DoubleSliderField(
@@ -614,7 +619,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         value: settings.voicevoxPitch,
                         onChanged: (double value) {
                           _saveNextSettings(
-                              settings.copyWith(voicevoxPitch: value));
+                            settings.copyWith(voicevoxPitch: value),
+                          );
                         },
                       ),
                       _DoubleSliderField(
@@ -639,7 +645,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         value: settings.voicevoxVolume,
                         onChanged: (double value) {
                           _saveNextSettings(
-                              settings.copyWith(voicevoxVolume: value));
+                            settings.copyWith(voicevoxVolume: value),
+                          );
                         },
                       ),
                     ],
@@ -693,7 +700,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       value: settings.suppressDuplicate,
                       onChanged: (bool value) {
                         _saveNextSettings(
-                            settings.copyWith(suppressDuplicate: value));
+                          settings.copyWith(suppressDuplicate: value),
+                        );
                       },
                     ),
                     TextFormField(
@@ -773,7 +781,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       value: settings.showUserName,
                       onChanged: (bool value) {
                         _saveNextSettings(
-                            settings.copyWith(showUserName: value));
+                          settings.copyWith(showUserName: value),
+                        );
                       },
                     ),
                     SwitchListTile(
@@ -785,7 +794,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onChanged: settings.showUserName
                           ? (bool value) {
                               _saveNextSettings(
-                                  settings.copyWith(resolveUserName: value));
+                                settings.copyWith(resolveUserName: value),
+                              );
                             }
                           : null,
                     ),
@@ -797,7 +807,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       value: settings.autoSaveCommentLog,
                       onChanged: (bool value) {
                         _saveNextSettings(
-                            settings.copyWith(autoSaveCommentLog: value));
+                          settings.copyWith(autoSaveCommentLog: value),
+                        );
                       },
                     ),
                     const SizedBox(height: 8),
@@ -807,8 +818,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       value: settings.commentFontSize.round(),
                       min: commentFontSizeMin.round(),
                       max: commentFontSizeMax.round(),
-                      divisions:
-                          (commentFontSizeMax - commentFontSizeMin).round(),
+                      divisions: (commentFontSizeMax - commentFontSizeMin)
+                          .round(),
                       suffix: 'px',
                       sweetSpotMin: 12,
                       sweetSpotMax: 18,
@@ -831,9 +842,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           .map(
                             (PastCommentFetchCount value) =>
                                 DropdownMenuItem<PastCommentFetchCount>(
-                              value: value,
-                              child: Text(value.label),
-                            ),
+                                  value: value,
+                                  child: Text(value.label),
+                                ),
                           )
                           .toList(),
                       onChanged: (PastCommentFetchCount? value) {
@@ -881,11 +892,7 @@ const Map<int, String> _bouyomiVoiceOptions = <int, String>{
 };
 
 class _Section extends StatelessWidget {
-  const _Section({
-    super.key,
-    required this.title,
-    required this.children,
-  });
+  const _Section({super.key, required this.title, required this.children});
 
   final String title;
   final List<Widget> children;
@@ -898,10 +905,7 @@ class _Section extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text(
-              title,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
+            Text(title, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             ...children,
           ],
@@ -969,8 +973,9 @@ class _IntSliderField extends StatelessWidget {
             max: max.toDouble(),
             divisions: divisions,
             value: value.toDouble(),
-            semanticFormatterCallback:
-                suffix.isNotEmpty ? (double v) => '${v.round()}$suffix' : null,
+            semanticFormatterCallback: suffix.isNotEmpty
+                ? (double v) => '${v.round()}$suffix'
+                : null,
             onChanged: (double next) {
               onChanged(next.round());
             },
@@ -1051,10 +1056,7 @@ class _SweetSpotSlider extends StatelessWidget {
                 child: Text(
                   sweetSpotLabel!,
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.grey.shade500,
-                  ),
+                  style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
                 ),
               ),
           ],
