@@ -16,6 +16,7 @@ import '../../domain/models/app_settings.dart';
 import '../../domain/utils/lv_parser.dart';
 import '../screens/comment_screen.dart';
 import '../screens/settings_screen.dart';
+import '../theme/app_theme.dart';
 
 /// Builds a niconico user icon URL from a numeric user ID.
 ///
@@ -256,6 +257,7 @@ class _SelectScreenState extends State<SelectScreen> {
               builder: (BuildContext context, bool? isLoggedIn, Widget? _) {
                 return _LoginStatusBanner(
                   isLoggedIn: isLoggedIn,
+                  themeMode: _settingsNotifier.value.themeMode,
                   onTapLogin: () =>
                       _openSettings(context, widget.userSessionStore),
                 );
@@ -560,10 +562,12 @@ class _SelectScreenState extends State<SelectScreen> {
 class _LoginStatusBanner extends StatelessWidget {
   const _LoginStatusBanner({
     required this.isLoggedIn,
+    required this.themeMode,
     required this.onTapLogin,
   });
 
   final bool? isLoggedIn;
+  final AppThemeMode themeMode;
   final VoidCallback onTapLogin;
 
   @override
@@ -573,7 +577,7 @@ class _LoginStatusBanner extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final AppThemeColors colors = AppTheme.colorsFor(themeMode);
 
     if (loggedIn) {
       return Semantics(
@@ -581,19 +585,16 @@ class _LoginStatusBanner extends StatelessWidget {
         child: Container(
           key: const Key('login-status-banner-ok'),
           width: double.infinity,
-          color: isDark ? const Color(0xFF1B3A1B) : Colors.green.shade50,
+          color: colors.loginBannerOkBackground,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             children: <Widget>[
               Icon(Icons.check_circle,
-                  color: isDark ? const Color(0xFF66BB6A) : Colors.green,
-                  size: 18),
+                  color: colors.loginBannerOkIcon, size: 18),
               const SizedBox(width: 8),
               Text(
                 'ニコニコ ログイン済み',
-                style: TextStyle(
-                  color: isDark ? const Color(0xFFE0E0E0) : null,
-                ),
+                style: TextStyle(color: colors.loginBannerOkForeground),
               ),
             ],
           ),
@@ -601,17 +602,12 @@ class _LoginStatusBanner extends StatelessWidget {
       );
     }
 
-    final Color bannerBackground =
-        isDark ? const Color(0xFF3E2700) : Colors.orange.shade50;
-    final Color iconColor =
-        isDark ? const Color(0xFFFFB74D) : Colors.orange.shade700;
-
     return Semantics(
       button: true,
       label: 'ログインが必要です。タップして設定を開く',
       child: Material(
         key: const Key('login-status-banner-required'),
-        color: bannerBackground,
+        color: colors.loginBannerWarningBackground,
         child: InkWell(
           onTap: onTapLogin,
           child: Container(
@@ -620,17 +616,17 @@ class _LoginStatusBanner extends StatelessWidget {
             child: Row(
               children: <Widget>[
                 Icon(Icons.warning_amber_rounded,
-                    color: iconColor, size: 18),
+                    color: colors.loginBannerWarningIcon, size: 18),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'ログインが必要です。タップして設定を開く',
                     style: TextStyle(
-                      color: isDark ? const Color(0xFFE0E0E0) : null,
-                    ),
+                        color: colors.loginBannerWarningForeground),
                   ),
                 ),
-                Icon(Icons.chevron_right, color: iconColor),
+                Icon(Icons.chevron_right,
+                    color: colors.loginBannerWarningIcon),
               ],
             ),
           ),
