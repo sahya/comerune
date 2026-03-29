@@ -122,6 +122,12 @@ Use [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): 
 Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`
 Breaking changes: append `!` to type or add `BREAKING CHANGE:` in footer.
 
+### Pull Request Rules
+PR を作成する際、対応する Issue 番号がある場合は必ず PR の本文に記載すること。
+- `Closes #123` や `Fixes #456` のようなキーワードを使い、GitHub の自動リンクを活用する
+- 複数の Issue に対応する場合はすべて記載する（例: `Closes #123, Closes #124`）
+- Issue 番号が不明な場合や Issue なしで作業している場合は記載不要
+
 ## Issue Lifecycle
 - Do not close issues.
 - Only the human owner may close an issue, after confirming that acceptance criteria are met.
