@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:developer' as developer;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:share_plus/share_plus.dart';
@@ -216,9 +216,11 @@ class _CommentScreenState extends State<CommentScreen> {
   String _speechEngineState = '';
   StreamSubscription<SpeechEvent>? _speechEventSub;
 
-  /// The ID of the last message seen when speech became active.
-  /// Used to avoid submitting messages that arrived during initialization.
-  String? _speechBaselineMessageId;
+  /// The ID of the last message processed for speech.
+  /// Initialized when speech starts (baseline), then updated after each
+  /// submission. This avoids depending on oldWidget.messages which may
+  /// reference the same mutable list as widget.messages.
+  String? _lastSpeechMessageId;
 
   @override
   void initState() {
@@ -246,6 +248,13 @@ class _CommentScreenState extends State<CommentScreen> {
   void didUpdateWidget(covariant CommentScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
 
+    debugPrint(
+      '[CommentScreen] didUpdate: '
+      'msgs ${oldWidget.messages.length}→${widget.messages.length}, '
+      'identical=${identical(oldWidget.messages, widget.messages)}, '
+      'lastId=${widget.messages.isNotEmpty ? widget.messages.last.id.hashCode : "empty"}',
+    );
+
     if (oldWidget.connectionSupervisor != widget.connectionSupervisor) {
       oldWidget.connectionSupervisor.removeListener(_handleConnectionChanged);
       widget.connectionSupervisor.addListener(_handleConnectionChanged);
@@ -269,6 +278,13 @@ class _CommentScreenState extends State<CommentScreen> {
       unawaited(_handleSpeechSettingsChanged(oldWidget.speechSettings));
     }
 
+    // Speech: detect new messages independently of _hasNewMessages because
+    // the message list may be mutable (oldWidget and widget share the same
+    // data). Track progress via _lastSpeechMessageId instead.
+    if (_speechStarted && widget.speechSettings.enabled) {
+      _submitNewCommentsForSpeech(widget.messages);
+    }
+
     final bool hasNewMessages =
         _hasNewMessages(oldWidget.messages, widget.messages);
     if (hasNewMessages) {
@@ -277,9 +293,6 @@ class _CommentScreenState extends State<CommentScreen> {
         widget.messages,
       );
       _processNicknameComments(oldWidget.messages, widget.messages);
-      if (_speechStarted && widget.speechSettings.enabled) {
-        _submitNewCommentsForSpeech(oldWidget.messages, widget.messages);
-      }
       if (_autoScrollEnabled) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _scrollToEdge();
@@ -387,16 +400,17 @@ class _CommentScreenState extends State<CommentScreen> {
 
     // Configure, subscribe to events, and start.
     try {
-      await platform.updateSettings(widget.speechSettings);
-      await platform.start();
-
+      // Subscribe to events BEFORE start() so no events are dropped.
       _speechEventSub?.cancel();
       _speechEventSub = platform.events.listen(_onSpeechEvent);
+
+      await platform.updateSettings(widget.speechSettings);
+      await platform.start();
 
       // Record the current tail message so we only read comments
       // arriving AFTER initialization, not the backlog.
       if (widget.messages.isNotEmpty) {
-        _speechBaselineMessageId = widget.messages.last.id;
+        _lastSpeechMessageId = widget.messages.last.id;
       }
 
       if (mounted) {
@@ -405,17 +419,13 @@ class _CommentScreenState extends State<CommentScreen> {
           _speechEngineState = 'READY';
         });
       }
-      developer.log(
-        'Speech started. baseline=${_speechBaselineMessageId}',
-        name: 'CommentScreen',
+      debugPrint(
+        '[CommentScreen] Speech started. '
+        'baseline=$_lastSpeechMessageId, '
+        'msgCount=${widget.messages.length}',
       );
     } catch (e, stackTrace) {
-      developer.log(
-        'Failed to start speech engine: $e',
-        name: 'CommentScreen',
-        error: e,
-        stackTrace: stackTrace,
-      );
+      debugPrint('[CommentScreen] Failed to start speech: $e\n$stackTrace');
       if (mounted) {
         setState(() {
           _speechEngineState = 'ERROR';
@@ -440,10 +450,7 @@ class _CommentScreenState extends State<CommentScreen> {
       try {
         await widget.speechPlatform?.updateSettings(widget.speechSettings);
       } catch (e) {
-        developer.log(
-          'Failed to update speech settings: $e',
-          name: 'CommentScreen',
-        );
+        debugPrint('[CommentScreen] Failed to update speech settings: $e');
       }
     }
   }
@@ -453,7 +460,7 @@ class _CommentScreenState extends State<CommentScreen> {
       try {
         await widget.speechPlatform?.stop(clearQueue: true);
       } catch (e) {
-        developer.log('Failed to stop speech: $e', name: 'CommentScreen');
+        debugPrint('[CommentScreen] Failed to stop speech: $e');
       }
       if (mounted) {
         setState(() {
@@ -475,38 +482,40 @@ class _CommentScreenState extends State<CommentScreen> {
     }
   }
 
-  void _submitNewCommentsForSpeech(
-    List<AppMessage> oldMessages,
-    List<AppMessage> newMessages,
-  ) {
+  void _submitNewCommentsForSpeech(List<AppMessage> messages) {
     final CommentSpeechPlatform? platform = widget.speechPlatform;
-    if (platform == null) {
+    if (platform == null || messages.isEmpty) {
       return;
     }
 
-    // Determine the boundary: use the baseline (set when speech started) on
-    // the first call after initialization, then fall back to the normal
-    // old-tail comparison for subsequent calls.
-    final String? anchorId = _speechBaselineMessageId ?? _lastIdOf(oldMessages);
+    // Nothing new since last check.
+    final String currentLastId = messages.last.id;
+    if (_lastSpeechMessageId == currentLastId) {
+      return;
+    }
 
+    // Find where new messages start — after _lastSpeechMessageId.
     int start = 0;
-    if (anchorId != null && newMessages.isNotEmpty) {
-      for (int i = newMessages.length - 1; i >= 0; i--) {
-        if (newMessages[i].id == anchorId) {
+    if (_lastSpeechMessageId != null) {
+      for (int i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].id == _lastSpeechMessageId) {
           start = i + 1;
           break;
         }
       }
     }
 
-    // Clear the baseline after the first successful use so subsequent
-    // calls use the normal old-tail comparison.
-    if (_speechBaselineMessageId != null) {
-      _speechBaselineMessageId = null;
+    _lastSpeechMessageId = currentLastId;
+
+    final int candidateCount = messages.length - start;
+    if (candidateCount > 0) {
+      debugPrint(
+        '[CommentScreen] submitNewComments: candidates=$candidateCount',
+      );
     }
 
-    for (int i = start; i < newMessages.length; i++) {
-      final AppMessage message = newMessages[i];
+    for (int i = start; i < messages.length; i++) {
+      final AppMessage message = messages[i];
       if (message.type != AppMessageType.chat) {
         continue;
       }
@@ -526,19 +535,13 @@ class _CommentScreenState extends State<CommentScreen> {
         userId: message.userId,
         postedAtEpochMs: message.timestamp.millisecondsSinceEpoch,
       );
+      debugPrint('[CommentScreen] submitComment: ${comment.text}');
       unawaited(
         platform.submitComment(comment).then((_) {}).catchError((Object e) {
-          developer.log(
-            'Failed to submit comment for speech: $e',
-            name: 'CommentScreen',
-          );
+          debugPrint('[CommentScreen] submitComment error: $e');
         }),
       );
     }
-  }
-
-  static String? _lastIdOf(List<AppMessage> messages) {
-    return messages.isNotEmpty ? messages.last.id : null;
   }
 
   void _processNicknameComments(
