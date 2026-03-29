@@ -249,8 +249,12 @@ class _CommentScreenState extends State<CommentScreen> {
 
           final List<AppMessage> sortedMessages =
               _applySortOrder(visibleMessages);
+          final AppThemeMode effectiveMode = AppTheme.resolveEffectiveMode(
+            widget.themeMode,
+            MediaQuery.platformBrightnessOf(context),
+          );
           final AppThemeColors themeColors =
-              AppTheme.colorsFor(widget.themeMode);
+              AppTheme.colorsFor(effectiveMode);
 
           return Scaffold(
             appBar: AppBar(

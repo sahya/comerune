@@ -1,6 +1,7 @@
 import 'dart:developer' as developer;
 
 enum AppThemeMode {
+  system,
   light,
   dark,
   protanopia,
@@ -11,6 +12,8 @@ enum AppThemeMode {
 extension AppThemeModeValue on AppThemeMode {
   String get storageValue {
     switch (this) {
+      case AppThemeMode.system:
+        return 'system';
       case AppThemeMode.light:
         return 'light';
       case AppThemeMode.dark:
@@ -26,6 +29,8 @@ extension AppThemeModeValue on AppThemeMode {
 
   String get label {
     switch (this) {
+      case AppThemeMode.system:
+        return 'システム設定に従う';
       case AppThemeMode.light:
         return 'ライト';
       case AppThemeMode.dark:
@@ -41,6 +46,8 @@ extension AppThemeModeValue on AppThemeMode {
 
   static AppThemeMode fromStorageValue(String? raw) {
     switch (raw) {
+      case 'system':
+        return AppThemeMode.system;
       case 'dark':
         return AppThemeMode.dark;
       case 'protanopia':

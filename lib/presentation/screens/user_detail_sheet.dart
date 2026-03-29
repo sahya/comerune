@@ -70,7 +70,11 @@ class UserDetailSheet extends StatelessWidget {
       maxChildSize: 0.85,
       expand: false,
       builder: (BuildContext context, ScrollController scrollController) {
-        final AppThemeColors themeColors = AppTheme.colorsFor(themeMode);
+        final AppThemeMode effectiveMode = AppTheme.resolveEffectiveMode(
+          themeMode,
+          MediaQuery.platformBrightnessOf(context),
+        );
+        final AppThemeColors themeColors = AppTheme.colorsFor(effectiveMode);
         return Column(
           children: <Widget>[
             _buildHandle(themeColors),
