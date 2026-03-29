@@ -1,15 +1,38 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
-      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. v1.2.0, v1.3.0-beta.1)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
 
 permissions: {}
 
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    permissions: {}
+
+    steps:
+      - name: Validate version format
+        run: |
+          VERSION="${{ inputs.version }}"
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "::error::Invalid version format: ${VERSION}"
+            echo "Expected: v{major}.{minor}.{patch} or v{major}.{minor}.{patch}-{prerelease}"
+            exit 1
+          fi
+
   ci:
+    needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -50,14 +73,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Extract tag name
-        id: tag
-        run: echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+      - name: Create and push tag
+        run: |
+          git tag "${{ inputs.version }}"
+          git push origin "${{ inputs.version }}"
 
       - name: Generate release notes
         id: notes
         run: |
-          # Get previous tag
           PREV_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | sed -n '2p')
           if [ -z "$PREV_TAG" ]; then
             echo "body=Initial release" >> "$GITHUB_OUTPUT"
@@ -75,9 +98,9 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2.2.2
         with:
-          tag_name: ${{ steps.tag.outputs.version }}
-          name: ${{ steps.tag.outputs.version }}
+          tag_name: ${{ inputs.version }}
+          name: ${{ inputs.version }}
           body: ${{ steps.notes.outputs.body }}
           draft: false
-          prerelease: ${{ contains(steps.tag.outputs.version, '-') }}
-          make_latest: ${{ !contains(steps.tag.outputs.version, '-') }}
+          prerelease: ${{ inputs.prerelease }}
+          make_latest: ${{ !inputs.prerelease }}
