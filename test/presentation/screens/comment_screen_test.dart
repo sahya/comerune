@@ -1806,8 +1806,7 @@ void main() {
       expect(updated.data, matches(RegExp(r'^\d+:\d{2}:\d{2}$')));
     });
 
-    testWidgets(
-        'shows elapsed time when beginAt arrives after initial build', (
+    testWidgets('shows elapsed time when beginAt arrives after initial build', (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
