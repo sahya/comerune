@@ -198,6 +198,7 @@ class AppSettings {
     required this.showUserName,
     required this.resolveUserName,
     required this.commentFontSize,
+    required this.autoNicknameRegistration,
     required this.autoSaveCommentLog,
     required this.debugMode,
   }) : assert(
@@ -232,6 +233,7 @@ class AppSettings {
     showUserName: true,
     resolveUserName: true,
     commentFontSize: commentFontSizeDefault,
+    autoNicknameRegistration: true,
     autoSaveCommentLog: false,
     debugMode: false,
   );
@@ -264,6 +266,7 @@ class AppSettings {
   final bool showUserName;
   final bool resolveUserName;
   final double commentFontSize;
+  final bool autoNicknameRegistration;
   final bool autoSaveCommentLog;
   final bool debugMode;
 
@@ -357,6 +360,7 @@ class AppSettings {
     bool? showUserName,
     bool? resolveUserName,
     double? commentFontSize,
+    bool? autoNicknameRegistration,
     bool? autoSaveCommentLog,
     bool? debugMode,
   }) {
@@ -386,6 +390,8 @@ class AppSettings {
       showUserName: showUserName ?? this.showUserName,
       resolveUserName: resolveUserName ?? this.resolveUserName,
       commentFontSize: commentFontSize ?? this.commentFontSize,
+      autoNicknameRegistration:
+          autoNicknameRegistration ?? this.autoNicknameRegistration,
       autoSaveCommentLog: autoSaveCommentLog ?? this.autoSaveCommentLog,
       debugMode: debugMode ?? this.debugMode,
     );

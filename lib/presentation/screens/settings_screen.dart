@@ -6,9 +6,11 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../../application/settings/settings_store.dart';
 import '../../data/auth/user_session_store.dart';
 import '../../domain/models/app_settings.dart';
+import '../../data/user/user_nickname_store.dart';
 import 'login_screen.dart';
 import 'favorite_user_list_screen.dart';
 import 'ng_user_list_screen.dart';
+import 'nickname_list_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
@@ -16,11 +18,13 @@ class SettingsScreen extends StatefulWidget {
     required this.settingsStore,
     this.userSessionStore,
     this.themeModeNotifier,
+    this.userNicknameStore,
   });
 
   final SettingsStore settingsStore;
   final UserSessionStore? userSessionStore;
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
+  final UserNicknameStore? userNicknameStore;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -759,6 +763,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         await _loadSettings();
                       },
                     ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _Section(
+                  title: 'コテハン',
+                  children: <Widget>[
+                    SwitchListTile(
+                      key: const Key('auto-nickname-registration-switch'),
+                      title: const Text('コテハン自動登録'),
+                      subtitle: const Text('@名前 コメントで自動登録'),
+                      contentPadding: EdgeInsets.zero,
+                      value: settings.autoNicknameRegistration,
+                      onChanged: (bool value) {
+                        _saveNextSettings(
+                          settings.copyWith(
+                            autoNicknameRegistration: value,
+                          ),
+                        );
+                      },
+                    ),
+                    if (widget.userNicknameStore != null)
+                      ListTile(
+                        key: const Key('nickname-list-tile'),
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.badge),
+                        title: const Text('コテハン一覧管理'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => NicknameListScreen(
+                                userNicknameStore: widget.userNicknameStore!,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
                   ],
                 ),
                 const SizedBox(height: 12),

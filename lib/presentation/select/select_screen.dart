@@ -10,6 +10,7 @@ import '../../data/comment_log/comment_log_writer.dart';
 import '../../data/follow/follow_program.dart';
 import '../../data/follow/follow_program_repository.dart';
 import '../../data/user/user_color_store.dart';
+import '../../data/user/user_nickname_store.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
@@ -51,6 +52,7 @@ class SelectScreen extends StatefulWidget {
     this.themeModeNotifier,
     this.followProgramRepository,
     this.userColorStore,
+    this.userNicknameStore,
     super.key,
   });
 
@@ -70,6 +72,7 @@ class SelectScreen extends StatefulWidget {
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
   final FollowProgramRepository? followProgramRepository;
   final UserColorStore? userColorStore;
+  final UserNicknameStore? userNicknameStore;
 
   @override
   State<SelectScreen> createState() => _SelectScreenState();
@@ -89,6 +92,7 @@ class _SelectScreenState extends State<SelectScreen> {
   bool _isLoadingFollowPrograms = false;
   Timer? _followRefreshTimer;
   Map<String, int> _userColorMap = const <String, int>{};
+  Map<String, String> _userNicknameMap = const <String, String>{};
   String? _currentBroadcasterId;
 
   static const Duration _followRefreshInterval = Duration(seconds: 60);
@@ -107,6 +111,7 @@ class _SelectScreenState extends State<SelectScreen> {
     }
     unawaited(_refreshLoginState());
     unawaited(_fetchFollowPrograms());
+    unawaited(_loadNicknames());
   }
 
   @override
@@ -385,6 +390,13 @@ class _SelectScreenState extends State<SelectScreen> {
               widget.userColorStore != null ? _onUserColorChanged : null,
           onUserColorRemoved:
               widget.userColorStore != null ? _onUserColorRemoved : null,
+          userNicknameMap: _userNicknameMap,
+          onNicknameChanged:
+              widget.userNicknameStore != null ? _onNicknameChanged : null,
+          onNicknameRemoved:
+              widget.userNicknameStore != null ? _onNicknameRemoved : null,
+          autoNicknameRegistration:
+              _settingsNotifier.value.autoNicknameRegistration,
           themeMode: _settingsNotifier.value.themeMode,
         );
       },
@@ -477,6 +489,45 @@ class _SelectScreenState extends State<SelectScreen> {
     ));
   }
 
+  Future<void> _loadNicknames() async {
+    if (widget.userNicknameStore == null) {
+      return;
+    }
+    final Map<String, String> nicknames =
+        await widget.userNicknameStore!.loadAll();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _userNicknameMap = nicknames;
+    });
+  }
+
+  void _onNicknameChanged(String userId, String nickname) {
+    if (widget.userNicknameStore == null) {
+      return;
+    }
+    setState(() {
+      _userNicknameMap = Map<String, String>.from(_userNicknameMap)
+        ..[userId] = nickname;
+    });
+    unawaited(widget.userNicknameStore!.setNickname(
+      userId: userId,
+      nickname: nickname,
+    ));
+  }
+
+  void _onNicknameRemoved(String userId) {
+    if (widget.userNicknameStore == null) {
+      return;
+    }
+    setState(() {
+      _userNicknameMap = Map<String, String>.from(_userNicknameMap)
+        ..remove(userId);
+    });
+    unawaited(widget.userNicknameStore!.removeNickname(userId));
+  }
+
   void _toggleNgUser(String userId) {
     final AppSettings current = _settingsNotifier.value;
     final AppSettings updated = current.isNgUser(userId)
@@ -504,6 +555,7 @@ class _SelectScreenState extends State<SelectScreen> {
           settingsStore: settingsStore,
           userSessionStore: userSessionStore,
           themeModeNotifier: widget.themeModeNotifier,
+          userNicknameStore: widget.userNicknameStore,
         ),
       ),
     );
@@ -511,6 +563,7 @@ class _SelectScreenState extends State<SelectScreen> {
     await _reloadSettingsFromStore();
     await _refreshLoginState();
     await _fetchFollowPrograms();
+    await _loadNicknames();
   }
 
   Future<void> _refreshLoginState() async {
@@ -696,12 +749,11 @@ class _LoginStatusBanner extends StatelessWidget {
                 Expanded(
                   child: Text(
                     'ログインが必要です。タップして設定を開く',
-                    style: TextStyle(
-                        color: colors.loginBannerWarningForeground),
+                    style:
+                        TextStyle(color: colors.loginBannerWarningForeground),
                   ),
                 ),
-                Icon(Icons.chevron_right,
-                    color: colors.loginBannerWarningIcon),
+                Icon(Icons.chevron_right, color: colors.loginBannerWarningIcon),
               ],
             ),
           ),
