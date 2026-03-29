@@ -905,6 +905,96 @@ void main() {
       expect(find.byKey(const Key('settings-button')), findsNothing);
     });
 
+    testWidgets('statistics row is hidden when statisticsEnabled is false', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          statisticsEnabled: false,
+          viewerCount: 100,
+          totalCommentCount: 50,
+          activeUserCount: 10,
+        ),
+      );
+
+      expect(find.byKey(const Key('status-viewer-count')), findsNothing);
+      expect(find.byKey(const Key('status-comment-count')), findsNothing);
+      expect(find.byKey(const Key('status-active-user-count')), findsNothing);
+    });
+
+    testWidgets('statistics row shows all stats when enabled', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          statisticsEnabled: true,
+          showViewerCommentCount: true,
+          showActiveUserCount: true,
+          viewerCount: 100,
+          totalCommentCount: 50,
+          activeUserCount: 10,
+        ),
+      );
+
+      expect(find.text('リスナー: 100'), findsOneWidget);
+      expect(find.text('コメント: 50'), findsOneWidget);
+      expect(find.text('アクティブ: 10'), findsOneWidget);
+    });
+
+    testWidgets('statistics hides viewer/comment when child toggle is off', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          statisticsEnabled: true,
+          showViewerCommentCount: false,
+          showActiveUserCount: true,
+          viewerCount: 100,
+          totalCommentCount: 50,
+          activeUserCount: 10,
+        ),
+      );
+
+      expect(find.byKey(const Key('status-viewer-count')), findsNothing);
+      expect(find.byKey(const Key('status-comment-count')), findsNothing);
+      expect(find.text('アクティブ: 10'), findsOneWidget);
+    });
+
+    testWidgets('statistics hides active user when child toggle is off', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          statisticsEnabled: true,
+          showViewerCommentCount: true,
+          showActiveUserCount: false,
+          viewerCount: 100,
+          totalCommentCount: 50,
+          activeUserCount: 10,
+        ),
+      );
+
+      expect(find.text('リスナー: 100'), findsOneWidget);
+      expect(find.text('コメント: 50'), findsOneWidget);
+      expect(find.byKey(const Key('status-active-user-count')), findsNothing);
+    });
+
     testWidgets('invokes callback when lv changes (different lv connection)', (
       WidgetTester tester,
     ) async {
@@ -1021,6 +1111,12 @@ Widget _buildScreen({
   double commentFontSize = commentFontSizeDefault,
   Set<String> ngUserIds = const <String>{},
   Map<String, int> userColorMap = const <String, int>{},
+  bool statisticsEnabled = false,
+  bool showViewerCommentCount = true,
+  bool showActiveUserCount = true,
+  int viewerCount = 0,
+  int totalCommentCount = 0,
+  int activeUserCount = 0,
 }) {
   return MaterialApp(
     home: CommentScreen(
@@ -1040,6 +1136,12 @@ Widget _buildScreen({
       ngUserIds: ngUserIds,
       userColorMap: userColorMap,
       themeMode: AppThemeMode.light,
+      statisticsEnabled: statisticsEnabled,
+      showViewerCommentCount: showViewerCommentCount,
+      showActiveUserCount: showActiveUserCount,
+      viewerCount: viewerCount,
+      totalCommentCount: totalCommentCount,
+      activeUserCount: activeUserCount,
     ),
   );
 }

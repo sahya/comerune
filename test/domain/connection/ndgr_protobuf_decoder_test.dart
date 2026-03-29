@@ -73,6 +73,27 @@ void main() {
       expect(message.chat!.content, 'overflowed-body');
     });
 
+    test('decodes statistics message with viewer count', () {
+      final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+      final List<int> statistics = <int>[
+        ..._varintField(1, 42),
+      ];
+      final List<int> nicoliveMessage = <int>[
+        ..._bytesField(8, statistics),
+      ];
+
+      final Uint8List bytes = Uint8List.fromList(<int>[
+        ..._bytesField(2, nicoliveMessage),
+      ]);
+
+      final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+      expect(message.chat, isNull);
+      expect(message.statistics, isNotNull);
+      expect(message.statistics!.viewers, 42);
+    });
+
     test('decodes chunked entry backward segment and next at', () {
       final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
 

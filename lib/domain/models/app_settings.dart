@@ -199,6 +199,9 @@ class AppSettings {
     required this.resolveUserName,
     required this.commentFontSize,
     required this.autoSaveCommentLog,
+    required this.statisticsEnabled,
+    required this.showViewerCommentCount,
+    required this.showActiveUserCount,
     required this.debugMode,
   }) : assert(
           commentFontSize >= commentFontSizeMin &&
@@ -233,6 +236,9 @@ class AppSettings {
     resolveUserName: true,
     commentFontSize: commentFontSizeDefault,
     autoSaveCommentLog: false,
+    statisticsEnabled: false,
+    showViewerCommentCount: true,
+    showActiveUserCount: true,
     debugMode: false,
   );
 
@@ -265,6 +271,16 @@ class AppSettings {
   final bool resolveUserName;
   final double commentFontSize;
   final bool autoSaveCommentLog;
+
+  /// Whether statistics display is enabled (parent switch, default OFF).
+  final bool statisticsEnabled;
+
+  /// Whether to show viewer count and comment count (child of statisticsEnabled).
+  final bool showViewerCommentCount;
+
+  /// Whether to show 5-minute active user count (child of statisticsEnabled).
+  final bool showActiveUserCount;
+
   final bool debugMode;
 
   Set<String> get ngUserIdSet {
@@ -358,6 +374,9 @@ class AppSettings {
     bool? resolveUserName,
     double? commentFontSize,
     bool? autoSaveCommentLog,
+    bool? statisticsEnabled,
+    bool? showViewerCommentCount,
+    bool? showActiveUserCount,
     bool? debugMode,
   }) {
     return AppSettings(
@@ -387,6 +406,10 @@ class AppSettings {
       resolveUserName: resolveUserName ?? this.resolveUserName,
       commentFontSize: commentFontSize ?? this.commentFontSize,
       autoSaveCommentLog: autoSaveCommentLog ?? this.autoSaveCommentLog,
+      statisticsEnabled: statisticsEnabled ?? this.statisticsEnabled,
+      showViewerCommentCount:
+          showViewerCommentCount ?? this.showViewerCommentCount,
+      showActiveUserCount: showActiveUserCount ?? this.showActiveUserCount,
       debugMode: debugMode ?? this.debugMode,
     );
   }

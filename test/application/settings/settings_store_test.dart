@@ -153,5 +153,74 @@ void main() {
         expect(loaded.themeMode, mode);
       }
     });
+
+    test('statisticsEnabled defaults to false when not stored', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.statisticsEnabled, isFalse);
+    });
+
+    test('round-trips statisticsEnabled value', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        statisticsEnabled: true,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.statisticsEnabled, isTrue);
+    });
+
+    test('showViewerCommentCount defaults to true when not stored', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.showViewerCommentCount, isTrue);
+    });
+
+    test('round-trips showViewerCommentCount value', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        showViewerCommentCount: false,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.showViewerCommentCount, isFalse);
+    });
+
+    test('showActiveUserCount defaults to true when not stored', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.showActiveUserCount, isTrue);
+    });
+
+    test('round-trips showActiveUserCount value', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        showActiveUserCount: false,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.showActiveUserCount, isFalse);
+    });
   });
 }

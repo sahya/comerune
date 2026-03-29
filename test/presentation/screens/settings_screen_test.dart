@@ -271,6 +271,61 @@ void main() {
       themeNotifier.dispose();
     });
 
+    testWidgets(
+        'disables statistics child toggles when parent toggle is off', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      // Parent is off by default; child toggles should be disabled
+      await _scrollToKey(
+          tester, const Key('show-viewer-comment-count-switch'));
+      SwitchListTile viewerTile = tester.widget(
+        find.byKey(
+          const Key('show-viewer-comment-count-switch'),
+          skipOffstage: false,
+        ),
+      );
+      expect(viewerTile.onChanged, isNull);
+
+      await _scrollToKey(tester, const Key('show-active-user-count-switch'));
+      SwitchListTile activeTile = tester.widget(
+        find.byKey(
+          const Key('show-active-user-count-switch'),
+          skipOffstage: false,
+        ),
+      );
+      expect(activeTile.onChanged, isNull);
+
+      // Turn on parent
+      await _toggleSwitchByKey(
+          tester, const Key('statistics-enabled-switch'));
+
+      // Child toggles should now be enabled
+      await _scrollToKey(
+          tester, const Key('show-viewer-comment-count-switch'));
+      viewerTile = tester.widget(
+        find.byKey(
+          const Key('show-viewer-comment-count-switch'),
+          skipOffstage: false,
+        ),
+      );
+      expect(viewerTile.onChanged, isNotNull);
+
+      await _scrollToKey(tester, const Key('show-active-user-count-switch'));
+      activeTile = tester.widget(
+        find.byKey(
+          const Key('show-active-user-count-switch'),
+          skipOffstage: false,
+        ),
+      );
+      expect(activeTile.onChanged, isNotNull);
+    });
+
     testWidgets('saves text fields when focus is lost', (
       WidgetTester tester,
     ) async {

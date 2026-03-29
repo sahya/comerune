@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'application/settings/settings_store.dart';
 import 'application/settings/shared_preferences_adapter.dart';
+import 'application/statistics/statistics_store.dart';
 import 'application/timeline/timeline_store.dart';
 import 'data/auth/user_session_store.dart';
 import 'data/comment_log/comment_log_writer.dart';
@@ -49,6 +50,8 @@ Future<void> main() async {
   // Remove user color entries not accessed for over 1 year.
   unawaited(userColorStore.cleanup());
 
+  final StatisticsStore statisticsStore = StatisticsStore();
+
   runApp(
     ComeruneApp(
       settingsStore: settingsStore,
@@ -56,6 +59,7 @@ Future<void> main() async {
       userSessionStore: userSessionStore,
       commentLogWriter: commentLogWriter,
       userColorStore: userColorStore,
+      statisticsStore: statisticsStore,
     ),
   );
 }
@@ -68,6 +72,7 @@ class ComeruneApp extends StatefulWidget {
     required this.userSessionStore,
     this.commentLogWriter,
     this.userColorStore,
+    this.statisticsStore,
   });
 
   final SettingsStore settingsStore;
@@ -75,6 +80,7 @@ class ComeruneApp extends StatefulWidget {
   final UserSessionStore userSessionStore;
   final CommentLogWriter? commentLogWriter;
   final UserColorStore? userColorStore;
+  final StatisticsStore? statisticsStore;
 
   @override
   State<ComeruneApp> createState() => _ComeruneAppState();
@@ -88,6 +94,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
   late final ConnectionSupervisor _connectionSupervisor;
   late final StreamSubscription<AppMessage> _ndgrMessageSubscription;
   late final StreamSubscription<AppMessage> _legacyMessageSubscription;
+  StreamSubscription<int>? _viewerCountSubscription;
 
   String _currentLv = '';
   int _ndgrHistoryCount = 100;
@@ -142,16 +149,31 @@ class _ComeruneAppState extends State<ComeruneApp> {
       legacyCommentClient: _legacyCommentClient,
     );
 
-    _ndgrMessageSubscription = _ndgrClient.messages.listen(_timelineStore.add);
+    _ndgrMessageSubscription = _ndgrClient.messages.listen((AppMessage message) {
+      _timelineStore.add(message);
+      widget.statisticsStore?.recordComment(userId: message.userId);
+    });
     _legacyMessageSubscription = _legacyCommentClient.messages.listen(
-      _timelineStore.add,
+      (AppMessage message) {
+        _timelineStore.add(message);
+        widget.statisticsStore?.recordComment(userId: message.userId);
+      },
     );
+
+    if (widget.statisticsStore != null) {
+      _viewerCountSubscription = _ndgrClient.viewerCountUpdates.listen(
+        (int count) {
+          widget.statisticsStore?.updateViewerCount(count);
+        },
+      );
+    }
   }
 
   @override
   void dispose() {
     unawaited(_ndgrMessageSubscription.cancel());
     unawaited(_legacyMessageSubscription.cancel());
+    unawaited(_viewerCountSubscription?.cancel());
     _connectionSupervisor.dispose();
     unawaited(_sessionWsClient.dispose());
     unawaited(_ndgrClient.dispose());
@@ -177,6 +199,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _supplierUserIdNotifier.value = null;
     _ndgrHistoryCount = settings.pastCommentFetchCount.historyCount;
     _timelineStore.setCapacity(_ndgrHistoryCount);
+    widget.statisticsStore?.clear();
   }
 
   @override
@@ -200,6 +223,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
         themeModeNotifier: _themeModeNotifier,
         followProgramRepository: _followProgramRepository,
         userColorStore: widget.userColorStore,
+        statisticsStore: widget.statisticsStore,
       ),
     );
   }
@@ -580,6 +604,8 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
       StreamController<reconnect.NdgrEvent>.broadcast();
   final StreamController<AppMessage> _messagesController =
       StreamController<AppMessage>.broadcast();
+  final StreamController<int> _viewerCountController =
+      StreamController<int>.broadcast();
   late final StreamSubscription<ndgr_impl.NdgrClientEvent>
       _clientEventsSubscription;
 
@@ -588,6 +614,7 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
   bool _disconnectRequested = false;
 
   Stream<AppMessage> get messages => _messagesController.stream;
+  Stream<int> get viewerCountUpdates => _viewerCountController.stream;
 
   @override
   Stream<reconnect.NdgrEvent> get events => _eventsController.stream;
@@ -636,6 +663,7 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
     _client.dispose();
     await _eventsController.close();
     await _messagesController.close();
+    await _viewerCountController.close();
   }
 
   Future<void> _runConnect(
@@ -669,6 +697,13 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
           return;
         }
         _messagesController.add(message);
+        break;
+      case ndgr_impl.NdgrClientEventType.statistics:
+        _completeStartupIfPending();
+        final int? viewerCount = event.viewerCount;
+        if (viewerCount != null && !_viewerCountController.isClosed) {
+          _viewerCountController.add(viewerCount);
+        }
         break;
       case ndgr_impl.NdgrClientEventType.stalled:
         _completeStartupIfPending();

@@ -9,6 +9,7 @@ import '../../data/auth/user_session_store.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../data/follow/follow_program.dart';
 import '../../data/follow/follow_program_repository.dart';
+import '../../application/statistics/statistics_store.dart';
 import '../../data/user/user_color_store.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
@@ -51,6 +52,7 @@ class SelectScreen extends StatefulWidget {
     this.themeModeNotifier,
     this.followProgramRepository,
     this.userColorStore,
+    this.statisticsStore,
     super.key,
   });
 
@@ -70,6 +72,7 @@ class SelectScreen extends StatefulWidget {
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
   final FollowProgramRepository? followProgramRepository;
   final UserColorStore? userColorStore;
+  final StatisticsStore? statisticsStore;
 
   @override
   State<SelectScreen> createState() => _SelectScreenState();
@@ -336,6 +339,7 @@ class _SelectScreenState extends State<SelectScreen> {
       if (widget.programTitleNotifier != null) widget.programTitleNotifier!,
       if (widget.userNameListenable != null) widget.userNameListenable!,
       if (widget.supplierUserIdNotifier != null) widget.supplierUserIdNotifier!,
+      if (widget.statisticsStore != null) widget.statisticsStore!,
     ];
 
     return ListenableBuilder(
@@ -386,6 +390,13 @@ class _SelectScreenState extends State<SelectScreen> {
           onUserColorRemoved:
               widget.userColorStore != null ? _onUserColorRemoved : null,
           themeMode: _settingsNotifier.value.themeMode,
+          statisticsEnabled: _settingsNotifier.value.statisticsEnabled,
+          showViewerCommentCount:
+              _settingsNotifier.value.showViewerCommentCount,
+          showActiveUserCount: _settingsNotifier.value.showActiveUserCount,
+          viewerCount: widget.statisticsStore?.viewerCount ?? 0,
+          totalCommentCount: widget.statisticsStore?.totalCommentCount ?? 0,
+          activeUserCount: widget.statisticsStore?.activeUserCount ?? 0,
         );
       },
     );

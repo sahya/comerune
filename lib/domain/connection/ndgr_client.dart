@@ -8,12 +8,13 @@ import 'ndgr_message_normalizer.dart';
 import 'ndgr_protobuf_decoder.dart';
 import 'ndgr_stall_detector.dart';
 
-enum NdgrClientEventType { connected, message, stalled }
+enum NdgrClientEventType { connected, message, statistics, stalled }
 
 class NdgrClientEvent {
   const NdgrClientEvent._({
     required this.type,
     this.message,
+    this.viewerCount,
     this.stallDuration,
   });
 
@@ -23,11 +24,15 @@ class NdgrClientEvent {
   const NdgrClientEvent.message(AppMessage message)
       : this._(type: NdgrClientEventType.message, message: message);
 
+  const NdgrClientEvent.statistics({int? viewerCount})
+      : this._(type: NdgrClientEventType.statistics, viewerCount: viewerCount);
+
   const NdgrClientEvent.stalled(Duration stallDuration)
       : this._(type: NdgrClientEventType.stalled, stallDuration: stallDuration);
 
   final NdgrClientEventType type;
   final AppMessage? message;
+  final int? viewerCount;
   final Duration? stallDuration;
 }
 
@@ -296,6 +301,13 @@ class NdgrClient {
     final DateTime receivedAt = _now();
     _markReceivedAndEnsureTimer(receivedAt);
 
+    final NdgrStatistics? statistics = message.statistics;
+    if (statistics != null) {
+      _eventsController.add(
+        NdgrClientEvent.statistics(viewerCount: statistics.viewers),
+      );
+    }
+
     final AppMessage? normalized = _normalizer.normalizeChunkedMessage(
       message,
       receivedAt: receivedAt.toUtc(),
@@ -306,7 +318,7 @@ class NdgrClient {
       return true;
     }
 
-    return false;
+    return statistics != null;
   }
 
   Stream<NdgrChunkedEntry> _streamChunkedEntries(Uri uri) async* {
