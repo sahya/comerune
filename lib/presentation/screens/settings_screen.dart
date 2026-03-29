@@ -785,24 +785,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         );
                       },
                     ),
-                    if (widget.userAttributeStore != null &&
-                        widget.broadcasterId != null)
+                    if (widget.userAttributeStore != null)
                       ListTile(
                         key: const Key('nickname-list-tile'),
                         contentPadding: EdgeInsets.zero,
                         leading: const Icon(Icons.badge),
                         title: const Text('コテハン一覧管理'),
+                        subtitle: widget.broadcasterId == null
+                            ? const Text('放送に接続すると利用できます')
+                            : null,
                         trailing: const Icon(Icons.chevron_right),
-                        onTap: () async {
-                          await Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => NicknameListScreen(
-                                userAttributeStore: widget.userAttributeStore!,
-                                broadcasterId: widget.broadcasterId!,
-                              ),
-                            ),
-                          );
-                        },
+                        enabled: widget.broadcasterId != null,
+                        onTap: widget.broadcasterId != null
+                            ? () async {
+                                await Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => NicknameListScreen(
+                                      userAttributeStore:
+                                          widget.userAttributeStore!,
+                                      broadcasterId: widget.broadcasterId!,
+                                    ),
+                                  ),
+                                );
+                              }
+                            : null,
                       ),
                   ],
                 ),

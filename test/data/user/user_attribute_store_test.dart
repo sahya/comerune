@@ -374,9 +374,81 @@ void main() {
         expect(result, <String, int>{'u1': 0xFFE53935});
       });
 
+      test('removes old entries and keeps recent ones', () async {
+        final int oldTimestamp = DateTime.now()
+            .subtract(const Duration(days: 400))
+            .millisecondsSinceEpoch;
+        await prefs.setString(
+          'usercolor.old_b',
+          '{"u1": 111, "_lastUsedAt": $oldTimestamp}',
+        );
+
+        await store.setColor(
+          broadcasterId: 'new_b',
+          userId: 'u2',
+          colorValue: 222,
+        );
+
+        await prefs.setString('usercolor._index', '["old_b", "new_b"]');
+
+        final int removed = await store.cleanup();
+
+        expect(removed, 1);
+        expect(prefs.getString('usercolor.old_b'), isNull);
+        expect(await store.loadColors('new_b'), <String, int>{'u2': 222});
+      });
+
       test('returns 0 when index is empty', () async {
         final int removed = await store.cleanup();
         expect(removed, 0);
+      });
+
+      test('removes entry with missing _lastUsedAt (treated as epoch 0)',
+          () async {
+        await prefs.setString('usercolor.no_ts', '{"u1": 123}');
+        await prefs.setString('usercolor._index', '["no_ts"]');
+
+        final int removed = await store.cleanup();
+
+        expect(removed, 1);
+        expect(prefs.getString('usercolor.no_ts'), isNull);
+      });
+
+      test('custom maxAge is respected', () async {
+        final int recentTimestamp = DateTime.now()
+            .subtract(const Duration(days: 10))
+            .millisecondsSinceEpoch;
+        await prefs.setString(
+          'usercolor.ten_days',
+          '{"u1": 111, "_lastUsedAt": $recentTimestamp}',
+        );
+        await prefs.setString('usercolor._index', '["ten_days"]');
+
+        expect(await store.cleanup(), 0);
+
+        expect(
+          await store.cleanup(maxAge: const Duration(days: 5)),
+          1,
+        );
+        expect(prefs.getString('usercolor.ten_days'), isNull);
+      });
+
+      test('loadColors updates _lastUsedAt so entry survives cleanup',
+          () async {
+        final int oldTimestamp = DateTime.now()
+            .subtract(const Duration(days: 366))
+            .millisecondsSinceEpoch;
+        await prefs.setString(
+          'usercolor.aging',
+          '{"u1": 111, "_lastUsedAt": $oldTimestamp}',
+        );
+        await prefs.setString('usercolor._index', '["aging"]');
+
+        await store.loadColors('aging');
+
+        final int removed = await store.cleanup();
+        expect(removed, 0);
+        expect(await store.loadColors('aging'), <String, int>{'u1': 111});
       });
     });
   });
