@@ -2,6 +2,7 @@ import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:flutter/services.dart';
+import 'package:meta/meta.dart';
 
 /// Platform channel wrapper for the Android Foreground Service.
 ///
@@ -9,10 +10,14 @@ import 'package:flutter/services.dart';
 class ForegroundServiceChannel {
   ForegroundServiceChannel({
     MethodChannel? channel,
-  }) : _channel = channel ??
-            const MethodChannel('com.example.comerune/foreground_service');
+    @visibleForTesting bool? platformOverride,
+  }) : _channel =
+           channel ??
+           const MethodChannel('com.example.comerune/foreground_service'),
+       _isAndroid = platformOverride ?? Platform.isAndroid;
 
   final MethodChannel _channel;
+  final bool _isAndroid;
 
   bool _isRunning = false;
 
@@ -26,7 +31,7 @@ class ForegroundServiceChannel {
     String title = 'comerune',
     String body = '接続中...',
   }) async {
-    if (!Platform.isAndroid) {
+    if (!_isAndroid) {
       return;
     }
     try {
@@ -35,7 +40,7 @@ class ForegroundServiceChannel {
         'body': body,
       });
       _isRunning = true;
-    } on PlatformException catch (error, stackTrace) {
+    } on Exception catch (error, stackTrace) {
       developer.log(
         'Failed to start foreground service: $error',
         name: 'ForegroundServiceChannel',
@@ -49,16 +54,15 @@ class ForegroundServiceChannel {
     String title = 'comerune',
     String body = '接続中...',
   }) async {
-    if (!Platform.isAndroid || !_isRunning) {
+    if (!_isAndroid || !_isRunning) {
       return;
     }
     try {
-      await _channel
-          .invokeMethod<void>('updateNotification', <String, String>{
+      await _channel.invokeMethod<void>('updateNotification', <String, String>{
         'title': title,
         'body': body,
       });
-    } on PlatformException catch (error, stackTrace) {
+    } on Exception catch (error, stackTrace) {
       developer.log(
         'Failed to update foreground service notification: $error',
         name: 'ForegroundServiceChannel',
@@ -69,13 +73,13 @@ class ForegroundServiceChannel {
 
   /// Stops the foreground service and removes the notification.
   Future<void> stopService() async {
-    if (!Platform.isAndroid || !_isRunning) {
+    if (!_isAndroid || !_isRunning) {
       return;
     }
     try {
       await _channel.invokeMethod<void>('stopService');
       _isRunning = false;
-    } on PlatformException catch (error, stackTrace) {
+    } on Exception catch (error, stackTrace) {
       developer.log(
         'Failed to stop foreground service: $error',
         name: 'ForegroundServiceChannel',

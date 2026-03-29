@@ -56,6 +56,12 @@ class ForegroundService : Service() {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
+            else -> {
+                // System may restart the service with a null intent.
+                // Since we use START_NOT_STICKY this should not happen,
+                // but stop gracefully if it does.
+                stopSelf()
+            }
         }
         return START_NOT_STICKY
     }

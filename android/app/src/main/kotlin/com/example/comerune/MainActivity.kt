@@ -32,15 +32,19 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "startService" -> {
-                        val title = call.argument<String>("title") ?: "comerune"
-                        val body = call.argument<String>("body") ?: "接続中..."
-                        val intent = Intent(this, ForegroundService::class.java).apply {
-                            action = ForegroundService.ACTION_START
-                            putExtra(ForegroundService.EXTRA_TITLE, title)
-                            putExtra(ForegroundService.EXTRA_BODY, body)
+                        try {
+                            val title = call.argument<String>("title") ?: "comerune"
+                            val body = call.argument<String>("body") ?: "接続中..."
+                            val intent = Intent(this, ForegroundService::class.java).apply {
+                                action = ForegroundService.ACTION_START
+                                putExtra(ForegroundService.EXTRA_TITLE, title)
+                                putExtra(ForegroundService.EXTRA_BODY, body)
+                            }
+                            startForegroundService(intent)
+                            result.success(null)
+                        } catch (e: Exception) {
+                            result.error("START_FAILED", e.message, null)
                         }
-                        startForegroundService(intent)
-                        result.success(null)
                     }
                     "updateNotification" -> {
                         val title = call.argument<String>("title") ?: "comerune"
