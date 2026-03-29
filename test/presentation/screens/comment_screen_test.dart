@@ -1216,6 +1216,159 @@ void main() {
       expect(find.byKey(const Key('settings-button')), findsNothing);
     });
 
+    testWidgets(
+        'star prefix hides comment body when starPrefixHidingEnabled is true',
+        (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'star-msg',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '☆ラスボスは実は味方だった',
+          type: AppMessageType.chat,
+        ),
+        AppMessage(
+          id: 'normal-msg',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 1),
+          userId: 'user-2',
+          content: 'こ��にちは',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          starPrefixHidingEnabled: true,
+        ),
+      );
+
+      // Star-prefixed comment should show placeholder
+      expect(find.textContaining('ネタバレ防止: タップで表示'), findsOneWidget);
+      expect(find.textContaining('☆ラスボスは実は味方だった'), findsNothing);
+
+      // Normal comment should still be visible
+      expect(find.textContaining('こんにちは'), findsOneWidget);
+    });
+
+    testWidgets('star prefix comment reveals body on tap', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'star-reveal',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '☆秘密のメッセージ',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          starPrefixHidingEnabled: true,
+        ),
+      );
+
+      // Should show placeholder
+      expect(find.textContaining('ネタバレ防止: タップで表示'), findsOneWidget);
+
+      // Tap to reveal
+      await tester.tap(find.byKey(const Key('comment-row-star-reveal')));
+      await tester.pumpAndSettle();
+
+      // Should now show original content
+      expect(find.textContaining('☆秘���のメッセージ'), findsOneWidget);
+      expect(find.textContaining('ネタバレ防止: タップで表示'), findsNothing);
+    });
+
+    testWidgets(
+        'star prefix shows normal content when starPrefixHidingEnabled is false',
+        (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'star-no-hide',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '☆普通に表示される',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          starPrefixHidingEnabled: false,
+        ),
+      );
+
+      // With setting OFF, should show normal content
+      expect(find.textContaining('☆普���に表示される'), findsOneWidget);
+      expect(find.textContaining('���タバレ防止'), findsNothing);
+    });
+
+    testWidgets('slash prefix comment displays content normally', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'slash-msg',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '/おやすみなさい',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+        ),
+      );
+
+      // Slash prefix should display normally (TTS skip only)
+      expect(find.textContaining('/おやすみなさい'), findsOneWidget);
+    });
+
+    testWidgets(
+        'star prefix preserves user ID and timestamp when hidden', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'star-meta',
+          timestamp: DateTime(2026, 3, 22, 12, 34, 56),
+          userId: '12345',
+          content: '☆ネタバレ内容',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          starPrefixHidingEnabled: true,
+        ),
+      );
+
+      // Timestamp and user ID should still be visible
+      expect(find.textContaining('12:34:56'), findsOneWidget);
+      expect(find.textContaining('12345'), findsOneWidget);
+      // But content should be hidden
+      expect(find.textContaining('ネタバレ防止: タップで表示'), findsOneWidget);
+    });
+
     testWidgets('invokes callback when lv changes (different lv connection)', (
       WidgetTester tester,
     ) async {
@@ -1585,6 +1738,7 @@ Widget _buildScreen({
   List<String> ngWords = const <String>[],
   Map<String, int> userColorMap = const <String, int>{},
   Map<String, String> userNicknameMap = const <String, String>{},
+  bool starPrefixHidingEnabled = false,
 }) {
   return MaterialApp(
     home: CommentScreen(
@@ -1605,6 +1759,7 @@ Widget _buildScreen({
       ngWords: ngWords,
       userColorMap: userColorMap,
       userNicknameMap: userNicknameMap,
+      starPrefixHidingEnabled: starPrefixHidingEnabled,
       themeMode: AppThemeMode.light,
     ),
   );

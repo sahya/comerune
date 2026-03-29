@@ -684,6 +684,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: '読み上げフィルタ',
                   children: <Widget>[
                     SwitchListTile(
+                      key: const Key('slash-prefix-skip-switch'),
+                      title: const Text('「/」で読み上げスキップ'),
+                      subtitle:
+                          const Text('/ で始まるコメントを読み上げない'),
+                      contentPadding: EdgeInsets.zero,
+                      value: settings.slashPrefixSkipEnabled,
+                      onChanged: (bool value) {
+                        _saveNextSettings(
+                          settings.copyWith(slashPrefixSkipEnabled: value),
+                        );
+                      },
+                    ),
+                    SwitchListTile(
+                      key: const Key('star-prefix-hiding-switch'),
+                      title: const Text('「☆」で本文非表示'),
+                      subtitle: const Text(
+                        '☆ で始まるコメントの本文を隠す（タップで展開可能）。読み上げもしない',
+                      ),
+                      contentPadding: EdgeInsets.zero,
+                      value: settings.starPrefixHidingEnabled,
+                      onChanged: (bool value) {
+                        _saveNextSettings(
+                          settings.copyWith(starPrefixHidingEnabled: value),
+                        );
+                      },
+                    ),
+                    SwitchListTile(
                       key: const Key('omit-url-switch'),
                       title: const Text('URLを省略する'),
                       contentPadding: EdgeInsets.zero,
