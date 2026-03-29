@@ -7,6 +7,7 @@ import '../../application/settings/settings_store.dart';
 import '../../data/auth/user_session_store.dart';
 import '../../domain/models/app_settings.dart';
 import 'login_screen.dart';
+import 'favorite_user_list_screen.dart';
 import 'ng_user_list_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -723,6 +724,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         await Navigator.of(context).push(
                           MaterialPageRoute<void>(
                             builder: (_) => NgUserListScreen(
+                              settingsStore: widget.settingsStore,
+                            ),
+                          ),
+                        );
+                        await _loadSettings();
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _Section(
+                  title: 'お気に入りユーザー',
+                  children: <Widget>[
+                    ListTile(
+                      key: const Key('favorite-user-list-tile'),
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.person_add),
+                      title: const Text('お気に入りユーザーID管理'),
+                      subtitle: Text(
+                        settings.favoriteUserIdSet.isEmpty
+                            ? '未登録'
+                            : '${settings.favoriteUserIdSet.length}件登録中',
+                      ),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () async {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => FavoriteUserListScreen(
                               settingsStore: widget.settingsStore,
                             ),
                           ),
