@@ -22,7 +22,7 @@ void main() {
         userSessionStore: InMemoryUserSessionStore(),
       ),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('select_screen_input')), findsOneWidget);
     expect(
