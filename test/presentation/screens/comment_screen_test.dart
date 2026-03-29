@@ -935,6 +935,57 @@ void main() {
       expect(hostKey.currentState!.nextLv, 'lv222');
     });
   });
+
+  group('Comment log stats', () {
+    testWidgets('shows stats sheet when connection ends with messages', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        _message(
+          id: 'c1',
+          type: AppMessageType.chat,
+          content: 'hello',
+        ),
+        _message(
+          id: 'c2',
+          type: AppMessageType.chat,
+          content: 'world',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+        ),
+      );
+
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pumpAndSettle();
+
+      expect(find.text('コメント統計サマリ'), findsOneWidget);
+      expect(find.text('2'), findsOneWidget); // total comments
+    });
+
+    testWidgets('does not show stats sheet when no displayable messages', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+        ),
+      );
+
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pumpAndSettle();
+
+      expect(find.text('コメント統計サマリ'), findsNothing);
+    });
+  });
 }
 
 class _CommentScreenHost extends StatefulWidget {

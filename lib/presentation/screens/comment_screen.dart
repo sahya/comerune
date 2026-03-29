@@ -518,7 +518,7 @@ class _CommentScreenState extends State<CommentScreen> {
       unawaited(_saveLogAuto());
     }
 
-    if (_isStatsTrigger(currentStatus)) {
+    if (!_isStoppingForExit && _isStatsTrigger(currentStatus)) {
       _showStatsSheet();
     }
 
