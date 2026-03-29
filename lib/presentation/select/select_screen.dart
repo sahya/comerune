@@ -703,7 +703,11 @@ class _LoginStatusBanner extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    final AppThemeColors colors = AppTheme.colorsFor(themeMode);
+    final AppThemeMode effectiveMode = AppTheme.resolveEffectiveMode(
+      themeMode,
+      MediaQuery.platformBrightnessOf(context),
+    );
+    final AppThemeColors colors = AppTheme.colorsFor(effectiveMode);
 
     if (loggedIn) {
       return Semantics(

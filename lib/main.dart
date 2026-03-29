@@ -182,9 +182,16 @@ class _ComeruneAppState extends State<ComeruneApp> {
 
   @override
   Widget build(BuildContext context) {
+    final AppThemeMode currentMode = _themeModeNotifier.value;
     return MaterialApp(
       title: 'comerune',
-      theme: AppTheme.themeDataFor(_themeModeNotifier.value),
+      theme: AppTheme.themeDataFor(currentMode),
+      darkTheme: currentMode == AppThemeMode.system
+          ? AppTheme.themeDataFor(AppThemeMode.dark)
+          : null,
+      themeMode: currentMode == AppThemeMode.system
+          ? ThemeMode.system
+          : ThemeMode.light,
       home: SelectScreen(
         connectionSupervisor: _connectionSupervisor,
         timelineStore: _timelineStore,
