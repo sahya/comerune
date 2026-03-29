@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import 'replace_rule.dart';
 
 /// Configuration for the speech engine. Defaults match the Kotlin side.
@@ -59,4 +61,47 @@ class SpeechSettings {
         'dictionaryRules': dictionaryRules.map((r) => r.toMap()).toList(),
         'ngWords': ngWords,
       };
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SpeechSettings &&
+          enabled == other.enabled &&
+          speakerId == other.speakerId &&
+          speedScale == other.speedScale &&
+          pitchScale == other.pitchScale &&
+          intonationScale == other.intonationScale &&
+          volumeScale == other.volumeScale &&
+          prePhonemeLength == other.prePhonemeLength &&
+          postPhonemeLength == other.postPhonemeLength &&
+          maxTextLength == other.maxTextLength &&
+          maxQueueSize == other.maxQueueSize &&
+          duplicateWindowMs == other.duplicateWindowMs &&
+          skipEmojiOnly == other.skipEmojiOnly &&
+          skipUrlOnly == other.skipUrlOnly &&
+          replaceUrlWith == other.replaceUrlWith &&
+          trimLongTextSuffix == other.trimLongTextSuffix &&
+          listEquals(dictionaryRules, other.dictionaryRules) &&
+          listEquals(ngWords, other.ngWords);
+
+  @override
+  int get hashCode => Object.hash(
+        enabled,
+        speakerId,
+        speedScale,
+        pitchScale,
+        intonationScale,
+        volumeScale,
+        prePhonemeLength,
+        postPhonemeLength,
+        maxTextLength,
+        maxQueueSize,
+        duplicateWindowMs,
+        skipEmojiOnly,
+        skipUrlOnly,
+        replaceUrlWith,
+        trimLongTextSuffix,
+        Object.hashAll(dictionaryRules),
+        Object.hashAll(ngWords),
+      );
 }

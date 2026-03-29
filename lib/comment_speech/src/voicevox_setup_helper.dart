@@ -63,12 +63,12 @@ class VoicevoxSetupHelper {
 
   void _onEvent(SpeechEvent event) {
     switch (event.type) {
-      case 'download_started':
+      case SpeechEventType.downloadStarted:
         state.value = VoicevoxSetupState.downloading;
         final fileName = event.payload['fileName'] as String? ?? '';
         statusMessage.value = '$fileNameをダウンロード中...';
         progress.value = 0.0;
-      case 'download_progress':
+      case SpeechEventType.downloadProgress:
         final downloaded = event.payload['bytesDownloaded'] as int? ?? 0;
         final total = event.payload['totalBytes'] as int? ?? 1;
         if (total > 0) {
@@ -76,11 +76,11 @@ class VoicevoxSetupHelper {
         }
         final mb = (downloaded / 1024 / 1024).toStringAsFixed(1);
         statusMessage.value = 'ダウンロード中... ${mb}MB';
-      case 'download_completed':
+      case SpeechEventType.downloadCompleted:
         state.value = VoicevoxSetupState.initializing;
         statusMessage.value = 'エンジンを初期化中...';
         progress.value = 1.0;
-      case 'engine_state_changed':
+      case SpeechEventType.engineStateChanged:
         final engineState = event.payload['state'] as String? ?? '';
         if (engineState == 'READY') {
           state.value = VoicevoxSetupState.ready;

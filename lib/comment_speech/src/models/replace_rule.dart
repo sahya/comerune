@@ -21,4 +21,15 @@ class ReplaceRule {
         replacement: map['replacement'] as String,
         enabled: map['enabled'] as bool? ?? true,
       );
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ReplaceRule &&
+          pattern == other.pattern &&
+          replacement == other.replacement &&
+          enabled == other.enabled;
+
+  @override
+  int get hashCode => Object.hash(pattern, replacement, enabled);
 }

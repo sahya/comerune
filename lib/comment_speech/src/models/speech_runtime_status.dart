@@ -28,4 +28,27 @@ class SpeechRuntimeStatus {
         currentText: map['currentText'] as String?,
         currentSpeakerId: (map['currentSpeakerId'] as int?) ?? 0,
       );
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SpeechRuntimeStatus &&
+          enabled == other.enabled &&
+          engineState == other.engineState &&
+          playerState == other.playerState &&
+          queueSize == other.queueSize &&
+          currentCommentId == other.currentCommentId &&
+          currentText == other.currentText &&
+          currentSpeakerId == other.currentSpeakerId;
+
+  @override
+  int get hashCode => Object.hash(
+        enabled,
+        engineState,
+        playerState,
+        queueSize,
+        currentCommentId,
+        currentText,
+        currentSpeakerId,
+      );
 }

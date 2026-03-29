@@ -24,4 +24,19 @@ class RawComment {
         'score': score,
         'isOwner': isOwner,
       };
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is RawComment &&
+          id == other.id &&
+          text == other.text &&
+          userId == other.userId &&
+          postedAtEpochMs == other.postedAtEpochMs &&
+          score == other.score &&
+          isOwner == other.isOwner;
+
+  @override
+  int get hashCode =>
+      Object.hash(id, text, userId, postedAtEpochMs, score, isOwner);
 }

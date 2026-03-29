@@ -269,13 +269,16 @@ class SpeechControllerImpl(
     }
 
     private suspend fun processQueue() {
-        while (started && !released) {
-            val item = queueManager.poll() ?: break
+        // Outer loop ensures we don't miss items added between poll()→null and worker exit
+        do {
+            while (started && !released) {
+                val item = queueManager.poll() ?: break
 
-            processingMutex.withLock {
-                processItem(item)
+                processingMutex.withLock {
+                    processItem(item)
+                }
             }
-        }
+        } while (started && !released && !queueManager.isEmpty())
 
         if (!released) {
             eventEmitter.emit(SpeechEvents.queueUpdated(queueManager.size()))

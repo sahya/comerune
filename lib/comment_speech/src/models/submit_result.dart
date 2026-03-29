@@ -21,4 +21,18 @@ class SubmitResult {
         skipReason: map['skipReason'] as String?,
         queueSize: (map['queueSize'] as int?) ?? 0,
       );
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SubmitResult &&
+          accepted == other.accepted &&
+          skipped == other.skipped &&
+          normalizedText == other.normalizedText &&
+          skipReason == other.skipReason &&
+          queueSize == other.queueSize;
+
+  @override
+  int get hashCode =>
+      Object.hash(accepted, skipped, normalizedText, skipReason, queueSize);
 }

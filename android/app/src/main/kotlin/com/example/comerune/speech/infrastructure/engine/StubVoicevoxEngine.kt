@@ -7,7 +7,9 @@ import com.example.comerune.speech.domain.model.WavSynthesisResult
 
 /**
  * Stub implementation of [VoicevoxEngine] that returns failure for all operations.
- * Will be replaced when JNI implementation is ready (#42).
+ *
+ * This class is intended for testing and as a fallback when the real engine
+ * ([VoicevoxEngineImpl]) is not available. It should not be used in production.
  */
 class StubVoicevoxEngine : VoicevoxEngine {
 
