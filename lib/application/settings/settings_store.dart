@@ -26,6 +26,8 @@ abstract class SharedPreferencesLike {
   Future<bool> setDouble(String key, double value);
 
   Future<bool> setString(String key, String value);
+
+  Future<bool> remove(String key);
 }
 
 class SharedPreferencesSettingsStore implements SettingsStore {

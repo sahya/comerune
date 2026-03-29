@@ -14,6 +14,17 @@ import 'user_detail_sheet.dart';
 
 const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
 
+/// Converts an ARGB32 integer to [Color] without using the deprecated
+/// `Color(int)` constructor.
+Color colorFromARGB32(int argb32) {
+  return Color.fromARGB(
+    (argb32 >> 24) & 0xFF,
+    (argb32 >> 16) & 0xFF,
+    (argb32 >> 8) & 0xFF,
+    argb32 & 0xFF,
+  );
+}
+
 String _formatHms(DateTime value) {
   final DateTime local = value.toLocal();
   final String hh = local.hour.toString().padLeft(2, '0');
@@ -56,6 +67,9 @@ class CommentScreen extends StatefulWidget {
     this.autoSaveCommentLog = false,
     this.ngUserIds = const <String>{},
     this.onToggleNgUser,
+    this.userColorMap = const <String, int>{},
+    this.onUserColorChanged,
+    this.onUserColorRemoved,
     required this.themeMode,
   });
 
@@ -90,6 +104,15 @@ class CommentScreen extends StatefulWidget {
 
   /// Called to toggle NG status for a user.
   final void Function(String userId)? onToggleNgUser;
+
+  /// Per-user comment color map. Keys are user IDs, values are ARGB32 ints.
+  final Map<String, int> userColorMap;
+
+  /// Called when the user sets a custom comment color for a user.
+  final void Function(String userId, int colorValue)? onUserColorChanged;
+
+  /// Called when the user removes a custom comment color.
+  final void Function(String userId)? onUserColorRemoved;
 
   final AppThemeMode themeMode;
 
@@ -297,12 +320,18 @@ class _CommentScreenState extends State<CommentScreen> {
                     itemCount: sortedMessages.length,
                     itemBuilder: (BuildContext context, int index) {
                       final AppMessage message = sortedMessages[index];
+                      final int? userColor = message.userId != null
+                          ? widget.userColorMap[message.userId!]
+                          : null;
                       return _CommentRow(
                         message: message,
                         themeColors: themeColors,
                         resolvedUserName: _resolveDisplayName(message),
                         showUserName: widget.showUserName,
                         fontSize: widget.commentFontSize,
+                        userColor: userColor != null
+                            ? colorFromARGB32(userColor)
+                            : null,
                         onLongPress:
                             message.userId != null && message.userId!.isNotEmpty
                                 ? () => _showUserDetail(message)
@@ -337,6 +366,19 @@ class _CommentScreenState extends State<CommentScreen> {
           allMessages: widget.messages,
           isNgUser: isNg,
           themeMode: widget.themeMode,
+          currentColorValue: widget.userColorMap[userId],
+          onColorChanged: widget.onUserColorChanged != null
+              ? (int colorValue) {
+                  widget.onUserColorChanged!.call(userId, colorValue);
+                  Navigator.of(sheetContext).pop();
+                }
+              : null,
+          onColorRemoved: widget.onUserColorRemoved != null
+              ? () {
+                  widget.onUserColorRemoved!.call(userId);
+                  Navigator.of(sheetContext).pop();
+                }
+              : null,
           onToggleNgUser: () {
             widget.onToggleNgUser?.call(userId);
             Navigator.of(sheetContext).pop();
@@ -1077,6 +1119,7 @@ class _CommentRow extends StatelessWidget {
     this.resolvedUserName,
     this.showUserName = true,
     required this.fontSize,
+    this.userColor,
     this.onLongPress,
   });
 
@@ -1085,6 +1128,7 @@ class _CommentRow extends StatelessWidget {
   final String? resolvedUserName;
   final bool showUserName;
   final double fontSize;
+  final Color? userColor;
   final VoidCallback? onLongPress;
 
   @override
@@ -1097,7 +1141,10 @@ class _CommentRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
         child: Text(
           _lineText(message),
-          style: TextStyle(fontSize: fontSize),
+          style: TextStyle(
+            fontSize: fontSize,
+            color: userColor,
+          ),
         ),
       ),
     );
