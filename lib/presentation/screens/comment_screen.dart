@@ -14,6 +14,17 @@ import 'user_detail_sheet.dart';
 
 const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
 
+/// Converts an ARGB32 integer to [Color] without using the deprecated
+/// `Color(int)` constructor.
+Color colorFromARGB32(int argb32) {
+  return Color.fromARGB(
+    (argb32 >> 24) & 0xFF,
+    (argb32 >> 16) & 0xFF,
+    (argb32 >> 8) & 0xFF,
+    argb32 & 0xFF,
+  );
+}
+
 String _formatHms(DateTime value) {
   final DateTime local = value.toLocal();
   final String hh = local.hour.toString().padLeft(2, '0');
@@ -318,8 +329,9 @@ class _CommentScreenState extends State<CommentScreen> {
                         resolvedUserName: _resolveDisplayName(message),
                         showUserName: widget.showUserName,
                         fontSize: widget.commentFontSize,
-                        // ignore: deprecated_member_use
-                        userColor: userColor != null ? Color(userColor) : null,
+                        userColor: userColor != null
+                            ? colorFromARGB32(userColor)
+                            : null,
                         onLongPress:
                             message.userId != null && message.userId!.isNotEmpty
                                 ? () => _showUserDetail(message)

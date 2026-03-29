@@ -46,6 +46,8 @@ Future<void> main() async {
   final UserColorStore userColorStore = SharedPreferencesUserColorStore(
     prefs: SharedPreferencesAdapter(prefs),
   );
+  // Remove user color entries not accessed for over 1 year.
+  unawaited(userColorStore.cleanup());
 
   runApp(
     ComeruneApp(
