@@ -31,6 +31,9 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         private const val VOICEVOX_DIR = "voicevox"
         private const val OPEN_JTALK_DICT_ASSET_DIR = "open_jtalk_dic_utf_8-1.11"
         private const val VVM_ASSET_DIR = "voicevox_models"
+        /** Increment this when bundled assets change to force re-extraction. */
+        private const val ASSET_VERSION = "1"
+        private const val VERSION_FILE = ".asset_version"
     }
 
     @Volatile
@@ -174,12 +177,24 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
 
     /**
      * Extract assets from a directory in the APK to the target directory on disk.
-     * Skips extraction if the target directory already exists and contains files.
+     * Skips extraction if the target directory already exists, contains files,
+     * and its version marker matches [ASSET_VERSION]. When the bundled assets
+     * are updated, increment [ASSET_VERSION] to trigger re-extraction.
      */
     private fun extractAssetsIfNeeded(assetDir: String, targetDir: File) {
-        if (targetDir.exists() && targetDir.listFiles()?.isNotEmpty() == true) {
-            Log.i(TAG, "Assets already extracted to ${targetDir.absolutePath}")
+        val versionFile = File(targetDir, VERSION_FILE)
+        val versionMatches = versionFile.exists() &&
+            versionFile.readText().trim() == ASSET_VERSION
+
+        if (targetDir.exists() && targetDir.listFiles()?.isNotEmpty() == true && versionMatches) {
+            Log.i(TAG, "Assets already extracted to ${targetDir.absolutePath} (version $ASSET_VERSION)")
             return
+        }
+
+        // Version mismatch or first extraction — clear stale files
+        if (targetDir.exists()) {
+            targetDir.deleteRecursively()
+            Log.i(TAG, "Cleared stale assets at ${targetDir.absolutePath}")
         }
 
         if (!targetDir.mkdirs() && !targetDir.exists()) {
@@ -210,7 +225,9 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             }
         }
 
-        Log.i(TAG, "Extracted assets from '$assetDir' to ${targetDir.absolutePath}")
+        // Write version marker so subsequent launches can skip re-extraction
+        File(targetDir, VERSION_FILE).writeText(ASSET_VERSION)
+        Log.i(TAG, "Extracted assets from '$assetDir' to ${targetDir.absolutePath} (version $ASSET_VERSION)")
     }
 
     /**

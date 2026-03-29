@@ -6,6 +6,12 @@ package com.example.comerune.speech.infrastructure.engine
  * All methods delegate to C++ functions in voicevox_jni.cpp via JNI.
  * Thread safety is handled on the native side with a mutex.
  *
+ * **Naming note:** The `speakerId` parameter used throughout this codebase
+ * corresponds to VOICEVOX's `VoicevoxStyleId`. VOICEVOX identifies voice
+ * variations (styles) by style ID, not by speaker ID. The name `speakerId`
+ * was chosen for domain clarity within this app, but the underlying value
+ * is always passed as a `VoicevoxStyleId` to the native API.
+ *
  * Note: VOICEVOX Core 0.16.2 TTS one-shot API does not support
  * speed/pitch/intonation/volume parameters. Those fields are accepted
  * for future compatibility (audio_query path) but are currently ignored

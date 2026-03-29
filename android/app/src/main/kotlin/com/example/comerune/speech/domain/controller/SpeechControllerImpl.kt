@@ -12,6 +12,7 @@ import com.example.comerune.speech.domain.model.SubmitResult
 import com.example.comerune.speech.domain.model.TtsEngineState
 import com.example.comerune.speech.domain.model.VoicevoxConfig
 import com.example.comerune.speech.domain.normalizer.CommentNormalizer
+import com.example.comerune.speech.domain.normalizer.DefaultCommentNormalizer
 import com.example.comerune.speech.domain.normalizer.InMemoryDuplicateDetector
 import com.example.comerune.speech.domain.player.WavPlayer
 import com.example.comerune.speech.domain.queue.InMemorySpeechQueueManager
@@ -122,8 +123,10 @@ class SpeechControllerImpl(
     }
 
     override suspend fun submitComment(rawComment: RawComment): Result<SubmitResult> {
-        if (released) {
-            return Result.failure(IllegalStateException("Controller has been released"))
+        synchronized(this) {
+            if (released) {
+                return Result.failure(IllegalStateException("Controller has been released"))
+            }
         }
 
         val settings = settingsRepository.get()
@@ -219,6 +222,9 @@ class SpeechControllerImpl(
         inMemoryQueueManager?.updateMaxSize(settings.maxQueueSize)
         duplicateDetector?.updateDuplicateWindowMs(settings.duplicateWindowMs)
 
+        // Clear regex cache when dictionary rules may have changed
+        (normalizer as? DefaultCommentNormalizer)?.clearRegexCache()
+
         return Result.success(Unit)
     }
 
@@ -247,17 +253,17 @@ class SpeechControllerImpl(
         try {
             runBlocking { player.stop() }
         } catch (_: Exception) {
-            // Best-effort stop
+            // Best-effort: failure during cleanup is expected (player may already be stopped)
         }
         try {
             engine.release()
         } catch (_: Exception) {
-            // Best-effort release
+            // Best-effort: failure during cleanup is expected (engine may already be released)
         }
         try {
             player.release()
         } catch (_: Exception) {
-            // Best-effort release
+            // Best-effort: failure during cleanup is expected (player may already be released)
         }
         scope.cancel()
     }

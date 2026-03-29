@@ -9,9 +9,12 @@ class DefaultCommentNormalizer(
     private val timeProvider: () -> Long = System::currentTimeMillis
 ) : CommentNormalizer {
 
-    /** Cache of compiled Regex objects keyed by pattern string. */
-    private val regexCache = mutableMapOf<String, Regex>()
+    /** Cache of compiled Regex objects keyed by pattern string. Max 100 entries. */
+    private val regexCache = java.util.concurrent.ConcurrentHashMap<String, Regex>()
     private val INVALID_REGEX_SENTINEL = Regex("(?!)")
+    private companion object CacheConfig {
+        const val MAX_REGEX_CACHE_SIZE = 100
+    }
 
     override fun normalize(raw: RawComment, settings: SpeechSettings): NormalizedComment {
         // Step 1: Preprocessing (existing)
@@ -257,12 +260,24 @@ class DefaultCommentNormalizer(
      * Applies enabled dictionary rules in order. Each rule is a regex pattern → replacement.
      * Invalid regex patterns are silently skipped.
      */
+    /**
+     * Clears the compiled regex cache. Call this when dictionary rules change
+     * to avoid stale entries accumulating.
+     */
+    fun clearRegexCache() {
+        regexCache.clear()
+    }
+
     internal fun applyDictionaryRules(text: String, settings: SpeechSettings): String {
         if (settings.dictionaryRules.isEmpty()) return text
         var result = text
         for (rule in settings.dictionaryRules) {
             if (!rule.enabled) continue
             val regex = regexCache.getOrPut(rule.pattern) {
+                // Evict all entries if cache grows beyond max size to prevent unbounded growth
+                if (regexCache.size >= MAX_REGEX_CACHE_SIZE) {
+                    regexCache.clear()
+                }
                 runCatching { Regex(rule.pattern) }.getOrDefault(INVALID_REGEX_SENTINEL)
             }
             if (regex === INVALID_REGEX_SENTINEL) continue

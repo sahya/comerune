@@ -2,8 +2,11 @@ package com.example.comerune.speech.domain.normalizer
 
 /**
  * In-memory duplicate detector that suppresses:
- * 1. Exact same text posted within the time window
- * 2. Rapid-fire posts from the same userId within the time window
+ * 1. Exact same text posted within the time window (regardless of user)
+ * 2. Same text posted by the same userId within the time window
+ *
+ * This is strictly a duplicate detector, not a rate limiter: it only
+ * suppresses posts whose text matches a recent entry.
  *
  * Thread-safe via @Synchronized. History is bounded to [maxEntries].
  */

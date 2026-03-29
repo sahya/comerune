@@ -7,6 +7,7 @@ import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import com.example.comerune.speech.domain.controller.SpeechController
@@ -30,8 +31,8 @@ class CommentSpeechPlugin :
     EventChannel.StreamHandler {
 
     companion object {
-        const val METHOD_CHANNEL = "jp.example.comment_speech/methods"
-        const val EVENT_CHANNEL = "jp.example.comment_speech/events"
+        const val METHOD_CHANNEL = "com.example.comerune.speech/methods"
+        const val EVENT_CHANNEL = "com.example.comerune.speech/events"
     }
 
     private var methodChannel: MethodChannel? = null
@@ -278,6 +279,8 @@ class CommentSpeechPlugin :
                         )
                     }
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 result.error(
                     "SPEECH_ERROR",

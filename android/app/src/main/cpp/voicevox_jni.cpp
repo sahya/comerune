@@ -172,12 +172,9 @@ Java_com_example_comerune_speech_infrastructure_engine_NativeVoicevoxBridge_nati
             g_synthesizer, textStr.c_str(), styleId, options,
             &wavLength, &wav);
     if (result != VOICEVOX_RESULT_OK) {
-        // Truncate text in log to avoid flooding with long user content
-        std::string truncated = textStr.length() > 50
-                ? textStr.substr(0, 50) + "..."
-                : textStr;
-        LOGE("TTS synthesis failed for text '%s': %s",
-             truncated.c_str(), voicevox_error_result_to_message(result));
+        // Omit user text from logs to avoid leaking private comment content
+        LOGE("TTS synthesis failed (text length=%zu): %s",
+             textStr.length(), voicevox_error_result_to_message(result));
         return nullptr;
     }
 

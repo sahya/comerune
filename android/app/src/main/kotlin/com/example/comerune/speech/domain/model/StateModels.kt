@@ -8,6 +8,15 @@ enum class TtsEngineState {
     ERROR
 }
 
+/**
+ * Represents the current state of the WAV audio player.
+ *
+ * - [IDLE]: The player is ready and waiting for audio, or has finished playing the
+ *   previous item. This is the initial state and the state after successful playback.
+ * - [PLAYING]: Audio is actively being played.
+ * - [STOPPED]: Playback was manually interrupted (e.g., by a skip or stop command).
+ * - [ERROR]: An unrecoverable playback failure occurred.
+ */
 enum class PlayerState {
     IDLE,
     PLAYING,

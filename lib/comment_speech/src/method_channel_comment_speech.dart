@@ -11,8 +11,9 @@ import 'models/submit_result.dart';
 /// EventChannel that delegates to the Android Kotlin plugin.
 class MethodChannelCommentSpeech implements CommentSpeechPlatform {
   static const _methodChannel =
-      MethodChannel('jp.example.comment_speech/methods');
-  static const _eventChannel = EventChannel('jp.example.comment_speech/events');
+      MethodChannel('com.example.comerune.speech/methods');
+  static const _eventChannel =
+      EventChannel('com.example.comerune.speech/events');
 
   late final Stream<SpeechEvent> _events =
       _eventChannel.receiveBroadcastStream().map(
