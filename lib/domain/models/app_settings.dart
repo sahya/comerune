@@ -207,6 +207,9 @@ class AppSettings {
     required this.commentFontSize,
     required this.autoNicknameRegistration,
     required this.autoSaveCommentLog,
+    required this.statisticsEnabled,
+    required this.statisticsViewerCommentEnabled,
+    required this.statisticsActiveUserEnabled,
     required this.starPrefixHidingEnabled,
     required this.slashPrefixSkipEnabled,
     required this.debugMode,
@@ -244,6 +247,9 @@ class AppSettings {
     commentFontSize: commentFontSizeDefault,
     autoNicknameRegistration: true,
     autoSaveCommentLog: false,
+    statisticsEnabled: false,
+    statisticsViewerCommentEnabled: true,
+    statisticsActiveUserEnabled: true,
     starPrefixHidingEnabled: false,
     slashPrefixSkipEnabled: true,
     debugMode: false,
@@ -279,6 +285,9 @@ class AppSettings {
   final double commentFontSize;
   final bool autoNicknameRegistration;
   final bool autoSaveCommentLog;
+  final bool statisticsEnabled;
+  final bool statisticsViewerCommentEnabled;
+  final bool statisticsActiveUserEnabled;
 
   /// When true, comments starting with `☆` have their body hidden
   /// (tap to reveal) and are skipped for TTS.
@@ -413,6 +422,9 @@ class AppSettings {
     double? commentFontSize,
     bool? autoNicknameRegistration,
     bool? autoSaveCommentLog,
+    bool? statisticsEnabled,
+    bool? statisticsViewerCommentEnabled,
+    bool? statisticsActiveUserEnabled,
     bool? starPrefixHidingEnabled,
     bool? slashPrefixSkipEnabled,
     bool? debugMode,
@@ -446,6 +458,11 @@ class AppSettings {
       autoNicknameRegistration:
           autoNicknameRegistration ?? this.autoNicknameRegistration,
       autoSaveCommentLog: autoSaveCommentLog ?? this.autoSaveCommentLog,
+      statisticsEnabled: statisticsEnabled ?? this.statisticsEnabled,
+      statisticsViewerCommentEnabled:
+          statisticsViewerCommentEnabled ?? this.statisticsViewerCommentEnabled,
+      statisticsActiveUserEnabled:
+          statisticsActiveUserEnabled ?? this.statisticsActiveUserEnabled,
       starPrefixHidingEnabled:
           starPrefixHidingEnabled ?? this.starPrefixHidingEnabled,
       slashPrefixSkipEnabled:
