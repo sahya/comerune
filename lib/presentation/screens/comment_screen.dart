@@ -47,23 +47,25 @@ String _commentLineText({
   required AppMessage message,
   required bool showUserName,
   String? resolvedUserName,
+  String? contentOverride,
 }) {
   final String timestamp = _formatHms(message.timestamp);
+  final String content = contentOverride ?? message.content;
 
   if (!showUserName) {
-    return '$timestamp  ${message.content}';
+    return '$timestamp  $content';
   }
 
   final String userId = message.userId ?? '';
 
   if (userId.isEmpty) {
-    return '$timestamp  ${message.content}';
+    return '$timestamp  $content';
   }
 
   final String displayName =
       resolvedUserName != null ? '$resolvedUserName ($userId)' : userId;
 
-  return '$timestamp  $displayName  ${message.content}';
+  return '$timestamp  $displayName  $content';
 }
 
 enum CommentSortOrder { ascending, descending }
@@ -93,6 +95,7 @@ class CommentScreen extends StatefulWidget {
     this.ngUserIds = const <String>{},
     this.ngWords = const <String>[],
     this.onToggleNgUser,
+    this.starPrefixHidingEnabled = false,
     this.userColorMap = const <String, int>{},
     this.onUserColorChanged,
     this.onUserColorRemoved,
@@ -137,6 +140,10 @@ class CommentScreen extends StatefulWidget {
 
   /// Called to toggle NG status for a user.
   final void Function(String userId)? onToggleNgUser;
+
+  /// When true, comments starting with `☆` have their body hidden
+  /// and can be revealed by tapping.
+  final bool starPrefixHidingEnabled;
 
   /// Per-user comment color map. Keys are user IDs, values are ARGB32 ints.
   final Map<String, int> userColorMap;
@@ -437,6 +444,7 @@ class _CommentScreenState extends State<CommentScreen> {
                         resolvedUserName: _resolveDisplayName(message),
                         showUserName: widget.showUserName,
                         fontSize: widget.commentFontSize,
+                        starPrefixHidingEnabled: widget.starPrefixHidingEnabled,
                         userColor: userColor != null
                             ? colorFromARGB32(userColor)
                             : null,
@@ -1506,13 +1514,14 @@ class _PinnedCommentRow extends StatelessWidget {
   }
 }
 
-class _CommentRow extends StatelessWidget {
+class _CommentRow extends StatefulWidget {
   const _CommentRow({
     required this.message,
     required this.themeColors,
     this.resolvedUserName,
     this.showUserName = true,
     required this.fontSize,
+    this.starPrefixHidingEnabled = false,
     this.userColor,
     this.onLongPress,
   });
@@ -1522,26 +1531,52 @@ class _CommentRow extends StatelessWidget {
   final String? resolvedUserName;
   final bool showUserName;
   final double fontSize;
+  final bool starPrefixHidingEnabled;
   final Color? userColor;
   final VoidCallback? onLongPress;
 
   @override
+  State<_CommentRow> createState() => _CommentRowState();
+}
+
+class _CommentRowState extends State<_CommentRow> {
+  bool _revealed = false;
+
+  bool get _isStarHidden =>
+      widget.starPrefixHidingEnabled &&
+      widget.message.content.startsWith('☆') &&
+      !_revealed;
+
+  @override
+  void didUpdateWidget(covariant _CommentRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.message.id != widget.message.id) {
+      _revealed = false;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final bool hidden = _isStarHidden;
     return GestureDetector(
-      key: Key('comment-row-${message.id}'),
-      onLongPress: onLongPress,
+      key: Key('comment-row-${widget.message.id}'),
+      onLongPress: widget.onLongPress,
+      onTap: hidden ? () => setState(() => _revealed = true) : null,
       child: Container(
-        color: _backgroundColor(message),
+        color: _backgroundColor(widget.message),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
         child: Text(
           _commentLineText(
-            message: message,
-            showUserName: showUserName,
-            resolvedUserName: resolvedUserName,
+            message: widget.message,
+            showUserName: widget.showUserName,
+            resolvedUserName: widget.resolvedUserName,
+            contentOverride:
+                hidden ? 'ネタバレ防止: タップで表示' : null,
           ),
           style: TextStyle(
-            fontSize: fontSize,
-            color: userColor,
+            fontSize: widget.fontSize,
+            color: hidden ? Colors.grey : widget.userColor,
+            fontStyle: hidden ? FontStyle.italic : null,
           ),
         ),
       ),
@@ -1550,14 +1585,14 @@ class _CommentRow extends StatelessWidget {
 
   Color? _backgroundColor(AppMessage message) {
     if (_isLegacyUnsupportedSystemMessage(message)) {
-      return themeColors.notificationMessageBackground;
+      return widget.themeColors.notificationMessageBackground;
     }
 
     switch (message.type) {
       case AppMessageType.operator:
-        return themeColors.operatorMessageBackground;
+        return widget.themeColors.operatorMessageBackground;
       case AppMessageType.notification:
-        return themeColors.notificationMessageBackground;
+        return widget.themeColors.notificationMessageBackground;
       case AppMessageType.chat:
       // TODO(PR#20-O1): gift/nicoad は _shouldDisplayMessage で除外済みのため
       //   ここには到達しない。将来 gift/nicoad を表示する際に背景色を定義する。
