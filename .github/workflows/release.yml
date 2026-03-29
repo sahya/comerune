@@ -37,6 +37,7 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
+          fetch-tags: true
 
       - name: Check tag does not already exist
         env:
@@ -78,6 +79,8 @@ jobs:
 
   # TODO: チーム拡大時は environment protection rules + required reviewers を設定し、
   #       リリース実行者を制限する（workflow_dispatch は write 権限者全員が実行可能なため）
+  # NOTE: タグ push 後に Release 作成が失敗した場合、孤児タグが残る。
+  #       再実行するには手動でタグを削除する必要がある: git push --delete origin <tag>
   release:
     needs: ci
     runs-on: ubuntu-latest
@@ -90,6 +93,7 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
+          fetch-tags: true
 
       - name: Create and push tag
         env:
