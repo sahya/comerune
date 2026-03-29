@@ -325,8 +325,7 @@ class NdgrProtobufDecoder {
           wireType == _WireType.lengthDelimited) {
         // NicoliveMessage.chat / NicoliveMessage.overflowed_chat
         chat = _decodeChat(reader.readLengthDelimited());
-      } else if (fieldNumber == 8 &&
-          wireType == _WireType.lengthDelimited) {
+      } else if (fieldNumber == 8 && wireType == _WireType.lengthDelimited) {
         // NicoliveMessage.statistics
         statistics = _decodeStatistics(reader.readLengthDelimited());
       } else {
