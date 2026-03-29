@@ -60,6 +60,8 @@ jobs:
       - name: Run tests
         run: flutter test
 
+  # TODO: チーム拡大時は environment protection rules + required reviewers を設定し、
+  #       リリース実行者を制限する（workflow_dispatch は write 権限者全員が実行可能なため）
   release:
     needs: ci
     runs-on: ubuntu-latest
