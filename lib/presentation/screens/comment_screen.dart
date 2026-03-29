@@ -5,11 +5,13 @@ import 'package:flutter/rendering.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../data/comment_log/comment_log_writer.dart';
+import '../../domain/comment_log/comment_log_stats.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
 import '../theme/app_theme.dart';
+import 'comment_log_stats_sheet.dart';
 import 'user_detail_sheet.dart';
 
 const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
@@ -520,6 +522,10 @@ class _CommentScreenState extends State<CommentScreen> {
       unawaited(_saveLogAuto());
     }
 
+    if (!_isStoppingForExit && _isStatsTrigger(currentStatus)) {
+      _showStatsSheet();
+    }
+
     if (_lastStatus != ConnectionStatus.failed &&
         currentStatus == ConnectionStatus.failed) {
       final String message = _buildFailedSnackbarMessage();
@@ -711,6 +717,55 @@ class _CommentScreenState extends State<CommentScreen> {
       case ConnectionStatus.reconnecting:
         return false;
     }
+  }
+
+  bool _isStatsTrigger(ConnectionStatus status) {
+    if (_lastStatus == status) {
+      return false;
+    }
+    switch (status) {
+      case ConnectionStatus.stopped:
+      case ConnectionStatus.ended:
+        return true;
+      case ConnectionStatus.idle:
+      case ConnectionStatus.connectingSessionWs:
+      case ConnectionStatus.resolvingEndpoints:
+      case ConnectionStatus.streamingNdgr:
+      case ConnectionStatus.streamingLegacy:
+      case ConnectionStatus.reconnecting:
+      case ConnectionStatus.failed:
+        return false;
+    }
+  }
+
+  void _showStatsSheet() {
+    final bool hasMessages = widget.messages.any(_shouldDisplayMessage);
+    if (!hasMessages) {
+      return;
+    }
+
+    final CommentLogStats stats = CommentLogStats.fromMessages(
+      widget.messages,
+      ngUserIds: widget.ngUserIds,
+    );
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        builder: (BuildContext sheetContext) {
+          return CommentLogStatsSheet(
+            stats: stats,
+            themeMode: widget.themeMode,
+            programTitle: widget.programTitle,
+            lv: widget.lv,
+          );
+        },
+      );
+    });
   }
 
   Future<void> _saveLogManual() async {
