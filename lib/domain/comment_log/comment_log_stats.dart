@@ -1,4 +1,31 @@
+import 'dart:math' as math;
+
+import 'package:meta/meta.dart';
+
 import '../models/app_message.dart';
+
+/// A detected peak period with representative comments.
+@immutable
+class HighlightPeak {
+  const HighlightPeak({
+    required this.minuteOffset,
+    required this.label,
+    required this.commentCount,
+    required this.representativeComments,
+  });
+
+  /// Minute offset from broadcast start.
+  final int minuteOffset;
+
+  /// Human-readable label (e.g. "開始25分").
+  final String label;
+
+  /// Number of comments in this peak minute.
+  final int commentCount;
+
+  /// Up to 3 representative comments from this peak minute.
+  final List<AppMessage> representativeComments;
+}
 
 /// Statistics summary computed from a list of [AppMessage].
 ///
@@ -151,6 +178,86 @@ class CommentLogStats {
       return '$hours時間';
     }
     return '$hours時間$minutes分';
+  }
+
+  /// Detects the top peak minutes from [messages] using [commentsPerMinute].
+  ///
+  /// A peak is a minute whose comment count exceeds the mean + 1 standard
+  /// deviation. Returns up to [maxPeaks] peaks sorted by comment count
+  /// descending. Each peak includes up to 3 representative comments.
+  static List<HighlightPeak> detectPeaks(
+    List<AppMessage> messages, {
+    required Map<int, int> commentsPerMinute,
+    Set<String> ngUserIds = const <String>{},
+    int maxPeaks = 3,
+  }) {
+    if (commentsPerMinute.isEmpty) {
+      return const <HighlightPeak>[];
+    }
+
+    final List<int> counts = commentsPerMinute.values.toList();
+    final double mean =
+        counts.fold<int>(0, (int a, int b) => a + b) / counts.length;
+    double variance = 0;
+    for (final int c in counts) {
+      variance += (c - mean) * (c - mean);
+    }
+    variance /= counts.length;
+    final double stddev = variance > 0 ? math.sqrt(variance) : 0;
+    final double threshold = mean + stddev;
+
+    // Minimum threshold: at least 2 comments/minute to be a peak.
+    final double effectiveThreshold = threshold < 2 ? 2 : threshold;
+
+    final List<MapEntry<int, int>> candidates = commentsPerMinute.entries
+        .where((MapEntry<int, int> e) => e.value >= effectiveThreshold)
+        .toList()
+      ..sort((MapEntry<int, int> a, MapEntry<int, int> b) =>
+          b.value.compareTo(a.value));
+
+    if (candidates.isEmpty) {
+      return const <HighlightPeak>[];
+    }
+
+    // Filter messages once.
+    final List<AppMessage> filtered = messages.where((AppMessage m) {
+      if (m.type == AppMessageType.gift || m.type == AppMessageType.nicoad) {
+        return false;
+      }
+      final String? userId = m.userId;
+      if (userId != null && ngUserIds.contains(userId)) {
+        return false;
+      }
+      return true;
+    }).toList(growable: false);
+
+    if (filtered.isEmpty) {
+      return const <HighlightPeak>[];
+    }
+
+    final DateTime first = filtered.first.timestamp;
+
+    // Group filtered messages by minute offset.
+    final Map<int, List<AppMessage>> messagesByMinute =
+        <int, List<AppMessage>>{};
+    for (final AppMessage m in filtered) {
+      final int minute = m.timestamp.difference(first).inMinutes;
+      messagesByMinute.putIfAbsent(minute, () => <AppMessage>[]).add(m);
+    }
+
+    final List<HighlightPeak> peaks = <HighlightPeak>[];
+    for (final MapEntry<int, int> entry in candidates.take(maxPeaks)) {
+      final List<AppMessage> minuteMessages =
+          messagesByMinute[entry.key] ?? const <AppMessage>[];
+      peaks.add(HighlightPeak(
+        minuteOffset: entry.key,
+        label: _formatPeakLabel(entry.key),
+        commentCount: entry.value,
+        representativeComments: minuteMessages.take(3).toList(growable: false),
+      ));
+    }
+
+    return peaks;
   }
 
   static String _formatPeakLabel(int minuteOffset) {

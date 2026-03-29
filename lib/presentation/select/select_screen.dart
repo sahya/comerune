@@ -412,6 +412,8 @@ class _SelectScreenState extends State<SelectScreen> {
               _settingsNotifier.value.statisticsViewerCommentEnabled,
           statisticsActiveUserEnabled:
               _settingsNotifier.value.statisticsActiveUserEnabled,
+          highlightPickupEnabled:
+              _settingsNotifier.value.highlightPickupEnabled,
           viewerCount: widget.statisticsStore?.viewerCount,
           totalCommentCount: widget.statisticsStore?.totalCommentCount ?? 0,
           activeUserCount: widget.statisticsStore?.activeUserCount ?? 0,
