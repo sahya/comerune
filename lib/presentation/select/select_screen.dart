@@ -573,31 +573,45 @@ class _LoginStatusBanner extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
     if (loggedIn) {
       return Semantics(
         label: 'ニコニコ ログイン済み',
         child: Container(
           key: const Key('login-status-banner-ok'),
           width: double.infinity,
-          color: Colors.green.shade50,
+          color: isDark ? const Color(0xFF1B3A1B) : Colors.green.shade50,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: const Row(
+          child: Row(
             children: <Widget>[
-              Icon(Icons.check_circle, color: Colors.green, size: 18),
-              SizedBox(width: 8),
-              Text('ニコニコ ログイン済み'),
+              Icon(Icons.check_circle,
+                  color: isDark ? const Color(0xFF66BB6A) : Colors.green,
+                  size: 18),
+              const SizedBox(width: 8),
+              Text(
+                'ニコニコ ログイン済み',
+                style: TextStyle(
+                  color: isDark ? const Color(0xFFE0E0E0) : null,
+                ),
+              ),
             ],
           ),
         ),
       );
     }
 
+    final Color bannerBackground =
+        isDark ? const Color(0xFF3E2700) : Colors.orange.shade50;
+    final Color iconColor =
+        isDark ? const Color(0xFFFFB74D) : Colors.orange.shade700;
+
     return Semantics(
       button: true,
       label: 'ログインが必要です。タップして設定を開く',
       child: Material(
         key: const Key('login-status-banner-required'),
-        color: Colors.orange.shade50,
+        color: bannerBackground,
         child: InkWell(
           onTap: onTapLogin,
           child: Container(
@@ -606,12 +620,17 @@ class _LoginStatusBanner extends StatelessWidget {
             child: Row(
               children: <Widget>[
                 Icon(Icons.warning_amber_rounded,
-                    color: Colors.orange.shade700, size: 18),
+                    color: iconColor, size: 18),
                 const SizedBox(width: 8),
-                const Expanded(
-                  child: Text('ログインが必要です。タップして設定を開く'),
+                Expanded(
+                  child: Text(
+                    'ログインが必要です。タップして設定を開く',
+                    style: TextStyle(
+                      color: isDark ? const Color(0xFFE0E0E0) : null,
+                    ),
+                  ),
                 ),
-                Icon(Icons.chevron_right, color: Colors.orange.shade700),
+                Icon(Icons.chevron_right, color: iconColor),
               ],
             ),
           ),
