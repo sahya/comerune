@@ -15,6 +15,12 @@ class AppThemeColors {
     required this.subtleTextColor,
     required this.ngUserActiveColor,
     required this.sheetHandleColor,
+    required this.loginBannerOkBackground,
+    required this.loginBannerOkForeground,
+    required this.loginBannerOkIcon,
+    required this.loginBannerWarningBackground,
+    required this.loginBannerWarningForeground,
+    required this.loginBannerWarningIcon,
   });
 
   final Color programTitleBarBackground;
@@ -27,6 +33,12 @@ class AppThemeColors {
   final Color subtleTextColor;
   final Color ngUserActiveColor;
   final Color sheetHandleColor;
+  final Color loginBannerOkBackground;
+  final Color loginBannerOkForeground;
+  final Color loginBannerOkIcon;
+  final Color loginBannerWarningBackground;
+  final Color loginBannerWarningForeground;
+  final Color loginBannerWarningIcon;
 }
 
 class AppTheme {
@@ -43,6 +55,12 @@ class AppTheme {
     subtleTextColor: Color(0xFF757575),
     ngUserActiveColor: Color(0xFFF44336),
     sheetHandleColor: Color(0xFFBDBDBD),
+    loginBannerOkBackground: Color(0xFFE8F5E9),
+    loginBannerOkForeground: Color(0xFF1B5E20),
+    loginBannerOkIcon: Color(0xFF388E3C),
+    loginBannerWarningBackground: Color(0xFFFFF3E0),
+    loginBannerWarningForeground: Color(0xFF4E342E),
+    loginBannerWarningIcon: Color(0xFFE65100),
   );
 
   static const AppThemeColors _darkColors = AppThemeColors(
@@ -56,6 +74,12 @@ class AppTheme {
     subtleTextColor: Color(0xFF90A4AE),
     ngUserActiveColor: Color(0xFFEF5350),
     sheetHandleColor: Color(0xFF546E7A),
+    loginBannerOkBackground: Color(0xFF1B3A1B),
+    loginBannerOkForeground: Color(0xFFE0E0E0),
+    loginBannerOkIcon: Color(0xFF66BB6A),
+    loginBannerWarningBackground: Color(0xFF3E2700),
+    loginBannerWarningForeground: Color(0xFFE0E0E0),
+    loginBannerWarningIcon: Color(0xFFFFB74D),
   );
 
   /// P-type: avoids red-green confusion. Uses blue/orange contrast.
@@ -70,6 +94,12 @@ class AppTheme {
     subtleTextColor: Color(0xFF757575),
     ngUserActiveColor: Color(0xFFE65100),
     sheetHandleColor: Color(0xFFBDBDBD),
+    loginBannerOkBackground: Color(0xFFE3F2FD),
+    loginBannerOkForeground: Color(0xFF0D47A1),
+    loginBannerOkIcon: Color(0xFF1565C0),
+    loginBannerWarningBackground: Color(0xFFFFF3E0),
+    loginBannerWarningForeground: Color(0xFF4E342E),
+    loginBannerWarningIcon: Color(0xFFE65100),
   );
 
   /// D-type: avoids red-green confusion. Uses purple/amber contrast
@@ -85,6 +115,12 @@ class AppTheme {
     subtleTextColor: Color(0xFF757575),
     ngUserActiveColor: Color(0xFFBF360C),
     sheetHandleColor: Color(0xFFBDBDBD),
+    loginBannerOkBackground: Color(0xFFEDE7F6),
+    loginBannerOkForeground: Color(0xFF311B92),
+    loginBannerOkIcon: Color(0xFF4527A0),
+    loginBannerWarningBackground: Color(0xFFFFF8E1),
+    loginBannerWarningForeground: Color(0xFF4E342E),
+    loginBannerWarningIcon: Color(0xFFBF360C),
   );
 
   /// T-type: avoids blue-yellow confusion. Uses red/cyan contrast.
@@ -99,6 +135,12 @@ class AppTheme {
     subtleTextColor: Color(0xFF757575),
     ngUserActiveColor: Color(0xFFC62828),
     sheetHandleColor: Color(0xFFBDBDBD),
+    loginBannerOkBackground: Color(0xFFE0F2F1),
+    loginBannerOkForeground: Color(0xFF004D40),
+    loginBannerOkIcon: Color(0xFF00695C),
+    loginBannerWarningBackground: Color(0xFFFFEBEE),
+    loginBannerWarningForeground: Color(0xFF4E342E),
+    loginBannerWarningIcon: Color(0xFFC62828),
   );
 
   static AppThemeColors colorsFor(AppThemeMode mode) {
