@@ -271,6 +271,44 @@ void main() {
       themeNotifier.dispose();
     });
 
+    testWidgets('slash prefix skip toggle persists value (default ON)', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      // Default should be ON
+      AppSettings loaded = await settingsStore.load();
+      expect(loaded.slashPrefixSkipEnabled, isTrue);
+
+      await _toggleSwitchByKey(tester, const Key('slash-prefix-skip-switch'));
+
+      loaded = await settingsStore.load();
+      expect(loaded.slashPrefixSkipEnabled, isFalse);
+    });
+
+    testWidgets('star prefix hiding toggle persists value (default OFF)', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      // Default should be OFF
+      AppSettings loaded = await settingsStore.load();
+      expect(loaded.starPrefixHidingEnabled, isFalse);
+
+      await _toggleSwitchByKey(tester, const Key('star-prefix-hiding-switch'));
+
+      loaded = await settingsStore.load();
+      expect(loaded.starPrefixHidingEnabled, isTrue);
+    });
+
     testWidgets('saves text fields when focus is lost', (
       WidgetTester tester,
     ) async {

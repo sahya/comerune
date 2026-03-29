@@ -382,6 +382,8 @@ class _SelectScreenState extends State<SelectScreen> {
           ngUserIds: _settingsNotifier.value.ngUserIdSet,
           ngWords: _settingsNotifier.value.ngWordList,
           onToggleNgUser: _toggleNgUser,
+          starPrefixHidingEnabled:
+              _settingsNotifier.value.starPrefixHidingEnabled,
           userColorMap: _userColorMap,
           onUserColorChanged:
               widget.userAttributeStore != null ? _onUserColorChanged : null,

@@ -207,6 +207,8 @@ class AppSettings {
     required this.commentFontSize,
     required this.autoNicknameRegistration,
     required this.autoSaveCommentLog,
+    required this.starPrefixHidingEnabled,
+    required this.slashPrefixSkipEnabled,
     required this.debugMode,
   }) : assert(
           commentFontSize >= commentFontSizeMin &&
@@ -242,6 +244,8 @@ class AppSettings {
     commentFontSize: commentFontSizeDefault,
     autoNicknameRegistration: true,
     autoSaveCommentLog: false,
+    starPrefixHidingEnabled: false,
+    slashPrefixSkipEnabled: true,
     debugMode: false,
   );
 
@@ -275,6 +279,15 @@ class AppSettings {
   final double commentFontSize;
   final bool autoNicknameRegistration;
   final bool autoSaveCommentLog;
+
+  /// When true, comments starting with `☆` have their body hidden
+  /// (tap to reveal) and are skipped for TTS.
+  final bool starPrefixHidingEnabled;
+
+  /// When true, comments starting with `/` are skipped for TTS
+  /// but displayed normally.
+  final bool slashPrefixSkipEnabled;
+
   final bool debugMode;
 
   /// Parses [ngWords] into a list of lower-cased NG word strings.
@@ -400,6 +413,8 @@ class AppSettings {
     double? commentFontSize,
     bool? autoNicknameRegistration,
     bool? autoSaveCommentLog,
+    bool? starPrefixHidingEnabled,
+    bool? slashPrefixSkipEnabled,
     bool? debugMode,
   }) {
     return AppSettings(
@@ -431,6 +446,10 @@ class AppSettings {
       autoNicknameRegistration:
           autoNicknameRegistration ?? this.autoNicknameRegistration,
       autoSaveCommentLog: autoSaveCommentLog ?? this.autoSaveCommentLog,
+      starPrefixHidingEnabled:
+          starPrefixHidingEnabled ?? this.starPrefixHidingEnabled,
+      slashPrefixSkipEnabled:
+          slashPrefixSkipEnabled ?? this.slashPrefixSkipEnabled,
       debugMode: debugMode ?? this.debugMode,
     );
   }

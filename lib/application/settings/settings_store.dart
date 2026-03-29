@@ -66,6 +66,10 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       'settings.comment.autoNicknameRegistration';
   static const String _kAutoSaveCommentLog =
       'settings.comment.autoSaveCommentLog';
+  static const String _kStarPrefixHidingEnabled =
+      'settings.filter.starPrefixHiding';
+  static const String _kSlashPrefixSkipEnabled =
+      'settings.filter.slashPrefixSkip';
   static const String _kDebugMode = 'settings.debugMode';
 
   @override
@@ -121,6 +125,10 @@ class SharedPreferencesSettingsStore implements SettingsStore {
           defaults.autoNicknameRegistration,
       autoSaveCommentLog:
           _prefs.getBool(_kAutoSaveCommentLog) ?? defaults.autoSaveCommentLog,
+      starPrefixHidingEnabled: _prefs.getBool(_kStarPrefixHidingEnabled) ??
+          defaults.starPrefixHidingEnabled,
+      slashPrefixSkipEnabled: _prefs.getBool(_kSlashPrefixSkipEnabled) ??
+          defaults.slashPrefixSkipEnabled,
       debugMode: _prefs.getBool(_kDebugMode) ?? defaults.debugMode,
     );
   }
@@ -165,6 +173,14 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       settings.autoNicknameRegistration,
     );
     await _prefs.setBool(_kAutoSaveCommentLog, settings.autoSaveCommentLog);
+    await _prefs.setBool(
+      _kStarPrefixHidingEnabled,
+      settings.starPrefixHidingEnabled,
+    );
+    await _prefs.setBool(
+      _kSlashPrefixSkipEnabled,
+      settings.slashPrefixSkipEnabled,
+    );
     await _prefs.setBool(_kDebugMode, settings.debugMode);
   }
 }

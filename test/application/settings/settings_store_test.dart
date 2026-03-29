@@ -153,6 +153,52 @@ void main() {
       expect(loaded.autoNicknameRegistration, isFalse);
     });
 
+    test('starPrefixHidingEnabled defaults to false when not stored', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.starPrefixHidingEnabled, isFalse);
+    });
+
+    test('round-trips starPrefixHidingEnabled value', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        starPrefixHidingEnabled: true,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.starPrefixHidingEnabled, isTrue);
+    });
+
+    test('slashPrefixSkipEnabled defaults to true when not stored', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.slashPrefixSkipEnabled, isTrue);
+    });
+
+    test('round-trips slashPrefixSkipEnabled value', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        slashPrefixSkipEnabled: false,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.slashPrefixSkipEnabled, isFalse);
+    });
+
     test('themeMode defaults to light when not stored', () async {
       final SharedPreferencesSettingsStore store =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
