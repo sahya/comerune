@@ -4,6 +4,28 @@ import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
 import '../theme/app_theme.dart';
 
+/// Predefined color palette entries with Japanese labels for accessibility.
+const List<({Color color, String label})> kUserColorPaletteEntries =
+    <({Color color, String label})>[
+  (color: Color(0xFFE53935), label: '赤'),
+  (color: Color(0xFFD81B60), label: 'ピンク'),
+  (color: Color(0xFF8E24AA), label: '紫'),
+  (color: Color(0xFF3949AB), label: '藍'),
+  (color: Color(0xFF1E88E5), label: '青'),
+  (color: Color(0xFF00ACC1), label: '水色'),
+  (color: Color(0xFF00897B), label: '青緑'),
+  (color: Color(0xFF43A047), label: '緑'),
+  (color: Color(0xFFFF8F00), label: '琥珀'),
+  (color: Color(0xFFFF6D00), label: 'オレンジ'),
+  (color: Color(0xFF6D4C41), label: '茶'),
+  (color: Color(0xFF546E7A), label: '灰青'),
+];
+
+/// Predefined color palette for user comment colors.
+List<Color> get kUserColorPalette => kUserColorPaletteEntries
+    .map((({Color color, String label}) e) => e.color)
+    .toList();
+
 class UserDetailSheet extends StatelessWidget {
   const UserDetailSheet({
     super.key,
@@ -13,6 +35,9 @@ class UserDetailSheet extends StatelessWidget {
     required this.isNgUser,
     required this.onToggleNgUser,
     this.themeMode = AppThemeMode.light,
+    this.currentColorValue,
+    this.onColorChanged,
+    this.onColorRemoved,
   });
 
   final String userId;
@@ -21,6 +46,15 @@ class UserDetailSheet extends StatelessWidget {
   final bool isNgUser;
   final VoidCallback onToggleNgUser;
   final AppThemeMode themeMode;
+
+  /// Current custom color value for this user, or null if using default.
+  final int? currentColorValue;
+
+  /// Called when the user selects a color from the palette.
+  final void Function(int colorValue)? onColorChanged;
+
+  /// Called when the user removes the custom color (resets to default).
+  final void Function()? onColorRemoved;
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +75,15 @@ class UserDetailSheet extends StatelessWidget {
           children: <Widget>[
             _buildHandle(themeColors),
             _buildHeader(context, themeColors),
+            if (onColorChanged != null) ...<Widget>[
+              const Divider(height: 1),
+              _ColorPaletteRow(
+                key: const Key('user-color-palette'),
+                currentColorValue: currentColorValue,
+                onColorChanged: onColorChanged!,
+                onColorRemoved: onColorRemoved,
+              ),
+            ],
             const Divider(height: 1),
             Expanded(
               child: _buildCommentList(
@@ -197,6 +240,127 @@ class _NgUserButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         minimumSize: Size.zero,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    );
+  }
+}
+
+class _ColorPaletteRow extends StatelessWidget {
+  const _ColorPaletteRow({
+    super.key,
+    required this.currentColorValue,
+    required this.onColorChanged,
+    this.onColorRemoved,
+  });
+
+  final int? currentColorValue;
+  final void Function(int colorValue) onColorChanged;
+  final void Function()? onColorRemoved;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Text(
+                'コメント色',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const Spacer(),
+              if (currentColorValue != null)
+                Semantics(
+                  button: true,
+                  label: 'コメント色をリセット',
+                  child: InkWell(
+                    key: const Key('user-color-reset-button'),
+                    onTap: onColorRemoved,
+                    borderRadius: BorderRadius.circular(4),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 2,
+                      ),
+                      child: Text(
+                        'リセット',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              for (final ({Color color, String label}) entry
+                  in kUserColorPaletteEntries)
+                _ColorCircle(
+                  key: Key('user-color-${entry.color.toARGB32()}'),
+                  color: entry.color,
+                  colorLabel: entry.label,
+                  isSelected: currentColorValue == entry.color.toARGB32(),
+                  onTap: () => onColorChanged(entry.color.toARGB32()),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ColorCircle extends StatelessWidget {
+  const _ColorCircle({
+    super.key,
+    required this.color,
+    required this.colorLabel,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final Color color;
+  final String colorLabel;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: isSelected ? '$colorLabel 選択中' : colorLabel,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border:
+                isSelected ? Border.all(color: Colors.white, width: 2) : null,
+            boxShadow: isSelected
+                ? <BoxShadow>[
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.6),
+                      blurRadius: 4,
+                      spreadRadius: 1,
+                    ),
+                  ]
+                : null,
+          ),
+          child: isSelected
+              ? const Icon(Icons.check, color: Colors.white, size: 18)
+              : null,
+        ),
       ),
     );
   }

@@ -38,4 +38,10 @@ class InMemorySharedPreferences implements SharedPreferencesLike {
     _values[key] = value;
     return true;
   }
+
+  @override
+  Future<bool> remove(String key) async {
+    _values.remove(key);
+    return true;
+  }
 }
