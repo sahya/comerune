@@ -145,7 +145,9 @@ class ProgramInfoResolver {
         _extractBroadcasterInfo(data);
 
     log(
-      'Resolved NDGR viewUri for $lv via programinfo',
+      'Resolved $lv: viewUri=$viewUri, title=$title, '
+      'supplierUserId=${broadcasterInfo.userId}, '
+      'broadcasterName=${broadcasterInfo.name}',
       name: 'ProgramInfoResolver',
     );
     return ProgramInfo(
@@ -174,9 +176,18 @@ class ProgramInfoResolver {
         final Object? name = first['name'];
         final String? nameStr = name is String && name.isNotEmpty ? name : null;
         if (id != null) {
+          log(
+            'Extracted broadcaster from data.broadcaster[0]: '
+            'id=$id, name=$nameStr',
+            name: 'ProgramInfoResolver',
+          );
           return (userId: id.toString(), name: nameStr);
         }
       }
+      log(
+        'data.broadcaster exists but no valid id: $broadcaster',
+        name: 'ProgramInfoResolver',
+      );
     }
 
     // Fallback: data.supplier.programProviderId (undocumented but observed).
@@ -184,10 +195,19 @@ class ProgramInfoResolver {
     if (supplier is Map<String, dynamic>) {
       final Object? providerId = supplier['programProviderId'];
       if (providerId != null) {
+        log(
+          'Extracted broadcaster from data.supplier fallback: '
+          'programProviderId=$providerId',
+          name: 'ProgramInfoResolver',
+        );
         return (userId: providerId.toString(), name: null);
       }
     }
 
+    log(
+      'No broadcaster info found in response',
+      name: 'ProgramInfoResolver',
+    );
     return (userId: null, name: null);
   }
 

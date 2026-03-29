@@ -134,13 +134,19 @@ class _ComeruneAppState extends State<ComeruneApp> {
       userSessionProvider: () => widget.userSessionStore.load(),
       programInfoResolver: ProgramInfoResolver(),
       onProgramTitleResolved: (String title) {
+        log('Program title resolved: $title', name: 'App');
         _programTitleNotifier.value = title;
       },
       onSupplierUserIdResolved: (String userId) {
+        log('Supplier user ID resolved: $userId', name: 'App');
         _supplierUserIdNotifier.value = userId;
         _userNameResolver.requestResolve(userId);
       },
       onBroadcasterNameResolved: (String userId, String name) {
+        log(
+          'Broadcaster name resolved: userId=$userId, name=$name',
+          name: 'App',
+        );
         _userNameResolver.seedCache(userId, name);
       },
     );
@@ -310,6 +316,11 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
         _onProgramTitleResolved?.call(programInfo.title!);
       }
       if (programInfo.supplierUserId != null) {
+        log(
+          'Broadcasting callbacks: supplierUserId=${programInfo.supplierUserId}, '
+          'broadcasterName=${programInfo.broadcasterName}',
+          name: 'SessionWsClientAdapter',
+        );
         // Seed the cache with the broadcaster name BEFORE requesting
         // resolution, so that requestResolve() sees the cached entry
         // and skips the redundant HTTP call.
@@ -320,6 +331,12 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
           );
         }
         _onSupplierUserIdResolved?.call(programInfo.supplierUserId!);
+      } else {
+        log(
+          'No supplierUserId in programInfo — '
+          'broadcaster callbacks will NOT fire',
+          name: 'SessionWsClientAdapter',
+        );
       }
       log(
         'Resolved NDGR endpoint via programinfo API',

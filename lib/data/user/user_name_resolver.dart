@@ -77,8 +77,16 @@ class UserNameResolver extends ChangeNotifier {
   /// HTTP request to the nickname endpoint.
   void seedCache(String userId, String name) {
     if (name.isEmpty || _disposed) {
+      log(
+        'seedCache skipped: userId=$userId, name=$name, disposed=$_disposed',
+        name: 'UserNameResolver',
+      );
       return;
     }
+    log(
+      'seedCache: userId=$userId, name=$name',
+      name: 'UserNameResolver',
+    );
     _cache[userId] = name;
     _pending.remove(userId);
     _scheduleNotification();
@@ -89,14 +97,35 @@ class UserNameResolver extends ChangeNotifier {
   /// If already cached or pending, this is a no-op.
   /// When the name is resolved, listeners are notified (debounced).
   void requestResolve(String userId) {
-    if (_cache.containsKey(userId) || _pending.contains(userId)) {
+    if (_cache.containsKey(userId)) {
+      log(
+        'requestResolve: userId=$userId already cached '
+        'as "${_cache[userId]}", skip',
+        name: 'UserNameResolver',
+      );
+      return;
+    }
+    if (_pending.contains(userId)) {
+      log(
+        'requestResolve: userId=$userId already pending, skip',
+        name: 'UserNameResolver',
+      );
       return;
     }
 
     if (!_isNumericUserId(userId)) {
+      log(
+        'requestResolve: userId=$userId is not numeric, skip',
+        name: 'UserNameResolver',
+      );
       return;
     }
 
+    log(
+      'requestResolve: queuing userId=$userId '
+      '(queue=${_queue.length}, active=$_activeRequests)',
+      name: 'UserNameResolver',
+    );
     _pending.add(userId);
     _queue.add(userId);
     _drainQueue();
