@@ -12,6 +12,10 @@ class DefaultCommentNormalizer(
     /** Cache of compiled Regex objects keyed by pattern string. Max 100 entries. */
     private val regexCache = java.util.concurrent.ConcurrentHashMap<String, Regex>()
     private val INVALID_REGEX_SENTINEL = Regex("(?!)")
+    /** Shared executor for regex timeout scheduling. Single daemon thread, reused across calls. */
+    private val regexTimeoutExecutor = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+        Thread(r, "regex-timeout").apply { isDaemon = true }
+    }
     private companion object CacheConfig {
         const val MAX_REGEX_CACHE_SIZE = 100
         /** Timeout for a single dictionary regex replacement (milliseconds). */
@@ -289,18 +293,17 @@ class DefaultCommentNormalizer(
                 // interrupted and the replacement is skipped for this rule.
                 val interruptible = InterruptibleCharSequence(result)
                 val thread = Thread.currentThread()
-                val timer = java.util.Timer(true)
-                timer.schedule(object : java.util.TimerTask() {
-                    override fun run() { thread.interrupt() }
-                }, REGEX_TIMEOUT_MS)
+                regexTimeoutExecutor.schedule({
+                    thread.interrupt()
+                }, REGEX_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
                 try {
                     regex.replace(interruptible, safeReplacement)
                 } finally {
-                    timer.cancel()
                     Thread.interrupted() // Clear interrupt flag
                 }
-            } catch (_: Exception) {
-                // Catches StackOverflowError, RuntimeException from interrupt, etc.
+            } catch (_: Throwable) {
+                // Catches Exception (RuntimeException from interrupt) AND Error
+                // (StackOverflowError from deeply nested regex backtracking)
                 result
             }
         }
