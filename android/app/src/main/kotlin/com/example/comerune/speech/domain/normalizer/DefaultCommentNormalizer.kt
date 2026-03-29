@@ -16,11 +16,6 @@ class DefaultCommentNormalizer(
     private val regexTimeoutExecutor = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
         Thread(r, "regex-timeout").apply { isDaemon = true }
     }
-    private companion object CacheConfig {
-        const val MAX_REGEX_CACHE_SIZE = 100
-        /** Timeout for a single dictionary regex replacement (milliseconds). */
-        const val REGEX_TIMEOUT_MS = 500L
-    }
 
     override fun normalize(raw: RawComment, settings: SpeechSettings): NormalizedComment {
         // Step 1: Preprocessing (existing)
@@ -355,6 +350,10 @@ class DefaultCommentNormalizer(
     }
 
     companion object {
+        private const val MAX_REGEX_CACHE_SIZE = 100
+        /** Timeout for a single dictionary regex replacement (milliseconds). */
+        private const val REGEX_TIMEOUT_MS = 500L
+
         private val CONSECUTIVE_SPACES = Regex(" {2,}")
 
         // URL pattern (spec Section 3.5.2)

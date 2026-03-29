@@ -41,6 +41,7 @@ android {
         externalNativeBuild {
             cmake {
                 arguments += "-DANDROID_STL=c++_shared"
+                abiFilters += listOf("arm64-v8a")
             }
         }
     }
@@ -52,6 +53,17 @@ android {
     }
 
     buildTypes {
+        debug {
+            ndk {
+                // x86_64: emulator testing only
+                abiFilters += "x86_64"
+            }
+            externalNativeBuild {
+                cmake {
+                    abiFilters += "x86_64"
+                }
+            }
+        }
         release {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
