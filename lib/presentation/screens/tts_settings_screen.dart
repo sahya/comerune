@@ -238,82 +238,80 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                 ),
                 const SizedBox(height: 12),
                 SettingsSection(
-                    key: const Key('voicevox-section'),
-                    title: 'VOICEVOX',
-                    children: <Widget>[
-                      DropdownButtonFormField<int>(
-                        key: const Key('voicevox-speaker-dropdown'),
-                        value: settings.voicevoxSpeaker,
-                        decoration: const InputDecoration(
-                          labelText: '話者',
-                          border: OutlineInputBorder(),
+                  key: const Key('voicevox-section'),
+                  title: 'VOICEVOX',
+                  children: <Widget>[
+                    DropdownButtonFormField<int>(
+                      key: const Key('voicevox-speaker-dropdown'),
+                      value: settings.voicevoxSpeaker,
+                      decoration: const InputDecoration(
+                        labelText: '話者',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const <DropdownMenuItem<int>>[
+                        DropdownMenuItem<int>(
+                          value: 0,
+                          child: Text('四国めたん・あまあま (ID:0)'),
                         ),
-                        items: const <DropdownMenuItem<int>>[
-                          DropdownMenuItem<int>(
-                            value: 0,
-                            child: Text('四国めたん・あまあま (ID:0)'),
-                          ),
-                        ],
-                        onChanged: (int? value) {
-                          if (value == null) {
-                            return;
-                          }
-                          _updateAndSave(
-                              settings.copyWith(voicevoxSpeaker: value));
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      SettingsDoubleSliderField(
-                        key: const Key('voicevox-speed-slider'),
-                        label: '話速',
-                        min: 0.5,
-                        max: 2.0,
-                        divisions: 15,
-                        value: settings.voicevoxSpeed,
-                        onChanged: (double value) {
-                          _updateAndSave(
-                              settings.copyWith(voicevoxSpeed: value));
-                        },
-                      ),
-                      SettingsDoubleSliderField(
-                        key: const Key('voicevox-pitch-slider'),
-                        label: '音高',
-                        min: -0.15,
-                        max: 0.15,
-                        divisions: 30,
-                        value: settings.voicevoxPitch,
-                        onChanged: (double value) {
-                          _updateAndSave(
-                              settings.copyWith(voicevoxPitch: value));
-                        },
-                      ),
-                      SettingsDoubleSliderField(
-                        key: const Key('voicevox-intonation-slider'),
-                        label: '抑揚',
-                        min: 0.0,
-                        max: 2.0,
-                        divisions: 20,
-                        value: settings.voicevoxIntonation,
-                        onChanged: (double value) {
-                          _updateAndSave(
-                            settings.copyWith(voicevoxIntonation: value),
-                          );
-                        },
-                      ),
-                      SettingsDoubleSliderField(
-                        key: const Key('voicevox-volume-slider'),
-                        label: '音量',
-                        min: 0.0,
-                        max: 2.0,
-                        divisions: 20,
-                        value: settings.voicevoxVolume,
-                        onChanged: (double value) {
-                          _updateAndSave(
-                              settings.copyWith(voicevoxVolume: value));
-                        },
-                      ),
-                    ],
-                  ),
+                      ],
+                      onChanged: (int? value) {
+                        if (value == null) {
+                          return;
+                        }
+                        _updateAndSave(
+                            settings.copyWith(voicevoxSpeaker: value));
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    SettingsDoubleSliderField(
+                      key: const Key('voicevox-speed-slider'),
+                      label: '話速',
+                      min: 0.5,
+                      max: 2.0,
+                      divisions: 15,
+                      value: settings.voicevoxSpeed,
+                      onChanged: (double value) {
+                        _updateAndSave(settings.copyWith(voicevoxSpeed: value));
+                      },
+                    ),
+                    SettingsDoubleSliderField(
+                      key: const Key('voicevox-pitch-slider'),
+                      label: '音高',
+                      min: -0.15,
+                      max: 0.15,
+                      divisions: 30,
+                      value: settings.voicevoxPitch,
+                      onChanged: (double value) {
+                        _updateAndSave(settings.copyWith(voicevoxPitch: value));
+                      },
+                    ),
+                    SettingsDoubleSliderField(
+                      key: const Key('voicevox-intonation-slider'),
+                      label: '抑揚',
+                      min: 0.0,
+                      max: 2.0,
+                      divisions: 20,
+                      value: settings.voicevoxIntonation,
+                      onChanged: (double value) {
+                        _updateAndSave(
+                          settings.copyWith(voicevoxIntonation: value),
+                        );
+                      },
+                    ),
+                    SettingsDoubleSliderField(
+                      key: const Key('voicevox-volume-slider'),
+                      label: '音量',
+                      min: 0.0,
+                      max: 2.0,
+                      divisions: 20,
+                      value: settings.voicevoxVolume,
+                      onChanged: (double value) {
+                        _updateAndSave(
+                            settings.copyWith(voicevoxVolume: value));
+                      },
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 12),
                 SettingsSection(
                   title: '読み上げキュー',
