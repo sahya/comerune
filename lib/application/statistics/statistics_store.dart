@@ -36,10 +36,11 @@ class StatisticsStore extends ChangeNotifier {
       _recentUserEvents.add(
         _TimestampedUserId(userId: userId, timestamp: _now()),
       );
-      // Prune periodically to avoid unbounded growth during long streams.
-      if (_totalCommentCount % 100 == 0) {
-        _pruneExpired();
-      }
+    }
+
+    // Prune periodically to avoid unbounded growth during long streams.
+    if (_totalCommentCount % 100 == 0) {
+      _pruneExpired();
     }
 
     notifyListeners();
