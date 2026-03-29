@@ -41,6 +41,29 @@ String _formatHmsOrDash(DateTime? value) {
   return _formatHms(value);
 }
 
+String _commentLineText({
+  required AppMessage message,
+  required bool showUserName,
+  String? resolvedUserName,
+}) {
+  final String timestamp = _formatHms(message.timestamp);
+
+  if (!showUserName) {
+    return '$timestamp  ${message.content}';
+  }
+
+  final String userId = message.userId ?? '';
+
+  if (userId.isEmpty) {
+    return '$timestamp  ${message.content}';
+  }
+
+  final String displayName =
+      resolvedUserName != null ? '$resolvedUserName ($userId)' : userId;
+
+  return '$timestamp  $displayName  ${message.content}';
+}
+
 enum CommentSortOrder { ascending, descending }
 
 class CommentScreen extends StatefulWidget {
@@ -157,10 +180,15 @@ class _CommentScreenState extends State<CommentScreen> {
 
     if (oldWidget.lv != widget.lv) {
       _autoScrollEnabled = true;
+      _pinnedMessageIds.clear();
       unawaited(widget.onDifferentLvConnected(oldWidget.lv, widget.lv));
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToEdge(animated: false);
       });
+    }
+
+    if (_pinnedMessageIds.isNotEmpty) {
+      _cleanUpStalePinnedIds();
     }
 
     final bool hasNewMessages =
@@ -453,6 +481,12 @@ class _CommentScreenState extends State<CommentScreen> {
     setState(() {
       _pinnedMessageIds.remove(messageId);
     });
+  }
+
+  void _cleanUpStalePinnedIds() {
+    final Set<String> currentIds =
+        widget.messages.map((AppMessage m) => m.id).toSet();
+    _pinnedMessageIds.removeWhere((String id) => !currentIds.contains(id));
   }
 
   List<AppMessage> _pinnedMessages(List<AppMessage> visibleMessages) {
@@ -1294,21 +1328,27 @@ class _PinnedCommentRow extends StatelessWidget {
         children: <Widget>[
           Expanded(
             child: Text(
-              _lineText(message),
+              _commentLineText(
+                message: message,
+                showUserName: showUserName,
+                resolvedUserName: resolvedUserName,
+              ),
               style: TextStyle(
                 fontSize: fontSize,
                 color: userColor,
               ),
             ),
           ),
-          GestureDetector(
-            key: Key('unpin-button-${message.id}'),
-            onTap: onUnpin,
-            child: Padding(
-              padding: const EdgeInsets.all(4),
-              child: Icon(
+          SizedBox(
+            width: 32,
+            height: 32,
+            child: IconButton(
+              key: Key('unpin-button-${message.id}'),
+              onPressed: onUnpin,
+              padding: EdgeInsets.zero,
+              iconSize: 16,
+              icon: Icon(
                 Icons.close,
-                size: 16,
                 color: themeColors.subtleTextColor,
               ),
             ),
@@ -1316,25 +1356,6 @@ class _PinnedCommentRow extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  String _lineText(AppMessage message) {
-    final String timestamp = _formatHms(message.timestamp);
-
-    if (!showUserName) {
-      return '$timestamp  ${message.content}';
-    }
-
-    final String userId = message.userId ?? '';
-
-    if (userId.isEmpty) {
-      return '$timestamp  ${message.content}';
-    }
-
-    final String displayName =
-        resolvedUserName != null ? '$resolvedUserName ($userId)' : userId;
-
-    return '$timestamp  $displayName  ${message.content}';
   }
 }
 
@@ -1366,7 +1387,11 @@ class _CommentRow extends StatelessWidget {
         color: _backgroundColor(message),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
         child: Text(
-          _lineText(message),
+          _commentLineText(
+            message: message,
+            showUserName: showUserName,
+            resolvedUserName: resolvedUserName,
+          ),
           style: TextStyle(
             fontSize: fontSize,
             color: userColor,
@@ -1374,25 +1399,6 @@ class _CommentRow extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  String _lineText(AppMessage message) {
-    final String timestamp = _formatHms(message.timestamp);
-
-    if (!showUserName) {
-      return '$timestamp  ${message.content}';
-    }
-
-    final String userId = message.userId ?? '';
-
-    if (userId.isEmpty) {
-      return '$timestamp  ${message.content}';
-    }
-
-    final String displayName =
-        resolvedUserName != null ? '$resolvedUserName ($userId)' : userId;
-
-    return '$timestamp  $displayName  ${message.content}';
   }
 
   Color? _backgroundColor(AppMessage message) {
