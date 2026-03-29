@@ -1398,6 +1398,20 @@ void main() {
       );
       expect(textWidget.style?.fontStyle, FontStyle.italic);
       expect(textWidget.style?.color, Colors.grey);
+
+      // Tap to reveal
+      await tester.tap(find.byKey(const Key('comment-row-star-style')));
+      await tester.pumpAndSettle();
+
+      // After reveal, style should return to normal
+      final Text revealedText = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('comment-row-star-style')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(revealedText.style?.fontStyle, isNull);
+      expect(revealedText.style?.color, isNull);
     });
 
     testWidgets('star prefix revealed state resets when message ID changes', (

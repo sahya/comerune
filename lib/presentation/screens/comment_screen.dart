@@ -1557,10 +1557,11 @@ class _CommentRowState extends State<_CommentRow> {
 
   @override
   Widget build(BuildContext context) {
+    final bool hidden = _isStarHidden;
     return GestureDetector(
       key: Key('comment-row-${widget.message.id}'),
       onLongPress: widget.onLongPress,
-      onTap: _isStarHidden ? () => setState(() => _revealed = true) : null,
+      onTap: hidden ? () => setState(() => _revealed = true) : null,
       child: Container(
         color: _backgroundColor(widget.message),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
@@ -1570,12 +1571,12 @@ class _CommentRowState extends State<_CommentRow> {
             showUserName: widget.showUserName,
             resolvedUserName: widget.resolvedUserName,
             contentOverride:
-                _isStarHidden ? 'ネタバレ防止: タップで表示' : null,
+                hidden ? 'ネタバレ防止: タップで表示' : null,
           ),
           style: TextStyle(
             fontSize: widget.fontSize,
-            color: _isStarHidden ? Colors.grey : widget.userColor,
-            fontStyle: _isStarHidden ? FontStyle.italic : null,
+            color: hidden ? Colors.grey : widget.userColor,
+            fontStyle: hidden ? FontStyle.italic : null,
           ),
         ),
       ),
