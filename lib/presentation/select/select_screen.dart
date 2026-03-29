@@ -481,73 +481,69 @@ class _SelectScreenState extends State<SelectScreen> {
   }
 
   void _onUserColorChanged(String userId, int colorValue) {
-    final String? broadcasterId = _currentBroadcasterId;
-    if (broadcasterId == null || widget.userAttributeStore == null) {
-      return;
-    }
     final ({Map<String, int> colors, Map<String, String> nicknames}) prev =
         _userAttrNotifier.value;
     _userAttrNotifier.value = (
       colors: Map<String, int>.from(prev.colors)..[userId] = colorValue,
       nicknames: prev.nicknames,
     );
-    unawaited(widget.userAttributeStore!.setColor(
-      broadcasterId: broadcasterId,
-      userId: userId,
-      colorValue: colorValue,
-    ));
+    final String? broadcasterId = _currentBroadcasterId;
+    if (broadcasterId != null && widget.userAttributeStore != null) {
+      unawaited(widget.userAttributeStore!.setColor(
+        broadcasterId: broadcasterId,
+        userId: userId,
+        colorValue: colorValue,
+      ));
+    }
   }
 
   void _onUserColorRemoved(String userId) {
-    final String? broadcasterId = _currentBroadcasterId;
-    if (broadcasterId == null || widget.userAttributeStore == null) {
-      return;
-    }
     final ({Map<String, int> colors, Map<String, String> nicknames}) prev =
         _userAttrNotifier.value;
     _userAttrNotifier.value = (
       colors: Map<String, int>.from(prev.colors)..remove(userId),
       nicknames: prev.nicknames,
     );
-    unawaited(widget.userAttributeStore!.removeColor(
-      broadcasterId: broadcasterId,
-      userId: userId,
-    ));
+    final String? broadcasterId = _currentBroadcasterId;
+    if (broadcasterId != null && widget.userAttributeStore != null) {
+      unawaited(widget.userAttributeStore!.removeColor(
+        broadcasterId: broadcasterId,
+        userId: userId,
+      ));
+    }
   }
 
   void _onNicknameChanged(String userId, String nickname) {
-    final String? broadcasterId = _currentBroadcasterId;
-    if (broadcasterId == null || widget.userAttributeStore == null) {
-      return;
-    }
     final ({Map<String, int> colors, Map<String, String> nicknames}) prev =
         _userAttrNotifier.value;
     _userAttrNotifier.value = (
       colors: prev.colors,
       nicknames: Map<String, String>.from(prev.nicknames)..[userId] = nickname,
     );
-    unawaited(widget.userAttributeStore!.setNickname(
-      broadcasterId: broadcasterId,
-      userId: userId,
-      nickname: nickname,
-    ));
+    final String? broadcasterId = _currentBroadcasterId;
+    if (broadcasterId != null && widget.userAttributeStore != null) {
+      unawaited(widget.userAttributeStore!.setNickname(
+        broadcasterId: broadcasterId,
+        userId: userId,
+        nickname: nickname,
+      ));
+    }
   }
 
   void _onNicknameRemoved(String userId) {
-    final String? broadcasterId = _currentBroadcasterId;
-    if (broadcasterId == null || widget.userAttributeStore == null) {
-      return;
-    }
     final ({Map<String, int> colors, Map<String, String> nicknames}) prev =
         _userAttrNotifier.value;
     _userAttrNotifier.value = (
       colors: prev.colors,
       nicknames: Map<String, String>.from(prev.nicknames)..remove(userId),
     );
-    unawaited(widget.userAttributeStore!.removeNickname(
-      broadcasterId: broadcasterId,
-      userId: userId,
-    ));
+    final String? broadcasterId = _currentBroadcasterId;
+    if (broadcasterId != null && widget.userAttributeStore != null) {
+      unawaited(widget.userAttributeStore!.removeNickname(
+        broadcasterId: broadcasterId,
+        userId: userId,
+      ));
+    }
   }
 
   void _toggleNgUser(String userId) {
