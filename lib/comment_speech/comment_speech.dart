@@ -6,3 +6,4 @@ export 'src/models/speech_event.dart';
 export 'src/models/speech_runtime_status.dart';
 export 'src/models/speech_settings.dart';
 export 'src/models/submit_result.dart';
+export 'src/voicevox_setup_helper.dart';
