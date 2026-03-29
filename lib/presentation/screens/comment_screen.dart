@@ -108,6 +108,7 @@ class CommentScreen extends StatefulWidget {
     this.statisticsEnabled = false,
     this.statisticsViewerCommentEnabled = true,
     this.statisticsActiveUserEnabled = true,
+    this.highlightPickupEnabled = false,
     this.viewerCount,
     this.totalCommentCount = 0,
     this.activeUserCount = 0,
@@ -177,6 +178,7 @@ class CommentScreen extends StatefulWidget {
   final bool statisticsEnabled;
   final bool statisticsViewerCommentEnabled;
   final bool statisticsActiveUserEnabled;
+  final bool highlightPickupEnabled;
   final int? viewerCount;
   final int totalCommentCount;
   final int activeUserCount;
@@ -975,10 +977,63 @@ class _CommentScreenState extends State<CommentScreen> {
             themeMode: widget.themeMode,
             programTitle: widget.programTitle,
             lv: widget.lv,
+            highlightPickupEnabled: widget.highlightPickupEnabled,
+            messages: widget.messages,
+            ngUserIds: widget.ngUserIds,
+            onBarTapped: (int minuteOffset) {
+              Navigator.of(sheetContext).pop();
+              _scrollToMinuteOffset(minuteOffset);
+            },
+            onPeakTapped: (int minuteOffset) {
+              Navigator.of(sheetContext).pop();
+              _scrollToMinuteOffset(minuteOffset);
+            },
           );
         },
       );
     });
+  }
+
+  void _scrollToMinuteOffset(int minuteOffset) {
+    final List<AppMessage> visibleMessages =
+        widget.messages.where(_shouldDisplayMessage).toList(growable: false);
+    final List<AppMessage> sorted = _applySortOrder(visibleMessages);
+    if (sorted.isEmpty) {
+      return;
+    }
+
+    // Use the first message in chronological order (before sorting).
+    final DateTime first = visibleMessages.first.timestamp;
+
+    int targetIndex = -1;
+    for (int i = 0; i < sorted.length; i++) {
+      final int minute = sorted[i].timestamp.difference(first).inMinutes;
+      if (minute >= minuteOffset) {
+        targetIndex = i;
+        break;
+      }
+    }
+
+    if (targetIndex < 0) {
+      return;
+    }
+
+    if (!_scrollController.hasClients) {
+      return;
+    }
+
+    // Estimate position: each comment row is roughly commentFontSize * 2.5.
+    final double estimatedRowHeight = widget.commentFontSize * 2.5;
+    final double targetOffset = (targetIndex * estimatedRowHeight).clamp(
+      0.0,
+      _scrollController.position.maxScrollExtent,
+    );
+
+    _scrollController.animateTo(
+      targetOffset,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
   }
 
   Future<void> _saveLogManual() async {

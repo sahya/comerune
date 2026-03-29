@@ -3,8 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../domain/comment_log/comment_log_stats.dart';
+import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
 import '../theme/app_theme.dart';
+import 'comment_frequency_chart.dart';
 
 /// Bottom sheet that displays comment log statistics summary.
 ///
@@ -17,21 +19,44 @@ class CommentLogStatsSheet extends StatelessWidget {
     required this.themeMode,
     this.programTitle,
     this.lv,
+    this.highlightPickupEnabled = false,
+    this.messages = const <AppMessage>[],
+    this.ngUserIds = const <String>{},
+    this.onBarTapped,
+    this.onPeakTapped,
   });
 
   final CommentLogStats stats;
   final AppThemeMode themeMode;
   final String? programTitle;
   final String? lv;
+  final bool highlightPickupEnabled;
+  final List<AppMessage> messages;
+  final Set<String> ngUserIds;
+
+  /// Called when a bar in the frequency chart is tapped.
+  final void Function(int minuteOffset)? onBarTapped;
+
+  /// Called when a peak section is tapped.
+  final void Function(int minuteOffset)? onPeakTapped;
 
   @override
   Widget build(BuildContext context) {
     final AppThemeColors themeColors = AppTheme.colorsFor(themeMode);
+    final List<HighlightPeak> peaks = highlightPickupEnabled
+        ? CommentLogStats.detectPeaks(
+            messages,
+            commentsPerMinute: stats.commentsPerMinute,
+            ngUserIds: ngUserIds,
+          )
+        : const <HighlightPeak>[];
+    final Set<int> peakMinutes =
+        peaks.map((HighlightPeak p) => p.minuteOffset).toSet();
 
     return DraggableScrollableSheet(
-      initialChildSize: 0.45,
+      initialChildSize: highlightPickupEnabled && peaks.isNotEmpty ? 0.65 : 0.5,
       minChildSize: 0.3,
-      maxChildSize: 0.7,
+      maxChildSize: 0.85,
       expand: false,
       builder: (BuildContext context, ScrollController scrollController) {
         return Column(
@@ -68,6 +93,41 @@ class CommentLogStatsSheet extends StatelessWidget {
                       value:
                           '${stats.peakMinuteLabel} (${stats.peakMinuteCount}コメント)',
                     ),
+                  if (stats.commentsPerMinute.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 16),
+                    const Text(
+                      'コメント頻度',
+                      key: Key('frequency-chart-title'),
+                      style:
+                          TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    CommentFrequencyChart(
+                      key: const Key('frequency-chart'),
+                      commentsPerMinute: stats.commentsPerMinute,
+                      onBarTapped: onBarTapped,
+                      peakMinutes: peakMinutes,
+                      barColor: themeColors.statusConnected,
+                      peakBarColor: themeColors.ngUserActiveColor,
+                    ),
+                  ],
+                  if (highlightPickupEnabled && peaks.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 20),
+                    const Text(
+                      '放送の盛り上がり',
+                      key: Key('highlight-pickup-title'),
+                      style:
+                          TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    for (int i = 0; i < peaks.length; i++)
+                      _HighlightPeakCard(
+                        key: Key('highlight-peak-$i'),
+                        peak: peaks[i],
+                        index: i + 1,
+                        onTap: onPeakTapped,
+                      ),
+                  ],
                   const SizedBox(height: 16),
                   _buildActions(context),
                 ],
@@ -180,6 +240,75 @@ class _StatRow extends StatelessWidget {
             style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _HighlightPeakCard extends StatelessWidget {
+  const _HighlightPeakCard({
+    super.key,
+    required this.peak,
+    required this.index,
+    this.onTap,
+  });
+
+  final HighlightPeak peak;
+  final int index;
+  final void Function(int minuteOffset)? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        onTap: onTap != null ? () => onTap!.call(peak.minuteOffset) : null,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  const Text(
+                    '\u{1F525}',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'ピーク\u{2460}'.replaceFirst(
+                      '\u{2460}',
+                      String.fromCharCode(0x2460 + index - 1),
+                    ),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${peak.label} (${peak.commentCount}コメント/分)',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ],
+              ),
+              if (peak.representativeComments.isNotEmpty) ...<Widget>[
+                const SizedBox(height: 8),
+                for (final AppMessage msg in peak.representativeComments)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 24, bottom: 2),
+                    child: Text(
+                      '${msg.userId ?? ""}: ${msg.content}',
+                      style: const TextStyle(fontSize: 12),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
