@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:share_plus/share_plus.dart';
@@ -248,13 +247,6 @@ class _CommentScreenState extends State<CommentScreen> {
   void didUpdateWidget(covariant CommentScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    debugPrint(
-      '[CommentScreen] didUpdate: '
-      'msgs ${oldWidget.messages.length}→${widget.messages.length}, '
-      'identical=${identical(oldWidget.messages, widget.messages)}, '
-      'lastId=${widget.messages.isNotEmpty ? widget.messages.last.id.hashCode : "empty"}',
-    );
-
     if (oldWidget.connectionSupervisor != widget.connectionSupervisor) {
       oldWidget.connectionSupervisor.removeListener(_handleConnectionChanged);
       widget.connectionSupervisor.addListener(_handleConnectionChanged);
@@ -419,13 +411,7 @@ class _CommentScreenState extends State<CommentScreen> {
           _speechEngineState = 'READY';
         });
       }
-      debugPrint(
-        '[CommentScreen] Speech started. '
-        'baseline=$_lastSpeechMessageId, '
-        'msgCount=${widget.messages.length}',
-      );
-    } catch (e, stackTrace) {
-      debugPrint('[CommentScreen] Failed to start speech: $e\n$stackTrace');
+    } catch (e) {
       if (mounted) {
         setState(() {
           _speechEngineState = 'ERROR';
@@ -450,7 +436,7 @@ class _CommentScreenState extends State<CommentScreen> {
       try {
         await widget.speechPlatform?.updateSettings(widget.speechSettings);
       } catch (e) {
-        debugPrint('[CommentScreen] Failed to update speech settings: $e');
+        // Settings update failed; engine continues with previous config.
       }
     }
   }
@@ -460,7 +446,7 @@ class _CommentScreenState extends State<CommentScreen> {
       try {
         await widget.speechPlatform?.stop(clearQueue: true);
       } catch (e) {
-        debugPrint('[CommentScreen] Failed to stop speech: $e');
+        // Stop failed; state is reset below regardless.
       }
       if (mounted) {
         setState(() {
@@ -507,13 +493,6 @@ class _CommentScreenState extends State<CommentScreen> {
 
     _lastSpeechMessageId = currentLastId;
 
-    final int candidateCount = messages.length - start;
-    if (candidateCount > 0) {
-      debugPrint(
-        '[CommentScreen] submitNewComments: candidates=$candidateCount',
-      );
-    }
-
     for (int i = start; i < messages.length; i++) {
       final AppMessage message = messages[i];
       if (message.type != AppMessageType.chat) {
@@ -535,11 +514,8 @@ class _CommentScreenState extends State<CommentScreen> {
         userId: message.userId,
         postedAtEpochMs: message.timestamp.millisecondsSinceEpoch,
       );
-      debugPrint('[CommentScreen] submitComment: ${comment.text}');
       unawaited(
-        platform.submitComment(comment).then((_) {}).catchError((Object e) {
-          debugPrint('[CommentScreen] submitComment error: $e');
-        }),
+        platform.submitComment(comment).then((_) {}).catchError((_) {}),
       );
     }
   }
