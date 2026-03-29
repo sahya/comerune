@@ -4,13 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:comerune/domain/models/app_message.dart';
 import 'package:comerune/presentation/screens/user_detail_sheet.dart';
 
-/// Converts a [Color] to its ARGB32 integer value without the deprecated
-/// `Color.value` getter.
-int _colorToARGB32(Color c) =>
-    (c.a * 255).round() << 24 |
-    (c.r * 255).round() << 16 |
-    (c.g * 255).round() << 8 |
-    (c.b * 255).round();
+// ARGB32 value of kUserColorPalette.first (Color(0xFFE53935)).
+const int _kFirstColorValue = 0xFFE53935;
 
 void main() {
   group('UserDetailSheet', () {
@@ -205,7 +200,7 @@ void main() {
       await openSheet(tester);
 
       // Tap the first color in the palette.
-      final int firstColorValue = _colorToARGB32(kUserColorPalette.first);
+      final int firstColorValue = _kFirstColorValue;
       await tester.tap(find.byKey(Key('user-color-$firstColorValue')));
       await tester.pumpAndSettle();
 
@@ -219,7 +214,7 @@ void main() {
         _buildSheet(
           userId: '12345',
           allMessages: const <AppMessage>[],
-          currentColorValue: _colorToARGB32(kUserColorPalette.first),
+          currentColorValue: _kFirstColorValue,
           onColorChanged: (_) {},
           onColorRemoved: () {},
         ),
@@ -253,7 +248,7 @@ void main() {
         _buildSheet(
           userId: '12345',
           allMessages: const <AppMessage>[],
-          currentColorValue: _colorToARGB32(kUserColorPalette.first),
+          currentColorValue: _kFirstColorValue,
           onColorChanged: (_) {},
           onColorRemoved: () {
             removeCalled = true;
