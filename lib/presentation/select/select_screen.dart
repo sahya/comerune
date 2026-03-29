@@ -9,6 +9,7 @@ import '../../data/auth/user_session_store.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../data/follow/follow_program.dart';
 import '../../data/follow/follow_program_repository.dart';
+import '../../data/user/user_color_store.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
@@ -48,6 +49,7 @@ class SelectScreen extends StatefulWidget {
     this.commentLogWriter,
     this.themeModeNotifier,
     this.followProgramRepository,
+    this.userColorStore,
     super.key,
   });
 
@@ -66,6 +68,7 @@ class SelectScreen extends StatefulWidget {
   final ValueNotifier<String?>? supplierUserIdNotifier;
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
   final FollowProgramRepository? followProgramRepository;
+  final UserColorStore? userColorStore;
 
   @override
   State<SelectScreen> createState() => _SelectScreenState();
@@ -84,6 +87,8 @@ class _SelectScreenState extends State<SelectScreen> {
   List<FollowProgram> _followPrograms = const <FollowProgram>[];
   bool _isLoadingFollowPrograms = false;
   Timer? _followRefreshTimer;
+  Map<String, int> _userColorMap = const <String, int>{};
+  String? _currentBroadcasterId;
 
   static const Duration _followRefreshInterval = Duration(seconds: 60);
 
@@ -338,6 +343,12 @@ class _SelectScreenState extends State<SelectScreen> {
         final String? broadcasterIconUrl = _followBroadcasterIconUrl ??
             _buildIconUrlFromUserId(supplierUserId);
 
+        // Load user colors for the current broadcaster if not yet loaded.
+        if (supplierUserId != null &&
+            supplierUserId != _currentBroadcasterId) {
+          unawaited(_loadUserColors(supplierUserId));
+        }
+
         return CommentScreen(
           lv: lv,
           connectionSupervisor: widget.connectionSupervisor,
@@ -364,6 +375,13 @@ class _SelectScreenState extends State<SelectScreen> {
           autoSaveCommentLog: _settingsNotifier.value.autoSaveCommentLog,
           ngUserIds: _settingsNotifier.value.ngUserIdSet,
           onToggleNgUser: _toggleNgUser,
+          userColorMap: _userColorMap,
+          onUserColorChanged: widget.userColorStore != null
+              ? _onUserColorChanged
+              : null,
+          onUserColorRemoved: widget.userColorStore != null
+              ? _onUserColorRemoved
+              : null,
           themeMode: _settingsNotifier.value.themeMode,
         );
       },
@@ -396,8 +414,57 @@ class _SelectScreenState extends State<SelectScreen> {
   Future<void> _onDifferentLvConnected(String previousLv, String nextLv) async {
     if (previousLv != nextLv) {
       widget.timelineStore?.clear();
+      _currentBroadcasterId = null;
+      _userColorMap = const <String, int>{};
     }
     _lastConnectedLv = nextLv;
+  }
+
+  Future<void> _loadUserColors(String? broadcasterId) async {
+    if (broadcasterId == null ||
+        broadcasterId == _currentBroadcasterId ||
+        widget.userColorStore == null) {
+      return;
+    }
+    _currentBroadcasterId = broadcasterId;
+    final Map<String, int> colors =
+        await widget.userColorStore!.load(broadcasterId);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _userColorMap = colors;
+    });
+  }
+
+  void _onUserColorChanged(String userId, int colorValue) {
+    final String? broadcasterId = _currentBroadcasterId;
+    if (broadcasterId == null || widget.userColorStore == null) {
+      return;
+    }
+    setState(() {
+      _userColorMap = Map<String, int>.from(_userColorMap)
+        ..[userId] = colorValue;
+    });
+    unawaited(widget.userColorStore!.setColor(
+      broadcasterId: broadcasterId,
+      userId: userId,
+      colorValue: colorValue,
+    ));
+  }
+
+  void _onUserColorRemoved(String userId) {
+    final String? broadcasterId = _currentBroadcasterId;
+    if (broadcasterId == null || widget.userColorStore == null) {
+      return;
+    }
+    setState(() {
+      _userColorMap = Map<String, int>.from(_userColorMap)..remove(userId);
+    });
+    unawaited(widget.userColorStore!.removeColor(
+      broadcasterId: broadcasterId,
+      userId: userId,
+    ));
   }
 
   void _toggleNgUser(String userId) {

@@ -743,6 +743,52 @@ void main() {
       expect(textWidget.style?.fontSize, 14);
     });
 
+    testWidgets('applies custom user color to comment text', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'color-msg',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-colored',
+          content: 'colored comment',
+          type: AppMessageType.chat,
+        ),
+        AppMessage(
+          id: 'no-color-msg',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 1),
+          userId: 'user-default',
+          content: 'default comment',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          userColorMap: const <String, int>{'user-colored': 0xFFE53935},
+        ),
+      );
+
+      final Text coloredText = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('comment-row-color-msg')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(coloredText.style?.color, const Color(0xFFE53935));
+
+      final Text defaultText = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('comment-row-no-color-msg')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(defaultText.style?.color, isNull);
+    });
+
     testWidgets('hides NG user comments from display', (
       WidgetTester tester,
     ) async {
@@ -974,6 +1020,7 @@ Widget _buildScreen({
   String? Function(String userId)? resolveUserName,
   double commentFontSize = commentFontSizeDefault,
   Set<String> ngUserIds = const <String>{},
+  Map<String, int> userColorMap = const <String, int>{},
 }) {
   return MaterialApp(
     home: CommentScreen(
@@ -991,6 +1038,7 @@ Widget _buildScreen({
       resolveUserName: resolveUserName,
       commentFontSize: commentFontSize,
       ngUserIds: ngUserIds,
+      userColorMap: userColorMap,
       themeMode: AppThemeMode.light,
     ),
   );

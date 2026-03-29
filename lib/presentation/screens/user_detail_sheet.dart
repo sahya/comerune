@@ -4,6 +4,22 @@ import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
 import '../theme/app_theme.dart';
 
+/// Predefined color palette for user comment colors.
+const List<Color> kUserColorPalette = <Color>[
+  Color(0xFFE53935), // red
+  Color(0xFFD81B60), // pink
+  Color(0xFF8E24AA), // purple
+  Color(0xFF3949AB), // indigo
+  Color(0xFF1E88E5), // blue
+  Color(0xFF00ACC1), // cyan
+  Color(0xFF00897B), // teal
+  Color(0xFF43A047), // green
+  Color(0xFFFF8F00), // amber
+  Color(0xFFFF6D00), // orange
+  Color(0xFF6D4C41), // brown
+  Color(0xFF546E7A), // blue grey
+];
+
 class UserDetailSheet extends StatelessWidget {
   const UserDetailSheet({
     super.key,
@@ -13,6 +29,9 @@ class UserDetailSheet extends StatelessWidget {
     required this.isNgUser,
     required this.onToggleNgUser,
     this.themeMode = AppThemeMode.light,
+    this.currentColorValue,
+    this.onColorChanged,
+    this.onColorRemoved,
   });
 
   final String userId;
@@ -21,6 +40,15 @@ class UserDetailSheet extends StatelessWidget {
   final bool isNgUser;
   final VoidCallback onToggleNgUser;
   final AppThemeMode themeMode;
+
+  /// Current custom color value for this user, or null if using default.
+  final int? currentColorValue;
+
+  /// Called when the user selects a color from the palette.
+  final void Function(int colorValue)? onColorChanged;
+
+  /// Called when the user removes the custom color (resets to default).
+  final void Function()? onColorRemoved;
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +69,15 @@ class UserDetailSheet extends StatelessWidget {
           children: <Widget>[
             _buildHandle(themeColors),
             _buildHeader(context, themeColors),
+            if (onColorChanged != null) ...<Widget>[
+              const Divider(height: 1),
+              _ColorPaletteRow(
+                key: const Key('user-color-palette'),
+                currentColorValue: currentColorValue,
+                onColorChanged: onColorChanged!,
+                onColorRemoved: onColorRemoved,
+              ),
+            ],
             const Divider(height: 1),
             Expanded(
               child: _buildCommentList(
@@ -197,6 +234,113 @@ class _NgUserButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         minimumSize: Size.zero,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    );
+  }
+}
+
+class _ColorPaletteRow extends StatelessWidget {
+  const _ColorPaletteRow({
+    super.key,
+    required this.currentColorValue,
+    required this.onColorChanged,
+    this.onColorRemoved,
+  });
+
+  final int? currentColorValue;
+  final void Function(int colorValue) onColorChanged;
+  final void Function()? onColorRemoved;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Text(
+                'コメント色',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const Spacer(),
+              if (currentColorValue != null)
+                GestureDetector(
+                  key: const Key('user-color-reset-button'),
+                  onTap: onColorRemoved,
+                  child: Text(
+                    'リセット',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              for (final Color color in kUserColorPalette)
+                _ColorCircle(
+                  key: Key('user-color-${color.value}'),
+                  color: color,
+                  isSelected: currentColorValue == color.value,
+                  onTap: () => onColorChanged(color.value),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ColorCircle extends StatelessWidget {
+  const _ColorCircle({
+    super.key,
+    required this.color,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final Color color;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: isSelected ? 'コメント色 選択中' : 'コメント色',
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: isSelected
+                ? Border.all(color: Colors.white, width: 2)
+                : null,
+            boxShadow: isSelected
+                ? <BoxShadow>[
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.6),
+                      blurRadius: 4,
+                      spreadRadius: 1,
+                    ),
+                  ]
+                : null,
+          ),
+          child: isSelected
+              ? const Icon(Icons.check, color: Colors.white, size: 18)
+              : null,
+        ),
       ),
     );
   }

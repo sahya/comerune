@@ -14,6 +14,7 @@ import 'data/comment_log/comment_log_writer.dart';
 import 'data/connection/program_info_resolver.dart';
 import 'data/follow/follow_program_repository.dart';
 import 'data/connection/web_socket_channel_legacy_web_socket.dart';
+import 'data/user/user_color_store.dart';
 import 'data/user/user_name_resolver.dart';
 import 'domain/connection/connection_clients.dart' as reconnect;
 import 'domain/connection/connection_supervisor.dart';
@@ -42,6 +43,9 @@ Future<void> main() async {
     directory: Directory('${appDocDir.path}/comment_logs'),
     tempDirectory: Directory('${tempDir.path}/comment_logs'),
   );
+  final UserColorStore userColorStore = SharedPreferencesUserColorStore(
+    prefs: SharedPreferencesAdapter(prefs),
+  );
 
   runApp(
     ComeruneApp(
@@ -49,6 +53,7 @@ Future<void> main() async {
       initialSettings: initialSettings,
       userSessionStore: userSessionStore,
       commentLogWriter: commentLogWriter,
+      userColorStore: userColorStore,
     ),
   );
 }
@@ -60,12 +65,14 @@ class ComeruneApp extends StatefulWidget {
     required this.initialSettings,
     required this.userSessionStore,
     this.commentLogWriter,
+    this.userColorStore,
   });
 
   final SettingsStore settingsStore;
   final AppSettings initialSettings;
   final UserSessionStore userSessionStore;
   final CommentLogWriter? commentLogWriter;
+  final UserColorStore? userColorStore;
 
   @override
   State<ComeruneApp> createState() => _ComeruneAppState();
@@ -190,6 +197,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
         commentLogWriter: widget.commentLogWriter,
         themeModeNotifier: _themeModeNotifier,
         followProgramRepository: _followProgramRepository,
+        userColorStore: widget.userColorStore,
       ),
     );
   }
