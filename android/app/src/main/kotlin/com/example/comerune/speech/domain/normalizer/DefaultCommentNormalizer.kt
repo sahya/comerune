@@ -293,17 +293,20 @@ class DefaultCommentNormalizer(
                 // interrupted and the replacement is skipped for this rule.
                 val interruptible = InterruptibleCharSequence(result)
                 val thread = Thread.currentThread()
-                regexTimeoutExecutor.schedule({
+                val timeoutFuture = regexTimeoutExecutor.schedule({
                     thread.interrupt()
                 }, REGEX_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
                 try {
                     regex.replace(interruptible, safeReplacement)
                 } finally {
+                    timeoutFuture.cancel(false)
                     Thread.interrupted() // Clear interrupt flag
                 }
-            } catch (_: Throwable) {
-                // Catches Exception (RuntimeException from interrupt) AND Error
-                // (StackOverflowError from deeply nested regex backtracking)
+            } catch (_: RuntimeException) {
+                // Catches interrupt-based timeout from InterruptibleCharSequence
+                result
+            } catch (_: StackOverflowError) {
+                // Catches deeply nested regex backtracking
                 result
             }
         }
