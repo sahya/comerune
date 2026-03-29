@@ -11,6 +11,7 @@ import 'package:comerune/presentation/select/select_screen.dart';
 import 'package:comerune/presentation/screens/comment_screen.dart';
 
 import '../../helpers/in_memory_shared_preferences.dart';
+import '../../helpers/in_memory_user_attribute_store.dart';
 import '../../helpers/in_memory_user_session_store.dart';
 
 Finder inputField() => find.byKey(const Key('select_screen_input'));
@@ -703,6 +704,156 @@ void main() {
       );
 
       expect(find.text('フォロー中の放送'), findsNothing);
+    });
+  });
+
+  group('user attribute real-time reflection', () {
+    late ConnectionSupervisor supervisor;
+    late TimelineStore timelineStore;
+    late InMemoryUserAttributeStore userAttributeStore;
+    late ValueNotifier<String?> supplierUserIdNotifier;
+
+    setUp(() {
+      supervisor = ConnectionSupervisor();
+      timelineStore = TimelineStore();
+      userAttributeStore = InMemoryUserAttributeStore();
+      supplierUserIdNotifier = ValueNotifier<String?>(null);
+    });
+
+    tearDown(() {
+      supplierUserIdNotifier.dispose();
+    });
+
+    Future<void> pumpAndNavigate(WidgetTester tester) async {
+      timelineStore.add(
+        AppMessage(
+          id: 'msg-1',
+          timestamp: DateTime(2026, 3, 28, 10, 0, 0),
+          userId: 'user-1',
+          content: 'テストコメント',
+          type: AppMessageType.chat,
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: supervisor,
+            timelineStore: timelineStore,
+            userAttributeStore: userAttributeStore,
+            supplierUserIdNotifier: supplierUserIdNotifier,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.enterText(inputField(), 'lv345678901');
+      await tester.pump();
+      await tester.tap(connectButton());
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CommentScreen), findsOneWidget);
+    }
+
+    testWidgets(
+        'color loaded via supplierUserIdNotifier is reflected in comment row',
+        (WidgetTester tester) async {
+      // Pre-seed color data for broadcaster
+      await userAttributeStore.setColor(
+        broadcasterId: 'broadcaster-1',
+        userId: 'user-1',
+        colorValue: 0xFFE53935,
+      );
+
+      await pumpAndNavigate(tester);
+
+      // Initially no custom color (broadcaster not resolved yet)
+      Text text = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('comment-row-msg-1')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(text.style?.color, isNull);
+
+      // Trigger attribute load by resolving supplier user ID
+      supplierUserIdNotifier.value = 'broadcaster-1';
+      await tester.pumpAndSettle();
+
+      // Verify color is now reflected
+      text = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('comment-row-msg-1')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(text.style?.color, isNotNull);
+    });
+
+    testWidgets(
+        'nickname loaded via supplierUserIdNotifier is reflected in comment row',
+        (WidgetTester tester) async {
+      // Pre-seed nickname data for broadcaster
+      await userAttributeStore.setNickname(
+        broadcasterId: 'broadcaster-1',
+        userId: 'user-1',
+        nickname: 'テストニックネーム',
+      );
+
+      await pumpAndNavigate(tester);
+
+      // Initially no nickname
+      Text text = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('comment-row-msg-1')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(text.data, isNot(contains('テストニックネーム')));
+
+      // Trigger attribute load
+      supplierUserIdNotifier.value = 'broadcaster-1';
+      await tester.pumpAndSettle();
+
+      // Verify nickname is now reflected
+      text = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('comment-row-msg-1')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(text.data, contains('テストニックネーム'));
+    });
+
+    testWidgets(
+        'color change via user detail sheet is reflected in comment row',
+        (WidgetTester tester) async {
+      await pumpAndNavigate(tester);
+
+      // Set broadcaster ID so callbacks work
+      supplierUserIdNotifier.value = 'broadcaster-1';
+      await tester.pumpAndSettle();
+
+      // Long press → comment actions sheet
+      await tester.longPress(find.byKey(const Key('comment-row-msg-1')));
+      await tester.pumpAndSettle();
+
+      // Tap "ユーザー詳細"
+      await tester.tap(find.byKey(const Key('action-user-detail')));
+      await tester.pumpAndSettle();
+
+      // Tap red color (0xFFE53935 = 4293212469)
+      await tester.tap(find.byKey(const Key('user-color-4293212469')));
+      await tester.pumpAndSettle();
+
+      // Verify color is reflected in comment row
+      final Text coloredText = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('comment-row-msg-1')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(coloredText.style?.color, isNotNull);
     });
   });
 }
