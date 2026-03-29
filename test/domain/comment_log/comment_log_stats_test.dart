@@ -194,8 +194,8 @@ void main() {
 
   group('CommentLogStats.formatDuration', () {
     test('formats less than 1 minute', () {
-      expect(CommentLogStats.formatDuration(const Duration(seconds: 30)),
-          '1分未満');
+      expect(
+          CommentLogStats.formatDuration(const Duration(seconds: 30)), '1分未満');
     });
 
     test('formats minutes only', () {
@@ -204,14 +204,12 @@ void main() {
     });
 
     test('formats hours only', () {
-      expect(
-          CommentLogStats.formatDuration(const Duration(hours: 2)), '2時間');
+      expect(CommentLogStats.formatDuration(const Duration(hours: 2)), '2時間');
     });
 
     test('formats hours and minutes', () {
       expect(
-        CommentLogStats.formatDuration(
-            const Duration(hours: 1, minutes: 30)),
+        CommentLogStats.formatDuration(const Duration(hours: 1, minutes: 30)),
         '1時間30分',
       );
     });
@@ -228,8 +226,7 @@ void main() {
         commentsPerMinute: const <int, int>{25: 15},
       );
 
-      final String text =
-          stats.toShareText(programTitle: 'テスト配信', lv: 'lv123');
+      final String text = stats.toShareText(programTitle: 'テスト配信', lv: 'lv123');
 
       expect(text, contains('テスト配信'));
       expect(text, contains('lv123'));

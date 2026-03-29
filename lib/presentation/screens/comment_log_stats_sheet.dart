@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../domain/comment_log/comment_log_stats.dart';
+import '../../domain/models/app_settings.dart';
 import '../theme/app_theme.dart';
 
 /// Bottom sheet that displays comment log statistics summary.

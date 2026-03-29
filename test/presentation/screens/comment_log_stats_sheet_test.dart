@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:comerune/domain/comment_log/comment_log_stats.dart';
 import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/presentation/screens/comment_log_stats_sheet.dart';
-import 'package:comerune/presentation/theme/app_theme.dart';
 
 void main() {
   group('CommentLogStatsSheet', () {
