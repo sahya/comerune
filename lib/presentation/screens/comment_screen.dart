@@ -43,6 +43,29 @@ String _formatHmsOrDash(DateTime? value) {
   return _formatHms(value);
 }
 
+String _commentLineText({
+  required AppMessage message,
+  required bool showUserName,
+  String? resolvedUserName,
+}) {
+  final String timestamp = _formatHms(message.timestamp);
+
+  if (!showUserName) {
+    return '$timestamp  ${message.content}';
+  }
+
+  final String userId = message.userId ?? '';
+
+  if (userId.isEmpty) {
+    return '$timestamp  ${message.content}';
+  }
+
+  final String displayName =
+      resolvedUserName != null ? '$resolvedUserName ($userId)' : userId;
+
+  return '$timestamp  $displayName  ${message.content}';
+}
+
 enum CommentSortOrder { ascending, descending }
 
 class CommentScreen extends StatefulWidget {
@@ -151,6 +174,7 @@ class _CommentScreenState extends State<CommentScreen> {
   bool _isStoppingForExit = false;
   bool _isSavingLog = false;
   CommentSortOrder _sortOrder = CommentSortOrder.ascending;
+  final Set<String> _pinnedMessageIds = <String>{};
 
   @override
   void initState() {
@@ -178,10 +202,15 @@ class _CommentScreenState extends State<CommentScreen> {
 
     if (oldWidget.lv != widget.lv) {
       _autoScrollEnabled = true;
+      _pinnedMessageIds.clear();
       unawaited(widget.onDifferentLvConnected(oldWidget.lv, widget.lv));
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToEdge(animated: false);
       });
+    }
+
+    if (_pinnedMessageIds.isNotEmpty) {
+      _cleanUpStalePinnedIds();
     }
 
     final bool hasNewMessages =
@@ -381,6 +410,17 @@ class _CommentScreenState extends State<CommentScreen> {
                   beginAt: widget.beginAt,
                   themeColors: themeColors,
                 ),
+                if (_pinnedMessageIds.isNotEmpty)
+                  _PinnedCommentsSection(
+                    key: const Key('pinned-comments-section'),
+                    pinnedMessages: _pinnedMessages(visibleMessages),
+                    themeColors: themeColors,
+                    showUserName: widget.showUserName,
+                    fontSize: widget.commentFontSize,
+                    resolveDisplayName: _resolveDisplayName,
+                    userColorMap: widget.userColorMap,
+                    onUnpin: _unpinMessage,
+                  ),
                 Expanded(
                   child: ListView.builder(
                     key: const Key('comment-list'),
@@ -400,10 +440,7 @@ class _CommentScreenState extends State<CommentScreen> {
                         userColor: userColor != null
                             ? colorFromARGB32(userColor)
                             : null,
-                        onLongPress:
-                            message.userId != null && message.userId!.isNotEmpty
-                                ? () => _showUserDetail(message)
-                                : null,
+                        onLongPress: () => _showCommentActions(message),
                       );
                     },
                   ),
@@ -467,6 +504,76 @@ class _CommentScreenState extends State<CommentScreen> {
         );
       },
     );
+  }
+
+  void _showCommentActions(AppMessage message) {
+    final bool isPinned = _pinnedMessageIds.contains(message.id);
+    final bool hasUserId = message.userId != null && message.userId!.isNotEmpty;
+
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (BuildContext sheetContext) {
+        return SafeArea(
+          child: Column(
+            key: const Key('comment-actions-sheet'),
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              ListTile(
+                key: Key(isPinned
+                    ? 'action-unpin-${message.id}'
+                    : 'action-pin-${message.id}'),
+                leading: Icon(
+                  isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                ),
+                title: Text(isPinned ? 'ピン留め解除' : 'ピン留め'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  if (isPinned) {
+                    _unpinMessage(message.id);
+                  } else {
+                    _pinMessage(message.id);
+                  }
+                },
+              ),
+              if (hasUserId)
+                ListTile(
+                  key: const Key('action-user-detail'),
+                  leading: const Icon(Icons.person),
+                  title: const Text('ユーザー詳細'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _showUserDetail(message);
+                  },
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _pinMessage(String messageId) {
+    setState(() {
+      _pinnedMessageIds.add(messageId);
+    });
+  }
+
+  void _unpinMessage(String messageId) {
+    setState(() {
+      _pinnedMessageIds.remove(messageId);
+    });
+  }
+
+  void _cleanUpStalePinnedIds() {
+    final Set<String> currentIds =
+        widget.messages.map((AppMessage m) => m.id).toSet();
+    _pinnedMessageIds.removeWhere((String id) => !currentIds.contains(id));
+  }
+
+  List<AppMessage> _pinnedMessages(List<AppMessage> visibleMessages) {
+    return visibleMessages
+        .where((AppMessage message) => _pinnedMessageIds.contains(message.id))
+        .toList(growable: false);
   }
 
   String? _resolveDisplayName(AppMessage message) {
@@ -1259,6 +1366,146 @@ class _BroadcasterIcon extends StatelessWidget {
   }
 }
 
+class _PinnedCommentsSection extends StatelessWidget {
+  const _PinnedCommentsSection({
+    super.key,
+    required this.pinnedMessages,
+    required this.themeColors,
+    required this.showUserName,
+    required this.fontSize,
+    required this.resolveDisplayName,
+    required this.userColorMap,
+    required this.onUnpin,
+  });
+
+  final List<AppMessage> pinnedMessages;
+  final AppThemeColors themeColors;
+  final bool showUserName;
+  final double fontSize;
+  final String? Function(AppMessage) resolveDisplayName;
+  final Map<String, int> userColorMap;
+  final void Function(String messageId) onUnpin;
+
+  @override
+  Widget build(BuildContext context) {
+    if (pinnedMessages.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: themeColors.pinnedMessageBackground,
+        border: Border(
+          bottom: BorderSide(
+            color: themeColors.subtleTextColor.withValues(alpha: 0.3),
+          ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            child: Row(
+              children: <Widget>[
+                Icon(
+                  Icons.push_pin,
+                  size: 14,
+                  color: themeColors.subtleTextColor,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'ピン留め',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: themeColors.subtleTextColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          for (final AppMessage message in pinnedMessages)
+            _PinnedCommentRow(
+              key: Key('pinned-row-${message.id}'),
+              message: message,
+              themeColors: themeColors,
+              resolvedUserName: resolveDisplayName(message),
+              showUserName: showUserName,
+              fontSize: fontSize,
+              userColor: message.userId != null &&
+                      userColorMap.containsKey(message.userId!)
+                  ? colorFromARGB32(userColorMap[message.userId!]!)
+                  : null,
+              onUnpin: () => onUnpin(message.id),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PinnedCommentRow extends StatelessWidget {
+  const _PinnedCommentRow({
+    super.key,
+    required this.message,
+    required this.themeColors,
+    this.resolvedUserName,
+    this.showUserName = true,
+    required this.fontSize,
+    this.userColor,
+    required this.onUnpin,
+  });
+
+  final AppMessage message;
+  final AppThemeColors themeColors;
+  final String? resolvedUserName;
+  final bool showUserName;
+  final double fontSize;
+  final Color? userColor;
+  final VoidCallback onUnpin;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Text(
+              _commentLineText(
+                message: message,
+                showUserName: showUserName,
+                resolvedUserName: resolvedUserName,
+              ),
+              style: TextStyle(
+                fontSize: fontSize,
+                color: userColor,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 32,
+            height: 32,
+            child: IconButton(
+              key: Key('unpin-button-${message.id}'),
+              onPressed: onUnpin,
+              padding: EdgeInsets.zero,
+              iconSize: 16,
+              icon: Icon(
+                Icons.close,
+                color: themeColors.subtleTextColor,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _CommentRow extends StatelessWidget {
   const _CommentRow({
     required this.message,
@@ -1287,7 +1534,11 @@ class _CommentRow extends StatelessWidget {
         color: _backgroundColor(message),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
         child: Text(
-          _lineText(message),
+          _commentLineText(
+            message: message,
+            showUserName: showUserName,
+            resolvedUserName: resolvedUserName,
+          ),
           style: TextStyle(
             fontSize: fontSize,
             color: userColor,
@@ -1295,25 +1546,6 @@ class _CommentRow extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  String _lineText(AppMessage message) {
-    final String timestamp = _formatHms(message.timestamp);
-
-    if (!showUserName) {
-      return '$timestamp  ${message.content}';
-    }
-
-    final String userId = message.userId ?? '';
-
-    if (userId.isEmpty) {
-      return '$timestamp  ${message.content}';
-    }
-
-    final String displayName =
-        resolvedUserName != null ? '$resolvedUserName ($userId)' : userId;
-
-    return '$timestamp  $displayName  ${message.content}';
   }
 
   Color? _backgroundColor(AppMessage message) {

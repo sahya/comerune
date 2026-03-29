@@ -21,6 +21,7 @@ class AppThemeColors {
     required this.loginBannerWarningBackground,
     required this.loginBannerWarningForeground,
     required this.loginBannerWarningIcon,
+    required this.pinnedMessageBackground,
   });
 
   final Color programTitleBarBackground;
@@ -39,6 +40,7 @@ class AppThemeColors {
   final Color loginBannerWarningBackground;
   final Color loginBannerWarningForeground;
   final Color loginBannerWarningIcon;
+  final Color pinnedMessageBackground;
 }
 
 class AppTheme {
@@ -61,6 +63,7 @@ class AppTheme {
     loginBannerWarningBackground: Color(0xFFFFF3E0),
     loginBannerWarningForeground: Color(0xFF4E342E),
     loginBannerWarningIcon: Color(0xFFE65100),
+    pinnedMessageBackground: Color(0xFFFFF8E1),
   );
 
   static const AppThemeColors _darkColors = AppThemeColors(
@@ -80,6 +83,7 @@ class AppTheme {
     loginBannerWarningBackground: Color(0xFF3E2700),
     loginBannerWarningForeground: Color(0xFFE0E0E0),
     loginBannerWarningIcon: Color(0xFFFFB74D),
+    pinnedMessageBackground: Color(0xFF4E342E),
   );
 
   /// P-type: avoids red-green confusion. Uses blue/orange contrast.
@@ -100,6 +104,7 @@ class AppTheme {
     loginBannerWarningBackground: Color(0xFFFFF3E0),
     loginBannerWarningForeground: Color(0xFF4E342E),
     loginBannerWarningIcon: Color(0xFFE65100),
+    pinnedMessageBackground: Color(0xFFFFF8E1),
   );
 
   /// D-type: avoids red-green confusion. Uses purple/amber contrast
@@ -121,6 +126,7 @@ class AppTheme {
     loginBannerWarningBackground: Color(0xFFFFF8E1),
     loginBannerWarningForeground: Color(0xFF4E342E),
     loginBannerWarningIcon: Color(0xFFBF360C),
+    pinnedMessageBackground: Color(0xFFFFF8E1),
   );
 
   /// T-type: avoids blue-yellow confusion. Uses red/cyan contrast.
@@ -141,6 +147,7 @@ class AppTheme {
     loginBannerWarningBackground: Color(0xFFFFEBEE),
     loginBannerWarningForeground: Color(0xFF4E342E),
     loginBannerWarningIcon: Color(0xFFC62828),
+    pinnedMessageBackground: Color(0xFFFFEBEE),
   );
 
   /// Resolves [AppThemeMode.system] to a concrete mode based on [brightness].
