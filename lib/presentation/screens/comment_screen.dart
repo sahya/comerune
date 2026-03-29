@@ -216,6 +216,10 @@ class _CommentScreenState extends State<CommentScreen> {
   String _speechEngineState = '';
   StreamSubscription<SpeechEvent>? _speechEventSub;
 
+  /// The ID of the last message seen when speech became active.
+  /// Used to avoid submitting messages that arrived during initialization.
+  String? _speechBaselineMessageId;
+
   @override
   void initState() {
     super.initState();
@@ -389,12 +393,22 @@ class _CommentScreenState extends State<CommentScreen> {
       _speechEventSub?.cancel();
       _speechEventSub = platform.events.listen(_onSpeechEvent);
 
+      // Record the current tail message so we only read comments
+      // arriving AFTER initialization, not the backlog.
+      if (widget.messages.isNotEmpty) {
+        _speechBaselineMessageId = widget.messages.last.id;
+      }
+
       if (mounted) {
         setState(() {
           _speechStarted = true;
           _speechEngineState = 'READY';
         });
       }
+      developer.log(
+        'Speech started. baseline=${_speechBaselineMessageId}',
+        name: 'CommentScreen',
+      );
     } catch (e, stackTrace) {
       developer.log(
         'Failed to start speech engine: $e',
@@ -470,15 +484,25 @@ class _CommentScreenState extends State<CommentScreen> {
       return;
     }
 
+    // Determine the boundary: use the baseline (set when speech started) on
+    // the first call after initialization, then fall back to the normal
+    // old-tail comparison for subsequent calls.
+    final String? anchorId = _speechBaselineMessageId ?? _lastIdOf(oldMessages);
+
     int start = 0;
-    if (oldMessages.isNotEmpty && newMessages.isNotEmpty) {
-      final String oldTailId = oldMessages.last.id;
+    if (anchorId != null && newMessages.isNotEmpty) {
       for (int i = newMessages.length - 1; i >= 0; i--) {
-        if (newMessages[i].id == oldTailId) {
+        if (newMessages[i].id == anchorId) {
           start = i + 1;
           break;
         }
       }
+    }
+
+    // Clear the baseline after the first successful use so subsequent
+    // calls use the normal old-tail comparison.
+    if (_speechBaselineMessageId != null) {
+      _speechBaselineMessageId = null;
     }
 
     for (int i = start; i < newMessages.length; i++) {
@@ -511,6 +535,10 @@ class _CommentScreenState extends State<CommentScreen> {
         }),
       );
     }
+  }
+
+  static String? _lastIdOf(List<AppMessage> messages) {
+    return messages.isNotEmpty ? messages.last.id : null;
   }
 
   void _processNicknameComments(
