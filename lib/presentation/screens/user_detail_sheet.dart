@@ -348,8 +348,7 @@ class _ColorPaletteRow extends StatelessWidget {
                   key: Key('user-color-${_colorToARGB32(entry.color)}'),
                   color: entry.color,
                   colorLabel: entry.label,
-                  isSelected:
-                      currentColorValue == _colorToARGB32(entry.color),
+                  isSelected: currentColorValue == _colorToARGB32(entry.color),
                   onTap: () => onColorChanged(_colorToARGB32(entry.color)),
                 ),
             ],

@@ -102,6 +102,53 @@ void main() {
       expect(entry.previousUri, isNull);
     });
 
+    test('decodes statistics message with viewers', () {
+      final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+      final List<int> statistics = <int>[
+        ..._varintField(1, 42),
+      ];
+      final List<int> nicoliveMessage = <int>[
+        ..._bytesField(8, statistics),
+      ];
+
+      final Uint8List bytes = Uint8List.fromList(<int>[
+        ..._bytesField(2, nicoliveMessage),
+      ]);
+
+      final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+      expect(message.chat, isNull);
+      expect(message.statistics, isNotNull);
+      expect(message.statistics!.viewers, 42);
+    });
+
+    test('decodes message with both chat and statistics', () {
+      final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+      final List<int> chat = <int>[
+        ..._stringField(1, 'hello'),
+      ];
+      final List<int> statistics = <int>[
+        ..._varintField(1, 100),
+      ];
+      final List<int> nicoliveMessage = <int>[
+        ..._bytesField(1, chat),
+        ..._bytesField(8, statistics),
+      ];
+
+      final Uint8List bytes = Uint8List.fromList(<int>[
+        ..._bytesField(2, nicoliveMessage),
+      ]);
+
+      final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+      expect(message.chat, isNotNull);
+      expect(message.chat!.content, 'hello');
+      expect(message.statistics, isNotNull);
+      expect(message.statistics!.viewers, 100);
+    });
+
     test('decodes packed segment messages and next uri', () {
       final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
 

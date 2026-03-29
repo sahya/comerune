@@ -105,6 +105,12 @@ class CommentScreen extends StatefulWidget {
     this.onNicknameRemoved,
     this.autoNicknameRegistration = true,
     required this.themeMode,
+    this.statisticsEnabled = false,
+    this.statisticsViewerCommentEnabled = true,
+    this.statisticsActiveUserEnabled = true,
+    this.viewerCount,
+    this.totalCommentCount = 0,
+    this.activeUserCount = 0,
   });
 
   final String lv;
@@ -168,6 +174,12 @@ class CommentScreen extends StatefulWidget {
   final bool autoNicknameRegistration;
 
   final AppThemeMode themeMode;
+  final bool statisticsEnabled;
+  final bool statisticsViewerCommentEnabled;
+  final bool statisticsActiveUserEnabled;
+  final int? viewerCount;
+  final int totalCommentCount;
+  final int activeUserCount;
 
   @override
   State<CommentScreen> createState() => _CommentScreenState();
@@ -417,6 +429,14 @@ class _CommentScreenState extends State<CommentScreen> {
                   broadcasterIconUrl: widget.broadcasterIconUrl,
                   beginAt: widget.beginAt,
                   themeColors: themeColors,
+                  statisticsEnabled: widget.statisticsEnabled,
+                  statisticsViewerCommentEnabled:
+                      widget.statisticsViewerCommentEnabled,
+                  statisticsActiveUserEnabled:
+                      widget.statisticsActiveUserEnabled,
+                  viewerCount: widget.viewerCount,
+                  totalCommentCount: widget.totalCommentCount,
+                  activeUserCount: widget.activeUserCount,
                 ),
                 if (_pinnedMessageIds.isNotEmpty)
                   _PinnedCommentsSection(
@@ -1097,6 +1117,12 @@ class _StatusBar extends StatefulWidget {
     this.broadcasterIconUrl,
     this.beginAt,
     required this.themeColors,
+    this.statisticsEnabled = false,
+    this.statisticsViewerCommentEnabled = true,
+    this.statisticsActiveUserEnabled = true,
+    this.viewerCount,
+    this.totalCommentCount = 0,
+    this.activeUserCount = 0,
   });
 
   final String lv;
@@ -1107,6 +1133,12 @@ class _StatusBar extends StatefulWidget {
   final String? broadcasterIconUrl;
   final DateTime? beginAt;
   final AppThemeColors themeColors;
+  final bool statisticsEnabled;
+  final bool statisticsViewerCommentEnabled;
+  final bool statisticsActiveUserEnabled;
+  final int? viewerCount;
+  final int totalCommentCount;
+  final int activeUserCount;
 
   @override
   State<_StatusBar> createState() => _StatusBarState();
@@ -1252,6 +1284,30 @@ class _StatusBarState extends State<_StatusBar> {
                       ),
                     ],
                   ),
+                  if (widget.statisticsEnabled) ...<Widget>[
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 4,
+                      children: <Widget>[
+                        if (widget.statisticsViewerCommentEnabled) ...<Widget>[
+                          Text(
+                            'リスナー: ${widget.viewerCount ?? '-'}',
+                            key: const Key('status-viewer-count'),
+                          ),
+                          Text(
+                            'コメント: ${widget.totalCommentCount}',
+                            key: const Key('status-comment-count'),
+                          ),
+                        ],
+                        if (widget.statisticsActiveUserEnabled)
+                          Text(
+                            '5分アクティブ: ${widget.activeUserCount}',
+                            key: const Key('status-active-user-count'),
+                          ),
+                      ],
+                    ),
+                  ],
                   if (widget.debugMode) ...<Widget>[
                     const SizedBox(height: 4),
                     Wrap(
@@ -1549,8 +1605,7 @@ class _CommentRowState extends State<_CommentRow> {
             message: widget.message,
             showUserName: widget.showUserName,
             resolvedUserName: widget.resolvedUserName,
-            contentOverride:
-                hidden ? 'ネタバレ防止: タップで表示' : null,
+            contentOverride: hidden ? 'ネタバレ防止: タップで表示' : null,
           ),
           style: TextStyle(
             fontSize: widget.fontSize,

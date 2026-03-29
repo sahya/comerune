@@ -222,5 +222,51 @@ void main() {
         expect(loaded.themeMode, mode);
       }
     });
+    test('statisticsEnabled defaults to false when not stored', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.statisticsEnabled, isFalse);
+    });
+
+    test('statisticsViewerCommentEnabled defaults to true when not stored',
+        () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.statisticsViewerCommentEnabled, isTrue);
+    });
+
+    test('statisticsActiveUserEnabled defaults to true when not stored',
+        () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.statisticsActiveUserEnabled, isTrue);
+    });
+
+    test('round-trips statistics settings', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        statisticsEnabled: true,
+        statisticsViewerCommentEnabled: false,
+        statisticsActiveUserEnabled: false,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.statisticsEnabled, isTrue);
+      expect(loaded.statisticsViewerCommentEnabled, isFalse);
+      expect(loaded.statisticsActiveUserEnabled, isFalse);
+    });
   });
 }
