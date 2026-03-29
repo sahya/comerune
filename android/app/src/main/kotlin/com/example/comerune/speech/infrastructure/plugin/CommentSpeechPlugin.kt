@@ -55,8 +55,8 @@ class CommentSpeechPlugin :
         val queueManager = InMemorySpeechQueueManager(maxSize = 20)
         val settingsRepository = InMemorySettingsRepository()
         val emitter = FlutterSpeechEventEmitter()
-        val engine = VoicevoxEngineImpl(context)
         val context = binding.applicationContext
+        val engine = VoicevoxEngineImpl(context)
         val player = MediaPlayerWavPlayer(context)
 
         eventEmitter = emitter
