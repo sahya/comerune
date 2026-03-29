@@ -111,10 +111,15 @@ void main() {
       await tester.pumpAndSettle();
 
       await enterTextByKey(
-          tester, _listKey, const Key('ng-words-field'), '^w+\$');
+          tester, _listKey, const Key('queue-limit-field'), '50');
       await focusFieldByKey(tester, _listKey, const Key('max-delay-field'));
 
+      await enterTextByKey(
+          tester, _listKey, const Key('ng-words-field'), '^w+\$');
+      await focusFieldByKey(tester, _listKey, const Key('queue-limit-field'));
+
       final AppSettings loaded = await settingsStore.load();
+      expect(loaded.queueLimit, 50);
       expect(loaded.ngWords, '^w+\$');
     });
 
