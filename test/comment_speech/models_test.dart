@@ -82,7 +82,7 @@ void main() {
     test('default values match Kotlin side', () {
       const settings = SpeechSettings();
       expect(settings.enabled, true);
-      expect(settings.speakerId, 0);
+      expect(settings.speakerId, 2); // 四国めたん（ノーマル）
       expect(settings.speedScale, 1.15);
       expect(settings.pitchScale, 0.0);
       expect(settings.intonationScale, 1.0);
