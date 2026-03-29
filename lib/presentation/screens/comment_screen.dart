@@ -253,8 +253,7 @@ class _CommentScreenState extends State<CommentScreen> {
             widget.themeMode,
             MediaQuery.platformBrightnessOf(context),
           );
-          final AppThemeColors themeColors =
-              AppTheme.colorsFor(effectiveMode);
+          final AppThemeColors themeColors = AppTheme.colorsFor(effectiveMode);
 
           return Scaffold(
             appBar: AppBar(
