@@ -4,7 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:comerune/domain/connection/connection_method.dart';
 import 'package:comerune/domain/connection/connection_supervisor.dart';
 import 'package:comerune/domain/models/app_message.dart';
+import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/presentation/screens/comment_screen.dart';
+import 'package:comerune/presentation/theme/app_theme.dart';
 
 void main() {
   group('CommentScreen', () {
@@ -20,14 +22,15 @@ void main() {
         ),
       );
 
+      final AppThemeColors themeColors = AppTheme.colorsFor(AppThemeMode.light);
       Icon wifiIcon = tester.widget(find.byKey(const Key('status-wifi-icon')));
-      expect(wifiIcon.color, Colors.green);
+      expect(wifiIcon.color, themeColors.statusConnected);
 
       expect(supervisor.endBroadcast(), isTrue);
       await tester.pumpAndSettle();
 
       wifiIcon = tester.widget(find.byKey(const Key('status-wifi-icon')));
-      expect(wifiIcon.color, Colors.red);
+      expect(wifiIcon.color, themeColors.statusDisconnected);
     });
 
     testWidgets('status bar shows normal and debug fields', (
@@ -451,6 +454,7 @@ void main() {
                             },
                             onReconnectSameLv: () async {},
                             onDifferentLvConnected: (_, __) async {},
+                            themeMode: AppThemeMode.light,
                           ),
                         ),
                       );
@@ -495,7 +499,7 @@ void main() {
       expect(find.text('lv345678901'), findsAtLeast(1));
     });
 
-    testWidgets('shows broadcaster name with label in program title bar', (
+    testWidgets('shows broadcaster name with lv in AppBar title', (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
@@ -509,16 +513,24 @@ void main() {
         ),
       );
 
+      // AppBar shows only the broadcaster name.
+      final Text appBarText = tester.widget<Text>(
+        find.byKey(const Key('appbar-title-text')),
+      );
+      expect(appBarText.data, 'テスト配信者');
+
+      // Program title bar shows the title with broadcaster icon.
       expect(find.byKey(const Key('program-title-bar')), findsOneWidget);
       expect(find.text('テスト番組'), findsOneWidget);
+
+      // Status bar also shows the broadcaster name.
       expect(
-        find.byKey(const Key('broadcaster-name-text')),
+        find.byKey(const Key('status-broadcaster-name')),
         findsOneWidget,
       );
-      expect(find.text('配信者: テスト配信者'), findsOneWidget);
     });
 
-    testWidgets('hides broadcaster name when broadcasterName is null', (
+    testWidgets('shows lv only in AppBar when broadcasterName is null', (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
@@ -531,10 +543,19 @@ void main() {
         ),
       );
 
+      // lv is shown as the title when no broadcaster name.
+      expect(
+        find.byKey(const Key('appbar-title-text')),
+        findsOneWidget,
+      );
+      expect(find.text('lv345678901'), findsAtLeast(1));
+
       expect(find.byKey(const Key('program-title-bar')), findsOneWidget);
       expect(find.text('タイトルのみ'), findsOneWidget);
+
+      // Status bar does not show broadcaster name when null.
       expect(
-        find.byKey(const Key('broadcaster-name-text')),
+        find.byKey(const Key('status-broadcaster-name')),
         findsNothing,
       );
     });
@@ -661,6 +682,113 @@ void main() {
       expect(find.textContaining('world'), findsOneWidget);
     });
 
+    testWidgets('applies configured font size to comment rows', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'font-msg',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'u1',
+          content: 'font size test',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          commentFontSize: 18,
+        ),
+      );
+
+      final Text textWidget = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('comment-row-font-msg')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(textWidget.style?.fontSize, 18);
+    });
+
+    testWidgets('default font size is medium (14px)', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'default-font-msg',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'u1',
+          content: 'default font test',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+        ),
+      );
+
+      final Text textWidget = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('comment-row-default-font-msg')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(textWidget.style?.fontSize, 14);
+    });
+
+    testWidgets('applies custom user color to comment text', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'color-msg',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-colored',
+          content: 'colored comment',
+          type: AppMessageType.chat,
+        ),
+        AppMessage(
+          id: 'no-color-msg',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 1),
+          userId: 'user-default',
+          content: 'default comment',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          userColorMap: const <String, int>{'user-colored': 0xFFE53935},
+        ),
+      );
+
+      final Text coloredText = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('comment-row-color-msg')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(coloredText.style?.color, colorFromARGB32(0xFFE53935));
+
+      final Text defaultText = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('comment-row-no-color-msg')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(defaultText.style?.color, isNull);
+    });
+
     testWidgets('hides NG user comments from display', (
       WidgetTester tester,
     ) async {
@@ -695,7 +823,127 @@ void main() {
       expect(find.text('NGコメント'), findsNothing);
     });
 
-    testWidgets('long-press on comment row opens user detail sheet', (
+    testWidgets('hides comments containing NG words', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'chat-clean',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '普通のコメント',
+          type: AppMessageType.chat,
+        ),
+        AppMessage(
+          id: 'chat-ng',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 1),
+          userId: 'user-2',
+          content: 'これはspamです',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngWords: const <String>['spam'],
+        ),
+      );
+
+      expect(find.byKey(const Key('comment-row-chat-clean')), findsOneWidget);
+      expect(find.byKey(const Key('comment-row-chat-ng')), findsNothing);
+      expect(find.text('これはspamです'), findsNothing);
+    });
+
+    testWidgets('NG word matching is case-insensitive', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'chat-upper',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: 'SPAM message',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngWords: const <String>['spam'],
+        ),
+      );
+
+      expect(find.byKey(const Key('comment-row-chat-upper')), findsNothing);
+    });
+
+    testWidgets('filters by second NG word in multi-word list', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'chat-ok',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '普通のコメント',
+          type: AppMessageType.chat,
+        ),
+        AppMessage(
+          id: 'chat-bad',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 1),
+          userId: 'user-2',
+          content: 'この広告を見て',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngWords: const <String>['spam', '広告'],
+        ),
+      );
+
+      expect(find.byKey(const Key('comment-row-chat-ok')), findsOneWidget);
+      expect(find.byKey(const Key('comment-row-chat-bad')), findsNothing);
+    });
+
+    testWidgets('empty NG words list does not filter any comments', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'chat-normal',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: 'spam message',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngWords: const <String>[],
+        ),
+      );
+
+      expect(
+        find.byKey(const Key('comment-row-chat-normal')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('long-press on comment row opens actions sheet', (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
@@ -720,9 +968,502 @@ void main() {
       await tester.longPress(find.byKey(const Key('comment-row-msg-lp')));
       await tester.pumpAndSettle();
 
+      expect(find.byKey(const Key('comment-actions-sheet')), findsOneWidget);
+      expect(find.text('ピン留め'), findsOneWidget);
+      expect(find.text('ユーザー詳細'), findsOneWidget);
+    });
+
+    testWidgets('long-press actions sheet opens user detail when tapped', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-lp2',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: '12345',
+          content: 'user detail test',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          resolveUserName: (_) => 'テストさん',
+        ),
+      );
+
+      await tester.longPress(find.byKey(const Key('comment-row-msg-lp2')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('action-user-detail')));
+      await tester.pumpAndSettle();
+
       expect(find.text('ユーザー詳細'), findsOneWidget);
       expect(find.text('ID: 12345'), findsOneWidget);
       expect(find.text('名前: テストさん'), findsOneWidget);
+    });
+
+    testWidgets('pin comment from actions sheet shows pinned section', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-pin',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'u1',
+          content: 'pin me',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+        ),
+      );
+
+      // No pinned section initially.
+      expect(find.byKey(const Key('pinned-comments-section')), findsNothing);
+
+      // Long-press and pin.
+      await tester.longPress(find.byKey(const Key('comment-row-msg-pin')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('action-pin-msg-pin')));
+      await tester.pumpAndSettle();
+
+      // Pinned section is now visible.
+      expect(find.byKey(const Key('pinned-comments-section')), findsOneWidget);
+      expect(find.byKey(const Key('pinned-row-msg-pin')), findsOneWidget);
+    });
+
+    testWidgets('unpin comment via close button hides pinned section', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-unpin',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'u1',
+          content: 'unpin me',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+        ),
+      );
+
+      // Pin the comment.
+      await tester.longPress(find.byKey(const Key('comment-row-msg-unpin')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('action-pin-msg-unpin')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('pinned-comments-section')), findsOneWidget);
+
+      // Unpin via the close button.
+      await tester.tap(find.byKey(const Key('unpin-button-msg-unpin')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('pinned-comments-section')), findsNothing);
+    });
+
+    testWidgets('multiple comments can be pinned', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-a',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'u1',
+          content: 'comment A',
+          type: AppMessageType.chat,
+        ),
+        AppMessage(
+          id: 'msg-b',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 1),
+          userId: 'u2',
+          content: 'comment B',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+        ),
+      );
+
+      // Pin first comment.
+      await tester.longPress(find.byKey(const Key('comment-row-msg-a')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('action-pin-msg-a')));
+      await tester.pumpAndSettle();
+
+      // Pin second comment.
+      await tester.longPress(find.byKey(const Key('comment-row-msg-b')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('action-pin-msg-b')));
+      await tester.pumpAndSettle();
+
+      // Both pinned rows are visible.
+      expect(find.byKey(const Key('pinned-row-msg-a')), findsOneWidget);
+      expect(find.byKey(const Key('pinned-row-msg-b')), findsOneWidget);
+    });
+
+    testWidgets('unpin from actions sheet works for pinned comment', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-toggle',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'u1',
+          content: 'toggle pin',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+        ),
+      );
+
+      // Pin the comment.
+      await tester.longPress(find.byKey(const Key('comment-row-msg-toggle')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('action-pin-msg-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('pinned-comments-section')), findsOneWidget);
+
+      // Long-press again shows "ピン留め解除".
+      await tester.longPress(find.byKey(const Key('comment-row-msg-toggle')));
+      await tester.pumpAndSettle();
+      expect(find.text('ピン留め解除'), findsOneWidget);
+
+      // Unpin via the actions sheet.
+      await tester.tap(find.byKey(const Key('action-unpin-msg-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('pinned-comments-section')), findsNothing);
+    });
+
+    testWidgets('shows settings button when onOpenSettings is provided', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          onOpenSettings: () async {},
+        ),
+      );
+
+      expect(find.byKey(const Key('settings-button')), findsOneWidget);
+    });
+
+    testWidgets('tapping settings button invokes onOpenSettings callback', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      int settingsCalls = 0;
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          onOpenSettings: () async {
+            settingsCalls += 1;
+          },
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('settings-button')));
+      await tester.pumpAndSettle();
+      expect(settingsCalls, 1);
+    });
+
+    testWidgets('hides settings button when onOpenSettings is null', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+        ),
+      );
+
+      expect(find.byKey(const Key('settings-button')), findsNothing);
+    });
+
+    testWidgets(
+        'star prefix hides comment body when starPrefixHidingEnabled is true',
+        (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'star-msg',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '☆ラスボスは実は味方だった',
+          type: AppMessageType.chat,
+        ),
+        AppMessage(
+          id: 'normal-msg',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 1),
+          userId: 'user-2',
+          content: 'こんにちは',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          starPrefixHidingEnabled: true,
+        ),
+      );
+
+      // Star-prefixed comment should show placeholder
+      expect(find.textContaining('ネタバレ防止: タップで表示'), findsOneWidget);
+      expect(find.textContaining('☆ラスボスは実は味方だった'), findsNothing);
+
+      // Normal comment should still be visible
+      expect(find.textContaining('こんにちは'), findsOneWidget);
+    });
+
+    testWidgets('star prefix comment reveals body on tap', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'star-reveal',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '☆秘密のメッセージ',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          starPrefixHidingEnabled: true,
+        ),
+      );
+
+      // Should show placeholder
+      expect(find.textContaining('ネタバレ防止: タップで表示'), findsOneWidget);
+
+      // Tap to reveal
+      await tester.tap(find.byKey(const Key('comment-row-star-reveal')));
+      await tester.pumpAndSettle();
+
+      // Should now show original content
+      expect(find.textContaining('☆秘密のメッセージ'), findsOneWidget);
+      expect(find.textContaining('ネタバレ防止: タップで表示'), findsNothing);
+    });
+
+    testWidgets(
+        'star prefix shows normal content when starPrefixHidingEnabled is false',
+        (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'star-no-hide',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '☆普通に表示される',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          starPrefixHidingEnabled: false,
+        ),
+      );
+
+      // With setting OFF, should show normal content
+      expect(find.textContaining('☆普通に表示される'), findsOneWidget);
+      expect(find.textContaining('ネタバレ防止'), findsNothing);
+    });
+
+    testWidgets('slash prefix comment displays content normally', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'slash-msg',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '/おやすみなさい',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+        ),
+      );
+
+      // Slash prefix should display normally (TTS skip only)
+      expect(find.textContaining('/おやすみなさい'), findsOneWidget);
+    });
+
+    testWidgets('star prefix preserves user ID and timestamp when hidden', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'star-meta',
+          timestamp: DateTime(2026, 3, 22, 12, 34, 56),
+          userId: '12345',
+          content: '☆ネタバレ内容',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          starPrefixHidingEnabled: true,
+        ),
+      );
+
+      // Timestamp and user ID should still be visible
+      expect(find.textContaining('12:34:56'), findsOneWidget);
+      expect(find.textContaining('12345'), findsOneWidget);
+      // But content should be hidden
+      expect(find.textContaining('ネタバレ防止: タップで表示'), findsOneWidget);
+    });
+
+    testWidgets('star prefix hidden comment uses italic grey style', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'star-style',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '☆隠されるコメント',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          starPrefixHidingEnabled: true,
+        ),
+      );
+
+      final Text textWidget = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('comment-row-star-style')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(textWidget.style?.fontStyle, FontStyle.italic);
+      expect(textWidget.style?.color, Colors.grey);
+
+      // Tap to reveal
+      await tester.tap(find.byKey(const Key('comment-row-star-style')));
+      await tester.pumpAndSettle();
+
+      // After reveal, style should return to normal
+      final Text revealedText = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('comment-row-star-style')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(revealedText.style?.fontStyle, isNull);
+      expect(revealedText.style?.color, isNull);
+    });
+
+    testWidgets('star prefix revealed state resets when message ID changes', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final GlobalKey<_CommentScreenHostState> hostKey =
+          GlobalKey<_CommentScreenHostState>();
+
+      await tester.pumpWidget(
+        _CommentScreenHost(
+          key: hostKey,
+          supervisor: supervisor,
+          initialLv: 'lv-star-reset',
+          initialMessages: <AppMessage>[
+            AppMessage(
+              id: 'star-reset-1',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+              userId: 'user-1',
+              content: '☆最初のネタバレ',
+              type: AppMessageType.chat,
+            ),
+          ],
+          starPrefixHidingEnabled: true,
+        ),
+      );
+
+      // Initially hidden
+      expect(find.textContaining('ネタバレ防止: タップで表示'), findsOneWidget);
+
+      // Tap to reveal
+      await tester.tap(find.byKey(const Key('comment-row-star-reset-1')));
+      await tester.pumpAndSettle();
+
+      // Now revealed
+      expect(find.textContaining('☆最初のネタバレ'), findsOneWidget);
+
+      // Replace with a different message (simulating new message at same index)
+      hostKey.currentState!.replaceMessages(<AppMessage>[
+        AppMessage(
+          id: 'star-reset-2',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 1),
+          userId: 'user-1',
+          content: '☆次のネタバレ',
+          type: AppMessageType.chat,
+        ),
+      ]);
+      await tester.pumpAndSettle();
+
+      // New message should be hidden again (revealed state reset)
+      expect(find.textContaining('ネタバレ防止: タップで表示'), findsOneWidget);
+      expect(find.textContaining('☆次のネタバレ'), findsNothing);
     });
 
     testWidgets('invokes callback when lv changes (different lv connection)', (
@@ -754,7 +1495,385 @@ void main() {
       expect(hostKey.currentState!.previousLv, 'lv111');
       expect(hostKey.currentState!.nextLv, 'lv222');
     });
+
+    testWidgets('displays nickname in comment row when userNicknameMap is set',
+        (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-1',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: 'こんにちは',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          userNicknameMap: const <String, String>{'user-1': 'たろう'},
+        ),
+      );
+
+      // The nickname should appear in the comment text.
+      expect(find.textContaining('たろう'), findsOneWidget);
+    });
+
+    testWidgets(
+        'nickname takes priority over resolvedUserName in comment display', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-1',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          userName: 'プロトバフ名',
+          content: 'テスト',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          userNicknameMap: const <String, String>{'user-1': 'コテハン名'},
+          resolveUserName: (_) => 'リゾルブ名',
+        ),
+      );
+
+      expect(find.textContaining('コテハン名'), findsOneWidget);
+      expect(find.textContaining('プロトバフ名'), findsNothing);
+      expect(find.textContaining('リゾルブ名'), findsNothing);
+    });
+
+    testWidgets('@name comment triggers onNicknameChanged callback', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final GlobalKey<_NicknameCommentScreenHostState> hostKey =
+          GlobalKey<_NicknameCommentScreenHostState>();
+
+      await tester.pumpWidget(
+        _NicknameCommentScreenHost(
+          key: hostKey,
+          supervisor: supervisor,
+        ),
+      );
+
+      // Add a message with @name
+      hostKey.currentState!.addMessage(
+        AppMessage(
+          id: 'msg-1',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '@たろう',
+          type: AppMessageType.chat,
+        ),
+      );
+      await tester.pump();
+
+      expect(hostKey.currentState!.lastNicknameUserId, 'user-1');
+      expect(hostKey.currentState!.lastNickname, 'たろう');
+    });
+
+    testWidgets('@only comment triggers onNicknameRemoved callback', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final GlobalKey<_NicknameCommentScreenHostState> hostKey =
+          GlobalKey<_NicknameCommentScreenHostState>();
+
+      await tester.pumpWidget(
+        _NicknameCommentScreenHost(
+          key: hostKey,
+          supervisor: supervisor,
+        ),
+      );
+
+      hostKey.currentState!.addMessage(
+        AppMessage(
+          id: 'msg-1',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '@',
+          type: AppMessageType.chat,
+        ),
+      );
+      await tester.pump();
+
+      expect(hostKey.currentState!.lastRemovedUserId, 'user-1');
+      expect(hostKey.currentState!.lastNickname, isNull);
+    });
+
+    testWidgets('does not process @name when autoNicknameRegistration is false',
+        (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final GlobalKey<_NicknameCommentScreenHostState> hostKey =
+          GlobalKey<_NicknameCommentScreenHostState>();
+
+      await tester.pumpWidget(
+        _NicknameCommentScreenHost(
+          key: hostKey,
+          supervisor: supervisor,
+          autoNicknameRegistration: false,
+        ),
+      );
+
+      hostKey.currentState!.addMessage(
+        AppMessage(
+          id: 'msg-1',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '@たろう',
+          type: AppMessageType.chat,
+        ),
+      );
+      await tester.pump();
+
+      expect(hostKey.currentState!.lastNicknameUserId, isNull);
+      expect(hostKey.currentState!.lastNickname, isNull);
+    });
+
+    testWidgets('shows elapsed time in H:MM:SS format when beginAt is provided',
+        (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final DateTime beginAt = DateTime.now().subtract(
+        const Duration(hours: 2, minutes: 30, seconds: 15),
+      );
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          beginAt: beginAt,
+        ),
+      );
+
+      final Finder elapsedFinder = find.byKey(const Key('status-elapsed'));
+      expect(elapsedFinder, findsOneWidget);
+      final Text elapsedText = tester.widget(elapsedFinder);
+      expect(elapsedText.data, matches(RegExp(r'^2:30:\d{2}$')));
+    });
+
+    testWidgets('shows 0:MM:SS format when under one hour', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final DateTime beginAt = DateTime.now().subtract(
+        const Duration(minutes: 5, seconds: 30),
+      );
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          beginAt: beginAt,
+        ),
+      );
+
+      final Finder elapsedFinder = find.byKey(const Key('status-elapsed'));
+      expect(elapsedFinder, findsOneWidget);
+      final Text elapsedText = tester.widget(elapsedFinder);
+      expect(elapsedText.data, matches(RegExp(r'^0:05:\d{2}$')));
+    });
+
+    testWidgets('shows 0:00:SS format when just started', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final DateTime beginAt = DateTime.now().subtract(
+        const Duration(seconds: 5),
+      );
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          beginAt: beginAt,
+        ),
+      );
+
+      final Finder elapsedFinder = find.byKey(const Key('status-elapsed'));
+      expect(elapsedFinder, findsOneWidget);
+      final Text elapsedText = tester.widget(elapsedFinder);
+      expect(elapsedText.data, matches(RegExp(r'^0:00:0[0-9]$')));
+    });
+
+    testWidgets('hides elapsed label when beginAt is null', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+        ),
+      );
+
+      expect(find.byKey(const Key('status-elapsed')), findsNothing);
+    });
+
+    testWidgets('hides elapsed label when beginAt is in the future', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final DateTime beginAt = DateTime.now().add(
+        const Duration(hours: 1),
+      );
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          beginAt: beginAt,
+        ),
+      );
+
+      expect(find.byKey(const Key('status-elapsed')), findsNothing);
+    });
+
+    testWidgets('elapsed timer fires periodic rebuild', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final DateTime beginAt = DateTime.now().subtract(
+        const Duration(minutes: 45, seconds: 10),
+      );
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          beginAt: beginAt,
+        ),
+      );
+
+      final Finder elapsedFinder = find.byKey(const Key('status-elapsed'));
+      expect(elapsedFinder, findsOneWidget);
+
+      // Advance the fake clock by 1 second to trigger the periodic timer.
+      await tester.pump(const Duration(seconds: 1));
+      expect(elapsedFinder, findsOneWidget);
+      final Text updated = tester.widget(elapsedFinder);
+      expect(updated.data, matches(RegExp(r'^\d+:\d{2}:\d{2}$')));
+    });
   });
+
+  group('Comment log stats', () {
+    testWidgets('shows stats sheet when connection ends with messages', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        _message(
+          id: 'c1',
+          type: AppMessageType.chat,
+          content: 'hello',
+        ),
+        _message(
+          id: 'c2',
+          type: AppMessageType.chat,
+          content: 'world',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+        ),
+      );
+
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pumpAndSettle();
+
+      expect(find.text('コメント統計サマリ'), findsOneWidget);
+      expect(find.text('2'), findsOneWidget); // total comments
+    });
+
+    testWidgets('does not show stats sheet when no displayable messages', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+        ),
+      );
+
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pumpAndSettle();
+
+      expect(find.text('コメント統計サマリ'), findsNothing);
+    });
+  });
+}
+
+class _NicknameCommentScreenHost extends StatefulWidget {
+  const _NicknameCommentScreenHost({
+    super.key,
+    required this.supervisor,
+    this.autoNicknameRegistration = true,
+  });
+
+  final ConnectionSupervisor supervisor;
+  final bool autoNicknameRegistration;
+
+  @override
+  State<_NicknameCommentScreenHost> createState() =>
+      _NicknameCommentScreenHostState();
+}
+
+class _NicknameCommentScreenHostState
+    extends State<_NicknameCommentScreenHost> {
+  List<AppMessage> _messages = const <AppMessage>[];
+  String? lastNicknameUserId;
+  String? lastNickname;
+  String? lastRemovedUserId;
+
+  void addMessage(AppMessage message) {
+    setState(() {
+      _messages = List<AppMessage>.from(_messages)..add(message);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: CommentScreen(
+        lv: 'lv123',
+        connectionSupervisor: widget.supervisor,
+        messages: _messages,
+        onStopAllConnections: () async {},
+        onReconnectSameLv: () async {},
+        onDifferentLvConnected: (_, __) async {},
+        autoNicknameRegistration: widget.autoNicknameRegistration,
+        onNicknameChanged: (String userId, String nickname) {
+          lastNicknameUserId = userId;
+          lastNickname = nickname;
+        },
+        onNicknameRemoved: (String userId) {
+          lastRemovedUserId = userId;
+          lastNickname = null;
+        },
+        themeMode: AppThemeMode.light,
+      ),
+    );
+  }
 }
 
 class _CommentScreenHost extends StatefulWidget {
@@ -763,11 +1882,13 @@ class _CommentScreenHost extends StatefulWidget {
     required this.supervisor,
     required this.initialLv,
     required this.initialMessages,
+    this.starPrefixHidingEnabled = false,
   });
 
   final ConnectionSupervisor supervisor;
   final String initialLv;
   final List<AppMessage> initialMessages;
+  final bool starPrefixHidingEnabled;
 
   @override
   State<_CommentScreenHost> createState() => _CommentScreenHostState();
@@ -820,6 +1941,8 @@ class _CommentScreenHostState extends State<_CommentScreenHost> {
           previousLv = previous;
           nextLv = next;
         },
+        starPrefixHidingEnabled: widget.starPrefixHidingEnabled,
+        themeMode: AppThemeMode.light,
       ),
     );
   }
@@ -831,12 +1954,19 @@ Widget _buildScreen({
   String lv = 'lv345678901',
   Future<void> Function()? onStopAllConnections,
   Future<void> Function()? onReconnectSameLv,
+  Future<void> Function()? onOpenSettings,
   bool debugMode = false,
   ConnectionMethod? connectionMethod,
   String? programTitle,
   String? broadcasterName,
   String? Function(String userId)? resolveUserName,
+  double commentFontSize = commentFontSizeDefault,
   Set<String> ngUserIds = const <String>{},
+  List<String> ngWords = const <String>[],
+  Map<String, int> userColorMap = const <String, int>{},
+  Map<String, String> userNicknameMap = const <String, String>{},
+  bool starPrefixHidingEnabled = false,
+  DateTime? beginAt,
 }) {
   return MaterialApp(
     home: CommentScreen(
@@ -846,12 +1976,20 @@ Widget _buildScreen({
       onStopAllConnections: onStopAllConnections ?? () async {},
       onReconnectSameLv: onReconnectSameLv ?? () async {},
       onDifferentLvConnected: (_, __) async {},
+      onOpenSettings: onOpenSettings,
       debugMode: debugMode,
       connectionMethod: connectionMethod,
       programTitle: programTitle,
       broadcasterName: broadcasterName,
       resolveUserName: resolveUserName,
+      commentFontSize: commentFontSize,
+      beginAt: beginAt,
       ngUserIds: ngUserIds,
+      ngWords: ngWords,
+      userColorMap: userColorMap,
+      userNicknameMap: userNicknameMap,
+      starPrefixHidingEnabled: starPrefixHidingEnabled,
+      themeMode: AppThemeMode.light,
     ),
   );
 }

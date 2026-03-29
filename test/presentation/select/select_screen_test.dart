@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:comerune/application/settings/settings_store.dart';
 import 'package:comerune/application/timeline/timeline_store.dart';
+import 'package:comerune/data/follow/follow_program.dart';
+import 'package:comerune/data/follow/follow_program_repository.dart';
 import 'package:comerune/domain/connection/connection_supervisor.dart';
 import 'package:comerune/domain/models/app_message.dart';
 import 'package:comerune/presentation/select/select_screen.dart';
 import 'package:comerune/presentation/screens/comment_screen.dart';
+
+import '../../helpers/in_memory_shared_preferences.dart';
+import '../../helpers/in_memory_user_session_store.dart';
 
 Finder inputField() => find.byKey(const Key('select_screen_input'));
 Finder connectButton() => find.byKey(const Key('select_screen_connect_button'));
@@ -258,4 +264,325 @@ void main() {
     expect(find.byType(CommentScreen), findsOneWidget);
     expect(find.byKey(const Key('comment-row-msg-1')), findsOneWidget);
   });
+
+  testWidgets('shows settings button when settingsStore is provided', (
+    WidgetTester tester,
+  ) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+    final SettingsStore settingsStore = SharedPreferencesSettingsStore(
+      prefs: InMemorySharedPreferences(),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SelectScreen(
+          connectionSupervisor: supervisor,
+          settingsStore: settingsStore,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('select_screen_settings_button')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('hides settings button when settingsStore is null', (
+    WidgetTester tester,
+  ) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    await pumpSelectScreen(tester, supervisor);
+
+    expect(
+      find.byKey(const Key('select_screen_settings_button')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('shows login-required banner when not logged in', (
+    WidgetTester tester,
+  ) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+    final SettingsStore settingsStore = SharedPreferencesSettingsStore(
+      prefs: InMemorySharedPreferences(),
+    );
+    final InMemoryUserSessionStore userSessionStore =
+        InMemoryUserSessionStore();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SelectScreen(
+          connectionSupervisor: supervisor,
+          settingsStore: settingsStore,
+          userSessionStore: userSessionStore,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('login-status-banner-required')),
+      findsOneWidget,
+    );
+    expect(find.text('ログインが必要です。タップして設定を開く'), findsOneWidget);
+  });
+
+  testWidgets('shows logged-in banner when session exists', (
+    WidgetTester tester,
+  ) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+    final SettingsStore settingsStore = SharedPreferencesSettingsStore(
+      prefs: InMemorySharedPreferences(),
+    );
+    final InMemoryUserSessionStore userSessionStore =
+        InMemoryUserSessionStore();
+    await userSessionStore.save('user_session_abc123');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SelectScreen(
+          connectionSupervisor: supervisor,
+          settingsStore: settingsStore,
+          userSessionStore: userSessionStore,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('login-status-banner-ok')),
+      findsOneWidget,
+    );
+    expect(find.text('ニコニコ ログイン済み'), findsOneWidget);
+    expect(
+      find.byKey(const Key('login-status-banner-required')),
+      findsNothing,
+    );
+  });
+
+  testWidgets(
+      'hides login banner when settingsStore is provided but userSessionStore is null',
+      (
+    WidgetTester tester,
+  ) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+    final SettingsStore settingsStore = SharedPreferencesSettingsStore(
+      prefs: InMemorySharedPreferences(),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SelectScreen(
+          connectionSupervisor: supervisor,
+          settingsStore: settingsStore,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('login-status-banner-ok')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('login-status-banner-required')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('select_screen_settings_button')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('hides login banner when settingsStore is null', (
+    WidgetTester tester,
+  ) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+
+    await pumpSelectScreen(tester, supervisor);
+
+    expect(
+      find.byKey(const Key('login-status-banner-ok')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('login-status-banner-required')),
+      findsNothing,
+    );
+  });
+
+  group('follow program list', () {
+    Future<void> pumpWithFollowPrograms(
+      WidgetTester tester, {
+      required List<FollowProgram> programs,
+    }) async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+      final SettingsStore settingsStore = SharedPreferencesSettingsStore(
+        prefs: InMemorySharedPreferences(),
+      );
+      final InMemoryUserSessionStore userSessionStore =
+          InMemoryUserSessionStore();
+      await userSessionStore.save('test_session');
+
+      final _FakeFollowProgramRepository repository =
+          _FakeFollowProgramRepository(programs);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: supervisor,
+            settingsStore: settingsStore,
+            userSessionStore: userSessionStore,
+            followProgramRepository: repository,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('shows program title and provider info in tile', (
+      WidgetTester tester,
+    ) async {
+      await pumpWithFollowPrograms(
+        tester,
+        programs: <FollowProgram>[
+          FollowProgram(
+            programId: 'lv123456789',
+            title: 'テスト放送タイトル',
+            providerName: 'テスト放送者',
+            communityName: 'テストコミュニティ',
+          ),
+        ],
+      );
+
+      expect(find.text('テスト放送タイトル'), findsOneWidget);
+      expect(
+        find.text('テスト放送者 / テストコミュニティ - lv123456789'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('shows provider info without community when absent', (
+      WidgetTester tester,
+    ) async {
+      await pumpWithFollowPrograms(
+        tester,
+        programs: <FollowProgram>[
+          FollowProgram(
+            programId: 'lv987654321',
+            title: 'コミュニティなし放送',
+            providerName: '放送者A',
+          ),
+        ],
+      );
+
+      expect(find.text('放送者A - lv987654321'), findsOneWidget);
+    });
+
+    testWidgets('shows program count in header', (
+      WidgetTester tester,
+    ) async {
+      await pumpWithFollowPrograms(
+        tester,
+        programs: <FollowProgram>[
+          FollowProgram(
+            programId: 'lv111',
+            title: '放送1',
+            providerName: '放送者1',
+          ),
+          FollowProgram(
+            programId: 'lv222',
+            title: '放送2',
+            providerName: '放送者2',
+          ),
+        ],
+      );
+
+      expect(find.text('フォロー中の放送'), findsOneWidget);
+      expect(find.text('2件'), findsOneWidget);
+    });
+
+    testWidgets('shows elapsed time with clock icon', (
+      WidgetTester tester,
+    ) async {
+      await pumpWithFollowPrograms(
+        tester,
+        programs: <FollowProgram>[
+          FollowProgram(
+            programId: 'lv333',
+            title: '経過時間テスト',
+            providerName: '放送者',
+            beginAt: DateTime.now().subtract(const Duration(minutes: 45)),
+          ),
+        ],
+      );
+
+      expect(find.textContaining(RegExp(r'^0:45:\d{2}$')), findsOneWidget);
+      expect(find.byIcon(Icons.access_time), findsOneWidget);
+    });
+
+    testWidgets('shows fallback icon when providerIconUrl is null', (
+      WidgetTester tester,
+    ) async {
+      await pumpWithFollowPrograms(
+        tester,
+        programs: <FollowProgram>[
+          FollowProgram(
+            programId: 'lv444',
+            title: 'アイコンなし',
+            providerName: '放送者',
+          ),
+        ],
+      );
+
+      expect(find.byIcon(Icons.person), findsOneWidget);
+    });
+
+    testWidgets('tapping tile fills input and starts connection', (
+      WidgetTester tester,
+    ) async {
+      await pumpWithFollowPrograms(
+        tester,
+        programs: <FollowProgram>[
+          FollowProgram(
+            programId: 'lv555666777',
+            title: 'タップテスト放送',
+            providerName: 'タップ放送者',
+          ),
+        ],
+      );
+
+      await tester.tap(find.text('タップテスト放送'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CommentScreen), findsOneWidget);
+    });
+
+    testWidgets('hides list when programs are empty', (
+      WidgetTester tester,
+    ) async {
+      await pumpWithFollowPrograms(
+        tester,
+        programs: <FollowProgram>[],
+      );
+
+      expect(find.text('フォロー中の放送'), findsNothing);
+    });
+  });
+}
+
+class _FakeFollowProgramRepository extends FollowProgramRepository {
+  _FakeFollowProgramRepository(this._programs);
+
+  final List<FollowProgram> _programs;
+
+  @override
+  Future<List<FollowProgram>> fetchOnAirPrograms({
+    required String userSession,
+  }) async {
+    return _programs;
+  }
 }

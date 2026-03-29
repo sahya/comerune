@@ -33,6 +33,9 @@ class SharedPreferencesAdapter implements SharedPreferencesLike {
   @override
   Future<bool> setString(String key, String value) =>
       _prefs.setString(key, value);
+
+  @override
+  Future<bool> remove(String key) => _prefs.remove(key);
 }
 
 Future<SettingsStore> createSharedPreferencesSettingsStore() async {
