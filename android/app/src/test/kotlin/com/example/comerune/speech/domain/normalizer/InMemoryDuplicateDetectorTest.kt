@@ -48,18 +48,27 @@ class InMemoryDuplicateDetectorTest {
         assertFalse(detector.isDuplicate("hello", "user2", currentTime))
     }
 
-    // --- AC3: Same userId rapid posts within 5s suppressed ---
+    // --- AC3: Same userId different text within window is NOT suppressed ---
+    // The duplicate detector only suppresses identical text, not same-user different text.
 
     @Test
-    fun `same userId different text within window is duplicate`() {
+    fun `same userId different text within window is not duplicate`() {
         detector.record("hello", "user1", currentTime)
 
         currentTime += 1000L
-        assertTrue(detector.isDuplicate("world", "user1", currentTime))
+        assertFalse(detector.isDuplicate("world", "user1", currentTime))
     }
 
     @Test
-    fun `null userId rapid posts are not treated as same user`() {
+    fun `same userId same text within window is duplicate`() {
+        detector.record("hello", "user1", currentTime)
+
+        currentTime += 1000L
+        assertTrue(detector.isDuplicate("hello", "user1", currentTime))
+    }
+
+    @Test
+    fun `null userId rapid posts with different text are not duplicate`() {
         detector.record("hello", null, currentTime)
 
         currentTime += 1000L

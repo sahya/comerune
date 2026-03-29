@@ -1,14 +1,14 @@
 package com.example.comerune.speech.domain.normalizer
 
 /**
- * In-memory duplicate detector that suppresses:
- * 1. Exact same text posted within the time window (regardless of user)
- * 2. Same text posted by the same userId within the time window
+ * In-memory duplicate detector that suppresses exact same text posted
+ * within the time window, regardless of which user posted it.
  *
- * This is strictly a duplicate detector, not a rate limiter: it only
- * suppresses posts whose text matches a recent entry.
+ * Same-user different-text posts are NOT suppressed — this is strictly
+ * a duplicate detector, not a rate limiter.
  *
- * Thread-safe via @Synchronized. History is bounded to [maxEntries].
+ * Thread-safe via @Synchronized. History is bounded to [maxEntries]
+ * and backed by [ArrayDeque] for O(1) removal from front.
  */
 class InMemoryDuplicateDetector(
     duplicateWindowMs: Long = DEFAULT_WINDOW_MS,
@@ -17,8 +17,8 @@ class InMemoryDuplicateDetector(
 ) : DuplicateDetector {
 
     /**
-     * The time window (in milliseconds) within which identical text or
-     * same-user posts are considered duplicates. Can be updated at runtime
+     * The time window (in milliseconds) within which identical text is
+     * considered a duplicate. Can be updated at runtime
      * via [updateDuplicateWindowMs].
      */
     @Volatile
@@ -40,52 +40,57 @@ class InMemoryDuplicateDetector(
         val timestampMs: Long
     )
 
-    private val history = mutableListOf<Entry>()
+    private val history = ArrayDeque<Entry>()
 
     @Synchronized
     override fun isDuplicate(normalizedText: String, userId: String?, currentTimeMs: Long): Boolean {
         evict(currentTimeMs)
-
-        for (entry in history) {
-            val withinWindow = (currentTimeMs - entry.timestampMs) < currentDuplicateWindowMs
-
-            if (!withinWindow) continue
-
-            // Rule 1: Exact text match within window (any user)
-            if (entry.normalizedText == normalizedText) {
-                return true
-            }
-
-            // Rule 2: Same user posting the same text within window
-            // Note: Rule 1 already covers exact text matches, so Rule 2
-            // is effectively subsumed. Kept for clarity and potential
-            // future differentiation (e.g., different windows per rule).
-            // Importantly, same-user *different* text is NOT suppressed —
-            // this is a duplicate detector, not a rate limiter.
-        }
-
-        return false
+        return isDuplicateInternal(normalizedText, currentTimeMs)
     }
 
     @Synchronized
     override fun record(normalizedText: String, userId: String?, currentTimeMs: Long) {
         evict(currentTimeMs)
-
-        // Enforce max entries by removing oldest if at capacity
-        while (history.size >= maxEntries) {
-            history.removeAt(0)
-        }
-
-        history.add(Entry(normalizedText, userId, currentTimeMs))
+        recordInternal(normalizedText, userId, currentTimeMs)
     }
 
     @Synchronized
     override fun checkAndRecord(normalizedText: String, userId: String?, currentTimeMs: Long): Boolean {
-        if (isDuplicate(normalizedText, userId, currentTimeMs)) {
+        evict(currentTimeMs)
+        if (isDuplicateInternal(normalizedText, currentTimeMs)) {
             return true
         }
-        record(normalizedText, userId, currentTimeMs)
+        recordInternal(normalizedText, userId, currentTimeMs)
         return false
+    }
+
+    /**
+     * Check for duplicates without evicting expired entries.
+     * Caller must call [evict] before invoking this method.
+     */
+    private fun isDuplicateInternal(normalizedText: String, currentTimeMs: Long): Boolean {
+        for (entry in history) {
+            val withinWindow = (currentTimeMs - entry.timestampMs) < currentDuplicateWindowMs
+            if (!withinWindow) continue
+
+            // Exact text match within window (any user)
+            if (entry.normalizedText == normalizedText) {
+                return true
+            }
+        }
+        return false
+    }
+
+    /**
+     * Record an entry without evicting expired entries.
+     * Caller must call [evict] before invoking this method.
+     */
+    private fun recordInternal(normalizedText: String, userId: String?, currentTimeMs: Long) {
+        // Enforce max entries by removing oldest if at capacity
+        while (history.size >= maxEntries) {
+            history.removeFirst()
+        }
+        history.addLast(Entry(normalizedText, userId, currentTimeMs))
     }
 
     @Synchronized
@@ -93,8 +98,18 @@ class InMemoryDuplicateDetector(
         history.clear()
     }
 
+    /**
+     * Remove expired entries from the front of the deque.
+     * Because entries are appended in chronological order, all expired
+     * entries are contiguous at the front, giving O(k) removal for k
+     * expired items with O(1) per removal.
+     */
     private fun evict(currentTimeMs: Long) {
-        history.removeAll { (currentTimeMs - it.timestampMs) >= currentDuplicateWindowMs }
+        while (history.isNotEmpty() &&
+            (currentTimeMs - history.first().timestampMs) >= currentDuplicateWindowMs
+        ) {
+            history.removeFirst()
+        }
     }
 
     companion object {
