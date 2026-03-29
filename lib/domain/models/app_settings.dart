@@ -267,6 +267,37 @@ class AppSettings {
   final bool autoSaveCommentLog;
   final bool debugMode;
 
+  /// Parses [ngWords] into a list of lower-cased NG word strings.
+  ///
+  /// Each line is trimmed and lower-cased; blank lines are ignored.
+  /// The result is pre-lowered so that callers can compare with a single
+  /// [String.contains] against lower-cased content.
+  List<String> get ngWordList {
+    if (ngWords.trim().isEmpty) {
+      return const <String>[];
+    }
+    return ngWords
+        .split('\n')
+        .map((String w) => w.trim())
+        .where((String w) => w.isNotEmpty)
+        .map((String w) => w.toLowerCase())
+        .toList();
+  }
+
+  /// Returns `true` when [content] contains any of the configured NG words.
+  ///
+  /// Matching is case-insensitive and uses plain substring search.
+  bool containsNgWord(String content) {
+    final List<String> words = ngWordList;
+    if (words.isEmpty) {
+      return false;
+    }
+    final String lowerContent = content.toLowerCase();
+    return words.any(
+      (String word) => lowerContent.contains(word),
+    );
+  }
+
   Set<String> get ngUserIdSet {
     if (ngUserIds.trim().isEmpty) {
       return const <String>{};

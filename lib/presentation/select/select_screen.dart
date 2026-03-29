@@ -379,6 +379,7 @@ class _SelectScreenState extends State<SelectScreen> {
           commentLogWriter: widget.commentLogWriter,
           autoSaveCommentLog: _settingsNotifier.value.autoSaveCommentLog,
           ngUserIds: _settingsNotifier.value.ngUserIdSet,
+          ngWords: _settingsNotifier.value.ngWordList,
           onToggleNgUser: _toggleNgUser,
           userColorMap: _userColorMap,
           onUserColorChanged:
