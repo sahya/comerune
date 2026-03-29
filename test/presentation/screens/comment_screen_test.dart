@@ -1054,6 +1054,153 @@ void main() {
       expect(hostKey.currentState!.previousLv, 'lv111');
       expect(hostKey.currentState!.nextLv, 'lv222');
     });
+
+    testWidgets('displays nickname in comment row when userNicknameMap is set',
+        (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-1',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: 'こんにちは',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          userNicknameMap: const <String, String>{'user-1': 'たろう'},
+        ),
+      );
+
+      // The nickname should appear in the comment text.
+      expect(find.textContaining('たろう'), findsOneWidget);
+    });
+
+    testWidgets(
+        'nickname takes priority over resolvedUserName in comment display', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-1',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          userName: 'プロトバフ名',
+          content: 'テスト',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          userNicknameMap: const <String, String>{'user-1': 'コテハン名'},
+          resolveUserName: (_) => 'リゾルブ名',
+        ),
+      );
+
+      expect(find.textContaining('コテハン名'), findsOneWidget);
+      expect(find.textContaining('プロトバフ名'), findsNothing);
+      expect(find.textContaining('リゾルブ名'), findsNothing);
+    });
+
+    testWidgets('@name comment triggers onNicknameChanged callback', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final GlobalKey<_NicknameCommentScreenHostState> hostKey =
+          GlobalKey<_NicknameCommentScreenHostState>();
+
+      await tester.pumpWidget(
+        _NicknameCommentScreenHost(
+          key: hostKey,
+          supervisor: supervisor,
+        ),
+      );
+
+      // Add a message with @name
+      hostKey.currentState!.addMessage(
+        AppMessage(
+          id: 'msg-1',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '@たろう',
+          type: AppMessageType.chat,
+        ),
+      );
+      await tester.pump();
+
+      expect(hostKey.currentState!.lastNicknameUserId, 'user-1');
+      expect(hostKey.currentState!.lastNickname, 'たろう');
+    });
+
+    testWidgets('@only comment triggers onNicknameRemoved callback', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final GlobalKey<_NicknameCommentScreenHostState> hostKey =
+          GlobalKey<_NicknameCommentScreenHostState>();
+
+      await tester.pumpWidget(
+        _NicknameCommentScreenHost(
+          key: hostKey,
+          supervisor: supervisor,
+        ),
+      );
+
+      hostKey.currentState!.addMessage(
+        AppMessage(
+          id: 'msg-1',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '@',
+          type: AppMessageType.chat,
+        ),
+      );
+      await tester.pump();
+
+      expect(hostKey.currentState!.lastRemovedUserId, 'user-1');
+      expect(hostKey.currentState!.lastNickname, isNull);
+    });
+
+    testWidgets('does not process @name when autoNicknameRegistration is false',
+        (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final GlobalKey<_NicknameCommentScreenHostState> hostKey =
+          GlobalKey<_NicknameCommentScreenHostState>();
+
+      await tester.pumpWidget(
+        _NicknameCommentScreenHost(
+          key: hostKey,
+          supervisor: supervisor,
+          autoNicknameRegistration: false,
+        ),
+      );
+
+      hostKey.currentState!.addMessage(
+        AppMessage(
+          id: 'msg-1',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '@たろう',
+          type: AppMessageType.chat,
+        ),
+      );
+      await tester.pump();
+
+      expect(hostKey.currentState!.lastNicknameUserId, isNull);
+      expect(hostKey.currentState!.lastNickname, isNull);
+    });
   });
 
   group('Comment log stats', () {
@@ -1106,6 +1253,59 @@ void main() {
       expect(find.text('コメント統計サマリ'), findsNothing);
     });
   });
+}
+
+class _NicknameCommentScreenHost extends StatefulWidget {
+  const _NicknameCommentScreenHost({
+    super.key,
+    required this.supervisor,
+    this.autoNicknameRegistration = true,
+  });
+
+  final ConnectionSupervisor supervisor;
+  final bool autoNicknameRegistration;
+
+  @override
+  State<_NicknameCommentScreenHost> createState() =>
+      _NicknameCommentScreenHostState();
+}
+
+class _NicknameCommentScreenHostState
+    extends State<_NicknameCommentScreenHost> {
+  List<AppMessage> _messages = const <AppMessage>[];
+  String? lastNicknameUserId;
+  String? lastNickname;
+  String? lastRemovedUserId;
+
+  void addMessage(AppMessage message) {
+    setState(() {
+      _messages = List<AppMessage>.from(_messages)..add(message);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: CommentScreen(
+        lv: 'lv123',
+        connectionSupervisor: widget.supervisor,
+        messages: _messages,
+        onStopAllConnections: () async {},
+        onReconnectSameLv: () async {},
+        onDifferentLvConnected: (_, __) async {},
+        autoNicknameRegistration: widget.autoNicknameRegistration,
+        onNicknameChanged: (String userId, String nickname) {
+          lastNicknameUserId = userId;
+          lastNickname = nickname;
+        },
+        onNicknameRemoved: (String userId) {
+          lastRemovedUserId = userId;
+          lastNickname = null;
+        },
+        themeMode: AppThemeMode.light,
+      ),
+    );
+  }
 }
 
 class _CommentScreenHost extends StatefulWidget {
@@ -1193,6 +1393,7 @@ Widget _buildScreen({
   Set<String> ngUserIds = const <String>{},
   List<String> ngWords = const <String>[],
   Map<String, int> userColorMap = const <String, int>{},
+  Map<String, String> userNicknameMap = const <String, String>{},
 }) {
   return MaterialApp(
     home: CommentScreen(
@@ -1212,6 +1413,7 @@ Widget _buildScreen({
       ngUserIds: ngUserIds,
       ngWords: ngWords,
       userColorMap: userColorMap,
+      userNicknameMap: userNicknameMap,
       themeMode: AppThemeMode.light,
     ),
   );

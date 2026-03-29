@@ -73,6 +73,10 @@ class CommentScreen extends StatefulWidget {
     this.userColorMap = const <String, int>{},
     this.onUserColorChanged,
     this.onUserColorRemoved,
+    this.userNicknameMap = const <String, String>{},
+    this.onNicknameChanged,
+    this.onNicknameRemoved,
+    this.autoNicknameRegistration = true,
     required this.themeMode,
   });
 
@@ -119,6 +123,18 @@ class CommentScreen extends StatefulWidget {
 
   /// Called when the user removes a custom comment color.
   final void Function(String userId)? onUserColorRemoved;
+
+  /// Per-user nickname (コテハン) map. Keys are user IDs, values are nicknames.
+  final Map<String, String> userNicknameMap;
+
+  /// Called when a nickname is set or updated for a user.
+  final void Function(String userId, String nickname)? onNicknameChanged;
+
+  /// Called when a nickname is removed for a user.
+  final void Function(String userId)? onNicknameRemoved;
+
+  /// Whether automatic nickname registration via `@name` comments is enabled.
+  final bool autoNicknameRegistration;
 
   final AppThemeMode themeMode;
 
@@ -175,6 +191,7 @@ class _CommentScreenState extends State<CommentScreen> {
         oldWidget.messages,
         widget.messages,
       );
+      _processNicknameComments(oldWidget.messages, widget.messages);
       if (_autoScrollEnabled) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _scrollToEdge();
@@ -232,6 +249,48 @@ class _CommentScreenState extends State<CommentScreen> {
       final String? userId = newMessages[i].userId;
       if (userId != null && userId.isNotEmpty) {
         request(userId);
+      }
+    }
+  }
+
+  void _processNicknameComments(
+    List<AppMessage> oldMessages,
+    List<AppMessage> newMessages,
+  ) {
+    if (!widget.autoNicknameRegistration || widget.onNicknameChanged == null) {
+      return;
+    }
+
+    int start = 0;
+    if (oldMessages.isNotEmpty && newMessages.isNotEmpty) {
+      final String oldTailId = oldMessages.last.id;
+      for (int i = newMessages.length - 1; i >= 0; i--) {
+        if (newMessages[i].id == oldTailId) {
+          start = i + 1;
+          break;
+        }
+      }
+    }
+
+    for (int i = start; i < newMessages.length; i++) {
+      final AppMessage message = newMessages[i];
+      if (message.type != AppMessageType.chat) {
+        continue;
+      }
+      final String? userId = message.userId;
+      if (userId == null || userId.isEmpty) {
+        continue;
+      }
+      final String content = message.content;
+      if (!content.startsWith('@')) {
+        continue;
+      }
+      final String nickname = content.substring(1).trim();
+      if (nickname.isEmpty) {
+        // `@` のみ → コテハン解除
+        widget.onNicknameRemoved?.call(userId);
+      } else {
+        widget.onNicknameChanged!.call(userId, nickname);
       }
     }
   }
@@ -385,6 +444,19 @@ class _CommentScreenState extends State<CommentScreen> {
                   Navigator.of(sheetContext).pop();
                 }
               : null,
+          nickname: widget.userNicknameMap[userId],
+          onNicknameChanged: widget.onNicknameChanged != null
+              ? (String nickname) {
+                  widget.onNicknameChanged!.call(userId, nickname);
+                  Navigator.of(sheetContext).pop();
+                }
+              : null,
+          onNicknameRemoved: widget.onNicknameRemoved != null
+              ? () {
+                  widget.onNicknameRemoved!.call(userId);
+                  Navigator.of(sheetContext).pop();
+                }
+              : null,
           onToggleNgUser: () {
             widget.onToggleNgUser?.call(userId);
             Navigator.of(sheetContext).pop();
@@ -395,10 +467,14 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   String? _resolveDisplayName(AppMessage message) {
+    final String? userId = message.userId;
+    // Nickname (コテハン) takes highest priority.
+    if (userId != null && widget.userNicknameMap.containsKey(userId)) {
+      return widget.userNicknameMap[userId];
+    }
     if (message.userName != null) {
       return message.userName;
     }
-    final String? userId = message.userId;
     if (userId == null) {
       return null;
     }
