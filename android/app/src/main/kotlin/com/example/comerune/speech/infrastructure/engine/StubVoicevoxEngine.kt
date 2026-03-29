@@ -2,6 +2,7 @@ package com.example.comerune.speech.infrastructure.engine
 
 import com.example.comerune.speech.domain.engine.VoicevoxEngine
 import com.example.comerune.speech.domain.model.SpeechRequest
+import com.example.comerune.speech.domain.model.TtsEngineState
 import com.example.comerune.speech.domain.model.VoicevoxConfig
 import com.example.comerune.speech.domain.model.WavSynthesisResult
 
@@ -31,6 +32,9 @@ class StubVoicevoxEngine : VoicevoxEngine {
     }
 
     override fun isReady(): Boolean = ready
+
+    override fun currentState(): TtsEngineState =
+        if (ready) TtsEngineState.READY else TtsEngineState.UNINITIALIZED
 
     override fun release() {
         ready = false

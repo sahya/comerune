@@ -127,16 +127,14 @@ Java_com_example_comerune_speech_infrastructure_engine_NativeVoicevoxBridge_nati
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_example_comerune_speech_infrastructure_engine_NativeVoicevoxBridge_nativeIsModelLoaded(
+Java_com_example_comerune_speech_infrastructure_engine_NativeVoicevoxBridge_nativeIsSynthesizerReady(
         JNIEnv* /* env */, jobject /* thiz */, jint /* speakerId */) {
     std::lock_guard<std::mutex> lock(g_mutex);
 
-    // The VOICEVOX Core 0.16.2 API checks model loading by VoicevoxVoiceModelId
-    // (a 16-byte UUID), not by speakerId/styleId. Since we do not have a mapping
-    // from speakerId to model ID in this layer, we return whether the synthesizer
-    // is initialized and at least one model has been loaded. A more precise check
-    // would require maintaining a speakerId-to-modelId mapping, which is deferred
-    // to a future enhancement.
+    // Checks whether the native synthesizer has been initialized (non-null).
+    // The speakerId parameter is accepted for future API compatibility but is
+    // not currently used — a more precise per-style check would require
+    // maintaining a speakerId-to-modelId mapping.
     return static_cast<jboolean>(g_synthesizer != nullptr);
 }
 

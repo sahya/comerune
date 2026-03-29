@@ -8,11 +8,30 @@ import com.example.comerune.speech.domain.model.SpeechQueueItem
  * and duplicate text rejection.
  */
 class InMemorySpeechQueueManager(
-    private val maxSize: Int = 20
+    maxSize: Int = 20
 ) : SpeechQueueManager {
 
     init {
         require(maxSize > 0) { "maxSize must be positive, but was $maxSize" }
+    }
+
+    /**
+     * Maximum number of items allowed in the queue.
+     * Can be updated at runtime via [updateMaxSize].
+     */
+    @Volatile
+    var currentMaxSize: Int = maxSize
+        private set
+
+    /**
+     * Update the maximum queue size at runtime.
+     * If the new size is smaller than the current queue length, existing items
+     * are NOT evicted — the new limit applies only to future [offer] calls.
+     */
+    @Synchronized
+    fun updateMaxSize(newMaxSize: Int) {
+        require(newMaxSize > 0) { "maxSize must be positive, but was $newMaxSize" }
+        currentMaxSize = newMaxSize
     }
 
     private val queue = ArrayDeque<SpeechQueueItem>()
@@ -23,7 +42,7 @@ class InMemorySpeechQueueManager(
             return QueueOfferResult(accepted = false, reason = "duplicate")
         }
 
-        if (queue.size >= maxSize) {
+        if (queue.size >= currentMaxSize) {
             return QueueOfferResult(accepted = false, reason = "queue_full")
         }
 

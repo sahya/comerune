@@ -44,6 +44,16 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                 return@withLock Result.success(Unit)
             }
 
+            // Allow re-initialization from ERROR state (e.g., after a native crash
+            // during a previous initialize attempt)
+            if (state != TtsEngineState.UNINITIALIZED && state != TtsEngineState.ERROR) {
+                return@withLock Result.failure(
+                    IllegalStateException(
+                        "Cannot initialize from state: $state"
+                    )
+                )
+            }
+
             state = TtsEngineState.INITIALIZING
 
             try {
@@ -136,7 +146,11 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                     )
                 }
             } catch (e: Exception) {
-                state = TtsEngineState.ERROR
+                // A single synthesis failure does not mean the engine is broken.
+                // Return to READY so subsequent requests can still be processed.
+                // ERROR state is reserved for truly unrecoverable failures
+                // (e.g., native crash during initialize).
+                state = TtsEngineState.READY
                 Log.e(TAG, "Synthesis failed", e)
                 Result.failure(e)
             }
@@ -144,9 +158,17 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
 
     override fun isReady(): Boolean = state == TtsEngineState.READY
 
+    override fun currentState(): TtsEngineState = state
+
     override fun release() {
+        synchronized(this) {
+            if (state == TtsEngineState.UNINITIALIZED) {
+                Log.i(TAG, "VOICEVOX engine already released, skipping")
+                return
+            }
+            state = TtsEngineState.UNINITIALIZED
+        }
         NativeVoicevoxBridge.nativeRelease()
-        state = TtsEngineState.UNINITIALIZED
         Log.i(TAG, "VOICEVOX engine released")
     }
 

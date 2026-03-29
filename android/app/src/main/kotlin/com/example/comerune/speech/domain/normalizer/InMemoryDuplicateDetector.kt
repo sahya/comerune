@@ -8,10 +8,28 @@ package com.example.comerune.speech.domain.normalizer
  * Thread-safe via @Synchronized. History is bounded to [maxEntries].
  */
 class InMemoryDuplicateDetector(
-    private val duplicateWindowMs: Long = DEFAULT_WINDOW_MS,
+    duplicateWindowMs: Long = DEFAULT_WINDOW_MS,
     private val maxEntries: Int = DEFAULT_MAX_ENTRIES,
     private val timeProvider: () -> Long = System::currentTimeMillis
 ) : DuplicateDetector {
+
+    /**
+     * The time window (in milliseconds) within which identical text or
+     * same-user posts are considered duplicates. Can be updated at runtime
+     * via [updateDuplicateWindowMs].
+     */
+    @Volatile
+    var currentDuplicateWindowMs: Long = duplicateWindowMs
+        private set
+
+    /**
+     * Update the duplicate detection window at runtime.
+     * Takes effect on the next [isDuplicate] / [checkAndRecord] call.
+     */
+    @Synchronized
+    fun updateDuplicateWindowMs(newWindowMs: Long) {
+        currentDuplicateWindowMs = newWindowMs
+    }
 
     private data class Entry(
         val normalizedText: String,
@@ -26,7 +44,7 @@ class InMemoryDuplicateDetector(
         evict(currentTimeMs)
 
         for (entry in history) {
-            val withinWindow = (currentTimeMs - entry.timestampMs) < duplicateWindowMs
+            val withinWindow = (currentTimeMs - entry.timestampMs) < currentDuplicateWindowMs
 
             if (!withinWindow) continue
 
@@ -71,7 +89,7 @@ class InMemoryDuplicateDetector(
     }
 
     private fun evict(currentTimeMs: Long) {
-        history.removeAll { (currentTimeMs - it.timestampMs) >= duplicateWindowMs }
+        history.removeAll { (currentTimeMs - it.timestampMs) >= currentDuplicateWindowMs }
     }
 
     companion object {

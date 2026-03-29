@@ -34,15 +34,18 @@ object NativeVoicevoxBridge {
     external fun nativeLoadModel(vvmPath: String): Boolean
 
     /**
-     * Check whether a voice model with the given speaker (style) ID is usable.
+     * Check whether the native synthesizer is initialized and ready to accept
+     * TTS requests. This checks that [nativeInitialize] has been called
+     * successfully and the synthesizer pointer is non-null.
      *
-     * Internally this checks whether any loaded model contains the style ID
-     * by attempting a lightweight query. The native side tracks loaded model IDs.
+     * Note: The [speakerId] parameter is accepted for API compatibility but
+     * is not currently used in the check. A future enhancement may verify
+     * that a model providing the given style ID is loaded.
      *
-     * @param speakerId the VOICEVOX style ID to check
-     * @return true if a model providing this style ID is loaded
+     * @param speakerId reserved for future per-style readiness check
+     * @return true if the native synthesizer is initialized
      */
-    external fun nativeIsModelLoaded(speakerId: Int): Boolean
+    external fun nativeIsSynthesizerReady(speakerId: Int): Boolean
 
     /**
      * Synthesize speech from text using the TTS one-shot API.

@@ -12,7 +12,9 @@ import com.example.comerune.speech.domain.model.SubmitResult
 import com.example.comerune.speech.domain.model.TtsEngineState
 import com.example.comerune.speech.domain.model.VoicevoxConfig
 import com.example.comerune.speech.domain.normalizer.CommentNormalizer
+import com.example.comerune.speech.domain.normalizer.InMemoryDuplicateDetector
 import com.example.comerune.speech.domain.player.WavPlayer
+import com.example.comerune.speech.domain.queue.InMemorySpeechQueueManager
 import com.example.comerune.speech.domain.queue.SpeechQueueManager
 import com.example.comerune.speech.domain.settings.SettingsRepository
 import kotlinx.coroutines.CancellationException
@@ -35,7 +37,9 @@ class SpeechControllerImpl(
     private val settingsRepository: SettingsRepository,
     private val eventEmitter: SpeechEventEmitter,
     dispatcher: CoroutineDispatcher = Dispatchers.Default,
-    private val timeProvider: () -> Long = System::currentTimeMillis
+    private val timeProvider: () -> Long = System::currentTimeMillis,
+    private val duplicateDetector: InMemoryDuplicateDetector? = null,
+    private val inMemoryQueueManager: InMemorySpeechQueueManager? = null
 ) : SpeechController {
 
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
@@ -210,18 +214,19 @@ class SpeechControllerImpl(
             return Result.failure(IllegalStateException("Controller has been released"))
         }
         settingsRepository.save(settings)
+
+        // Propagate runtime-tunable settings to the concrete implementations
+        inMemoryQueueManager?.updateMaxSize(settings.maxQueueSize)
+        duplicateDetector?.updateDuplicateWindowMs(settings.duplicateWindowMs)
+
         return Result.success(Unit)
     }
 
     override suspend fun getStatus(): SpeechRuntimeStatus {
         val settings = settingsRepository.get()
-        val engineState = when {
-            !engine.isReady() -> TtsEngineState.UNINITIALIZED
-            else -> TtsEngineState.READY
-        }
         return SpeechRuntimeStatus(
             enabled = settings.enabled,
-            engineState = engineState,
+            engineState = engine.currentState(),
             playerState = player.currentState(),
             queueSize = queueManager.size(),
             currentCommentId = currentCommentId,
@@ -289,6 +294,10 @@ class SpeechControllerImpl(
         eventEmitter.emit(SpeechEvents.speechStarted(item.commentId, item.text))
 
         val settings = settingsRepository.get()
+        // TODO: speedScale/pitchScale/intonationScale/volumeScale/prePhonemeLength/
+        //  postPhonemeLength are stored in SpeechRequest but currently unused by the
+        //  VOICEVOX TTS one-shot API. They will be applied once the audio_query-based
+        //  synthesis path is implemented.
         val request = SpeechRequest(
             text = item.text,
             speakerId = settings.speakerId,
