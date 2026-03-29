@@ -853,8 +853,7 @@ void main() {
       expect(find.text('ユーザー詳細'), findsOneWidget);
     });
 
-    testWidgets(
-        'long-press actions sheet opens user detail when tapped', (
+    testWidgets('long-press actions sheet opens user detail when tapped', (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
@@ -909,8 +908,7 @@ void main() {
       );
 
       // No pinned section initially.
-      expect(
-          find.byKey(const Key('pinned-comments-section')), findsNothing);
+      expect(find.byKey(const Key('pinned-comments-section')), findsNothing);
 
       // Long-press and pin.
       await tester.longPress(find.byKey(const Key('comment-row-msg-pin')));
@@ -920,10 +918,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // Pinned section is now visible.
-      expect(find.byKey(const Key('pinned-comments-section')),
-          findsOneWidget);
-      expect(
-          find.byKey(const Key('pinned-row-msg-pin')), findsOneWidget);
+      expect(find.byKey(const Key('pinned-comments-section')), findsOneWidget);
+      expect(find.byKey(const Key('pinned-row-msg-pin')), findsOneWidget);
     });
 
     testWidgets('unpin comment via close button hides pinned section', (
@@ -948,22 +944,18 @@ void main() {
       );
 
       // Pin the comment.
-      await tester
-          .longPress(find.byKey(const Key('comment-row-msg-unpin')));
+      await tester.longPress(find.byKey(const Key('comment-row-msg-unpin')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('action-pin-msg-unpin')));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('pinned-comments-section')),
-          findsOneWidget);
+      expect(find.byKey(const Key('pinned-comments-section')), findsOneWidget);
 
       // Unpin via the close button.
-      await tester
-          .tap(find.byKey(const Key('unpin-button-msg-unpin')));
+      await tester.tap(find.byKey(const Key('unpin-button-msg-unpin')));
       await tester.pumpAndSettle();
 
-      expect(
-          find.byKey(const Key('pinned-comments-section')), findsNothing);
+      expect(find.byKey(const Key('pinned-comments-section')), findsNothing);
     });
 
     testWidgets('multiple comments can be pinned', (
@@ -995,24 +987,20 @@ void main() {
       );
 
       // Pin first comment.
-      await tester
-          .longPress(find.byKey(const Key('comment-row-msg-a')));
+      await tester.longPress(find.byKey(const Key('comment-row-msg-a')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('action-pin-msg-a')));
       await tester.pumpAndSettle();
 
       // Pin second comment.
-      await tester
-          .longPress(find.byKey(const Key('comment-row-msg-b')));
+      await tester.longPress(find.byKey(const Key('comment-row-msg-b')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('action-pin-msg-b')));
       await tester.pumpAndSettle();
 
       // Both pinned rows are visible.
-      expect(
-          find.byKey(const Key('pinned-row-msg-a')), findsOneWidget);
-      expect(
-          find.byKey(const Key('pinned-row-msg-b')), findsOneWidget);
+      expect(find.byKey(const Key('pinned-row-msg-a')), findsOneWidget);
+      expect(find.byKey(const Key('pinned-row-msg-b')), findsOneWidget);
     });
 
     testWidgets('unpin from actions sheet works for pinned comment', (
@@ -1037,29 +1025,23 @@ void main() {
       );
 
       // Pin the comment.
-      await tester
-          .longPress(find.byKey(const Key('comment-row-msg-toggle')));
+      await tester.longPress(find.byKey(const Key('comment-row-msg-toggle')));
       await tester.pumpAndSettle();
-      await tester
-          .tap(find.byKey(const Key('action-pin-msg-toggle')));
+      await tester.tap(find.byKey(const Key('action-pin-msg-toggle')));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('pinned-comments-section')),
-          findsOneWidget);
+      expect(find.byKey(const Key('pinned-comments-section')), findsOneWidget);
 
       // Long-press again shows "ピン留め解除".
-      await tester
-          .longPress(find.byKey(const Key('comment-row-msg-toggle')));
+      await tester.longPress(find.byKey(const Key('comment-row-msg-toggle')));
       await tester.pumpAndSettle();
       expect(find.text('ピン留め解除'), findsOneWidget);
 
       // Unpin via the actions sheet.
-      await tester
-          .tap(find.byKey(const Key('action-unpin-msg-toggle')));
+      await tester.tap(find.byKey(const Key('action-unpin-msg-toggle')));
       await tester.pumpAndSettle();
 
-      expect(
-          find.byKey(const Key('pinned-comments-section')), findsNothing);
+      expect(find.byKey(const Key('pinned-comments-section')), findsNothing);
     });
 
     testWidgets('shows settings button when onOpenSettings is provided', (

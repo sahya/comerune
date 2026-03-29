@@ -344,8 +344,7 @@ class _CommentScreenState extends State<CommentScreen> {
                         userColor: userColor != null
                             ? colorFromARGB32(userColor)
                             : null,
-                        onLongPress: () =>
-                            _showCommentActions(message),
+                        onLongPress: () => _showCommentActions(message),
                       );
                     },
                   ),
@@ -400,8 +399,7 @@ class _CommentScreenState extends State<CommentScreen> {
 
   void _showCommentActions(AppMessage message) {
     final bool isPinned = _pinnedMessageIds.contains(message.id);
-    final bool hasUserId =
-        message.userId != null && message.userId!.isNotEmpty;
+    final bool hasUserId = message.userId != null && message.userId!.isNotEmpty;
 
     showModalBottomSheet<void>(
       context: context,
@@ -459,8 +457,7 @@ class _CommentScreenState extends State<CommentScreen> {
 
   List<AppMessage> _pinnedMessages(List<AppMessage> visibleMessages) {
     return visibleMessages
-        .where(
-            (AppMessage message) => _pinnedMessageIds.contains(message.id))
+        .where((AppMessage message) => _pinnedMessageIds.contains(message.id))
         .toList(growable: false);
   }
 
