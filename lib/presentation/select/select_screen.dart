@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../application/settings/settings_store.dart';
+import '../../application/statistics/statistics_store.dart';
 import '../../application/timeline/timeline_store.dart';
 import '../../data/auth/user_session_store.dart';
 import '../../data/comment_log/comment_log_writer.dart';
@@ -38,6 +39,7 @@ class SelectScreen extends StatefulWidget {
   const SelectScreen({
     required this.connectionSupervisor,
     this.timelineStore,
+    this.statisticsStore,
     this.settingsStore,
     this.initialSettings = AppSettings.defaults,
     this.onPrepareConnection,
@@ -56,6 +58,7 @@ class SelectScreen extends StatefulWidget {
 
   final ConnectionSupervisor connectionSupervisor;
   final TimelineStore? timelineStore;
+  final StatisticsStore? statisticsStore;
   final SettingsStore? settingsStore;
   final AppSettings initialSettings;
   final UserSessionStore? userSessionStore;
@@ -333,6 +336,7 @@ class _SelectScreenState extends State<SelectScreen> {
       widget.connectionSupervisor,
       _settingsNotifier,
       if (widget.timelineStore != null) widget.timelineStore!,
+      if (widget.statisticsStore != null) widget.statisticsStore!,
       if (widget.programTitleNotifier != null) widget.programTitleNotifier!,
       if (widget.userNameListenable != null) widget.userNameListenable!,
       if (widget.supplierUserIdNotifier != null) widget.supplierUserIdNotifier!,
@@ -386,6 +390,16 @@ class _SelectScreenState extends State<SelectScreen> {
           onUserColorRemoved:
               widget.userColorStore != null ? _onUserColorRemoved : null,
           themeMode: _settingsNotifier.value.themeMode,
+          statisticsEnabled: _settingsNotifier.value.statisticsEnabled,
+          statisticsViewerCommentEnabled:
+              _settingsNotifier.value.statisticsViewerCommentEnabled,
+          statisticsActiveUserEnabled:
+              _settingsNotifier.value.statisticsActiveUserEnabled,
+          viewerCount: widget.statisticsStore?.viewerCount,
+          totalCommentCount:
+              widget.statisticsStore?.totalCommentCount ?? 0,
+          activeUserCount:
+              widget.statisticsStore?.activeUserCount ?? 0,
         );
       },
     );

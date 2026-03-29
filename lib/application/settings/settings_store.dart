@@ -64,6 +64,11 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   static const String _kCommentFontSize = 'settings.comment.fontSize';
   static const String _kAutoSaveCommentLog =
       'settings.comment.autoSaveCommentLog';
+  static const String _kStatisticsEnabled = 'settings.statistics.enabled';
+  static const String _kStatisticsViewerCommentEnabled =
+      'settings.statistics.viewerComment';
+  static const String _kStatisticsActiveUserEnabled =
+      'settings.statistics.activeUser';
   static const String _kDebugMode = 'settings.debugMode';
 
   @override
@@ -117,6 +122,14 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       ),
       autoSaveCommentLog:
           _prefs.getBool(_kAutoSaveCommentLog) ?? defaults.autoSaveCommentLog,
+      statisticsEnabled:
+          _prefs.getBool(_kStatisticsEnabled) ?? defaults.statisticsEnabled,
+      statisticsViewerCommentEnabled:
+          _prefs.getBool(_kStatisticsViewerCommentEnabled) ??
+              defaults.statisticsViewerCommentEnabled,
+      statisticsActiveUserEnabled:
+          _prefs.getBool(_kStatisticsActiveUserEnabled) ??
+              defaults.statisticsActiveUserEnabled,
       debugMode: _prefs.getBool(_kDebugMode) ?? defaults.debugMode,
     );
   }
@@ -157,6 +170,15 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       settings.commentFontSize.toString(),
     );
     await _prefs.setBool(_kAutoSaveCommentLog, settings.autoSaveCommentLog);
+    await _prefs.setBool(_kStatisticsEnabled, settings.statisticsEnabled);
+    await _prefs.setBool(
+      _kStatisticsViewerCommentEnabled,
+      settings.statisticsViewerCommentEnabled,
+    );
+    await _prefs.setBool(
+      _kStatisticsActiveUserEnabled,
+      settings.statisticsActiveUserEnabled,
+    );
     await _prefs.setBool(_kDebugMode, settings.debugMode);
   }
 }

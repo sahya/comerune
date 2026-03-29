@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'application/settings/settings_store.dart';
 import 'application/settings/shared_preferences_adapter.dart';
+import 'application/statistics/statistics_store.dart';
 import 'application/timeline/timeline_store.dart';
 import 'data/auth/user_session_store.dart';
 import 'data/comment_log/comment_log_writer.dart';
@@ -82,12 +83,14 @@ class ComeruneApp extends StatefulWidget {
 
 class _ComeruneAppState extends State<ComeruneApp> {
   late final TimelineStore _timelineStore;
+  late final StatisticsStore _statisticsStore;
   late final _SessionWsClientAdapter _sessionWsClient;
   late final _NdgrClientAdapter _ndgrClient;
   late final _LegacyCommentClientAdapter _legacyCommentClient;
   late final ConnectionSupervisor _connectionSupervisor;
   late final StreamSubscription<AppMessage> _ndgrMessageSubscription;
   late final StreamSubscription<AppMessage> _legacyMessageSubscription;
+  late final StreamSubscription<int?> _ndgrViewerCountSubscription;
 
   String _currentLv = '';
   int _ndgrHistoryCount = 100;
@@ -111,6 +114,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _userNameResolver = UserNameResolver();
     _followProgramRepository = FollowProgramRepository();
     _timelineStore = TimelineStore(capacity: _ndgrHistoryCount);
+    _statisticsStore = StatisticsStore();
     _sessionWsClient = _SessionWsClientAdapter(
       lvProvider: () => _currentLv,
       userSessionProvider: () => widget.userSessionStore.load(),
@@ -142,9 +146,17 @@ class _ComeruneAppState extends State<ComeruneApp> {
       legacyCommentClient: _legacyCommentClient,
     );
 
-    _ndgrMessageSubscription = _ndgrClient.messages.listen(_timelineStore.add);
-    _legacyMessageSubscription = _legacyCommentClient.messages.listen(
-      _timelineStore.add,
+    _ndgrMessageSubscription = _ndgrClient.messages.listen((AppMessage message) {
+      _timelineStore.add(message);
+      _statisticsStore.recordComment(message);
+    });
+    _legacyMessageSubscription =
+        _legacyCommentClient.messages.listen((AppMessage message) {
+      _timelineStore.add(message);
+      _statisticsStore.recordComment(message);
+    });
+    _ndgrViewerCountSubscription = _ndgrClient.viewerCounts.listen(
+      _statisticsStore.updateViewerCount,
     );
   }
 
@@ -152,11 +164,13 @@ class _ComeruneAppState extends State<ComeruneApp> {
   void dispose() {
     unawaited(_ndgrMessageSubscription.cancel());
     unawaited(_legacyMessageSubscription.cancel());
+    unawaited(_ndgrViewerCountSubscription.cancel());
     _connectionSupervisor.dispose();
     unawaited(_sessionWsClient.dispose());
     unawaited(_ndgrClient.dispose());
     unawaited(_legacyCommentClient.dispose());
     _timelineStore.dispose();
+    _statisticsStore.dispose();
     _userNameResolver.dispose();
     _followProgramRepository.dispose();
     _programTitleNotifier.dispose();
@@ -177,6 +191,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _supplierUserIdNotifier.value = null;
     _ndgrHistoryCount = settings.pastCommentFetchCount.historyCount;
     _timelineStore.setCapacity(_ndgrHistoryCount);
+    _statisticsStore.reset();
   }
 
   @override
@@ -187,6 +202,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
       home: SelectScreen(
         connectionSupervisor: _connectionSupervisor,
         timelineStore: _timelineStore,
+        statisticsStore: _statisticsStore,
         settingsStore: widget.settingsStore,
         initialSettings: widget.initialSettings,
         onPrepareConnection: _prepareConnection,
@@ -580,6 +596,8 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
       StreamController<reconnect.NdgrEvent>.broadcast();
   final StreamController<AppMessage> _messagesController =
       StreamController<AppMessage>.broadcast();
+  final StreamController<int?> _viewerCountController =
+      StreamController<int?>.broadcast();
   late final StreamSubscription<ndgr_impl.NdgrClientEvent>
       _clientEventsSubscription;
 
@@ -588,6 +606,7 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
   bool _disconnectRequested = false;
 
   Stream<AppMessage> get messages => _messagesController.stream;
+  Stream<int?> get viewerCounts => _viewerCountController.stream;
 
   @override
   Stream<reconnect.NdgrEvent> get events => _eventsController.stream;
@@ -636,6 +655,7 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
     _client.dispose();
     await _eventsController.close();
     await _messagesController.close();
+    await _viewerCountController.close();
   }
 
   Future<void> _runConnect(
@@ -682,6 +702,11 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
             resumeCursor: reconnect.NdgrResumeCursor(at: at, next: at),
           ),
         );
+        break;
+      case ndgr_impl.NdgrClientEventType.statistics:
+        if (!_viewerCountController.isClosed) {
+          _viewerCountController.add(event.viewerCount);
+        }
         break;
     }
   }

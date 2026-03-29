@@ -849,6 +849,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 12),
                 _Section(
+                  title: '統計表示',
+                  children: <Widget>[
+                    SwitchListTile(
+                      key: const Key('statistics-enabled-switch'),
+                      title: const Text('統計表示'),
+                      subtitle: const Text('ステータスバーに統計情報を表示'),
+                      contentPadding: EdgeInsets.zero,
+                      value: settings.statisticsEnabled,
+                      onChanged: (bool value) {
+                        _saveNextSettings(
+                          settings.copyWith(statisticsEnabled: value),
+                        );
+                      },
+                    ),
+                    SwitchListTile(
+                      key: const Key('statistics-viewer-comment-switch'),
+                      title: const Text('リスナー数・コメント数'),
+                      contentPadding: EdgeInsets.zero,
+                      value: settings.statisticsViewerCommentEnabled,
+                      onChanged: settings.statisticsEnabled
+                          ? (bool value) {
+                              _saveNextSettings(
+                                settings.copyWith(
+                                  statisticsViewerCommentEnabled: value,
+                                ),
+                              );
+                            }
+                          : null,
+                    ),
+                    SwitchListTile(
+                      key: const Key('statistics-active-user-switch'),
+                      title: const Text('5分間アクティブユーザー数'),
+                      contentPadding: EdgeInsets.zero,
+                      value: settings.statisticsActiveUserEnabled,
+                      onChanged: settings.statisticsEnabled
+                          ? (bool value) {
+                              _saveNextSettings(
+                                settings.copyWith(
+                                  statisticsActiveUserEnabled: value,
+                                ),
+                              );
+                            }
+                          : null,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _Section(
                   title: 'デバッグ',
                   children: <Widget>[
                     SwitchListTile(

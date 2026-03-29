@@ -199,6 +199,9 @@ class AppSettings {
     required this.resolveUserName,
     required this.commentFontSize,
     required this.autoSaveCommentLog,
+    required this.statisticsEnabled,
+    required this.statisticsViewerCommentEnabled,
+    required this.statisticsActiveUserEnabled,
     required this.debugMode,
   }) : assert(
           commentFontSize >= commentFontSizeMin &&
@@ -233,6 +236,9 @@ class AppSettings {
     resolveUserName: true,
     commentFontSize: commentFontSizeDefault,
     autoSaveCommentLog: false,
+    statisticsEnabled: false,
+    statisticsViewerCommentEnabled: true,
+    statisticsActiveUserEnabled: true,
     debugMode: false,
   );
 
@@ -265,6 +271,9 @@ class AppSettings {
   final bool resolveUserName;
   final double commentFontSize;
   final bool autoSaveCommentLog;
+  final bool statisticsEnabled;
+  final bool statisticsViewerCommentEnabled;
+  final bool statisticsActiveUserEnabled;
   final bool debugMode;
 
   Set<String> get ngUserIdSet {
@@ -358,6 +367,9 @@ class AppSettings {
     bool? resolveUserName,
     double? commentFontSize,
     bool? autoSaveCommentLog,
+    bool? statisticsEnabled,
+    bool? statisticsViewerCommentEnabled,
+    bool? statisticsActiveUserEnabled,
     bool? debugMode,
   }) {
     return AppSettings(
@@ -387,6 +399,11 @@ class AppSettings {
       resolveUserName: resolveUserName ?? this.resolveUserName,
       commentFontSize: commentFontSize ?? this.commentFontSize,
       autoSaveCommentLog: autoSaveCommentLog ?? this.autoSaveCommentLog,
+      statisticsEnabled: statisticsEnabled ?? this.statisticsEnabled,
+      statisticsViewerCommentEnabled:
+          statisticsViewerCommentEnabled ?? this.statisticsViewerCommentEnabled,
+      statisticsActiveUserEnabled:
+          statisticsActiveUserEnabled ?? this.statisticsActiveUserEnabled,
       debugMode: debugMode ?? this.debugMode,
     );
   }
