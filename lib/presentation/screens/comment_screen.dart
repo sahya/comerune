@@ -1004,8 +1004,8 @@ class _CommentScreenState extends State<CommentScreen> {
       return;
     }
 
-    final DateTime first =
-        widget.messages.where(_shouldDisplayMessage).first.timestamp;
+    // Use the first message in chronological order (before sorting).
+    final DateTime first = visibleMessages.first.timestamp;
 
     int targetIndex = -1;
     for (int i = 0; i < sorted.length; i++) {

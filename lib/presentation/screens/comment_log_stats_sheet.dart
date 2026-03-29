@@ -107,6 +107,8 @@ class CommentLogStatsSheet extends StatelessWidget {
                       commentsPerMinute: stats.commentsPerMinute,
                       onBarTapped: onBarTapped,
                       peakMinutes: peakMinutes,
+                      barColor: themeColors.statusConnected,
+                      peakBarColor: themeColors.ngUserActiveColor,
                     ),
                   ],
                   if (highlightPickupEnabled && peaks.isNotEmpty) ...<Widget>[

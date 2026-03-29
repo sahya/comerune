@@ -225,6 +225,36 @@ void main() {
       expect(peaks, isEmpty);
     });
 
+    test('returns empty list when all minutes have equal counts', () {
+      final DateTime base = DateTime(2026, 3, 28, 12, 0, 0);
+      final List<AppMessage> messages = <AppMessage>[
+        _msg(id: '1', timestamp: base, userId: 'u1'),
+        _msg(
+          id: '2',
+          timestamp: base.add(const Duration(minutes: 1)),
+          userId: 'u2',
+        ),
+        _msg(
+          id: '3',
+          timestamp: base.add(const Duration(minutes: 2)),
+          userId: 'u3',
+        ),
+        _msg(
+          id: '4',
+          timestamp: base.add(const Duration(minutes: 3)),
+          userId: 'u4',
+        ),
+      ];
+
+      // Flat distribution: stddev=0, all counts equal to mean.
+      final List<HighlightPeak> peaks = CommentLogStats.detectPeaks(
+        messages,
+        commentsPerMinute: const <int, int>{0: 1, 1: 1, 2: 1, 3: 1},
+      );
+
+      expect(peaks, isEmpty);
+    });
+
     test('returns empty list when no minute exceeds threshold', () {
       final DateTime base = DateTime(2026, 3, 28, 12, 0, 0);
       final List<AppMessage> messages = <AppMessage>[
