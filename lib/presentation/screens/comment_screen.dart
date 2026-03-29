@@ -28,7 +28,11 @@ Color colorFromARGB32(int argb32) {
   );
 }
 
-String _formatHms(DateTime value) {
+String _formatHms(DateTime value, {DateTime? beginAt}) {
+  final String? elapsed = formatCommentElapsed(beginAt, value);
+  if (elapsed != null) {
+    return elapsed;
+  }
   final DateTime local = value.toLocal();
   final String hh = local.hour.toString().padLeft(2, '0');
   final String mm = local.minute.toString().padLeft(2, '0');
@@ -36,12 +40,12 @@ String _formatHms(DateTime value) {
   return '$hh:$mm:$ss';
 }
 
-String _formatHmsOrDash(DateTime? value) {
+String _formatHmsOrDash(DateTime? value, {DateTime? beginAt}) {
   if (value == null) {
     return '-';
   }
 
-  return _formatHms(value);
+  return _formatHms(value, beginAt: beginAt);
 }
 
 String _commentLineText({
@@ -49,8 +53,9 @@ String _commentLineText({
   required bool showUserName,
   String? resolvedUserName,
   String? contentOverride,
+  DateTime? beginAt,
 }) {
-  final String timestamp = _formatHms(message.timestamp);
+  final String timestamp = _formatHms(message.timestamp, beginAt: beginAt);
   final String content = contentOverride ?? message.content;
 
   if (!showUserName) {
@@ -448,6 +453,7 @@ class _CommentScreenState extends State<CommentScreen> {
                     resolveDisplayName: _resolveDisplayName,
                     userColorMap: widget.userColorMap,
                     onUnpin: _unpinMessage,
+                    beginAt: widget.beginAt,
                   ),
                 Expanded(
                   child: ListView.builder(
@@ -470,6 +476,7 @@ class _CommentScreenState extends State<CommentScreen> {
                             ? colorFromARGB32(userColor)
                             : null,
                         onLongPress: () => _showCommentActions(message),
+                        beginAt: widget.beginAt,
                       );
                     },
                   ),
@@ -1472,6 +1479,7 @@ class _PinnedCommentsSection extends StatelessWidget {
     required this.resolveDisplayName,
     required this.userColorMap,
     required this.onUnpin,
+    this.beginAt,
   });
 
   final List<AppMessage> pinnedMessages;
@@ -1481,6 +1489,7 @@ class _PinnedCommentsSection extends StatelessWidget {
   final String? Function(AppMessage) resolveDisplayName;
   final Map<String, int> userColorMap;
   final void Function(String messageId) onUnpin;
+  final DateTime? beginAt;
 
   @override
   Widget build(BuildContext context) {
@@ -1536,6 +1545,7 @@ class _PinnedCommentsSection extends StatelessWidget {
                   ? colorFromARGB32(userColorMap[message.userId!]!)
                   : null,
               onUnpin: () => onUnpin(message.id),
+              beginAt: beginAt,
             ),
         ],
       ),
@@ -1553,6 +1563,7 @@ class _PinnedCommentRow extends StatelessWidget {
     required this.fontSize,
     this.userColor,
     required this.onUnpin,
+    this.beginAt,
   });
 
   final AppMessage message;
@@ -1562,6 +1573,7 @@ class _PinnedCommentRow extends StatelessWidget {
   final double fontSize;
   final Color? userColor;
   final VoidCallback onUnpin;
+  final DateTime? beginAt;
 
   @override
   Widget build(BuildContext context) {
@@ -1575,6 +1587,7 @@ class _PinnedCommentRow extends StatelessWidget {
                 message: message,
                 showUserName: showUserName,
                 resolvedUserName: resolvedUserName,
+                beginAt: beginAt,
               ),
               style: TextStyle(
                 fontSize: fontSize,
@@ -1612,6 +1625,7 @@ class _CommentRow extends StatefulWidget {
     this.starPrefixHidingEnabled = false,
     this.userColor,
     this.onLongPress,
+    this.beginAt,
   });
 
   final AppMessage message;
@@ -1622,6 +1636,7 @@ class _CommentRow extends StatefulWidget {
   final bool starPrefixHidingEnabled;
   final Color? userColor;
   final VoidCallback? onLongPress;
+  final DateTime? beginAt;
 
   @override
   State<_CommentRow> createState() => _CommentRowState();
@@ -1659,6 +1674,7 @@ class _CommentRowState extends State<_CommentRow> {
             showUserName: widget.showUserName,
             resolvedUserName: widget.resolvedUserName,
             contentOverride: hidden ? 'ネタバレ防止: タップで表示' : null,
+            beginAt: widget.beginAt,
           ),
           style: TextStyle(
             fontSize: widget.fontSize,
