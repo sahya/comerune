@@ -31,6 +31,11 @@ abstract class UserColorStore {
 
   /// Removes broadcaster entries that have not been accessed for longer
   /// than [maxAge]. Defaults to 365 days.
+  ///
+  /// Only entries registered in the internal index are scanned.
+  /// Entries created before the index was introduced (i.e. before this
+  /// cleanup feature existed) will not be removed until they are first
+  /// accessed via [load] or [setColor], which adds them to the index.
   Future<int> cleanup({Duration maxAge = const Duration(days: 365)});
 }
 

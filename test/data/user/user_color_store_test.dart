@@ -144,6 +144,26 @@ void main() {
       expect(result, <String, int>{'u1': 0xFFE53935});
     });
 
+    test('load updates _lastUsedAt so entry survives cleanup', () async {
+      // Create an entry with a timestamp just over 365 days ago.
+      final int oldTimestamp = DateTime.now()
+          .subtract(const Duration(days: 366))
+          .millisecondsSinceEpoch;
+      await prefs.setString(
+        'usercolor.aging',
+        '{"u1": 111, "_lastUsedAt": $oldTimestamp}',
+      );
+      await prefs.setString('usercolor._index', '["aging"]');
+
+      // Access via load() — this should refresh _lastUsedAt to now.
+      await store.load('aging');
+
+      // Cleanup with default 365-day maxAge should NOT remove it.
+      final int removed = await store.cleanup();
+      expect(removed, 0);
+      expect(await store.load('aging'), <String, int>{'u1': 111});
+    });
+
     group('cleanup', () {
       test('removes entries older than maxAge', () async {
         final int oldTimestamp = DateTime.now()
