@@ -47,22 +47,30 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                     "updateNotification" -> {
-                        val title = call.argument<String>("title") ?: "comerune"
-                        val body = call.argument<String>("body") ?: "接続中..."
-                        val intent = Intent(this, ForegroundService::class.java).apply {
-                            action = ForegroundService.ACTION_UPDATE
-                            putExtra(ForegroundService.EXTRA_TITLE, title)
-                            putExtra(ForegroundService.EXTRA_BODY, body)
+                        try {
+                            val title = call.argument<String>("title") ?: "comerune"
+                            val body = call.argument<String>("body") ?: "接続中..."
+                            val intent = Intent(this, ForegroundService::class.java).apply {
+                                action = ForegroundService.ACTION_UPDATE
+                                putExtra(ForegroundService.EXTRA_TITLE, title)
+                                putExtra(ForegroundService.EXTRA_BODY, body)
+                            }
+                            startService(intent)
+                            result.success(null)
+                        } catch (e: Exception) {
+                            result.error("UPDATE_FAILED", e.message, null)
                         }
-                        startService(intent)
-                        result.success(null)
                     }
                     "stopService" -> {
-                        val intent = Intent(this, ForegroundService::class.java).apply {
-                            action = ForegroundService.ACTION_STOP
+                        try {
+                            val intent = Intent(this, ForegroundService::class.java).apply {
+                                action = ForegroundService.ACTION_STOP
+                            }
+                            startService(intent)
+                            result.success(null)
+                        } catch (e: Exception) {
+                            result.error("STOP_FAILED", e.message, null)
                         }
-                        startService(intent)
-                        result.success(null)
                     }
                     else -> result.notImplemented()
                 }
