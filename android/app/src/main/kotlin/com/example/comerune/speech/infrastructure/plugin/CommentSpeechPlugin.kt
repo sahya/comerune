@@ -20,7 +20,7 @@ import com.example.comerune.speech.domain.normalizer.DefaultCommentNormalizer
 import com.example.comerune.speech.domain.normalizer.InMemoryDuplicateDetector
 import com.example.comerune.speech.domain.queue.InMemorySpeechQueueManager
 import com.example.comerune.speech.domain.settings.InMemorySettingsRepository
-import com.example.comerune.speech.infrastructure.engine.StubVoicevoxEngine
+import com.example.comerune.speech.infrastructure.engine.VoicevoxEngineImpl
 import com.example.comerune.speech.infrastructure.event.FlutterSpeechEventEmitter
 import com.example.comerune.speech.infrastructure.player.MediaPlayerWavPlayer
 
@@ -55,7 +55,7 @@ class CommentSpeechPlugin :
         val queueManager = InMemorySpeechQueueManager(maxSize = 20)
         val settingsRepository = InMemorySettingsRepository()
         val emitter = FlutterSpeechEventEmitter()
-        val engine = StubVoicevoxEngine()
+        val engine = VoicevoxEngineImpl(context)
         val context = binding.applicationContext
         val player = MediaPlayerWavPlayer(context)
 
