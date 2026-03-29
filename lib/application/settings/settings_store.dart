@@ -125,12 +125,10 @@ class SharedPreferencesSettingsStore implements SettingsStore {
           defaults.autoNicknameRegistration,
       autoSaveCommentLog:
           _prefs.getBool(_kAutoSaveCommentLog) ?? defaults.autoSaveCommentLog,
-      starPrefixHidingEnabled:
-          _prefs.getBool(_kStarPrefixHidingEnabled) ??
-              defaults.starPrefixHidingEnabled,
-      slashPrefixSkipEnabled:
-          _prefs.getBool(_kSlashPrefixSkipEnabled) ??
-              defaults.slashPrefixSkipEnabled,
+      starPrefixHidingEnabled: _prefs.getBool(_kStarPrefixHidingEnabled) ??
+          defaults.starPrefixHidingEnabled,
+      slashPrefixSkipEnabled: _prefs.getBool(_kSlashPrefixSkipEnabled) ??
+          defaults.slashPrefixSkipEnabled,
       debugMode: _prefs.getBool(_kDebugMode) ?? defaults.debugMode,
     );
   }

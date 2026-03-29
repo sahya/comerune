@@ -1232,7 +1232,7 @@ void main() {
           id: 'normal-msg',
           timestamp: DateTime(2026, 3, 22, 12, 0, 1),
           userId: 'user-2',
-          content: 'こ��にちは',
+          content: 'こんにちは',
           type: AppMessageType.chat,
         ),
       ];
@@ -1283,7 +1283,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Should now show original content
-      expect(find.textContaining('☆秘���のメッセージ'), findsOneWidget);
+      expect(find.textContaining('☆秘密のメッセージ'), findsOneWidget);
       expect(find.textContaining('ネタバレ防止: タップで表示'), findsNothing);
     });
 
@@ -1310,8 +1310,8 @@ void main() {
       );
 
       // With setting OFF, should show normal content
-      expect(find.textContaining('☆普���に表示される'), findsOneWidget);
-      expect(find.textContaining('���タバレ防止'), findsNothing);
+      expect(find.textContaining('☆普通に表示される'), findsOneWidget);
+      expect(find.textContaining('ネタバレ防止'), findsNothing);
     });
 
     testWidgets('slash prefix comment displays content normally', (
@@ -1339,8 +1339,7 @@ void main() {
       expect(find.textContaining('/おやすみなさい'), findsOneWidget);
     });
 
-    testWidgets(
-        'star prefix preserves user ID and timestamp when hidden', (
+    testWidgets('star prefix preserves user ID and timestamp when hidden', (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();

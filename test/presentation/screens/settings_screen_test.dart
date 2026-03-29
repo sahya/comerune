@@ -284,8 +284,7 @@ void main() {
       AppSettings loaded = await settingsStore.load();
       expect(loaded.slashPrefixSkipEnabled, isTrue);
 
-      await _toggleSwitchByKey(
-          tester, const Key('slash-prefix-skip-switch'));
+      await _toggleSwitchByKey(tester, const Key('slash-prefix-skip-switch'));
 
       loaded = await settingsStore.load();
       expect(loaded.slashPrefixSkipEnabled, isFalse);
@@ -304,8 +303,7 @@ void main() {
       AppSettings loaded = await settingsStore.load();
       expect(loaded.starPrefixHidingEnabled, isFalse);
 
-      await _toggleSwitchByKey(
-          tester, const Key('star-prefix-hiding-switch'));
+      await _toggleSwitchByKey(tester, const Key('star-prefix-hiding-switch'));
 
       loaded = await settingsStore.load();
       expect(loaded.starPrefixHidingEnabled, isTrue);

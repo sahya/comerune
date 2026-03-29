@@ -686,8 +686,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     SwitchListTile(
                       key: const Key('slash-prefix-skip-switch'),
                       title: const Text('「/」で読み上げスキップ'),
-                      subtitle:
-                          const Text('/ で始まるコメントを読み上げない'),
+                      subtitle: const Text('/ で始まるコメントを読み上げない'),
                       contentPadding: EdgeInsets.zero,
                       value: settings.slashPrefixSkipEnabled,
                       onChanged: (bool value) {

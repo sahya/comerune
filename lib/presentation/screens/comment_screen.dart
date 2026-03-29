@@ -444,8 +444,7 @@ class _CommentScreenState extends State<CommentScreen> {
                         resolvedUserName: _resolveDisplayName(message),
                         showUserName: widget.showUserName,
                         fontSize: widget.commentFontSize,
-                        starPrefixHidingEnabled:
-                            widget.starPrefixHidingEnabled,
+                        starPrefixHidingEnabled: widget.starPrefixHidingEnabled,
                         userColor: userColor != null
                             ? colorFromARGB32(userColor)
                             : null,
