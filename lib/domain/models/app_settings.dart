@@ -210,6 +210,7 @@ class AppSettings {
     required this.statisticsEnabled,
     required this.statisticsViewerCommentEnabled,
     required this.statisticsActiveUserEnabled,
+    required this.highlightPickupEnabled,
     required this.starPrefixHidingEnabled,
     required this.slashPrefixSkipEnabled,
     required this.debugMode,
@@ -250,6 +251,7 @@ class AppSettings {
     statisticsEnabled: false,
     statisticsViewerCommentEnabled: true,
     statisticsActiveUserEnabled: true,
+    highlightPickupEnabled: false,
     starPrefixHidingEnabled: false,
     slashPrefixSkipEnabled: true,
     debugMode: false,
@@ -288,6 +290,10 @@ class AppSettings {
   final bool statisticsEnabled;
   final bool statisticsViewerCommentEnabled;
   final bool statisticsActiveUserEnabled;
+
+  /// When true, peak time comments are automatically picked up and displayed
+  /// when a broadcast ends.
+  final bool highlightPickupEnabled;
 
   /// When true, comments starting with `☆` have their body hidden
   /// (tap to reveal) and are skipped for TTS.
@@ -425,6 +431,7 @@ class AppSettings {
     bool? statisticsEnabled,
     bool? statisticsViewerCommentEnabled,
     bool? statisticsActiveUserEnabled,
+    bool? highlightPickupEnabled,
     bool? starPrefixHidingEnabled,
     bool? slashPrefixSkipEnabled,
     bool? debugMode,
@@ -463,6 +470,8 @@ class AppSettings {
           statisticsViewerCommentEnabled ?? this.statisticsViewerCommentEnabled,
       statisticsActiveUserEnabled:
           statisticsActiveUserEnabled ?? this.statisticsActiveUserEnabled,
+      highlightPickupEnabled:
+          highlightPickupEnabled ?? this.highlightPickupEnabled,
       starPrefixHidingEnabled:
           starPrefixHidingEnabled ?? this.starPrefixHidingEnabled,
       slashPrefixSkipEnabled:
