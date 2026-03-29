@@ -38,6 +38,9 @@ class UserDetailSheet extends StatelessWidget {
     this.currentColorValue,
     this.onColorChanged,
     this.onColorRemoved,
+    this.nickname,
+    this.onNicknameChanged,
+    this.onNicknameRemoved,
   });
 
   final String userId;
@@ -55,6 +58,15 @@ class UserDetailSheet extends StatelessWidget {
 
   /// Called when the user removes the custom color (resets to default).
   final void Function()? onColorRemoved;
+
+  /// Current nickname (コテハン) for this user, or null if not registered.
+  final String? nickname;
+
+  /// Called when the user sets or updates a nickname.
+  final void Function(String nickname)? onNicknameChanged;
+
+  /// Called when the user removes the nickname.
+  final void Function()? onNicknameRemoved;
 
   @override
   Widget build(BuildContext context) {
@@ -75,6 +87,15 @@ class UserDetailSheet extends StatelessWidget {
           children: <Widget>[
             _buildHandle(themeColors),
             _buildHeader(context, themeColors),
+            if (onNicknameChanged != null) ...<Widget>[
+              const Divider(height: 1),
+              _NicknameRow(
+                key: const Key('user-nickname-row'),
+                nickname: nickname,
+                onNicknameChanged: onNicknameChanged!,
+                onNicknameRemoved: onNicknameRemoved,
+              ),
+            ],
             if (onColorChanged != null) ...<Widget>[
               const Divider(height: 1),
               _ColorPaletteRow(
@@ -144,6 +165,14 @@ class UserDetailSheet extends StatelessWidget {
             key: const Key('user-detail-id'),
             style: Theme.of(context).textTheme.bodyMedium,
           ),
+          if (nickname != null)
+            Text(
+              'コテハン: $nickname',
+              key: const Key('user-detail-nickname'),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
           if (resolvedUserName != null)
             Text(
               '名前: $resolvedUserName',
@@ -363,6 +392,135 @@ class _ColorCircle extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _NicknameRow extends StatelessWidget {
+  const _NicknameRow({
+    super.key,
+    required this.nickname,
+    required this.onNicknameChanged,
+    this.onNicknameRemoved,
+  });
+
+  final String? nickname;
+  final void Function(String nickname) onNicknameChanged;
+  final void Function()? onNicknameRemoved;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: <Widget>[
+          const Icon(Icons.badge, size: 18),
+          const SizedBox(width: 8),
+          Text(
+            'コテハン',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              nickname ?? '未登録',
+              style: TextStyle(
+                fontSize: 13,
+                color: nickname != null
+                    ? null
+                    : Theme.of(context).colorScheme.outline,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Semantics(
+            button: true,
+            label: nickname != null ? 'コテハンを変更' : 'コテハンを登録',
+            child: InkWell(
+              key: const Key('user-nickname-edit-button'),
+              onTap: () => _showEditDialog(context),
+              borderRadius: BorderRadius.circular(4),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Text(
+                  nickname != null ? '変更' : '登録',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (nickname != null) ...<Widget>[
+            const SizedBox(width: 4),
+            Semantics(
+              button: true,
+              label: 'コテハンを削除',
+              child: InkWell(
+                key: const Key('user-nickname-remove-button'),
+                onTap: onNicknameRemoved,
+                borderRadius: BorderRadius.circular(4),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Text(
+                    '削除',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showEditDialog(BuildContext context) async {
+    final TextEditingController controller =
+        TextEditingController(text: nickname ?? '');
+
+    final String? result = await showDialog<String>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('コテハン登録'),
+          content: TextField(
+            key: const Key('user-nickname-dialog-field'),
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'コテハン',
+              hintText: 'ニックネームを入力',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('キャンセル'),
+            ),
+            TextButton(
+              key: const Key('user-nickname-dialog-save-button'),
+              onPressed: () =>
+                  Navigator.of(dialogContext).pop(controller.text.trim()),
+              child: const Text('保存'),
+            ),
+          ],
+        );
+      },
+    );
+
+    controller.dispose();
+
+    if (result == null || result.isEmpty) {
+      return;
+    }
+
+    onNicknameChanged(result);
   }
 }
 
