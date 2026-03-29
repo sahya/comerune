@@ -25,6 +25,13 @@ void main() {
       );
     });
 
+    test('returns system for "system" string', () {
+      expect(
+        AppThemeModeValue.fromStorageValue('system'),
+        AppThemeMode.system,
+      );
+    });
+
     test('round-trips all enum values via storageValue', () {
       for (final AppThemeMode mode in AppThemeMode.values) {
         expect(
@@ -98,6 +105,25 @@ void main() {
     });
   });
 
+  group('comment prefix defaults', () {
+    test('starPrefixHidingEnabled defaults to false', () {
+      expect(AppSettings.defaults.starPrefixHidingEnabled, isFalse);
+    });
+
+    test('slashPrefixSkipEnabled defaults to true', () {
+      expect(AppSettings.defaults.slashPrefixSkipEnabled, isTrue);
+    });
+
+    test('copyWith updates prefix settings', () {
+      final AppSettings updated = AppSettings.defaults.copyWith(
+        starPrefixHidingEnabled: true,
+        slashPrefixSkipEnabled: false,
+      );
+      expect(updated.starPrefixHidingEnabled, isTrue);
+      expect(updated.slashPrefixSkipEnabled, isFalse);
+    });
+  });
+
   group('removeNgUserId', () {
     test('removes existing user ID', () {
       final AppSettings initial =
@@ -111,6 +137,64 @@ void main() {
           AppSettings.defaults.copyWith(ngUserIds: '123');
       final AppSettings updated = initial.removeNgUserId('999');
       expect(identical(updated, initial), isTrue);
+    });
+  });
+
+  group('ngWordList', () {
+    test('returns empty list for empty string', () {
+      const AppSettings settings = AppSettings.defaults;
+      expect(settings.ngWordList, isEmpty);
+    });
+
+    test('returns empty list for whitespace-only string', () {
+      final AppSettings settings =
+          AppSettings.defaults.copyWith(ngWords: '  \n  \n  ');
+      expect(settings.ngWordList, isEmpty);
+    });
+
+    test('parses newline-separated NG words and lower-cases them', () {
+      final AppSettings settings =
+          AppSettings.defaults.copyWith(ngWords: 'Spam\nBad\nTEST');
+      expect(settings.ngWordList, <String>['spam', 'bad', 'test']);
+    });
+
+    test('trims whitespace and ignores blank lines', () {
+      final AppSettings settings =
+          AppSettings.defaults.copyWith(ngWords: ' Spam \n\n Bad \n');
+      expect(settings.ngWordList, <String>['spam', 'bad']);
+    });
+  });
+
+  group('containsNgWord', () {
+    test('returns false when no NG words configured', () {
+      const AppSettings settings = AppSettings.defaults;
+      expect(settings.containsNgWord('hello world'), isFalse);
+    });
+
+    test('returns true when content contains an NG word', () {
+      final AppSettings settings =
+          AppSettings.defaults.copyWith(ngWords: 'spam\nbad');
+      expect(settings.containsNgWord('this is spam content'), isTrue);
+    });
+
+    test('matching is case-insensitive', () {
+      final AppSettings settings =
+          AppSettings.defaults.copyWith(ngWords: 'Spam');
+      expect(settings.containsNgWord('SPAM message'), isTrue);
+      expect(settings.containsNgWord('spam message'), isTrue);
+      expect(settings.containsNgWord('SpAm message'), isTrue);
+    });
+
+    test('returns false when content does not match any NG word', () {
+      final AppSettings settings =
+          AppSettings.defaults.copyWith(ngWords: 'spam\nbad');
+      expect(settings.containsNgWord('hello world'), isFalse);
+    });
+
+    test('matches partial words (substring match)', () {
+      final AppSettings settings =
+          AppSettings.defaults.copyWith(ngWords: 'spam');
+      expect(settings.containsNgWord('antispam filter'), isTrue);
     });
   });
 }

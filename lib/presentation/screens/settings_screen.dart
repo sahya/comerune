@@ -6,9 +6,11 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../../application/settings/settings_store.dart';
 import '../../data/auth/user_session_store.dart';
 import '../../domain/models/app_settings.dart';
+import '../../data/user/user_attribute_store.dart';
 import 'login_screen.dart';
 import 'favorite_user_list_screen.dart';
 import 'ng_user_list_screen.dart';
+import 'nickname_list_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
@@ -16,11 +18,15 @@ class SettingsScreen extends StatefulWidget {
     required this.settingsStore,
     this.userSessionStore,
     this.themeModeNotifier,
+    this.userAttributeStore,
+    this.broadcasterId,
   });
 
   final SettingsStore settingsStore;
   final UserSessionStore? userSessionStore;
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
+  final UserAttributeStore? userAttributeStore;
+  final String? broadcasterId;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -678,6 +684,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: '読み上げフィルタ',
                   children: <Widget>[
                     SwitchListTile(
+                      key: const Key('slash-prefix-skip-switch'),
+                      title: const Text('「/」で読み上げスキップ'),
+                      subtitle: const Text('/ で始まるコメントを読み上げない'),
+                      contentPadding: EdgeInsets.zero,
+                      value: settings.slashPrefixSkipEnabled,
+                      onChanged: (bool value) {
+                        _saveNextSettings(
+                          settings.copyWith(slashPrefixSkipEnabled: value),
+                        );
+                      },
+                    ),
+                    SwitchListTile(
+                      key: const Key('star-prefix-hiding-switch'),
+                      title: const Text('「☆」で本文非表示'),
+                      subtitle: const Text(
+                        '☆ で始まるコメントの本文を隠す（タップで展開可能）。読み上げもしない',
+                      ),
+                      contentPadding: EdgeInsets.zero,
+                      value: settings.starPrefixHidingEnabled,
+                      onChanged: (bool value) {
+                        _saveNextSettings(
+                          settings.copyWith(starPrefixHidingEnabled: value),
+                        );
+                      },
+                    ),
+                    SwitchListTile(
                       key: const Key('omit-url-switch'),
                       title: const Text('URLを省略する'),
                       contentPadding: EdgeInsets.zero,
@@ -759,6 +791,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         await _loadSettings();
                       },
                     ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _Section(
+                  title: 'コテハン',
+                  children: <Widget>[
+                    SwitchListTile(
+                      key: const Key('auto-nickname-registration-switch'),
+                      title: const Text('コテハン自動登録'),
+                      subtitle: const Text('@名前 コメントで自動登録'),
+                      contentPadding: EdgeInsets.zero,
+                      value: settings.autoNicknameRegistration,
+                      onChanged: (bool value) {
+                        _saveNextSettings(
+                          settings.copyWith(
+                            autoNicknameRegistration: value,
+                          ),
+                        );
+                      },
+                    ),
+                    if (widget.userAttributeStore != null)
+                      ListTile(
+                        key: const Key('nickname-list-tile'),
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.badge),
+                        title: const Text('コテハン一覧管理'),
+                        subtitle: widget.broadcasterId == null
+                            ? const Text('放送に接続すると利用できます')
+                            : null,
+                        trailing: const Icon(Icons.chevron_right),
+                        enabled: widget.broadcasterId != null,
+                        onTap: widget.broadcasterId != null
+                            ? () async {
+                                await Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => NicknameListScreen(
+                                      userAttributeStore:
+                                          widget.userAttributeStore!,
+                                      broadcasterId: widget.broadcasterId!,
+                                    ),
+                                  ),
+                                );
+                              }
+                            : null,
+                      ),
                   ],
                 ),
                 const SizedBox(height: 12),

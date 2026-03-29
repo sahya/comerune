@@ -520,7 +520,7 @@ void main() {
         ],
       );
 
-      expect(find.text('45分'), findsOneWidget);
+      expect(find.textContaining(RegExp(r'^0:45:\d{2}$')), findsOneWidget);
       expect(find.byIcon(Icons.access_time), findsOneWidget);
     });
 

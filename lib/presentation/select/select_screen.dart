@@ -9,6 +9,7 @@ import '../../data/auth/user_session_store.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../data/follow/follow_program.dart';
 import '../../data/follow/follow_program_repository.dart';
+import '../../data/user/user_attribute_store.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
@@ -16,6 +17,7 @@ import '../../domain/models/app_settings.dart';
 import '../../domain/utils/lv_parser.dart';
 import '../screens/comment_screen.dart';
 import '../screens/settings_screen.dart';
+import '../theme/app_theme.dart';
 
 /// Builds a niconico user icon URL from a numeric user ID.
 ///
@@ -48,6 +50,7 @@ class SelectScreen extends StatefulWidget {
     this.commentLogWriter,
     this.themeModeNotifier,
     this.followProgramRepository,
+    this.userAttributeStore,
     super.key,
   });
 
@@ -66,6 +69,7 @@ class SelectScreen extends StatefulWidget {
   final ValueNotifier<String?>? supplierUserIdNotifier;
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
   final FollowProgramRepository? followProgramRepository;
+  final UserAttributeStore? userAttributeStore;
 
   @override
   State<SelectScreen> createState() => _SelectScreenState();
@@ -84,6 +88,9 @@ class _SelectScreenState extends State<SelectScreen> {
   List<FollowProgram> _followPrograms = const <FollowProgram>[];
   bool _isLoadingFollowPrograms = false;
   Timer? _followRefreshTimer;
+  Map<String, int> _userColorMap = const <String, int>{};
+  Map<String, String> _userNicknameMap = const <String, String>{};
+  String? _currentBroadcasterId;
 
   static const Duration _followRefreshInterval = Duration(seconds: 60);
 
@@ -95,6 +102,7 @@ class _SelectScreenState extends State<SelectScreen> {
     _previousStatus = widget.connectionSupervisor.status;
     _controller.addListener(_onInputChanged);
     widget.connectionSupervisor.addListener(_onSupervisorChanged);
+    widget.supplierUserIdNotifier?.addListener(_onSupplierUserIdChanged);
     if (widget.settingsStore != null) {
       unawaited(_reloadSettingsFromStore());
     }
@@ -109,6 +117,13 @@ class _SelectScreenState extends State<SelectScreen> {
       oldWidget.connectionSupervisor.removeListener(_onSupervisorChanged);
       widget.connectionSupervisor.addListener(_onSupervisorChanged);
       _previousStatus = widget.connectionSupervisor.status;
+    }
+
+    if (oldWidget.supplierUserIdNotifier != widget.supplierUserIdNotifier) {
+      oldWidget.supplierUserIdNotifier?.removeListener(
+        _onSupplierUserIdChanged,
+      );
+      widget.supplierUserIdNotifier?.addListener(_onSupplierUserIdChanged);
     }
 
     if (oldWidget.initialSettings != widget.initialSettings &&
@@ -126,6 +141,7 @@ class _SelectScreenState extends State<SelectScreen> {
   void dispose() {
     _followRefreshTimer?.cancel();
     widget.connectionSupervisor.removeListener(_onSupervisorChanged);
+    widget.supplierUserIdNotifier?.removeListener(_onSupplierUserIdChanged);
     _loginStateNotifier.dispose();
     _settingsNotifier.dispose();
     _controller
@@ -256,6 +272,7 @@ class _SelectScreenState extends State<SelectScreen> {
               builder: (BuildContext context, bool? isLoggedIn, Widget? _) {
                 return _LoginStatusBanner(
                   isLoggedIn: isLoggedIn,
+                  themeMode: _settingsNotifier.value.themeMode,
                   onTapLogin: () =>
                       _openSettings(context, widget.userSessionStore),
                 );
@@ -363,7 +380,22 @@ class _SelectScreenState extends State<SelectScreen> {
           commentLogWriter: widget.commentLogWriter,
           autoSaveCommentLog: _settingsNotifier.value.autoSaveCommentLog,
           ngUserIds: _settingsNotifier.value.ngUserIdSet,
+          ngWords: _settingsNotifier.value.ngWordList,
           onToggleNgUser: _toggleNgUser,
+          starPrefixHidingEnabled:
+              _settingsNotifier.value.starPrefixHidingEnabled,
+          userColorMap: _userColorMap,
+          onUserColorChanged:
+              widget.userAttributeStore != null ? _onUserColorChanged : null,
+          onUserColorRemoved:
+              widget.userAttributeStore != null ? _onUserColorRemoved : null,
+          userNicknameMap: _userNicknameMap,
+          onNicknameChanged:
+              widget.userAttributeStore != null ? _onNicknameChanged : null,
+          onNicknameRemoved:
+              widget.userAttributeStore != null ? _onNicknameRemoved : null,
+          autoNicknameRegistration:
+              _settingsNotifier.value.autoNicknameRegistration,
           themeMode: _settingsNotifier.value.themeMode,
         );
       },
@@ -396,8 +428,98 @@ class _SelectScreenState extends State<SelectScreen> {
   Future<void> _onDifferentLvConnected(String previousLv, String nextLv) async {
     if (previousLv != nextLv) {
       widget.timelineStore?.clear();
+      _currentBroadcasterId = null;
+      _userColorMap = const <String, int>{};
     }
     _lastConnectedLv = nextLv;
+  }
+
+  void _onSupplierUserIdChanged() {
+    final String? supplierUserId = widget.supplierUserIdNotifier?.value;
+    if (supplierUserId != null && supplierUserId != _currentBroadcasterId) {
+      unawaited(_loadUserAttributes(supplierUserId));
+    }
+  }
+
+  Future<void> _loadUserAttributes(String? broadcasterId) async {
+    if (broadcasterId == null ||
+        broadcasterId == _currentBroadcasterId ||
+        widget.userAttributeStore == null) {
+      return;
+    }
+    _currentBroadcasterId = broadcasterId;
+    final Map<String, int> colors =
+        await widget.userAttributeStore!.loadColors(broadcasterId);
+    final Map<String, String> nicknames =
+        await widget.userAttributeStore!.loadNicknames(broadcasterId);
+    if (!mounted || _currentBroadcasterId != broadcasterId) {
+      return;
+    }
+    setState(() {
+      _userColorMap = colors;
+      _userNicknameMap = nicknames;
+    });
+  }
+
+  void _onUserColorChanged(String userId, int colorValue) {
+    final String? broadcasterId = _currentBroadcasterId;
+    if (broadcasterId == null || widget.userAttributeStore == null) {
+      return;
+    }
+    setState(() {
+      _userColorMap = Map<String, int>.from(_userColorMap)
+        ..[userId] = colorValue;
+    });
+    unawaited(widget.userAttributeStore!.setColor(
+      broadcasterId: broadcasterId,
+      userId: userId,
+      colorValue: colorValue,
+    ));
+  }
+
+  void _onUserColorRemoved(String userId) {
+    final String? broadcasterId = _currentBroadcasterId;
+    if (broadcasterId == null || widget.userAttributeStore == null) {
+      return;
+    }
+    setState(() {
+      _userColorMap = Map<String, int>.from(_userColorMap)..remove(userId);
+    });
+    unawaited(widget.userAttributeStore!.removeColor(
+      broadcasterId: broadcasterId,
+      userId: userId,
+    ));
+  }
+
+  void _onNicknameChanged(String userId, String nickname) {
+    final String? broadcasterId = _currentBroadcasterId;
+    if (broadcasterId == null || widget.userAttributeStore == null) {
+      return;
+    }
+    setState(() {
+      _userNicknameMap = Map<String, String>.from(_userNicknameMap)
+        ..[userId] = nickname;
+    });
+    unawaited(widget.userAttributeStore!.setNickname(
+      broadcasterId: broadcasterId,
+      userId: userId,
+      nickname: nickname,
+    ));
+  }
+
+  void _onNicknameRemoved(String userId) {
+    final String? broadcasterId = _currentBroadcasterId;
+    if (broadcasterId == null || widget.userAttributeStore == null) {
+      return;
+    }
+    setState(() {
+      _userNicknameMap = Map<String, String>.from(_userNicknameMap)
+        ..remove(userId);
+    });
+    unawaited(widget.userAttributeStore!.removeNickname(
+      broadcasterId: broadcasterId,
+      userId: userId,
+    ));
   }
 
   void _toggleNgUser(String userId) {
@@ -427,6 +549,8 @@ class _SelectScreenState extends State<SelectScreen> {
           settingsStore: settingsStore,
           userSessionStore: userSessionStore,
           themeModeNotifier: widget.themeModeNotifier,
+          userAttributeStore: widget.userAttributeStore,
+          broadcasterId: _currentBroadcasterId,
         ),
       ),
     );
@@ -434,6 +558,12 @@ class _SelectScreenState extends State<SelectScreen> {
     await _reloadSettingsFromStore();
     await _refreshLoginState();
     await _fetchFollowPrograms();
+    // Reload user attributes in case nicknames were edited in settings.
+    if (_currentBroadcasterId != null) {
+      final String broadcasterId = _currentBroadcasterId!;
+      _currentBroadcasterId = null;
+      await _loadUserAttributes(broadcasterId);
+    }
   }
 
   Future<void> _refreshLoginState() async {
@@ -560,10 +690,12 @@ class _SelectScreenState extends State<SelectScreen> {
 class _LoginStatusBanner extends StatelessWidget {
   const _LoginStatusBanner({
     required this.isLoggedIn,
+    required this.themeMode,
     required this.onTapLogin,
   });
 
   final bool? isLoggedIn;
+  final AppThemeMode themeMode;
   final VoidCallback onTapLogin;
 
   @override
@@ -573,19 +705,29 @@ class _LoginStatusBanner extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    final AppThemeMode effectiveMode = AppTheme.resolveEffectiveMode(
+      themeMode,
+      MediaQuery.platformBrightnessOf(context),
+    );
+    final AppThemeColors colors = AppTheme.colorsFor(effectiveMode);
+
     if (loggedIn) {
       return Semantics(
         label: 'ニコニコ ログイン済み',
         child: Container(
           key: const Key('login-status-banner-ok'),
           width: double.infinity,
-          color: Colors.green.shade50,
+          color: colors.loginBannerOkBackground,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: const Row(
+          child: Row(
             children: <Widget>[
-              Icon(Icons.check_circle, color: Colors.green, size: 18),
-              SizedBox(width: 8),
-              Text('ニコニコ ログイン済み'),
+              Icon(Icons.check_circle,
+                  color: colors.loginBannerOkIcon, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                'ニコニコ ログイン済み',
+                style: TextStyle(color: colors.loginBannerOkForeground),
+              ),
             ],
           ),
         ),
@@ -597,7 +739,7 @@ class _LoginStatusBanner extends StatelessWidget {
       label: 'ログインが必要です。タップして設定を開く',
       child: Material(
         key: const Key('login-status-banner-required'),
-        color: Colors.orange.shade50,
+        color: colors.loginBannerWarningBackground,
         child: InkWell(
           onTap: onTapLogin,
           child: Container(
@@ -606,12 +748,16 @@ class _LoginStatusBanner extends StatelessWidget {
             child: Row(
               children: <Widget>[
                 Icon(Icons.warning_amber_rounded,
-                    color: Colors.orange.shade700, size: 18),
+                    color: colors.loginBannerWarningIcon, size: 18),
                 const SizedBox(width: 8),
-                const Expanded(
-                  child: Text('ログインが必要です。タップして設定を開く'),
+                Expanded(
+                  child: Text(
+                    'ログインが必要です。タップして設定を開く',
+                    style:
+                        TextStyle(color: colors.loginBannerWarningForeground),
+                  ),
                 ),
-                Icon(Icons.chevron_right, color: Colors.orange.shade700),
+                Icon(Icons.chevron_right, color: colors.loginBannerWarningIcon),
               ],
             ),
           ),
@@ -790,7 +936,7 @@ class _FollowProgramTile extends StatelessWidget {
     final StringBuffer sb = StringBuffer('${program.providerName}の放送');
     sb.write(' ${program.title}');
     if (elapsed != null) {
-      sb.write(' $elapsed経過');
+      sb.write(' 経過$elapsed');
     }
     sb.write(' タップして接続');
     return sb.toString();
