@@ -10,4 +10,9 @@ interface SpeechQueueManager {
     fun clear()
     fun size(): Int
     fun isEmpty(): Boolean
+
+    /**
+     * Update the maximum queue size at runtime.
+     */
+    fun updateMaxSize(newMaxSize: Int)
 }

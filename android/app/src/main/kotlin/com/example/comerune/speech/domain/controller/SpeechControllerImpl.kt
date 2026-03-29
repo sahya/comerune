@@ -12,10 +12,8 @@ import com.example.comerune.speech.domain.model.SubmitResult
 import com.example.comerune.speech.domain.model.TtsEngineState
 import com.example.comerune.speech.domain.model.VoicevoxConfig
 import com.example.comerune.speech.domain.normalizer.CommentNormalizer
-import com.example.comerune.speech.domain.normalizer.DefaultCommentNormalizer
-import com.example.comerune.speech.domain.normalizer.InMemoryDuplicateDetector
+import com.example.comerune.speech.domain.normalizer.DuplicateDetector
 import com.example.comerune.speech.domain.player.WavPlayer
-import com.example.comerune.speech.domain.queue.InMemorySpeechQueueManager
 import com.example.comerune.speech.domain.queue.SpeechQueueManager
 import com.example.comerune.speech.domain.settings.SettingsRepository
 import kotlinx.coroutines.CancellationException
@@ -39,9 +37,7 @@ class SpeechControllerImpl(
     private val eventEmitter: SpeechEventEmitter,
     dispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val timeProvider: () -> Long = System::currentTimeMillis,
-    private val duplicateDetector: InMemoryDuplicateDetector? = null,
-    private val inMemoryQueueManager: InMemorySpeechQueueManager? = null,
-    private val defaultNormalizer: DefaultCommentNormalizer? = null
+    private val duplicateDetector: DuplicateDetector? = null
 ) : SpeechController {
 
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
@@ -217,12 +213,12 @@ class SpeechControllerImpl(
         }
         settingsRepository.save(settings)
 
-        // Propagate runtime-tunable settings to the concrete implementations
-        inMemoryQueueManager?.updateMaxSize(settings.maxQueueSize)
+        // Propagate runtime-tunable settings via interface methods
+        queueManager.updateMaxSize(settings.maxQueueSize)
         duplicateDetector?.updateDuplicateWindowMs(settings.duplicateWindowMs)
 
         // Clear regex cache when dictionary rules may have changed
-        defaultNormalizer?.clearRegexCache()
+        normalizer.clearRegexCache()
 
         return Result.success(Unit)
     }

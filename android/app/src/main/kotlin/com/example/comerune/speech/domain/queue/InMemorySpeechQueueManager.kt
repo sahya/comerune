@@ -29,7 +29,7 @@ class InMemorySpeechQueueManager(
      * are NOT evicted — the new limit applies only to future [offer] calls.
      */
     @Synchronized
-    fun updateMaxSize(newMaxSize: Int) {
+    override fun updateMaxSize(newMaxSize: Int) {
         require(newMaxSize > 0) { "maxSize must be positive, but was $newMaxSize" }
         currentMaxSize = newMaxSize
     }

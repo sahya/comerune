@@ -11,4 +11,10 @@ interface DuplicateDetector {
     fun checkAndRecord(normalizedText: String, userId: String?, currentTimeMs: Long): Boolean
 
     fun clear()
+
+    /**
+     * Update the duplicate detection window at runtime.
+     * Takes effect on the next [isDuplicate] / [checkAndRecord] call.
+     */
+    fun updateDuplicateWindowMs(ms: Long)
 }

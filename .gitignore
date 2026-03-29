@@ -40,5 +40,9 @@ android/**/GeneratedPluginRegistrant.java
 # Analysis options (auto-generated)
 analysis_options.yaml
 
+# VOICEVOX Core native library - download from GitHub releases
+# See docs/issues/voicevox/voicevox_core_0162_api.md for setup instructions
+android/app/src/main/jniLibs/
+
 # Claude Code
 .claude/

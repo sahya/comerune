@@ -30,7 +30,7 @@ class InMemoryDuplicateDetector(
      * Takes effect on the next [isDuplicate] / [checkAndRecord] call.
      */
     @Synchronized
-    fun updateDuplicateWindowMs(newWindowMs: Long) {
+    override fun updateDuplicateWindowMs(newWindowMs: Long) {
         currentDuplicateWindowMs = newWindowMs
     }
 

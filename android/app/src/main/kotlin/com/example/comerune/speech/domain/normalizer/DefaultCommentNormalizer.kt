@@ -266,7 +266,7 @@ class DefaultCommentNormalizer(
      * Clears the compiled regex cache. Call this when dictionary rules change
      * to avoid stale entries accumulating.
      */
-    fun clearRegexCache() {
+    override fun clearRegexCache() {
         regexCache.clear()
     }
 

@@ -1,6 +1,9 @@
 /**
  * @file voicevox_core.h
  *
+ * VOICEVOX Core 0.16.2 - MIT License.
+ * See VOICEVOX_CORE_LICENSE in this directory for the full license text.
+ *
  * 無料で使える中品質なテキスト読み上げソフトウェア、VOICEVOXのコア。
  *
  * <dl>

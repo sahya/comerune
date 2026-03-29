@@ -1,5 +1,20 @@
 # VOICEVOX Core 0.16.2 API Reference and Design Decisions
 
+## Native Library Setup
+
+The VOICEVOX Core shared library (`libvoicevox_core.so`) is not checked into git due to its size.
+To set up the native library for Android arm64 builds:
+
+1. Download `voicevox_core-android-arm64-0.16.2.zip` from the [VOICEVOX Core GitHub releases](https://github.com/VOICEVOX/voicevox_core/releases/tag/0.16.2).
+2. Extract the archive.
+3. Copy `libvoicevox_core.so` to `android/app/src/main/jniLibs/arm64-v8a/libvoicevox_core.so`.
+
+```bash
+mkdir -p android/app/src/main/jniLibs/arm64-v8a
+cp /path/to/voicevox_core-android-arm64-0.16.2/libvoicevox_core.so \
+   android/app/src/main/jniLibs/arm64-v8a/
+```
+
 ## Header Location
 - `android/app/src/main/cpp/include/voicevox_core.h` (57KB)
 

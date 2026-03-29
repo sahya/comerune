@@ -69,9 +69,7 @@ class CommentSpeechPlugin :
             player = player,
             settingsRepository = settingsRepository,
             eventEmitter = emitter,
-            duplicateDetector = duplicateDetector,
-            inMemoryQueueManager = queueManager,
-            defaultNormalizer = normalizer
+            duplicateDetector = duplicateDetector
         )
 
         pluginScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
