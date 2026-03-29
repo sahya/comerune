@@ -105,6 +105,25 @@ void main() {
     });
   });
 
+  group('comment prefix defaults', () {
+    test('starPrefixHidingEnabled defaults to false', () {
+      expect(AppSettings.defaults.starPrefixHidingEnabled, isFalse);
+    });
+
+    test('slashPrefixSkipEnabled defaults to true', () {
+      expect(AppSettings.defaults.slashPrefixSkipEnabled, isTrue);
+    });
+
+    test('copyWith updates prefix settings', () {
+      final AppSettings updated = AppSettings.defaults.copyWith(
+        starPrefixHidingEnabled: true,
+        slashPrefixSkipEnabled: false,
+      );
+      expect(updated.starPrefixHidingEnabled, isTrue);
+      expect(updated.slashPrefixSkipEnabled, isFalse);
+    });
+  });
+
   group('removeNgUserId', () {
     test('removes existing user ID', () {
       final AppSettings initial =
