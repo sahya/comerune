@@ -11,7 +11,7 @@ package com.example.comerune.speech.domain.model
  */
 data class SpeechSettings(
     val enabled: Boolean = true,
-    val speakerId: Int = 2, // 四国めたん（ノーマル）
+    val speakerId: Int = 0, // 四国めたん・あまあま（AppSettings.voicevoxSpeaker と同期）
     val speedScale: Float = 1.15f,
     val pitchScale: Float = 0.0f,
     val intonationScale: Float = 1.0f,

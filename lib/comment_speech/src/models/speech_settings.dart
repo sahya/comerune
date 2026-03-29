@@ -24,7 +24,7 @@ class SpeechSettings {
 
   const SpeechSettings({
     this.enabled = true,
-    this.speakerId = 2, // 四国めたん（ノーマル）
+    this.speakerId = 0, // 四国めたん・あまあま（UI の voicevoxSpeaker と同期）
     this.speedScale = 1.15,
     this.pitchScale = 0.0,
     this.intonationScale = 1.0,
