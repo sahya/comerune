@@ -4,6 +4,14 @@ import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
 import '../theme/app_theme.dart';
 
+/// Converts a [Color] to its ARGB32 integer representation without using the
+/// deprecated `Color.value` getter.
+int _colorToARGB32(Color c) =>
+    (c.a * 255).round() << 24 |
+    (c.r * 255).round() << 16 |
+    (c.g * 255).round() << 8 |
+    (c.b * 255).round();
+
 /// Predefined color palette entries with Japanese labels for accessibility.
 const List<({Color color, String label})> kUserColorPaletteEntries =
     <({Color color, String label})>[
@@ -337,11 +345,12 @@ class _ColorPaletteRow extends StatelessWidget {
               for (final ({Color color, String label}) entry
                   in kUserColorPaletteEntries)
                 _ColorCircle(
-                  key: Key('user-color-${entry.color.toARGB32()}'),
+                  key: Key('user-color-${_colorToARGB32(entry.color)}'),
                   color: entry.color,
                   colorLabel: entry.label,
-                  isSelected: currentColorValue == entry.color.toARGB32(),
-                  onTap: () => onColorChanged(entry.color.toARGB32()),
+                  isSelected:
+                      currentColorValue == _colorToARGB32(entry.color),
+                  onTap: () => onColorChanged(_colorToARGB32(entry.color)),
                 ),
             ],
           ),
