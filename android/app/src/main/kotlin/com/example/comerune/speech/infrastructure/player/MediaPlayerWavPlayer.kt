@@ -50,11 +50,14 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
         }
     }
 
-    private val audioFocusRequest: AudioFocusRequest =
+    // Lazy to avoid class-loading crash on API < 26 where AudioFocusRequest
+    // does not exist.  The play() method already guards with a runtime check.
+    private val audioFocusRequest: AudioFocusRequest by lazy {
         AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
             .setAudioAttributes(audioAttributes)
             .setOnAudioFocusChangeListener(focusChangeListener)
             .build()
+    }
 
     override suspend fun play(wavBytes: ByteArray): Result<Unit> {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
@@ -110,6 +113,7 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
 
                         player.setOnCompletionListener {
                             abandonAudioFocus()
+                            releaseMediaPlayer()
                             synchronized(lock) {
                                 state = PlayerState.IDLE
                             }
@@ -121,6 +125,7 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
 
                         player.setOnErrorListener { _, what, extra ->
                             abandonAudioFocus()
+                            releaseMediaPlayer()
                             synchronized(lock) {
                                 state = PlayerState.ERROR
                             }
@@ -230,7 +235,9 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
     }
 
     private fun abandonAudioFocus() {
-        audioManager.abandonAudioFocusRequest(audioFocusRequest)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioManager.abandonAudioFocusRequest(audioFocusRequest)
+        }
     }
 
     private fun cleanupTempFile() {
