@@ -1,5 +1,27 @@
 import 'package:flutter/material.dart';
 
+import '../../application/settings/settings_store.dart';
+import '../../domain/models/app_settings.dart';
+
+/// Saves [settings] to [store] with standardized error reporting.
+Future<void> saveSettingsToStore(
+  SettingsStore store,
+  AppSettings settings,
+) async {
+  try {
+    await store.save(settings);
+  } on Object catch (error, stackTrace) {
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'settings',
+        context: ErrorDescription('while saving settings'),
+      ),
+    );
+  }
+}
+
 class SettingsSection extends StatelessWidget {
   const SettingsSection({
     super.key,
@@ -145,7 +167,10 @@ class _SweetSpotSlider extends StatelessWidget {
               height: 20,
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: const Color(0x1A4CAF50),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withOpacity(0.1),
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),
@@ -171,8 +196,8 @@ class _SweetSpotSlider extends StatelessWidget {
                   sweetSpotLabel!,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.grey.shade500,
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
               ),

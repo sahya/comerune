@@ -121,27 +121,15 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
     _saveNgWords();
   }
 
-  void _saveNextSettings(AppSettings next) {
+  void _updateAndSave(AppSettings next) {
     setState(() {
       _settings = next;
     });
     unawaited(_saveSettings(next));
   }
 
-  Future<void> _saveSettings(AppSettings next) async {
-    try {
-      await widget.settingsStore.save(next);
-    } on Object catch (error, stackTrace) {
-      FlutterError.reportError(
-        FlutterErrorDetails(
-          exception: error,
-          stack: stackTrace,
-          library: 'tts_settings_screen',
-          context: ErrorDescription('while saving settings'),
-        ),
-      );
-    }
-  }
+  Future<void> _saveSettings(AppSettings next) =>
+      saveSettingsToStore(widget.settingsStore, next);
 
   void _saveBouyomiHost() {
     final AppSettings? current = _settings;
@@ -154,7 +142,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
       return;
     }
 
-    _saveNextSettings(current.copyWith(bouyomiHost: host));
+    _updateAndSave(current.copyWith(bouyomiHost: host));
   }
 
   void _saveNgWords() {
@@ -170,7 +158,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
 
     // TODO(issue-12-followup): NGワードは正規表現入力のため、保存前に
     // RegExp.tryParse 相当で妥当性を検証し、無効パターンは保存を抑止する。
-    _saveNextSettings(current.copyWith(ngWords: ngWords));
+    _updateAndSave(current.copyWith(ngWords: ngWords));
   }
 
   void _saveQueueLimit() {
@@ -207,7 +195,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
       return;
     }
 
-    _saveNextSettings(current.copyWith(queueLimit: parsed));
+    _updateAndSave(current.copyWith(queueLimit: parsed));
   }
 
   void _saveMaxDelaySeconds() {
@@ -244,7 +232,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
       return;
     }
 
-    _saveNextSettings(current.copyWith(maxDelaySeconds: parsed));
+    _updateAndSave(current.copyWith(maxDelaySeconds: parsed));
   }
 
   @override
@@ -270,7 +258,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       contentPadding: EdgeInsets.zero,
                       value: settings.autoReadEnabled,
                       onChanged: (bool value) {
-                        _saveNextSettings(
+                        _updateAndSave(
                             settings.copyWith(autoReadEnabled: value));
                       },
                     ),
@@ -285,7 +273,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                           groupValue: settings.speechEngine,
                           onChanged: (SpeechEngine? value) {
                             if (value == null) return;
-                            _saveNextSettings(
+                            _updateAndSave(
                                 settings.copyWith(speechEngine: value));
                           },
                         ),
@@ -297,7 +285,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                           groupValue: settings.speechEngine,
                           onChanged: (SpeechEngine? value) {
                             if (value == null) return;
-                            _saveNextSettings(
+                            _updateAndSave(
                                 settings.copyWith(speechEngine: value));
                           },
                         ),
@@ -329,7 +317,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                         divisions: 301,
                         value: settings.bouyomiSpeed,
                         onChanged: (int value) {
-                          _saveNextSettings(
+                          _updateAndSave(
                               settings.copyWith(bouyomiSpeed: value));
                         },
                       ),
@@ -341,7 +329,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                         divisions: 301,
                         value: settings.bouyomiTone,
                         onChanged: (int value) {
-                          _saveNextSettings(
+                          _updateAndSave(
                               settings.copyWith(bouyomiTone: value));
                         },
                       ),
@@ -353,7 +341,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                         divisions: 101,
                         value: settings.bouyomiVolume,
                         onChanged: (int value) {
-                          _saveNextSettings(
+                          _updateAndSave(
                               settings.copyWith(bouyomiVolume: value));
                         },
                       ),
@@ -377,7 +365,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                           if (value == null) {
                             return;
                           }
-                          _saveNextSettings(
+                          _updateAndSave(
                               settings.copyWith(bouyomiVoice: value));
                         },
                       ),
@@ -405,7 +393,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                           if (value == null) {
                             return;
                           }
-                          _saveNextSettings(
+                          _updateAndSave(
                               settings.copyWith(voicevoxSpeaker: value));
                         },
                       ),
@@ -418,7 +406,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                         divisions: 15,
                         value: settings.voicevoxSpeed,
                         onChanged: (double value) {
-                          _saveNextSettings(
+                          _updateAndSave(
                               settings.copyWith(voicevoxSpeed: value));
                         },
                       ),
@@ -430,7 +418,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                         divisions: 30,
                         value: settings.voicevoxPitch,
                         onChanged: (double value) {
-                          _saveNextSettings(
+                          _updateAndSave(
                               settings.copyWith(voicevoxPitch: value));
                         },
                       ),
@@ -442,7 +430,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                         divisions: 20,
                         value: settings.voicevoxIntonation,
                         onChanged: (double value) {
-                          _saveNextSettings(
+                          _updateAndSave(
                             settings.copyWith(voicevoxIntonation: value),
                           );
                         },
@@ -455,7 +443,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                         divisions: 20,
                         value: settings.voicevoxVolume,
                         onChanged: (double value) {
-                          _saveNextSettings(
+                          _updateAndSave(
                               settings.copyWith(voicevoxVolume: value));
                         },
                       ),
@@ -501,7 +489,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       contentPadding: EdgeInsets.zero,
                       value: settings.slashPrefixSkipEnabled,
                       onChanged: (bool value) {
-                        _saveNextSettings(
+                        _updateAndSave(
                           settings.copyWith(slashPrefixSkipEnabled: value),
                         );
                       },
@@ -515,7 +503,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       contentPadding: EdgeInsets.zero,
                       value: settings.starPrefixHidingEnabled,
                       onChanged: (bool value) {
-                        _saveNextSettings(
+                        _updateAndSave(
                           settings.copyWith(starPrefixHidingEnabled: value),
                         );
                       },
@@ -526,7 +514,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       contentPadding: EdgeInsets.zero,
                       value: settings.omitUrl,
                       onChanged: (bool value) {
-                        _saveNextSettings(settings.copyWith(omitUrl: value));
+                        _updateAndSave(settings.copyWith(omitUrl: value));
                       },
                     ),
                     SwitchListTile(
@@ -535,7 +523,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       contentPadding: EdgeInsets.zero,
                       value: settings.suppressDuplicate,
                       onChanged: (bool value) {
-                        _saveNextSettings(
+                        _updateAndSave(
                             settings.copyWith(suppressDuplicate: value));
                       },
                     ),

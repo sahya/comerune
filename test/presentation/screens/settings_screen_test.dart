@@ -8,6 +8,7 @@ import 'package:comerune/presentation/screens/settings_screen.dart';
 
 import '../../helpers/in_memory_shared_preferences.dart';
 import '../../helpers/in_memory_user_session_store.dart';
+import '../../helpers/settings_test_helpers.dart';
 
 void main() {
   group('SettingsScreen', () {
@@ -115,7 +116,7 @@ void main() {
       await tester.pumpWidget(_buildScreen(settingsStore));
       await tester.pumpAndSettle();
 
-      _toggleSwitchByKey(tester, const Key('debug-mode-switch'));
+      toggleSwitchByKeySync(tester, const Key('debug-mode-switch'));
       await tester.pumpAndSettle();
 
       final AppSettings loaded = await settingsStore.load();
@@ -185,11 +186,4 @@ Widget _buildScreen(
       themeModeNotifier: themeModeNotifier,
     ),
   );
-}
-
-void _toggleSwitchByKey(WidgetTester tester, Key key) {
-  final SwitchListTile tile = tester.widget(find.byKey(key, skipOffstage: false));
-  // TODO(issue-12-followup): off-screen 要素のヒットテスト制約を解消したら、
-  // 直接 callback 呼び出しではなく tester.tap ベースに統一する。
-  tile.onChanged!.call(!tile.value);
 }

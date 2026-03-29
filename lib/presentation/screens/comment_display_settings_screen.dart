@@ -40,27 +40,15 @@ class _CommentDisplaySettingsScreenState
     });
   }
 
-  void _saveNextSettings(AppSettings next) {
+  void _updateAndSave(AppSettings next) {
     setState(() {
       _settings = next;
     });
     unawaited(_saveSettings(next));
   }
 
-  Future<void> _saveSettings(AppSettings next) async {
-    try {
-      await widget.settingsStore.save(next);
-    } on Object catch (error, stackTrace) {
-      FlutterError.reportError(
-        FlutterErrorDetails(
-          exception: error,
-          stack: stackTrace,
-          library: 'comment_display_settings_screen',
-          context: ErrorDescription('while saving settings'),
-        ),
-      );
-    }
-  }
+  Future<void> _saveSettings(AppSettings next) =>
+      saveSettingsToStore(widget.settingsStore, next);
 
   @override
   Widget build(BuildContext context) {
@@ -86,7 +74,7 @@ class _CommentDisplaySettingsScreenState
                       contentPadding: EdgeInsets.zero,
                       value: settings.showUserName,
                       onChanged: (bool value) {
-                        _saveNextSettings(
+                        _updateAndSave(
                             settings.copyWith(showUserName: value));
                       },
                     ),
@@ -98,7 +86,7 @@ class _CommentDisplaySettingsScreenState
                       value: settings.resolveUserName,
                       onChanged: settings.showUserName
                           ? (bool value) {
-                              _saveNextSettings(
+                              _updateAndSave(
                                   settings.copyWith(resolveUserName: value));
                             }
                           : null,
@@ -110,7 +98,7 @@ class _CommentDisplaySettingsScreenState
                       contentPadding: EdgeInsets.zero,
                       value: settings.autoSaveCommentLog,
                       onChanged: (bool value) {
-                        _saveNextSettings(
+                        _updateAndSave(
                             settings.copyWith(autoSaveCommentLog: value));
                       },
                     ),
@@ -128,7 +116,7 @@ class _CommentDisplaySettingsScreenState
                       sweetSpotMax: 18,
                       sweetSpotLabel: 'おすすめ',
                       onChanged: (int value) {
-                        _saveNextSettings(
+                        _updateAndSave(
                           settings.copyWith(commentFontSize: value.toDouble()),
                         );
                       },
@@ -154,7 +142,7 @@ class _CommentDisplaySettingsScreenState
                         if (value == null) {
                           return;
                         }
-                        _saveNextSettings(
+                        _updateAndSave(
                           settings.copyWith(pastCommentFetchCount: value),
                         );
                       },
@@ -172,7 +160,7 @@ class _CommentDisplaySettingsScreenState
                       contentPadding: EdgeInsets.zero,
                       value: settings.statisticsEnabled,
                       onChanged: (bool value) {
-                        _saveNextSettings(
+                        _updateAndSave(
                           settings.copyWith(statisticsEnabled: value),
                         );
                       },
@@ -184,7 +172,7 @@ class _CommentDisplaySettingsScreenState
                       value: settings.statisticsViewerCommentEnabled,
                       onChanged: settings.statisticsEnabled
                           ? (bool value) {
-                              _saveNextSettings(
+                              _updateAndSave(
                                 settings.copyWith(
                                   statisticsViewerCommentEnabled: value,
                                 ),
@@ -199,7 +187,7 @@ class _CommentDisplaySettingsScreenState
                       value: settings.statisticsActiveUserEnabled,
                       onChanged: settings.statisticsEnabled
                           ? (bool value) {
-                              _saveNextSettings(
+                              _updateAndSave(
                                 settings.copyWith(
                                   statisticsActiveUserEnabled: value,
                                 ),

@@ -7,6 +7,7 @@ import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/presentation/screens/user_management_settings_screen.dart';
 
 import '../../helpers/in_memory_shared_preferences.dart';
+import '../../helpers/settings_test_helpers.dart';
 
 void main() {
   group('UserManagementSettingsScreen', () {
@@ -63,7 +64,7 @@ void main() {
       AppSettings loaded = await settingsStore.load();
       expect(loaded.autoNicknameRegistration, isTrue);
 
-      _toggleSwitchByKey(
+      toggleSwitchByKeySync(
           tester, const Key('auto-nickname-registration-switch'));
       await tester.pumpAndSettle();
 
@@ -79,11 +80,6 @@ Widget _buildScreen(SettingsStore settingsStore) {
       settingsStore: settingsStore,
     ),
   );
-}
-
-void _toggleSwitchByKey(WidgetTester tester, Key key) {
-  final SwitchListTile tile = tester.widget(find.byKey(key, skipOffstage: false));
-  tile.onChanged!.call(!tile.value);
 }
 
 class _FakeUserAttributeStore implements UserAttributeStore {

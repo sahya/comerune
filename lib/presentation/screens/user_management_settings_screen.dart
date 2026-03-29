@@ -47,27 +47,15 @@ class _UserManagementSettingsScreenState
     });
   }
 
-  void _saveNextSettings(AppSettings next) {
+  void _updateAndSave(AppSettings next) {
     setState(() {
       _settings = next;
     });
     unawaited(_saveSettings(next));
   }
 
-  Future<void> _saveSettings(AppSettings next) async {
-    try {
-      await widget.settingsStore.save(next);
-    } on Object catch (error, stackTrace) {
-      FlutterError.reportError(
-        FlutterErrorDetails(
-          exception: error,
-          stack: stackTrace,
-          library: 'user_management_settings_screen',
-          context: ErrorDescription('while saving settings'),
-        ),
-      );
-    }
-  }
+  Future<void> _saveSettings(AppSettings next) =>
+      saveSettingsToStore(widget.settingsStore, next);
 
   @override
   Widget build(BuildContext context) {
@@ -121,7 +109,7 @@ class _UserManagementSettingsScreenState
                       contentPadding: EdgeInsets.zero,
                       value: settings.autoNicknameRegistration,
                       onChanged: (bool value) {
-                        _saveNextSettings(
+                        _updateAndSave(
                           settings.copyWith(
                             autoNicknameRegistration: value,
                           ),

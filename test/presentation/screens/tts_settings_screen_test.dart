@@ -6,6 +6,9 @@ import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/presentation/screens/tts_settings_screen.dart';
 
 import '../../helpers/in_memory_shared_preferences.dart';
+import '../../helpers/settings_test_helpers.dart';
+
+const Key _listKey = Key('tts-settings-list');
 
 void main() {
   group('TtsSettingsScreen', () {
@@ -19,7 +22,7 @@ void main() {
       await tester.pumpWidget(_buildScreen(settingsStore));
       await tester.pumpAndSettle();
 
-      await _scrollToKey(tester, const Key('bouyomi-section'));
+      await scrollToKeyInList(tester, _listKey, const Key('bouyomi-section'));
       expect(
         find.byKey(const Key('bouyomi-section'), skipOffstage: false),
         findsOneWidget,
@@ -29,13 +32,14 @@ void main() {
         findsNothing,
       );
 
-      await _scrollToKey(tester, const Key('engine-voicevox-radio'));
+      await scrollToKeyInList(
+          tester, _listKey, const Key('engine-voicevox-radio'));
       await tester.tap(
         find.byKey(const Key('engine-voicevox-radio'), skipOffstage: false),
       );
       await tester.pumpAndSettle();
 
-      await _scrollToKey(tester, const Key('voicevox-section'));
+      await scrollToKeyInList(tester, _listKey, const Key('voicevox-section'));
       expect(
         find.byKey(const Key('voicevox-section'), skipOffstage: false),
         findsOneWidget,
@@ -56,23 +60,26 @@ void main() {
       await tester.pumpWidget(_buildScreen(settingsStore));
       await tester.pumpAndSettle();
 
-      await _enterTextByKey(tester, const Key('queue-limit-field'), 'abc');
-      await _focusFieldByKey(tester, const Key('max-delay-field'));
+      await enterTextByKey(
+          tester, _listKey, const Key('queue-limit-field'), 'abc');
+      await focusFieldByKey(tester, _listKey, const Key('max-delay-field'));
 
       expect(find.text('数値を入力してください', skipOffstage: false), findsOneWidget);
       AppSettings loaded = await settingsStore.load();
       expect(loaded.queueLimit, AppSettings.defaults.queueLimit);
 
-      await _enterTextByKey(tester, const Key('queue-limit-field'), '0');
-      await _focusFieldByKey(tester, const Key('max-delay-field'));
+      await enterTextByKey(
+          tester, _listKey, const Key('queue-limit-field'), '0');
+      await focusFieldByKey(tester, _listKey, const Key('max-delay-field'));
 
       expect(
           find.text('1〜100 の範囲で入力してください', skipOffstage: false), findsOneWidget);
       loaded = await settingsStore.load();
       expect(loaded.queueLimit, AppSettings.defaults.queueLimit);
 
-      await _enterTextByKey(tester, const Key('queue-limit-field'), '35');
-      await _focusFieldByKey(tester, const Key('max-delay-field'));
+      await enterTextByKey(
+          tester, _listKey, const Key('queue-limit-field'), '35');
+      await focusFieldByKey(tester, _listKey, const Key('max-delay-field'));
 
       loaded = await settingsStore.load();
       expect(loaded.queueLimit, 35);
@@ -89,14 +96,16 @@ void main() {
       await tester.pumpWidget(_buildScreen(settingsStore));
       await tester.pumpAndSettle();
 
-      await _enterTextByKey(tester, const Key('max-delay-field'), 'abc');
-      await _focusFieldByKey(tester, const Key('queue-limit-field'));
+      await enterTextByKey(
+          tester, _listKey, const Key('max-delay-field'), 'abc');
+      await focusFieldByKey(tester, _listKey, const Key('queue-limit-field'));
 
       AppSettings loaded = await settingsStore.load();
       expect(loaded.maxDelaySeconds, AppSettings.defaults.maxDelaySeconds);
 
-      await _enterTextByKey(tester, const Key('max-delay-field'), '0');
-      await _focusFieldByKey(tester, const Key('queue-limit-field'));
+      await enterTextByKey(
+          tester, _listKey, const Key('max-delay-field'), '0');
+      await focusFieldByKey(tester, _listKey, const Key('queue-limit-field'));
 
       loaded = await settingsStore.load();
       expect(loaded.maxDelaySeconds, AppSettings.defaults.maxDelaySeconds);
@@ -111,15 +120,17 @@ void main() {
       await tester.pumpWidget(_buildScreen(settingsStore));
       await tester.pumpAndSettle();
 
-      await _enterTextByKey(
+      await enterTextByKey(
         tester,
+        _listKey,
         const Key('bouyomi-host-field'),
         '192.168.0.10',
       );
-      await _focusFieldByKey(tester, const Key('queue-limit-field'));
+      await focusFieldByKey(tester, _listKey, const Key('queue-limit-field'));
 
-      await _enterTextByKey(tester, const Key('ng-words-field'), '^w+\$');
-      await _focusFieldByKey(tester, const Key('max-delay-field'));
+      await enterTextByKey(
+          tester, _listKey, const Key('ng-words-field'), '^w+\$');
+      await focusFieldByKey(tester, _listKey, const Key('max-delay-field'));
 
       final AppSettings loaded = await settingsStore.load();
       expect(loaded.bouyomiHost, '192.168.0.10');
@@ -135,15 +146,16 @@ void main() {
       await tester.pumpWidget(_buildScreen(settingsStore));
       await tester.pumpAndSettle();
 
-      await _toggleSwitchByKey(tester, const Key('auto-read-switch'));
-      await _enterTextByKey(tester, const Key('ng-words-field'), '^8+\$');
-      await _focusFieldByKey(tester, const Key('queue-limit-field'));
+      await toggleSwitchByKey(tester, _listKey, const Key('auto-read-switch'));
+      await enterTextByKey(
+          tester, _listKey, const Key('ng-words-field'), '^8+\$');
+      await focusFieldByKey(tester, _listKey, const Key('queue-limit-field'));
 
       // Re-open the screen to verify values are reloaded from store
       await tester.pumpWidget(_buildScreen(settingsStore));
       await tester.pumpAndSettle();
 
-      await _scrollToKey(tester, const Key('ng-words-field'));
+      await scrollToKeyInList(tester, _listKey, const Key('ng-words-field'));
       final TextFormField ngWordsField = tester
           .widget(find.byKey(const Key('ng-words-field'), skipOffstage: false));
       expect(ngWordsField.controller?.text, '^8+\$');
@@ -161,7 +173,7 @@ void main() {
       AppSettings loaded = await settingsStore.load();
       expect(loaded.autoReadEnabled, isFalse);
 
-      await _toggleSwitchByKey(tester, const Key('auto-read-switch'));
+      await toggleSwitchByKey(tester, _listKey, const Key('auto-read-switch'));
 
       loaded = await settingsStore.load();
       expect(loaded.autoReadEnabled, isTrue);
@@ -180,7 +192,8 @@ void main() {
       AppSettings loaded = await settingsStore.load();
       expect(loaded.slashPrefixSkipEnabled, isTrue);
 
-      await _toggleSwitchByKey(tester, const Key('slash-prefix-skip-switch'));
+      await toggleSwitchByKey(
+          tester, _listKey, const Key('slash-prefix-skip-switch'));
 
       loaded = await settingsStore.load();
       expect(loaded.slashPrefixSkipEnabled, isFalse);
@@ -199,7 +212,8 @@ void main() {
       AppSettings loaded = await settingsStore.load();
       expect(loaded.starPrefixHidingEnabled, isFalse);
 
-      await _toggleSwitchByKey(tester, const Key('star-prefix-hiding-switch'));
+      await toggleSwitchByKey(
+          tester, _listKey, const Key('star-prefix-hiding-switch'));
 
       loaded = await settingsStore.load();
       expect(loaded.starPrefixHidingEnabled, isTrue);
@@ -213,52 +227,4 @@ Widget _buildScreen(SettingsStore settingsStore) {
       settingsStore: settingsStore,
     ),
   );
-}
-
-Future<void> _scrollToKey(WidgetTester tester, Key key) async {
-  final Finder target = find.byKey(key);
-  final Finder scrollable = find
-      .descendant(
-        of: find.byKey(const Key('tts-settings-list')),
-        matching: find.byType(Scrollable),
-      )
-      .first;
-  if (target.evaluate().isEmpty) {
-    try {
-      await tester.scrollUntilVisible(
-        target,
-        -120,
-        scrollable: scrollable,
-      );
-    } on StateError {
-      await tester.scrollUntilVisible(
-        target,
-        120,
-        scrollable: scrollable,
-      );
-    }
-  }
-  await tester.pumpAndSettle();
-}
-
-Future<void> _focusFieldByKey(WidgetTester tester, Key key) async {
-  await _scrollToKey(tester, key);
-  await tester.tap(find.byKey(key), warnIfMissed: false);
-  await tester.pumpAndSettle();
-}
-
-Future<void> _enterTextByKey(WidgetTester tester, Key key, String text) async {
-  await _focusFieldByKey(tester, key);
-  await tester.enterText(find.byKey(key), text);
-  await tester.pumpAndSettle();
-}
-
-Future<void> _toggleSwitchByKey(WidgetTester tester, Key key) async {
-  await _scrollToKey(tester, key);
-  final SwitchListTile tile =
-      tester.widget(find.byKey(key, skipOffstage: false));
-  // TODO(issue-12-followup): off-screen 要素のヒットテスト制約を解消したら、
-  // 直接 callback 呼び出しではなく tester.tap ベースに統一する。
-  tile.onChanged!.call(!tile.value);
-  await tester.pumpAndSettle();
 }

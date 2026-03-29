@@ -145,7 +145,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  void _saveNextSettings(AppSettings next) {
+  void _updateAndSave(AppSettings next) {
     setState(() {
       _settings = next;
     });
@@ -156,20 +156,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     unawaited(_saveSettings(next));
   }
 
-  Future<void> _saveSettings(AppSettings next) async {
-    try {
-      await widget.settingsStore.save(next);
-    } on Object catch (error, stackTrace) {
-      FlutterError.reportError(
-        FlutterErrorDetails(
-          exception: error,
-          stack: stackTrace,
-          library: 'settings_screen',
-          context: ErrorDescription('while saving settings'),
-        ),
-      );
-    }
-  }
+  Future<void> _saveSettings(AppSettings next) =>
+      saveSettingsToStore(widget.settingsStore, next);
 
   @override
   Widget build(BuildContext context) {
@@ -208,7 +196,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         if (value == null) {
                           return;
                         }
-                        _saveNextSettings(
+                        _updateAndSave(
                           settings.copyWith(themeMode: value),
                         );
                       },
@@ -338,7 +326,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       contentPadding: EdgeInsets.zero,
                       value: settings.debugMode,
                       onChanged: (bool value) {
-                        _saveNextSettings(settings.copyWith(debugMode: value));
+                        _updateAndSave(settings.copyWith(debugMode: value));
                       },
                     ),
                   ],
