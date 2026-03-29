@@ -136,8 +136,6 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                     )
                 }
 
-                state = TtsEngineState.READY
-
                 if (wavBytes == null) {
                     // Only restore READY if release() hasn't been called
                     if (state == TtsEngineState.SYNTHESIZING) {
