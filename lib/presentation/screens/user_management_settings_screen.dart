@@ -15,11 +15,17 @@ class UserManagementSettingsScreen extends StatefulWidget {
     required this.settingsStore,
     this.userAttributeStore,
     this.broadcasterId,
+    this.resolveUserName,
+    this.requestUserNameResolve,
+    this.userNameListenable,
   });
 
   final SettingsStore settingsStore;
   final UserAttributeStore? userAttributeStore;
   final String? broadcasterId;
+  final String? Function(String userId)? resolveUserName;
+  final void Function(String userId)? requestUserNameResolve;
+  final Listenable? userNameListenable;
 
   @override
   State<UserManagementSettingsScreen> createState() =>
@@ -90,6 +96,10 @@ class _UserManagementSettingsScreenState
                           MaterialPageRoute<void>(
                             builder: (_) => FavoriteUserListScreen(
                               settingsStore: widget.settingsStore,
+                              resolveUserName: widget.resolveUserName,
+                              requestUserNameResolve:
+                                  widget.requestUserNameResolve,
+                              userNameListenable: widget.userNameListenable,
                             ),
                           ),
                         );

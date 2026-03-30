@@ -7,9 +7,15 @@ class FavoriteUserListScreen extends StatefulWidget {
   const FavoriteUserListScreen({
     super.key,
     required this.settingsStore,
+    this.resolveUserName,
+    this.requestUserNameResolve,
+    this.userNameListenable,
   });
 
   final SettingsStore settingsStore;
+  final String? Function(String userId)? resolveUserName;
+  final void Function(String userId)? requestUserNameResolve;
+  final Listenable? userNameListenable;
 
   @override
   State<FavoriteUserListScreen> createState() => _FavoriteUserListScreenState();
@@ -22,7 +28,37 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
   @override
   void initState() {
     super.initState();
+    widget.userNameListenable?.addListener(_onUserNameChanged);
     _loadFavoriteUserIds();
+  }
+
+  @override
+  void didUpdateWidget(covariant FavoriteUserListScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.userNameListenable != widget.userNameListenable) {
+      oldWidget.userNameListenable?.removeListener(_onUserNameChanged);
+      widget.userNameListenable?.addListener(_onUserNameChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.userNameListenable?.removeListener(_onUserNameChanged);
+    super.dispose();
+  }
+
+  void _onUserNameChanged() {
+    setState(() {});
+  }
+
+  void _requestAllUserNameResolution() {
+    final void Function(String)? request = widget.requestUserNameResolve;
+    if (request == null) {
+      return;
+    }
+    for (final String userId in _favoriteUserIds) {
+      request(userId);
+    }
   }
 
   Future<void> _loadFavoriteUserIds() async {
@@ -34,6 +70,7 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
       _favoriteUserIds = settings.favoriteUserIdSet.toList();
       _isLoading = false;
     });
+    _requestAllUserNameResolution();
   }
 
   Future<void> _addFavoriteUserId() async {
@@ -95,6 +132,8 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
       _favoriteUserIds = updated.favoriteUserIdSet.toList();
     });
 
+    widget.requestUserNameResolve?.call(userId);
+
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -103,12 +142,17 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
   }
 
   Future<void> _removeFavoriteUserId(String userId) async {
+    final String? nickname = widget.resolveUserName?.call(userId);
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
           title: const Text('ユーザー削除'),
-          content: Text('ユーザーID「$userId」を削除しますか？'),
+          content: Text(
+            nickname != null
+                ? '$nickname（$userId）を削除しますか？'
+                : 'ユーザーID「$userId」を削除しますか？',
+          ),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -181,11 +225,13 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
                   separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (BuildContext context, int index) {
                     final String userId = _favoriteUserIds[index];
+                    final String? nickname =
+                        widget.resolveUserName?.call(userId);
                     return ListTile(
                       key: Key('favorite-user-tile-$index'),
                       leading: const Icon(Icons.person, size: 20),
                       title: Text(
-                        userId,
+                        nickname != null ? '$nickname ($userId)' : userId,
                         style: const TextStyle(fontSize: 14),
                       ),
                       trailing: IconButton(

@@ -112,11 +112,13 @@ class _SelectScreenState extends State<SelectScreen> {
     _controller.addListener(_onInputChanged);
     widget.connectionSupervisor.addListener(_onSupervisorChanged);
     widget.supplierUserIdNotifier?.addListener(_onSupplierUserIdChanged);
+    widget.userNameListenable?.addListener(_onUserNameChanged);
     if (widget.settingsStore != null) {
       unawaited(_reloadSettingsFromStore());
     }
     unawaited(_refreshLoginState());
     unawaited(_fetchFollowPrograms());
+    _requestFavoriteUserNameResolution();
   }
 
   @override
@@ -135,6 +137,11 @@ class _SelectScreenState extends State<SelectScreen> {
       widget.supplierUserIdNotifier?.addListener(_onSupplierUserIdChanged);
     }
 
+    if (oldWidget.userNameListenable != widget.userNameListenable) {
+      oldWidget.userNameListenable?.removeListener(_onUserNameChanged);
+      widget.userNameListenable?.addListener(_onUserNameChanged);
+    }
+
     if (oldWidget.initialSettings != widget.initialSettings &&
         _settingsNotifier.value == oldWidget.initialSettings) {
       _settingsNotifier.value = widget.initialSettings;
@@ -151,6 +158,7 @@ class _SelectScreenState extends State<SelectScreen> {
     _followRefreshTimer?.cancel();
     widget.connectionSupervisor.removeListener(_onSupervisorChanged);
     widget.supplierUserIdNotifier?.removeListener(_onSupplierUserIdChanged);
+    widget.userNameListenable?.removeListener(_onUserNameChanged);
     _loginStateNotifier.dispose();
     _userAttrNotifier.dispose();
     _settingsNotifier.dispose();
@@ -332,6 +340,7 @@ class _SelectScreenState extends State<SelectScreen> {
           if (_settingsNotifier.value.favoriteUserIdSet.isNotEmpty)
             _FavoriteUserSection(
               userIds: _settingsNotifier.value.favoriteUserIdSet,
+              resolveUserName: widget.resolveUserName,
             ),
         ],
       ),
@@ -486,6 +495,20 @@ class _SelectScreenState extends State<SelectScreen> {
     }
   }
 
+  void _onUserNameChanged() {
+    setState(() {});
+  }
+
+  void _requestFavoriteUserNameResolution() {
+    final void Function(String)? request = widget.requestUserNameResolve;
+    if (request == null) {
+      return;
+    }
+    for (final String userId in _settingsNotifier.value.favoriteUserIdSet) {
+      request(userId);
+    }
+  }
+
   Future<void> _loadUserAttributes(String? broadcasterId) async {
     if (broadcasterId == null ||
         broadcasterId == _currentBroadcasterId ||
@@ -598,6 +621,9 @@ class _SelectScreenState extends State<SelectScreen> {
           themeModeNotifier: widget.themeModeNotifier,
           userAttributeStore: widget.userAttributeStore,
           broadcasterId: _currentBroadcasterId,
+          resolveUserName: widget.resolveUserName,
+          requestUserNameResolve: widget.requestUserNameResolve,
+          userNameListenable: widget.userNameListenable,
         ),
       ),
     );
@@ -706,6 +732,7 @@ class _SelectScreenState extends State<SelectScreen> {
     }
 
     _settingsNotifier.value = loaded;
+    _requestFavoriteUserNameResolution();
     if (widget.themeModeNotifier != null &&
         widget.themeModeNotifier!.value != loaded.themeMode) {
       widget.themeModeNotifier!.value = loaded.themeMode;
@@ -1041,9 +1068,11 @@ class _FollowProgramTile extends StatelessWidget {
 class _FavoriteUserSection extends StatelessWidget {
   const _FavoriteUserSection({
     required this.userIds,
+    this.resolveUserName,
   });
 
   final Set<String> userIds;
+  final String? Function(String userId)? resolveUserName;
 
   @override
   Widget build(BuildContext context) {
@@ -1074,6 +1103,7 @@ class _FavoriteUserSection extends StatelessWidget {
         const Divider(height: 1),
         ...userIds.map((String userId) {
           final String? iconUrl = buildNicoIconUrl(userId);
+          final String? nickname = resolveUserName?.call(userId);
           return ListTile(
             dense: true,
             leading: ClipOval(
@@ -1095,7 +1125,7 @@ class _FavoriteUserSection extends StatelessWidget {
               ),
             ),
             title: Text(
-              userId,
+              nickname != null ? '$nickname ($userId)' : userId,
               style: const TextStyle(fontSize: 13),
             ),
           );
