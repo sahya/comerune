@@ -112,6 +112,13 @@ class _SelectScreenState extends State<SelectScreen> {
     _controller.addListener(_onInputChanged);
     widget.connectionSupervisor.addListener(_onSupervisorChanged);
     widget.supplierUserIdNotifier?.addListener(_onSupplierUserIdChanged);
+    // If the supplier user ID is already known (e.g. widget rebuilt while
+    // connected), load user attributes immediately so that
+    // _currentBroadcasterId is set before the user can open settings.
+    final String? initialSupplierId = widget.supplierUserIdNotifier?.value;
+    if (initialSupplierId != null) {
+      unawaited(_loadUserAttributes(initialSupplierId));
+    }
     if (widget.settingsStore != null) {
       unawaited(_reloadSettingsFromStore());
     }
@@ -597,7 +604,8 @@ class _SelectScreenState extends State<SelectScreen> {
           userSessionStore: userSessionStore,
           themeModeNotifier: widget.themeModeNotifier,
           userAttributeStore: widget.userAttributeStore,
-          broadcasterId: _currentBroadcasterId,
+          broadcasterId:
+              _currentBroadcasterId ?? widget.supplierUserIdNotifier?.value,
         ),
       ),
     );
