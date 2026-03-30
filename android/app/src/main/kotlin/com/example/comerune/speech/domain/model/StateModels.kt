@@ -20,6 +20,7 @@ enum class TtsEngineState {
 enum class PlayerState {
     IDLE,
     PLAYING,
+    PAUSED,
     STOPPED,
     ERROR
 }

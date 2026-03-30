@@ -280,8 +280,17 @@ class SpeechControllerImpl(
             while (started && !released) {
                 val item = queueManager.poll() ?: break
 
-                processingMutex.withLock {
-                    processItem(item)
+                try {
+                    processingMutex.withLock {
+                        processItem(item)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    // Unexpected exceptions must not kill the worker.
+                    // The item is skipped and processing continues with the next one.
+                    currentCommentId = null
+                    currentText = null
                 }
             }
         } while (started && !released && !queueManager.isEmpty())
