@@ -185,9 +185,9 @@ extension PastCommentFetchCountValue on PastCommentFetchCount {
 }
 
 /// ニコニコ用語のデフォルト読み上げ辞書ルール。
-const List<ReplaceRule> kDefaultNicoDictionaryRules = <ReplaceRule>[
-  ReplaceRule(pattern: r'w{3,}|ｗ{3,}', replacement: 'わらわら'),
-  ReplaceRule(pattern: r'w{1,2}|ｗ{1,2}', replacement: 'わら'),
+const List<ReplaceRule> defaultNicoDictionaryRules = <ReplaceRule>[
+  ReplaceRule(pattern: r'[wｗ]{3,}', replacement: 'わらわら'),
+  ReplaceRule(pattern: r'[wｗ]{1,2}$', replacement: 'わら'),
   ReplaceRule(pattern: r'8{3,}|８{3,}', replacement: 'ぱちぱちぱち'),
   ReplaceRule(pattern: r'おつ$', replacement: 'おつかれ'),
   ReplaceRule(pattern: r'わこつ', replacement: 'わくおつ'),
@@ -272,7 +272,7 @@ class AppSettings {
     highlightPickupEnabled: false,
     starPrefixHidingEnabled: false,
     slashPrefixSkipEnabled: true,
-    dictionaryRules: kDefaultNicoDictionaryRules,
+    dictionaryRules: defaultNicoDictionaryRules,
     debugMode: false,
   );
 

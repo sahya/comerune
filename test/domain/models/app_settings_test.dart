@@ -203,7 +203,7 @@ void main() {
     test('defaults include nico dictionary rules', () {
       expect(
         AppSettings.defaults.dictionaryRules,
-        kDefaultNicoDictionaryRules,
+        defaultNicoDictionaryRules,
       );
       expect(AppSettings.defaults.dictionaryRules, isNotEmpty);
     });
@@ -232,9 +232,19 @@ void main() {
     });
 
     test('all default rules are enabled', () {
-      for (final ReplaceRule rule in kDefaultNicoDictionaryRules) {
+      for (final ReplaceRule rule in defaultNicoDictionaryRules) {
         expect(rule.enabled, isTrue,
             reason: '${rule.pattern} should be enabled');
+      }
+    });
+
+    test('all default rule patterns are valid regular expressions', () {
+      for (final ReplaceRule rule in defaultNicoDictionaryRules) {
+        expect(
+          () => RegExp(rule.pattern),
+          returnsNormally,
+          reason: '${rule.pattern} should be a valid regex',
+        );
       }
     });
   });

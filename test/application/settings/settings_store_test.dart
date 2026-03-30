@@ -271,14 +271,14 @@ void main() {
     });
 
     test(
-        'dictionaryRules defaults to kDefaultNicoDictionaryRules when not stored',
+        'dictionaryRules defaults to defaultNicoDictionaryRules when not stored',
         () async {
       final SharedPreferencesSettingsStore store =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
       final AppSettings loaded = await store.load();
 
-      expect(loaded.dictionaryRules, kDefaultNicoDictionaryRules);
+      expect(loaded.dictionaryRules, defaultNicoDictionaryRules);
     });
 
     test('round-trips dictionaryRules', () async {
@@ -326,7 +326,23 @@ void main() {
 
       final AppSettings loaded = await store.load();
 
-      expect(loaded.dictionaryRules, kDefaultNicoDictionaryRules);
+      expect(loaded.dictionaryRules, defaultNicoDictionaryRules);
+    });
+
+    test('falls back to defaults for malformed dictionaryRules array',
+        () async {
+      final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: prefs);
+
+      await prefs.setString(
+        'settings.speech.dictionaryRules',
+        '[{"pattern": 123}]',
+      );
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.dictionaryRules, defaultNicoDictionaryRules);
     });
   });
 }

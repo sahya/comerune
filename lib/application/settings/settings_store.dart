@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import '../../comment_speech/src/models/replace_rule.dart';
 import '../../domain/models/app_settings.dart';
@@ -227,15 +228,19 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   List<ReplaceRule> _loadDictionaryRules() {
     final String? raw = _prefs.getString(_kDictionaryRules);
     if (raw == null) {
-      return kDefaultNicoDictionaryRules;
+      return defaultNicoDictionaryRules;
     }
     try {
       final List<dynamic> decoded = jsonDecode(raw) as List<dynamic>;
       return decoded
           .map((dynamic e) => ReplaceRule.fromMap(e as Map<String, dynamic>))
           .toList();
-    } on Object {
-      return kDefaultNicoDictionaryRules;
+    } on Object catch (e) {
+      developer.log(
+        'Failed to parse dictionaryRules, falling back to defaults: $e',
+        name: 'SettingsStore',
+      );
+      return defaultNicoDictionaryRules;
     }
   }
 }
