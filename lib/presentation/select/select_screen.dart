@@ -129,8 +129,7 @@ class _SelectScreenState extends State<SelectScreen> {
       unawaited(_reloadSettingsFromStore());
     }
     unawaited(_refreshLoginState());
-    unawaited(_fetchMyProgram());
-    unawaited(_fetchFollowPrograms());
+    unawaited(_fetchAllPrograms());
     _requestFavoriteUserNameResolution();
   }
 
@@ -289,8 +288,7 @@ class _SelectScreenState extends State<SelectScreen> {
     );
 
     if (mounted) {
-      unawaited(_fetchMyProgram());
-      unawaited(_fetchFollowPrograms());
+      unawaited(_fetchAllPrograms());
     }
   }
 
@@ -370,10 +368,7 @@ class _SelectScreenState extends State<SelectScreen> {
               programs: _followPrograms,
               enabled: !_isConnectionInProgress,
               onTap: _connectToProgram,
-              onRefresh: () async {
-                await _fetchMyProgram();
-                await _fetchFollowPrograms();
-              },
+              onRefresh: _fetchAllPrograms,
             ),
           ),
           if (_settingsNotifier.value.favoriteUserIdSet.isNotEmpty)
@@ -674,8 +669,7 @@ class _SelectScreenState extends State<SelectScreen> {
 
     await _reloadSettingsFromStore();
     await _refreshLoginState();
-    await _fetchMyProgram();
-    await _fetchFollowPrograms();
+    await _fetchAllPrograms();
     // Reload user attributes in case nicknames were edited in settings.
     // Use the notifier value as fallback in the same way as the broadcasterId
     // passed to SettingsScreen above.
@@ -706,18 +700,47 @@ class _SelectScreenState extends State<SelectScreen> {
     _loginStateNotifier.value = session.isNotEmpty;
   }
 
-  Future<void> _fetchMyProgram() async {
-    final MyProgramRepository? repository = widget.myProgramRepository;
+  Future<String> _loadUserSession() async {
     final UserSessionStore? sessionStore = widget.userSessionStore;
-    if (repository == null || sessionStore == null) {
+    if (sessionStore == null) {
+      return '';
+    }
+    try {
+      return await sessionStore.load();
+    } on Exception {
+      return '';
+    }
+  }
+
+  /// Fetches both the user's own broadcast and follow programs in one pass,
+  /// sharing a single [userSession] load to avoid redundant secure storage I/O.
+  Future<void> _fetchAllPrograms() async {
+    final String userSession = await _loadUserSession();
+    if (!mounted) {
       return;
     }
 
-    String userSession;
-    try {
-      userSession = await sessionStore.load();
-    } on Exception {
-      userSession = '';
+    // Run both fetches concurrently with the same session token.
+    await Future.wait<void>(<Future<void>>[
+      _fetchMyProgram(userSession),
+      _fetchFollowPrograms(userSession),
+    ]);
+
+    if (!mounted) {
+      return;
+    }
+
+    _followRefreshTimer?.cancel();
+    _followRefreshTimer = Timer(
+      _followRefreshInterval,
+      () => unawaited(_fetchAllPrograms()),
+    );
+  }
+
+  Future<void> _fetchMyProgram(String userSession) async {
+    final MyProgramRepository? repository = widget.myProgramRepository;
+    if (repository == null) {
+      return;
     }
 
     final FollowProgram? program =
@@ -731,18 +754,10 @@ class _SelectScreenState extends State<SelectScreen> {
     });
   }
 
-  Future<void> _fetchFollowPrograms() async {
+  Future<void> _fetchFollowPrograms(String userSession) async {
     final FollowProgramRepository? repository = widget.followProgramRepository;
-    final UserSessionStore? sessionStore = widget.userSessionStore;
-    if (repository == null || sessionStore == null) {
+    if (repository == null) {
       return;
-    }
-
-    String userSession;
-    try {
-      userSession = await sessionStore.load();
-    } on Exception {
-      userSession = '';
     }
 
     // Retry up to 3 times on first load only. Once we have a result
@@ -774,12 +789,6 @@ class _SelectScreenState extends State<SelectScreen> {
 
     setState(() {
       _followPrograms = programs;
-    });
-
-    _followRefreshTimer?.cancel();
-    _followRefreshTimer = Timer(_followRefreshInterval, () {
-      unawaited(_fetchMyProgram());
-      unawaited(_fetchFollowPrograms());
     });
   }
 
@@ -1160,7 +1169,7 @@ class _MyBroadcastSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             children: <Widget>[
               const Icon(Icons.videocam, size: 16, color: Colors.orange),

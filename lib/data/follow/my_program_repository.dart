@@ -2,13 +2,21 @@ import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
 
-import '../utils/begin_at_parser.dart';
 import 'follow_program.dart';
+import 'program_parser.dart';
 
 /// Fetches the user's own currently live program from niconico.
 ///
 /// Uses the niconico on-air programs API filtered to the logged-in user:
 /// `GET https://live.nicovideo.jp/front/api/pages/my/v1/programs?status=onair`
+///
+/// This endpoint is inferred from the existing follow-programs API pattern
+/// (`/pages/follow/v1/programs`). If it does not exist, the method returns
+/// `null` gracefully. Potential fallback strategies include:
+/// - `GET https://live2.nicovideo.jp/unama/api/v3/contents/{liveId}` for
+///   individual program availability checks.
+/// - Redirecting via `https://live.nicovideo.jp/watch/user/{userId}` to
+///   discover the user's active broadcast.
 class MyProgramRepository {
   MyProgramRepository({
     HttpClient? httpClient,
@@ -89,79 +97,11 @@ class MyProgramRepository {
       return null;
     }
 
-    final String? programId = item['id'] as String?;
-    final String? title = item['title'] as String?;
-    if (programId == null || title == null) {
-      return null;
-    }
-
-    final String? providerName = _extractProviderName(item);
-    final String? providerIconUrl = _extractProviderIconUrl(item);
-    final DateTime? beginAt = parseBeginAt(item);
-
-    return FollowProgram(
-      programId: programId,
-      title: title,
-      providerName: providerName ?? '',
-      providerIconUrl: providerIconUrl,
-      beginAt: beginAt,
+    return parseProgramItem(
+      item,
+      requireProviderName: false,
       isOwnBroadcast: true,
     );
-  }
-
-  static String? _extractProviderName(Map<String, dynamic> item) {
-    final Object? provider = item['programProvider'];
-    if (provider is Map<String, dynamic>) {
-      final Object? name = provider['name'];
-      if (name is String && name.isNotEmpty) {
-        return name;
-      }
-    }
-
-    final Object? supplier = item['supplier'];
-    if (supplier is Map<String, dynamic>) {
-      final Object? name = supplier['name'];
-      if (name is String && name.isNotEmpty) {
-        return name;
-      }
-    }
-
-    return null;
-  }
-
-  static String? _extractProviderIconUrl(Map<String, dynamic> item) {
-    final Object? provider = item['programProvider'];
-    if (provider is Map<String, dynamic>) {
-      final Object? iconSmall = provider['iconSmall'];
-      if (iconSmall is String && _isHttpsUrl(iconSmall)) {
-        return iconSmall;
-      }
-      final Object? icon = provider['icon'];
-      if (icon is String && _isHttpsUrl(icon)) {
-        return icon;
-      }
-    }
-
-    final Object? supplier = item['supplier'];
-    if (supplier is Map<String, dynamic>) {
-      final Object? icons = supplier['icons'];
-      if (icons is Map<String, dynamic>) {
-        final Object? uri50 = icons['uri50x50'];
-        if (uri50 is String && _isHttpsUrl(uri50)) {
-          return uri50;
-        }
-        final Object? uri150 = icons['uri150x150'];
-        if (uri150 is String && _isHttpsUrl(uri150)) {
-          return uri150;
-        }
-      }
-    }
-
-    return null;
-  }
-
-  static bool _isHttpsUrl(String url) {
-    return url.isNotEmpty && url.startsWith('https://');
   }
 
   void dispose() {
