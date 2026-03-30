@@ -311,6 +311,37 @@ void main() {
 
       expect(fakePlatform.stopCalled, isTrue);
     });
+
+    testWidgets('broadcast end does not crash when speech is disabled', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CommentScreen(
+            lv: 'lv123456789',
+            connectionSupervisor: supervisor,
+            messages: const <AppMessage>[],
+            onStopAllConnections: () async {},
+            onReconnectSameLv: () async {},
+            onDifferentLvConnected: (_, __) async {},
+            themeMode: AppThemeMode.light,
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: false),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.startCalled, isFalse);
+
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pumpAndSettle();
+
+      // stop is not called because speech was never started.
+      expect(fakePlatform.stopCalled, isFalse);
+    });
   });
 }
 
