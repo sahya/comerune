@@ -233,6 +233,8 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
                       title: Text(
                         nickname != null ? '$nickname ($userId)' : userId,
                         style: const TextStyle(fontSize: 14),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
                       ),
                       trailing: IconButton(
                         key: Key('favorite-user-remove-$index'),
