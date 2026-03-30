@@ -8,6 +8,9 @@ import '../../domain/models/app_settings.dart';
 import '../widgets/settings_widgets.dart';
 import 'ng_user_list_screen.dart';
 
+// TODO(#13): 棒読みちゃん対応は UIから非表示とした。サーバーを管理しない方針のため、
+// 今後削除するか再実装するかは未定。万が一機会があれば再検討する。
+// 棒読みちゃん関連のドメインモデル・設定ストアのフィールドは後方互換のため残している。
 class TtsSettingsScreen extends StatefulWidget {
   const TtsSettingsScreen({
     super.key,
@@ -26,12 +29,10 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
   static const int _maxDelayMin = 1;
   static const int _maxDelayMax = 60;
 
-  late final TextEditingController _bouyomiHostController;
   late final TextEditingController _queueLimitController;
   late final TextEditingController _maxDelayController;
   late final TextEditingController _ngWordsController;
 
-  late final FocusNode _bouyomiHostFocusNode;
   late final FocusNode _queueLimitFocusNode;
   late final FocusNode _maxDelayFocusNode;
   late final FocusNode _ngWordsFocusNode;
@@ -43,13 +44,10 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _bouyomiHostController = TextEditingController();
     _queueLimitController = TextEditingController();
     _maxDelayController = TextEditingController();
     _ngWordsController = TextEditingController();
 
-    _bouyomiHostFocusNode = FocusNode()
-      ..addListener(_onBouyomiHostFocusChanged);
     _queueLimitFocusNode = FocusNode()..addListener(_onQueueLimitFocusChanged);
     _maxDelayFocusNode = FocusNode()..addListener(_onMaxDelayFocusChanged);
     _ngWordsFocusNode = FocusNode()..addListener(_onNgWordsFocusChanged);
@@ -59,9 +57,6 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
 
   @override
   void dispose() {
-    _bouyomiHostFocusNode
-      ..removeListener(_onBouyomiHostFocusChanged)
-      ..dispose();
     _queueLimitFocusNode
       ..removeListener(_onQueueLimitFocusChanged)
       ..dispose();
@@ -71,7 +66,6 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
     _ngWordsFocusNode
       ..removeListener(_onNgWordsFocusChanged)
       ..dispose();
-    _bouyomiHostController.dispose();
     _queueLimitController.dispose();
     _maxDelayController.dispose();
     _ngWordsController.dispose();
@@ -84,7 +78,6 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
       return;
     }
 
-    _bouyomiHostController.text = loaded.bouyomiHost;
     _queueLimitController.text = loaded.queueLimit.toString();
     _maxDelayController.text = loaded.maxDelaySeconds.toString();
     _ngWordsController.text = loaded.ngWords;
@@ -92,13 +85,6 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
     setState(() {
       _settings = loaded;
     });
-  }
-
-  void _onBouyomiHostFocusChanged() {
-    if (_bouyomiHostFocusNode.hasFocus) {
-      return;
-    }
-    _saveBouyomiHost();
   }
 
   void _onQueueLimitFocusChanged() {
@@ -133,20 +119,6 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
 
   Future<void> _saveSettings(AppSettings next) =>
       saveSettingsToStore(widget.settingsStore, next);
-
-  void _saveBouyomiHost() {
-    final AppSettings? current = _settings;
-    if (current == null) {
-      return;
-    }
-
-    final String host = _bouyomiHostController.text.trim();
-    if (host == current.bouyomiHost) {
-      return;
-    }
-
-    _updateAndSave(current.copyWith(bouyomiHost: host));
-  }
 
   void _saveNgWords() {
     final AppSettings? current = _settings;
@@ -265,192 +237,84 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                             settings.copyWith(autoReadEnabled: value));
                       },
                     ),
-                    const Text('読み上げエンジン'),
-                    Column(
-                      children: <Widget>[
-                        RadioListTile<SpeechEngine>(
-                          key: const Key('engine-bouyomi-radio'),
-                          title: const Text('棒読みちゃん'),
-                          contentPadding: EdgeInsets.zero,
-                          value: SpeechEngine.bouyomi,
-                          groupValue: settings.speechEngine,
-                          onChanged: (SpeechEngine? value) {
-                            if (value == null) return;
-                            _updateAndSave(
-                                settings.copyWith(speechEngine: value));
-                          },
-                        ),
-                        RadioListTile<SpeechEngine>(
-                          key: const Key('engine-voicevox-radio'),
-                          title: const Text('VOICEVOX'),
-                          contentPadding: EdgeInsets.zero,
-                          value: SpeechEngine.voicevox,
-                          groupValue: settings.speechEngine,
-                          onChanged: (SpeechEngine? value) {
-                            if (value == null) return;
-                            _updateAndSave(
-                                settings.copyWith(speechEngine: value));
-                          },
-                        ),
-                      ],
-                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
-                if (settings.speechEngine == SpeechEngine.bouyomi)
-                  SettingsSection(
-                    key: const Key('bouyomi-section'),
-                    title: '棒読みちゃん',
-                    children: <Widget>[
-                      TextFormField(
-                        key: const Key('bouyomi-host-field'),
-                        controller: _bouyomiHostController,
-                        focusNode: _bouyomiHostFocusNode,
-                        decoration: const InputDecoration(
-                          labelText: 'ホスト',
-                          border: OutlineInputBorder(),
+                SettingsSection(
+                  key: const Key('voicevox-section'),
+                  title: 'VOICEVOX',
+                  children: <Widget>[
+                    DropdownButtonFormField<int>(
+                      key: const Key('voicevox-speaker-dropdown'),
+                      value: settings.voicevoxSpeaker,
+                      decoration: const InputDecoration(
+                        labelText: '話者',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const <DropdownMenuItem<int>>[
+                        DropdownMenuItem<int>(
+                          value: 0,
+                          child: Text('四国めたん・あまあま (ID:0)'),
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      SettingsIntSliderField(
-                        key: const Key('bouyomi-speed-slider'),
-                        label: '速度',
-                        min: -1,
-                        max: 300,
-                        divisions: 301,
-                        value: settings.bouyomiSpeed,
-                        onChanged: (int value) {
-                          _updateAndSave(
-                              settings.copyWith(bouyomiSpeed: value));
-                        },
-                      ),
-                      SettingsIntSliderField(
-                        key: const Key('bouyomi-tone-slider'),
-                        label: '音程',
-                        min: -1,
-                        max: 300,
-                        divisions: 301,
-                        value: settings.bouyomiTone,
-                        onChanged: (int value) {
-                          _updateAndSave(settings.copyWith(bouyomiTone: value));
-                        },
-                      ),
-                      SettingsIntSliderField(
-                        key: const Key('bouyomi-volume-slider'),
-                        label: '音量',
-                        min: -1,
-                        max: 100,
-                        divisions: 101,
-                        value: settings.bouyomiVolume,
-                        onChanged: (int value) {
-                          _updateAndSave(
-                              settings.copyWith(bouyomiVolume: value));
-                        },
-                      ),
-                      DropdownButtonFormField<int>(
-                        key: const Key('bouyomi-voice-dropdown'),
-                        value: settings.bouyomiVoice,
-                        decoration: const InputDecoration(
-                          labelText: '声質',
-                          border: OutlineInputBorder(),
-                        ),
-                        items: _bouyomiVoiceOptions.entries
-                            .map(
-                              (MapEntry<int, String> entry) =>
-                                  DropdownMenuItem<int>(
-                                value: entry.key,
-                                child: Text(entry.value),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (int? value) {
-                          if (value == null) {
-                            return;
-                          }
-                          _updateAndSave(
-                              settings.copyWith(bouyomiVoice: value));
-                        },
-                      ),
-                    ],
-                  ),
-                if (settings.speechEngine == SpeechEngine.voicevox)
-                  SettingsSection(
-                    key: const Key('voicevox-section'),
-                    title: 'VOICEVOX',
-                    children: <Widget>[
-                      DropdownButtonFormField<int>(
-                        key: const Key('voicevox-speaker-dropdown'),
-                        value: settings.voicevoxSpeaker,
-                        decoration: const InputDecoration(
-                          labelText: '話者',
-                          border: OutlineInputBorder(),
-                        ),
-                        items: const <DropdownMenuItem<int>>[
-                          DropdownMenuItem<int>(
-                            value: 0,
-                            child: Text('四国めたん・あまあま (ID:0)'),
-                          ),
-                        ],
-                        onChanged: (int? value) {
-                          if (value == null) {
-                            return;
-                          }
-                          _updateAndSave(
-                              settings.copyWith(voicevoxSpeaker: value));
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      SettingsDoubleSliderField(
-                        key: const Key('voicevox-speed-slider'),
-                        label: '話速',
-                        min: 0.5,
-                        max: 2.0,
-                        divisions: 15,
-                        value: settings.voicevoxSpeed,
-                        onChanged: (double value) {
-                          _updateAndSave(
-                              settings.copyWith(voicevoxSpeed: value));
-                        },
-                      ),
-                      SettingsDoubleSliderField(
-                        key: const Key('voicevox-pitch-slider'),
-                        label: '音高',
-                        min: -0.15,
-                        max: 0.15,
-                        divisions: 30,
-                        value: settings.voicevoxPitch,
-                        onChanged: (double value) {
-                          _updateAndSave(
-                              settings.copyWith(voicevoxPitch: value));
-                        },
-                      ),
-                      SettingsDoubleSliderField(
-                        key: const Key('voicevox-intonation-slider'),
-                        label: '抑揚',
-                        min: 0.0,
-                        max: 2.0,
-                        divisions: 20,
-                        value: settings.voicevoxIntonation,
-                        onChanged: (double value) {
-                          _updateAndSave(
-                            settings.copyWith(voicevoxIntonation: value),
-                          );
-                        },
-                      ),
-                      SettingsDoubleSliderField(
-                        key: const Key('voicevox-volume-slider'),
-                        label: '音量',
-                        min: 0.0,
-                        max: 2.0,
-                        divisions: 20,
-                        value: settings.voicevoxVolume,
-                        onChanged: (double value) {
-                          _updateAndSave(
-                              settings.copyWith(voicevoxVolume: value));
-                        },
-                      ),
-                    ],
-                  ),
+                      ],
+                      onChanged: (int? value) {
+                        if (value == null) {
+                          return;
+                        }
+                        _updateAndSave(
+                            settings.copyWith(voicevoxSpeaker: value));
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    SettingsDoubleSliderField(
+                      key: const Key('voicevox-speed-slider'),
+                      label: '話速',
+                      min: 0.5,
+                      max: 2.0,
+                      divisions: 15,
+                      value: settings.voicevoxSpeed,
+                      onChanged: (double value) {
+                        _updateAndSave(settings.copyWith(voicevoxSpeed: value));
+                      },
+                    ),
+                    SettingsDoubleSliderField(
+                      key: const Key('voicevox-pitch-slider'),
+                      label: '音高',
+                      min: -0.15,
+                      max: 0.15,
+                      divisions: 30,
+                      value: settings.voicevoxPitch,
+                      onChanged: (double value) {
+                        _updateAndSave(settings.copyWith(voicevoxPitch: value));
+                      },
+                    ),
+                    SettingsDoubleSliderField(
+                      key: const Key('voicevox-intonation-slider'),
+                      label: '抑揚',
+                      min: 0.0,
+                      max: 2.0,
+                      divisions: 20,
+                      value: settings.voicevoxIntonation,
+                      onChanged: (double value) {
+                        _updateAndSave(
+                          settings.copyWith(voicevoxIntonation: value),
+                        );
+                      },
+                    ),
+                    SettingsDoubleSliderField(
+                      key: const Key('voicevox-volume-slider'),
+                      label: '音量',
+                      min: 0.0,
+                      max: 2.0,
+                      divisions: 20,
+                      value: settings.voicevoxVolume,
+                      onChanged: (double value) {
+                        _updateAndSave(
+                            settings.copyWith(voicevoxVolume: value));
+                      },
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 12),
                 SettingsSection(
                   title: '読み上げキュー',
@@ -571,15 +435,3 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
     );
   }
 }
-
-const Map<int, String> _bouyomiVoiceOptions = <int, String>{
-  0: '既定',
-  1: '女性1',
-  2: '女性2',
-  3: '男性1',
-  4: '男性2',
-  5: '中性',
-  6: 'ロボット',
-  7: '機械1',
-  8: '機械2',
-};
