@@ -193,7 +193,8 @@ const List<ReplaceRule> defaultNicoDictionaryRules = <ReplaceRule>[
   ReplaceRule(pattern: r'わこつ', replacement: 'わくおつ'),
   ReplaceRule(pattern: r'うぽつ', replacement: 'うぷおつ'),
   ReplaceRule(pattern: r'初見', replacement: 'しょけん'),
-  ReplaceRule(pattern: r'kwsk|ksk', replacement: 'くわしく'),
+  ReplaceRule(pattern: r'[kｋ][wｗ][sｓ][kｋ]', replacement: 'くわしく'),
+  ReplaceRule(pattern: r'[kｋ][sｓ][kｋ]', replacement: 'かそく'),
 ];
 
 class AppSettings {
