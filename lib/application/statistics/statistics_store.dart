@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
@@ -7,12 +8,16 @@ import '../../domain/models/app_message.dart';
 class StatisticsStore extends ChangeNotifier {
   StatisticsStore({
     Duration activeWindow = const Duration(minutes: 5),
+    Duration purgeInterval = const Duration(seconds: 30),
     DateTime Function()? now,
   })  : _activeWindow = activeWindow,
-        _now = now ?? DateTime.now;
+        _now = now ?? DateTime.now {
+    _purgeTimer = Timer.periodic(purgeInterval, (_) => _periodicPurge());
+  }
 
   final Duration _activeWindow;
   final DateTime Function() _now;
+  late final Timer _purgeTimer;
 
   int _totalCommentCount = 0;
   int? _viewerCount;
@@ -54,6 +59,20 @@ class StatisticsStore extends ChangeNotifier {
     _recentActivities.clear();
     _latestActivityByUser.clear();
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _purgeTimer.cancel();
+    super.dispose();
+  }
+
+  void _periodicPurge() {
+    final int before = _latestActivityByUser.length;
+    _purgeExpired();
+    if (_latestActivityByUser.length != before) {
+      notifyListeners();
+    }
   }
 
   void _purgeExpired() {

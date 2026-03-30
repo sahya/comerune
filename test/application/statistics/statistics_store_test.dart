@@ -165,5 +165,81 @@ void main() {
 
       expect(notifyCount, 1);
     });
+
+    test(
+        'periodic purge timer fires and updates active count '
+        'without new comments', () {
+      fakeAsync((FakeAsync async) {
+        DateTime fakeNow = DateTime.parse('2026-03-29T12:00:00Z');
+        final StatisticsStore store = StatisticsStore(
+          activeWindow: const Duration(minutes: 5),
+          purgeInterval: const Duration(seconds: 30),
+          now: () => fakeNow,
+        );
+
+        store.recordComment(_chatMessage(id: '1', userId: 'u1'));
+        expect(store.activeUserCount, 1);
+
+        int notifyCount = 0;
+        store.addListener(() => notifyCount += 1);
+
+        // Move time past the 5-minute window.
+        fakeNow = fakeNow.add(const Duration(minutes: 6));
+
+        // Advance the fake clock to trigger the periodic timer.
+        async.elapse(const Duration(seconds: 30));
+
+        // The periodic purge should have detected the expiration and notified.
+        expect(notifyCount, 1);
+        expect(store.activeUserCount, 0);
+
+        store.dispose();
+      });
+    });
+
+    test('periodic purge does not notify when no users expired', () {
+      fakeAsync((FakeAsync async) {
+        DateTime fakeNow = DateTime.parse('2026-03-29T12:00:00Z');
+        final StatisticsStore store = StatisticsStore(
+          activeWindow: const Duration(minutes: 5),
+          purgeInterval: const Duration(seconds: 30),
+          now: () => fakeNow,
+        );
+
+        store.recordComment(_chatMessage(id: '1', userId: 'u1'));
+
+        int notifyCount = 0;
+        store.addListener(() => notifyCount += 1);
+
+        // Only 1 minute passed — user is still active.
+        fakeNow = fakeNow.add(const Duration(minutes: 1));
+        async.elapse(const Duration(seconds: 30));
+
+        // No users expired, so no notification should have fired.
+        expect(notifyCount, 0);
+        expect(store.activeUserCount, 1);
+
+        store.dispose();
+      });
+    });
+
+    test('dispose cancels the periodic purge timer', () {
+      fakeAsync((FakeAsync async) {
+        DateTime fakeNow = DateTime.parse('2026-03-29T12:00:00Z');
+        final StatisticsStore store = StatisticsStore(
+          activeWindow: const Duration(minutes: 5),
+          purgeInterval: const Duration(seconds: 30),
+          now: () => fakeNow,
+        );
+
+        store.recordComment(_chatMessage(id: '1', userId: 'u1'));
+        store.dispose();
+
+        fakeNow = fakeNow.add(const Duration(minutes: 6));
+
+        // Timer should be cancelled, so no error from notifying after dispose.
+        async.elapse(const Duration(seconds: 30));
+      });
+    });
   });
 }
