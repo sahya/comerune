@@ -604,6 +604,9 @@ class _SelectScreenState extends State<SelectScreen> {
           userSessionStore: userSessionStore,
           themeModeNotifier: widget.themeModeNotifier,
           userAttributeStore: widget.userAttributeStore,
+          // Fall back to the notifier value when _currentBroadcasterId
+          // has not been set yet (e.g. programinfo API fallback path or
+          // timing edge case during initial connection).
           broadcasterId:
               _currentBroadcasterId ?? widget.supplierUserIdNotifier?.value,
         ),
@@ -614,10 +617,13 @@ class _SelectScreenState extends State<SelectScreen> {
     await _refreshLoginState();
     await _fetchFollowPrograms();
     // Reload user attributes in case nicknames were edited in settings.
-    if (_currentBroadcasterId != null) {
-      final String broadcasterId = _currentBroadcasterId!;
+    // Use the notifier value as fallback in the same way as the broadcasterId
+    // passed to SettingsScreen above.
+    final String? activeBroadcasterId =
+        _currentBroadcasterId ?? widget.supplierUserIdNotifier?.value;
+    if (activeBroadcasterId != null) {
       _currentBroadcasterId = null;
-      await _loadUserAttributes(broadcasterId);
+      await _loadUserAttributes(activeBroadcasterId);
     }
   }
 
