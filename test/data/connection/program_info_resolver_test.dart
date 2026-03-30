@@ -227,8 +227,7 @@ void main() {
       expect(result.beginAt, isNotNull);
       expect(result.beginAt, isA<DateTime>());
       // 2025-07-01T12:00:00+09:00 == 2025-07-01T03:00:00Z
-      expect(
-          result.beginAt!.toUtc(), DateTime.utc(2025, 7, 1, 3, 0, 0));
+      expect(result.beginAt!.toUtc(), DateTime.utc(2025, 7, 1, 3, 0, 0));
 
       resolver.dispose();
     });
@@ -241,8 +240,7 @@ void main() {
           'title': 'No BeginAt',
           'rooms': <Object?>[
             <String, Object?>{
-              'viewUri':
-                  'https://mpn.live.nicovideo.jp/api/view/v4/NoBeginAt',
+              'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/NoBeginAt',
             },
           ],
         },
@@ -272,8 +270,7 @@ void main() {
           'beginAt': 1719828000,
           'rooms': <Object?>[
             <String, Object?>{
-              'viewUri':
-                  'https://mpn.live.nicovideo.jp/api/view/v4/BeginAtInt',
+              'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/BeginAtInt',
             },
           ],
         },
