@@ -103,4 +103,60 @@ class ApplyParametersToAudioQueryTest {
 
         assertEquals(2.0, resultJson.getDouble("volumeScale"), 0.01)
     }
+
+    @Test
+    fun `NaN volumeScale falls back to default`() {
+        val inputJson = """{"volumeScale":1.0,"speedScale":1.0,"pitchScale":0.0,"intonationScale":1.0,"prePhonemeLength":0.1,"postPhonemeLength":0.1}"""
+        val request = createRequest(volumeScale = Float.NaN)
+
+        val result = applyParameters(inputJson, request)
+        val resultJson = JSONObject(result)
+
+        assertEquals(0.7, resultJson.getDouble("volumeScale"), 0.01)
+    }
+
+    @Test
+    fun `Infinity speedScale falls back to default`() {
+        val inputJson = """{"volumeScale":1.0,"speedScale":1.0,"pitchScale":0.0,"intonationScale":1.0,"prePhonemeLength":0.1,"postPhonemeLength":0.1}"""
+        val request = createRequest(speedScale = Float.POSITIVE_INFINITY)
+
+        val result = applyParameters(inputJson, request)
+        val resultJson = JSONObject(result)
+
+        assertEquals(1.15, resultJson.getDouble("speedScale"), 0.01)
+    }
+
+    @Test
+    fun `negative Infinity pitchScale falls back to default`() {
+        val inputJson = """{"volumeScale":1.0,"speedScale":1.0,"pitchScale":0.0,"intonationScale":1.0,"prePhonemeLength":0.1,"postPhonemeLength":0.1}"""
+        val request = createRequest(pitchScale = Float.NEGATIVE_INFINITY)
+
+        val result = applyParameters(inputJson, request)
+        val resultJson = JSONObject(result)
+
+        assertEquals(0.0, resultJson.getDouble("pitchScale"), 0.01)
+    }
+
+    @Test
+    fun `NaN values in all parameters fall back to defaults`() {
+        val inputJson = """{"volumeScale":1.0,"speedScale":1.0,"pitchScale":0.0,"intonationScale":1.0,"prePhonemeLength":0.1,"postPhonemeLength":0.1}"""
+        val request = createRequest(
+            volumeScale = Float.NaN,
+            speedScale = Float.NaN,
+            pitchScale = Float.NaN,
+            intonationScale = Float.NaN,
+            prePhonemeLength = Float.NaN,
+            postPhonemeLength = Float.NaN
+        )
+
+        val result = applyParameters(inputJson, request)
+        val resultJson = JSONObject(result)
+
+        assertEquals(0.7, resultJson.getDouble("volumeScale"), 0.01)
+        assertEquals(1.15, resultJson.getDouble("speedScale"), 0.01)
+        assertEquals(0.0, resultJson.getDouble("pitchScale"), 0.01)
+        assertEquals(1.0, resultJson.getDouble("intonationScale"), 0.01)
+        assertEquals(0.1, resultJson.getDouble("prePhonemeLength"), 0.01)
+        assertEquals(0.1, resultJson.getDouble("postPhonemeLength"), 0.01)
+    }
 }
