@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/application/settings/settings_store.dart';
+import 'package:comerune/comment_speech/src/models/replace_rule.dart';
 import 'package:comerune/domain/models/app_settings.dart';
 
 import '../../helpers/in_memory_shared_preferences.dart';
@@ -267,6 +268,81 @@ void main() {
       expect(loaded.statisticsEnabled, isTrue);
       expect(loaded.statisticsViewerCommentEnabled, isFalse);
       expect(loaded.statisticsActiveUserEnabled, isFalse);
+    });
+
+    test(
+        'dictionaryRules defaults to defaultNicoDictionaryRules when not stored',
+        () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.dictionaryRules, defaultNicoDictionaryRules);
+    });
+
+    test('round-trips dictionaryRules', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      const List<ReplaceRule> rules = <ReplaceRule>[
+        ReplaceRule(pattern: r'w+', replacement: 'わら'),
+        ReplaceRule(pattern: '初見', replacement: 'しょけん', enabled: false),
+      ];
+      final AppSettings original =
+          AppSettings.defaults.copyWith(dictionaryRules: rules);
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.dictionaryRules.length, 2);
+      expect(loaded.dictionaryRules[0].pattern, r'w+');
+      expect(loaded.dictionaryRules[0].replacement, 'わら');
+      expect(loaded.dictionaryRules[0].enabled, isTrue);
+      expect(loaded.dictionaryRules[1].pattern, '初見');
+      expect(loaded.dictionaryRules[1].replacement, 'しょけん');
+      expect(loaded.dictionaryRules[1].enabled, isFalse);
+    });
+
+    test('round-trips empty dictionaryRules list', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original =
+          AppSettings.defaults.copyWith(dictionaryRules: const <ReplaceRule>[]);
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.dictionaryRules, isEmpty);
+    });
+
+    test('falls back to defaults for invalid dictionaryRules JSON', () async {
+      final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: prefs);
+
+      await prefs.setString('settings.speech.dictionaryRules', 'not-json');
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.dictionaryRules, defaultNicoDictionaryRules);
+    });
+
+    test('falls back to defaults for malformed dictionaryRules array',
+        () async {
+      final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: prefs);
+
+      await prefs.setString(
+        'settings.speech.dictionaryRules',
+        '[{"pattern": 123}]',
+      );
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.dictionaryRules, defaultNicoDictionaryRules);
     });
   });
 }

@@ -28,7 +28,7 @@ class SpeechSettings {
     this.speedScale = 1.15,
     this.pitchScale = 0.0,
     this.intonationScale = 1.0,
-    this.volumeScale = 1.0,
+    this.volumeScale = 0.7,
     this.prePhonemeLength = 0.1,
     this.postPhonemeLength = 0.1,
     this.maxTextLength = 50,

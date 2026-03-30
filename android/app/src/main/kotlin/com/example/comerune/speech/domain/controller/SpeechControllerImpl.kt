@@ -320,10 +320,6 @@ class SpeechControllerImpl(
         eventEmitter.emit(SpeechEvents.speechStarted(item.commentId, item.text))
 
         val settings = settingsRepository.get()
-        // TODO: speedScale/pitchScale/intonationScale/volumeScale/prePhonemeLength/
-        //  postPhonemeLength are stored in SpeechRequest but currently unused by the
-        //  VOICEVOX TTS one-shot API. They will be applied once the audio_query-based
-        //  synthesis path is implemented.
         val request = SpeechRequest(
             text = item.text,
             speakerId = settings.speakerId,

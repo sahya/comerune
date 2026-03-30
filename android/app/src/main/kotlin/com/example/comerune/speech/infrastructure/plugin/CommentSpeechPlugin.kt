@@ -234,7 +234,7 @@ class CommentSpeechPlugin :
             speedScale = call.argument<Number>("speedScale")?.toFloat() ?: 1.15f,
             pitchScale = call.argument<Number>("pitchScale")?.toFloat() ?: 0.0f,
             intonationScale = call.argument<Number>("intonationScale")?.toFloat() ?: 1.0f,
-            volumeScale = call.argument<Number>("volumeScale")?.toFloat() ?: 1.0f,
+            volumeScale = call.argument<Number>("volumeScale")?.toFloat() ?: 0.7f,
             prePhonemeLength = call.argument<Number>("prePhonemeLength")?.toFloat() ?: 0.1f,
             postPhonemeLength = call.argument<Number>("postPhonemeLength")?.toFloat() ?: 0.1f,
             maxTextLength = call.argument<Number>("maxTextLength")?.toInt() ?: 50,
