@@ -269,7 +269,9 @@ class SpeechControllerImpl(
     }
 
     private suspend fun processQueue() {
-        // Outer loop ensures we don't miss items added between poll()→null and worker exit
+        // Outer loop ensures we don't miss items added between poll()→null and worker exit.
+        // The workerMutex lock at exit guarantees that no submitComment can observe
+        // isActive==true for a job that is about to finish without re-checking the queue.
         do {
             while (started && !released) {
                 val item = queueManager.poll() ?: break
@@ -279,6 +281,20 @@ class SpeechControllerImpl(
                 }
             }
         } while (started && !released && !queueManager.isEmpty())
+
+        // Atomically mark the worker as done and re-check the queue.
+        // This closes the race window where submitComment calls startWorkerIfNeeded()
+        // while the worker is between the loop exit and Job completion.
+        workerMutex.withLock {
+            if (started && !released && !queueManager.isEmpty()) {
+                // Items arrived after our last check — relaunch immediately.
+                workerJob = scope.launch {
+                    processQueue()
+                }
+            } else {
+                workerJob = null
+            }
+        }
 
         if (!released) {
             eventEmitter.emit(SpeechEvents.queueUpdated(queueManager.size()))

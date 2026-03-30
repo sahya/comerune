@@ -9,6 +9,7 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import com.example.comerune.speech.domain.model.PlayerState
 import com.example.comerune.speech.domain.player.WavPlayer
+import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -25,6 +26,7 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
     private var state: PlayerState = PlayerState.IDLE
     private var tempFile: File? = null
     private var released: Boolean = false
+    private var activeContinuation: CancellableContinuation<Unit>? = null
 
     private val audioManager: AudioManager =
         context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -105,6 +107,7 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
                     val player = MediaPlayer()
                     synchronized(lock) {
                         mediaPlayer = player
+                        activeContinuation = continuation
                     }
 
                     try {
@@ -114,27 +117,29 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
                         player.setOnCompletionListener {
                             abandonAudioFocus()
                             releaseMediaPlayer()
+                            val cont: CancellableContinuation<Unit>?
                             synchronized(lock) {
                                 state = PlayerState.IDLE
+                                cont = activeContinuation
+                                activeContinuation = null
                             }
                             cleanupTempFile()
-                            if (continuation.isActive) {
-                                continuation.resume(Unit)
-                            }
+                            cont?.takeIf { it.isActive }?.resume(Unit)
                         }
 
                         player.setOnErrorListener { _, what, extra ->
                             abandonAudioFocus()
                             releaseMediaPlayer()
+                            val cont: CancellableContinuation<Unit>?
                             synchronized(lock) {
                                 state = PlayerState.ERROR
+                                cont = activeContinuation
+                                activeContinuation = null
                             }
                             cleanupTempFile()
-                            if (continuation.isActive) {
-                                continuation.resumeWithException(
-                                    IOException("MediaPlayer error: what=$what, extra=$extra")
-                                )
-                            }
+                            cont?.takeIf { it.isActive }?.resumeWithException(
+                                IOException("MediaPlayer error: what=$what, extra=$extra")
+                            )
                             true
                         }
 
@@ -144,13 +149,14 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
 
                         val focusResult = audioManager.requestAudioFocus(audioFocusRequest)
                         if (focusResult != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                            synchronized(lock) {
+                                activeContinuation = null
+                            }
                             releaseMediaPlayer()
                             cleanupTempFile()
-                            if (continuation.isActive) {
-                                continuation.resumeWithException(
-                                    IllegalStateException("Audio focus request denied")
-                                )
-                            }
+                            continuation.resumeWithException(
+                                IllegalStateException("Audio focus request denied")
+                            )
                             return@suspendCancellableCoroutine
                         }
 
@@ -161,12 +167,11 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
                     } catch (e: Exception) {
                         synchronized(lock) {
                             state = PlayerState.ERROR
+                            activeContinuation = null
                         }
                         releaseMediaPlayer()
                         cleanupTempFile()
-                        if (continuation.isActive) {
-                            throw e
-                        }
+                        throw e
                     }
                 }
             }.onFailure {
@@ -211,6 +216,7 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
 
     private fun stopInternal() {
         abandonAudioFocus()
+        val cont: CancellableContinuation<Unit>?
         synchronized(lock) {
             mediaPlayer?.let { player ->
                 try {
@@ -222,9 +228,18 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
                 }
             }
             state = PlayerState.STOPPED
+            cont = activeContinuation
+            activeContinuation = null
         }
         releaseMediaPlayer()
         cleanupTempFile()
+        // Resume the suspended play() coroutine so the worker loop is unblocked.
+        // Use IOException (not CancellationException) to avoid cancelling the entire
+        // worker coroutine — the caller treats this as a normal playback failure and
+        // proceeds to the next queue item.
+        cont?.takeIf { it.isActive }?.resumeWithException(
+            IOException("Playback interrupted")
+        )
     }
 
     private fun releaseMediaPlayer() {
