@@ -20,42 +20,46 @@ void main() {
   group('StatisticsStore', () {
     test('initial state has zero counts and null viewerCount', () {
       final StatisticsStore store = StatisticsStore();
-      addTearDown(store.dispose);
 
       expect(store.totalCommentCount, 0);
       expect(store.viewerCount, isNull);
       expect(store.activeUserCount, 0);
+
+      store.dispose();
     });
 
     test('recordComment increments totalCommentCount', () {
       final StatisticsStore store = StatisticsStore();
-      addTearDown(store.dispose);
 
       store.recordComment(_chatMessage(id: '1', userId: 'u1'));
       expect(store.totalCommentCount, 1);
 
       store.recordComment(_chatMessage(id: '2', userId: 'u2'));
       expect(store.totalCommentCount, 2);
+
+      store.dispose();
     });
 
     test('recordComment tracks unique active users', () {
       final StatisticsStore store = StatisticsStore();
-      addTearDown(store.dispose);
 
       store.recordComment(_chatMessage(id: '1', userId: 'u1'));
       store.recordComment(_chatMessage(id: '2', userId: 'u2'));
       store.recordComment(_chatMessage(id: '3', userId: 'u1'));
       expect(store.activeUserCount, 2);
+
+      store.dispose();
     });
 
     test('recordComment ignores null or empty userId for active count', () {
       final StatisticsStore store = StatisticsStore();
-      addTearDown(store.dispose);
 
       store.recordComment(_chatMessage(id: '1', userId: null));
       store.recordComment(_chatMessage(id: '2', userId: ''));
       expect(store.activeUserCount, 0);
       expect(store.totalCommentCount, 2);
+
+      store.dispose();
     });
 
     test('activeUserCount prunes entries outside the window', () {
@@ -64,7 +68,6 @@ void main() {
         activeWindow: const Duration(minutes: 5),
         now: () => fakeNow,
       );
-      addTearDown(store.dispose);
 
       store.recordComment(_chatMessage(id: '1', userId: 'u1'));
       expect(store.activeUserCount, 1);
@@ -72,6 +75,8 @@ void main() {
       // Move time forward by 6 minutes.
       fakeNow = fakeNow.add(const Duration(minutes: 6));
       expect(store.activeUserCount, 0);
+
+      store.dispose();
     });
 
     test('all users expire when window fully elapses', () {
@@ -80,13 +85,14 @@ void main() {
         activeWindow: const Duration(minutes: 5),
         now: () => fakeNow,
       );
-      addTearDown(store.dispose);
 
       store.recordComment(_chatMessage(id: '1', userId: 'u1'));
       store.recordComment(_chatMessage(id: '2', userId: 'u2'));
 
       fakeNow = fakeNow.add(const Duration(minutes: 10));
       expect(store.activeUserCount, 0);
+
+      store.dispose();
     });
 
     test('user with renewed activity stays active after old activity expires',
@@ -96,7 +102,6 @@ void main() {
         activeWindow: const Duration(minutes: 5),
         now: () => fakeNow,
       );
-      addTearDown(store.dispose);
 
       store.recordComment(_chatMessage(id: '1', userId: 'u1'));
 
@@ -107,22 +112,24 @@ void main() {
       // At 6 minutes, old activity expired but u1 has recent activity
       fakeNow = fakeNow.add(const Duration(minutes: 3));
       expect(store.activeUserCount, 1);
+
+      store.dispose();
     });
 
     test('updateViewerCount sets viewerCount', () {
       final StatisticsStore store = StatisticsStore();
-      addTearDown(store.dispose);
 
       store.updateViewerCount(42);
       expect(store.viewerCount, 42);
 
       store.updateViewerCount(100);
       expect(store.viewerCount, 100);
+
+      store.dispose();
     });
 
     test('updateViewerCount does not notify when value unchanged', () {
       final StatisticsStore store = StatisticsStore();
-      addTearDown(store.dispose);
       store.updateViewerCount(10);
 
       int notifyCount = 0;
@@ -130,11 +137,12 @@ void main() {
 
       store.updateViewerCount(10);
       expect(notifyCount, 0);
+
+      store.dispose();
     });
 
     test('reset clears all state', () {
       final StatisticsStore store = StatisticsStore();
-      addTearDown(store.dispose);
 
       store.recordComment(_chatMessage(id: '1', userId: 'u1'));
       store.updateViewerCount(50);
@@ -144,44 +152,49 @@ void main() {
       expect(store.totalCommentCount, 0);
       expect(store.viewerCount, isNull);
       expect(store.activeUserCount, 0);
+
+      store.dispose();
     });
 
     test('notifies listeners on recordComment', () {
       final StatisticsStore store = StatisticsStore();
-      addTearDown(store.dispose);
       int notifyCount = 0;
       store.addListener(() => notifyCount += 1);
 
       store.recordComment(_chatMessage(id: '1', userId: 'u1'));
 
       expect(notifyCount, 1);
+
+      store.dispose();
     });
 
     test('notifies listeners on updateViewerCount', () {
       final StatisticsStore store = StatisticsStore();
-      addTearDown(store.dispose);
       int notifyCount = 0;
       store.addListener(() => notifyCount += 1);
 
       store.updateViewerCount(5);
 
       expect(notifyCount, 1);
+
+      store.dispose();
     });
 
     test('notifies listeners on reset', () {
       final StatisticsStore store = StatisticsStore();
-      addTearDown(store.dispose);
       int notifyCount = 0;
       store.addListener(() => notifyCount += 1);
 
       store.reset();
 
       expect(notifyCount, 1);
-    });
 
-    test(
-        'periodic purge timer fires and updates active count '
-        'without new comments', () {
+      store.dispose();
+    });
+  });
+
+  group('StatisticsStore purge timer', () {
+    test('purge timer notifies listeners when users expire', () {
       fakeAsync((FakeAsync async) {
         DateTime fakeNow = DateTime.parse('2026-03-29T12:00:00Z');
         final StatisticsStore store = StatisticsStore(
@@ -196,13 +209,10 @@ void main() {
         int notifyCount = 0;
         store.addListener(() => notifyCount += 1);
 
-        // Move time past the 5-minute window.
+        // Advance time past active window, then let the timer tick.
         fakeNow = fakeNow.add(const Duration(minutes: 6));
-
-        // Advance the fake clock to trigger the periodic timer.
         async.elapse(const Duration(seconds: 30));
 
-        // The periodic purge should have detected the expiration and notified.
         expect(notifyCount, 1);
         expect(store.activeUserCount, 0);
 
@@ -210,7 +220,7 @@ void main() {
       });
     });
 
-    test('periodic purge does not notify when no users expired', () {
+    test('purge timer does not notify when no users expire', () {
       fakeAsync((FakeAsync async) {
         DateTime fakeNow = DateTime.parse('2026-03-29T12:00:00Z');
         final StatisticsStore store = StatisticsStore(
@@ -224,11 +234,10 @@ void main() {
         int notifyCount = 0;
         store.addListener(() => notifyCount += 1);
 
-        // Only 1 minute passed — user is still active.
-        fakeNow = fakeNow.add(const Duration(minutes: 1));
+        // Advance timer but not past the window.
+        fakeNow = fakeNow.add(const Duration(minutes: 2));
         async.elapse(const Duration(seconds: 30));
 
-        // No users expired, so no notification should have fired.
         expect(notifyCount, 0);
         expect(store.activeUserCount, 1);
 
@@ -236,7 +245,68 @@ void main() {
       });
     });
 
-    test('dispose cancels the periodic purge timer', () {
+    test('purge timer stops when all users have expired', () {
+      fakeAsync((FakeAsync async) {
+        DateTime fakeNow = DateTime.parse('2026-03-29T12:00:00Z');
+        final StatisticsStore store = StatisticsStore(
+          activeWindow: const Duration(minutes: 5),
+          purgeInterval: const Duration(seconds: 30),
+          now: () => fakeNow,
+        );
+
+        store.recordComment(_chatMessage(id: '1', userId: 'u1'));
+
+        int notifyCount = 0;
+        store.addListener(() => notifyCount += 1);
+
+        // Expire all users.
+        fakeNow = fakeNow.add(const Duration(minutes: 6));
+        async.elapse(const Duration(seconds: 30));
+        expect(notifyCount, 1);
+
+        // Further ticks should not produce notifications (timer stopped).
+        async.elapse(const Duration(seconds: 60));
+        expect(notifyCount, 1);
+
+        store.dispose();
+      });
+    });
+
+    test('purge timer restarts after new comment following full expiry', () {
+      fakeAsync((FakeAsync async) {
+        DateTime fakeNow = DateTime.parse('2026-03-29T12:00:00Z');
+        final StatisticsStore store = StatisticsStore(
+          activeWindow: const Duration(minutes: 5),
+          purgeInterval: const Duration(seconds: 30),
+          now: () => fakeNow,
+        );
+
+        store.recordComment(_chatMessage(id: '1', userId: 'u1'));
+
+        // Expire all users.
+        fakeNow = fakeNow.add(const Duration(minutes: 6));
+        async.elapse(const Duration(seconds: 30));
+        expect(store.activeUserCount, 0);
+
+        // New comment should restart the timer.
+        fakeNow = fakeNow.add(const Duration(seconds: 1));
+        store.recordComment(_chatMessage(id: '2', userId: 'u2'));
+        expect(store.activeUserCount, 1);
+
+        int notifyCount = 0;
+        store.addListener(() => notifyCount += 1);
+
+        fakeNow = fakeNow.add(const Duration(minutes: 6));
+        async.elapse(const Duration(seconds: 30));
+
+        expect(notifyCount, 1);
+        expect(store.activeUserCount, 0);
+
+        store.dispose();
+      });
+    });
+
+    test('dispose cancels purge timer', () {
       fakeAsync((FakeAsync async) {
         DateTime fakeNow = DateTime.parse('2026-03-29T12:00:00Z');
         final StatisticsStore store = StatisticsStore(
@@ -248,16 +318,14 @@ void main() {
         store.recordComment(_chatMessage(id: '1', userId: 'u1'));
         store.dispose();
 
+        // Elapsing time after dispose should not throw or notify.
         fakeNow = fakeNow.add(const Duration(minutes: 6));
-
-        // Timer should be cancelled, so no error from notifying after dispose.
-        async.elapse(const Duration(seconds: 30));
+        async.elapse(const Duration(seconds: 60));
+        // If we get here without error, dispose properly cancelled the timer.
       });
     });
 
-    test(
-        'periodic purge expires users incrementally '
-        'when they have different activity times', () {
+    test('reset cancels purge timer', () {
       fakeAsync((FakeAsync async) {
         DateTime fakeNow = DateTime.parse('2026-03-29T12:00:00Z');
         final StatisticsStore store = StatisticsStore(
@@ -266,27 +334,48 @@ void main() {
           now: () => fakeNow,
         );
 
-        // u1 comments at t=0
         store.recordComment(_chatMessage(id: '1', userId: 'u1'));
-
-        // u2 comments at t=2min
-        fakeNow = fakeNow.add(const Duration(minutes: 2));
-        store.recordComment(_chatMessage(id: '2', userId: 'u2'));
-
-        expect(store.activeUserCount, 2);
+        store.reset();
 
         int notifyCount = 0;
         store.addListener(() => notifyCount += 1);
 
-        // At t=6min, u1 expired but u2 still active.
-        fakeNow = fakeNow.add(const Duration(minutes: 4));
+        fakeNow = fakeNow.add(const Duration(minutes: 6));
+        async.elapse(const Duration(seconds: 60));
+
+        // Timer was cancelled by reset, so no notifications.
+        expect(notifyCount, 0);
+
+        store.dispose();
+      });
+    });
+
+    test('purge timer expires users gradually across ticks', () {
+      fakeAsync((FakeAsync async) {
+        DateTime fakeNow = DateTime.parse('2026-03-29T12:00:00Z');
+        final StatisticsStore store = StatisticsStore(
+          activeWindow: const Duration(minutes: 5),
+          purgeInterval: const Duration(seconds: 30),
+          now: () => fakeNow,
+        );
+
+        store.recordComment(_chatMessage(id: '1', userId: 'u1'));
+
+        fakeNow = fakeNow.add(const Duration(minutes: 3));
+        store.recordComment(_chatMessage(id: '2', userId: 'u2'));
+
+        int notifyCount = 0;
+        store.addListener(() => notifyCount += 1);
+
+        // At 5.5 min: u1 expired, u2 still active.
+        fakeNow = fakeNow.add(const Duration(minutes: 2, seconds: 30));
         async.elapse(const Duration(seconds: 30));
 
         expect(notifyCount, 1);
         expect(store.activeUserCount, 1);
 
-        // At t=8min, u2 also expired.
-        fakeNow = fakeNow.add(const Duration(minutes: 2));
+        // At 8.5 min: u2 also expired.
+        fakeNow = fakeNow.add(const Duration(minutes: 3));
         async.elapse(const Duration(seconds: 30));
 
         expect(notifyCount, 2);
