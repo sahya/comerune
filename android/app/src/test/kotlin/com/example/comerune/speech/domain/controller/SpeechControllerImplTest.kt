@@ -67,7 +67,6 @@ class SpeechControllerImplTest {
      * returns a failure (simulating interrupted playback from stopInternal).
      */
     private class FakePlayer : WavPlayer {
-        val playedTexts = CopyOnWriteArrayList<String>()
         var failOnPlay = false
         var playLatch: CountDownLatch? = null
         private var state = PlayerState.IDLE

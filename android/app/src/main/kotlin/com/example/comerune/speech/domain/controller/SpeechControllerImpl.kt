@@ -231,6 +231,10 @@ class SpeechControllerImpl(
     }
 
     override fun release() {
+        // Uses synchronized (not workerMutex) because release() is a non-suspend
+        // function.  Safety: setting released=true here ensures that processQueue()'s
+        // workerMutex.withLock block will see `!released` as false and will NOT
+        // relaunch, even if it runs concurrently.
         synchronized(this) {
             if (released) return
             released = true
@@ -285,18 +289,26 @@ class SpeechControllerImpl(
         // Atomically mark the worker as done and re-check the queue.
         // This closes the race window where submitComment calls startWorkerIfNeeded()
         // while the worker is between the loop exit and Job completion.
-        workerMutex.withLock {
+        //
+        // When relaunching, the new coroutine (via scope.launch) runs on its own
+        // stack frame — this is NOT recursive in the traditional sense and cannot
+        // cause stack overflow.
+        val relaunched = workerMutex.withLock {
             if (started && !released && !queueManager.isEmpty()) {
                 // Items arrived after our last check — relaunch immediately.
                 workerJob = scope.launch {
                     processQueue()
                 }
+                true
             } else {
                 workerJob = null
+                false
             }
         }
 
-        if (!released) {
+        // Only emit the queue-empty event when we are truly done.
+        // If we relaunched, the new worker will emit the event when it finishes.
+        if (!relaunched && !released) {
             eventEmitter.emit(SpeechEvents.queueUpdated(queueManager.size()))
         }
     }
