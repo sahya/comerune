@@ -79,6 +79,17 @@ void main() {
     test('returns null when no icon available', () {
       expect(extractProviderIconUrl(<String, dynamic>{}), isNull);
     });
+
+    test('falls back to supplier uri150x150 when uri50x50 missing', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'supplier': <String, dynamic>{
+          'icons': <String, dynamic>{
+            'uri150x150': 'https://example.com/150.jpg',
+          },
+        },
+      };
+      expect(extractProviderIconUrl(item), 'https://example.com/150.jpg');
+    });
   });
 
   group('extractCommunityName', () {
@@ -91,6 +102,13 @@ void main() {
 
     test('returns null when no socialGroup', () {
       expect(extractCommunityName(<String, dynamic>{}), isNull);
+    });
+
+    test('returns null for empty community name', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'socialGroup': <String, dynamic>{'name': ''},
+      };
+      expect(extractCommunityName(item), isNull);
     });
   });
 
@@ -183,6 +201,40 @@ void main() {
       };
       final result = parseProgramItem(item);
       expect(result!.isOwnBroadcast, isFalse);
+    });
+
+    test('parses beginAt from ISO 8601 string', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'id': 'lv123456',
+        'title': 'Test Title',
+        'programProvider': <String, dynamic>{'name': 'TestUser'},
+        'beginAt': '2026-03-30T10:00:00+09:00',
+      };
+      final result = parseProgramItem(item);
+      expect(result, isNotNull);
+      expect(result!.beginAt, isNotNull);
+    });
+
+    test('parses beginAt from Unix timestamp', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'id': 'lv123456',
+        'title': 'Test Title',
+        'programProvider': <String, dynamic>{'name': 'TestUser'},
+        'beginAt': 1743307200,
+      };
+      final result = parseProgramItem(item);
+      expect(result, isNotNull);
+      expect(result!.beginAt, isNotNull);
+    });
+
+    test('beginAt is null when field is missing', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'id': 'lv123456',
+        'title': 'Test Title',
+        'programProvider': <String, dynamic>{'name': 'TestUser'},
+      };
+      final result = parseProgramItem(item);
+      expect(result!.beginAt, isNull);
     });
   });
 }

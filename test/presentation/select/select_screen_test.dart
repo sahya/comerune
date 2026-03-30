@@ -4,6 +4,7 @@ import 'package:comerune/application/settings/settings_store.dart';
 import 'package:comerune/application/timeline/timeline_store.dart';
 import 'package:comerune/data/follow/follow_program.dart';
 import 'package:comerune/data/follow/follow_program_repository.dart';
+import 'package:comerune/data/follow/my_program_repository.dart';
 import 'package:comerune/data/user/user_attribute_store.dart';
 import 'package:comerune/domain/connection/connection_supervisor.dart';
 import 'package:comerune/domain/models/app_message.dart';
@@ -940,6 +941,148 @@ void main() {
       expect(coloredText.style?.color, isNotNull);
     });
   });
+
+  group('my broadcast section', () {
+    Future<void> pumpWithMyProgram(
+      WidgetTester tester, {
+      FollowProgram? myProgram,
+      List<FollowProgram> followPrograms = const <FollowProgram>[],
+    }) async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+      final SettingsStore settingsStore = SharedPreferencesSettingsStore(
+        prefs: InMemorySharedPreferences(),
+      );
+      final InMemoryUserSessionStore userSessionStore =
+          InMemoryUserSessionStore();
+      await userSessionStore.save('test_session');
+
+      final _FakeMyProgramRepository myRepository =
+          _FakeMyProgramRepository(myProgram);
+      final _FakeFollowProgramRepository followRepository =
+          _FakeFollowProgramRepository(followPrograms);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: supervisor,
+            settingsStore: settingsStore,
+            userSessionStore: userSessionStore,
+            followProgramRepository: followRepository,
+            myProgramRepository: myRepository,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('shows own broadcast section when user is broadcasting',
+        (WidgetTester tester) async {
+      await pumpWithMyProgram(
+        tester,
+        myProgram: FollowProgram(
+          programId: 'lv100',
+          title: '自分のテスト放送',
+          providerName: '自分',
+          isOwnBroadcast: true,
+        ),
+      );
+
+      // Flush follow-program retry timers.
+      await tester.pump(const Duration(seconds: 4));
+
+      expect(find.text('あなたの放送'), findsOneWidget);
+      expect(find.text('自分のテスト放送'), findsOneWidget);
+    });
+
+    testWidgets('hides own broadcast section when not broadcasting',
+        (WidgetTester tester) async {
+      await pumpWithMyProgram(tester);
+
+      // Flush retry timers.
+      await tester.pump(const Duration(seconds: 4));
+
+      expect(find.text('あなたの放送'), findsNothing);
+    });
+
+    testWidgets('own broadcast section appears above follow list',
+        (WidgetTester tester) async {
+      await pumpWithMyProgram(
+        tester,
+        myProgram: FollowProgram(
+          programId: 'lv100',
+          title: '自分の放送',
+          providerName: '自分',
+          isOwnBroadcast: true,
+        ),
+        followPrograms: <FollowProgram>[
+          FollowProgram(
+            programId: 'lv200',
+            title: 'フォロー放送',
+            providerName: 'フォロー放送者',
+          ),
+        ],
+      );
+
+      expect(find.text('あなたの放送'), findsOneWidget);
+      expect(find.text('フォロー中の放送'), findsOneWidget);
+
+      final double mySection = tester.getTopLeft(find.text('あなたの放送')).dy;
+      final double followSection = tester.getTopLeft(find.text('フォロー中の放送')).dy;
+      expect(mySection, lessThan(followSection));
+    });
+
+    testWidgets('tapping own broadcast tile starts connection',
+        (WidgetTester tester) async {
+      await pumpWithMyProgram(
+        tester,
+        myProgram: FollowProgram(
+          programId: 'lv100200300',
+          title: '自分の放送タップテスト',
+          providerName: '自分',
+          isOwnBroadcast: true,
+        ),
+      );
+
+      // Flush follow-program retry timers.
+      await tester.pump(const Duration(seconds: 4));
+
+      await tester.tap(find.text('自分の放送タップテスト'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CommentScreen), findsOneWidget);
+    });
+
+    testWidgets('shows videocam icon in header', (WidgetTester tester) async {
+      await pumpWithMyProgram(
+        tester,
+        myProgram: FollowProgram(
+          programId: 'lv100',
+          title: '放送',
+          providerName: '自分',
+          isOwnBroadcast: true,
+        ),
+      );
+
+      // Flush retry timers.
+      await tester.pump(const Duration(seconds: 4));
+
+      // Header icon (16px) and fallback tile icon (22px) both use videocam.
+      expect(find.byIcon(Icons.videocam), findsAtLeastNWidgets(1));
+    });
+  });
+}
+
+class _FakeMyProgramRepository extends MyProgramRepository {
+  _FakeMyProgramRepository(this._program);
+
+  final FollowProgram? _program;
+
+  @override
+  Future<FollowProgram?> fetchOwnProgram({
+    required String userSession,
+  }) async {
+    return _program;
+  }
 }
 
 class _FakeFollowProgramRepository extends FollowProgramRepository {
