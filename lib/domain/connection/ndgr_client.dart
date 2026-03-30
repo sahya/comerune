@@ -8,13 +8,14 @@ import 'ndgr_message_normalizer.dart';
 import 'ndgr_protobuf_decoder.dart';
 import 'ndgr_stall_detector.dart';
 
-enum NdgrClientEventType { connected, message, stalled }
+enum NdgrClientEventType { connected, message, stalled, statistics }
 
 class NdgrClientEvent {
   const NdgrClientEvent._({
     required this.type,
     this.message,
     this.stallDuration,
+    this.viewerCount,
   });
 
   const NdgrClientEvent.connected()
@@ -26,9 +27,13 @@ class NdgrClientEvent {
   const NdgrClientEvent.stalled(Duration stallDuration)
       : this._(type: NdgrClientEventType.stalled, stallDuration: stallDuration);
 
+  const NdgrClientEvent.statistics({int? viewerCount})
+      : this._(type: NdgrClientEventType.statistics, viewerCount: viewerCount);
+
   final NdgrClientEventType type;
   final AppMessage? message;
   final Duration? stallDuration;
+  final int? viewerCount;
 }
 
 class NdgrAt {
@@ -295,6 +300,14 @@ class NdgrClient {
   bool _handleChunkedMessage(NdgrChunkedMessage message) {
     final DateTime receivedAt = _now();
     _markReceivedAndEnsureTimer(receivedAt);
+
+    if (message.statistics != null) {
+      _eventsController.add(
+        NdgrClientEvent.statistics(
+          viewerCount: message.statistics!.viewers,
+        ),
+      );
+    }
 
     final AppMessage? normalized = _normalizer.normalizeChunkedMessage(
       message,

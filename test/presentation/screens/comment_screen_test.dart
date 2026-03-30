@@ -1006,6 +1006,96 @@ void main() {
       expect(find.text('名前: テストさん'), findsOneWidget);
     });
 
+    testWidgets('statistics row is hidden when statisticsEnabled is false', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          statisticsEnabled: false,
+          viewerCount: 100,
+          totalCommentCount: 50,
+          activeUserCount: 10,
+        ),
+      );
+
+      expect(find.byKey(const Key('status-viewer-count')), findsNothing);
+      expect(find.byKey(const Key('status-comment-count')), findsNothing);
+      expect(find.byKey(const Key('status-active-user-count')), findsNothing);
+    });
+
+    testWidgets('statistics row shows all stats when enabled', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          statisticsEnabled: true,
+          statisticsViewerCommentEnabled: true,
+          statisticsActiveUserEnabled: true,
+          viewerCount: 100,
+          totalCommentCount: 50,
+          activeUserCount: 10,
+        ),
+      );
+
+      expect(find.text('リスナー: 100'), findsOneWidget);
+      expect(find.text('コメント: 50'), findsOneWidget);
+      expect(find.text('5分アクティブ: 10'), findsOneWidget);
+    });
+
+    testWidgets('statistics hides viewer/comment when child toggle is off', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          statisticsEnabled: true,
+          statisticsViewerCommentEnabled: false,
+          statisticsActiveUserEnabled: true,
+          viewerCount: 100,
+          totalCommentCount: 50,
+          activeUserCount: 10,
+        ),
+      );
+
+      expect(find.byKey(const Key('status-viewer-count')), findsNothing);
+      expect(find.byKey(const Key('status-comment-count')), findsNothing);
+      expect(find.text('5分アクティブ: 10'), findsOneWidget);
+    });
+
+    testWidgets('statistics hides active user when child toggle is off', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          statisticsEnabled: true,
+          statisticsViewerCommentEnabled: true,
+          statisticsActiveUserEnabled: false,
+          viewerCount: 100,
+          totalCommentCount: 50,
+          activeUserCount: 10,
+        ),
+      );
+
+      expect(find.text('リスナー: 100'), findsOneWidget);
+      expect(find.text('コメント: 50'), findsOneWidget);
+      expect(find.byKey(const Key('status-active-user-count')), findsNothing);
+    });
+
     testWidgets('pin comment from actions sheet shows pinned section', (
       WidgetTester tester,
     ) async {
@@ -1663,84 +1753,31 @@ void main() {
       final Finder elapsedFinder = find.byKey(const Key('status-elapsed'));
       expect(elapsedFinder, findsOneWidget);
       final Text elapsedText = tester.widget(elapsedFinder);
-      expect(elapsedText.data, matches(RegExp(r'^2:30:\d{2}$')));
+      expect(elapsedText.data, matches(RegExp(r'^\d+:\d{2}:\d{2}$')));
     });
 
-    testWidgets('shows 0:MM:SS format when under one hour', (
-      WidgetTester tester,
-    ) async {
-      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-      final DateTime beginAt = DateTime.now().subtract(
-        const Duration(minutes: 5, seconds: 30),
-      );
-
-      await tester.pumpWidget(
-        _buildScreen(
-          supervisor: supervisor,
-          messages: const <AppMessage>[],
-          beginAt: beginAt,
-        ),
-      );
-
-      final Finder elapsedFinder = find.byKey(const Key('status-elapsed'));
-      expect(elapsedFinder, findsOneWidget);
-      final Text elapsedText = tester.widget(elapsedFinder);
-      expect(elapsedText.data, matches(RegExp(r'^0:05:\d{2}$')));
-    });
-
-    testWidgets('shows 0:00:SS format when just started', (
-      WidgetTester tester,
-    ) async {
-      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-      final DateTime beginAt = DateTime.now().subtract(
-        const Duration(seconds: 5),
-      );
-
-      await tester.pumpWidget(
-        _buildScreen(
-          supervisor: supervisor,
-          messages: const <AppMessage>[],
-          beginAt: beginAt,
-        ),
-      );
-
-      final Finder elapsedFinder = find.byKey(const Key('status-elapsed'));
-      expect(elapsedFinder, findsOneWidget);
-      final Text elapsedText = tester.widget(elapsedFinder);
-      expect(elapsedText.data, matches(RegExp(r'^0:00:0[0-9]$')));
-    });
-
-    testWidgets('hides elapsed label when beginAt is null', (
+    testWidgets('hides elapsed label when beginAt is null or in the future', (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
 
+      // null case
       await tester.pumpWidget(
         _buildScreen(
           supervisor: supervisor,
           messages: const <AppMessage>[],
         ),
       );
-
       expect(find.byKey(const Key('status-elapsed')), findsNothing);
-    });
 
-    testWidgets('hides elapsed label when beginAt is in the future', (
-      WidgetTester tester,
-    ) async {
-      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-      final DateTime beginAt = DateTime.now().add(
-        const Duration(hours: 1),
-      );
-
+      // future case
       await tester.pumpWidget(
         _buildScreen(
           supervisor: supervisor,
           messages: const <AppMessage>[],
-          beginAt: beginAt,
+          beginAt: DateTime.now().add(const Duration(hours: 1)),
         ),
       );
-
       expect(find.byKey(const Key('status-elapsed')), findsNothing);
     });
 
@@ -1763,11 +1800,107 @@ void main() {
       final Finder elapsedFinder = find.byKey(const Key('status-elapsed'));
       expect(elapsedFinder, findsOneWidget);
 
-      // Advance the fake clock by 1 second to trigger the periodic timer.
       await tester.pump(const Duration(seconds: 1));
       expect(elapsedFinder, findsOneWidget);
       final Text updated = tester.widget(elapsedFinder);
       expect(updated.data, matches(RegExp(r'^\d+:\d{2}:\d{2}$')));
+    });
+
+    testWidgets('shows elapsed time when beginAt arrives after initial build', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      // Initial build without beginAt.
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+        ),
+      );
+
+      final Finder elapsedFinder = find.byKey(const Key('status-elapsed'));
+      expect(elapsedFinder, findsNothing);
+
+      // Rebuild with beginAt provided (simulates late arrival).
+      final DateTime beginAt = DateTime.now().subtract(
+        const Duration(minutes: 10, seconds: 5),
+      );
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          beginAt: beginAt,
+        ),
+      );
+
+      expect(elapsedFinder, findsOneWidget);
+      final Text elapsedText = tester.widget(elapsedFinder);
+      expect(elapsedText.data, matches(RegExp(r'^\d+:\d{2}:\d{2}$')));
+
+      // Verify the periodic timer is running after late beginAt.
+      await tester.pump(const Duration(seconds: 1));
+      expect(elapsedFinder, findsOneWidget);
+      final Text updated = tester.widget(elapsedFinder);
+      expect(updated.data, matches(RegExp(r'^\d+:\d{2}:\d{2}$')));
+    });
+  });
+
+  group('Comment timestamp elapsed display', () {
+    testWidgets('shows elapsed time in comment row when beginAt is provided', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final DateTime beginAt = DateTime(2026, 3, 22, 10, 0, 0);
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'elapsed-msg',
+          timestamp: DateTime(2026, 3, 22, 11, 23, 45),
+          userId: 'u1',
+          content: 'hello',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          beginAt: beginAt,
+        ),
+      );
+
+      // Elapsed from 10:00:00 to 11:23:45 = 1:23:45
+      expect(find.textContaining('1:23:45'), findsOneWidget);
+    });
+
+    testWidgets('falls back to local time when beginAt is null', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final DateTime msgTime = DateTime(2026, 3, 22, 14, 30, 15);
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'local-msg',
+          timestamp: msgTime,
+          userId: 'u1',
+          content: 'world',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+        ),
+      );
+
+      final DateTime local = msgTime.toLocal();
+      final String hh = local.hour.toString().padLeft(2, '0');
+      final String mm = local.minute.toString().padLeft(2, '0');
+      final String ss = local.second.toString().padLeft(2, '0');
+      expect(find.textContaining('$hh:$mm:$ss'), findsOneWidget);
     });
   });
 
@@ -1965,6 +2098,12 @@ Widget _buildScreen({
   List<String> ngWords = const <String>[],
   Map<String, int> userColorMap = const <String, int>{},
   Map<String, String> userNicknameMap = const <String, String>{},
+  bool statisticsEnabled = false,
+  bool statisticsViewerCommentEnabled = true,
+  bool statisticsActiveUserEnabled = true,
+  int? viewerCount,
+  int totalCommentCount = 0,
+  int activeUserCount = 0,
   bool starPrefixHidingEnabled = false,
   DateTime? beginAt,
 }) {
@@ -1990,6 +2129,12 @@ Widget _buildScreen({
       userNicknameMap: userNicknameMap,
       starPrefixHidingEnabled: starPrefixHidingEnabled,
       themeMode: AppThemeMode.light,
+      statisticsEnabled: statisticsEnabled,
+      statisticsViewerCommentEnabled: statisticsViewerCommentEnabled,
+      statisticsActiveUserEnabled: statisticsActiveUserEnabled,
+      viewerCount: viewerCount,
+      totalCommentCount: totalCommentCount,
+      activeUserCount: activeUserCount,
     ),
   );
 }

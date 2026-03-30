@@ -47,6 +47,7 @@ dependencies:
 
   # Android Foreground Service（バックグラウンド接続維持・通知バー常駐表示）
   flutter_foreground_task: ^8.13.3
+  wakelock_plus: ^1.5.1
 
 dev_dependencies:
   flutter_test:

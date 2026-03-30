@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../application/settings/settings_store.dart';
+import '../../application/statistics/statistics_store.dart';
 import '../../application/timeline/timeline_store.dart';
 import '../../data/auth/user_session_store.dart';
 import '../../data/comment_log/comment_log_writer.dart';
@@ -15,6 +16,7 @@ import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/utils/lv_parser.dart';
+import '../../comment_speech/comment_speech.dart';
 import '../screens/comment_screen.dart';
 import '../screens/settings_screen.dart';
 import '../theme/app_theme.dart';
@@ -38,6 +40,7 @@ class SelectScreen extends StatefulWidget {
   const SelectScreen({
     required this.connectionSupervisor,
     this.timelineStore,
+    this.statisticsStore,
     this.settingsStore,
     this.initialSettings = AppSettings.defaults,
     this.onPrepareConnection,
@@ -56,6 +59,7 @@ class SelectScreen extends StatefulWidget {
 
   final ConnectionSupervisor connectionSupervisor;
   final TimelineStore? timelineStore;
+  final StatisticsStore? statisticsStore;
   final SettingsStore? settingsStore;
   final AppSettings initialSettings;
   final UserSessionStore? userSessionStore;
@@ -86,11 +90,16 @@ class _SelectScreenState extends State<SelectScreen> {
   DateTime? _followBeginAt;
   final ValueNotifier<bool?> _loginStateNotifier = ValueNotifier<bool?>(null);
   List<FollowProgram> _followPrograms = const <FollowProgram>[];
-  bool _isLoadingFollowPrograms = false;
   Timer? _followRefreshTimer;
-  Map<String, int> _userColorMap = const <String, int>{};
-  Map<String, String> _userNicknameMap = const <String, String>{};
+  final ValueNotifier<
+          ({Map<String, int> colors, Map<String, String> nicknames})>
+      _userAttrNotifier =
+      ValueNotifier<({Map<String, int> colors, Map<String, String> nicknames})>(
+    (colors: const <String, int>{}, nicknames: const <String, String>{}),
+  );
   String? _currentBroadcasterId;
+  final MethodChannelCommentSpeech _speechPlatform =
+      MethodChannelCommentSpeech();
 
   static const Duration _followRefreshInterval = Duration(seconds: 60);
 
@@ -143,6 +152,7 @@ class _SelectScreenState extends State<SelectScreen> {
     widget.connectionSupervisor.removeListener(_onSupervisorChanged);
     widget.supplierUserIdNotifier?.removeListener(_onSupplierUserIdChanged);
     _loginStateNotifier.dispose();
+    _userAttrNotifier.dispose();
     _settingsNotifier.dispose();
     _controller
       ..removeListener(_onInputChanged)
@@ -314,7 +324,6 @@ class _SelectScreenState extends State<SelectScreen> {
           Expanded(
             child: _FollowProgramList(
               programs: _followPrograms,
-              isLoading: _isLoadingFollowPrograms,
               enabled: !_isConnectionInProgress,
               onTap: _connectToProgram,
               onRefresh: _fetchFollowPrograms,
@@ -333,7 +342,9 @@ class _SelectScreenState extends State<SelectScreen> {
     final List<Listenable> listenables = <Listenable>[
       widget.connectionSupervisor,
       _settingsNotifier,
+      _userAttrNotifier,
       if (widget.timelineStore != null) widget.timelineStore!,
+      if (widget.statisticsStore != null) widget.statisticsStore!,
       if (widget.programTitleNotifier != null) widget.programTitleNotifier!,
       if (widget.userNameListenable != null) widget.userNameListenable!,
       if (widget.supplierUserIdNotifier != null) widget.supplierUserIdNotifier!,
@@ -384,12 +395,12 @@ class _SelectScreenState extends State<SelectScreen> {
           onToggleNgUser: _toggleNgUser,
           starPrefixHidingEnabled:
               _settingsNotifier.value.starPrefixHidingEnabled,
-          userColorMap: _userColorMap,
+          userColorMap: _userAttrNotifier.value.colors,
           onUserColorChanged:
               widget.userAttributeStore != null ? _onUserColorChanged : null,
           onUserColorRemoved:
               widget.userAttributeStore != null ? _onUserColorRemoved : null,
-          userNicknameMap: _userNicknameMap,
+          userNicknameMap: _userAttrNotifier.value.nicknames,
           onNicknameChanged:
               widget.userAttributeStore != null ? _onNicknameChanged : null,
           onNicknameRemoved:
@@ -397,8 +408,38 @@ class _SelectScreenState extends State<SelectScreen> {
           autoNicknameRegistration:
               _settingsNotifier.value.autoNicknameRegistration,
           themeMode: _settingsNotifier.value.themeMode,
+          statisticsEnabled: _settingsNotifier.value.statisticsEnabled,
+          statisticsViewerCommentEnabled:
+              _settingsNotifier.value.statisticsViewerCommentEnabled,
+          statisticsActiveUserEnabled:
+              _settingsNotifier.value.statisticsActiveUserEnabled,
+          highlightPickupEnabled:
+              _settingsNotifier.value.highlightPickupEnabled,
+          viewerCount: widget.statisticsStore?.viewerCount,
+          totalCommentCount: widget.statisticsStore?.totalCommentCount ?? 0,
+          activeUserCount: widget.statisticsStore?.activeUserCount ?? 0,
+          speechPlatform: _speechPlatform,
+          speechSettings: _buildSpeechSettings(),
         );
       },
+    );
+  }
+
+  SpeechSettings _buildSpeechSettings() {
+    final AppSettings s = _settingsNotifier.value;
+    final bool active =
+        s.autoReadEnabled && s.speechEngine == SpeechEngine.voicevox;
+    debugPrint(
+        '[SelectScreen] buildSpeechSettings: active=$active, engine=${s.speechEngine}, speaker=${s.voicevoxSpeaker}, speed=${s.voicevoxSpeed}');
+    return SpeechSettings(
+      enabled: active,
+      speakerId: s.voicevoxSpeaker,
+      speedScale: s.voicevoxSpeed,
+      pitchScale: s.voicevoxPitch,
+      intonationScale: s.voicevoxIntonation,
+      volumeScale: s.voicevoxVolume,
+      maxQueueSize: s.queueLimit,
+      ngWords: s.ngWordList,
     );
   }
 
@@ -425,13 +466,17 @@ class _SelectScreenState extends State<SelectScreen> {
     }
   }
 
-  Future<void> _onDifferentLvConnected(String previousLv, String nextLv) async {
+  Future<void> _onDifferentLvConnected(String previousLv, String nextLv) {
     if (previousLv != nextLv) {
       widget.timelineStore?.clear();
       _currentBroadcasterId = null;
-      _userColorMap = const <String, int>{};
+      _userAttrNotifier.value = (
+        colors: const <String, int>{},
+        nicknames: const <String, String>{},
+      );
     }
     _lastConnectedLv = nextLv;
+    return Future<void>.value();
   }
 
   void _onSupplierUserIdChanged() {
@@ -455,71 +500,73 @@ class _SelectScreenState extends State<SelectScreen> {
     if (!mounted || _currentBroadcasterId != broadcasterId) {
       return;
     }
-    setState(() {
-      _userColorMap = colors;
-      _userNicknameMap = nicknames;
-    });
+    _userAttrNotifier.value = (colors: colors, nicknames: nicknames);
   }
 
   void _onUserColorChanged(String userId, int colorValue) {
+    final ({Map<String, int> colors, Map<String, String> nicknames}) prev =
+        _userAttrNotifier.value;
+    _userAttrNotifier.value = (
+      colors: Map<String, int>.from(prev.colors)..[userId] = colorValue,
+      nicknames: prev.nicknames,
+    );
     final String? broadcasterId = _currentBroadcasterId;
-    if (broadcasterId == null || widget.userAttributeStore == null) {
-      return;
+    if (broadcasterId != null && widget.userAttributeStore != null) {
+      unawaited(widget.userAttributeStore!.setColor(
+        broadcasterId: broadcasterId,
+        userId: userId,
+        colorValue: colorValue,
+      ));
     }
-    setState(() {
-      _userColorMap = Map<String, int>.from(_userColorMap)
-        ..[userId] = colorValue;
-    });
-    unawaited(widget.userAttributeStore!.setColor(
-      broadcasterId: broadcasterId,
-      userId: userId,
-      colorValue: colorValue,
-    ));
   }
 
   void _onUserColorRemoved(String userId) {
+    final ({Map<String, int> colors, Map<String, String> nicknames}) prev =
+        _userAttrNotifier.value;
+    _userAttrNotifier.value = (
+      colors: Map<String, int>.from(prev.colors)..remove(userId),
+      nicknames: prev.nicknames,
+    );
     final String? broadcasterId = _currentBroadcasterId;
-    if (broadcasterId == null || widget.userAttributeStore == null) {
-      return;
+    if (broadcasterId != null && widget.userAttributeStore != null) {
+      unawaited(widget.userAttributeStore!.removeColor(
+        broadcasterId: broadcasterId,
+        userId: userId,
+      ));
     }
-    setState(() {
-      _userColorMap = Map<String, int>.from(_userColorMap)..remove(userId);
-    });
-    unawaited(widget.userAttributeStore!.removeColor(
-      broadcasterId: broadcasterId,
-      userId: userId,
-    ));
   }
 
   void _onNicknameChanged(String userId, String nickname) {
+    final ({Map<String, int> colors, Map<String, String> nicknames}) prev =
+        _userAttrNotifier.value;
+    _userAttrNotifier.value = (
+      colors: prev.colors,
+      nicknames: Map<String, String>.from(prev.nicknames)..[userId] = nickname,
+    );
     final String? broadcasterId = _currentBroadcasterId;
-    if (broadcasterId == null || widget.userAttributeStore == null) {
-      return;
+    if (broadcasterId != null && widget.userAttributeStore != null) {
+      unawaited(widget.userAttributeStore!.setNickname(
+        broadcasterId: broadcasterId,
+        userId: userId,
+        nickname: nickname,
+      ));
     }
-    setState(() {
-      _userNicknameMap = Map<String, String>.from(_userNicknameMap)
-        ..[userId] = nickname;
-    });
-    unawaited(widget.userAttributeStore!.setNickname(
-      broadcasterId: broadcasterId,
-      userId: userId,
-      nickname: nickname,
-    ));
   }
 
   void _onNicknameRemoved(String userId) {
+    final ({Map<String, int> colors, Map<String, String> nicknames}) prev =
+        _userAttrNotifier.value;
+    _userAttrNotifier.value = (
+      colors: prev.colors,
+      nicknames: Map<String, String>.from(prev.nicknames)..remove(userId),
+    );
     final String? broadcasterId = _currentBroadcasterId;
-    if (broadcasterId == null || widget.userAttributeStore == null) {
-      return;
+    if (broadcasterId != null && widget.userAttributeStore != null) {
+      unawaited(widget.userAttributeStore!.removeNickname(
+        broadcasterId: broadcasterId,
+        userId: userId,
+      ));
     }
-    setState(() {
-      _userNicknameMap = Map<String, String>.from(_userNicknameMap)
-        ..remove(userId);
-    });
-    unawaited(widget.userAttributeStore!.removeNickname(
-      broadcasterId: broadcasterId,
-      userId: userId,
-    ));
   }
 
   void _toggleNgUser(String userId) {
@@ -592,10 +639,6 @@ class _SelectScreenState extends State<SelectScreen> {
       return;
     }
 
-    setState(() {
-      _isLoadingFollowPrograms = true;
-    });
-
     String userSession;
     try {
       userSession = await sessionStore.load();
@@ -632,7 +675,6 @@ class _SelectScreenState extends State<SelectScreen> {
 
     setState(() {
       _followPrograms = programs;
-      _isLoadingFollowPrograms = false;
     });
 
     _followRefreshTimer?.cancel();
@@ -770,29 +812,18 @@ class _LoginStatusBanner extends StatelessWidget {
 class _FollowProgramList extends StatelessWidget {
   const _FollowProgramList({
     required this.programs,
-    required this.isLoading,
     required this.enabled,
     required this.onTap,
     required this.onRefresh,
   });
 
   final List<FollowProgram> programs;
-  final bool isLoading;
   final bool enabled;
   final void Function(FollowProgram program) onTap;
   final Future<void> Function() onRefresh;
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading && programs.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
-
     if (programs.isEmpty) {
       return const SizedBox.shrink();
     }
