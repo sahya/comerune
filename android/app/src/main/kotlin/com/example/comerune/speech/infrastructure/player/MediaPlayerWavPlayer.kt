@@ -237,17 +237,25 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
     }
 
     private fun resumeInternal() {
+        val resumeFailed: Boolean
         synchronized(lock) {
-            mediaPlayer?.let { player ->
-                try {
-                    if (state == PlayerState.PAUSED) {
+            resumeFailed = if (state == PlayerState.PAUSED) {
+                mediaPlayer?.let { player ->
+                    try {
                         player.start()
                         state = PlayerState.PLAYING
+                        false
+                    } catch (_: IllegalStateException) {
+                        true
                     }
-                } catch (_: IllegalStateException) {
-                    // MediaPlayer may already be in an invalid state
-                }
+                } ?: true
+            } else {
+                false
             }
+        }
+        // If resume failed, stop entirely so the worker loop can proceed.
+        if (resumeFailed) {
+            stopInternal()
         }
     }
 

@@ -286,9 +286,15 @@ class SpeechControllerImpl(
                     }
                 } catch (e: CancellationException) {
                     throw e
-                } catch (_: Exception) {
+                } catch (e: Exception) {
                     // Unexpected exceptions must not kill the worker.
                     // The item is skipped and processing continues with the next one.
+                    eventEmitter.emit(
+                        SpeechEvents.speechFailed(
+                            item.commentId,
+                            e.message ?: "unexpected_error"
+                        )
+                    )
                     currentCommentId = null
                     currentText = null
                 }
