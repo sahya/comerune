@@ -384,6 +384,8 @@ class _SelectScreenState extends State<SelectScreen> {
           programTitle: widget.programTitleNotifier?.value,
           broadcasterName: broadcasterName,
           broadcasterIconUrl: broadcasterIconUrl,
+          // Prefer the follow-list beginAt (available immediately) and
+          // fall back to the programinfo API value (resolved async).
           beginAt: _followBeginAt ?? widget.beginAtNotifier?.value,
           showUserName: _settingsNotifier.value.showUserName,
           commentFontSize: _settingsNotifier.value.commentFontSize,

@@ -326,6 +326,15 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
         lv: lv,
         userSession: userSession,
       );
+      // Notify callbacks in dependency order:
+      //   1. title — no dependencies, shown first in the UI header.
+      //   2. beginAt — no dependencies, enables elapsed-time display
+      //      as soon as comments start arriving.
+      //   3. broadcasterName — seeds the name cache so that the
+      //      subsequent supplierUserId callback can skip a redundant
+      //      HTTP resolve.
+      //   4. supplierUserId — triggers name resolution; the cache is
+      //      already warm if broadcasterName was available.
       if (programInfo.title != null) {
         _onProgramTitleResolved?.call(programInfo.title!);
       }
@@ -333,9 +342,6 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
         _onBeginAtResolved?.call(programInfo.beginAt!);
       }
       if (programInfo.supplierUserId != null) {
-        // Seed the cache with the broadcaster name BEFORE requesting
-        // resolution, so that requestResolve() sees the cached entry
-        // and skips the redundant HTTP call.
         if (programInfo.broadcasterName != null) {
           _onBroadcasterNameResolved?.call(
             programInfo.supplierUserId!,
