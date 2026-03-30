@@ -158,6 +158,100 @@ void main() {
       expect(fakePlatform.submittedComments, isEmpty);
     });
 
+    testWidgets('dynamically added NG user stops their TTS', (
+      WidgetTester tester,
+    ) async {
+      final List<AppMessage> messages = <AppMessage>[
+        _chatMessage(id: 'msg-1', content: '最初'),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          messages: messages,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final _SpeechTestHostState host =
+          tester.state(find.byType(_SpeechTestHost));
+
+      // First message from the user is submitted.
+      host.addMessage(AppMessage(
+        id: 'msg-2',
+        timestamp: DateTime(2026, 3, 30, 12, 0, 1),
+        userId: 'user-a',
+        content: '普通のコメント',
+        type: AppMessageType.chat,
+      ));
+      await tester.pumpAndSettle();
+      expect(fakePlatform.submittedComments, hasLength(1));
+
+      // Now add user-a to NG list.
+      host.updateNgUserIds(const <String>{'user-a'});
+      await tester.pumpAndSettle();
+
+      // Subsequent message from user-a should be skipped.
+      host.addMessage(AppMessage(
+        id: 'msg-3',
+        timestamp: DateTime(2026, 3, 30, 12, 0, 2),
+        userId: 'user-a',
+        content: 'ブロック後のコメント',
+        type: AppMessageType.chat,
+      ));
+      await tester.pumpAndSettle();
+      expect(fakePlatform.submittedComments, hasLength(1));
+    });
+
+    testWidgets('removing user from NG list allows their TTS again', (
+      WidgetTester tester,
+    ) async {
+      final List<AppMessage> messages = <AppMessage>[
+        _chatMessage(id: 'msg-1', content: '最初'),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          messages: messages,
+          ngUserIds: const <String>{'user-b'},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final _SpeechTestHostState host =
+          tester.state(find.byType(_SpeechTestHost));
+
+      // Message from NG user is skipped.
+      host.addMessage(AppMessage(
+        id: 'msg-2',
+        timestamp: DateTime(2026, 3, 30, 12, 0, 1),
+        userId: 'user-b',
+        content: 'NGユーザーのコメント',
+        type: AppMessageType.chat,
+      ));
+      await tester.pumpAndSettle();
+      expect(fakePlatform.submittedComments, isEmpty);
+
+      // Remove user-b from NG list.
+      host.updateNgUserIds(const <String>{});
+      await tester.pumpAndSettle();
+
+      // New message from user-b should now be submitted.
+      host.addMessage(AppMessage(
+        id: 'msg-3',
+        timestamp: DateTime(2026, 3, 30, 12, 0, 2),
+        userId: 'user-b',
+        content: 'NG解除後のコメント',
+        type: AppMessageType.chat,
+      ));
+      await tester.pumpAndSettle();
+      expect(fakePlatform.submittedComments, hasLength(1));
+      expect(fakePlatform.submittedComments.first.text, 'NG解除後のコメント');
+    });
+
     testWidgets('star-prefix messages are not submitted when hiding enabled', (
       WidgetTester tester,
     ) async {
@@ -210,6 +304,88 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(fakePlatform.submittedComments, hasLength(1));
+    });
+
+    testWidgets('NG word messages are not submitted for speech', (
+      WidgetTester tester,
+    ) async {
+      final List<AppMessage> messages = <AppMessage>[
+        _chatMessage(id: 'msg-1', content: '最初'),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          messages: messages,
+          ngWords: const <String>['spam', 'bad'],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final _SpeechTestHostState host =
+          tester.state(find.byType(_SpeechTestHost));
+      host.addMessage(
+        _chatMessage(id: 'msg-2', content: 'this is spam content'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.submittedComments, isEmpty);
+    });
+
+    testWidgets('NG word matching is case-insensitive', (
+      WidgetTester tester,
+    ) async {
+      final List<AppMessage> messages = <AppMessage>[
+        _chatMessage(id: 'msg-1', content: '最初'),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          messages: messages,
+          ngWords: const <String>['spam'],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final _SpeechTestHostState host =
+          tester.state(find.byType(_SpeechTestHost));
+      host.addMessage(
+        _chatMessage(id: 'msg-2', content: 'SPAM MESSAGE'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.submittedComments, isEmpty);
+    });
+
+    testWidgets('messages without NG words are submitted normally', (
+      WidgetTester tester,
+    ) async {
+      final List<AppMessage> messages = <AppMessage>[
+        _chatMessage(id: 'msg-1', content: '最初'),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          messages: messages,
+          ngWords: const <String>['spam', 'bad'],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final _SpeechTestHostState host =
+          tester.state(find.byType(_SpeechTestHost));
+      host.addMessage(
+        _chatMessage(id: 'msg-2', content: 'hello world'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.submittedComments, hasLength(1));
+      expect(fakePlatform.submittedComments.first.text, 'hello world');
     });
 
     testWidgets('speech is stopped when settings change to disabled', (
@@ -356,6 +532,7 @@ class _SpeechTestHost extends StatefulWidget {
     required this.speechPlatform,
     required this.speechSettings,
     this.ngUserIds = const <String>{},
+    this.ngWords = const <String>[],
     this.starPrefixHidingEnabled = false,
   });
 
@@ -363,6 +540,7 @@ class _SpeechTestHost extends StatefulWidget {
   final CommentSpeechPlatform? speechPlatform;
   final SpeechSettings speechSettings;
   final Set<String> ngUserIds;
+  final List<String> ngWords;
   final bool starPrefixHidingEnabled;
 
   @override
@@ -372,12 +550,14 @@ class _SpeechTestHost extends StatefulWidget {
 class _SpeechTestHostState extends State<_SpeechTestHost> {
   late List<AppMessage> _messages;
   late SpeechSettings _speechSettings;
+  late Set<String> _ngUserIds;
 
   @override
   void initState() {
     super.initState();
     _messages = List<AppMessage>.from(widget.initialMessages);
     _speechSettings = widget.speechSettings;
+    _ngUserIds = widget.ngUserIds;
   }
 
   void addMessage(AppMessage message) {
@@ -389,6 +569,12 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
   void updateSpeechSettings(SpeechSettings settings) {
     setState(() {
       _speechSettings = settings;
+    });
+  }
+
+  void updateNgUserIds(Set<String> ngUserIds) {
+    setState(() {
+      _ngUserIds = ngUserIds;
     });
   }
 
@@ -404,7 +590,8 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
       themeMode: AppThemeMode.light,
       speechPlatform: widget.speechPlatform,
       speechSettings: _speechSettings,
-      ngUserIds: widget.ngUserIds,
+      ngUserIds: _ngUserIds,
+      ngWords: widget.ngWords,
       starPrefixHidingEnabled: widget.starPrefixHidingEnabled,
     );
   }
@@ -415,6 +602,7 @@ Widget _buildScreen({
   SpeechSettings speechSettings = const SpeechSettings(enabled: false),
   List<AppMessage> messages = const <AppMessage>[],
   Set<String> ngUserIds = const <String>{},
+  List<String> ngWords = const <String>[],
   bool starPrefixHidingEnabled = false,
 }) {
   return MaterialApp(
@@ -423,6 +611,7 @@ Widget _buildScreen({
       speechPlatform: speechPlatform,
       speechSettings: speechSettings,
       ngUserIds: ngUserIds,
+      ngWords: ngWords,
       starPrefixHidingEnabled: starPrefixHidingEnabled,
     ),
   );

@@ -403,11 +403,15 @@ class _SelectScreenState extends State<SelectScreen> {
         final bool nameResolutionEnabled =
             _settingsNotifier.value.resolveUserName;
         final String? supplierUserId = widget.supplierUserIdNotifier?.value;
-        final String? resolvedName =
-            nameResolutionEnabled && supplierUserId != null
-                ? widget.resolveUserName?.call(supplierUserId)
-                : null;
-        final String? broadcasterName = resolvedName ?? _followBroadcasterName;
+        // Resolve broadcaster name from cache regardless of the per-comment
+        // name resolution setting, so the broadcaster name is always
+        // displayed when available (seeded by programinfo API via
+        // seedCache).
+        final String? cachedBroadcasterName = supplierUserId != null
+            ? widget.resolveUserName?.call(supplierUserId)
+            : null;
+        final String? broadcasterName =
+            cachedBroadcasterName ?? _followBroadcasterName;
         final String? broadcasterIconUrl = _followBroadcasterIconUrl ??
             _buildIconUrlFromUserId(supplierUserId);
 
@@ -425,6 +429,7 @@ class _SelectScreenState extends State<SelectScreen> {
           connectionMethod: _connectionMethod,
           programTitle: widget.programTitleNotifier?.value,
           broadcasterName: broadcasterName,
+          broadcasterUserId: supplierUserId,
           broadcasterIconUrl: broadcasterIconUrl,
           // Prefer the follow-list beginAt (available immediately) and
           // fall back to the programinfo API value (resolved async).

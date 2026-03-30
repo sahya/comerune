@@ -93,6 +93,7 @@ class CommentScreen extends StatefulWidget {
     this.connectionMethod,
     this.programTitle,
     this.broadcasterName,
+    this.broadcasterUserId,
     this.broadcasterIconUrl,
     this.beginAt,
     this.showUserName = true,
@@ -136,6 +137,7 @@ class CommentScreen extends StatefulWidget {
   final ConnectionMethod? connectionMethod;
   final String? programTitle;
   final String? broadcasterName;
+  final String? broadcasterUserId;
   final String? broadcasterIconUrl;
   final DateTime? beginAt;
   final bool showUserName;
@@ -611,6 +613,11 @@ class _CommentScreenState extends State<CommentScreen> {
         debugPrint('[CommentScreen] submitComment: SKIP star-prefix');
         continue;
       }
+      // Skip comments containing NG words.
+      if (_containsNgWord(message.content)) {
+        debugPrint('[CommentScreen] submitComment: SKIP NG word');
+        continue;
+      }
 
       debugPrint('[CommentScreen] submitComment: ${message.content}');
       final RawComment comment = RawComment(
@@ -625,6 +632,20 @@ class _CommentScreenState extends State<CommentScreen> {
         }),
       );
     }
+  }
+
+  /// Returns `true` when [content] contains any configured NG word.
+  ///
+  /// [widget.ngWords] is pre-lowered by [AppSettings.ngWordList], so only the
+  /// content needs to be lower-cased for case-insensitive matching.
+  bool _containsNgWord(String content) {
+    if (widget.ngWords.isEmpty) {
+      return false;
+    }
+    final String lowerContent = content.toLowerCase();
+    return widget.ngWords.any(
+      (String word) => lowerContent.contains(word),
+    );
   }
 
   void _processNicknameComments(
@@ -757,6 +778,7 @@ class _CommentScreenState extends State<CommentScreen> {
                   debugMode: widget.debugMode,
                   connectionMethod: widget.connectionMethod,
                   broadcasterName: widget.broadcasterName,
+                  broadcasterUserId: widget.broadcasterUserId,
                   broadcasterIconUrl: widget.broadcasterIconUrl,
                   beginAt: widget.beginAt,
                   themeColors: themeColors,
@@ -1505,6 +1527,7 @@ class _StatusBar extends StatefulWidget {
     required this.debugMode,
     required this.connectionMethod,
     this.broadcasterName,
+    this.broadcasterUserId,
     this.broadcasterIconUrl,
     this.beginAt,
     required this.themeColors,
@@ -1521,6 +1544,7 @@ class _StatusBar extends StatefulWidget {
   final bool debugMode;
   final ConnectionMethod? connectionMethod;
   final String? broadcasterName;
+  final String? broadcasterUserId;
   final String? broadcasterIconUrl;
   final DateTime? beginAt;
   final AppThemeColors themeColors;
@@ -1562,12 +1586,16 @@ class _StatusBarState extends State<_StatusBar> {
   @override
   void didUpdateWidget(covariant _StatusBar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.beginAt == null && widget.beginAt != null) {
-      _elapsedTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
-        if (mounted) {
-          setState(() {});
-        }
-      });
+    if (oldWidget.beginAt != widget.beginAt) {
+      _elapsedTimer?.cancel();
+      _elapsedTimer = null;
+      if (widget.beginAt != null) {
+        _elapsedTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+          if (mounted) {
+            setState(() {});
+          }
+        });
+      }
     }
   }
 
@@ -1668,6 +1696,17 @@ class _StatusBarState extends State<_StatusBar> {
                   ],
                 ),
                 if (!_collapsed) ...<Widget>[
+                  if (widget.broadcasterUserId != null) ...<Widget>[
+                    const SizedBox(height: 4),
+                    Text(
+                      '放送者ID: ${widget.broadcasterUserId}',
+                      key: const Key('status-broadcaster-user-id'),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: widget.themeColors.subtleTextColor,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 4),
                   Wrap(
                     spacing: 12,

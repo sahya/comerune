@@ -589,6 +589,67 @@ void main() {
       );
     });
 
+    testWidgets('shows broadcaster user ID in expanded status bar', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          broadcasterName: '配信者テスト',
+          broadcasterUserId: '12345678',
+        ),
+      );
+      expect(
+        find.byKey(const Key('status-broadcaster-user-id')),
+        findsOneWidget,
+      );
+      expect(find.text('放送者ID: 12345678'), findsOneWidget);
+    });
+
+    testWidgets('hides broadcaster user ID when null', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          broadcasterName: '配信者テスト',
+        ),
+      );
+      expect(
+        find.byKey(const Key('status-broadcaster-user-id')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('broadcaster user ID hidden after auto-collapse', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          broadcasterName: '配信者X',
+          broadcasterUserId: '99999',
+        ),
+      );
+      // Initially visible (status bar starts expanded).
+      expect(
+        find.byKey(const Key('status-broadcaster-user-id')),
+        findsOneWidget,
+      );
+      // After auto-collapse timer fires, user ID should be hidden.
+      await tester.pump(const Duration(seconds: 2));
+      expect(
+        find.byKey(const Key('status-broadcaster-user-id')),
+        findsNothing,
+      );
+    });
+
     testWidgets('hides program title bar when title is null', (
       WidgetTester tester,
     ) async {
@@ -1873,6 +1934,87 @@ void main() {
       final Text updated = tester.widget(elapsedFinder);
       expect(updated.data, matches(RegExp(r'^\d+:\d{2}:\d{2}$')));
     });
+
+    testWidgets('hides elapsed label when beginAt changes to null', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final DateTime beginAt = DateTime.now().subtract(
+        const Duration(hours: 1),
+      );
+
+      // Initial build with beginAt.
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          beginAt: beginAt,
+        ),
+      );
+
+      final Finder elapsedFinder = find.byKey(const Key('status-elapsed'));
+      expect(elapsedFinder, findsOneWidget);
+
+      // Rebuild without beginAt (simulates disconnect/reconnect).
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+        ),
+      );
+
+      expect(elapsedFinder, findsNothing);
+
+      // Verify the timer no longer fires unnecessary rebuilds.
+      await tester.pump(const Duration(seconds: 2));
+      expect(elapsedFinder, findsNothing);
+    });
+
+    testWidgets(
+        'restarts elapsed timer when beginAt changes to a different value', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final DateTime firstBeginAt = DateTime.now().subtract(
+        const Duration(hours: 2),
+      );
+
+      // Initial build with first beginAt.
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          beginAt: firstBeginAt,
+        ),
+      );
+
+      final Finder elapsedFinder = find.byKey(const Key('status-elapsed'));
+      expect(elapsedFinder, findsOneWidget);
+      final Text firstText = tester.widget(elapsedFinder);
+      // Should show approximately 2:00:00.
+      expect(firstText.data, startsWith('2:'));
+
+      // Rebuild with a different beginAt (simulates reconnect to new stream).
+      final DateTime secondBeginAt = DateTime.now().subtract(
+        const Duration(minutes: 5),
+      );
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          beginAt: secondBeginAt,
+        ),
+      );
+
+      expect(elapsedFinder, findsOneWidget);
+      final Text secondText = tester.widget(elapsedFinder);
+      // Should show approximately 0:05:00, not 2:00:00.
+      expect(secondText.data, startsWith('0:'));
+
+      // Verify the timer continues to fire after value change.
+      await tester.pump(const Duration(seconds: 1));
+      expect(elapsedFinder, findsOneWidget);
+    });
   });
 
   group('Comment timestamp elapsed display', () {
@@ -2121,6 +2263,7 @@ Widget _buildScreen({
   ConnectionMethod? connectionMethod,
   String? programTitle,
   String? broadcasterName,
+  String? broadcasterUserId,
   String? Function(String userId)? resolveUserName,
   double commentFontSize = commentFontSizeDefault,
   Set<String> ngUserIds = const <String>{},
@@ -2149,6 +2292,7 @@ Widget _buildScreen({
       connectionMethod: connectionMethod,
       programTitle: programTitle,
       broadcasterName: broadcasterName,
+      broadcasterUserId: broadcasterUserId,
       resolveUserName: resolveUserName,
       commentFontSize: commentFontSize,
       beginAt: beginAt,
