@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:developer' as developer;
+
+import '../../comment_speech/src/models/replace_rule.dart';
 import '../../domain/models/app_settings.dart';
 
 abstract class SettingsStore {
@@ -77,6 +81,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       'settings.filter.starPrefixHiding';
   static const String _kSlashPrefixSkipEnabled =
       'settings.filter.slashPrefixSkip';
+  static const String _kDictionaryRules = 'settings.speech.dictionaryRules';
   static const String _kDebugMode = 'settings.debugMode';
 
   @override
@@ -145,6 +150,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
           defaults.starPrefixHidingEnabled,
       slashPrefixSkipEnabled: _prefs.getBool(_kSlashPrefixSkipEnabled) ??
           defaults.slashPrefixSkipEnabled,
+      dictionaryRules: _loadDictionaryRules(),
       debugMode: _prefs.getBool(_kDebugMode) ?? defaults.debugMode,
     );
   }
@@ -211,5 +217,30 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       settings.slashPrefixSkipEnabled,
     );
     await _prefs.setBool(_kDebugMode, settings.debugMode);
+    await _prefs.setString(
+      _kDictionaryRules,
+      jsonEncode(
+        settings.dictionaryRules.map((ReplaceRule r) => r.toMap()).toList(),
+      ),
+    );
+  }
+
+  List<ReplaceRule> _loadDictionaryRules() {
+    final String? raw = _prefs.getString(_kDictionaryRules);
+    if (raw == null) {
+      return defaultNicoDictionaryRules;
+    }
+    try {
+      final List<dynamic> decoded = jsonDecode(raw) as List<dynamic>;
+      return decoded
+          .map((dynamic e) => ReplaceRule.fromMap(e as Map<String, dynamic>))
+          .toList();
+    } on Object catch (e) {
+      developer.log(
+        'Failed to parse dictionaryRules, falling back to defaults: $e',
+        name: 'SettingsStore',
+      );
+      return defaultNicoDictionaryRules;
+    }
   }
 }
