@@ -1805,6 +1805,45 @@ void main() {
       final Text updated = tester.widget(elapsedFinder);
       expect(updated.data, matches(RegExp(r'^\d+:\d{2}:\d{2}$')));
     });
+
+    testWidgets('shows elapsed time when beginAt arrives after initial build', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      // Initial build without beginAt.
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+        ),
+      );
+
+      final Finder elapsedFinder = find.byKey(const Key('status-elapsed'));
+      expect(elapsedFinder, findsNothing);
+
+      // Rebuild with beginAt provided (simulates late arrival).
+      final DateTime beginAt = DateTime.now().subtract(
+        const Duration(minutes: 10, seconds: 5),
+      );
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          beginAt: beginAt,
+        ),
+      );
+
+      expect(elapsedFinder, findsOneWidget);
+      final Text elapsedText = tester.widget(elapsedFinder);
+      expect(elapsedText.data, matches(RegExp(r'^\d+:\d{2}:\d{2}$')));
+
+      // Verify the periodic timer is running after late beginAt.
+      await tester.pump(const Duration(seconds: 1));
+      expect(elapsedFinder, findsOneWidget);
+      final Text updated = tester.widget(elapsedFinder);
+      expect(updated.data, matches(RegExp(r'^\d+:\d{2}:\d{2}$')));
+    });
   });
 
   group('Comment timestamp elapsed display', () {

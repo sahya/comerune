@@ -1523,6 +1523,18 @@ class _StatusBarState extends State<_StatusBar> {
   }
 
   @override
+  void didUpdateWidget(covariant _StatusBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.beginAt == null && widget.beginAt != null) {
+      _elapsedTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) {
+          setState(() {});
+        }
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _autoCollapseTimer?.cancel();
     _elapsedTimer?.cancel();
