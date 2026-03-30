@@ -205,6 +205,26 @@ void main() {
       expect(loaded.starPrefixHidingEnabled, isTrue);
     });
 
+    testWidgets('read user name toggle persists value (default OFF)', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      // Default should be OFF
+      AppSettings loaded = await settingsStore.load();
+      expect(loaded.readUserName, isFalse);
+
+      await toggleSwitchByKey(
+          tester, _listKey, const Key('read-user-name-switch'));
+
+      loaded = await settingsStore.load();
+      expect(loaded.readUserName, isTrue);
+    });
+
     testWidgets('VOICEVOX speed slider change persists value', (
       WidgetTester tester,
     ) async {

@@ -123,6 +123,7 @@ class CommentScreen extends StatefulWidget {
     this.activeUserCount = 0,
     this.speechPlatform,
     this.speechSettings = const SpeechSettings(enabled: false),
+    this.readUserName = false,
   });
 
   final String lv;
@@ -202,6 +203,9 @@ class CommentScreen extends StatefulWidget {
   /// VoiceVox speech configuration. [SpeechSettings.enabled] reflects
   /// whether auto-read is active with the VoiceVox engine.
   final SpeechSettings speechSettings;
+
+  /// When true, the user name is prepended to the comment text for TTS.
+  final bool readUserName;
 
   @override
   State<CommentScreen> createState() => _CommentScreenState();
@@ -619,10 +623,20 @@ class _CommentScreenState extends State<CommentScreen> {
         continue;
       }
 
-      debugPrint('[CommentScreen] submitComment: ${message.content}');
+      String speechText = message.content;
+      if (widget.readUserName && userId != null && userId.isNotEmpty) {
+        // Prefer nickname (kotehan), then resolved API name.
+        final String? displayName = widget.userNicknameMap[userId] ??
+            widget.resolveUserName?.call(userId);
+        if (displayName != null && displayName.isNotEmpty) {
+          speechText = '$displayName、$speechText';
+        }
+      }
+
+      debugPrint('[CommentScreen] submitComment: $speechText');
       final RawComment comment = RawComment(
         id: message.id,
-        text: message.content,
+        text: speechText,
         userId: message.userId,
         postedAtEpochMs: message.timestamp.millisecondsSinceEpoch,
       );
