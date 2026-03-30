@@ -112,7 +112,6 @@ class _SelectScreenState extends State<SelectScreen> {
     _controller.addListener(_onInputChanged);
     widget.connectionSupervisor.addListener(_onSupervisorChanged);
     widget.supplierUserIdNotifier?.addListener(_onSupplierUserIdChanged);
-    widget.userNameListenable?.addListener(_onUserNameChanged);
     if (widget.settingsStore != null) {
       unawaited(_reloadSettingsFromStore());
     }
@@ -137,11 +136,6 @@ class _SelectScreenState extends State<SelectScreen> {
       widget.supplierUserIdNotifier?.addListener(_onSupplierUserIdChanged);
     }
 
-    if (oldWidget.userNameListenable != widget.userNameListenable) {
-      oldWidget.userNameListenable?.removeListener(_onUserNameChanged);
-      widget.userNameListenable?.addListener(_onUserNameChanged);
-    }
-
     if (oldWidget.initialSettings != widget.initialSettings &&
         _settingsNotifier.value == oldWidget.initialSettings) {
       _settingsNotifier.value = widget.initialSettings;
@@ -158,7 +152,6 @@ class _SelectScreenState extends State<SelectScreen> {
     _followRefreshTimer?.cancel();
     widget.connectionSupervisor.removeListener(_onSupervisorChanged);
     widget.supplierUserIdNotifier?.removeListener(_onSupplierUserIdChanged);
-    widget.userNameListenable?.removeListener(_onUserNameChanged);
     _loginStateNotifier.dispose();
     _userAttrNotifier.dispose();
     _settingsNotifier.dispose();
@@ -341,6 +334,7 @@ class _SelectScreenState extends State<SelectScreen> {
             _FavoriteUserSection(
               userIds: _settingsNotifier.value.favoriteUserIdSet,
               resolveUserName: widget.resolveUserName,
+              userNameListenable: widget.userNameListenable,
             ),
         ],
       ),
@@ -493,10 +487,6 @@ class _SelectScreenState extends State<SelectScreen> {
     if (supplierUserId != null && supplierUserId != _currentBroadcasterId) {
       unawaited(_loadUserAttributes(supplierUserId));
     }
-  }
-
-  void _onUserNameChanged() {
-    setState(() {});
   }
 
   void _requestFavoriteUserNameResolution() {
@@ -1065,14 +1055,46 @@ class _FollowProgramTile extends StatelessWidget {
   }
 }
 
-class _FavoriteUserSection extends StatelessWidget {
+class _FavoriteUserSection extends StatefulWidget {
   const _FavoriteUserSection({
     required this.userIds,
     this.resolveUserName,
+    this.userNameListenable,
   });
 
   final Set<String> userIds;
   final String? Function(String userId)? resolveUserName;
+  final Listenable? userNameListenable;
+
+  @override
+  State<_FavoriteUserSection> createState() => _FavoriteUserSectionState();
+}
+
+class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
+  @override
+  void initState() {
+    super.initState();
+    widget.userNameListenable?.addListener(_onUserNameChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _FavoriteUserSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.userNameListenable != widget.userNameListenable) {
+      oldWidget.userNameListenable?.removeListener(_onUserNameChanged);
+      widget.userNameListenable?.addListener(_onUserNameChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.userNameListenable?.removeListener(_onUserNameChanged);
+    super.dispose();
+  }
+
+  void _onUserNameChanged() {
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1092,7 +1114,7 @@ class _FavoriteUserSection extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(
-                '${userIds.length}件',
+                '${widget.userIds.length}件',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: Theme.of(context).colorScheme.outline,
                     ),
@@ -1101,9 +1123,9 @@ class _FavoriteUserSection extends StatelessWidget {
           ),
         ),
         const Divider(height: 1),
-        ...userIds.map((String userId) {
+        ...widget.userIds.map((String userId) {
           final String? iconUrl = buildNicoIconUrl(userId);
-          final String? nickname = resolveUserName?.call(userId);
+          final String? nickname = widget.resolveUserName?.call(userId);
           return ListTile(
             dense: true,
             leading: ClipOval(
@@ -1127,6 +1149,8 @@ class _FavoriteUserSection extends StatelessWidget {
             title: Text(
               nickname != null ? '$nickname ($userId)' : userId,
               style: const TextStyle(fontSize: 13),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
             ),
           );
         }),
