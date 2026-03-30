@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -157,16 +158,7 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
 
             try {
                 val wavBytes = withContext(Dispatchers.IO) {
-                    NativeVoicevoxBridge.nativeTts(
-                        text = request.text,
-                        speakerId = request.speakerId,
-                        speedScale = request.speedScale,
-                        pitchScale = request.pitchScale,
-                        intonationScale = request.intonationScale,
-                        volumeScale = request.volumeScale,
-                        prePhonemeLength = request.prePhonemeLength,
-                        postPhonemeLength = request.postPhonemeLength
-                    )
+                    synthesizeViaAudioQuery(request)
                 }
 
                 if (wavBytes == null) {
@@ -200,6 +192,53 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                 Result.failure(e)
             }
         }
+
+    /**
+     * Synthesize WAV via the AudioQuery path, which allows applying
+     * volumeScale, speedScale, pitchScale, intonationScale, and
+     * pre/postPhonemeLength parameters at the synthesis level.
+     *
+     * This prevents audio clipping that occurs with the TTS one-shot API
+     * where these parameters are ignored.
+     */
+    private fun synthesizeViaAudioQuery(request: SpeechRequest): ByteArray? {
+        val audioQueryJson = NativeVoicevoxBridge.nativeCreateAudioQuery(
+            text = request.text,
+            speakerId = request.speakerId
+        ) ?: return null
+
+        val modifiedJson = applyParametersToAudioQuery(
+            audioQueryJson,
+            request
+        )
+
+        return NativeVoicevoxBridge.nativeSynthesis(
+            audioQueryJson = modifiedJson,
+            speakerId = request.speakerId
+        )
+    }
+
+    /**
+     * Apply speech parameters to an AudioQuery JSON object.
+     *
+     * The AudioQuery JSON from VOICEVOX contains fields like
+     * `speedScale`, `pitchScale`, `intonationScale`, `volumeScale`,
+     * `prePhonemeLength`, `postPhonemeLength` at the top level.
+     * This method overrides them with the values from [request].
+     */
+    private fun applyParametersToAudioQuery(
+        audioQueryJson: String,
+        request: SpeechRequest
+    ): String {
+        val json = JSONObject(audioQueryJson)
+        json.put("speedScale", request.speedScale.toDouble())
+        json.put("pitchScale", request.pitchScale.toDouble())
+        json.put("intonationScale", request.intonationScale.toDouble())
+        json.put("volumeScale", request.volumeScale.toDouble())
+        json.put("prePhonemeLength", request.prePhonemeLength.toDouble())
+        json.put("postPhonemeLength", request.postPhonemeLength.toDouble())
+        return json.toString()
+    }
 
     override fun isReady(): Boolean = state == TtsEngineState.READY
 
