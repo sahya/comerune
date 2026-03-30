@@ -1,11 +1,13 @@
 #include <jni.h>
 #include <string>
 #include <mutex>
+#include <cmath>
 #include <cstdio>
 #include <android/log.h>
 #include "voicevox_core.h"
 
 #define LOG_TAG "VoicevoxJNI"
+#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
@@ -21,6 +23,11 @@ static VoicevoxSynthesizer* g_synthesizer = nullptr;
  * This is intentionally minimal: VOICEVOX AudioQuery JSON has a fixed
  * structure with top-level numeric fields (speedScale, pitchScale, etc.)
  * and this helper only needs to handle those.
+ *
+ * IMPORTANT: This function assumes the target key exists only at the
+ * top level of the VOICEVOX AudioQuery JSON. If a future VOICEVOX version
+ * introduces nested objects with the same key names, this simple string
+ * search may match the wrong occurrence. Review when upgrading VOICEVOX Core.
  */
 static bool replaceJsonFloat(std::string& json,
                              const std::string& key,
@@ -227,6 +234,14 @@ Java_com_example_comerune_speech_infrastructure_engine_NativeVoicevoxBridge_nati
         return nullptr;
     }
 
+    // Guard against NaN / Infinity — fall back to VOICEVOX defaults.
+    if (std::isnan(speedScale) || std::isinf(speedScale)) speedScale = 1.0f;
+    if (std::isnan(pitchScale) || std::isinf(pitchScale)) pitchScale = 0.0f;
+    if (std::isnan(intonationScale) || std::isinf(intonationScale)) intonationScale = 1.0f;
+    if (std::isnan(volumeScale) || std::isinf(volumeScale)) volumeScale = 1.0f;
+    if (std::isnan(prePhonemeLength) || std::isinf(prePhonemeLength)) prePhonemeLength = 0.1f;
+    if (std::isnan(postPhonemeLength) || std::isinf(postPhonemeLength)) postPhonemeLength = 0.1f;
+
     // Step 2: Modify the AudioQuery JSON to apply user parameters.
     std::string queryStr(audioQueryJson);
     voicevox_json_free(audioQueryJson);
@@ -286,8 +301,10 @@ Java_com_example_comerune_speech_infrastructure_engine_NativeVoicevoxBridge_nati
             reinterpret_cast<const jbyte*>(wav));
     voicevox_wav_free(wav);
 
-    LOGI("TTS synthesis succeeded: %zu bytes (speed=%.2f, pitch=%.2f, intonation=%.2f, volume=%.2f)",
-         wavLength, speedScale, pitchScale, intonationScale, volumeScale);
+    LOGI("TTS synthesis succeeded: %zu bytes", wavLength);
+    LOGD("TTS params: speed=%.2f, pitch=%.2f, intonation=%.2f, volume=%.2f, prePh=%.2f, postPh=%.2f",
+         speedScale, pitchScale, intonationScale, volumeScale,
+         prePhonemeLength, postPhonemeLength);
     return javaWav;
 }
 
