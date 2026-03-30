@@ -86,7 +86,7 @@ void main() {
       expect(settings.speedScale, 1.15);
       expect(settings.pitchScale, 0.0);
       expect(settings.intonationScale, 1.0);
-      expect(settings.volumeScale, 1.0);
+      expect(settings.volumeScale, 0.7);
       expect(settings.prePhonemeLength, 0.1);
       expect(settings.postPhonemeLength, 0.1);
       expect(settings.maxTextLength, 50);
