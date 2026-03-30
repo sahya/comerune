@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../comment_speech/comment_speech.dart';
 import '../../data/comment_log/comment_log_writer.dart';
@@ -229,6 +230,9 @@ class _CommentScreenState extends State<CommentScreen> {
     _lastStatus = widget.connectionSupervisor.status;
     widget.connectionSupervisor.addListener(_handleConnectionChanged);
 
+    // Keep screen on while viewing comments.
+    unawaited(WakelockPlus.enable());
+
     _requestUserNameResolution(widget.messages);
 
     debugPrint(
@@ -312,6 +316,7 @@ class _CommentScreenState extends State<CommentScreen> {
 
   @override
   void dispose() {
+    unawaited(WakelockPlus.disable());
     debugPrint('[CommentScreen] dispose: speechStarted=$_speechStarted');
     _speechEventSub?.cancel();
     if (_speechStarted) {
