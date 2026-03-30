@@ -294,6 +294,66 @@ void main() {
       resolver.dispose();
     });
 
+    test('returns null beginAt for empty string', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'Empty BeginAt',
+          'beginAt': '',
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri':
+                  'https://mpn.live.nicovideo.jp/api/view/v4/EmptyBeginAt',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv2003',
+        userSession: 'session',
+      );
+
+      expect(result.beginAt, isNull);
+
+      resolver.dispose();
+    });
+
+    test('returns null beginAt for invalid date string', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'Invalid BeginAt',
+          'beginAt': 'not-a-date',
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri':
+                  'https://mpn.live.nicovideo.jp/api/view/v4/InvalidBeginAt',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv2004',
+        userSession: 'session',
+      );
+
+      expect(result.beginAt, isNull);
+
+      resolver.dispose();
+    });
+
     test('sends request without auth headers when user_session is empty',
         () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
