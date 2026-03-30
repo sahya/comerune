@@ -13,6 +13,7 @@ import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
+import '../models/user_name_resolution.dart';
 import '../theme/app_theme.dart';
 import 'comment_log_stats_sheet.dart';
 import 'user_detail_sheet.dart';
@@ -84,8 +85,7 @@ class CommentScreen extends StatefulWidget {
     this.beginAt,
     this.showUserName = true,
     this.commentFontSize = commentFontSizeDefault,
-    this.resolveUserName,
-    this.requestUserNameResolve,
+    this.userNameResolution,
     this.commentLogWriter,
     this.autoSaveCommentLog = false,
     this.ngUserIds = const <String>{},
@@ -128,11 +128,7 @@ class CommentScreen extends StatefulWidget {
   final bool showUserName;
   final double commentFontSize;
 
-  /// Returns the cached resolved name for a user ID, or null.
-  final String? Function(String userId)? resolveUserName;
-
-  /// Requests asynchronous resolution of a user ID.
-  final void Function(String userId)? requestUserNameResolve;
+  final UserNameResolution? userNameResolution;
 
   final CommentLogWriter? commentLogWriter;
   final bool autoSaveCommentLog;
@@ -328,15 +324,15 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   void _requestUserNameResolution(List<AppMessage> messages) {
-    final void Function(String)? request = widget.requestUserNameResolve;
-    if (request == null) {
+    final UserNameResolution? resolution = widget.userNameResolution;
+    if (resolution == null) {
       return;
     }
 
     for (final AppMessage message in messages) {
       final String? userId = message.userId;
       if (userId != null && userId.isNotEmpty) {
-        request(userId);
+        resolution.requestResolve(userId);
       }
     }
   }
@@ -345,8 +341,8 @@ class _CommentScreenState extends State<CommentScreen> {
     List<AppMessage> oldMessages,
     List<AppMessage> newMessages,
   ) {
-    final void Function(String)? request = widget.requestUserNameResolve;
-    if (request == null) {
+    final UserNameResolution? resolution = widget.userNameResolution;
+    if (resolution == null) {
       return;
     }
 
@@ -367,7 +363,7 @@ class _CommentScreenState extends State<CommentScreen> {
     for (int i = start; i < newMessages.length; i++) {
       final String? userId = newMessages[i].userId;
       if (userId != null && userId.isNotEmpty) {
-        request(userId);
+        resolution.requestResolve(userId);
       }
     }
   }
@@ -938,7 +934,7 @@ class _CommentScreenState extends State<CommentScreen> {
     if (userId == null) {
       return null;
     }
-    return widget.resolveUserName?.call(userId);
+    return widget.userNameResolution?.resolve(userId);
   }
 
   void _toggleSortOrder() {

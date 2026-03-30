@@ -17,6 +17,7 @@ import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/utils/lv_parser.dart';
 import '../../comment_speech/comment_speech.dart';
+import '../models/user_name_resolution.dart';
 import '../screens/comment_screen.dart';
 import '../screens/settings_screen.dart';
 import '../theme/app_theme.dart';
@@ -46,9 +47,7 @@ class SelectScreen extends StatefulWidget {
     this.onPrepareConnection,
     this.userSessionStore,
     this.programTitleNotifier,
-    this.resolveUserName,
-    this.requestUserNameResolve,
-    this.userNameListenable,
+    this.userNameResolution,
     this.supplierUserIdNotifier,
     this.beginAtNotifier,
     this.commentLogWriter,
@@ -68,9 +67,7 @@ class SelectScreen extends StatefulWidget {
   final Future<void> Function(String lv, AppSettings settings)?
       onPrepareConnection;
   final ValueNotifier<String?>? programTitleNotifier;
-  final String? Function(String userId)? resolveUserName;
-  final void Function(String userId)? requestUserNameResolve;
-  final Listenable? userNameListenable;
+  final UserNameResolution? userNameResolution;
   final ValueNotifier<String?>? supplierUserIdNotifier;
   final ValueNotifier<DateTime?>? beginAtNotifier;
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
@@ -364,8 +361,7 @@ class _SelectScreenState extends State<SelectScreen> {
           if (_settingsNotifier.value.favoriteUserIdSet.isNotEmpty)
             _FavoriteUserSection(
               userIds: _settingsNotifier.value.favoriteUserIdSet,
-              resolveUserName: widget.resolveUserName,
-              userNameListenable: widget.userNameListenable,
+              userNameResolution: widget.userNameResolution,
             ),
         ],
       ),
@@ -380,7 +376,8 @@ class _SelectScreenState extends State<SelectScreen> {
       if (widget.timelineStore != null) widget.timelineStore!,
       if (widget.statisticsStore != null) widget.statisticsStore!,
       if (widget.programTitleNotifier != null) widget.programTitleNotifier!,
-      if (widget.userNameListenable != null) widget.userNameListenable!,
+      if (widget.userNameResolution != null)
+        widget.userNameResolution!.listenable,
       if (widget.supplierUserIdNotifier != null) widget.supplierUserIdNotifier!,
       if (widget.beginAtNotifier != null) widget.beginAtNotifier!,
     ];
@@ -395,7 +392,7 @@ class _SelectScreenState extends State<SelectScreen> {
         final String? supplierUserId = widget.supplierUserIdNotifier?.value;
         final String? resolvedName =
             nameResolutionEnabled && supplierUserId != null
-                ? widget.resolveUserName?.call(supplierUserId)
+                ? widget.userNameResolution?.resolve(supplierUserId)
                 : null;
         final String? broadcasterName = resolvedName ?? _followBroadcasterName;
         final String? broadcasterIconUrl = _followBroadcasterIconUrl ??
@@ -421,10 +418,8 @@ class _SelectScreenState extends State<SelectScreen> {
           beginAt: _followBeginAt ?? widget.beginAtNotifier?.value,
           showUserName: _settingsNotifier.value.showUserName,
           commentFontSize: _settingsNotifier.value.commentFontSize,
-          resolveUserName:
-              nameResolutionEnabled ? widget.resolveUserName : null,
-          requestUserNameResolve:
-              nameResolutionEnabled ? widget.requestUserNameResolve : null,
+          userNameResolution:
+              nameResolutionEnabled ? widget.userNameResolution : null,
           commentLogWriter: widget.commentLogWriter,
           autoSaveCommentLog: _settingsNotifier.value.autoSaveCommentLog,
           ngUserIds: _settingsNotifier.value.ngUserIdSet,
@@ -525,12 +520,12 @@ class _SelectScreenState extends State<SelectScreen> {
   }
 
   void _requestFavoriteUserNameResolution() {
-    final void Function(String)? request = widget.requestUserNameResolve;
-    if (request == null) {
+    final UserNameResolution? resolution = widget.userNameResolution;
+    if (resolution == null) {
       return;
     }
     for (final String userId in _settingsNotifier.value.favoriteUserIdSet) {
-      request(userId);
+      resolution.requestResolve(userId);
     }
   }
 
@@ -650,9 +645,7 @@ class _SelectScreenState extends State<SelectScreen> {
           // timing edge case during initial connection).
           broadcasterId:
               _currentBroadcasterId ?? widget.supplierUserIdNotifier?.value,
-          resolveUserName: widget.resolveUserName,
-          requestUserNameResolve: widget.requestUserNameResolve,
-          userNameListenable: widget.userNameListenable,
+          userNameResolution: widget.userNameResolution,
         ),
       ),
     );
@@ -1100,13 +1093,11 @@ class _FollowProgramTile extends StatelessWidget {
 class _FavoriteUserSection extends StatefulWidget {
   const _FavoriteUserSection({
     required this.userIds,
-    this.resolveUserName,
-    this.userNameListenable,
+    this.userNameResolution,
   });
 
   final Set<String> userIds;
-  final String? Function(String userId)? resolveUserName;
-  final Listenable? userNameListenable;
+  final UserNameResolution? userNameResolution;
 
   @override
   State<_FavoriteUserSection> createState() => _FavoriteUserSectionState();
@@ -1116,21 +1107,23 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
   @override
   void initState() {
     super.initState();
-    widget.userNameListenable?.addListener(_onUserNameChanged);
+    widget.userNameResolution?.listenable.addListener(_onUserNameChanged);
   }
 
   @override
   void didUpdateWidget(covariant _FavoriteUserSection oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.userNameListenable != widget.userNameListenable) {
-      oldWidget.userNameListenable?.removeListener(_onUserNameChanged);
-      widget.userNameListenable?.addListener(_onUserNameChanged);
+    if (oldWidget.userNameResolution?.listenable !=
+        widget.userNameResolution?.listenable) {
+      oldWidget.userNameResolution?.listenable
+          .removeListener(_onUserNameChanged);
+      widget.userNameResolution?.listenable.addListener(_onUserNameChanged);
     }
   }
 
   @override
   void dispose() {
-    widget.userNameListenable?.removeListener(_onUserNameChanged);
+    widget.userNameResolution?.listenable.removeListener(_onUserNameChanged);
     super.dispose();
   }
 
@@ -1167,7 +1160,7 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
         const Divider(height: 1),
         ...widget.userIds.map((String userId) {
           final String? iconUrl = buildNicoIconUrl(userId);
-          final String? nickname = widget.resolveUserName?.call(userId);
+          final String? nickname = widget.userNameResolution?.resolve(userId);
           return ListTile(
             dense: true,
             leading: ClipOval(

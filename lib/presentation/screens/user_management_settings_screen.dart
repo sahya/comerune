@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../application/settings/settings_store.dart';
 import '../../data/user/user_attribute_store.dart';
 import '../../domain/models/app_settings.dart';
+import '../models/user_name_resolution.dart';
 import '../widgets/settings_widgets.dart';
 import 'favorite_user_list_screen.dart';
 import 'nickname_list_screen.dart';
@@ -15,17 +16,13 @@ class UserManagementSettingsScreen extends StatefulWidget {
     required this.settingsStore,
     this.userAttributeStore,
     this.broadcasterId,
-    this.resolveUserName,
-    this.requestUserNameResolve,
-    this.userNameListenable,
+    this.userNameResolution,
   });
 
   final SettingsStore settingsStore;
   final UserAttributeStore? userAttributeStore;
   final String? broadcasterId;
-  final String? Function(String userId)? resolveUserName;
-  final void Function(String userId)? requestUserNameResolve;
-  final Listenable? userNameListenable;
+  final UserNameResolution? userNameResolution;
 
   @override
   State<UserManagementSettingsScreen> createState() =>
@@ -96,10 +93,7 @@ class _UserManagementSettingsScreenState
                           MaterialPageRoute<void>(
                             builder: (_) => FavoriteUserListScreen(
                               settingsStore: widget.settingsStore,
-                              resolveUserName: widget.resolveUserName,
-                              requestUserNameResolve:
-                                  widget.requestUserNameResolve,
-                              userNameListenable: widget.userNameListenable,
+                              userNameResolution: widget.userNameResolution,
                             ),
                           ),
                         );

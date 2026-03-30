@@ -2,20 +2,17 @@ import 'package:flutter/material.dart';
 
 import '../../application/settings/settings_store.dart';
 import '../../domain/models/app_settings.dart';
+import '../models/user_name_resolution.dart';
 
 class FavoriteUserListScreen extends StatefulWidget {
   const FavoriteUserListScreen({
     super.key,
     required this.settingsStore,
-    this.resolveUserName,
-    this.requestUserNameResolve,
-    this.userNameListenable,
+    this.userNameResolution,
   });
 
   final SettingsStore settingsStore;
-  final String? Function(String userId)? resolveUserName;
-  final void Function(String userId)? requestUserNameResolve;
-  final Listenable? userNameListenable;
+  final UserNameResolution? userNameResolution;
 
   @override
   State<FavoriteUserListScreen> createState() => _FavoriteUserListScreenState();
@@ -28,22 +25,24 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
   @override
   void initState() {
     super.initState();
-    widget.userNameListenable?.addListener(_onUserNameChanged);
+    widget.userNameResolution?.listenable.addListener(_onUserNameChanged);
     _loadFavoriteUserIds();
   }
 
   @override
   void didUpdateWidget(covariant FavoriteUserListScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.userNameListenable != widget.userNameListenable) {
-      oldWidget.userNameListenable?.removeListener(_onUserNameChanged);
-      widget.userNameListenable?.addListener(_onUserNameChanged);
+    if (oldWidget.userNameResolution?.listenable !=
+        widget.userNameResolution?.listenable) {
+      oldWidget.userNameResolution?.listenable
+          .removeListener(_onUserNameChanged);
+      widget.userNameResolution?.listenable.addListener(_onUserNameChanged);
     }
   }
 
   @override
   void dispose() {
-    widget.userNameListenable?.removeListener(_onUserNameChanged);
+    widget.userNameResolution?.listenable.removeListener(_onUserNameChanged);
     super.dispose();
   }
 
@@ -52,12 +51,12 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
   }
 
   void _requestAllUserNameResolution() {
-    final void Function(String)? request = widget.requestUserNameResolve;
-    if (request == null) {
+    final UserNameResolution? resolution = widget.userNameResolution;
+    if (resolution == null) {
       return;
     }
     for (final String userId in _favoriteUserIds) {
-      request(userId);
+      resolution.requestResolve(userId);
     }
   }
 
@@ -132,7 +131,7 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
       _favoriteUserIds = updated.favoriteUserIdSet.toList();
     });
 
-    widget.requestUserNameResolve?.call(userId);
+    widget.userNameResolution?.requestResolve(userId);
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -142,7 +141,7 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
   }
 
   Future<void> _removeFavoriteUserId(String userId) async {
-    final String? nickname = widget.resolveUserName?.call(userId);
+    final String? nickname = widget.userNameResolution?.resolve(userId);
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
@@ -226,7 +225,7 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
                   itemBuilder: (BuildContext context, int index) {
                     final String userId = _favoriteUserIds[index];
                     final String? nickname =
-                        widget.resolveUserName?.call(userId);
+                        widget.userNameResolution?.resolve(userId);
                     return ListTile(
                       key: Key('favorite-user-tile-$index'),
                       leading: const Icon(Icons.person, size: 20),

@@ -5,6 +5,7 @@ import 'package:comerune/domain/connection/connection_method.dart';
 import 'package:comerune/domain/connection/connection_supervisor.dart';
 import 'package:comerune/domain/models/app_message.dart';
 import 'package:comerune/domain/models/app_settings.dart';
+import 'package:comerune/presentation/models/user_name_resolution.dart';
 import 'package:comerune/presentation/screens/comment_screen.dart';
 import 'package:comerune/presentation/theme/app_theme.dart';
 
@@ -672,12 +673,16 @@ void main() {
         _buildScreen(
           supervisor: supervisor,
           messages: messages,
-          resolveUserName: (String userId) {
-            if (userId == '12345') {
-              return 'テストさん';
-            }
-            return null;
-          },
+          userNameResolution: UserNameResolution(
+            resolve: (String userId) {
+              if (userId == '12345') {
+                return 'テストさん';
+              }
+              return null;
+            },
+            requestResolve: (_) {},
+            listenable: ChangeNotifier(),
+          ),
         ),
       );
 
@@ -703,7 +708,11 @@ void main() {
         _buildScreen(
           supervisor: supervisor,
           messages: messages,
-          resolveUserName: (_) => null,
+          userNameResolution: UserNameResolution(
+            resolve: (_) => null,
+            requestResolve: (_) {},
+            listenable: ChangeNotifier(),
+          ),
         ),
       );
 
@@ -990,7 +999,11 @@ void main() {
         _buildScreen(
           supervisor: supervisor,
           messages: messages,
-          resolveUserName: (_) => 'テストさん',
+          userNameResolution: UserNameResolution(
+            resolve: (_) => 'テストさん',
+            requestResolve: (_) {},
+            listenable: ChangeNotifier(),
+          ),
         ),
       );
 
@@ -1020,7 +1033,11 @@ void main() {
         _buildScreen(
           supervisor: supervisor,
           messages: messages,
-          resolveUserName: (_) => 'テストさん',
+          userNameResolution: UserNameResolution(
+            resolve: (_) => 'テストさん',
+            requestResolve: (_) {},
+            listenable: ChangeNotifier(),
+          ),
         ),
       );
 
@@ -1663,7 +1680,11 @@ void main() {
           supervisor: supervisor,
           messages: messages,
           userNicknameMap: const <String, String>{'user-1': 'コテハン名'},
-          resolveUserName: (_) => 'リゾルブ名',
+          userNameResolution: UserNameResolution(
+            resolve: (_) => 'リゾルブ名',
+            requestResolve: (_) {},
+            listenable: ChangeNotifier(),
+          ),
         ),
       );
 
@@ -2121,7 +2142,7 @@ Widget _buildScreen({
   ConnectionMethod? connectionMethod,
   String? programTitle,
   String? broadcasterName,
-  String? Function(String userId)? resolveUserName,
+  UserNameResolution? userNameResolution,
   double commentFontSize = commentFontSizeDefault,
   Set<String> ngUserIds = const <String>{},
   List<String> ngWords = const <String>[],
@@ -2149,7 +2170,7 @@ Widget _buildScreen({
       connectionMethod: connectionMethod,
       programTitle: programTitle,
       broadcasterName: broadcasterName,
-      resolveUserName: resolveUserName,
+      userNameResolution: userNameResolution,
       commentFontSize: commentFontSize,
       beginAt: beginAt,
       ngUserIds: ngUserIds,

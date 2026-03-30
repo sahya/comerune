@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/application/settings/settings_store.dart';
 import 'package:comerune/domain/models/app_settings.dart';
+import 'package:comerune/presentation/models/user_name_resolution.dart';
 import 'package:comerune/presentation/screens/favorite_user_list_screen.dart';
 
 import '../../helpers/in_memory_shared_preferences.dart';
@@ -21,12 +22,16 @@ void main() {
 
       await tester.pumpWidget(_buildScreen(
         store,
-        resolveUserName: (String userId) {
-          if (userId == '12345') {
-            return 'テストユーザー';
-          }
-          return null;
-        },
+        userNameResolution: UserNameResolution(
+          resolve: (String userId) {
+            if (userId == '12345') {
+              return 'テストユーザー';
+            }
+            return null;
+          },
+          requestResolve: (_) {},
+          listenable: ChangeNotifier(),
+        ),
       ));
       await tester.pumpAndSettle();
 
@@ -44,7 +49,11 @@ void main() {
 
       await tester.pumpWidget(_buildScreen(
         store,
-        resolveUserName: (String userId) => null,
+        userNameResolution: UserNameResolution(
+          resolve: (String userId) => null,
+          requestResolve: (_) {},
+          listenable: ChangeNotifier(),
+        ),
       ));
       await tester.pumpAndSettle();
 
@@ -65,8 +74,11 @@ void main() {
 
       await tester.pumpWidget(_buildScreen(
         store,
-        resolveUserName: (String userId) => nameMap[userId],
-        userNameListenable: listenable,
+        userNameResolution: UserNameResolution(
+          resolve: (String userId) => nameMap[userId],
+          requestResolve: (_) {},
+          listenable: listenable,
+        ),
       ));
       await tester.pumpAndSettle();
 
@@ -96,12 +108,16 @@ void main() {
 
       await tester.pumpWidget(_buildScreen(
         store,
-        resolveUserName: (String userId) {
-          if (userId == '12345') {
-            return 'お気に入り太郎';
-          }
-          return null;
-        },
+        userNameResolution: UserNameResolution(
+          resolve: (String userId) {
+            if (userId == '12345') {
+              return 'お気に入り太郎';
+            }
+            return null;
+          },
+          requestResolve: (_) {},
+          listenable: ChangeNotifier(),
+        ),
       ));
       await tester.pumpAndSettle();
 
@@ -121,14 +137,12 @@ void main() {
 
 Widget _buildScreen(
   SettingsStore settingsStore, {
-  String? Function(String userId)? resolveUserName,
-  Listenable? userNameListenable,
+  UserNameResolution? userNameResolution,
 }) {
   return MaterialApp(
     home: FavoriteUserListScreen(
       settingsStore: settingsStore,
-      resolveUserName: resolveUserName,
-      userNameListenable: userNameListenable,
+      userNameResolution: userNameResolution,
     ),
   );
 }
