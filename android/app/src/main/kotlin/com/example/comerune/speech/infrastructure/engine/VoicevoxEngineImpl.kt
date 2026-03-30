@@ -34,6 +34,28 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         private const val VOICEVOX_DIR = "voicevox"
         private const val OPEN_JTALK_DICT_DIR_NAME = "open_jtalk_dic_utf_8-1.11"
         private const val VVM_DIR_NAME = "voicevox_models"
+
+        /**
+         * Apply speech parameters to an AudioQuery JSON string.
+         *
+         * Exposed as a companion function for testability — no instance
+         * state is required.
+         *
+         * @throws org.json.JSONException if [audioQueryJson] is not valid JSON
+         */
+        internal fun applyParametersToAudioQuery(
+            audioQueryJson: String,
+            request: SpeechRequest
+        ): String {
+            val json = JSONObject(audioQueryJson)
+            json.put("speedScale", request.speedScale.toDouble())
+            json.put("pitchScale", request.pitchScale.toDouble())
+            json.put("intonationScale", request.intonationScale.toDouble())
+            json.put("volumeScale", request.volumeScale.toDouble())
+            json.put("prePhonemeLength", request.prePhonemeLength.toDouble())
+            json.put("postPhonemeLength", request.postPhonemeLength.toDouble())
+            return json.toString()
+        }
         /**
          * Increment this when remote assets change to force re-download.
          * The effective version used for comparison also includes the app's
@@ -161,27 +183,17 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                     synthesizeViaAudioQuery(request)
                 }
 
-                if (wavBytes == null) {
-                    // Only restore READY if release() hasn't been called
-                    if (state == TtsEngineState.SYNTHESIZING) {
-                        state = TtsEngineState.READY
-                    }
-                    Result.failure(
-                        RuntimeException("TTS synthesis returned null (text length=${request.text.length})")
-                    )
-                } else {
-                    // Only restore READY if release() hasn't been called
-                    if (state == TtsEngineState.SYNTHESIZING) {
-                        state = TtsEngineState.READY
-                    }
-                    Result.success(
-                        WavSynthesisResult(
-                            wavBytes = wavBytes,
-                            text = request.text,
-                            durationEstimateMs = estimateDurationFromWav(wavBytes)
-                        )
-                    )
+                // Only restore READY if release() hasn't been called
+                if (state == TtsEngineState.SYNTHESIZING) {
+                    state = TtsEngineState.READY
                 }
+                Result.success(
+                    WavSynthesisResult(
+                        wavBytes = wavBytes,
+                        text = request.text,
+                        durationEstimateMs = estimateDurationFromWav(wavBytes)
+                    )
+                )
             } catch (e: Exception) {
                 // Only restore READY if release() hasn't been called concurrently.
                 // If state is UNINITIALIZED, release() ran during synthesis — don't overwrite.
@@ -200,12 +212,16 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
      *
      * This prevents audio clipping that occurs with the TTS one-shot API
      * where these parameters are ignored.
+     *
+     * @throws RuntimeException if AudioQuery creation or synthesis fails
      */
-    private fun synthesizeViaAudioQuery(request: SpeechRequest): ByteArray? {
+    private fun synthesizeViaAudioQuery(request: SpeechRequest): ByteArray {
         val audioQueryJson = NativeVoicevoxBridge.nativeCreateAudioQuery(
             text = request.text,
             speakerId = request.speakerId
-        ) ?: return null
+        ) ?: throw RuntimeException(
+            "AudioQuery creation returned null (text length=${request.text.length})"
+        )
 
         val modifiedJson = applyParametersToAudioQuery(
             audioQueryJson,
@@ -215,6 +231,8 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         return NativeVoicevoxBridge.nativeSynthesis(
             audioQueryJson = modifiedJson,
             speakerId = request.speakerId
+        ) ?: throw RuntimeException(
+            "Synthesis from AudioQuery returned null (text length=${request.text.length})"
         )
     }
 
@@ -225,20 +243,13 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
      * `speedScale`, `pitchScale`, `intonationScale`, `volumeScale`,
      * `prePhonemeLength`, `postPhonemeLength` at the top level.
      * This method overrides them with the values from [request].
+     *
+     * @throws org.json.JSONException if [audioQueryJson] is not valid JSON
      */
     private fun applyParametersToAudioQuery(
         audioQueryJson: String,
         request: SpeechRequest
-    ): String {
-        val json = JSONObject(audioQueryJson)
-        json.put("speedScale", request.speedScale.toDouble())
-        json.put("pitchScale", request.pitchScale.toDouble())
-        json.put("intonationScale", request.intonationScale.toDouble())
-        json.put("volumeScale", request.volumeScale.toDouble())
-        json.put("prePhonemeLength", request.prePhonemeLength.toDouble())
-        json.put("postPhonemeLength", request.postPhonemeLength.toDouble())
-        return json.toString()
-    }
+    ): String = Companion.applyParametersToAudioQuery(audioQueryJson, request)
 
     override fun isReady(): Boolean = state == TtsEngineState.READY
 
