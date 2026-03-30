@@ -31,24 +31,12 @@ Color colorFromARGB32(int argb32) {
   );
 }
 
-String _formatHms(DateTime value, {DateTime? beginAt}) {
-  final String? elapsed = formatCommentElapsed(beginAt, value);
-  if (elapsed != null) {
-    return elapsed;
-  }
-  final DateTime local = value.toLocal();
-  final String hh = local.hour.toString().padLeft(2, '0');
-  final String mm = local.minute.toString().padLeft(2, '0');
-  final String ss = local.second.toString().padLeft(2, '0');
-  return '$hh:$mm:$ss';
-}
-
 String _formatHmsOrDash(DateTime? value, {DateTime? beginAt}) {
   if (value == null) {
     return '-';
   }
 
-  return _formatHms(value, beginAt: beginAt);
+  return formatTimestamp(value, beginAt: beginAt);
 }
 
 String _commentLineText({
@@ -58,7 +46,7 @@ String _commentLineText({
   String? contentOverride,
   DateTime? beginAt,
 }) {
-  final String timestamp = _formatHms(message.timestamp, beginAt: beginAt);
+  final String timestamp = formatTimestamp(message.timestamp, beginAt: beginAt);
   final String content = contentOverride ?? message.content;
 
   if (!showUserName) {
@@ -863,6 +851,7 @@ class _CommentScreenState extends State<CommentScreen> {
             widget.onToggleNgUser?.call(userId);
             Navigator.of(sheetContext).pop();
           },
+          beginAt: widget.beginAt,
         );
       },
     );

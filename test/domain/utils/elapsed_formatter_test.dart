@@ -45,6 +45,42 @@ void main() {
     });
   });
 
+  group('formatWallClock', () {
+    test('returns local time in HH:MM:SS format', () {
+      final DateTime dt = DateTime(2026, 3, 22, 9, 5, 3);
+      expect(formatWallClock(dt), '09:05:03');
+    });
+
+    test('pads hours, minutes, and seconds with leading zeros', () {
+      final DateTime dt = DateTime(2026, 1, 1, 0, 0, 0);
+      expect(formatWallClock(dt), '00:00:00');
+    });
+
+    test('handles afternoon times', () {
+      final DateTime dt = DateTime(2026, 3, 22, 23, 59, 59);
+      expect(formatWallClock(dt), '23:59:59');
+    });
+  });
+
+  group('formatTimestamp', () {
+    test('returns elapsed time when beginAt is provided and valid', () {
+      final DateTime beginAt = DateTime(2026, 3, 22, 10, 0, 0);
+      final DateTime value = DateTime(2026, 3, 22, 11, 23, 45);
+      expect(formatTimestamp(value, beginAt: beginAt), '1:23:45');
+    });
+
+    test('falls back to wall-clock when beginAt is null', () {
+      final DateTime value = DateTime(2026, 3, 22, 14, 30, 5);
+      expect(formatTimestamp(value), '14:30:05');
+    });
+
+    test('falls back to wall-clock when value is before beginAt', () {
+      final DateTime beginAt = DateTime(2026, 3, 22, 12, 0, 0);
+      final DateTime value = DateTime(2026, 3, 22, 11, 59, 59);
+      expect(formatTimestamp(value, beginAt: beginAt), '11:59:59');
+    });
+  });
+
   group('formatElapsed', () {
     test('returns null when start is null', () {
       expect(formatElapsed(null), isNull);

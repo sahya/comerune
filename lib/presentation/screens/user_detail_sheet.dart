@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
+import '../../domain/utils/elapsed_formatter.dart';
 import '../theme/app_theme.dart';
 
 /// Converts a [Color] to its ARGB32 integer representation without using the
@@ -49,6 +50,7 @@ class UserDetailSheet extends StatelessWidget {
     this.nickname,
     this.onNicknameChanged,
     this.onNicknameRemoved,
+    this.beginAt,
   });
 
   final String userId;
@@ -75,6 +77,10 @@ class UserDetailSheet extends StatelessWidget {
 
   /// Called when the user removes the nickname.
   final void Function()? onNicknameRemoved;
+
+  /// Optional broadcast start time used to display elapsed time instead of
+  /// wall-clock time in the comment list.
+  final DateTime? beginAt;
 
   @override
   Widget build(BuildContext context) {
@@ -236,6 +242,7 @@ class UserDetailSheet extends StatelessWidget {
                 key: Key('user-comment-row-$index'),
                 message: message,
                 themeColors: themeColors,
+                beginAt: beginAt,
               );
             },
           ),
@@ -541,18 +548,17 @@ class _UserCommentRow extends StatelessWidget {
     super.key,
     required this.message,
     required this.themeColors,
+    this.beginAt,
   });
 
   final AppMessage message;
   final AppThemeColors themeColors;
+  final DateTime? beginAt;
 
   @override
   Widget build(BuildContext context) {
-    final DateTime local = message.timestamp.toLocal();
-    final String hh = local.hour.toString().padLeft(2, '0');
-    final String mm = local.minute.toString().padLeft(2, '0');
-    final String ss = local.second.toString().padLeft(2, '0');
-    final String timestamp = '$hh:$mm:$ss';
+    final String timestamp =
+        formatTimestamp(message.timestamp, beginAt: beginAt);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
