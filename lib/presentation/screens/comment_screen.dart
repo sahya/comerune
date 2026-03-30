@@ -611,6 +611,11 @@ class _CommentScreenState extends State<CommentScreen> {
         debugPrint('[CommentScreen] submitComment: SKIP star-prefix');
         continue;
       }
+      // Skip comments containing NG words.
+      if (_containsNgWord(message.content)) {
+        debugPrint('[CommentScreen] submitComment: SKIP NG word');
+        continue;
+      }
 
       debugPrint('[CommentScreen] submitComment: ${message.content}');
       final RawComment comment = RawComment(
@@ -625,6 +630,20 @@ class _CommentScreenState extends State<CommentScreen> {
         }),
       );
     }
+  }
+
+  /// Returns `true` when [content] contains any configured NG word.
+  ///
+  /// [widget.ngWords] is pre-lowered by [AppSettings.ngWordList], so only the
+  /// content needs to be lower-cased for case-insensitive matching.
+  bool _containsNgWord(String content) {
+    if (widget.ngWords.isEmpty) {
+      return false;
+    }
+    final String lowerContent = content.toLowerCase();
+    return widget.ngWords.any(
+      (String word) => lowerContent.contains(word),
+    );
   }
 
   void _processNicknameComments(
