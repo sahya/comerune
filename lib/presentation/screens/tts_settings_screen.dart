@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../application/settings/settings_store.dart';
@@ -122,6 +123,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
   }
 
   void _updateAndSave(AppSettings next) {
+    debugPrint(
+        '[TtsSettings] save: autoRead=${next.autoReadEnabled}, engine=${next.speechEngine}, speaker=${next.voicevoxSpeaker}, speed=${next.voicevoxSpeed}');
     setState(() {
       _settings = next;
     });
