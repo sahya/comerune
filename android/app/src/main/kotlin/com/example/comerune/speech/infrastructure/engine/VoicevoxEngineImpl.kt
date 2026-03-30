@@ -33,7 +33,12 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         private const val VOICEVOX_DIR = "voicevox"
         private const val OPEN_JTALK_DICT_DIR_NAME = "open_jtalk_dic_utf_8-1.11"
         private const val VVM_DIR_NAME = "voicevox_models"
-        /** Increment this when remote assets change to force re-download. */
+        /**
+         * Increment this when remote assets change to force re-download.
+         * The effective version used for comparison also includes the app's
+         * versionCode so that APK upgrades automatically invalidate cached
+         * assets (see [getEffectiveAssetVersion]).
+         */
         private const val ASSET_VERSION = "1"
         private const val VERSION_FILE = ".asset_version"
 
@@ -227,20 +232,45 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
     // ── Asset download ──────────────────────────────────────────────────
 
     /**
+     * Return a version string that combines [ASSET_VERSION] with the app's
+     * `versionCode`. This ensures that an APK upgrade (which changes
+     * versionCode) invalidates cached assets even when [ASSET_VERSION]
+     * itself has not been bumped.
+     */
+    private fun getEffectiveAssetVersion(): String {
+        val versionCode = try {
+            val packageInfo =
+                context.packageManager.getPackageInfo(context.packageName, 0)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                packageInfo.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                packageInfo.versionCode.toLong()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to read versionCode, falling back to 0", e)
+            0L
+        }
+        return "${ASSET_VERSION}_$versionCode"
+    }
+
+    /**
      * Ensure that the OpenJTalk dictionary and VVM model are present on disk.
      * Downloads them from GitHub releases if missing or if the version marker
-     * does not match [ASSET_VERSION].
+     * does not match the effective asset version (which includes the app's
+     * versionCode).
      */
     private fun ensureAssetsAvailable(baseDir: File, dictDir: File, modelDir: File) {
+        val effectiveVersion = getEffectiveAssetVersion()
         val versionFile = File(baseDir, VERSION_FILE)
         val versionMatches = versionFile.exists() &&
-            versionFile.readText().trim() == ASSET_VERSION
+            versionFile.readText().trim() == effectiveVersion
 
         if (versionMatches &&
             dictDir.exists() && (dictDir.listFiles()?.isNotEmpty() == true) &&
             modelDir.exists() && (modelDir.listFiles()?.any { it.extension == "vvm" } == true)
         ) {
-            Log.i(TAG, "Assets already downloaded (version $ASSET_VERSION)")
+            Log.i(TAG, "Assets already downloaded (version $effectiveVersion)")
             return
         }
 
@@ -275,9 +305,9 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         )
 
         // Write version marker so subsequent launches skip download
-        versionFile.writeText(ASSET_VERSION)
+        versionFile.writeText(effectiveVersion)
         emitDownloadEvent("download_completed", "")
-        Log.i(TAG, "All assets downloaded (version $ASSET_VERSION)")
+        Log.i(TAG, "All assets downloaded (version $effectiveVersion)")
     }
 
     /**
