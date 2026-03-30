@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'comment_speech_platform.dart';
@@ -17,22 +18,32 @@ class MethodChannelCommentSpeech implements CommentSpeechPlatform {
 
   late final Stream<SpeechEvent> _events =
       _eventChannel.receiveBroadcastStream().map(
-            (event) => SpeechEvent.fromMap(Map<dynamic, dynamic>.from(event)),
-          );
+    (event) {
+      final parsed = SpeechEvent.fromMap(Map<dynamic, dynamic>.from(event));
+      debugPrint('[MethodChannel] event: ${parsed.type}');
+      return parsed;
+    },
+  );
 
   @override
   Future<void> initialize() async {
+    debugPrint('[MethodChannel] → initialize()');
     await _methodChannel.invokeMethod<void>('initialize');
+    debugPrint('[MethodChannel] ← initialize() done');
   }
 
   @override
   Future<void> start() async {
+    debugPrint('[MethodChannel] → start()');
     await _methodChannel.invokeMethod<void>('start');
+    debugPrint('[MethodChannel] ← start() done');
   }
 
   @override
   Future<void> stop({bool clearQueue = false}) async {
+    debugPrint('[MethodChannel] → stop(clearQueue=$clearQueue)');
     await _methodChannel.invokeMethod<void>('stop', {'clearQueue': clearQueue});
+    debugPrint('[MethodChannel] ← stop() done');
   }
 
   @override
@@ -62,14 +73,19 @@ class MethodChannelCommentSpeech implements CommentSpeechPlatform {
 
   @override
   Future<void> updateSettings(SpeechSettings settings) async {
+    debugPrint(
+      '[MethodChannel] → updateSettings(enabled=${settings.enabled}, speaker=${settings.speakerId}, speed=${settings.speedScale})',
+    );
     await _methodChannel.invokeMethod<void>(
       'updateSettings',
       settings.toMap(),
     );
+    debugPrint('[MethodChannel] ← updateSettings() done');
   }
 
   @override
   Future<SpeechRuntimeStatus> getStatus() async {
+    debugPrint('[MethodChannel] → getStatus()');
     final result = await _methodChannel.invokeMapMethod<String, dynamic>(
       'getStatus',
     );
@@ -79,11 +95,16 @@ class MethodChannelCommentSpeech implements CommentSpeechPlatform {
         message: 'getStatus returned null from the platform channel',
       );
     }
-    return SpeechRuntimeStatus.fromMap(result);
+    final parsed = SpeechRuntimeStatus.fromMap(result);
+    debugPrint(
+      '[MethodChannel] ← getStatus: engine=${parsed.engineState}, player=${parsed.playerState}, queue=${parsed.queueSize}',
+    );
+    return parsed;
   }
 
   @override
   Future<void> release() async {
+    debugPrint('[MethodChannel] → release()');
     await _methodChannel.invokeMethod<void>('release');
   }
 
