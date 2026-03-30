@@ -703,6 +703,10 @@ void main() {
         programs: <FollowProgram>[],
       );
 
+      // Flush retry timers (1s + 2s backoff for 3 attempts) so no
+      // pending timer remains after the test.
+      await tester.pump(const Duration(seconds: 4));
+
       expect(find.text('フォロー中の放送'), findsNothing);
     });
   });

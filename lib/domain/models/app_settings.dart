@@ -69,6 +69,9 @@ extension AppThemeModeValue on AppThemeMode {
   }
 }
 
+// TODO(#13): 棒読みちゃん(bouyomi)はUIから非表示。サーバー管理しない方針のため、
+// 今後削除するか再実装するかは未定。bouyomi の enum 値・設定フィールドは
+// 後方互換のため残している。
 enum SpeechEngine {
   bouyomi,
   voicevox,
@@ -224,7 +227,7 @@ class AppSettings {
   static const AppSettings defaults = AppSettings(
     themeMode: AppThemeMode.light,
     autoReadEnabled: false,
-    speechEngine: SpeechEngine.bouyomi,
+    speechEngine: SpeechEngine.voicevox,
     bouyomiHost: '',
     bouyomiSpeed: -1,
     bouyomiTone: -1,

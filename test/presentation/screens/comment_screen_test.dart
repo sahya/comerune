@@ -1805,6 +1805,103 @@ void main() {
       final Text updated = tester.widget(elapsedFinder);
       expect(updated.data, matches(RegExp(r'^\d+:\d{2}:\d{2}$')));
     });
+
+    testWidgets('shows elapsed time when beginAt arrives after initial build', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      // Initial build without beginAt.
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+        ),
+      );
+
+      final Finder elapsedFinder = find.byKey(const Key('status-elapsed'));
+      expect(elapsedFinder, findsNothing);
+
+      // Rebuild with beginAt provided (simulates late arrival).
+      final DateTime beginAt = DateTime.now().subtract(
+        const Duration(minutes: 10, seconds: 5),
+      );
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          beginAt: beginAt,
+        ),
+      );
+
+      expect(elapsedFinder, findsOneWidget);
+      final Text elapsedText = tester.widget(elapsedFinder);
+      expect(elapsedText.data, matches(RegExp(r'^\d+:\d{2}:\d{2}$')));
+
+      // Verify the periodic timer is running after late beginAt.
+      await tester.pump(const Duration(seconds: 1));
+      expect(elapsedFinder, findsOneWidget);
+      final Text updated = tester.widget(elapsedFinder);
+      expect(updated.data, matches(RegExp(r'^\d+:\d{2}:\d{2}$')));
+    });
+  });
+
+  group('Comment timestamp elapsed display', () {
+    testWidgets('shows elapsed time in comment row when beginAt is provided', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final DateTime beginAt = DateTime(2026, 3, 22, 10, 0, 0);
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'elapsed-msg',
+          timestamp: DateTime(2026, 3, 22, 11, 23, 45),
+          userId: 'u1',
+          content: 'hello',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          beginAt: beginAt,
+        ),
+      );
+
+      // Elapsed from 10:00:00 to 11:23:45 = 1:23:45
+      expect(find.textContaining('1:23:45'), findsOneWidget);
+    });
+
+    testWidgets('falls back to local time when beginAt is null', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final DateTime msgTime = DateTime(2026, 3, 22, 14, 30, 15);
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'local-msg',
+          timestamp: msgTime,
+          userId: 'u1',
+          content: 'world',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+        ),
+      );
+
+      final DateTime local = msgTime.toLocal();
+      final String hh = local.hour.toString().padLeft(2, '0');
+      final String mm = local.minute.toString().padLeft(2, '0');
+      final String ss = local.second.toString().padLeft(2, '0');
+      expect(find.textContaining('$hh:$mm:$ss'), findsOneWidget);
+    });
   });
 
   group('Comment log stats', () {
