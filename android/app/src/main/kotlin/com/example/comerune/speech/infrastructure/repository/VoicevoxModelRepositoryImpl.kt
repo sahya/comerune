@@ -88,8 +88,15 @@ class VoicevoxModelRepositoryImpl(private val context: Context) : VoicevoxModelR
             Log.i(TAG, "Model ${modelInfo.vvmFileName} is now available")
             Result.success(Unit)
         } catch (e: Exception) {
-            downloadStates[modelId] = ModelDownloadState.ERROR
-            Log.e(TAG, "Failed to obtain model ${modelInfo.vvmFileName}", e)
+            val wasCancelled = modelId in cancelledDownloads
+            downloadStates[modelId] =
+                if (wasCancelled) ModelDownloadState.NOT_DOWNLOADED
+                else ModelDownloadState.ERROR
+            if (wasCancelled) {
+                Log.i(TAG, "Download cancelled for model ${modelInfo.vvmFileName}")
+            } else {
+                Log.e(TAG, "Failed to obtain model ${modelInfo.vvmFileName}", e)
+            }
             Result.failure(e)
         }
     }

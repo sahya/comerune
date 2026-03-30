@@ -17,7 +17,8 @@ import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/utils/lv_parser.dart';
-import '../../comment_speech/comment_speech.dart';
+import '../../comment_speech/comment_speech.dart'
+    show MethodChannelCommentSpeech;
 import '../screens/comment_screen.dart';
 import '../screens/settings_screen.dart';
 import '../theme/app_theme.dart';
