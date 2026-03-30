@@ -56,6 +56,7 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             json.put("postPhonemeLength", request.postPhonemeLength.toDouble())
             return json.toString()
         }
+
         /**
          * Increment this when remote assets change to force re-download.
          * The effective version used for comparison also includes the app's
