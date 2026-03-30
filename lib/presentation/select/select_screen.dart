@@ -50,6 +50,7 @@ class SelectScreen extends StatefulWidget {
     this.requestUserNameResolve,
     this.userNameListenable,
     this.supplierUserIdNotifier,
+    this.beginAtNotifier,
     this.commentLogWriter,
     this.themeModeNotifier,
     this.followProgramRepository,
@@ -71,6 +72,7 @@ class SelectScreen extends StatefulWidget {
   final void Function(String userId)? requestUserNameResolve;
   final Listenable? userNameListenable;
   final ValueNotifier<String?>? supplierUserIdNotifier;
+  final ValueNotifier<DateTime?>? beginAtNotifier;
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
   final FollowProgramRepository? followProgramRepository;
   final UserAttributeStore? userAttributeStore;
@@ -124,6 +126,7 @@ class _SelectScreenState extends State<SelectScreen> {
     }
     unawaited(_refreshLoginState());
     unawaited(_fetchFollowPrograms());
+    _requestFavoriteUserNameResolution();
   }
 
   @override
@@ -197,8 +200,30 @@ class _SelectScreenState extends State<SelectScreen> {
         break;
     }
 
+    if (_previousStatus != ConnectionStatus.ended &&
+        status == ConnectionStatus.ended) {
+      _addBroadcastEndedNotification();
+    }
+
     _previousStatus = status;
     setState(() {});
+  }
+
+  void _addBroadcastEndedNotification() {
+    final TimelineStore? store = widget.timelineStore;
+    if (store == null) {
+      return;
+    }
+
+    final DateTime now = DateTime.now();
+    store.add(
+      AppMessage(
+        id: 'system:broadcast_ended:${now.millisecondsSinceEpoch}',
+        timestamp: now,
+        content: '放送が終了しました',
+        type: AppMessageType.notification,
+      ),
+    );
   }
 
   bool get _isConnectionInProgress =>
@@ -339,6 +364,8 @@ class _SelectScreenState extends State<SelectScreen> {
           if (_settingsNotifier.value.favoriteUserIdSet.isNotEmpty)
             _FavoriteUserSection(
               userIds: _settingsNotifier.value.favoriteUserIdSet,
+              resolveUserName: widget.resolveUserName,
+              userNameListenable: widget.userNameListenable,
             ),
         ],
       ),
@@ -355,6 +382,7 @@ class _SelectScreenState extends State<SelectScreen> {
       if (widget.programTitleNotifier != null) widget.programTitleNotifier!,
       if (widget.userNameListenable != null) widget.userNameListenable!,
       if (widget.supplierUserIdNotifier != null) widget.supplierUserIdNotifier!,
+      if (widget.beginAtNotifier != null) widget.beginAtNotifier!,
     ];
 
     return ListenableBuilder(
@@ -388,7 +416,7 @@ class _SelectScreenState extends State<SelectScreen> {
           programTitle: widget.programTitleNotifier?.value,
           broadcasterName: broadcasterName,
           broadcasterIconUrl: broadcasterIconUrl,
-          beginAt: _followBeginAt,
+          beginAt: _followBeginAt ?? widget.beginAtNotifier?.value,
           showUserName: _settingsNotifier.value.showUserName,
           commentFontSize: _settingsNotifier.value.commentFontSize,
           resolveUserName:
@@ -491,6 +519,16 @@ class _SelectScreenState extends State<SelectScreen> {
     final String? supplierUserId = widget.supplierUserIdNotifier?.value;
     if (supplierUserId != null && supplierUserId != _currentBroadcasterId) {
       unawaited(_loadUserAttributes(supplierUserId));
+    }
+  }
+
+  void _requestFavoriteUserNameResolution() {
+    final void Function(String)? request = widget.requestUserNameResolve;
+    if (request == null) {
+      return;
+    }
+    for (final String userId in _settingsNotifier.value.favoriteUserIdSet) {
+      request(userId);
     }
   }
 
@@ -610,6 +648,9 @@ class _SelectScreenState extends State<SelectScreen> {
           // timing edge case during initial connection).
           broadcasterId:
               _currentBroadcasterId ?? widget.supplierUserIdNotifier?.value,
+          resolveUserName: widget.resolveUserName,
+          requestUserNameResolve: widget.requestUserNameResolve,
+          userNameListenable: widget.userNameListenable,
         ),
       ),
     );
@@ -721,6 +762,7 @@ class _SelectScreenState extends State<SelectScreen> {
     }
 
     _settingsNotifier.value = loaded;
+    _requestFavoriteUserNameResolution();
     if (widget.themeModeNotifier != null &&
         widget.themeModeNotifier!.value != loaded.themeMode) {
       widget.themeModeNotifier!.value = loaded.themeMode;
@@ -1053,12 +1095,46 @@ class _FollowProgramTile extends StatelessWidget {
   }
 }
 
-class _FavoriteUserSection extends StatelessWidget {
+class _FavoriteUserSection extends StatefulWidget {
   const _FavoriteUserSection({
     required this.userIds,
+    this.resolveUserName,
+    this.userNameListenable,
   });
 
   final Set<String> userIds;
+  final String? Function(String userId)? resolveUserName;
+  final Listenable? userNameListenable;
+
+  @override
+  State<_FavoriteUserSection> createState() => _FavoriteUserSectionState();
+}
+
+class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
+  @override
+  void initState() {
+    super.initState();
+    widget.userNameListenable?.addListener(_onUserNameChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _FavoriteUserSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.userNameListenable != widget.userNameListenable) {
+      oldWidget.userNameListenable?.removeListener(_onUserNameChanged);
+      widget.userNameListenable?.addListener(_onUserNameChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.userNameListenable?.removeListener(_onUserNameChanged);
+    super.dispose();
+  }
+
+  void _onUserNameChanged() {
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1078,7 +1154,7 @@ class _FavoriteUserSection extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(
-                '${userIds.length}件',
+                '${widget.userIds.length}件',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: Theme.of(context).colorScheme.outline,
                     ),
@@ -1087,8 +1163,9 @@ class _FavoriteUserSection extends StatelessWidget {
           ),
         ),
         const Divider(height: 1),
-        ...userIds.map((String userId) {
+        ...widget.userIds.map((String userId) {
           final String? iconUrl = buildNicoIconUrl(userId);
+          final String? nickname = widget.resolveUserName?.call(userId);
           return ListTile(
             dense: true,
             leading: ClipOval(
@@ -1110,8 +1187,10 @@ class _FavoriteUserSection extends StatelessWidget {
               ),
             ),
             title: Text(
-              userId,
+              nickname != null ? '$nickname ($userId)' : userId,
               style: const TextStyle(fontSize: 13),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
             ),
           );
         }),
