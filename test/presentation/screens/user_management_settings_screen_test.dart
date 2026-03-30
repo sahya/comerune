@@ -51,6 +51,30 @@ void main() {
       expect(find.text('放送に接続すると利用できます'), findsOneWidget);
     });
 
+    testWidgets('shows enabled nickname tile when broadcasterId is non-null', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: UserManagementSettingsScreen(
+            settingsStore: settingsStore,
+            userAttributeStore: _FakeUserAttributeStore(),
+            broadcasterId: 'broadcaster-1',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final ListTile nicknameTile = tester.widget(
+        find.byKey(const Key('nickname-list-tile')),
+      );
+      expect(nicknameTile.enabled, isTrue);
+      expect(find.text('放送に接続すると利用できます'), findsNothing);
+    });
+
     testWidgets('auto-nickname registration toggle persists value', (
       WidgetTester tester,
     ) async {

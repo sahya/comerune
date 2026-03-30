@@ -280,8 +280,28 @@ class SpeechControllerImpl(
             while (started && !released) {
                 val item = queueManager.poll() ?: break
 
-                processingMutex.withLock {
-                    processItem(item)
+                try {
+                    processingMutex.withLock {
+                        processItem(item)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Unexpected exceptions must not kill the worker.
+                    // The item is skipped and processing continues with the next one.
+                    try {
+                        eventEmitter.emit(
+                            SpeechEvents.speechFailed(
+                                item.commentId,
+                                e.message ?: "unexpected_error"
+                            )
+                        )
+                    } catch (_: Exception) {
+                        // Best-effort: emit itself may fail if the event sink
+                        // is disconnected.  State cleanup below must still run.
+                    }
+                    currentCommentId = null
+                    currentText = null
                 }
             }
         } while (started && !released && !queueManager.isEmpty())
@@ -320,10 +340,6 @@ class SpeechControllerImpl(
         eventEmitter.emit(SpeechEvents.speechStarted(item.commentId, item.text))
 
         val settings = settingsRepository.get()
-        // TODO: speedScale/pitchScale/intonationScale/volumeScale/prePhonemeLength/
-        //  postPhonemeLength are stored in SpeechRequest but currently unused by the
-        //  VOICEVOX TTS one-shot API. They will be applied once the audio_query-based
-        //  synthesis path is implemented.
         val request = SpeechRequest(
             text = item.text,
             speakerId = settings.speakerId,

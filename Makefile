@@ -3,7 +3,9 @@ SHELL := /bin/bash
 # Environment setup
 ANDROID_HOME := $(HOME)/android-sdk
 FLUTTER_BIN  := $(HOME)/tools/flutter/bin
-MISE_ACTIVATE := eval "$$($(HOME)/.local/bin/mise activate bash)"
+MISE_BIN     := $(HOME)/.local/bin/mise
+# Activate mise if available, otherwise skip
+MISE_ACTIVATE := $(if $(wildcard $(MISE_BIN)),eval "$$($(MISE_BIN) activate bash)",true)
 ENV := $(MISE_ACTIVATE) && \
        export ANDROID_HOME=$(ANDROID_HOME) && \
        export PATH=$(FLUTTER_BIN):$(ANDROID_HOME)/cmdline-tools/latest/bin:$(ANDROID_HOME)/platform-tools:$$PATH

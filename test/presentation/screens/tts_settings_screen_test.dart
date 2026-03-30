@@ -204,6 +204,132 @@ void main() {
       loaded = await settingsStore.load();
       expect(loaded.starPrefixHidingEnabled, isTrue);
     });
+
+    testWidgets('VOICEVOX speed slider change persists value', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      await scrollToKeyInList(
+          tester, _listKey, const Key('voicevox-speed-slider'));
+
+      // Simulate slider onChanged by finding the SettingsDoubleSliderField
+      // and invoking its onChanged callback with a new value.
+      final Finder sliderFinder = find.byKey(
+        const Key('voicevox-speed-slider'),
+        skipOffstage: false,
+      );
+      expect(sliderFinder, findsOneWidget);
+
+      // Find the Slider widget inside the SettingsDoubleSliderField
+      final Finder innerSlider = find.descendant(
+        of: sliderFinder,
+        matching: find.byType(Slider),
+      );
+      expect(innerSlider, findsOneWidget);
+
+      final Slider slider = tester.widget<Slider>(innerSlider);
+      // Invoke onChanged with a new value (1.5)
+      slider.onChanged!(1.5);
+      await tester.pumpAndSettle();
+
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.voicevoxSpeed, 1.5);
+    });
+
+    testWidgets('VOICEVOX pitch slider change persists value', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      await scrollToKeyInList(
+          tester, _listKey, const Key('voicevox-pitch-slider'));
+
+      final Finder sliderFinder = find.byKey(
+        const Key('voicevox-pitch-slider'),
+        skipOffstage: false,
+      );
+      final Finder innerSlider = find.descendant(
+        of: sliderFinder,
+        matching: find.byType(Slider),
+      );
+      expect(innerSlider, findsOneWidget);
+
+      final Slider slider = tester.widget<Slider>(innerSlider);
+      slider.onChanged!(0.05);
+      await tester.pumpAndSettle();
+
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.voicevoxPitch, 0.05);
+    });
+
+    testWidgets('VOICEVOX intonation slider change persists value', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      await scrollToKeyInList(
+          tester, _listKey, const Key('voicevox-intonation-slider'));
+
+      final Finder sliderFinder = find.byKey(
+        const Key('voicevox-intonation-slider'),
+        skipOffstage: false,
+      );
+      final Finder innerSlider = find.descendant(
+        of: sliderFinder,
+        matching: find.byType(Slider),
+      );
+      expect(innerSlider, findsOneWidget);
+
+      final Slider slider = tester.widget<Slider>(innerSlider);
+      slider.onChanged!(1.5);
+      await tester.pumpAndSettle();
+
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.voicevoxIntonation, 1.5);
+    });
+
+    testWidgets('VOICEVOX volume slider change persists value', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      await scrollToKeyInList(
+          tester, _listKey, const Key('voicevox-volume-slider'));
+
+      final Finder sliderFinder = find.byKey(
+        const Key('voicevox-volume-slider'),
+        skipOffstage: false,
+      );
+      final Finder innerSlider = find.descendant(
+        of: sliderFinder,
+        matching: find.byType(Slider),
+      );
+      expect(innerSlider, findsOneWidget);
+
+      final Slider slider = tester.widget<Slider>(innerSlider);
+      slider.onChanged!(0.8);
+      await tester.pumpAndSettle();
+
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.voicevoxVolume, 0.8);
+    });
   });
 }
 

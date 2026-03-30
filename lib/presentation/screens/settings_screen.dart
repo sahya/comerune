@@ -21,6 +21,9 @@ class SettingsScreen extends StatefulWidget {
     this.themeModeNotifier,
     this.userAttributeStore,
     this.broadcasterId,
+    this.resolveUserName,
+    this.requestUserNameResolve,
+    this.userNameListenable,
   });
 
   final SettingsStore settingsStore;
@@ -28,6 +31,9 @@ class SettingsScreen extends StatefulWidget {
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
   final UserAttributeStore? userAttributeStore;
   final String? broadcasterId;
+  final String? Function(String userId)? resolveUserName;
+  final void Function(String userId)? requestUserNameResolve;
+  final Listenable? userNameListenable;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -307,6 +313,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             settingsStore: widget.settingsStore,
                             userAttributeStore: widget.userAttributeStore,
                             broadcasterId: widget.broadcasterId,
+                            resolveUserName: widget.resolveUserName,
+                            requestUserNameResolve:
+                                widget.requestUserNameResolve,
+                            userNameListenable: widget.userNameListenable,
                           ),
                         ),
                       );

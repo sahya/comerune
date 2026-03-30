@@ -32,22 +32,28 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
         context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     private val audioAttributes: AudioAttributes =
-        AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_MEDIA)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-            .build()
+        AudioAttributes.Builder().apply {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                setUsage(AudioAttributes.USAGE_ASSISTANT)
+            } else {
+                setUsage(AudioAttributes.USAGE_MEDIA)
+            }
+            setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+        }.build()
 
     private val focusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
         when (focusChange) {
-            AudioManager.AUDIOFOCUS_LOSS,
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+            AudioManager.AUDIOFOCUS_LOSS -> {
                 stopInternal()
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                pauseInternal()
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
                 // Allow ducking; continue playback at reduced volume managed by the system
             }
             AudioManager.AUDIOFOCUS_GAIN -> {
-                // No action needed for initial version
+                resumeInternal()
             }
         }
     }
@@ -55,7 +61,7 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
     // Lazy to avoid class-loading crash on API < 26 where AudioFocusRequest
     // does not exist.  The play() method already guards with a runtime check.
     private val audioFocusRequest: AudioFocusRequest by lazy {
-        AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+        AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
             .setAudioAttributes(audioAttributes)
             .setOnAudioFocusChangeListener(focusChangeListener)
             .build()
@@ -111,6 +117,7 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
                     }
 
                     try {
+                        player.setAudioAttributes(audioAttributes)
                         player.setDataSource(file.absolutePath)
                         player.prepare()
 
@@ -211,6 +218,44 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
         stopInternal()
         synchronized(lock) {
             state = PlayerState.IDLE
+        }
+    }
+
+    private fun pauseInternal() {
+        synchronized(lock) {
+            mediaPlayer?.let { player ->
+                try {
+                    if (player.isPlaying) {
+                        player.pause()
+                        state = PlayerState.PAUSED
+                    }
+                } catch (_: IllegalStateException) {
+                    // MediaPlayer may already be in an invalid state
+                }
+            }
+        }
+    }
+
+    private fun resumeInternal() {
+        val resumeFailed: Boolean
+        synchronized(lock) {
+            resumeFailed = if (state == PlayerState.PAUSED) {
+                mediaPlayer?.let { player ->
+                    try {
+                        player.start()
+                        state = PlayerState.PLAYING
+                        false
+                    } catch (_: IllegalStateException) {
+                        true
+                    }
+                } ?: true
+            } else {
+                false
+            }
+        }
+        // If resume failed, stop entirely so the worker loop can proceed.
+        if (resumeFailed) {
+            stopInternal()
         }
     }
 
