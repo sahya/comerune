@@ -220,6 +220,11 @@ class _CommentScreenState extends State<CommentScreen> {
   bool _speechInitialized = false;
   bool _speechStarted = false;
   String _speechEngineState = '';
+
+  /// Periodic timer that ensures new comments are submitted for speech
+  /// even when the widget tree is not rebuilt (e.g. while the app is
+  /// backgrounded and [didUpdateWidget] is not called).
+  Timer? _speechPollTimer;
   StreamSubscription<SpeechEvent>? _speechEventSub;
 
   /// The ID of the last message processed for speech.
@@ -323,6 +328,7 @@ class _CommentScreenState extends State<CommentScreen> {
   void dispose() {
     unawaited(WakelockPlus.disable());
     debugPrint('[CommentScreen] dispose: speechStarted=$_speechStarted');
+    _stopSpeechPollTimer();
     _speechEventSub?.cancel();
     if (_speechStarted) {
       debugPrint('[CommentScreen] dispose: stopping speech engine');
@@ -469,6 +475,7 @@ class _CommentScreenState extends State<CommentScreen> {
           _speechEngineState = 'READY';
         });
       }
+      _startSpeechPollTimer();
       debugPrint(
           '[CommentScreen] Speech started. baseline=$_lastSpeechMessageId, msgCount=${widget.messages.length}');
     } catch (e, stackTrace) {
@@ -507,6 +514,7 @@ class _CommentScreenState extends State<CommentScreen> {
 
   Future<void> _stopSpeech() async {
     debugPrint('[CommentScreen] stopSpeech: started=$_speechStarted');
+    _stopSpeechPollTimer();
     if (_speechStarted) {
       try {
         await widget.speechPlatform?.stop(clearQueue: true);
@@ -534,6 +542,30 @@ class _CommentScreenState extends State<CommentScreen> {
         });
       }
     }
+  }
+
+  void _startSpeechPollTimer() {
+    _stopSpeechPollTimer();
+    _speechPollTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) {
+        if (!mounted) return;
+        // Only poll when the app is not in a resumed (foreground) state.
+        // When resumed, didUpdateWidget already submits new comments.
+        final AppLifecycleState? lifecycleState =
+            WidgetsBinding.instance.lifecycleState;
+        if (lifecycleState == AppLifecycleState.resumed) return;
+
+        if (_speechStarted && widget.speechSettings.enabled) {
+          _submitNewCommentsForSpeech(widget.messages);
+        }
+      },
+    );
+  }
+
+  void _stopSpeechPollTimer() {
+    _speechPollTimer?.cancel();
+    _speechPollTimer = null;
   }
 
   void _submitNewCommentsForSpeech(List<AppMessage> messages) {

@@ -289,12 +289,17 @@ class SpeechControllerImpl(
                 } catch (e: Exception) {
                     // Unexpected exceptions must not kill the worker.
                     // The item is skipped and processing continues with the next one.
-                    eventEmitter.emit(
-                        SpeechEvents.speechFailed(
-                            item.commentId,
-                            e.message ?: "unexpected_error"
+                    try {
+                        eventEmitter.emit(
+                            SpeechEvents.speechFailed(
+                                item.commentId,
+                                e.message ?: "unexpected_error"
+                            )
                         )
-                    )
+                    } catch (_: Exception) {
+                        // Best-effort: emit itself may fail if the event sink
+                        // is disconnected.  State cleanup below must still run.
+                    }
                     currentCommentId = null
                     currentText = null
                 }
