@@ -1223,8 +1223,9 @@ class _MyBroadcastSection extends StatelessWidget {
                   Icon(
                     Icons.play_circle_outline,
                     size: 20,
-                    color:
-                        enabled ? theme.colorScheme.primary : theme.disabledColor,
+                    color: enabled
+                        ? theme.colorScheme.primary
+                        : theme.disabledColor,
                   ),
                 ],
               ),
