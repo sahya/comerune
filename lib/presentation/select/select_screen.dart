@@ -50,6 +50,7 @@ class SelectScreen extends StatefulWidget {
     this.requestUserNameResolve,
     this.userNameListenable,
     this.supplierUserIdNotifier,
+    this.beginAtNotifier,
     this.commentLogWriter,
     this.themeModeNotifier,
     this.followProgramRepository,
@@ -71,6 +72,7 @@ class SelectScreen extends StatefulWidget {
   final void Function(String userId)? requestUserNameResolve;
   final Listenable? userNameListenable;
   final ValueNotifier<String?>? supplierUserIdNotifier;
+  final ValueNotifier<DateTime?>? beginAtNotifier;
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
   final FollowProgramRepository? followProgramRepository;
   final UserAttributeStore? userAttributeStore;
@@ -348,6 +350,7 @@ class _SelectScreenState extends State<SelectScreen> {
       if (widget.programTitleNotifier != null) widget.programTitleNotifier!,
       if (widget.userNameListenable != null) widget.userNameListenable!,
       if (widget.supplierUserIdNotifier != null) widget.supplierUserIdNotifier!,
+      if (widget.beginAtNotifier != null) widget.beginAtNotifier!,
     ];
 
     return ListenableBuilder(
@@ -381,7 +384,7 @@ class _SelectScreenState extends State<SelectScreen> {
           programTitle: widget.programTitleNotifier?.value,
           broadcasterName: broadcasterName,
           broadcasterIconUrl: broadcasterIconUrl,
-          beginAt: _followBeginAt,
+          beginAt: _followBeginAt ?? widget.beginAtNotifier?.value,
           showUserName: _settingsNotifier.value.showUserName,
           commentFontSize: _settingsNotifier.value.commentFontSize,
           resolveUserName:
