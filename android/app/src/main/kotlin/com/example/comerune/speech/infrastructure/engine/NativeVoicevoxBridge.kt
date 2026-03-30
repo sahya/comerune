@@ -12,10 +12,8 @@ package com.example.comerune.speech.infrastructure.engine
  * was chosen for domain clarity within this app, but the underlying value
  * is always passed as a `VoicevoxStyleId` to the native API.
  *
- * Note: VOICEVOX Core 0.16.2 TTS one-shot API does not support
- * speed/pitch/intonation/volume parameters. Those fields are accepted
- * for future compatibility (audio_query path) but are currently ignored
- * on the native side.
+ * The native TTS function uses the audio_query + synthesis two-step API
+ * to support speed/pitch/intonation/volume parameters set by the user.
  */
 object NativeVoicevoxBridge {
 
@@ -71,19 +69,20 @@ object NativeVoicevoxBridge {
     external fun nativeIsSynthesizerReady(speakerId: Int): Boolean
 
     /**
-     * Synthesize speech from text using the TTS one-shot API.
+     * Synthesize speech from text using the audio_query + synthesis API.
      *
-     * Speed/pitch/intonation/volume parameters are reserved for a future
-     * audio_query-based path and are currently ignored.
+     * Internally creates an AudioQuery from the text, modifies the query
+     * JSON to apply speed/pitch/intonation/volume parameters, then
+     * synthesizes WAV audio from the modified query.
      *
      * @param text Japanese text to synthesize
      * @param speakerId VOICEVOX style ID
-     * @param speedScale reserved (ignored in 0.16.2 TTS one-shot)
-     * @param pitchScale reserved (ignored in 0.16.2 TTS one-shot)
-     * @param intonationScale reserved (ignored in 0.16.2 TTS one-shot)
-     * @param volumeScale reserved (ignored in 0.16.2 TTS one-shot)
-     * @param prePhonemeLength reserved (ignored in 0.16.2 TTS one-shot)
-     * @param postPhonemeLength reserved (ignored in 0.16.2 TTS one-shot)
+     * @param speedScale speech speed multiplier (1.0 = normal)
+     * @param pitchScale pitch adjustment
+     * @param intonationScale intonation strength (1.0 = normal)
+     * @param volumeScale volume multiplier (1.0 = normal)
+     * @param prePhonemeLength silence before speech
+     * @param postPhonemeLength silence after speech
      * @return WAV byte array, or null on error
      */
     external fun nativeTts(

@@ -3,11 +3,9 @@ package com.example.comerune.speech.domain.model
 /**
  * User-configurable speech settings.
  *
- * Note: [speedScale], [pitchScale], [intonationScale], [volumeScale],
- * [prePhonemeLength], and [postPhonemeLength] are stored for future use
- * but are NOT yet applied to synthesis. The current VOICEVOX TTS one-shot
- * API does not support these parameters. They will take effect once the
- * audio_query-based synthesis path is implemented.
+ * [speedScale], [pitchScale], [intonationScale], [volumeScale],
+ * [prePhonemeLength], and [postPhonemeLength] are applied to audio
+ * synthesis via the VOICEVOX audio_query + synthesis API path.
  */
 data class SpeechSettings(
     val enabled: Boolean = true,
