@@ -32,6 +32,7 @@ class VoicevoxModelRepositoryImpl(private val context: Context) : VoicevoxModelR
     }
 
     private val downloadStates = ConcurrentHashMap<String, ModelDownloadState>()
+    private val cancelledDownloads: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
     private val modelDir: File
         get() = File(File(context.filesDir, VOICEVOX_DIR), VVM_DIR_NAME)
@@ -69,6 +70,7 @@ class VoicevoxModelRepositoryImpl(private val context: Context) : VoicevoxModelR
 
         try {
             downloadStates[modelId] = ModelDownloadState.DOWNLOADING
+            cancelledDownloads.remove(modelId)
 
             if (!modelDir.exists() && !modelDir.mkdirs()) {
                 throw IOException("Failed to create model directory: ${modelDir.absolutePath}")
@@ -79,7 +81,7 @@ class VoicevoxModelRepositoryImpl(private val context: Context) : VoicevoxModelR
                 copyBundledModel(modelInfo)
             } else {
                 // Download from URL
-                downloadFromUrl(modelInfo, onProgress)
+                downloadFromUrl(modelInfo, onProgress) { modelId in cancelledDownloads }
             }
 
             downloadStates[modelId] = ModelDownloadState.DOWNLOADED
@@ -151,6 +153,11 @@ class VoicevoxModelRepositoryImpl(private val context: Context) : VoicevoxModelR
         Log.i(TAG, "Bundled model ${modelInfo.vvmFileName} copied from assets")
     }
 
+    override fun cancelDownload(modelId: String) {
+        cancelledDownloads.add(modelId)
+        Log.i(TAG, "Cancel requested for model $modelId")
+    }
+
     // ── Private helpers ────────────────────────────────────────────────
 
     private fun copyBundledModel(modelInfo: VoicevoxModelInfo) {
@@ -177,7 +184,8 @@ class VoicevoxModelRepositoryImpl(private val context: Context) : VoicevoxModelR
 
     private fun downloadFromUrl(
         modelInfo: VoicevoxModelInfo,
-        onProgress: ((bytesDownloaded: Long, totalBytes: Long) -> Unit)?
+        onProgress: ((bytesDownloaded: Long, totalBytes: Long) -> Unit)?,
+        isCancelled: () -> Boolean = { false }
     ) {
         val targetFile = File(modelDir, modelInfo.vvmFileName)
         val tempFile = File(modelDir, "${modelInfo.vvmFileName}.tmp")
@@ -188,7 +196,7 @@ class VoicevoxModelRepositoryImpl(private val context: Context) : VoicevoxModelR
                 val totalBytes = connection.contentLengthLong
                 connection.inputStream.use { input ->
                     tempFile.outputStream().use { output ->
-                        copyWithProgress(input, output, totalBytes, onProgress)
+                        copyWithProgress(input, output, totalBytes, onProgress, isCancelled)
                     }
                 }
                 Log.i(
@@ -256,13 +264,17 @@ class VoicevoxModelRepositoryImpl(private val context: Context) : VoicevoxModelR
         input: InputStream,
         output: OutputStream,
         totalBytes: Long,
-        onProgress: ((bytesDownloaded: Long, totalBytes: Long) -> Unit)?
+        onProgress: ((bytesDownloaded: Long, totalBytes: Long) -> Unit)?,
+        isCancelled: () -> Boolean = { false }
     ) {
         val buf = ByteArray(8192)
         var bytesDownloaded = 0L
         var lastReportedAt = 0L
 
         while (true) {
+            if (isCancelled()) {
+                throw IOException("Download cancelled")
+            }
             val read = input.read(buf)
             if (read < 0) break
             output.write(buf, 0, read)

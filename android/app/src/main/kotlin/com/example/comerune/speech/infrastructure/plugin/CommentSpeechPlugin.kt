@@ -317,6 +317,20 @@ class CommentSpeechPlugin :
                     eng.loadModel(modelFile.absolutePath)
                 }
             }
+            "cancelDownload" -> {
+                val modelId = call.argument<String>("modelId")
+                if (modelId == null) {
+                    result.error("INVALID_ARGUMENT", "Required field 'modelId' is missing", null)
+                    return
+                }
+                val repo = modelRepository
+                if (repo == null) {
+                    result.error("NOT_INITIALIZED", "Model repository not available", null)
+                    return
+                }
+                repo.cancelDownload(modelId)
+                result.success(mapOf("ok" to true))
+            }
             else -> result.notImplemented()
         }
     }

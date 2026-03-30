@@ -143,4 +143,10 @@ class MethodChannelCommentSpeech implements CommentSpeechPlatform {
   Future<void> loadModel(String modelId) async {
     await _methodChannel.invokeMethod<void>('loadModel', {'modelId': modelId});
   }
+
+  @override
+  Future<void> cancelDownload(String modelId) async {
+    await _methodChannel
+        .invokeMethod<void>('cancelDownload', {'modelId': modelId});
+  }
 }

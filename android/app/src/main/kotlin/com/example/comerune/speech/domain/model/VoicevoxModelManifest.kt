@@ -4,6 +4,8 @@ object VoicevoxModelManifest {
     private const val VVM_BASE_URL =
         "https://github.com/VOICEVOX/voicevox_vvm/releases/download/0.16.2/"
 
+    // File sizes are approximate estimates for UI display.
+    // Actual download progress uses HTTP Content-Length from the server.
     val models: List<VoicevoxModelInfo> = listOf(
         VoicevoxModelInfo(
             modelId = "0",

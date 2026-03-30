@@ -89,6 +89,10 @@ class VoicevoxModelManager {
     await _platform.loadModel(modelId);
   }
 
+  Future<void> cancelDownload(String modelId) async {
+    await _platform.cancelDownload(modelId);
+  }
+
   void dispose() {
     _eventSub?.cancel();
     models.dispose();

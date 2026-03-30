@@ -107,6 +107,9 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
   @override
   Future<void> loadModel(String modelId) async {}
 
+  @override
+  Future<void> cancelDownload(String modelId) async {}
+
   /// Emit a speech event for testing.
   void emitEvent(SpeechEvent event) {
     _eventController.add(event);

@@ -669,6 +669,7 @@ class _SelectScreenState extends State<SelectScreen> {
           resolveUserName: widget.resolveUserName,
           requestUserNameResolve: widget.requestUserNameResolve,
           userNameListenable: widget.userNameListenable,
+          speechPlatform: MethodChannelCommentSpeech(),
         ),
       ),
     );

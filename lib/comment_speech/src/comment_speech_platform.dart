@@ -25,4 +25,5 @@ abstract class CommentSpeechPlatform {
   Future<void> deleteModel(String modelId);
   Future<List<String>> getDownloadedModels();
   Future<void> loadModel(String modelId);
+  Future<void> cancelDownload(String modelId);
 }

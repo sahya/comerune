@@ -12,4 +12,5 @@ interface VoicevoxModelRepository {
     fun isModelDownloaded(modelId: String): Boolean
     fun getModelFile(modelId: String): java.io.File?
     fun ensureBundledModel(modelInfo: VoicevoxModelInfo)
+    fun cancelDownload(modelId: String)
 }

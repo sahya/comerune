@@ -57,6 +57,7 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
                     progress: modelProgress,
                     onDownload: () => _onDownload(model),
                     onDelete: () => _onDelete(model),
+                    onCancel: () => _onCancel(model),
                   );
                 },
               );
@@ -106,6 +107,17 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
       );
     }
   }
+
+  Future<void> _onCancel(VoicevoxModelInfo model) async {
+    try {
+      await _manager.cancelDownload(model.modelId);
+    } on Object catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('キャンセルに失敗しました: $e')),
+      );
+    }
+  }
 }
 
 class _VoiceModelCard extends StatelessWidget {
@@ -115,12 +127,14 @@ class _VoiceModelCard extends StatelessWidget {
     required this.progress,
     required this.onDownload,
     required this.onDelete,
+    required this.onCancel,
   });
 
   final VoicevoxModelInfo model;
   final double? progress;
   final VoidCallback onDownload;
   final VoidCallback onDelete;
+  final VoidCallback onCancel;
 
   @override
   Widget build(BuildContext context) {
@@ -216,7 +230,15 @@ class _VoiceModelCard extends StatelessWidget {
           ),
         );
       case ModelDownloadState.downloading:
-        return const SizedBox.shrink();
+        return Align(
+          alignment: Alignment.centerRight,
+          child: OutlinedButton.icon(
+            key: Key('cancel-btn-${model.modelId}'),
+            onPressed: onCancel,
+            icon: const Icon(Icons.close),
+            label: const Text('キャンセル'),
+          ),
+        );
     }
   }
 }
