@@ -150,7 +150,7 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
           title: const Text('ユーザー削除'),
           content: Text(
             nickname != null
-                ? '$nickname（$userId）を削除しますか？'
+                ? '$nickname ($userId) を削除しますか？'
                 : 'ユーザーID「$userId」を削除しますか？',
           ),
           actions: <Widget>[
