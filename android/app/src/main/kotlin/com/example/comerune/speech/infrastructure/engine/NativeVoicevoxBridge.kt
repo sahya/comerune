@@ -12,8 +12,13 @@ package com.example.comerune.speech.infrastructure.engine
  * was chosen for domain clarity within this app, but the underlying value
  * is always passed as a `VoicevoxStyleId` to the native API.
  *
- * The native TTS function uses the audio_query + synthesis two-step API
- * to support speed/pitch/intonation/volume parameters set by the user.
+ * Two synthesis paths are available:
+ * - **TTS one-shot** ([nativeTts]): Creates an AudioQuery internally and
+ *   applies speed/pitch/intonation/volume parameters before synthesis.
+ * - **AudioQuery-based** ([nativeCreateAudioQuery] + [nativeSynthesis]):
+ *   Generates an AudioQuery JSON that can be modified (e.g. volumeScale,
+ *   speedScale) before synthesis. This is the preferred path for parameter
+ *   control.
  */
 object NativeVoicevoxBridge {
 
@@ -94,6 +99,34 @@ object NativeVoicevoxBridge {
         volumeScale: Float,
         prePhonemeLength: Float,
         postPhonemeLength: Float
+    ): ByteArray?
+
+    /**
+     * Create an AudioQuery JSON from Japanese text.
+     *
+     * The returned JSON can be modified (e.g. to adjust volumeScale,
+     * speedScale, pitchScale) before passing to [nativeSynthesis].
+     *
+     * @param text Japanese text to analyze
+     * @param speakerId VOICEVOX style ID
+     * @return AudioQuery JSON string, or null on error
+     */
+    external fun nativeCreateAudioQuery(
+        text: String,
+        speakerId: Int
+    ): String?
+
+    /**
+     * Synthesize WAV audio from an AudioQuery JSON.
+     *
+     * @param audioQueryJson AudioQuery JSON (from [nativeCreateAudioQuery],
+     *        possibly modified)
+     * @param speakerId VOICEVOX style ID
+     * @return WAV byte array, or null on error
+     */
+    external fun nativeSynthesis(
+        audioQueryJson: String,
+        speakerId: Int
     ): ByteArray?
 
     /**

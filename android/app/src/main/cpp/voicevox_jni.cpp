@@ -308,6 +308,101 @@ Java_com_example_comerune_speech_infrastructure_engine_NativeVoicevoxBridge_nati
     return javaWav;
 }
 
+JNIEXPORT jstring JNICALL
+Java_com_example_comerune_speech_infrastructure_engine_NativeVoicevoxBridge_nativeCreateAudioQuery(
+        JNIEnv* env, jobject /* thiz */,
+        jstring text, jint speakerId) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+
+    if (g_synthesizer == nullptr) {
+        LOGE("nativeCreateAudioQuery: synthesizer not initialized");
+        return nullptr;
+    }
+
+    std::string textStr = jstringToString(env, text);
+    if (textStr.empty()) {
+        LOGE("nativeCreateAudioQuery: text is null or empty");
+        return nullptr;
+    }
+
+    char* audioQueryJson = nullptr;
+    VoicevoxStyleId styleId = static_cast<VoicevoxStyleId>(speakerId);
+    VoicevoxResultCode result = voicevox_synthesizer_create_audio_query(
+            g_synthesizer, textStr.c_str(), styleId, &audioQueryJson);
+    if (result != VOICEVOX_RESULT_OK) {
+        LOGE("AudioQuery creation failed (text length=%zu): %s",
+             textStr.length(), voicevox_error_result_to_message(result));
+        return nullptr;
+    }
+
+    if (audioQueryJson == nullptr) {
+        LOGE("AudioQuery returned null JSON");
+        return nullptr;
+    }
+
+    jstring javaJson = env->NewStringUTF(audioQueryJson);
+    voicevox_json_free(audioQueryJson);
+
+    LOGI("AudioQuery created successfully");
+    return javaJson;
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_com_example_comerune_speech_infrastructure_engine_NativeVoicevoxBridge_nativeSynthesis(
+        JNIEnv* env, jobject /* thiz */,
+        jstring audioQueryJson, jint speakerId) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+
+    if (g_synthesizer == nullptr) {
+        LOGE("nativeSynthesis: synthesizer not initialized");
+        return nullptr;
+    }
+
+    std::string queryStr = jstringToString(env, audioQueryJson);
+    if (queryStr.empty()) {
+        LOGE("nativeSynthesis: audioQueryJson is null or empty");
+        return nullptr;
+    }
+
+    VoicevoxSynthesisOptions options = voicevox_make_default_synthesis_options();
+
+    uintptr_t wavLength = 0;
+    uint8_t* wav = nullptr;
+
+    VoicevoxStyleId styleId = static_cast<VoicevoxStyleId>(speakerId);
+    VoicevoxResultCode result = voicevox_synthesizer_synthesis(
+            g_synthesizer, queryStr.c_str(), styleId, options,
+            &wavLength, &wav);
+    if (result != VOICEVOX_RESULT_OK) {
+        LOGE("Synthesis from AudioQuery failed: %s",
+             voicevox_error_result_to_message(result));
+        return nullptr;
+    }
+
+    if (wav == nullptr || wavLength == 0) {
+        LOGE("Synthesis returned empty WAV data");
+        if (wav != nullptr) {
+            voicevox_wav_free(wav);
+        }
+        return nullptr;
+    }
+
+    jbyteArray javaWav = env->NewByteArray(static_cast<jsize>(wavLength));
+    if (javaWav == nullptr) {
+        LOGE("Failed to allocate Java byte array of size %zu", wavLength);
+        voicevox_wav_free(wav);
+        return nullptr;
+    }
+
+    env->SetByteArrayRegion(
+            javaWav, 0, static_cast<jsize>(wavLength),
+            reinterpret_cast<const jbyte*>(wav));
+    voicevox_wav_free(wav);
+
+    LOGI("Synthesis from AudioQuery succeeded: %zu bytes", wavLength);
+    return javaWav;
+}
+
 JNIEXPORT void JNICALL
 Java_com_example_comerune_speech_infrastructure_engine_NativeVoicevoxBridge_nativeRelease(
         JNIEnv* /* env */, jobject /* thiz */) {

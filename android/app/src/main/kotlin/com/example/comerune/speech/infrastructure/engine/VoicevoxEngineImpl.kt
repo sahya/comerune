@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -33,6 +34,29 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         private const val VOICEVOX_DIR = "voicevox"
         private const val OPEN_JTALK_DICT_DIR_NAME = "open_jtalk_dic_utf_8-1.11"
         private const val VVM_DIR_NAME = "voicevox_models"
+
+        /**
+         * Apply speech parameters to an AudioQuery JSON string.
+         *
+         * Exposed as a companion function for testability — no instance
+         * state is required.
+         *
+         * @throws org.json.JSONException if [audioQueryJson] is not valid JSON
+         */
+        internal fun applyParametersToAudioQuery(
+            audioQueryJson: String,
+            request: SpeechRequest
+        ): String {
+            val json = JSONObject(audioQueryJson)
+            json.put("speedScale", request.speedScale.toDouble())
+            json.put("pitchScale", request.pitchScale.toDouble())
+            json.put("intonationScale", request.intonationScale.toDouble())
+            json.put("volumeScale", request.volumeScale.toDouble())
+            json.put("prePhonemeLength", request.prePhonemeLength.toDouble())
+            json.put("postPhonemeLength", request.postPhonemeLength.toDouble())
+            return json.toString()
+        }
+
         /**
          * Increment this when remote assets change to force re-download.
          * The effective version used for comparison also includes the app's
@@ -157,39 +181,20 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
 
             try {
                 val wavBytes = withContext(Dispatchers.IO) {
-                    NativeVoicevoxBridge.nativeTts(
-                        text = request.text,
-                        speakerId = request.speakerId,
-                        speedScale = request.speedScale,
-                        pitchScale = request.pitchScale,
-                        intonationScale = request.intonationScale,
-                        volumeScale = request.volumeScale,
-                        prePhonemeLength = request.prePhonemeLength,
-                        postPhonemeLength = request.postPhonemeLength
-                    )
+                    synthesizeViaAudioQuery(request)
                 }
 
-                if (wavBytes == null) {
-                    // Only restore READY if release() hasn't been called
-                    if (state == TtsEngineState.SYNTHESIZING) {
-                        state = TtsEngineState.READY
-                    }
-                    Result.failure(
-                        RuntimeException("TTS synthesis returned null (text length=${request.text.length})")
-                    )
-                } else {
-                    // Only restore READY if release() hasn't been called
-                    if (state == TtsEngineState.SYNTHESIZING) {
-                        state = TtsEngineState.READY
-                    }
-                    Result.success(
-                        WavSynthesisResult(
-                            wavBytes = wavBytes,
-                            text = request.text,
-                            durationEstimateMs = estimateDurationFromWav(wavBytes)
-                        )
-                    )
+                // Only restore READY if release() hasn't been called
+                if (state == TtsEngineState.SYNTHESIZING) {
+                    state = TtsEngineState.READY
                 }
+                Result.success(
+                    WavSynthesisResult(
+                        wavBytes = wavBytes,
+                        text = request.text,
+                        durationEstimateMs = estimateDurationFromWav(wavBytes)
+                    )
+                )
             } catch (e: Exception) {
                 // Only restore READY if release() hasn't been called concurrently.
                 // If state is UNINITIALIZED, release() ran during synthesis — don't overwrite.
@@ -200,6 +205,52 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                 Result.failure(e)
             }
         }
+
+    /**
+     * Synthesize WAV via the AudioQuery path, which allows applying
+     * volumeScale, speedScale, pitchScale, intonationScale, and
+     * pre/postPhonemeLength parameters at the synthesis level.
+     *
+     * This prevents audio clipping that occurs with the TTS one-shot API
+     * where these parameters are ignored.
+     *
+     * @throws RuntimeException if AudioQuery creation or synthesis fails
+     */
+    private fun synthesizeViaAudioQuery(request: SpeechRequest): ByteArray {
+        val audioQueryJson = NativeVoicevoxBridge.nativeCreateAudioQuery(
+            text = request.text,
+            speakerId = request.speakerId
+        ) ?: throw RuntimeException(
+            "AudioQuery creation returned null (text length=${request.text.length})"
+        )
+
+        val modifiedJson = applyParametersToAudioQuery(
+            audioQueryJson,
+            request
+        )
+
+        return NativeVoicevoxBridge.nativeSynthesis(
+            audioQueryJson = modifiedJson,
+            speakerId = request.speakerId
+        ) ?: throw RuntimeException(
+            "Synthesis from AudioQuery returned null (text length=${request.text.length})"
+        )
+    }
+
+    /**
+     * Apply speech parameters to an AudioQuery JSON object.
+     *
+     * The AudioQuery JSON from VOICEVOX contains fields like
+     * `speedScale`, `pitchScale`, `intonationScale`, `volumeScale`,
+     * `prePhonemeLength`, `postPhonemeLength` at the top level.
+     * This method overrides them with the values from [request].
+     *
+     * @throws org.json.JSONException if [audioQueryJson] is not valid JSON
+     */
+    private fun applyParametersToAudioQuery(
+        audioQueryJson: String,
+        request: SpeechRequest
+    ): String = Companion.applyParametersToAudioQuery(audioQueryJson, request)
 
     override fun isReady(): Boolean = state == TtsEngineState.READY
 

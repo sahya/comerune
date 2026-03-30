@@ -3,9 +3,8 @@ package com.example.comerune.speech.domain.model
 /**
  * User-configurable speech settings.
  *
- * [speedScale], [pitchScale], [intonationScale], [volumeScale],
- * [prePhonemeLength], and [postPhonemeLength] are applied to audio
- * synthesis via the VOICEVOX audio_query + synthesis API path.
+ * These parameters are applied to the VOICEVOX AudioQuery before synthesis,
+ * controlling volume, speed, pitch, and intonation at the engine level.
  */
 data class SpeechSettings(
     val enabled: Boolean = true,
@@ -13,7 +12,7 @@ data class SpeechSettings(
     val speedScale: Float = 1.15f,
     val pitchScale: Float = 0.0f,
     val intonationScale: Float = 1.0f,
-    val volumeScale: Float = 1.0f,
+    val volumeScale: Float = 0.7f,
     val prePhonemeLength: Float = 0.1f,
     val postPhonemeLength: Float = 0.1f,
     val maxTextLength: Int = 50,
