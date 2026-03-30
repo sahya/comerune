@@ -13,8 +13,8 @@ package com.example.comerune.speech.infrastructure.engine
  * is always passed as a `VoicevoxStyleId` to the native API.
  *
  * Two synthesis paths are available:
- * - **TTS one-shot** ([nativeTts]): Creates an AudioQuery internally and
- *   applies speed/pitch/intonation/volume parameters before synthesis.
+ * - **TTS one-shot** ([nativeTts]): Simple text→WAV, but does not support
+ *   speed/pitch/intonation/volume parameters.
  * - **AudioQuery-based** ([nativeCreateAudioQuery] + [nativeSynthesis]):
  *   Generates an AudioQuery JSON that can be modified (e.g. volumeScale,
  *   speedScale) before synthesis. This is the preferred path for parameter
@@ -74,20 +74,21 @@ object NativeVoicevoxBridge {
     external fun nativeIsSynthesizerReady(speakerId: Int): Boolean
 
     /**
-     * Synthesize speech from text using the audio_query + synthesis API.
+     * Synthesize speech from text using the TTS one-shot API.
      *
-     * Internally creates an AudioQuery from the text, modifies the query
-     * JSON to apply speed/pitch/intonation/volume parameters, then
-     * synthesizes WAV audio from the modified query.
+     * This is a convenience method that combines audio_query creation and
+     * synthesis in one call, but does **not** support speed/pitch/intonation/
+     * volume parameters. Prefer [nativeCreateAudioQuery] + [nativeSynthesis]
+     * when parameter control is needed.
      *
      * @param text Japanese text to synthesize
      * @param speakerId VOICEVOX style ID
-     * @param speedScale speech speed multiplier (1.0 = normal)
-     * @param pitchScale pitch adjustment
-     * @param intonationScale intonation strength (1.0 = normal)
-     * @param volumeScale volume multiplier (1.0 = normal)
-     * @param prePhonemeLength silence before speech
-     * @param postPhonemeLength silence after speech
+     * @param speedScale ignored in TTS one-shot
+     * @param pitchScale ignored in TTS one-shot
+     * @param intonationScale ignored in TTS one-shot
+     * @param volumeScale ignored in TTS one-shot
+     * @param prePhonemeLength ignored in TTS one-shot
+     * @param postPhonemeLength ignored in TTS one-shot
      * @return WAV byte array, or null on error
      */
     external fun nativeTts(

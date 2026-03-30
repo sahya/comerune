@@ -48,14 +48,18 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             request: SpeechRequest
         ): String {
             val json = JSONObject(audioQueryJson)
-            json.put("speedScale", request.speedScale.toDouble())
-            json.put("pitchScale", request.pitchScale.toDouble())
-            json.put("intonationScale", request.intonationScale.toDouble())
-            json.put("volumeScale", request.volumeScale.toDouble())
-            json.put("prePhonemeLength", request.prePhonemeLength.toDouble())
-            json.put("postPhonemeLength", request.postPhonemeLength.toDouble())
+            json.put("speedScale", sanitize(request.speedScale, 1.15f).toDouble())
+            json.put("pitchScale", sanitize(request.pitchScale, 0.0f).toDouble())
+            json.put("intonationScale", sanitize(request.intonationScale, 1.0f).toDouble())
+            json.put("volumeScale", sanitize(request.volumeScale, 0.7f).toDouble())
+            json.put("prePhonemeLength", sanitize(request.prePhonemeLength, 0.1f).toDouble())
+            json.put("postPhonemeLength", sanitize(request.postPhonemeLength, 0.1f).toDouble())
             return json.toString()
         }
+
+        /** Return [default] when [value] is NaN or infinite. */
+        private fun sanitize(value: Float, default: Float): Float =
+            if (value.isNaN() || value.isInfinite()) default else value
 
         /**
          * Increment this when remote assets change to force re-download.
