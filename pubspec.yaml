@@ -25,11 +25,6 @@ dependencies:
   # 音声再生（VOICEVOX合成音声の再生）
   audioplayers: ^6.1.0
 
-  # Protobufデコード（NDGRのlength-delimited stream）
-  # ChunkedEntry / ChunkedMessage / PackedSegment のデコードに使用
-  # .protoファイルからのコード生成は dev の protoc_plugin で行う
-  protobuf: ^3.1.0
-
   # リアクティブストリーム（複数 segment 接続の合成・イベント配信）
   # N Air実装(NdgrCommentReceiver)がRxJS Subject/Observable相当を多用するため必要
   # dart:async の StreamController だけでは switchMap/mergeAll 等の演算子が得られない
@@ -58,10 +53,6 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
-
-  # Protobuf コード生成（.proto → Dart クラス）
-  # protoc --dart_out で使用。実行時には不要
-  protoc_plugin: ^21.1.2
 
 flutter:
   uses-material-design: true
