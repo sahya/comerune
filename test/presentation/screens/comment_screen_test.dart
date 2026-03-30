@@ -120,6 +120,35 @@ void main() {
           find.textContaining(kLegacyUnsupportedFormatMessage), findsOneWidget);
     });
 
+    testWidgets('broadcast ended message uses broadcastEndedBackground color', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final AppThemeColors themeColors = AppTheme.colorsFor(AppThemeMode.light);
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'system:broadcast_ended:1234567890',
+          timestamp: DateTime(2026, 3, 30, 12, 35, 0),
+          content: '放送が終了しました',
+          type: AppMessageType.notification,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+        ),
+      );
+
+      final Container row = tester.widget(find.descendant(
+        of: find
+            .byKey(const Key('comment-row-system:broadcast_ended:1234567890')),
+        matching: find.byType(Container),
+      ));
+      expect(row.color, themeColors.broadcastEndedBackground);
+    });
+
     testWidgets('does not render gift and nicoad messages on v1.2', (
       WidgetTester tester,
     ) async {
