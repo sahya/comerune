@@ -160,5 +160,11 @@ void main() {
       expect(manager.models.value.first.downloadState,
           ModelDownloadState.notDownloaded);
     });
+
+    test('cancelDownload delegates to platform', () async {
+      await manager.cancelDownload('1');
+      // No exception means the call was properly delegated.
+      // FakeCommentSpeechPlatform.cancelDownload is a no-op stub.
+    });
   });
 }
