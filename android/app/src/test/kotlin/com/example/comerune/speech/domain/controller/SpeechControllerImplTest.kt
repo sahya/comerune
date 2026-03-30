@@ -44,10 +44,15 @@ class SpeechControllerImplTest {
 
     private class FakeEngine : VoicevoxEngine {
         private val wavHeader = "RIFF".toByteArray(Charsets.US_ASCII) + ByteArray(40)
+        var throwOnSynthesize = false
 
         override suspend fun initialize(): Result<Unit> = Result.success(Unit)
 
         override suspend fun synthesize(request: SpeechRequest): Result<WavSynthesisResult> {
+            if (throwOnSynthesize) {
+                throwOnSynthesize = false
+                throw RuntimeException("Unexpected engine error")
+            }
             return Result.success(
                 WavSynthesisResult(
                     wavBytes = wavHeader,
@@ -260,5 +265,23 @@ class SpeechControllerImplTest {
 
         val completedEvents = emitter.eventsOfType("speech_completed")
         assertEquals(2, completedEvents.size)
+    }
+
+    @Test
+    fun `worker survives unexpected exception in processItem`() = runBlocking {
+        controller.initialize()
+        controller.start()
+
+        // First item will throw an unexpected exception during synthesis
+        engine.throwOnSynthesize = true
+
+        controller.submitComment(rawComment("1", "will-throw"))
+        controller.submitComment(rawComment("2", "should-succeed"))
+
+        delay(500)
+
+        // Second item should still be processed successfully despite first throwing
+        val completedEvents = emitter.eventsOfType("speech_completed")
+        assertEquals(1, completedEvents.size)
     }
 }
