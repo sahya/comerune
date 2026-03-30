@@ -11,6 +11,9 @@ interface VoicevoxModelRepository {
     fun deleteModel(modelId: String): Result<Unit>
     fun isModelDownloaded(modelId: String): Boolean
     fun getModelFile(modelId: String): java.io.File?
+
+    /** Ensure a bundled model is copied from assets to the file system. */
     fun ensureBundledModel(modelInfo: VoicevoxModelInfo)
+
     fun cancelDownload(modelId: String)
 }

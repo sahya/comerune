@@ -167,11 +167,7 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                     is IOException ->
                         "VOICEVOXモデルのダウンロードに失敗しました。ネットワーク接続を確認してください。"
                     is UnsatisfiedLinkError ->
-<<<<<<< HEAD
                         "VOICEVOXネイティブライブラリの読み込みに失敗しました。このデバイスのアーキテクチャはサポートされていない可能性があります。"
-=======
-                        "ネイティブライブラリの読み込みに失敗しました: ${e.message}"
->>>>>>> ba3a524 (fix(speech): レビュー指摘のMust Fix/Should Fix修正)
                     else ->
                         e.message ?: "Unknown initialization error"
                 }

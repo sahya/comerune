@@ -113,6 +113,26 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
     }
   }
 
+  /// Load the VVM model corresponding to [speakerId] into the native engine.
+  void _loadModelForSpeaker(int speakerId) {
+    final platform = widget.platform;
+    final models = _voicevoxModels;
+    if (platform == null || models == null) return;
+
+    // Find which model contains this speaker ID.
+    VoicevoxModelInfo? model;
+    for (final m in models) {
+      if (m.speakerIds.contains(speakerId)) {
+        model = m;
+        break;
+      }
+    }
+    if (model == null) return;
+
+    // Fire and forget — loading happens asynchronously on the native side.
+    platform.loadModel(model.modelId);
+  }
+
 
   void _onQueueLimitFocusChanged() {
     if (_queueLimitFocusNode.hasFocus) {
@@ -292,6 +312,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
         onChanged: (int? value) {
           if (value == null) return;
           _updateAndSave(settings.copyWith(voicevoxSpeaker: value));
+          _loadModelForSpeaker(value);
         },
       );
     }

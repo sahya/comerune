@@ -14,13 +14,23 @@ class VoiceLibraryScreen extends StatefulWidget {
 
 class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
   late final VoicevoxModelManager _manager;
+  bool _loadError = false;
 
   @override
   void initState() {
     super.initState();
     _manager = VoicevoxModelManager(widget.platform);
     _manager.startListening();
-    _manager.refreshModels();
+    _loadModels();
+  }
+
+  Future<void> _loadModels() async {
+    try {
+      await _manager.refreshModels();
+      if (mounted) setState(() => _loadError = false);
+    } on Object {
+      if (mounted) setState(() => _loadError = true);
+    }
   }
 
   @override
@@ -38,6 +48,21 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
       body: ValueListenableBuilder<List<VoicevoxModelInfo>>(
         valueListenable: _manager.models,
         builder: (context, models, _) {
+          if (_loadError) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('話者の読み込みに失敗しました'),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: _loadModels,
+                    child: const Text('再試行'),
+                  ),
+                ],
+              ),
+            );
+          }
           if (models.isEmpty) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -71,6 +96,8 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
   Future<void> _onDownload(VoicevoxModelInfo model) async {
     try {
       await _manager.downloadModel(model.modelId);
+      // Automatically load the model into the engine after download.
+      await _manager.loadModel(model.modelId);
     } on Object catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

@@ -119,7 +119,6 @@ class CommentSpeechPlugin :
         }
 
         when (call.method) {
-<<<<<<< HEAD
             "initialize" -> {
                 Log.d(TAG, "[onMethodCall] → initialize")
                 handleAsync(result) {
@@ -135,26 +134,13 @@ class CommentSpeechPlugin :
                                 }
                                 val modelFile = repo.getModelFile(model.modelId)
                                 if (modelFile != null) {
-                                    eng.loadModel(modelFile.absolutePath)
-=======
-            "initialize" -> handleAsync(result) {
-                val initResult = ctrl.initialize()
-                if (initResult.isSuccess) {
-                    // Ensure bundled models are available and load them
-                    val repo = modelRepository
-                    val eng = engine
-                    if (repo != null && eng != null) {
-                        for (model in VoicevoxModelManifest.models.filter { it.isBundled }) {
-                            repo.ensureBundledModel(model)
-                            val modelFile = repo.getModelFile(model.modelId)
-                            if (modelFile != null) {
-                                val loadResult = eng.loadModel(modelFile.absolutePath)
-                                if (loadResult.isFailure) {
-                                    Log.w(
-                                        "CommentSpeechPlugin",
-                                        "Failed to load bundled model ${model.modelId}: ${loadResult.exceptionOrNull()?.message}"
-                                    )
->>>>>>> ba3a524 (fix(speech): レビュー指摘のMust Fix/Should Fix修正)
+                                    val loadResult = eng.loadModel(modelFile.absolutePath)
+                                    if (loadResult.isFailure) {
+                                        Log.w(
+                                            TAG,
+                                            "Failed to load bundled model ${model.modelId}: ${loadResult.exceptionOrNull()?.message}"
+                                        )
+                                    }
                                 }
                             }
                         }
