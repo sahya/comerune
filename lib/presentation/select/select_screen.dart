@@ -440,6 +440,7 @@ class _SelectScreenState extends State<SelectScreen> {
       volumeScale: s.voicevoxVolume,
       maxQueueSize: s.queueLimit,
       ngWords: s.ngWordList,
+      dictionaryRules: s.dictionaryRules,
     );
   }
 

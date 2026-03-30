@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:comerune/comment_speech/src/models/replace_rule.dart';
 import 'package:comerune/domain/models/app_settings.dart';
 
 void main() {
@@ -195,6 +196,56 @@ void main() {
       final AppSettings settings =
           AppSettings.defaults.copyWith(ngWords: 'spam');
       expect(settings.containsNgWord('antispam filter'), isTrue);
+    });
+  });
+
+  group('dictionaryRules', () {
+    test('defaults include nico dictionary rules', () {
+      expect(
+        AppSettings.defaults.dictionaryRules,
+        defaultNicoDictionaryRules,
+      );
+      expect(AppSettings.defaults.dictionaryRules, isNotEmpty);
+    });
+
+    test('default rules contain w→わら pattern', () {
+      final bool hasWara = AppSettings.defaults.dictionaryRules.any(
+        (ReplaceRule r) => r.replacement == 'わら',
+      );
+      expect(hasWara, isTrue);
+    });
+
+    test('default rules contain 8→ぱちぱちぱち pattern', () {
+      final bool hasPachi = AppSettings.defaults.dictionaryRules.any(
+        (ReplaceRule r) => r.replacement == 'ぱちぱちぱち',
+      );
+      expect(hasPachi, isTrue);
+    });
+
+    test('copyWith replaces dictionaryRules', () {
+      const List<ReplaceRule> custom = <ReplaceRule>[
+        ReplaceRule(pattern: 'test', replacement: 'テスト'),
+      ];
+      final AppSettings updated =
+          AppSettings.defaults.copyWith(dictionaryRules: custom);
+      expect(updated.dictionaryRules, custom);
+    });
+
+    test('all default rules are enabled', () {
+      for (final ReplaceRule rule in defaultNicoDictionaryRules) {
+        expect(rule.enabled, isTrue,
+            reason: '${rule.pattern} should be enabled');
+      }
+    });
+
+    test('all default rule patterns are valid regular expressions', () {
+      for (final ReplaceRule rule in defaultNicoDictionaryRules) {
+        expect(
+          () => RegExp(rule.pattern),
+          returnsNormally,
+          reason: '${rule.pattern} should be a valid regex',
+        );
+      }
     });
   });
 }
