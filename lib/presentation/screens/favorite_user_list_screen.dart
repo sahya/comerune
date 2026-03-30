@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import '../../application/settings/settings_store.dart';
 import '../../domain/models/app_settings.dart';
 import '../models/user_name_resolution.dart';
+import '../widgets/confirm_dialog.dart';
+import '../widgets/empty_state_message.dart';
+import '../widgets/text_input_dialog.dart';
 
 class FavoriteUserListScreen extends StatefulWidget {
   const FavoriteUserListScreen({
@@ -73,38 +76,15 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
   }
 
   Future<void> _addFavoriteUserId() async {
-    final TextEditingController controller = TextEditingController();
-    final String? userId = await showDialog<String>(
+    final String? userId = await showTextInputDialog(
       context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text('ユーザーID追加'),
-          content: TextField(
-            key: const Key('favorite-user-id-input'),
-            controller: controller,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              hintText: 'ユーザーIDを入力',
-            ),
-            autofocus: true,
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('キャンセル'),
-            ),
-            TextButton(
-              key: const Key('favorite-add-confirm-button'),
-              onPressed: () =>
-                  Navigator.of(dialogContext).pop(controller.text.trim()),
-              child: const Text('追加'),
-            ),
-          ],
-        );
-      },
+      title: 'ユーザーID追加',
+      hintText: 'ユーザーIDを入力',
+      textFieldKey: const Key('favorite-user-id-input'),
+      confirmButtonKey: const Key('favorite-add-confirm-button'),
+      confirmLabel: '追加',
+      keyboardType: TextInputType.number,
     );
-
-    controller.dispose();
 
     if (userId == null || userId.isEmpty || !mounted) {
       return;
@@ -142,29 +122,14 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
 
   Future<void> _removeFavoriteUserId(String userId) async {
     final String? nickname = widget.userNameResolution?.resolve(userId);
-    final bool? confirmed = await showDialog<bool>(
+    final bool? confirmed = await showConfirmDialog(
       context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text('ユーザー削除'),
-          content: Text(
-            nickname != null
-                ? '$nickname ($userId) を削除しますか？'
-                : 'ユーザーID「$userId」を削除しますか？',
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('キャンセル'),
-            ),
-            TextButton(
-              key: const Key('favorite-remove-confirm-button'),
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('削除'),
-            ),
-          ],
-        );
-      },
+      title: 'ユーザー削除',
+      content: nickname != null
+          ? '$nickname ($userId) を削除しますか？'
+          : 'ユーザーID「$userId」を削除しますか？',
+      confirmLabel: '削除',
+      confirmButtonKey: const Key('favorite-remove-confirm-button'),
     );
 
     if (confirmed != true || !mounted) {
@@ -204,18 +169,12 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _favoriteUserIds.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text(
-                      key: Key('favorite-user-list-empty'),
-                      'お気に入りユーザーIDは登録されていません\n'
+              ? const EmptyStateMessage(
+                  key: Key('favorite-user-list-empty'),
+                  message: 'お気に入りユーザーIDは登録されていません\n'
                       '右下のボタンからユーザーIDを追加すると\n'
                       '接続画面に放送中の番組が表示されます',
-                      style: TextStyle(fontSize: 14),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
+                  textAlign: TextAlign.center,
                 )
               : ListView.separated(
                   key: const Key('favorite-user-id-list'),

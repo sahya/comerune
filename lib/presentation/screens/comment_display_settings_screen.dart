@@ -1,9 +1,8 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../../application/settings/settings_store.dart';
 import '../../domain/models/app_settings.dart';
+import '../mixins/settings_screen_mixin.dart';
 import '../widgets/settings_widgets.dart';
 
 class CommentDisplaySettingsScreen extends StatefulWidget {
@@ -20,39 +19,19 @@ class CommentDisplaySettingsScreen extends StatefulWidget {
 }
 
 class _CommentDisplaySettingsScreenState
-    extends State<CommentDisplaySettingsScreen> {
-  AppSettings? _settings;
+    extends State<CommentDisplaySettingsScreen> with SettingsScreenMixin {
+  @override
+  SettingsStore get settingsStore => widget.settingsStore;
 
   @override
   void initState() {
     super.initState();
-    _loadSettings();
+    loadSettings();
   }
-
-  Future<void> _loadSettings() async {
-    final AppSettings loaded = await widget.settingsStore.load();
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      _settings = loaded;
-    });
-  }
-
-  void _updateAndSave(AppSettings next) {
-    setState(() {
-      _settings = next;
-    });
-    unawaited(_saveSettings(next));
-  }
-
-  Future<void> _saveSettings(AppSettings next) =>
-      saveSettingsToStore(widget.settingsStore, next);
 
   @override
   Widget build(BuildContext context) {
-    final AppSettings? settings = _settings;
+    final AppSettings? settings = this.settings;
 
     return Scaffold(
       appBar: AppBar(
@@ -74,7 +53,7 @@ class _CommentDisplaySettingsScreenState
                       contentPadding: EdgeInsets.zero,
                       value: settings.showUserName,
                       onChanged: (bool value) {
-                        _updateAndSave(settings.copyWith(showUserName: value));
+                        updateAndSave(settings.copyWith(showUserName: value));
                       },
                     ),
                     SwitchListTile(
@@ -85,7 +64,7 @@ class _CommentDisplaySettingsScreenState
                       value: settings.resolveUserName,
                       onChanged: settings.showUserName
                           ? (bool value) {
-                              _updateAndSave(
+                              updateAndSave(
                                   settings.copyWith(resolveUserName: value));
                             }
                           : null,
@@ -97,7 +76,7 @@ class _CommentDisplaySettingsScreenState
                       contentPadding: EdgeInsets.zero,
                       value: settings.autoSaveCommentLog,
                       onChanged: (bool value) {
-                        _updateAndSave(
+                        updateAndSave(
                             settings.copyWith(autoSaveCommentLog: value));
                       },
                     ),
@@ -115,7 +94,7 @@ class _CommentDisplaySettingsScreenState
                       sweetSpotMax: 18,
                       sweetSpotLabel: 'おすすめ',
                       onChanged: (int value) {
-                        _updateAndSave(
+                        updateAndSave(
                           settings.copyWith(commentFontSize: value.toDouble()),
                         );
                       },
@@ -141,7 +120,7 @@ class _CommentDisplaySettingsScreenState
                         if (value == null) {
                           return;
                         }
-                        _updateAndSave(
+                        updateAndSave(
                           settings.copyWith(pastCommentFetchCount: value),
                         );
                       },
@@ -159,7 +138,7 @@ class _CommentDisplaySettingsScreenState
                       contentPadding: EdgeInsets.zero,
                       value: settings.statisticsEnabled,
                       onChanged: (bool value) {
-                        _updateAndSave(
+                        updateAndSave(
                           settings.copyWith(statisticsEnabled: value),
                         );
                       },
@@ -171,7 +150,7 @@ class _CommentDisplaySettingsScreenState
                       value: settings.statisticsViewerCommentEnabled,
                       onChanged: settings.statisticsEnabled
                           ? (bool value) {
-                              _updateAndSave(
+                              updateAndSave(
                                 settings.copyWith(
                                   statisticsViewerCommentEnabled: value,
                                 ),
@@ -186,7 +165,7 @@ class _CommentDisplaySettingsScreenState
                       value: settings.statisticsActiveUserEnabled,
                       onChanged: settings.statisticsEnabled
                           ? (bool value) {
-                              _updateAndSave(
+                              updateAndSave(
                                 settings.copyWith(
                                   statisticsActiveUserEnabled: value,
                                 ),
@@ -201,7 +180,7 @@ class _CommentDisplaySettingsScreenState
                       contentPadding: EdgeInsets.zero,
                       value: settings.highlightPickupEnabled,
                       onChanged: (bool value) {
-                        _updateAndSave(
+                        updateAndSave(
                           settings.copyWith(highlightPickupEnabled: value),
                         );
                       },

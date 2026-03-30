@@ -1,10 +1,9 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../../application/settings/settings_store.dart';
 import '../../data/user/user_attribute_store.dart';
 import '../../domain/models/app_settings.dart';
+import '../mixins/settings_screen_mixin.dart';
 import '../models/user_name_resolution.dart';
 import '../widgets/settings_widgets.dart';
 import 'favorite_user_list_screen.dart';
@@ -30,39 +29,19 @@ class UserManagementSettingsScreen extends StatefulWidget {
 }
 
 class _UserManagementSettingsScreenState
-    extends State<UserManagementSettingsScreen> {
-  AppSettings? _settings;
+    extends State<UserManagementSettingsScreen> with SettingsScreenMixin {
+  @override
+  SettingsStore get settingsStore => widget.settingsStore;
 
   @override
   void initState() {
     super.initState();
-    _loadSettings();
+    loadSettings();
   }
-
-  Future<void> _loadSettings() async {
-    final AppSettings loaded = await widget.settingsStore.load();
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      _settings = loaded;
-    });
-  }
-
-  void _updateAndSave(AppSettings next) {
-    setState(() {
-      _settings = next;
-    });
-    unawaited(_saveSettings(next));
-  }
-
-  Future<void> _saveSettings(AppSettings next) =>
-      saveSettingsToStore(widget.settingsStore, next);
 
   @override
   Widget build(BuildContext context) {
-    final AppSettings? settings = _settings;
+    final AppSettings? settings = this.settings;
 
     return Scaffold(
       appBar: AppBar(
@@ -97,7 +76,7 @@ class _UserManagementSettingsScreenState
                             ),
                           ),
                         );
-                        await _loadSettings();
+                        await loadSettings();
                       },
                     ),
                   ],
@@ -113,7 +92,7 @@ class _UserManagementSettingsScreenState
                       contentPadding: EdgeInsets.zero,
                       value: settings.autoNicknameRegistration,
                       onChanged: (bool value) {
-                        _updateAndSave(
+                        updateAndSave(
                           settings.copyWith(
                             autoNicknameRegistration: value,
                           ),

@@ -4,6 +4,7 @@ import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/utils/elapsed_formatter.dart';
 import '../theme/app_theme.dart';
+import '../widgets/text_input_dialog.dart';
 
 /// Converts a [Color] to its ARGB32 integer representation without using the
 /// deprecated `Color.value` getter.
@@ -499,41 +500,19 @@ class _NicknameRow extends StatelessWidget {
   }
 
   Future<void> _showEditDialog(BuildContext context) async {
-    final TextEditingController controller =
-        TextEditingController(text: nickname ?? '');
-
-    final String? result = await showDialog<String>(
+    final String? result = await showTextInputDialog(
       context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text('コテハン登録'),
-          content: TextField(
-            key: const Key('user-nickname-dialog-field'),
-            controller: controller,
-            autofocus: true,
-            decoration: const InputDecoration(
-              labelText: 'コテハン',
-              hintText: 'ニックネームを入力',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('キャンセル'),
-            ),
-            TextButton(
-              key: const Key('user-nickname-dialog-save-button'),
-              onPressed: () =>
-                  Navigator.of(dialogContext).pop(controller.text.trim()),
-              child: const Text('保存'),
-            ),
-          ],
-        );
-      },
+      title: 'コテハン登録',
+      initialValue: nickname ?? '',
+      confirmLabel: '保存',
+      textFieldKey: const Key('user-nickname-dialog-field'),
+      confirmButtonKey: const Key('user-nickname-dialog-save-button'),
+      decoration: const InputDecoration(
+        labelText: 'コテハン',
+        hintText: 'ニックネームを入力',
+        border: OutlineInputBorder(),
+      ),
     );
-
-    controller.dispose();
 
     if (result == null || result.isEmpty) {
       return;
