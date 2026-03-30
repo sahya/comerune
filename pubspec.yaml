@@ -43,7 +43,7 @@ dependencies:
   path_provider: ^2.1.0
 
   # コメントログの共有（Google Drive等の外部ストレージへの保存）
-  share_plus: ^10.0.0
+  share_plus: ^12.0.0
 
   # Android Foreground Service（バックグラウンド接続維持・通知バー常駐表示）
   flutter_foreground_task: ^8.13.3
