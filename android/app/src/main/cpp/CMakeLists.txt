@@ -5,10 +5,11 @@ add_library(voicevox_jni SHARED voicevox_jni.cpp)
 
 target_include_directories(voicevox_jni PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-# Link against the pre-built voicevox_core shared library
-add_library(voicevox_core SHARED IMPORTED)
-set_target_properties(voicevox_core PROPERTIES
-    IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}/libvoicevox_core.so
+# Link against voicevox_core by SONAME (not absolute path) to avoid
+# embedding the build machine's filesystem path in the ELF NEEDED entry.
+# The library is pre-loaded from Java via System.loadLibrary() at runtime.
+target_link_directories(voicevox_jni PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}
 )
 
-target_link_libraries(voicevox_jni voicevox_core log)
+target_link_libraries(voicevox_jni -lvoicevox_core log)

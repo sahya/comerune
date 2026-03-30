@@ -1,5 +1,6 @@
 package com.example.comerune.speech.infrastructure.plugin
 
+import android.util.Log
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
@@ -31,6 +32,7 @@ class CommentSpeechPlugin :
     EventChannel.StreamHandler {
 
     companion object {
+        private const val TAG = "CommentSpeechPlugin"
         const val METHOD_CHANNEL = "com.example.comerune.speech/methods"
         const val EVENT_CHANNEL = "com.example.comerune.speech/events"
     }
@@ -94,40 +96,59 @@ class CommentSpeechPlugin :
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+        Log.d(TAG, "[onMethodCall] method=${call.method}")
         val ctrl = controller
         if (ctrl == null) {
+            Log.e(TAG, "[onMethodCall] controller is null — plugin not attached")
             result.error("NOT_INITIALIZED", "Plugin not attached to engine", null)
             return
         }
 
         when (call.method) {
-            "initialize" -> handleAsync(result) { ctrl.initialize() }
-            "start" -> handleAsync(result) { ctrl.start() }
+            "initialize" -> {
+                Log.d(TAG, "[onMethodCall] → initialize")
+                handleAsync(result) { ctrl.initialize() }
+            }
+            "start" -> {
+                Log.d(TAG, "[onMethodCall] → start")
+                handleAsync(result) { ctrl.start() }
+            }
             "stop" -> {
                 val clearQueue = call.argument<Boolean>("clearQueue") ?: false
+                Log.d(TAG, "[onMethodCall] → stop(clearQueue=$clearQueue)")
                 handleAsync(result) { ctrl.stop(clearQueue) }
             }
             "skip" -> handleAsync(result) { ctrl.skip() }
             "clearQueue" -> handleAsync(result) { ctrl.clearQueue() }
             "submitComment" -> {
                 val rawComment = parseRawComment(call, result) ?: return
+                Log.d(TAG, "[onMethodCall] → submitComment id=${rawComment.id}, text=${rawComment.text.take(30)}")
                 handleAsync(result) {
-                    ctrl.submitComment(rawComment).map { it.toMap() }
+                    val submitResult = ctrl.submitComment(rawComment)
+                    Log.d(TAG, "[onMethodCall] submitComment result=$submitResult")
+                    submitResult.map { it.toMap() }
                 }
             }
             "updateSettings" -> {
                 val settings = parseSpeechSettings(call)
+                Log.d(TAG, "[onMethodCall] → updateSettings enabled=${settings.enabled}, speaker=${settings.speakerId}, speed=${settings.speedScale}")
                 handleAsync(result) { ctrl.updateSettings(settings) }
             }
-            "getStatus" -> handleAsync(result) {
-                val status = ctrl.getStatus()
-                Result.success(status.toMap())
+            "getStatus" -> {
+                Log.d(TAG, "[onMethodCall] → getStatus")
+                handleAsync(result) {
+                    val status = ctrl.getStatus()
+                    Log.d(TAG, "[onMethodCall] getStatus result: engine=${status.engineState}, player=${status.playerState}, queue=${status.queueSize}")
+                    Result.success(status.toMap())
+                }
             }
             "release" -> {
+                Log.d(TAG, "[onMethodCall] → release")
                 try {
                     ctrl.release()
                     result.success(mapOf("ok" to true))
                 } catch (e: Exception) {
+                    Log.e(TAG, "[onMethodCall] release FAILED: ${e.message}")
                     result.error(
                         "RELEASE_ERROR",
                         e.message ?: "Unknown error during release",

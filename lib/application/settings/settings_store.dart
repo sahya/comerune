@@ -83,9 +83,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   Future<AppSettings> load() async {
     const AppSettings defaults = AppSettings.defaults;
     final String? engineValue = _prefs.getString(_kSpeechEngine);
-    final SpeechEngine speechEngine = engineValue == 'voicevox'
-        ? SpeechEngine.voicevox
-        : SpeechEngine.bouyomi;
+    final SpeechEngine speechEngine =
+        engineValue == 'bouyomi' ? SpeechEngine.bouyomi : SpeechEngine.voicevox;
 
     return AppSettings(
       themeMode: AppThemeModeValue.fromStorageValue(

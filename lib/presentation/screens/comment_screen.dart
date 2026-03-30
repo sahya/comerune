@@ -1,9 +1,12 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../../comment_speech/comment_speech.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/comment_log/comment_log_stats.dart';
 import '../../domain/utils/elapsed_formatter.dart';
@@ -117,6 +120,8 @@ class CommentScreen extends StatefulWidget {
     this.viewerCount,
     this.totalCommentCount = 0,
     this.activeUserCount = 0,
+    this.speechPlatform,
+    this.speechSettings = const SpeechSettings(enabled: false),
   });
 
   final String lv;
@@ -188,6 +193,14 @@ class CommentScreen extends StatefulWidget {
   final int totalCommentCount;
   final int activeUserCount;
 
+  /// The platform channel bridge for VoiceVox speech synthesis.
+  /// Null when the speech plugin is not available.
+  final CommentSpeechPlatform? speechPlatform;
+
+  /// VoiceVox speech configuration. [SpeechSettings.enabled] reflects
+  /// whether auto-read is active with the VoiceVox engine.
+  final SpeechSettings speechSettings;
+
   @override
   State<CommentScreen> createState() => _CommentScreenState();
 }
@@ -203,6 +216,18 @@ class _CommentScreenState extends State<CommentScreen> {
   CommentSortOrder _sortOrder = CommentSortOrder.ascending;
   final Set<String> _pinnedMessageIds = <String>{};
 
+  bool _speechInitializing = false;
+  bool _speechInitialized = false;
+  bool _speechStarted = false;
+  String _speechEngineState = '';
+  StreamSubscription<SpeechEvent>? _speechEventSub;
+
+  /// The ID of the last message processed for speech.
+  /// Initialized when speech starts (baseline), then updated after each
+  /// submission. This avoids depending on oldWidget.messages which may
+  /// reference the same mutable list as widget.messages.
+  String? _lastSpeechMessageId;
+
   @override
   void initState() {
     super.initState();
@@ -210,7 +235,21 @@ class _CommentScreenState extends State<CommentScreen> {
     _lastStatus = widget.connectionSupervisor.status;
     widget.connectionSupervisor.addListener(_handleConnectionChanged);
 
+    // Keep screen on while viewing comments.
+    unawaited(WakelockPlus.enable());
+
     _requestUserNameResolution(widget.messages);
+
+    debugPrint(
+        '[CommentScreen] initState: speech.enabled=${widget.speechSettings.enabled}, platform=${widget.speechPlatform != null ? "ok" : "null"}');
+    if (widget.speechSettings.enabled && widget.speechPlatform != null) {
+      debugPrint('[CommentScreen] initState: scheduling speech init');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          unawaited(_initializeAndStartSpeech());
+        }
+      });
+    }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToEdge(animated: false);
@@ -240,9 +279,33 @@ class _CommentScreenState extends State<CommentScreen> {
       _cleanUpStalePinnedIds();
     }
 
+    final String lastId =
+        widget.messages.isNotEmpty ? widget.messages.last.id : 'empty';
+    debugPrint(
+      '[CommentScreen] didUpdate: msgs ${oldWidget.messages.length}→${widget.messages.length}, '
+      'identical=${identical(oldWidget.messages, widget.messages)}, lastId=$lastId',
+    );
+
+    if (oldWidget.speechSettings != widget.speechSettings) {
+      debugPrint(
+        '[CommentScreen] didUpdate: speechSettings changed: '
+        'enabled ${oldWidget.speechSettings.enabled}→${widget.speechSettings.enabled}',
+      );
+      unawaited(_handleSpeechSettingsChanged(oldWidget.speechSettings));
+    }
+
+    // Speech: detect new messages independently of _hasNewMessages because
+    // the message list may be mutable (oldWidget and widget share the same
+    // data). Track progress via _lastSpeechMessageId instead.
+    if (_speechStarted && widget.speechSettings.enabled) {
+      _submitNewCommentsForSpeech(widget.messages);
+    }
+
     final bool hasNewMessages =
         _hasNewMessages(oldWidget.messages, widget.messages);
     if (hasNewMessages) {
+      // Log new comment texts for debugging.
+      _logNewComments(oldWidget.messages, widget.messages);
       _requestUserNameResolutionForNewMessages(
         oldWidget.messages,
         widget.messages,
@@ -258,6 +321,13 @@ class _CommentScreenState extends State<CommentScreen> {
 
   @override
   void dispose() {
+    unawaited(WakelockPlus.disable());
+    debugPrint('[CommentScreen] dispose: speechStarted=$_speechStarted');
+    _speechEventSub?.cancel();
+    if (_speechStarted) {
+      debugPrint('[CommentScreen] dispose: stopping speech engine');
+      unawaited(widget.speechPlatform?.stop(clearQueue: true));
+    }
     widget.connectionSupervisor.removeListener(_handleConnectionChanged);
     _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
@@ -306,6 +376,222 @@ class _CommentScreenState extends State<CommentScreen> {
       if (userId != null && userId.isNotEmpty) {
         request(userId);
       }
+    }
+  }
+
+  void _logNewComments(
+    List<AppMessage> oldMessages,
+    List<AppMessage> newMessages,
+  ) {
+    int start = 0;
+    if (oldMessages.isNotEmpty && newMessages.isNotEmpty) {
+      final String oldTailId = oldMessages.last.id;
+      for (int i = newMessages.length - 1; i >= 0; i--) {
+        if (newMessages[i].id == oldTailId) {
+          start = i + 1;
+          break;
+        }
+      }
+    }
+    for (int i = start; i < newMessages.length; i++) {
+      final AppMessage m = newMessages[i];
+      if (m.type == AppMessageType.chat) {
+        debugPrint('[CommentScreen] newComment: ${m.content}');
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Speech (VoiceVox) integration
+  // ---------------------------------------------------------------------------
+
+  Future<void> _initializeAndStartSpeech() async {
+    debugPrint(
+        '[CommentScreen] initSpeech: enter (initializing=$_speechInitializing, initialized=$_speechInitialized)');
+    if (_speechInitializing) return;
+    final CommentSpeechPlatform? platform = widget.speechPlatform;
+    if (platform == null) {
+      debugPrint('[CommentScreen] initSpeech: platform=null, abort');
+      return;
+    }
+    _speechInitializing = true;
+
+    // Check if engine is already ready from a previous session.
+    if (!_speechInitialized) {
+      debugPrint('[CommentScreen] initSpeech: checking engine status...');
+      try {
+        final SpeechRuntimeStatus status = await platform.getStatus();
+        debugPrint(
+            '[CommentScreen] initSpeech: engine=${status.engineState}, player=${status.playerState}, queue=${status.queueSize}');
+        if (status.engineState == 'READY') {
+          _speechInitialized = true;
+          debugPrint('[CommentScreen] initSpeech: engine already READY');
+        }
+      } catch (e) {
+        debugPrint('[CommentScreen] initSpeech: getStatus failed: $e');
+      }
+    }
+
+    // Show setup dialog for first-time download & initialization.
+    if (!_speechInitialized) {
+      debugPrint('[CommentScreen] initSpeech: showing SetupDialog...');
+      if (!mounted) {
+        _speechInitializing = false;
+        return;
+      }
+      final bool success = await VoicevoxSetupDialog.show(context, platform);
+      debugPrint('[CommentScreen] initSpeech: SetupDialog result=$success');
+      if (!success || !mounted) {
+        _speechInitializing = false;
+        return;
+      }
+      _speechInitialized = true;
+    }
+
+    // Configure, subscribe to events, and start.
+    try {
+      _speechEventSub?.cancel();
+      _speechEventSub = platform.events.listen(_onSpeechEvent);
+
+      debugPrint('[CommentScreen] initSpeech: updateSettings → start()...');
+      await platform.updateSettings(widget.speechSettings);
+      await platform.start();
+
+      // Record the current tail message so we only read comments
+      // arriving AFTER initialization, not the backlog.
+      if (widget.messages.isNotEmpty) {
+        _lastSpeechMessageId = widget.messages.last.id;
+      }
+
+      if (mounted) {
+        setState(() {
+          _speechStarted = true;
+          _speechEngineState = 'READY';
+        });
+      }
+      debugPrint(
+          '[CommentScreen] Speech started. baseline=$_lastSpeechMessageId, msgCount=${widget.messages.length}');
+    } catch (e, stackTrace) {
+      debugPrint('[CommentScreen] initSpeech: FAILED: $e\n$stackTrace');
+      if (mounted) {
+        setState(() {
+          _speechEngineState = 'ERROR';
+        });
+      }
+    } finally {
+      _speechInitializing = false;
+    }
+  }
+
+  Future<void> _handleSpeechSettingsChanged(
+    SpeechSettings oldSettings,
+  ) async {
+    debugPrint(
+        '[CommentScreen] settingsChanged: enabled ${oldSettings.enabled}→${widget.speechSettings.enabled}, started=$_speechStarted');
+    if (!oldSettings.enabled && widget.speechSettings.enabled) {
+      debugPrint('[CommentScreen] settingsChanged: → enabling speech');
+      await _initializeAndStartSpeech();
+    } else if (oldSettings.enabled && !widget.speechSettings.enabled) {
+      debugPrint('[CommentScreen] settingsChanged: → disabling speech');
+      await _stopSpeech();
+    } else if (widget.speechSettings.enabled && _speechStarted) {
+      debugPrint('[CommentScreen] settingsChanged: → pushing update to engine');
+      try {
+        await widget.speechPlatform?.updateSettings(widget.speechSettings);
+      } catch (e) {
+        debugPrint(
+            '[CommentScreen] settingsChanged: updateSettings FAILED: $e');
+      }
+    }
+  }
+
+  Future<void> _stopSpeech() async {
+    debugPrint('[CommentScreen] stopSpeech: started=$_speechStarted');
+    if (_speechStarted) {
+      try {
+        await widget.speechPlatform?.stop(clearQueue: true);
+        debugPrint('[CommentScreen] stopSpeech: stopped');
+      } catch (e) {
+        debugPrint('[CommentScreen] stopSpeech: FAILED: $e');
+      }
+      if (mounted) {
+        setState(() {
+          _speechStarted = false;
+          _speechEngineState = '';
+        });
+      }
+    }
+  }
+
+  void _onSpeechEvent(SpeechEvent event) {
+    debugPrint(
+        '[CommentScreen] speechEvent: ${event.type}, payload=${event.payload}');
+    if (event.type == SpeechEventType.engineStateChanged) {
+      final String state = event.payload['state'] as String? ?? '';
+      if (mounted) {
+        setState(() {
+          _speechEngineState = state;
+        });
+      }
+    }
+  }
+
+  void _submitNewCommentsForSpeech(List<AppMessage> messages) {
+    final CommentSpeechPlatform? platform = widget.speechPlatform;
+    if (platform == null || messages.isEmpty) {
+      return;
+    }
+
+    // Nothing new since last check.
+    final String currentLastId = messages.last.id;
+    if (_lastSpeechMessageId == currentLastId) {
+      return;
+    }
+
+    // Find where new messages start — after _lastSpeechMessageId.
+    int start = 0;
+    if (_lastSpeechMessageId != null) {
+      for (int i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].id == _lastSpeechMessageId) {
+          start = i + 1;
+          break;
+        }
+      }
+    }
+
+    _lastSpeechMessageId = currentLastId;
+    final int candidates = messages.length - start;
+    debugPrint('[CommentScreen] submitNewComments: candidates=$candidates');
+
+    for (int i = start; i < messages.length; i++) {
+      final AppMessage message = messages[i];
+      if (message.type != AppMessageType.chat) {
+        continue;
+      }
+      // Skip NG users.
+      final String? userId = message.userId;
+      if (userId != null && widget.ngUserIds.contains(userId)) {
+        debugPrint('[CommentScreen] submitComment: SKIP NG user=$userId');
+        continue;
+      }
+      // Skip star-prefix hidden comments.
+      if (widget.starPrefixHidingEnabled && message.content.startsWith('☆')) {
+        debugPrint('[CommentScreen] submitComment: SKIP star-prefix');
+        continue;
+      }
+
+      debugPrint('[CommentScreen] submitComment: ${message.content}');
+      final RawComment comment = RawComment(
+        id: message.id,
+        text: message.content,
+        userId: message.userId,
+        postedAtEpochMs: message.timestamp.millisecondsSinceEpoch,
+      );
+      unawaited(
+        platform.submitComment(comment).then((_) {}).catchError((Object e) {
+          debugPrint('[CommentScreen] submitComment FAILED: $e');
+        }),
+      );
     }
   }
 
@@ -384,6 +670,14 @@ class _CommentScreenState extends State<CommentScreen> {
                 overflow: TextOverflow.ellipsis,
               ),
               actions: <Widget>[
+                if (widget.speechSettings.enabled)
+                  _SpeechStatusIcon(
+                    key: const Key('speech-status-icon'),
+                    engineState: _speechEngineState,
+                    isStarted: _speechStarted,
+                    isInitialized: _speechInitialized,
+                    themeColors: themeColors,
+                  ),
                 if (widget.commentLogWriter != null)
                   IconButton(
                     key: const Key('save-comment-log-button'),
@@ -1714,5 +2008,53 @@ class _CommentRowState extends State<_CommentRow> {
 
     return message.type == AppMessageType.notification &&
         message.content == kLegacyUnsupportedFormatMessage;
+  }
+}
+
+class _SpeechStatusIcon extends StatelessWidget {
+  const _SpeechStatusIcon({
+    super.key,
+    required this.engineState,
+    required this.isStarted,
+    required this.isInitialized,
+    required this.themeColors,
+  });
+
+  final String engineState;
+  final bool isStarted;
+  final bool isInitialized;
+  final AppThemeColors themeColors;
+
+  @override
+  Widget build(BuildContext context) {
+    final IconData icon;
+    final Color color;
+    final String tooltip;
+
+    if (!isInitialized) {
+      icon = Icons.hourglass_top;
+      color = themeColors.subtleTextColor;
+      tooltip = '読み上げ: 初期化中';
+    } else if (!isStarted) {
+      icon = Icons.volume_off;
+      color = themeColors.subtleTextColor;
+      tooltip = '読み上げ: 停止中';
+    } else if (engineState == 'ERROR') {
+      icon = Icons.volume_off;
+      color = themeColors.statusDisconnected;
+      tooltip = '読み上げ: エラー';
+    } else {
+      icon = Icons.volume_up;
+      color = themeColors.statusConnected;
+      tooltip = '読み上げ: 準備完了';
+    }
+
+    return Tooltip(
+      message: tooltip,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Icon(icon, size: 20, color: color),
+      ),
+    );
   }
 }
