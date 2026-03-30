@@ -11,6 +11,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import android.util.Log
 import com.example.comerune.speech.domain.controller.SpeechController
 import com.example.comerune.speech.domain.controller.SpeechControllerImpl
 import com.example.comerune.speech.domain.engine.VoicevoxEngine
@@ -118,6 +119,7 @@ class CommentSpeechPlugin :
         }
 
         when (call.method) {
+<<<<<<< HEAD
             "initialize" -> {
                 Log.d(TAG, "[onMethodCall] → initialize")
                 handleAsync(result) {
@@ -134,6 +136,25 @@ class CommentSpeechPlugin :
                                 val modelFile = repo.getModelFile(model.modelId)
                                 if (modelFile != null) {
                                     eng.loadModel(modelFile.absolutePath)
+=======
+            "initialize" -> handleAsync(result) {
+                val initResult = ctrl.initialize()
+                if (initResult.isSuccess) {
+                    // Ensure bundled models are available and load them
+                    val repo = modelRepository
+                    val eng = engine
+                    if (repo != null && eng != null) {
+                        for (model in VoicevoxModelManifest.models.filter { it.isBundled }) {
+                            repo.ensureBundledModel(model)
+                            val modelFile = repo.getModelFile(model.modelId)
+                            if (modelFile != null) {
+                                val loadResult = eng.loadModel(modelFile.absolutePath)
+                                if (loadResult.isFailure) {
+                                    Log.w(
+                                        "CommentSpeechPlugin",
+                                        "Failed to load bundled model ${model.modelId}: ${loadResult.exceptionOrNull()?.message}"
+                                    )
+>>>>>>> ba3a524 (fix(speech): レビュー指摘のMust Fix/Should Fix修正)
                                 }
                             }
                         }

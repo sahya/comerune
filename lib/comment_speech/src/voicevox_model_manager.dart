@@ -36,7 +36,7 @@ class VoicevoxModelManager {
         if (modelId != null && total > 0) {
           downloadProgress.value = {
             ...downloadProgress.value,
-            modelId: downloaded / total,
+            modelId: (downloaded / total).clamp(0.0, 1.0),
           };
         }
       case SpeechEventType.modelDownloadCompleted:

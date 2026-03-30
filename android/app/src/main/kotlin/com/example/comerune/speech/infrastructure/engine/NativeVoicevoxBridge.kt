@@ -23,6 +23,7 @@ package com.example.comerune.speech.infrastructure.engine
 object NativeVoicevoxBridge {
 
     init {
+<<<<<<< HEAD
         // Pre-load dependencies in the correct order so that the Android
         // linker can find them when voicevox_jni is loaded.
         //
@@ -30,6 +31,8 @@ object NativeVoicevoxBridge {
         //
         // Without explicit pre-loading, Android's linker namespace isolation
         // prevents the C++ dlopen from resolving these libraries.
+=======
+>>>>>>> ba3a524 (fix(speech): レビュー指摘のMust Fix/Should Fix修正)
         try {
             System.loadLibrary("voicevox_onnxruntime")
         } catch (e: UnsatisfiedLinkError) {
