@@ -1,5 +1,7 @@
 import 'dart:developer' as developer;
 
+import '../../comment_speech/src/models/replace_rule.dart';
+
 enum AppThemeMode {
   system,
   light,
@@ -182,6 +184,18 @@ extension PastCommentFetchCountValue on PastCommentFetchCount {
   }
 }
 
+/// ニコニコ用語のデフォルト読み上げ辞書ルール。
+const List<ReplaceRule> kDefaultNicoDictionaryRules = <ReplaceRule>[
+  ReplaceRule(pattern: r'w{3,}|ｗ{3,}', replacement: 'わらわら'),
+  ReplaceRule(pattern: r'w{1,2}|ｗ{1,2}', replacement: 'わら'),
+  ReplaceRule(pattern: r'8{3,}|８{3,}', replacement: 'ぱちぱちぱち'),
+  ReplaceRule(pattern: r'おつ$', replacement: 'おつかれ'),
+  ReplaceRule(pattern: r'わこつ', replacement: 'わくおつ'),
+  ReplaceRule(pattern: r'うぽつ', replacement: 'うぷおつ'),
+  ReplaceRule(pattern: r'初見', replacement: 'しょけん'),
+  ReplaceRule(pattern: r'kwsk|ksk', replacement: 'くわしく'),
+];
+
 class AppSettings {
   const AppSettings({
     required this.themeMode,
@@ -216,6 +230,7 @@ class AppSettings {
     required this.highlightPickupEnabled,
     required this.starPrefixHidingEnabled,
     required this.slashPrefixSkipEnabled,
+    required this.dictionaryRules,
     required this.debugMode,
   }) : assert(
           commentFontSize >= commentFontSizeMin &&
@@ -257,6 +272,7 @@ class AppSettings {
     highlightPickupEnabled: false,
     starPrefixHidingEnabled: false,
     slashPrefixSkipEnabled: true,
+    dictionaryRules: kDefaultNicoDictionaryRules,
     debugMode: false,
   );
 
@@ -305,6 +321,9 @@ class AppSettings {
   /// When true, comments starting with `/` are skipped for TTS
   /// but displayed normally.
   final bool slashPrefixSkipEnabled;
+
+  /// 読み上げ時のテキスト置換ルール（ニコニコ用語辞書）。
+  final List<ReplaceRule> dictionaryRules;
 
   final bool debugMode;
 
@@ -437,6 +456,7 @@ class AppSettings {
     bool? highlightPickupEnabled,
     bool? starPrefixHidingEnabled,
     bool? slashPrefixSkipEnabled,
+    List<ReplaceRule>? dictionaryRules,
     bool? debugMode,
   }) {
     return AppSettings(
@@ -479,6 +499,7 @@ class AppSettings {
           starPrefixHidingEnabled ?? this.starPrefixHidingEnabled,
       slashPrefixSkipEnabled:
           slashPrefixSkipEnabled ?? this.slashPrefixSkipEnabled,
+      dictionaryRules: dictionaryRules ?? this.dictionaryRules,
       debugMode: debugMode ?? this.debugMode,
     );
   }
