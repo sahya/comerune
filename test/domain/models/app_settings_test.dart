@@ -233,7 +233,8 @@ void main() {
 
     test('all default rules are enabled', () {
       for (final ReplaceRule rule in kDefaultNicoDictionaryRules) {
-        expect(rule.enabled, isTrue, reason: '${rule.pattern} should be enabled');
+        expect(rule.enabled, isTrue,
+            reason: '${rule.pattern} should be enabled');
       }
     });
   });

@@ -232,8 +232,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
     try {
       final List<dynamic> decoded = jsonDecode(raw) as List<dynamic>;
       return decoded
-          .map((dynamic e) =>
-              ReplaceRule.fromMap(e as Map<String, dynamic>))
+          .map((dynamic e) => ReplaceRule.fromMap(e as Map<String, dynamic>))
           .toList();
     } on Object {
       return kDefaultNicoDictionaryRules;

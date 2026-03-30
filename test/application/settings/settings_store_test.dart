@@ -270,7 +270,8 @@ void main() {
       expect(loaded.statisticsActiveUserEnabled, isFalse);
     });
 
-    test('dictionaryRules defaults to kDefaultNicoDictionaryRules when not stored',
+    test(
+        'dictionaryRules defaults to kDefaultNicoDictionaryRules when not stored',
         () async {
       final SharedPreferencesSettingsStore store =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
