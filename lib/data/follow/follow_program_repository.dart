@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
 
+import '../utils/begin_at_parser.dart';
 import 'follow_program.dart';
 
 /// Fetches the list of currently live programs from followed broadcasters.
@@ -102,7 +103,7 @@ class FollowProgramRepository {
 
       final String? providerIconUrl = _extractProviderIconUrl(item);
       final String? communityName = _extractCommunityName(item);
-      final DateTime? beginAt = _parseBeginAt(item);
+      final DateTime? beginAt = parseBeginAt(item);
 
       result.add(
         FollowProgram(
@@ -181,17 +182,6 @@ class FollowProgramRepository {
       if (name is String && name.isNotEmpty) {
         return name;
       }
-    }
-    return null;
-  }
-
-  static DateTime? _parseBeginAt(Map<String, dynamic> item) {
-    final Object? raw = item['beginAt'];
-    if (raw is String && raw.isNotEmpty) {
-      return DateTime.tryParse(raw);
-    }
-    if (raw is int) {
-      return DateTime.fromMillisecondsSinceEpoch(raw * 1000, isUtc: true);
     }
     return null;
   }

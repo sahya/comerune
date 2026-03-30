@@ -354,6 +354,96 @@ void main() {
       resolver.dispose();
     });
 
+    test('returns null beginAt when value is explicit null', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'Null BeginAt',
+          'beginAt': null,
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri':
+                  'https://mpn.live.nicovideo.jp/api/view/v4/NullBeginAt',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv2005',
+        userSession: 'session',
+      );
+
+      expect(result.beginAt, isNull);
+
+      resolver.dispose();
+    });
+
+    test('returns null beginAt for unexpected type (bool)', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'Bool BeginAt',
+          'beginAt': true,
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri':
+                  'https://mpn.live.nicovideo.jp/api/view/v4/BoolBeginAt',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv2006',
+        userSession: 'session',
+      );
+
+      expect(result.beginAt, isNull);
+
+      resolver.dispose();
+    });
+
+    test('returns null beginAt for float value', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'Float BeginAt',
+          'beginAt': 1719828000.5,
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri':
+                  'https://mpn.live.nicovideo.jp/api/view/v4/FloatBeginAt',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv2007',
+        userSession: 'session',
+      );
+
+      expect(result.beginAt, isNull);
+
+      resolver.dispose();
+    });
+
     test('sends request without auth headers when user_session is empty',
         () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();

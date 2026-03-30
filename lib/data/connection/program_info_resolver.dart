@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
 
+import '../utils/begin_at_parser.dart';
+
 /// Resolves the NDGR view URI from the niconico programinfo API.
 ///
 /// Follows the same flow as N Air (official niconico streaming tool):
@@ -146,7 +148,7 @@ class ProgramInfoResolver {
 
     // Extract the program start time so the UI can show elapsed time
     // instead of wall-clock time for each comment.
-    final DateTime? beginAt = _parseBeginAt(data);
+    final DateTime? beginAt = parseBeginAt(data);
 
     log(
       'Resolved NDGR viewUri for $lv via programinfo',
@@ -196,22 +198,6 @@ class ProgramInfoResolver {
     return (userId: null, name: null);
   }
 
-  /// Parses the program start time from the programinfo response data.
-  ///
-  /// The `beginAt` field is an ISO 8601 date-time string (e.g.
-  /// "2025-07-01T12:00:00+09:00"). Falls back to treating an integer value
-  /// as seconds-since-epoch (observed in some legacy responses).
-  static DateTime? _parseBeginAt(Map<String, dynamic> data) {
-    final Object? raw = data['beginAt'];
-    if (raw is String && raw.isNotEmpty) {
-      return DateTime.tryParse(raw);
-    }
-    if (raw is int) {
-      return DateTime.fromMillisecondsSinceEpoch(raw * 1000, isUtc: true);
-    }
-    return null;
-  }
-
   /// Reads at most [_maxErrorBodyBytes] bytes from the response to avoid
   /// consuming excessive memory on large error responses.
   static const int _maxErrorBodyBytes = 512;
@@ -249,6 +235,7 @@ class ProgramInfoResolver {
   }
 }
 
+/// Resolved program metadata returned by [ProgramInfoResolver.resolve].
 class ProgramInfo {
   const ProgramInfo({
     required this.viewUri,
@@ -258,18 +245,22 @@ class ProgramInfo {
     this.beginAt,
   });
 
+  /// The NDGR view URI extracted from `data.rooms[0].viewUri`.
   final Uri viewUri;
+
+  /// The program title from `data.title`, or `null` when absent.
   final String? title;
 
-  /// The broadcaster's user ID, extracted from `broadcaster[0].id`
-  /// or `supplier.programProviderId`.
+  /// The broadcaster's user ID, extracted from `data.broadcaster[0].id`
+  /// or `data.supplier.programProviderId`.
   final String? supplierUserId;
 
-  /// The broadcaster's display name, extracted from `broadcaster[0].name`.
+  /// The broadcaster's display name, extracted from `data.broadcaster[0].name`.
   /// Available immediately without an additional HTTP request.
   final String? broadcasterName;
 
-  /// The program start time, used to display elapsed time for comments.
+  /// The program start time from `data.beginAt`, used to display elapsed
+  /// time for comments. `null` when the field is absent or unparseable.
   final DateTime? beginAt;
 }
 
