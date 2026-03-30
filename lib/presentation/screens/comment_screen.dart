@@ -1042,6 +1042,11 @@ class _CommentScreenState extends State<CommentScreen> {
       _showStatsSheet();
     }
 
+    if (_lastStatus != ConnectionStatus.ended &&
+        currentStatus == ConnectionStatus.ended) {
+      unawaited(_stopSpeech());
+    }
+
     if (_lastStatus != ConnectionStatus.failed &&
         currentStatus == ConnectionStatus.failed) {
       final String message = _buildFailedSnackbarMessage();

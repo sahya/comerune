@@ -190,8 +190,29 @@ class _SelectScreenState extends State<SelectScreen> {
         break;
     }
 
+    if (_previousStatus != ConnectionStatus.ended &&
+        status == ConnectionStatus.ended) {
+      _addBroadcastEndedNotification();
+    }
+
     _previousStatus = status;
     setState(() {});
+  }
+
+  void _addBroadcastEndedNotification() {
+    final TimelineStore? store = widget.timelineStore;
+    if (store == null) {
+      return;
+    }
+
+    store.add(
+      AppMessage(
+        id: 'system:broadcast_ended:${DateTime.now().millisecondsSinceEpoch}',
+        timestamp: DateTime.now(),
+        content: '放送が終了しました',
+        type: AppMessageType.notification,
+      ),
+    );
   }
 
   bool get _isConnectionInProgress =>

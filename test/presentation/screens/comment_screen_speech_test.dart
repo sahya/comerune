@@ -280,6 +280,37 @@ void main() {
       // Should not throw — error is caught internally.
       expect(fakePlatform.submittedComments, hasLength(1));
     });
+
+    testWidgets('speech is stopped when broadcast ends', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CommentScreen(
+            lv: 'lv123456789',
+            connectionSupervisor: supervisor,
+            messages: const <AppMessage>[],
+            onStopAllConnections: () async {},
+            onReconnectSameLv: () async {},
+            onDifferentLvConnected: (_, __) async {},
+            themeMode: AppThemeMode.light,
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.startCalled, isTrue);
+      fakePlatform.stopCalled = false;
+
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.stopCalled, isTrue);
+    });
   });
 }
 
