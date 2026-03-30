@@ -52,6 +52,8 @@ class AppMigrationRunner {
     return true;
   }
 
+  /// **Important**: Migrations must NEVER clear cookies, user sessions, or
+  /// authentication data. Users expect to remain logged in after an upgrade.
   Future<void> _runMigration(int version) async {
     log('Running migration v$version', name: 'AppMigrationRunner');
     switch (version) {
