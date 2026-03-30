@@ -90,7 +90,6 @@ class _SelectScreenState extends State<SelectScreen> {
   DateTime? _followBeginAt;
   final ValueNotifier<bool?> _loginStateNotifier = ValueNotifier<bool?>(null);
   List<FollowProgram> _followPrograms = const <FollowProgram>[];
-  bool _isLoadingFollowPrograms = false;
   Timer? _followRefreshTimer;
   final ValueNotifier<
           ({Map<String, int> colors, Map<String, String> nicknames})>
@@ -325,7 +324,6 @@ class _SelectScreenState extends State<SelectScreen> {
           Expanded(
             child: _FollowProgramList(
               programs: _followPrograms,
-              isLoading: _isLoadingFollowPrograms,
               enabled: !_isConnectionInProgress,
               onTap: _connectToProgram,
               onRefresh: _fetchFollowPrograms,
@@ -641,10 +639,6 @@ class _SelectScreenState extends State<SelectScreen> {
       return;
     }
 
-    setState(() {
-      _isLoadingFollowPrograms = true;
-    });
-
     String userSession;
     try {
       userSession = await sessionStore.load();
@@ -681,7 +675,6 @@ class _SelectScreenState extends State<SelectScreen> {
 
     setState(() {
       _followPrograms = programs;
-      _isLoadingFollowPrograms = false;
     });
 
     _followRefreshTimer?.cancel();
@@ -819,29 +812,18 @@ class _LoginStatusBanner extends StatelessWidget {
 class _FollowProgramList extends StatelessWidget {
   const _FollowProgramList({
     required this.programs,
-    required this.isLoading,
     required this.enabled,
     required this.onTap,
     required this.onRefresh,
   });
 
   final List<FollowProgram> programs;
-  final bool isLoading;
   final bool enabled;
   final void Function(FollowProgram program) onTap;
   final Future<void> Function() onRefresh;
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading && programs.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
-
     if (programs.isEmpty) {
       return const SizedBox.shrink();
     }
