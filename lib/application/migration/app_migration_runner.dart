@@ -40,9 +40,10 @@ class AppMigrationRunner {
         version <= currentMigrationVersion;
         version++) {
       await _runMigration(version);
+      // Persist progress after each successful migration so that a failure
+      // in a later migration does not re-run already completed ones.
+      await _prefs.setInt(_key, version);
     }
-
-    await _prefs.setInt(_key, currentMigrationVersion);
 
     log(
       'All migrations complete (now at v$currentMigrationVersion)',

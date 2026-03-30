@@ -53,10 +53,12 @@ Future<void> main() async {
     prefs: SharedPreferencesAdapter(prefs),
   );
   // Run one-time migration tasks when the app version changes.
+  // Awaited so that migrations complete before the app reads settings or
+  // user data that a migration might alter.
   final AppMigrationRunner migrationRunner = AppMigrationRunner(
     prefs: SharedPreferencesAdapter(prefs),
   );
-  unawaited(migrationRunner.run());
+  await migrationRunner.run();
 
   // Remove user attribute entries not accessed for over 1 year.
   unawaited(userAttributeStore.cleanup());
