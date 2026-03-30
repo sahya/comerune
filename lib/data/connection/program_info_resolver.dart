@@ -144,6 +144,10 @@ class ProgramInfoResolver {
     final ({String? userId, String? name}) broadcasterInfo =
         _extractBroadcasterInfo(data);
 
+    // Extract the program start time so the UI can show elapsed time
+    // instead of wall-clock time for each comment.
+    final DateTime? beginAt = _parseBeginAt(data);
+
     log(
       'Resolved NDGR viewUri for $lv via programinfo',
       name: 'ProgramInfoResolver',
@@ -153,6 +157,7 @@ class ProgramInfoResolver {
       title: title,
       supplierUserId: broadcasterInfo.userId,
       broadcasterName: broadcasterInfo.name,
+      beginAt: beginAt,
     );
   }
 
@@ -189,6 +194,22 @@ class ProgramInfoResolver {
     }
 
     return (userId: null, name: null);
+  }
+
+  /// Parses the program start time from the programinfo response data.
+  ///
+  /// The `beginAt` field is an ISO 8601 date-time string (e.g.
+  /// "2025-07-01T12:00:00+09:00"). Falls back to treating an integer value
+  /// as seconds-since-epoch (observed in some legacy responses).
+  static DateTime? _parseBeginAt(Map<String, dynamic> data) {
+    final Object? raw = data['beginAt'];
+    if (raw is String && raw.isNotEmpty) {
+      return DateTime.tryParse(raw);
+    }
+    if (raw is int) {
+      return DateTime.fromMillisecondsSinceEpoch(raw * 1000, isUtc: true);
+    }
+    return null;
   }
 
   /// Reads at most [_maxErrorBodyBytes] bytes from the response to avoid
@@ -234,6 +255,7 @@ class ProgramInfo {
     this.title,
     this.supplierUserId,
     this.broadcasterName,
+    this.beginAt,
   });
 
   final Uri viewUri;
@@ -246,6 +268,9 @@ class ProgramInfo {
   /// The broadcaster's display name, extracted from `broadcaster[0].name`.
   /// Available immediately without an additional HTTP request.
   final String? broadcasterName;
+
+  /// The program start time, used to display elapsed time for comments.
+  final DateTime? beginAt;
 }
 
 class ProgramInfoResolveException implements Exception {
