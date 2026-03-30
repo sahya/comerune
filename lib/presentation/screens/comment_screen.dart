@@ -1074,6 +1074,11 @@ class _CommentScreenState extends State<CommentScreen> {
       _showStatsSheet();
     }
 
+    if (_lastStatus != ConnectionStatus.ended &&
+        currentStatus == ConnectionStatus.ended) {
+      unawaited(_stopSpeech());
+    }
+
     if (_lastStatus != ConnectionStatus.failed &&
         currentStatus == ConnectionStatus.failed) {
       final String message = _buildFailedSnackbarMessage();
@@ -2029,6 +2034,10 @@ class _CommentRowState extends State<_CommentRow> {
       return widget.themeColors.notificationMessageBackground;
     }
 
+    if (_isBroadcastEndedMessage(message)) {
+      return widget.themeColors.broadcastEndedBackground;
+    }
+
     switch (message.type) {
       case AppMessageType.operator:
         return widget.themeColors.operatorMessageBackground;
@@ -2052,6 +2061,10 @@ class _CommentRowState extends State<_CommentRow> {
 
     return message.type == AppMessageType.notification &&
         message.content == kLegacyUnsupportedFormatMessage;
+  }
+
+  bool _isBroadcastEndedMessage(AppMessage message) {
+    return message.id.startsWith('system:broadcast_ended:');
   }
 }
 

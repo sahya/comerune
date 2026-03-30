@@ -267,6 +267,86 @@ void main() {
     expect(find.byKey(const Key('comment-row-msg-1')), findsOneWidget);
   });
 
+  testWidgets(
+      'adds broadcast ended notification to timeline when status becomes ended',
+      (WidgetTester tester) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+    final TimelineStore timelineStore = TimelineStore();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SelectScreen(
+          connectionSupervisor: supervisor,
+          timelineStore: timelineStore,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.enterText(inputField(), 'lv345678901');
+    await tester.pump();
+    await tester.tap(connectButton());
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CommentScreen), findsOneWidget);
+
+    // Transition to streaming and then end broadcast.
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(supervisor.onNdgrEndpointResolved(), isTrue);
+    expect(supervisor.endBroadcast(), isTrue);
+    await tester.pumpAndSettle();
+
+    final List<AppMessage> messages = timelineStore.messages.toList();
+    final AppMessage notification = messages.firstWhere(
+      (AppMessage m) => m.type == AppMessageType.notification,
+    );
+    expect(notification.content, '放送が終了しました');
+    expect(notification.id, startsWith('system:broadcast_ended:'));
+
+    // Verify the notification is visible in the comment screen.
+    expect(find.textContaining('放送が終了しました'), findsOneWidget);
+  });
+
+  testWidgets(
+      'does not add duplicate notification when endBroadcast is called twice',
+      (WidgetTester tester) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+    final TimelineStore timelineStore = TimelineStore();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SelectScreen(
+          connectionSupervisor: supervisor,
+          timelineStore: timelineStore,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.enterText(inputField(), 'lv345678901');
+    await tester.pump();
+    await tester.tap(connectButton());
+    await tester.pumpAndSettle();
+
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(supervisor.onNdgrEndpointResolved(), isTrue);
+    expect(supervisor.endBroadcast(), isTrue);
+    await tester.pumpAndSettle();
+
+    // Restart and end again to verify no duplicate notification.
+    expect(supervisor.startConnection(), isTrue);
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(supervisor.onNdgrEndpointResolved(), isTrue);
+    expect(supervisor.endBroadcast(), isTrue);
+    await tester.pumpAndSettle();
+
+    final List<AppMessage> notifications = timelineStore.messages
+        .where((AppMessage m) => m.type == AppMessageType.notification)
+        .toList();
+    // Each ended transition should produce exactly one notification.
+    expect(notifications, hasLength(2));
+  });
+
   testWidgets('shows settings button when settingsStore is provided', (
     WidgetTester tester,
   ) async {
