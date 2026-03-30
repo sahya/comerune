@@ -9,6 +9,7 @@ class FollowProgram {
     this.providerIconUrl,
     String? communityName,
     this.beginAt,
+    this.isOwnBroadcast = false,
   }) : communityName = (communityName != null && communityName.isNotEmpty)
             ? communityName
             : null;
@@ -30,6 +31,9 @@ class FollowProgram {
 
   /// When the broadcast started (ISO 8601 or Unix timestamp from API).
   final DateTime? beginAt;
+
+  /// Whether this program is the logged-in user's own broadcast.
+  final bool isOwnBroadcast;
 
   /// Returns an elapsed time string in `H:MM:SS` format, or null if
   /// [beginAt] is null or in the future.
