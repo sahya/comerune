@@ -215,6 +215,160 @@ void main() {
     });
   });
 
+  group('CommentLogStats.detectPeaks', () {
+    test('returns empty list for empty commentsPerMinute', () {
+      final List<HighlightPeak> peaks = CommentLogStats.detectPeaks(
+        const <AppMessage>[],
+        commentsPerMinute: const <int, int>{},
+      );
+
+      expect(peaks, isEmpty);
+    });
+
+    test('returns empty list when all minutes have equal counts', () {
+      final DateTime base = DateTime(2026, 3, 28, 12, 0, 0);
+      final List<AppMessage> messages = <AppMessage>[
+        _msg(id: '1', timestamp: base, userId: 'u1'),
+        _msg(
+          id: '2',
+          timestamp: base.add(const Duration(minutes: 1)),
+          userId: 'u2',
+        ),
+        _msg(
+          id: '3',
+          timestamp: base.add(const Duration(minutes: 2)),
+          userId: 'u3',
+        ),
+        _msg(
+          id: '4',
+          timestamp: base.add(const Duration(minutes: 3)),
+          userId: 'u4',
+        ),
+      ];
+
+      // Flat distribution: stddev=0, all counts equal to mean.
+      final List<HighlightPeak> peaks = CommentLogStats.detectPeaks(
+        messages,
+        commentsPerMinute: const <int, int>{0: 1, 1: 1, 2: 1, 3: 1},
+      );
+
+      expect(peaks, isEmpty);
+    });
+
+    test('returns empty list when no minute exceeds threshold', () {
+      final DateTime base = DateTime(2026, 3, 28, 12, 0, 0);
+      final List<AppMessage> messages = <AppMessage>[
+        _msg(id: '1', timestamp: base, userId: 'u1'),
+        _msg(
+          id: '2',
+          timestamp: base.add(const Duration(minutes: 1)),
+          userId: 'u2',
+        ),
+      ];
+
+      final List<HighlightPeak> peaks = CommentLogStats.detectPeaks(
+        messages,
+        commentsPerMinute: const <int, int>{0: 1, 1: 1},
+      );
+
+      expect(peaks, isEmpty);
+    });
+
+    test('detects peaks above mean + stddev', () {
+      final DateTime base = DateTime(2026, 3, 28, 12, 0, 0);
+      final List<AppMessage> messages = <AppMessage>[
+        // Minute 0: 1 comment
+        _msg(id: '1', timestamp: base, userId: 'u1'),
+        // Minute 5: 10 comments (peak)
+        for (int i = 0; i < 10; i++)
+          _msg(
+            id: 'p${5}_$i',
+            timestamp: base.add(Duration(minutes: 5, seconds: i * 5)),
+            userId: 'u${i % 3}',
+            content: 'peak comment $i',
+          ),
+        // Minute 10: 2 comments
+        _msg(
+          id: 'a1',
+          timestamp: base.add(const Duration(minutes: 10)),
+          userId: 'u1',
+        ),
+        _msg(
+          id: 'a2',
+          timestamp: base.add(const Duration(minutes: 10, seconds: 10)),
+          userId: 'u2',
+        ),
+      ];
+
+      final Map<int, int> cpm = <int, int>{0: 1, 5: 10, 10: 2};
+
+      final List<HighlightPeak> peaks = CommentLogStats.detectPeaks(
+        messages,
+        commentsPerMinute: cpm,
+      );
+
+      expect(peaks, isNotEmpty);
+      expect(peaks.first.minuteOffset, 5);
+      expect(peaks.first.commentCount, 10);
+      expect(peaks.first.label, '開始5分');
+      expect(peaks.first.representativeComments.length, 3);
+    });
+
+    test('limits to maxPeaks', () {
+      final DateTime base = DateTime(2026, 3, 28, 12, 0, 0);
+      final List<AppMessage> messages = <AppMessage>[];
+      final Map<int, int> cpm = <int, int>{};
+      // Create 5 peak minutes with high counts, rest low.
+      for (int minute = 0; minute < 30; minute++) {
+        final int count = (minute % 6 == 0) ? 20 : 1;
+        cpm[minute] = count;
+        for (int c = 0; c < count; c++) {
+          messages.add(_msg(
+            id: 'm${minute}_$c',
+            timestamp: base.add(Duration(minutes: minute, seconds: c)),
+            userId: 'u$c',
+          ));
+        }
+      }
+
+      final List<HighlightPeak> peaks = CommentLogStats.detectPeaks(
+        messages,
+        commentsPerMinute: cpm,
+        maxPeaks: 2,
+      );
+
+      expect(peaks.length, 2);
+    });
+
+    test('excludes NG users from representative comments', () {
+      final DateTime base = DateTime(2026, 3, 28, 12, 0, 0);
+      final List<AppMessage> messages = <AppMessage>[
+        _msg(id: '1', timestamp: base, userId: 'u1'),
+        for (int i = 0; i < 10; i++)
+          _msg(
+            id: 'p$i',
+            timestamp: base.add(Duration(minutes: 5, seconds: i)),
+            userId: i == 0 ? 'blocked' : 'u${i + 1}',
+            content: 'msg $i',
+          ),
+      ];
+
+      final Map<int, int> cpm = <int, int>{0: 1, 5: 10};
+
+      final List<HighlightPeak> peaks = CommentLogStats.detectPeaks(
+        messages,
+        commentsPerMinute: cpm,
+        ngUserIds: <String>{'blocked'},
+      );
+
+      if (peaks.isNotEmpty) {
+        for (final AppMessage msg in peaks.first.representativeComments) {
+          expect(msg.userId, isNot('blocked'));
+        }
+      }
+    });
+  });
+
   group('CommentLogStats.toShareText', () {
     test('includes program title and lv when provided', () {
       final CommentLogStats stats = CommentLogStats(

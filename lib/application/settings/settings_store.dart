@@ -71,6 +71,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       'settings.statistics.viewerComment';
   static const String _kStatisticsActiveUserEnabled =
       'settings.statistics.activeUser';
+  static const String _kHighlightPickupEnabled =
+      'settings.statistics.highlightPickup';
   static const String _kStarPrefixHidingEnabled =
       'settings.filter.starPrefixHiding';
   static const String _kSlashPrefixSkipEnabled =
@@ -81,9 +83,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   Future<AppSettings> load() async {
     const AppSettings defaults = AppSettings.defaults;
     final String? engineValue = _prefs.getString(_kSpeechEngine);
-    final SpeechEngine speechEngine = engineValue == 'voicevox'
-        ? SpeechEngine.voicevox
-        : SpeechEngine.bouyomi;
+    final SpeechEngine speechEngine =
+        engineValue == 'bouyomi' ? SpeechEngine.bouyomi : SpeechEngine.voicevox;
 
     return AppSettings(
       themeMode: AppThemeModeValue.fromStorageValue(
@@ -138,6 +139,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       statisticsActiveUserEnabled:
           _prefs.getBool(_kStatisticsActiveUserEnabled) ??
               defaults.statisticsActiveUserEnabled,
+      highlightPickupEnabled: _prefs.getBool(_kHighlightPickupEnabled) ??
+          defaults.highlightPickupEnabled,
       starPrefixHidingEnabled: _prefs.getBool(_kStarPrefixHidingEnabled) ??
           defaults.starPrefixHidingEnabled,
       slashPrefixSkipEnabled: _prefs.getBool(_kSlashPrefixSkipEnabled) ??
@@ -194,6 +197,10 @@ class SharedPreferencesSettingsStore implements SettingsStore {
     await _prefs.setBool(
       _kStatisticsActiveUserEnabled,
       settings.statisticsActiveUserEnabled,
+    );
+    await _prefs.setBool(
+      _kHighlightPickupEnabled,
+      settings.highlightPickupEnabled,
     );
     await _prefs.setBool(
       _kStarPrefixHidingEnabled,

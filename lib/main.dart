@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'application/foreground_service/foreground_service_controller.dart';
+import 'application/migration/app_migration_runner.dart';
 import 'application/settings/settings_store.dart';
 import 'application/settings/shared_preferences_adapter.dart';
 import 'application/statistics/statistics_store.dart';
@@ -50,6 +51,14 @@ Future<void> main() async {
       SharedPreferencesUserAttributeStore(
     prefs: SharedPreferencesAdapter(prefs),
   );
+  // Run one-time migration tasks when the app version changes.
+  // Awaited so that migrations complete before the app reads settings or
+  // user data that a migration might alter.
+  final AppMigrationRunner migrationRunner = AppMigrationRunner(
+    prefs: SharedPreferencesAdapter(prefs),
+  );
+  await migrationRunner.run();
+
   // Remove user attribute entries not accessed for over 1 year.
   unawaited(userAttributeStore.cleanup());
 

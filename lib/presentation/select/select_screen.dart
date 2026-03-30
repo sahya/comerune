@@ -16,6 +16,7 @@ import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/utils/lv_parser.dart';
+import '../../comment_speech/comment_speech.dart';
 import '../screens/comment_screen.dart';
 import '../screens/settings_screen.dart';
 import '../theme/app_theme.dart';
@@ -89,7 +90,6 @@ class _SelectScreenState extends State<SelectScreen> {
   DateTime? _followBeginAt;
   final ValueNotifier<bool?> _loginStateNotifier = ValueNotifier<bool?>(null);
   List<FollowProgram> _followPrograms = const <FollowProgram>[];
-  bool _isLoadingFollowPrograms = false;
   Timer? _followRefreshTimer;
   final ValueNotifier<
           ({Map<String, int> colors, Map<String, String> nicknames})>
@@ -98,6 +98,8 @@ class _SelectScreenState extends State<SelectScreen> {
     (colors: const <String, int>{}, nicknames: const <String, String>{}),
   );
   String? _currentBroadcasterId;
+  final MethodChannelCommentSpeech _speechPlatform =
+      MethodChannelCommentSpeech();
 
   static const Duration _followRefreshInterval = Duration(seconds: 60);
 
@@ -322,7 +324,6 @@ class _SelectScreenState extends State<SelectScreen> {
           Expanded(
             child: _FollowProgramList(
               programs: _followPrograms,
-              isLoading: _isLoadingFollowPrograms,
               enabled: !_isConnectionInProgress,
               onTap: _connectToProgram,
               onRefresh: _fetchFollowPrograms,
@@ -412,11 +413,33 @@ class _SelectScreenState extends State<SelectScreen> {
               _settingsNotifier.value.statisticsViewerCommentEnabled,
           statisticsActiveUserEnabled:
               _settingsNotifier.value.statisticsActiveUserEnabled,
+          highlightPickupEnabled:
+              _settingsNotifier.value.highlightPickupEnabled,
           viewerCount: widget.statisticsStore?.viewerCount,
           totalCommentCount: widget.statisticsStore?.totalCommentCount ?? 0,
           activeUserCount: widget.statisticsStore?.activeUserCount ?? 0,
+          speechPlatform: _speechPlatform,
+          speechSettings: _buildSpeechSettings(),
         );
       },
+    );
+  }
+
+  SpeechSettings _buildSpeechSettings() {
+    final AppSettings s = _settingsNotifier.value;
+    final bool active =
+        s.autoReadEnabled && s.speechEngine == SpeechEngine.voicevox;
+    debugPrint(
+        '[SelectScreen] buildSpeechSettings: active=$active, engine=${s.speechEngine}, speaker=${s.voicevoxSpeaker}, speed=${s.voicevoxSpeed}');
+    return SpeechSettings(
+      enabled: active,
+      speakerId: s.voicevoxSpeaker,
+      speedScale: s.voicevoxSpeed,
+      pitchScale: s.voicevoxPitch,
+      intonationScale: s.voicevoxIntonation,
+      volumeScale: s.voicevoxVolume,
+      maxQueueSize: s.queueLimit,
+      ngWords: s.ngWordList,
     );
   }
 
@@ -636,10 +659,6 @@ class _SelectScreenState extends State<SelectScreen> {
       return;
     }
 
-    setState(() {
-      _isLoadingFollowPrograms = true;
-    });
-
     String userSession;
     try {
       userSession = await sessionStore.load();
@@ -676,7 +695,6 @@ class _SelectScreenState extends State<SelectScreen> {
 
     setState(() {
       _followPrograms = programs;
-      _isLoadingFollowPrograms = false;
     });
 
     _followRefreshTimer?.cancel();
@@ -814,29 +832,18 @@ class _LoginStatusBanner extends StatelessWidget {
 class _FollowProgramList extends StatelessWidget {
   const _FollowProgramList({
     required this.programs,
-    required this.isLoading,
     required this.enabled,
     required this.onTap,
     required this.onRefresh,
   });
 
   final List<FollowProgram> programs;
-  final bool isLoading;
   final bool enabled;
   final void Function(FollowProgram program) onTap;
   final Future<void> Function() onRefresh;
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading && programs.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
-
     if (programs.isEmpty) {
       return const SizedBox.shrink();
     }

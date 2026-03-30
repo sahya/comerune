@@ -89,8 +89,26 @@ class _LoginScreenState extends State<LoginScreen> {
             }
           },
         ),
-      )
-      ..loadRequest(Uri.parse(_loginUrl));
+      );
+    _clearCacheAndLoad();
+  }
+
+  /// Clear WebView cookies and cache before loading the login page
+  /// so that previous form data (email / password) does not persist.
+  Future<void> _clearCacheAndLoad() async {
+    try {
+      await Future.wait(<Future<void>>[
+        WebViewCookieManager().clearCookies(),
+        _controller.clearCache(),
+        _controller.clearLocalStorage(),
+      ]);
+    } catch (error) {
+      log(
+        'Failed to clear WebView data: $error',
+        name: 'LoginScreen',
+      );
+    }
+    await _controller.loadRequest(Uri.parse(_loginUrl));
   }
 
   NavigationDecision _onNavigationRequest(NavigationRequest request) {
