@@ -22,6 +22,7 @@ class AppThemeColors {
     required this.loginBannerWarningForeground,
     required this.loginBannerWarningIcon,
     required this.pinnedMessageBackground,
+    required this.broadcastEndedBackground,
   });
 
   final Color programTitleBarBackground;
@@ -41,6 +42,7 @@ class AppThemeColors {
   final Color loginBannerWarningForeground;
   final Color loginBannerWarningIcon;
   final Color pinnedMessageBackground;
+  final Color broadcastEndedBackground;
 }
 
 class AppTheme {
@@ -64,6 +66,7 @@ class AppTheme {
     loginBannerWarningForeground: Color(0xFF4E342E),
     loginBannerWarningIcon: Color(0xFFE65100),
     pinnedMessageBackground: Color(0xFFFFF8E1),
+    broadcastEndedBackground: Color(0xFFECEFF1),
   );
 
   static const AppThemeColors _darkColors = AppThemeColors(
@@ -84,6 +87,7 @@ class AppTheme {
     loginBannerWarningForeground: Color(0xFFE0E0E0),
     loginBannerWarningIcon: Color(0xFFFFB74D),
     pinnedMessageBackground: Color(0xFF4E342E),
+    broadcastEndedBackground: Color(0xFF37474F),
   );
 
   /// P-type: avoids red-green confusion. Uses blue/orange contrast.
@@ -105,6 +109,7 @@ class AppTheme {
     loginBannerWarningForeground: Color(0xFF4E342E),
     loginBannerWarningIcon: Color(0xFFE65100),
     pinnedMessageBackground: Color(0xFFFFF8E1),
+    broadcastEndedBackground: Color(0xFFEFEBE9),
   );
 
   /// D-type: avoids red-green confusion. Uses purple/amber contrast
@@ -127,6 +132,7 @@ class AppTheme {
     loginBannerWarningForeground: Color(0xFF4E342E),
     loginBannerWarningIcon: Color(0xFFBF360C),
     pinnedMessageBackground: Color(0xFFFFF8E1),
+    broadcastEndedBackground: Color(0xFFF3E5F5),
   );
 
   /// T-type: avoids blue-yellow confusion. Uses red/cyan contrast.
@@ -148,6 +154,7 @@ class AppTheme {
     loginBannerWarningForeground: Color(0xFF4E342E),
     loginBannerWarningIcon: Color(0xFFC62828),
     pinnedMessageBackground: Color(0xFFFFEBEE),
+    broadcastEndedBackground: Color(0xFFE0E0E0),
   );
 
   /// Resolves [AppThemeMode.system] to a concrete mode based on [brightness].
