@@ -24,6 +24,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // Flush follow-program fetch retry timers (exponential backoff:
+    // 1s + 2s) so no pending timer remains after the test.
+    await tester.pump(const Duration(seconds: 4));
+
     expect(find.byKey(const Key('select_screen_input')), findsOneWidget);
     expect(
       find.byKey(const Key('select_screen_connect_button')),
