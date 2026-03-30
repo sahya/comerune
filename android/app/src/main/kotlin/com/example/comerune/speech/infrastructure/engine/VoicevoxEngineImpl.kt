@@ -57,9 +57,13 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             return json.toString()
         }
 
-        /** Return [default] when [value] is NaN or infinite. */
-        private fun sanitize(value: Float, default: Float): Float =
-            if (value.isNaN() || value.isInfinite()) default else value
+        /**
+         * Return [fallback] when [value] is NaN or infinite.
+         *
+         * Fallback values must match the defaults in [SpeechSettings].
+         */
+        private fun sanitize(value: Float, fallback: Float): Float =
+            if (value.isNaN() || value.isInfinite()) fallback else value
 
         /**
          * Increment this when remote assets change to force re-download.
