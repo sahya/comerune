@@ -19,6 +19,8 @@ class StatisticsStore extends ChangeNotifier {
   final DateTime Function() _now;
   late final Timer _purgeTimer;
 
+  bool _isDisposed = false;
+
   int _totalCommentCount = 0;
   int? _viewerCount;
   final Queue<_UserActivity> _recentActivities = Queue<_UserActivity>();
@@ -63,11 +65,15 @@ class StatisticsStore extends ChangeNotifier {
 
   @override
   void dispose() {
+    _isDisposed = true;
     _purgeTimer.cancel();
     super.dispose();
   }
 
   void _periodicPurge() {
+    if (_isDisposed) {
+      return;
+    }
     final int before = _latestActivityByUser.length;
     _purgeExpired();
     if (_latestActivityByUser.length != before) {
