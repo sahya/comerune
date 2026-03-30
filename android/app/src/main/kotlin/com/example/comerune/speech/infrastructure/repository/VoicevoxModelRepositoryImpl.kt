@@ -9,6 +9,7 @@ import com.example.comerune.speech.domain.repository.VoicevoxModelRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -30,18 +31,20 @@ class VoicevoxModelRepositoryImpl(private val context: Context) : VoicevoxModelR
         private const val PROGRESS_REPORT_INTERVAL_BYTES = 1_048_576L // 1 MB
     }
 
+    private val downloadStates = ConcurrentHashMap<String, ModelDownloadState>()
+
     private val modelDir: File
         get() = File(File(context.filesDir, VOICEVOX_DIR), VVM_DIR_NAME)
 
     override fun getAvailableModels(): List<VoicevoxModelInfo> {
         return VoicevoxModelManifest.models.map { model ->
-            // Update download state based on filesystem
             val file = File(modelDir, model.vvmFileName)
+            val trackedState = downloadStates[model.modelId]
             model.copy(
                 downloadState = when {
                     file.exists() -> ModelDownloadState.DOWNLOADED
-                    model.downloadState == ModelDownloadState.DOWNLOADING -> ModelDownloadState.DOWNLOADING
-                    model.downloadState == ModelDownloadState.ERROR -> ModelDownloadState.ERROR
+                    trackedState == ModelDownloadState.DOWNLOADING -> ModelDownloadState.DOWNLOADING
+                    trackedState == ModelDownloadState.ERROR -> ModelDownloadState.ERROR
                     else -> ModelDownloadState.NOT_DOWNLOADED
                 }
             )
@@ -65,7 +68,7 @@ class VoicevoxModelRepositoryImpl(private val context: Context) : VoicevoxModelR
         }
 
         try {
-            modelInfo.downloadState = ModelDownloadState.DOWNLOADING
+            downloadStates[modelId] = ModelDownloadState.DOWNLOADING
 
             if (!modelDir.exists() && !modelDir.mkdirs()) {
                 throw IOException("Failed to create model directory: ${modelDir.absolutePath}")
@@ -79,11 +82,11 @@ class VoicevoxModelRepositoryImpl(private val context: Context) : VoicevoxModelR
                 downloadFromUrl(modelInfo, onProgress)
             }
 
-            modelInfo.downloadState = ModelDownloadState.DOWNLOADED
+            downloadStates[modelId] = ModelDownloadState.DOWNLOADED
             Log.i(TAG, "Model ${modelInfo.vvmFileName} is now available")
             Result.success(Unit)
         } catch (e: Exception) {
-            modelInfo.downloadState = ModelDownloadState.ERROR
+            downloadStates[modelId] = ModelDownloadState.ERROR
             Log.e(TAG, "Failed to obtain model ${modelInfo.vvmFileName}", e)
             Result.failure(e)
         }
@@ -106,14 +109,14 @@ class VoicevoxModelRepositoryImpl(private val context: Context) : VoicevoxModelR
         val file = File(modelDir, modelInfo.vvmFileName)
         return if (file.exists()) {
             if (file.delete()) {
-                modelInfo.downloadState = ModelDownloadState.NOT_DOWNLOADED
+                downloadStates[modelId] = ModelDownloadState.NOT_DOWNLOADED
                 Log.i(TAG, "Deleted model ${modelInfo.vvmFileName}")
                 Result.success(Unit)
             } else {
                 Result.failure(IOException("Failed to delete ${file.absolutePath}"))
             }
         } else {
-            modelInfo.downloadState = ModelDownloadState.NOT_DOWNLOADED
+            downloadStates[modelId] = ModelDownloadState.NOT_DOWNLOADED
             Result.success(Unit)
         }
     }
@@ -144,7 +147,7 @@ class VoicevoxModelRepositoryImpl(private val context: Context) : VoicevoxModelR
         }
 
         copyBundledModel(modelInfo)
-        modelInfo.downloadState = ModelDownloadState.DOWNLOADED
+        downloadStates[modelInfo.modelId] = ModelDownloadState.DOWNLOADED
         Log.i(TAG, "Bundled model ${modelInfo.vvmFileName} copied from assets")
     }
 

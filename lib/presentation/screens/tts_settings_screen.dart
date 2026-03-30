@@ -263,9 +263,13 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
       final bool currentInList =
           items.any((item) => item.value == settings.voicevoxSpeaker);
       if (!currentInList && items.isNotEmpty) {
-        // Select the first available speaker.
+        // Defer the state update to avoid calling setState during build.
         final int firstSpeaker = items.first.value!;
-        _updateAndSave(settings.copyWith(voicevoxSpeaker: firstSpeaker));
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _updateAndSave(settings.copyWith(voicevoxSpeaker: firstSpeaker));
+          }
+        });
       }
 
       if (items.isEmpty) {

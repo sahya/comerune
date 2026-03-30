@@ -11,4 +11,5 @@ interface VoicevoxModelRepository {
     fun deleteModel(modelId: String): Result<Unit>
     fun isModelDownloaded(modelId: String): Boolean
     fun getModelFile(modelId: String): java.io.File?
+    fun ensureBundledModel(modelInfo: VoicevoxModelInfo)
 }

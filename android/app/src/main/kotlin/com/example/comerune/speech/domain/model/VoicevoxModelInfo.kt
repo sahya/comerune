@@ -15,7 +15,7 @@ data class VoicevoxModelInfo(
     val downloadUrl: String,
     val fileSizeBytes: Long,
     val isBundled: Boolean,
-    var downloadState: ModelDownloadState = if (isBundled) ModelDownloadState.DOWNLOADED else ModelDownloadState.NOT_DOWNLOADED
+    val downloadState: ModelDownloadState = if (isBundled) ModelDownloadState.DOWNLOADED else ModelDownloadState.NOT_DOWNLOADED
 ) {
     fun toMap(): Map<String, Any?> = mapOf(
         "modelId" to modelId,
