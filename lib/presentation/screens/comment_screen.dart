@@ -2002,6 +2002,10 @@ class _CommentRowState extends State<_CommentRow> {
       return widget.themeColors.notificationMessageBackground;
     }
 
+    if (_isBroadcastEndedMessage(message)) {
+      return widget.themeColors.broadcastEndedBackground;
+    }
+
     switch (message.type) {
       case AppMessageType.operator:
         return widget.themeColors.operatorMessageBackground;
@@ -2025,6 +2029,10 @@ class _CommentRowState extends State<_CommentRow> {
 
     return message.type == AppMessageType.notification &&
         message.content == kLegacyUnsupportedFormatMessage;
+  }
+
+  bool _isBroadcastEndedMessage(AppMessage message) {
+    return message.id.startsWith('system:broadcast_ended:');
   }
 }
 
