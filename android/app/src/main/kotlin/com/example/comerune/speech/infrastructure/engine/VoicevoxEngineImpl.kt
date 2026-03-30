@@ -87,9 +87,11 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
 
                     ensureAssetsAvailable(baseDir, dictDir, modelDir)
 
+                    Log.i(TAG, "Calling NativeVoicevoxBridge.nativeInitialize(${dictDir.absolutePath})")
                     val initialized = NativeVoicevoxBridge.nativeInitialize(
                         dictDir.absolutePath
                     )
+                    Log.i(TAG, "nativeInitialize returned: $initialized")
                     if (!initialized) {
                         throw RuntimeException(
                             "NativeVoicevoxBridge.nativeInitialize failed"
@@ -99,19 +101,21 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                     val vvmFiles = modelDir.listFiles { file ->
                         file.extension == "vvm"
                     }
+                    Log.i(TAG, "VVM files found: ${vvmFiles?.map { it.name } ?: "null"}")
                     if (vvmFiles.isNullOrEmpty()) {
                         Log.w(TAG, "No .vvm files found in ${modelDir.absolutePath}")
                     } else {
                         for (vvm in vvmFiles) {
+                            Log.i(TAG, "Loading voice model: ${vvm.absolutePath} (${vvm.length()} bytes)")
                             val loaded = NativeVoicevoxBridge.nativeLoadModel(
                                 vvm.absolutePath
                             )
+                            Log.i(TAG, "nativeLoadModel(${vvm.name}) returned: $loaded")
                             if (!loaded) {
                                 throw RuntimeException(
                                     "Failed to load voice model: ${vvm.name}"
                                 )
                             }
-                            Log.i(TAG, "Loaded voice model: ${vvm.name}")
                         }
                     }
                 }
@@ -119,13 +123,16 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                 state = TtsEngineState.READY
                 Log.i(TAG, "VOICEVOX engine initialized successfully")
                 Result.success(Unit)
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 state = TtsEngineState.ERROR
                 Log.e(TAG, "Initialization failed", e)
-                val message = if (e is IOException) {
-                    "VOICEVOXモデルのダウンロードに失敗しました。ネットワーク接続を確認してください。"
-                } else {
-                    e.message ?: "Unknown initialization error"
+                val message = when (e) {
+                    is IOException ->
+                        "VOICEVOXモデルのダウンロードに失敗しました。ネットワーク接続を確認してください。"
+                    is UnsatisfiedLinkError ->
+                        "VOICEVOXネイティブライブラリの読み込みに失敗しました。このデバイスのアーキテクチャはサポートされていない可能性があります。"
+                    else ->
+                        e.message ?: "Unknown initialization error"
                 }
                 Result.failure(RuntimeException(message, e))
             }
@@ -209,8 +216,12 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             Log.i(TAG, "VOICEVOX engine already released, skipping")
             return
         }
-        NativeVoicevoxBridge.nativeRelease()
-        Log.i(TAG, "VOICEVOX engine released")
+        try {
+            NativeVoicevoxBridge.nativeRelease()
+            Log.i(TAG, "VOICEVOX engine released")
+        } catch (e: Throwable) {
+            Log.w(TAG, "nativeRelease failed (native library may not have loaded): ${e.message}")
+        }
     }
 
     // ── Asset download ──────────────────────────────────────────────────
