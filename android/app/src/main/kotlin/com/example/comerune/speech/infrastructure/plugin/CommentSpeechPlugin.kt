@@ -1,5 +1,6 @@
 package com.example.comerune.speech.infrastructure.plugin
 
+import android.content.Context
 import android.util.Log
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.EventChannel
@@ -11,6 +12,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import com.example.comerune.speech.domain.controller.SpeechController
 import com.example.comerune.speech.domain.controller.SpeechControllerImpl
 import com.example.comerune.speech.domain.engine.VoicevoxEngine
@@ -59,12 +61,13 @@ class CommentSpeechPlugin :
             it.setStreamHandler(this)
         }
 
+        val context = binding.applicationContext
+        val presetNgWords = loadPresetNgWords(context)
         val duplicateDetector = InMemoryDuplicateDetector()
-        val normalizer = DefaultCommentNormalizer(duplicateDetector)
+        val normalizer = DefaultCommentNormalizer(duplicateDetector, presetNgWords = presetNgWords)
         val queueManager = InMemorySpeechQueueManager(maxSize = 20)
         val settingsRepository = InMemorySettingsRepository()
         val emitter = FlutterSpeechEventEmitter()
-        val context = binding.applicationContext
         val voicevoxEngine = VoicevoxEngineImpl(context)
         voicevoxEngine.onDownloadEvent = { event -> emitter.emit(event) }
         val player = MediaPlayerWavPlayer(context)
@@ -409,7 +412,7 @@ class CommentSpeechPlugin :
 
         return SpeechSettings(
             enabled = call.argument<Boolean>("enabled") ?: true,
-            speakerId = call.argument<Number>("speakerId")?.toInt() ?: 0,
+            speakerId = call.argument<Number>("speakerId")?.toInt() ?: 10000,
             speedScale = call.argument<Number>("speedScale")?.toFloat() ?: 1.15f,
             pitchScale = call.argument<Number>("pitchScale")?.toFloat() ?: 0.0f,
             intonationScale = call.argument<Number>("intonationScale")?.toFloat() ?: 1.0f,
@@ -447,6 +450,34 @@ class CommentSpeechPlugin :
         "currentText" to currentText,
         "currentSpeakerId" to currentSpeakerId
     )
+
+    // --- Preset NG word loading ---
+
+    private fun loadPresetNgWords(context: Context): List<String> {
+        return try {
+            val json = context.assets.open("preset_ng_words.json")
+                .bufferedReader()
+                .use { it.readText() }
+            val root = JSONObject(json)
+            val categories = root.getJSONObject("categories")
+            val words = mutableListOf<String>()
+            for (key in categories.keys()) {
+                val category = categories.getJSONObject(key)
+                val wordArray = category.getJSONArray("words")
+                for (i in 0 until wordArray.length()) {
+                    val word = wordArray.getString(i)
+                    if (word.isNotBlank()) {
+                        words.add(word)
+                    }
+                }
+            }
+            Log.i(TAG, "Loaded ${words.size} preset NG words")
+            words
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to load preset NG words: ${e.message}")
+            emptyList()
+        }
+    }
 
     // --- Async helper ---
 

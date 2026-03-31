@@ -476,6 +476,8 @@ class _SelectScreenState extends State<SelectScreen> {
           speechPlatform: _speechPlatform,
           speechSettings: _buildSpeechSettings(),
           readUserName: _settingsNotifier.value.readUserName,
+          settingsStore: widget.settingsStore,
+          onDictionaryRulesChanged: _onDictionaryRulesChanged,
         );
       },
     );
@@ -622,6 +624,10 @@ class _SelectScreenState extends State<SelectScreen> {
         userId: userId,
       ));
     }
+  }
+
+  void _onDictionaryRulesChanged(AppSettings updated) {
+    _settingsNotifier.value = updated;
   }
 
   void _toggleNgUser(String userId) {

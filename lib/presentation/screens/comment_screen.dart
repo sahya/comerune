@@ -7,9 +7,12 @@ import 'package:flutter/rendering.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../../application/settings/settings_store.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/comment_log/comment_log_stats.dart';
+import '../../domain/models/teach_command.dart';
+import '../../domain/models/teach_command_handler.dart';
 import '../../domain/utils/elapsed_formatter.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
@@ -126,6 +129,8 @@ class CommentScreen extends StatefulWidget {
     this.speechPlatform,
     this.speechSettings = const SpeechSettings(enabled: false),
     this.readUserName = false,
+    this.settingsStore,
+    this.onDictionaryRulesChanged,
   });
 
   final String lv;
@@ -209,6 +214,12 @@ class CommentScreen extends StatefulWidget {
 
   /// When true, the user name is prepended to the comment text for TTS.
   final bool readUserName;
+
+  /// Settings store for persisting teach command dictionary changes.
+  final SettingsStore? settingsStore;
+
+  /// Called when dictionary rules are updated by a teach/unteach command.
+  final void Function(AppSettings updated)? onDictionaryRulesChanged;
 
   @override
   State<CommentScreen> createState() => _CommentScreenState();
@@ -638,6 +649,14 @@ class _CommentScreenState extends State<CommentScreen> {
         continue;
       }
 
+      // Handle teach/unteach commands (owner only, never spoken).
+      if (TeachCommandParser.isTeachCommand(message.content)) {
+        if (message.userId == widget.broadcasterUserId) {
+          unawaited(_handleTeachCommand(message));
+        }
+        continue;
+      }
+
       String speechText = message.content;
       if (widget.readUserName && userId != null && userId.isNotEmpty) {
         // Prefer nickname (kotehan), then resolved API name.
@@ -675,6 +694,53 @@ class _CommentScreenState extends State<CommentScreen> {
     return widget.ngWords.any(
       (String word) => lowerContent.contains(word),
     );
+  }
+
+  Future<void> _handleTeachCommand(AppMessage message) async {
+    final SettingsStore? store = widget.settingsStore;
+    if (store == null) {
+      return;
+    }
+
+    try {
+      final AppSettings settings = await store.load();
+
+      TeachCommandResult result;
+      final TeachCommand? teach =
+          TeachCommandParser.parseTeach(message.content);
+      if (teach != null) {
+        result = TeachCommandHandler.executeTeach(
+          command: teach,
+          currentRules: settings.dictionaryRules,
+          containsNgWord: settings.containsNgWord,
+        );
+      } else {
+        final UnteachCommand? unteach =
+            TeachCommandParser.parseUnteach(message.content);
+        if (unteach == null) {
+          return;
+        }
+        result = TeachCommandHandler.executeUnteach(
+          command: unteach,
+          currentRules: settings.dictionaryRules,
+        );
+      }
+
+      if (result.success && result.updatedRules != null) {
+        final AppSettings updated =
+            settings.copyWith(dictionaryRules: result.updatedRules);
+        await store.save(updated);
+        widget.onDictionaryRulesChanged?.call(updated);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(result.message)));
+      }
+    } on Object catch (e) {
+      debugPrint('[CommentScreen] _handleTeachCommand FAILED: $e');
+    }
   }
 
   void _processNicknameComments(
