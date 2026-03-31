@@ -156,9 +156,8 @@ class _UserManagementSettingsScreenState
                           contentPadding: EdgeInsets.zero,
                           leading: const Icon(Icons.badge),
                           title: const Text('コテハン管理'),
-                          subtitle: enabled
-                              ? null
-                              : const Text('放送に接続すると利用できます'),
+                          subtitle:
+                              enabled ? null : const Text('放送に接続すると利用できます'),
                           trailing: const Icon(Icons.chevron_right),
                           enabled: enabled,
                           onTap: enabled
@@ -168,7 +167,7 @@ class _UserManagementSettingsScreenState
                                       builder: (_) => NicknameListScreen(
                                         userAttributeStore:
                                             widget.userAttributeStore!,
-                                        broadcasterId: broadcasterId!,
+                                        broadcasterId: broadcasterId,
                                       ),
                                     ),
                                   );

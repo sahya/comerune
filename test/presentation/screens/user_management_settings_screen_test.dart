@@ -120,15 +120,13 @@ void main() {
       notifier.dispose();
     });
 
-    testWidgets(
-        'switches listener when broadcasterIdNotifier instance changes',
+    testWidgets('switches listener when broadcasterIdNotifier instance changes',
         (WidgetTester tester) async {
       final SharedPreferencesSettingsStore settingsStore =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
       final ValueNotifier<String?> notifierA =
           ValueNotifier<String?>('broadcaster-a');
-      final ValueNotifier<String?> notifierB =
-          ValueNotifier<String?>(null);
+      final ValueNotifier<String?> notifierB = ValueNotifier<String?>(null);
 
       // Build with notifierA (enabled)
       await tester.pumpWidget(
@@ -250,8 +248,7 @@ void main() {
       notifier.dispose();
     });
 
-    testWidgets(
-        'nickname tile is not shown when userAttributeStore is null',
+    testWidgets('nickname tile is not shown when userAttributeStore is null',
         (WidgetTester tester) async {
       final SharedPreferencesSettingsStore settingsStore =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
@@ -270,8 +267,7 @@ void main() {
       expect(find.byKey(const Key('nickname-list-tile')), findsNothing);
     });
 
-    testWidgets(
-        'dispose does not throw when broadcasterIdNotifier is provided',
+    testWidgets('dispose does not throw when broadcasterIdNotifier is provided',
         (WidgetTester tester) async {
       final SharedPreferencesSettingsStore settingsStore =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
@@ -300,8 +296,7 @@ void main() {
       notifier.dispose();
     });
 
-    testWidgets(
-        'dispose does not throw when broadcasterIdNotifier is null',
+    testWidgets('dispose does not throw when broadcasterIdNotifier is null',
         (WidgetTester tester) async {
       final SharedPreferencesSettingsStore settingsStore =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());

@@ -316,8 +316,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           builder: (_) => UserManagementSettingsScreen(
                             settingsStore: widget.settingsStore,
                             userAttributeStore: widget.userAttributeStore,
-                            broadcasterIdNotifier:
-                                widget.broadcasterIdNotifier,
+                            broadcasterIdNotifier: widget.broadcasterIdNotifier,
                             resolveUserName: widget.resolveUserName,
                             requestUserNameResolve:
                                 widget.requestUserNameResolve,
