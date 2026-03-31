@@ -218,6 +218,7 @@ class CommentScreen extends StatefulWidget {
 
 class _CommentScreenState extends State<CommentScreen> {
   static const double _autoScrollResumeThreshold = 50;
+  static const Duration _wakelockReleaseDelay = Duration(seconds: 45);
 
   late final ScrollController _scrollController;
   late ConnectionStatus _lastStatus;
@@ -231,6 +232,8 @@ class _CommentScreenState extends State<CommentScreen> {
   bool _speechInitialized = false;
   bool _speechStarted = false;
   String _speechEngineState = '';
+
+  Timer? _wakelockReleaseTimer;
 
   /// Periodic timer that ensures new comments are submitted for speech
   /// even when the widget tree is not rebuilt (e.g. while the app is
@@ -258,6 +261,7 @@ class _CommentScreenState extends State<CommentScreen> {
 
     // Keep screen on while viewing comments.
     unawaited(WakelockPlus.enable());
+    _syncWakelockForStatus(_lastStatus);
 
     _requestUserNameResolution(widget.messages);
 
@@ -342,6 +346,7 @@ class _CommentScreenState extends State<CommentScreen> {
 
   @override
   void dispose() {
+    _stopWakelockReleaseTimer();
     unawaited(WakelockPlus.disable());
     debugPrint('[CommentScreen] dispose: speechStarted=$_speechStarted');
     _stopSpeechPollTimer();
@@ -649,10 +654,8 @@ class _CommentScreenState extends State<CommentScreen> {
       }
 
       String speechText = message.content;
-      if (widget.readUserName && userId != null && userId.isNotEmpty) {
-        // Prefer nickname (kotehan), then resolved API name.
-        final String? displayName = widget.userNicknameMap[userId] ??
-            widget.resolveUserName?.call(userId);
+      if (widget.readUserName) {
+        final String? displayName = _resolveSpeechDisplayName(message);
         if (displayName != null && displayName.isNotEmpty) {
           speechText = '$displayName、$speechText';
         }
@@ -820,8 +823,8 @@ class _CommentScreenState extends State<CommentScreen> {
                 if (widget.commentLogWriter != null)
                   IconButton(
                     key: const Key('save-comment-log-button'),
-                    icon: const Icon(Icons.ios_share),
-                    tooltip: 'コメントログを共有',
+                    icon: const Icon(Icons.save_outlined),
+                    tooltip: 'コメントログを保存',
                     onPressed:
                         _isSavingLog ? null : () => unawaited(_saveLogManual()),
                   ),
@@ -1062,6 +1065,38 @@ class _CommentScreenState extends State<CommentScreen> {
     return widget.resolveUserName?.call(userId);
   }
 
+  String? _resolveSpeechDisplayName(AppMessage message) {
+    final String? userId = message.userId;
+    if (userId == null || userId.isEmpty) {
+      return null;
+    }
+
+    final String? nickname = widget.userNicknameMap[userId];
+    if (nickname != null && nickname.isNotEmpty) {
+      return nickname;
+    }
+
+    if (!_isNumericUserId(userId)) {
+      return null;
+    }
+
+    final String? userName = message.userName;
+    if (userName != null && userName.isNotEmpty) {
+      return userName;
+    }
+
+    final String? resolvedName = widget.resolveUserName?.call(userId);
+    if (resolvedName != null && resolvedName.isNotEmpty) {
+      return resolvedName;
+    }
+
+    return null;
+  }
+
+  bool _isNumericUserId(String userId) {
+    return int.tryParse(userId) != null;
+  }
+
   void _toggleSortOrder() {
     setState(() {
       _sortOrder = _sortOrder == CommentSortOrder.ascending
@@ -1174,6 +1209,7 @@ class _CommentScreenState extends State<CommentScreen> {
 
   void _handleConnectionChanged() {
     final ConnectionStatus currentStatus = widget.connectionSupervisor.status;
+    _syncWakelockForStatus(currentStatus);
 
     if (widget.autoSaveCommentLog && _isAutoSaveTrigger(currentStatus)) {
       unawaited(_saveLogAuto());
@@ -1308,6 +1344,10 @@ class _CommentScreenState extends State<CommentScreen> {
         return false;
     }
 
+    if (_isSystemBroadcastEndedMessage(message)) {
+      return true;
+    }
+
     final String? userId = message.userId;
     if (userId != null && widget.ngUserIds.contains(userId)) {
       return false;
@@ -1398,6 +1438,47 @@ class _CommentScreenState extends State<CommentScreen> {
       case ConnectionStatus.failed:
         return false;
     }
+  }
+
+  void _syncWakelockForStatus(ConnectionStatus status) {
+    switch (status) {
+      case ConnectionStatus.connectingSessionWs:
+      case ConnectionStatus.resolvingEndpoints:
+      case ConnectionStatus.streamingNdgr:
+      case ConnectionStatus.streamingLegacy:
+      case ConnectionStatus.reconnecting:
+        _stopWakelockReleaseTimer();
+        unawaited(WakelockPlus.enable());
+        break;
+      case ConnectionStatus.ended:
+        _scheduleWakelockRelease();
+        break;
+      case ConnectionStatus.idle:
+      case ConnectionStatus.stopped:
+      case ConnectionStatus.failed:
+        _stopWakelockReleaseTimer();
+        break;
+    }
+  }
+
+  void _scheduleWakelockRelease() {
+    if (_wakelockReleaseTimer?.isActive ?? false) {
+      return;
+    }
+
+    _wakelockReleaseTimer = Timer(_wakelockReleaseDelay, () {
+      _wakelockReleaseTimer = null;
+      if (!mounted ||
+          widget.connectionSupervisor.status != ConnectionStatus.ended) {
+        return;
+      }
+      unawaited(WakelockPlus.disable());
+    });
+  }
+
+  void _stopWakelockReleaseTimer() {
+    _wakelockReleaseTimer?.cancel();
+    _wakelockReleaseTimer = null;
   }
 
   void _showStatsSheet() {
@@ -1580,6 +1661,10 @@ class _CommentScreenState extends State<CommentScreen> {
           const SnackBar(content: Text('コメントログの自動保存に失敗しました')),
         );
     }
+  }
+
+  bool _isSystemBroadcastEndedMessage(AppMessage message) {
+    return message.id.startsWith('system:broadcast_ended:');
   }
 
   void _scrollToEdge({bool animated = true}) {

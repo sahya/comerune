@@ -1,15 +1,34 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/domain/connection/connection_method.dart';
 import 'package:comerune/domain/connection/connection_supervisor.dart';
+import 'package:comerune/data/comment_log/comment_log_writer.dart';
 import 'package:comerune/domain/models/app_message.dart';
 import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/presentation/screens/comment_screen.dart';
 import 'package:comerune/presentation/theme/app_theme.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
+// ignore: depend_on_referenced_packages
+import 'package:wakelock_plus_platform_interface/wakelock_plus_platform_interface.dart';
 
 void main() {
   group('CommentScreen', () {
+    late WakelockPlusPlatformInterface previousWakelockPlatform;
+    late _FakeWakelockPlusPlatform fakeWakelock;
+
+    setUp(() {
+      previousWakelockPlatform = wakelockPlusPlatformInstance;
+      fakeWakelock = _FakeWakelockPlusPlatform();
+      wakelockPlusPlatformInstance = fakeWakelock;
+    });
+
+    tearDown(() {
+      wakelockPlusPlatformInstance = previousWakelockPlatform;
+    });
+
     testWidgets('Wi-Fi icon color follows connection status', (
       WidgetTester tester,
     ) async {
@@ -118,6 +137,44 @@ void main() {
       expect(legacyRow.color, Colors.lightBlue.shade50);
       expect(
           find.textContaining(kLegacyUnsupportedFormatMessage), findsOneWidget);
+    });
+
+    testWidgets('broadcast ended system message bypasses NG filters', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'system:broadcast_ended:1234567890',
+          timestamp: DateTime(2026, 3, 30, 12, 35, 0),
+          userId: 'user-ng',
+          content: '放送が終了しました',
+          type: AppMessageType.notification,
+        ),
+        AppMessage(
+          id: 'chat-hidden',
+          timestamp: DateTime(2026, 3, 30, 12, 35, 1),
+          userId: 'user-ng',
+          content: '放送が終了しました',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngUserIds: const <String>{'user-ng'},
+          ngWords: const <String>['終了'],
+        ),
+      );
+
+      expect(
+        find.byKey(const Key('comment-row-system:broadcast_ended:1234567890')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('comment-row-chat-hidden')), findsNothing);
+      expect(find.textContaining('放送が終了しました'), findsOneWidget);
     });
 
     testWidgets('broadcast ended message uses broadcastEndedBackground color', (
@@ -248,6 +305,83 @@ void main() {
       final ElevatedButton stopButton =
           tester.widget(find.byKey(const Key('stop-button')));
       expect(stopButton.onPressed, isNull);
+    });
+
+    testWidgets('save button uses a save icon and label', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: <AppMessage>[
+            _message(
+              id: 'chat-save',
+              type: AppMessageType.chat,
+              content: '保存テスト',
+            ),
+          ],
+          commentLogWriter: _FakeCommentLogWriter(),
+        ),
+      );
+
+      final IconButton button =
+          tester.widget(find.byKey(const Key('save-comment-log-button')));
+      final Icon icon = button.icon as Icon;
+      expect(icon.icon, Icons.save_outlined);
+      expect(button.tooltip, 'コメントログを保存');
+    });
+
+    testWidgets('wakelock is released 45 seconds after ENDED', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+        ),
+      );
+      await tester.pump();
+
+      expect(fakeWakelock.toggles, contains(true));
+
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pump();
+      expect(fakeWakelock.toggles.where((bool value) => !value), isEmpty);
+
+      await tester.pump(const Duration(seconds: 44));
+      expect(fakeWakelock.toggles.where((bool value) => !value), isEmpty);
+
+      await tester.pump(const Duration(seconds: 1));
+      expect(fakeWakelock.toggles.where((bool value) => !value), hasLength(1));
+    });
+
+    testWidgets('wakelock release is cancelled when reconnecting', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+        ),
+      );
+      await tester.pump();
+
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pump();
+
+      expect(supervisor.startConnection(), isTrue);
+      expect(supervisor.onSessionWsConnected(), isTrue);
+      expect(supervisor.onNdgrEndpointResolved(), isTrue);
+      await tester.pump();
+
+      await tester.pump(const Duration(seconds: 46));
+      expect(fakeWakelock.toggles.where((bool value) => !value), isEmpty);
     });
 
     testWidgets(
@@ -2278,6 +2412,7 @@ Widget _buildScreen({
   int activeUserCount = 0,
   bool starPrefixHidingEnabled = false,
   DateTime? beginAt,
+  CommentLogWriter? commentLogWriter,
 }) {
   return MaterialApp(
     home: CommentScreen(
@@ -2308,6 +2443,7 @@ Widget _buildScreen({
       viewerCount: viewerCount,
       totalCommentCount: totalCommentCount,
       activeUserCount: activeUserCount,
+      commentLogWriter: commentLogWriter,
     ),
   );
 }
@@ -2332,4 +2468,37 @@ AppMessage _message({
     content: content,
     type: type,
   );
+}
+
+class _FakeCommentLogWriter implements CommentLogWriter {
+  @override
+  Future<String?> save({
+    required String lv,
+    required List<AppMessage> messages,
+    Directory? customDirectory,
+  }) async {
+    return '/tmp/$lv.txt';
+  }
+
+  @override
+  Future<String?> writeToTempFile({
+    required String lv,
+    required List<AppMessage> messages,
+  }) async {
+    return '/tmp/$lv.tmp.txt';
+  }
+}
+
+class _FakeWakelockPlusPlatform extends WakelockPlusPlatformInterface {
+  final List<bool> toggles = <bool>[];
+  bool _enabled = false;
+
+  @override
+  Future<bool> get enabled async => _enabled;
+
+  @override
+  Future<void> toggle({required bool enable}) async {
+    toggles.add(enable);
+    _enabled = enable;
+  }
 }
