@@ -15,7 +15,7 @@ class TimelineStore extends ChangeNotifier {
   }
 
   int _capacity;
-  final ListQueue<AppMessage> _messages = ListQueue<AppMessage>();
+  final List<AppMessage> _messages = <AppMessage>[];
   final Set<String> _knownIds = <String>{};
 
   int get capacity => _capacity;
@@ -28,7 +28,7 @@ class TimelineStore extends ChangeNotifier {
       return;
     }
 
-    _messages.addLast(message);
+    _insertSorted(message);
     _knownIds.add(message.id);
     _trimOverflow();
     notifyListeners();
@@ -42,7 +42,7 @@ class TimelineStore extends ChangeNotifier {
         continue;
       }
 
-      _messages.addLast(message);
+      _insertSorted(message);
       _knownIds.add(message.id);
       changed = true;
     }
@@ -76,9 +76,23 @@ class TimelineStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Inserts [message] at the correct position to maintain ascending
+  /// timestamp order. Searches from the end since most arrivals are
+  /// newer than existing messages.
+  void _insertSorted(AppMessage message) {
+    for (int i = _messages.length - 1; i >= 0; i--) {
+      if (!message.timestamp.isBefore(_messages[i].timestamp)) {
+        _messages.insert(i + 1, message);
+        return;
+      }
+    }
+    // message is older than all existing messages.
+    _messages.insert(0, message);
+  }
+
   void _trimOverflow() {
     while (_messages.length > _capacity) {
-      final AppMessage removed = _messages.removeFirst();
+      final AppMessage removed = _messages.removeAt(0);
       _knownIds.remove(removed.id);
     }
   }

@@ -239,6 +239,11 @@ class _CommentScreenState extends State<CommentScreen> {
   /// reference the same mutable list as widget.messages.
   String? _lastSpeechMessageId;
 
+  /// Timestamp recorded when speech is initialized. Messages with a timestamp
+  /// before this value are skipped during the first submission pass, ensuring
+  /// that only comments arriving after the user opened the screen are read.
+  DateTime? _speechBaselineTimestamp;
+
   @override
   void initState() {
     super.initState();
@@ -471,6 +476,7 @@ class _CommentScreenState extends State<CommentScreen> {
 
       // Record the current tail message so we only read comments
       // arriving AFTER initialization, not the backlog.
+      _speechBaselineTimestamp = DateTime.now();
       if (widget.messages.isNotEmpty) {
         _lastSpeechMessageId = widget.messages.last.id;
       }
@@ -603,6 +609,11 @@ class _CommentScreenState extends State<CommentScreen> {
 
     for (int i = start; i < messages.length; i++) {
       final AppMessage message = messages[i];
+      // Skip messages that arrived before speech was initialized.
+      if (_speechBaselineTimestamp != null &&
+          message.timestamp.isBefore(_speechBaselineTimestamp!)) {
+        continue;
+      }
       if (message.type != AppMessageType.chat) {
         continue;
       }
