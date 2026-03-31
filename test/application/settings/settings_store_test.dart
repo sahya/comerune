@@ -329,6 +329,29 @@ void main() {
       expect(loaded.dictionaryRules, defaultNicoDictionaryRules);
     });
 
+    test('readUserName defaults to false when not stored', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.readUserName, isFalse);
+    });
+
+    test('round-trips readUserName value', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        readUserName: true,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.readUserName, isTrue);
+    });
+
     test('falls back to defaults for malformed dictionaryRules array',
         () async {
       final InMemorySharedPreferences prefs = InMemorySharedPreferences();
