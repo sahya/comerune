@@ -7,13 +7,15 @@ import '../../domain/models/app_message.dart';
 /// Callers are responsible for filtering messages before passing them in
 /// (e.g. excluding gift / nicoad types).
 abstract class CommentLogWriter {
-  /// Saves the given messages as a comment log file in the app's local
-  /// directory.
+  /// Saves the given messages as a comment log file.
   ///
+  /// When [customDirectory] is provided, saves to that directory instead of
+  /// the default app-local directory.
   /// Returns the path to the saved file, or null if saving failed.
   Future<String?> save({
     required String lv,
     required List<AppMessage> messages,
+    Directory? customDirectory,
   });
 
   /// Writes a comment log to a temporary file and returns its path.
@@ -41,9 +43,10 @@ class FileCommentLogWriter implements CommentLogWriter {
   Future<String?> save({
     required String lv,
     required List<AppMessage> messages,
+    Directory? customDirectory,
   }) async {
     return _writeFile(
-      directory: _directory,
+      directory: customDirectory ?? _directory,
       lv: lv,
       messages: messages,
     );

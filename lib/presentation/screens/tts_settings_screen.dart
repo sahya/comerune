@@ -331,6 +331,22 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
     _updateAndSave(current.copyWith(maxDelaySeconds: parsed));
   }
 
+  String _buildCreditText(int speakerId) {
+    final List<VoicevoxModelInfo>? models = _voicevoxModels;
+    if (models != null) {
+      for (final model in models) {
+        if (model.speakerIds.contains(speakerId)) {
+          return 'Credit: ${model.displayName}';
+        }
+      }
+    }
+    // Nemo speaker IDs: 10000..10008
+    if (speakerId >= 10000 && speakerId <= 10008) {
+      return 'Credit: VOICEVOX Nemo';
+    }
+    return 'Credit: VOICEVOX';
+  }
+
   Widget _buildVoicevoxSpeakerDropdown(AppSettings settings) {
     final List<VoicevoxModelInfo>? models = _voicevoxModels;
 
@@ -369,8 +385,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
       if (items.isEmpty) {
         items.add(
           const DropdownMenuItem<int>(
-            value: 0,
-            child: Text('四国めたん・あまあま (ID:0)'),
+            value: 10000,
+            child: Text('VOICEVOX Nemo・男声2 (ID:10000)'),
           ),
         );
       }
@@ -418,8 +434,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
       ),
       items: const <DropdownMenuItem<int>>[
         DropdownMenuItem<int>(
-          value: 0,
-          child: Text('四国めたん・あまあま (ID:0)'),
+          value: 10000,
+          child: Text('VOICEVOX Nemo・男声2 (ID:10000)'),
         ),
       ],
       onChanged: (int? value) {
@@ -542,6 +558,13 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                         _updateAndSave(
                             settings.copyWith(voicevoxVolume: value));
                       },
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      _buildCreditText(settings.voicevoxSpeaker),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.outline,
+                          ),
                     ),
                   ],
                 ),
