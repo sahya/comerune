@@ -167,8 +167,7 @@ void main() {
     });
 
     test('save uses customDirectory when provided', () async {
-      final Directory customDir =
-          Directory('${tempDir.path}/custom_save_dir');
+      final Directory customDir = Directory('${tempDir.path}/custom_save_dir');
       final FileCommentLogWriter writer =
           FileCommentLogWriter(directory: tempDir, tempDirectory: tempDir);
 

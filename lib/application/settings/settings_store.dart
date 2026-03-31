@@ -139,9 +139,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
           defaults.autoNicknameRegistration,
       autoSaveCommentLog:
           _prefs.getBool(_kAutoSaveCommentLog) ?? defaults.autoSaveCommentLog,
-      autoSaveCommentLogPath:
-          _prefs.getString(_kAutoSaveCommentLogPath) ??
-              defaults.autoSaveCommentLogPath,
+      autoSaveCommentLogPath: _prefs.getString(_kAutoSaveCommentLogPath) ??
+          defaults.autoSaveCommentLogPath,
       statisticsEnabled:
           _prefs.getBool(_kStatisticsEnabled) ?? defaults.statisticsEnabled,
       statisticsViewerCommentEnabled:
