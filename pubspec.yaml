@@ -45,6 +45,9 @@ dependencies:
   # コメントログの共有（Google Drive等の外部ストレージへの保存）
   share_plus: ^10.0.0
 
+  # コメントログ自動保存先のディレクトリ選択
+  file_picker: ^8.0.0
+
   # Android Foreground Service（バックグラウンド接続維持・通知バー常駐表示）
   flutter_foreground_task: ^8.13.3
   wakelock_plus: ^1.2.8

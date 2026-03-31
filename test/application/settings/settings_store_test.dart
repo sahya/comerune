@@ -131,6 +131,30 @@ void main() {
       expect(loaded.autoSaveCommentLog, isTrue);
     });
 
+    test('autoSaveCommentLogPath defaults to empty string when not stored',
+        () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.autoSaveCommentLogPath, isEmpty);
+    });
+
+    test('round-trips autoSaveCommentLogPath value', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        autoSaveCommentLogPath: '/custom/path/to/logs',
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.autoSaveCommentLogPath, '/custom/path/to/logs');
+    });
+
     test('autoNicknameRegistration defaults to true when not stored', () async {
       final SharedPreferencesSettingsStore store =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
