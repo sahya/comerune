@@ -151,6 +151,7 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
       content: nickname != null
           ? '$nickname ($userId) を削除しますか？'
           : 'ユーザーID「$userId」を削除しますか？',
+      confirmLabel: '削除',
       confirmButtonKey: const Key('favorite-remove-confirm-button'),
     );
 

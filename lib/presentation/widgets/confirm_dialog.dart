@@ -8,7 +8,7 @@ Future<bool?> showConfirmDialog({
   required String title,
   required String content,
   String cancelLabel = 'キャンセル',
-  String confirmLabel = '削除',
+  String confirmLabel = '確認',
   Key? confirmButtonKey,
 }) {
   return showDialog<bool>(

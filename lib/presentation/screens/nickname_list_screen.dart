@@ -106,6 +106,7 @@ class _NicknameListScreenState extends State<NicknameListScreen> {
       context: context,
       title: 'コテハン削除',
       content: 'ユーザーID「$userId」のコテハンを削除しますか？',
+      confirmLabel: '削除',
       confirmButtonKey: const Key('nickname-remove-confirm-button'),
     );
 
