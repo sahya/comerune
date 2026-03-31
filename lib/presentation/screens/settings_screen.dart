@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -7,6 +5,7 @@ import '../../application/settings/settings_store.dart';
 import '../../data/auth/user_session_store.dart';
 import '../../domain/models/app_settings.dart';
 import '../../data/user/user_attribute_store.dart';
+import '../mixins/settings_screen_mixin.dart';
 import '../models/user_name_resolution.dart';
 import '../widgets/settings_widgets.dart';
 import 'comment_display_settings_screen.dart';
@@ -36,27 +35,26 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
-  AppSettings? _settings;
+class _SettingsScreenState extends State<SettingsScreen>
+    with SettingsScreenMixin {
   bool _isLoggedIn = false;
+
+  @override
+  SettingsStore get settingsStore => widget.settingsStore;
 
   @override
   void initState() {
     super.initState();
-    _loadSettings();
+    loadSettings();
   }
 
-  Future<void> _loadSettings() async {
-    final AppSettings loaded = await widget.settingsStore.load();
+  @override
+  Future<void> loadSettings() async {
+    await super.loadSettings();
     if (!mounted) {
       return;
     }
-
     await _refreshLoginState();
-
-    setState(() {
-      _settings = loaded;
-    });
   }
 
   Future<void> _refreshLoginState() async {
@@ -148,29 +146,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  void _updateAndSave(AppSettings next) {
-    setState(() {
-      _settings = next;
-    });
+  @override
+  void updateAndSave(AppSettings next) {
+    super.updateAndSave(next);
     if (widget.themeModeNotifier != null &&
         widget.themeModeNotifier!.value != next.themeMode) {
       widget.themeModeNotifier!.value = next.themeMode;
     }
-    unawaited(_saveSettings(next));
   }
-
-  Future<void> _saveSettings(AppSettings next) =>
-      saveSettingsToStore(widget.settingsStore, next);
 
   @override
   Widget build(BuildContext context) {
-    final AppSettings? settings = _settings;
+    final AppSettings? currentSettings = settings;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('設定'),
       ),
-      body: settings == null
+      body: currentSettings == null
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               key: const Key('settings-list'),
@@ -181,7 +174,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: <Widget>[
                     DropdownButtonFormField<AppThemeMode>(
                       key: const Key('theme-mode-dropdown'),
-                      value: settings.themeMode,
+                      value: currentSettings.themeMode,
                       decoration: const InputDecoration(
                         labelText: '配色テーマ',
                         border: OutlineInputBorder(),
@@ -199,8 +192,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         if (value == null) {
                           return;
                         }
-                        _updateAndSave(
-                          settings.copyWith(themeMode: value),
+                        updateAndSave(
+                          currentSettings.copyWith(themeMode: value),
                         );
                       },
                     ),
@@ -258,7 +251,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     leading: const Icon(Icons.record_voice_over),
                     title: const Text('読み上げ設定'),
                     subtitle: Text(
-                      settings.autoReadEnabled ? '自動読み上げ: ON' : '自動読み上げ: OFF',
+                      currentSettings.autoReadEnabled
+                          ? '自動読み上げ: ON'
+                          : '自動読み上げ: OFF',
                     ),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () async {
@@ -269,7 +264,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ),
                       );
-                      await _loadSettings();
+                      await loadSettings();
                     },
                   ),
                 ),
@@ -280,7 +275,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     leading: const Icon(Icons.chat_bubble_outline),
                     title: const Text('コメント表示設定'),
                     subtitle: Text(
-                      'フォントサイズ: ${settings.commentFontSize.round()}px',
+                      'フォントサイズ: ${currentSettings.commentFontSize.round()}px',
                     ),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () async {
@@ -291,7 +286,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ),
                       );
-                      await _loadSettings();
+                      await loadSettings();
                     },
                   ),
                 ),
@@ -314,7 +309,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ),
                       );
-                      await _loadSettings();
+                      await loadSettings();
                     },
                   ),
                 ),
@@ -326,9 +321,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       key: const Key('debug-mode-switch'),
                       title: const Text('デバッグモード'),
                       contentPadding: EdgeInsets.zero,
-                      value: settings.debugMode,
+                      value: currentSettings.debugMode,
                       onChanged: (bool value) {
-                        _updateAndSave(settings.copyWith(debugMode: value));
+                        updateAndSave(
+                            currentSettings.copyWith(debugMode: value));
                       },
                     ),
                   ],
