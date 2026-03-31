@@ -129,9 +129,7 @@ class CommentSpeechPlugin :
                         val eng = engine
                         if (repo != null && eng != null) {
                             for (model in VoicevoxModelManifest.models.filter { it.isBundled }) {
-                                if (repo is VoicevoxModelRepositoryImpl) {
-                                    repo.ensureBundledModel(model)
-                                }
+                                repo.ensureBundledModel(model)
                                 val modelFile = repo.getModelFile(model.modelId)
                                 if (modelFile != null) {
                                     val loadResult = eng.loadModel(modelFile.absolutePath)
