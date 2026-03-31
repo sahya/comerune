@@ -156,6 +156,73 @@ void main() {
       repository.dispose();
     });
 
+    test('returns null on network exception', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.shouldThrowOnRequest = true;
+
+      final MyProgramRepository repository = MyProgramRepository(
+        httpClient: httpClient,
+      );
+
+      final result =
+          await repository.fetchOwnProgram(userSession: 'test_session');
+
+      expect(result, isNull);
+
+      repository.dispose();
+    });
+
+    test('returns null when response is not a JSON object', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = '"just a string"';
+
+      final MyProgramRepository repository = MyProgramRepository(
+        httpClient: httpClient,
+      );
+
+      final result =
+          await repository.fetchOwnProgram(userSession: 'test_session');
+
+      expect(result, isNull);
+
+      repository.dispose();
+    });
+
+    test('returns null when first program item is not a map', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'data': <String, Object?>{
+          'programs': <Object?>['not-a-map'],
+        },
+      });
+
+      final MyProgramRepository repository = MyProgramRepository(
+        httpClient: httpClient,
+      );
+
+      final result =
+          await repository.fetchOwnProgram(userSession: 'test_session');
+
+      expect(result, isNull);
+
+      repository.dispose();
+    });
+
+    test('returns null when user session is whitespace only', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+
+      final MyProgramRepository repository = MyProgramRepository(
+        httpClient: httpClient,
+      );
+
+      final result = await repository.fetchOwnProgram(userSession: '   ');
+
+      expect(result, isNull);
+      expect(httpClient.requests, isEmpty);
+
+      repository.dispose();
+    });
+
     test('returns program with empty provider name when name is missing',
         () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
@@ -196,10 +263,14 @@ class _CapturedRequest {
 class _FakeHttpClient implements HttpClient {
   String responseBody = '';
   int responseStatusCode = 200;
+  bool shouldThrowOnRequest = false;
   final List<_CapturedRequest> requests = <_CapturedRequest>[];
 
   @override
   Future<HttpClientRequest> getUrl(Uri url) async {
+    if (shouldThrowOnRequest) {
+      throw const SocketException('Simulated network error');
+    }
     return _FakeHttpClientRequest(
       uri: url,
       client: this,
