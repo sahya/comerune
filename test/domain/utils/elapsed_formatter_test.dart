@@ -64,4 +64,44 @@ void main() {
       expect(result, anyOf('1:02:03', '1:02:02', '1:02:04'));
     });
   });
+
+  group('formatWallClockHms', () {
+    test('formats local time as HH:MM:SS', () {
+      // Use a local DateTime to avoid timezone conversion surprises.
+      final DateTime value = DateTime(2026, 3, 22, 9, 5, 3);
+      expect(formatWallClockHms(value), '09:05:03');
+    });
+
+    test('pads hours, minutes, and seconds with leading zeros', () {
+      final DateTime value = DateTime(2026, 1, 1, 0, 0, 0);
+      expect(formatWallClockHms(value), '00:00:00');
+    });
+
+    test('handles afternoon times', () {
+      final DateTime value = DateTime(2026, 6, 15, 23, 59, 59);
+      expect(formatWallClockHms(value), '23:59:59');
+    });
+  });
+
+  group('formatCommentTime', () {
+    test('returns elapsed time when beginAt is provided and valid', () {
+      final DateTime beginAt = DateTime(2026, 3, 22, 10, 0, 0);
+      final DateTime value = DateTime(2026, 3, 22, 11, 23, 45);
+
+      expect(formatCommentTime(value, beginAt: beginAt), '1:23:45');
+    });
+
+    test('falls back to wall-clock time when beginAt is null', () {
+      final DateTime value = DateTime(2026, 3, 22, 14, 5, 3);
+
+      expect(formatCommentTime(value), '14:05:03');
+    });
+
+    test('falls back to wall-clock time when value is before beginAt', () {
+      final DateTime beginAt = DateTime(2026, 3, 22, 12, 0, 0);
+      final DateTime value = DateTime(2026, 3, 22, 11, 59, 59);
+
+      expect(formatCommentTime(value, beginAt: beginAt), '11:59:59');
+    });
+  });
 }

@@ -1,3 +1,13 @@
+/// Formats a [Duration] as `H:MM:SS`.
+String _formatDurationHms(Duration duration) {
+  final int hours = duration.inHours;
+  final int minutes = duration.inMinutes % 60;
+  final int seconds = duration.inSeconds % 60;
+  final String mm = minutes.toString().padLeft(2, '0');
+  final String ss = seconds.toString().padLeft(2, '0');
+  return '$hours:$mm:$ss';
+}
+
 /// Formats the elapsed time since [start] as `H:MM:SS`.
 /// Returns null if [start] is null or in the future.
 String? formatElapsed(DateTime? start) {
@@ -8,12 +18,7 @@ String? formatElapsed(DateTime? start) {
   if (elapsed.isNegative) {
     return null;
   }
-  final int hours = elapsed.inHours;
-  final int minutes = elapsed.inMinutes % 60;
-  final int seconds = elapsed.inSeconds % 60;
-  final String mm = minutes.toString().padLeft(2, '0');
-  final String ss = seconds.toString().padLeft(2, '0');
-  return '$hours:$mm:$ss';
+  return _formatDurationHms(elapsed);
 }
 
 /// Formats [timestamp] as elapsed time from [beginAt] in `H:MM:SS` format.
@@ -28,10 +33,20 @@ String? formatCommentElapsed(DateTime? beginAt, DateTime timestamp) {
   if (elapsed.isNegative) {
     return null;
   }
-  final int hours = elapsed.inHours;
-  final int minutes = elapsed.inMinutes % 60;
-  final int seconds = elapsed.inSeconds % 60;
-  final String mm = minutes.toString().padLeft(2, '0');
-  final String ss = seconds.toString().padLeft(2, '0');
-  return '$hours:$mm:$ss';
+  return _formatDurationHms(elapsed);
+}
+
+/// Formats a [DateTime] as a wall-clock `HH:MM:SS` string in local time.
+String formatWallClockHms(DateTime value) {
+  final DateTime local = value.toLocal();
+  final String hh = local.hour.toString().padLeft(2, '0');
+  final String mm = local.minute.toString().padLeft(2, '0');
+  final String ss = local.second.toString().padLeft(2, '0');
+  return '$hh:$mm:$ss';
+}
+
+/// Formats [value] as elapsed time from [beginAt] when available,
+/// otherwise falls back to a wall-clock `HH:MM:SS` string.
+String formatCommentTime(DateTime value, {DateTime? beginAt}) {
+  return formatCommentElapsed(beginAt, value) ?? formatWallClockHms(value);
 }

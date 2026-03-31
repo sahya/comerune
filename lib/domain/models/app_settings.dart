@@ -2,6 +2,7 @@ import 'dart:developer' as developer;
 
 import '../../comment_speech/src/models/replace_rule.dart';
 import '../../comment_speech/src/models/speech_settings.dart';
+import '../utils/newline_parser.dart';
 
 enum AppThemeMode {
   system,
@@ -352,15 +353,7 @@ class AppSettings {
   /// The result is pre-lowered so that callers can compare with a single
   /// [String.contains] against lower-cased content.
   List<String> get ngWordList {
-    if (ngWords.trim().isEmpty) {
-      return const <String>[];
-    }
-    return ngWords
-        .split('\n')
-        .map((String w) => w.trim())
-        .where((String w) => w.isNotEmpty)
-        .map((String w) => w.toLowerCase())
-        .toList();
+    return parseNewlineSeparatedLowerList(ngWords);
   }
 
   /// Returns `true` when [content] contains any of the configured NG words.
@@ -378,14 +371,7 @@ class AppSettings {
   }
 
   Set<String> get ngUserIdSet {
-    if (ngUserIds.trim().isEmpty) {
-      return const <String>{};
-    }
-    return ngUserIds
-        .split('\n')
-        .map((String id) => id.trim())
-        .where((String id) => id.isNotEmpty)
-        .toSet();
+    return parseNewlineSeparatedSet(ngUserIds);
   }
 
   bool isNgUser(String? userId) {
@@ -414,14 +400,7 @@ class AppSettings {
   }
 
   Set<String> get favoriteUserIdSet {
-    if (favoriteUserIds.trim().isEmpty) {
-      return const <String>{};
-    }
-    return favoriteUserIds
-        .split('\n')
-        .map((String id) => id.trim())
-        .where((String id) => id.isNotEmpty)
-        .toSet();
+    return parseNewlineSeparatedSet(favoriteUserIds);
   }
 
   AppSettings addFavoriteUserId(String userId) {
