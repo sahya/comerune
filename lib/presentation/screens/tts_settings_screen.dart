@@ -133,7 +133,6 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
     platform.loadModel(model.modelId);
   }
 
-
   void _onQueueLimitFocusChanged() {
     if (_queueLimitFocusNode.hasFocus) {
       return;
@@ -413,8 +412,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       divisions: 15,
                       value: settings.voicevoxSpeed,
                       onChanged: (double value) {
-                        _updateAndSave(
-                            settings.copyWith(voicevoxSpeed: value));
+                        _updateAndSave(settings.copyWith(voicevoxSpeed: value));
                       },
                     ),
                     SettingsDoubleSliderField(
@@ -425,8 +423,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       divisions: 30,
                       value: settings.voicevoxPitch,
                       onChanged: (double value) {
-                        _updateAndSave(
-                            settings.copyWith(voicevoxPitch: value));
+                        _updateAndSave(settings.copyWith(voicevoxPitch: value));
                       },
                     ),
                     SettingsDoubleSliderField(
