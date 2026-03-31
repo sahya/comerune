@@ -262,6 +262,12 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
 
     override suspend fun loadModel(modelPath: String): Result<Unit> =
         mutex.withLock {
+            if (state != TtsEngineState.READY) {
+                return@withLock Result.failure(
+                    IllegalStateException("Cannot load model from state: $state")
+                )
+            }
+
             try {
                 withContext(Dispatchers.IO) {
                     Log.i(TAG, "Loading model: $modelPath")
