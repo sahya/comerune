@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../application/settings/settings_store.dart';
 import '../../domain/models/app_settings.dart';
+import '../widgets/confirm_dialog.dart';
+import '../widgets/empty_state_message.dart';
 
 class NgUserListScreen extends StatefulWidget {
   const NgUserListScreen({
@@ -37,25 +39,12 @@ class _NgUserListScreenState extends State<NgUserListScreen> {
   }
 
   Future<void> _removeNgUserId(String userId) async {
-    final bool? confirmed = await showDialog<bool>(
+    final bool? confirmed = await showConfirmDialog(
       context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text('NG解除'),
-          content: Text('ユーザーID「$userId」のNG登録を解除しますか？'),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('キャンセル'),
-            ),
-            TextButton(
-              key: const Key('ng-remove-confirm-button'),
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('解除'),
-            ),
-          ],
-        );
-      },
+      title: 'NG解除',
+      content: 'ユーザーID「$userId」のNG登録を解除しますか？',
+      confirmLabel: '解除',
+      confirmButtonKey: const Key('ng-remove-confirm-button'),
     );
 
     if (confirmed != true || !mounted) {
@@ -90,15 +79,9 @@ class _NgUserListScreenState extends State<NgUserListScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _ngUserIds.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text(
-                      key: Key('ng-user-list-empty'),
-                      'NGユーザーIDは登録されていません',
-                      style: TextStyle(fontSize: 14),
-                    ),
-                  ),
+              ? const EmptyStateMessage(
+                  key: Key('ng-user-list-empty'),
+                  message: 'NGユーザーIDは登録されていません',
                 )
               : ListView.separated(
                   key: const Key('ng-user-id-list'),

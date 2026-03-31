@@ -1,10 +1,10 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../../application/settings/settings_store.dart';
 import '../../data/user/user_attribute_store.dart';
 import '../../domain/models/app_settings.dart';
+import '../../domain/models/user_name_resolution.dart';
+import '../mixins/settings_screen_mixin.dart';
 import '../widgets/settings_widgets.dart';
 import 'favorite_user_list_screen.dart';
 import 'nickname_list_screen.dart';
@@ -15,17 +15,13 @@ class UserManagementSettingsScreen extends StatefulWidget {
     required this.settingsStore,
     this.userAttributeStore,
     this.broadcasterIdNotifier,
-    this.resolveUserName,
-    this.requestUserNameResolve,
-    this.userNameListenable,
+    this.userNameResolution,
   });
 
   final SettingsStore settingsStore;
   final UserAttributeStore? userAttributeStore;
   final ValueNotifier<String?>? broadcasterIdNotifier;
-  final String? Function(String userId)? resolveUserName;
-  final void Function(String userId)? requestUserNameResolve;
-  final Listenable? userNameListenable;
+  final UserNameResolution? userNameResolution;
 
   @override
   State<UserManagementSettingsScreen> createState() =>
@@ -33,13 +29,14 @@ class UserManagementSettingsScreen extends StatefulWidget {
 }
 
 class _UserManagementSettingsScreenState
-    extends State<UserManagementSettingsScreen> {
-  AppSettings? _settings;
+    extends State<UserManagementSettingsScreen> with SettingsScreenMixin {
+  @override
+  SettingsStore get settingsStore => widget.settingsStore;
 
   @override
   void initState() {
     super.initState();
-    _loadSettings();
+    loadSettings();
     widget.broadcasterIdNotifier?.addListener(_onBroadcasterIdChanged);
   }
 
@@ -62,30 +59,9 @@ class _UserManagementSettingsScreenState
     setState(() {});
   }
 
-  Future<void> _loadSettings() async {
-    final AppSettings loaded = await widget.settingsStore.load();
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      _settings = loaded;
-    });
-  }
-
-  void _updateAndSave(AppSettings next) {
-    setState(() {
-      _settings = next;
-    });
-    unawaited(_saveSettings(next));
-  }
-
-  Future<void> _saveSettings(AppSettings next) =>
-      saveSettingsToStore(widget.settingsStore, next);
-
   @override
   Widget build(BuildContext context) {
-    final AppSettings? settings = _settings;
+    final AppSettings? settings = this.settings;
 
     return Scaffold(
       appBar: AppBar(
@@ -116,14 +92,11 @@ class _UserManagementSettingsScreenState
                           MaterialPageRoute<void>(
                             builder: (_) => FavoriteUserListScreen(
                               settingsStore: widget.settingsStore,
-                              resolveUserName: widget.resolveUserName,
-                              requestUserNameResolve:
-                                  widget.requestUserNameResolve,
-                              userNameListenable: widget.userNameListenable,
+                              userNameResolution: widget.userNameResolution,
                             ),
                           ),
                         );
-                        await _loadSettings();
+                        await loadSettings();
                       },
                     ),
                   ],
@@ -139,7 +112,7 @@ class _UserManagementSettingsScreenState
                       contentPadding: EdgeInsets.zero,
                       value: settings.autoNicknameRegistration,
                       onChanged: (bool value) {
-                        _updateAndSave(
+                        updateAndSave(
                           settings.copyWith(
                             autoNicknameRegistration: value,
                           ),

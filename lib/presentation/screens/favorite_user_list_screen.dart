@@ -2,20 +2,19 @@ import 'package:flutter/material.dart';
 
 import '../../application/settings/settings_store.dart';
 import '../../domain/models/app_settings.dart';
+import '../../domain/models/user_name_resolution.dart';
+import '../widgets/confirm_dialog.dart';
+import '../widgets/empty_state_message.dart';
 
 class FavoriteUserListScreen extends StatefulWidget {
   const FavoriteUserListScreen({
     super.key,
     required this.settingsStore,
-    this.resolveUserName,
-    this.requestUserNameResolve,
-    this.userNameListenable,
+    this.userNameResolution,
   });
 
   final SettingsStore settingsStore;
-  final String? Function(String userId)? resolveUserName;
-  final void Function(String userId)? requestUserNameResolve;
-  final Listenable? userNameListenable;
+  final UserNameResolution? userNameResolution;
 
   @override
   State<FavoriteUserListScreen> createState() => _FavoriteUserListScreenState();
@@ -28,22 +27,24 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
   @override
   void initState() {
     super.initState();
-    widget.userNameListenable?.addListener(_onUserNameChanged);
+    widget.userNameResolution?.listenable.addListener(_onUserNameChanged);
     _loadFavoriteUserIds();
   }
 
   @override
   void didUpdateWidget(covariant FavoriteUserListScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.userNameListenable != widget.userNameListenable) {
-      oldWidget.userNameListenable?.removeListener(_onUserNameChanged);
-      widget.userNameListenable?.addListener(_onUserNameChanged);
+    if (oldWidget.userNameResolution?.listenable !=
+        widget.userNameResolution?.listenable) {
+      oldWidget.userNameResolution?.listenable
+          .removeListener(_onUserNameChanged);
+      widget.userNameResolution?.listenable.addListener(_onUserNameChanged);
     }
   }
 
   @override
   void dispose() {
-    widget.userNameListenable?.removeListener(_onUserNameChanged);
+    widget.userNameResolution?.listenable.removeListener(_onUserNameChanged);
     super.dispose();
   }
 
@@ -52,7 +53,8 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
   }
 
   void _requestAllUserNameResolution() {
-    final void Function(String)? request = widget.requestUserNameResolve;
+    final void Function(String)? request =
+        widget.userNameResolution?.requestResolve;
     if (request == null) {
       return;
     }
@@ -132,7 +134,7 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
       _favoriteUserIds = updated.favoriteUserIdSet.toList();
     });
 
-    widget.requestUserNameResolve?.call(userId);
+    widget.userNameResolution?.requestResolve(userId);
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -142,30 +144,14 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
   }
 
   Future<void> _removeFavoriteUserId(String userId) async {
-    final String? nickname = widget.resolveUserName?.call(userId);
-    final bool? confirmed = await showDialog<bool>(
+    final String? nickname = widget.userNameResolution?.resolve(userId);
+    final bool? confirmed = await showConfirmDialog(
       context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text('ユーザー削除'),
-          content: Text(
-            nickname != null
-                ? '$nickname ($userId) を削除しますか？'
-                : 'ユーザーID「$userId」を削除しますか？',
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('キャンセル'),
-            ),
-            TextButton(
-              key: const Key('favorite-remove-confirm-button'),
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('削除'),
-            ),
-          ],
-        );
-      },
+      title: 'ユーザー削除',
+      content: nickname != null
+          ? '$nickname ($userId) を削除しますか？'
+          : 'ユーザーID「$userId」を削除しますか？',
+      confirmButtonKey: const Key('favorite-remove-confirm-button'),
     );
 
     if (confirmed != true || !mounted) {
@@ -205,18 +191,11 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _favoriteUserIds.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text(
-                      key: Key('favorite-user-list-empty'),
-                      'お気に入りユーザーIDは登録されていません\n'
+              ? const EmptyStateMessage(
+                  key: Key('favorite-user-list-empty'),
+                  message: 'お気に入りユーザーIDは登録されていません\n'
                       '右下のボタンからユーザーIDを追加すると\n'
                       '接続画面に放送中の番組が表示されます',
-                      style: TextStyle(fontSize: 14),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
                 )
               : ListView.separated(
                   key: const Key('favorite-user-id-list'),
@@ -226,7 +205,7 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
                   itemBuilder: (BuildContext context, int index) {
                     final String userId = _favoriteUserIds[index];
                     final String? nickname =
-                        widget.resolveUserName?.call(userId);
+                        widget.userNameResolution?.resolve(userId);
                     return ListTile(
                       key: Key('favorite-user-tile-$index'),
                       leading: const Icon(Icons.person, size: 20),

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../data/user/user_attribute_store.dart';
+import '../widgets/confirm_dialog.dart';
+import '../widgets/empty_state_message.dart';
 
 class NicknameListScreen extends StatefulWidget {
   const NicknameListScreen({
@@ -100,25 +102,11 @@ class _NicknameListScreenState extends State<NicknameListScreen> {
   }
 
   Future<void> _removeNickname(String userId) async {
-    final bool? confirmed = await showDialog<bool>(
+    final bool? confirmed = await showConfirmDialog(
       context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text('コテハン削除'),
-          content: Text('ユーザーID「$userId」のコテハンを削除しますか？'),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('キャンセル'),
-            ),
-            TextButton(
-              key: const Key('nickname-remove-confirm-button'),
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('削除'),
-            ),
-          ],
-        );
-      },
+      title: 'コテハン削除',
+      content: 'ユーザーID「$userId」のコテハンを削除しますか？',
+      confirmButtonKey: const Key('nickname-remove-confirm-button'),
     );
 
     if (confirmed != true || !mounted) {
@@ -154,15 +142,9 @@ class _NicknameListScreenState extends State<NicknameListScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : entries.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text(
-                      key: Key('nickname-list-empty'),
-                      'コテハンは登録されていません',
-                      style: TextStyle(fontSize: 14),
-                    ),
-                  ),
+              ? const EmptyStateMessage(
+                  key: Key('nickname-list-empty'),
+                  message: 'コテハンは登録されていません',
                 )
               : ListView.separated(
                   key: const Key('nickname-list'),

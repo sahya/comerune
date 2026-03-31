@@ -53,16 +53,10 @@ class CommentLogStats {
     List<AppMessage> messages, {
     Set<String> ngUserIds = const <String>{},
   }) {
-    final List<AppMessage> filtered = messages.where((AppMessage m) {
-      if (m.type == AppMessageType.gift || m.type == AppMessageType.nicoad) {
-        return false;
-      }
-      final String? userId = m.userId;
-      if (userId != null && ngUserIds.contains(userId)) {
-        return false;
-      }
-      return true;
-    }).toList(growable: false);
+    final List<AppMessage> filtered = _filterDisplayable(
+      messages,
+      ngUserIds: ngUserIds,
+    );
 
     if (filtered.isEmpty) {
       return CommentLogStats(
@@ -220,16 +214,10 @@ class CommentLogStats {
     }
 
     // Filter messages once.
-    final List<AppMessage> filtered = messages.where((AppMessage m) {
-      if (m.type == AppMessageType.gift || m.type == AppMessageType.nicoad) {
-        return false;
-      }
-      final String? userId = m.userId;
-      if (userId != null && ngUserIds.contains(userId)) {
-        return false;
-      }
-      return true;
-    }).toList(growable: false);
+    final List<AppMessage> filtered = _filterDisplayable(
+      messages,
+      ngUserIds: ngUserIds,
+    );
 
     if (filtered.isEmpty) {
       return const <HighlightPeak>[];
@@ -258,6 +246,23 @@ class CommentLogStats {
     }
 
     return peaks;
+  }
+
+  /// Filters out gift/nicoad messages and messages from NG users.
+  static List<AppMessage> _filterDisplayable(
+    List<AppMessage> messages, {
+    Set<String> ngUserIds = const <String>{},
+  }) {
+    return messages.where((AppMessage m) {
+      if (m.type == AppMessageType.gift || m.type == AppMessageType.nicoad) {
+        return false;
+      }
+      final String? userId = m.userId;
+      if (userId != null && ngUserIds.contains(userId)) {
+        return false;
+      }
+      return true;
+    }).toList(growable: false);
   }
 
   static String _formatPeakLabel(int minuteOffset) {
