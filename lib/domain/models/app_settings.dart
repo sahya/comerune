@@ -1,6 +1,7 @@
 import 'dart:developer' as developer;
 
 import '../../comment_speech/src/models/replace_rule.dart';
+import '../../comment_speech/src/models/speech_settings.dart';
 
 enum AppThemeMode {
   system,
@@ -512,4 +513,17 @@ class AppSettings {
       debugMode: debugMode ?? this.debugMode,
     );
   }
+
+  /// Convert to [SpeechSettings] for the platform speech engine.
+  SpeechSettings toSpeechSettings() => SpeechSettings(
+        enabled: autoReadEnabled && speechEngine == SpeechEngine.voicevox,
+        speakerId: voicevoxSpeaker,
+        speedScale: voicevoxSpeed,
+        pitchScale: voicevoxPitch,
+        intonationScale: voicevoxIntonation,
+        volumeScale: voicevoxVolume,
+        maxQueueSize: queueLimit,
+        ngWords: ngWordList,
+        dictionaryRules: dictionaryRules,
+      );
 }
