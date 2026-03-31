@@ -372,9 +372,11 @@ class _SelectScreenState extends State<SelectScreen> {
               onRefresh: _fetchAllPrograms,
             ),
           ),
-          if (_settingsNotifier.value.favoriteUserIdSet.isNotEmpty)
+          if (_buildFavoriteOnAirMap().isNotEmpty)
             _FavoriteUserSection(
-              userIds: _settingsNotifier.value.favoriteUserIdSet,
+              onAirProgramsByUserId: _buildFavoriteOnAirMap(),
+              enabled: !_isConnectionInProgress,
+              onTap: _connectToProgram,
               resolveUserName: widget.resolveUserName,
               userNameListenable: widget.userNameListenable,
             ),
@@ -796,6 +798,26 @@ class _SelectScreenState extends State<SelectScreen> {
 
   static String? _buildIconUrlFromUserId(String? userId) {
     return buildNicoIconUrl(userId);
+  }
+
+  /// Builds a map of favorite user IDs → their on-air [FollowProgram].
+  ///
+  /// Only includes favorite users who are currently broadcasting.
+  Map<String, FollowProgram> _buildFavoriteOnAirMap() {
+    final Set<String> favoriteIds =
+        _settingsNotifier.value.favoriteUserIdSet;
+    if (favoriteIds.isEmpty) {
+      return const <String, FollowProgram>{};
+    }
+
+    final Map<String, FollowProgram> result = <String, FollowProgram>{};
+    for (final FollowProgram program in _followPrograms) {
+      final String? userId = program.supplierUserId;
+      if (userId != null && favoriteIds.contains(userId)) {
+        result[userId] = program;
+      }
+    }
+    return result;
   }
 
   void _connectToProgram(FollowProgram program) {
@@ -1307,12 +1329,16 @@ class _MyBroadcastSection extends StatelessWidget {
 
 class _FavoriteUserSection extends StatefulWidget {
   const _FavoriteUserSection({
-    required this.userIds,
+    required this.onAirProgramsByUserId,
+    required this.enabled,
+    required this.onTap,
     this.resolveUserName,
     this.userNameListenable,
   });
 
-  final Set<String> userIds;
+  final Map<String, FollowProgram> onAirProgramsByUserId;
+  final bool enabled;
+  final ValueChanged<FollowProgram> onTap;
   final String? Function(String userId)? resolveUserName;
   final Listenable? userNameListenable;
 
@@ -1348,6 +1374,7 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
 
   @override
   Widget build(BuildContext context) {
+    final entries = widget.onAirProgramsByUserId.entries.toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -1364,7 +1391,7 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
               ),
               const SizedBox(width: 8),
               Text(
-                '${widget.userIds.length}件',
+                '${entries.length}件',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: Theme.of(context).colorScheme.outline,
                     ),
@@ -1373,11 +1400,15 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
           ),
         ),
         const Divider(height: 1),
-        ...widget.userIds.map((String userId) {
+        ...entries.map((MapEntry<String, FollowProgram> entry) {
+          final String userId = entry.key;
+          final FollowProgram program = entry.value;
           final String? iconUrl = buildNicoIconUrl(userId);
           final String? nickname = widget.resolveUserName?.call(userId);
           return ListTile(
             dense: true,
+            enabled: widget.enabled,
+            onTap: widget.enabled ? () => widget.onTap(program) : null,
             leading: ClipOval(
               child: SizedBox(
                 width: 32,
@@ -1401,6 +1432,13 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
               style: const TextStyle(fontSize: 13),
               overflow: TextOverflow.ellipsis,
               maxLines: 1,
+            ),
+            trailing: Icon(
+              Icons.play_circle_outline,
+              size: 20,
+              color: widget.enabled
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).disabledColor,
             ),
           );
         }),

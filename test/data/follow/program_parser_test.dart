@@ -112,6 +112,41 @@ void main() {
     });
   });
 
+  group('extractSupplierUserId', () {
+    test('returns id from programProvider', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'programProvider': <String, dynamic>{'id': '12345'},
+      };
+      expect(extractSupplierUserId(item), '12345');
+    });
+
+    test('returns id from programProvider when numeric', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'programProvider': <String, dynamic>{'id': 12345},
+      };
+      expect(extractSupplierUserId(item), '12345');
+    });
+
+    test('falls back to supplier programProviderId', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'supplier': <String, dynamic>{'programProviderId': 67890},
+      };
+      expect(extractSupplierUserId(item), '67890');
+    });
+
+    test('prefers programProvider over supplier', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'programProvider': <String, dynamic>{'id': '111'},
+        'supplier': <String, dynamic>{'programProviderId': '222'},
+      };
+      expect(extractSupplierUserId(item), '111');
+    });
+
+    test('returns null when neither is present', () {
+      expect(extractSupplierUserId(<String, dynamic>{}), isNull);
+    });
+  });
+
   group('isHttpsUrl', () {
     test('returns true for HTTPS URL', () {
       expect(isHttpsUrl('https://example.com'), isTrue);
@@ -133,6 +168,7 @@ void main() {
         'title': 'Test Title',
         'programProvider': <String, dynamic>{
           'name': 'TestUser',
+          'id': '12345',
           'iconSmall': 'https://example.com/icon.jpg',
         },
         'socialGroup': <String, dynamic>{'name': 'TestCommunity'},
@@ -146,6 +182,21 @@ void main() {
       expect(result.providerIconUrl, 'https://example.com/icon.jpg');
       expect(result.communityName, 'TestCommunity');
       expect(result.isOwnBroadcast, isFalse);
+      expect(result.supplierUserId, '12345');
+    });
+
+    test('extracts supplierUserId from programProvider', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'id': 'lv123456',
+        'title': 'Test Title',
+        'programProvider': <String, dynamic>{
+          'name': 'TestUser',
+          'id': '99999',
+        },
+      };
+      final result = parseProgramItem(item);
+      expect(result, isNotNull);
+      expect(result!.supplierUserId, '99999');
     });
 
     test('returns null when id is missing', () {

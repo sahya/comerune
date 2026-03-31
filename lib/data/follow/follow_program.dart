@@ -10,6 +10,7 @@ class FollowProgram {
     String? communityName,
     this.beginAt,
     this.isOwnBroadcast = false,
+    this.supplierUserId,
   }) : communityName = (communityName != null && communityName.isNotEmpty)
             ? communityName
             : null;
@@ -34,6 +35,10 @@ class FollowProgram {
 
   /// Whether this program is the logged-in user's own broadcast.
   final bool isOwnBroadcast;
+
+  /// The broadcaster's numeric user ID (e.g., "123456").
+  /// Used to match against favorite user IDs.
+  final String? supplierUserId;
 
   /// Returns an elapsed time string in `H:MM:SS` format, or null if
   /// [beginAt] is null or in the future.

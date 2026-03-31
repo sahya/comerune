@@ -79,6 +79,36 @@ String? extractCommunityName(Map<String, dynamic> item) {
   return null;
 }
 
+/// Extracts the broadcaster's numeric user ID from a program JSON item.
+///
+/// Checks `programProvider.id` first, then falls back to
+/// `supplier.programProviderId`.
+String? extractSupplierUserId(Map<String, dynamic> item) {
+  final Object? provider = item['programProvider'];
+  if (provider is Map<String, dynamic>) {
+    final Object? id = provider['id'];
+    if (id != null) {
+      final String idStr = id.toString();
+      if (idStr.isNotEmpty) {
+        return idStr;
+      }
+    }
+  }
+
+  final Object? supplier = item['supplier'];
+  if (supplier is Map<String, dynamic>) {
+    final Object? providerId = supplier['programProviderId'];
+    if (providerId != null) {
+      final String idStr = providerId.toString();
+      if (idStr.isNotEmpty) {
+        return idStr;
+      }
+    }
+  }
+
+  return null;
+}
+
 /// Returns `true` if [url] is a non-empty HTTPS URL.
 bool isHttpsUrl(String url) {
   return url.isNotEmpty && url.startsWith('https://');
@@ -108,6 +138,7 @@ FollowProgram? parseProgramItem(
   final String? providerIconUrl = extractProviderIconUrl(item);
   final String? communityName = extractCommunityName(item);
   final DateTime? beginAt = parseBeginAt(item);
+  final String? supplierUserId = extractSupplierUserId(item);
 
   return FollowProgram(
     programId: programId,
@@ -117,5 +148,6 @@ FollowProgram? parseProgramItem(
     communityName: communityName,
     beginAt: beginAt,
     isOwnBroadcast: isOwnBroadcast,
+    supplierUserId: supplierUserId,
   );
 }
