@@ -70,6 +70,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       'settings.comment.autoNicknameRegistration';
   static const String _kAutoSaveCommentLog =
       'settings.comment.autoSaveCommentLog';
+  static const String _kAutoSaveCommentLogPath =
+      'settings.comment.autoSaveCommentLogPath';
   static const String _kStatisticsEnabled = 'settings.statistics.enabled';
   static const String _kStatisticsViewerCommentEnabled =
       'settings.statistics.viewerComment';
@@ -137,6 +139,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
           defaults.autoNicknameRegistration,
       autoSaveCommentLog:
           _prefs.getBool(_kAutoSaveCommentLog) ?? defaults.autoSaveCommentLog,
+      autoSaveCommentLogPath: _prefs.getString(_kAutoSaveCommentLogPath) ??
+          defaults.autoSaveCommentLogPath,
       statisticsEnabled:
           _prefs.getBool(_kStatisticsEnabled) ?? defaults.statisticsEnabled,
       statisticsViewerCommentEnabled:
@@ -197,6 +201,10 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       settings.autoNicknameRegistration,
     );
     await _prefs.setBool(_kAutoSaveCommentLog, settings.autoSaveCommentLog);
+    await _prefs.setString(
+      _kAutoSaveCommentLogPath,
+      settings.autoSaveCommentLogPath,
+    );
     await _prefs.setBool(_kStatisticsEnabled, settings.statisticsEnabled);
     await _prefs.setBool(
       _kStatisticsViewerCommentEnabled,

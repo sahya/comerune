@@ -226,6 +226,7 @@ class AppSettings {
     required this.commentFontSize,
     required this.autoNicknameRegistration,
     required this.autoSaveCommentLog,
+    required this.autoSaveCommentLogPath,
     required this.statisticsEnabled,
     required this.statisticsViewerCommentEnabled,
     required this.statisticsActiveUserEnabled,
@@ -269,6 +270,7 @@ class AppSettings {
     commentFontSize: commentFontSizeDefault,
     autoNicknameRegistration: true,
     autoSaveCommentLog: false,
+    autoSaveCommentLogPath: '',
     statisticsEnabled: false,
     statisticsViewerCommentEnabled: true,
     statisticsActiveUserEnabled: true,
@@ -310,6 +312,10 @@ class AppSettings {
   final double commentFontSize;
   final bool autoNicknameRegistration;
   final bool autoSaveCommentLog;
+
+  /// User-selected directory path for auto-saving comment logs.
+  /// Empty string means the default app documents directory is used.
+  final String autoSaveCommentLogPath;
   final bool statisticsEnabled;
   final bool statisticsViewerCommentEnabled;
   final bool statisticsActiveUserEnabled;
@@ -458,6 +464,7 @@ class AppSettings {
     double? commentFontSize,
     bool? autoNicknameRegistration,
     bool? autoSaveCommentLog,
+    String? autoSaveCommentLogPath,
     bool? statisticsEnabled,
     bool? statisticsViewerCommentEnabled,
     bool? statisticsActiveUserEnabled,
@@ -497,6 +504,8 @@ class AppSettings {
       autoNicknameRegistration:
           autoNicknameRegistration ?? this.autoNicknameRegistration,
       autoSaveCommentLog: autoSaveCommentLog ?? this.autoSaveCommentLog,
+      autoSaveCommentLogPath:
+          autoSaveCommentLogPath ?? this.autoSaveCommentLogPath,
       statisticsEnabled: statisticsEnabled ?? this.statisticsEnabled,
       statisticsViewerCommentEnabled:
           statisticsViewerCommentEnabled ?? this.statisticsViewerCommentEnabled,
