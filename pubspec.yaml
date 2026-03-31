@@ -59,3 +59,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - android/app/src/main/assets/voicevox_models/TERMS.txt
