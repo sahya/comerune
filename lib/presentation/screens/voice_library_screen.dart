@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
@@ -309,6 +310,7 @@ class _VoicevoxTermsDialog extends StatefulWidget {
 class _VoicevoxTermsDialogState extends State<_VoicevoxTermsDialog> {
   final ScrollController _scrollController = ScrollController();
   String? _termsText;
+  Widget? _termsContentCache;
   bool _hasScrolledToEnd = false;
   int _cooldownSeconds = 3;
   Timer? _cooldownTimer;
@@ -330,8 +332,15 @@ class _VoicevoxTermsDialogState extends State<_VoicevoxTermsDialog> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _checkScrollNeeded();
       });
-    } on Object {
+    } on Object catch (e) {
+      developer.log(
+        'Failed to load TERMS.txt: $e',
+        name: 'VoicevoxTermsDialog',
+      );
       if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('規約の読み込みに失敗しました')),
+        );
         Navigator.of(context).pop(false);
       }
     }
@@ -402,7 +411,8 @@ class _VoicevoxTermsDialogState extends State<_VoicevoxTermsDialog> {
                       thumbVisibility: true,
                       child: SingleChildScrollView(
                         controller: _scrollController,
-                        child: _buildTermsContent(context),
+                        child: _termsContentCache ??=
+                            _buildTermsContent(context),
                       ),
                     ),
             ),
