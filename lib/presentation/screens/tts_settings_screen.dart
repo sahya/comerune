@@ -161,6 +161,23 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
       _settings = next;
     });
     unawaited(_saveSettings(next));
+    _pushSettingsToEngine(next);
+  }
+
+  /// Push the current settings to the native speech engine so that changes
+  /// (speed, pitch, intonation, volume, speaker, etc.) take effect immediately
+  /// without requiring the user to navigate back.
+  void _pushSettingsToEngine(AppSettings settings) {
+    final platform = widget.platform;
+    if (platform == null) return;
+
+    unawaited(
+      platform.updateSettings(settings.toSpeechSettings()).catchError(
+        (Object e) {
+          debugPrint('[TtsSettings] pushSettings FAILED: $e');
+        },
+      ),
+    );
   }
 
   Future<void> _saveSettings(AppSettings next) =>
