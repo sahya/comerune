@@ -656,11 +656,7 @@ class _SelectScreenState extends State<SelectScreen> {
           userSessionStore: userSessionStore,
           themeModeNotifier: widget.themeModeNotifier,
           userAttributeStore: widget.userAttributeStore,
-          // Fall back to the notifier value when _currentBroadcasterId
-          // has not been set yet (e.g. programinfo API fallback path or
-          // timing edge case during initial connection).
-          broadcasterId:
-              _currentBroadcasterId ?? widget.supplierUserIdNotifier?.value,
+          broadcasterIdNotifier: widget.supplierUserIdNotifier,
           resolveUserName: widget.resolveUserName,
           requestUserNameResolve: widget.requestUserNameResolve,
           userNameListenable: widget.userNameListenable,

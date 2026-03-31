@@ -32,13 +32,14 @@ void main() {
     ) async {
       final SharedPreferencesSettingsStore settingsStore =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final ValueNotifier<String?> notifier = ValueNotifier<String?>(null);
 
       await tester.pumpWidget(
         MaterialApp(
           home: UserManagementSettingsScreen(
             settingsStore: settingsStore,
             userAttributeStore: _FakeUserAttributeStore(),
-            broadcasterId: null,
+            broadcasterIdNotifier: notifier,
           ),
         ),
       );
@@ -49,6 +50,8 @@ void main() {
       );
       expect(nicknameTile.enabled, isFalse);
       expect(find.text('放送に接続すると利用できます'), findsOneWidget);
+
+      notifier.dispose();
     });
 
     testWidgets('shows enabled nickname tile when broadcasterId is non-null', (
@@ -56,13 +59,15 @@ void main() {
     ) async {
       final SharedPreferencesSettingsStore settingsStore =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final ValueNotifier<String?> notifier =
+          ValueNotifier<String?>('broadcaster-1');
 
       await tester.pumpWidget(
         MaterialApp(
           home: UserManagementSettingsScreen(
             settingsStore: settingsStore,
             userAttributeStore: _FakeUserAttributeStore(),
-            broadcasterId: 'broadcaster-1',
+            broadcasterIdNotifier: notifier,
           ),
         ),
       );
@@ -73,6 +78,46 @@ void main() {
       );
       expect(nicknameTile.enabled, isTrue);
       expect(find.text('放送に接続すると利用できます'), findsNothing);
+
+      notifier.dispose();
+    });
+
+    testWidgets(
+        'nickname tile enables reactively when broadcasterId becomes non-null',
+        (WidgetTester tester) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final ValueNotifier<String?> notifier = ValueNotifier<String?>(null);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: UserManagementSettingsScreen(
+            settingsStore: settingsStore,
+            userAttributeStore: _FakeUserAttributeStore(),
+            broadcasterIdNotifier: notifier,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Initially disabled
+      ListTile nicknameTile = tester.widget(
+        find.byKey(const Key('nickname-list-tile')),
+      );
+      expect(nicknameTile.enabled, isFalse);
+
+      // Simulate broadcaster ID resolved asynchronously
+      notifier.value = 'broadcaster-1';
+      await tester.pumpAndSettle();
+
+      // Now enabled
+      nicknameTile = tester.widget(
+        find.byKey(const Key('nickname-list-tile')),
+      );
+      expect(nicknameTile.enabled, isTrue);
+      expect(find.text('放送に接続すると利用できます'), findsNothing);
+
+      notifier.dispose();
     });
 
     testWidgets('auto-nickname registration toggle persists value', (
