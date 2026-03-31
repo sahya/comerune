@@ -806,8 +806,7 @@ class _SelectScreenState extends State<SelectScreen> {
   ///
   /// Only includes favorite users who are currently broadcasting.
   Map<String, FollowProgram> _buildFavoriteOnAirMap() {
-    final Set<String> favoriteIds =
-        _settingsNotifier.value.favoriteUserIdSet;
+    final Set<String> favoriteIds = _settingsNotifier.value.favoriteUserIdSet;
     if (favoriteIds.isEmpty) {
       return const <String, FollowProgram>{};
     }
