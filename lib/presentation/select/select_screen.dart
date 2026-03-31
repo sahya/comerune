@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -455,6 +456,8 @@ class _SelectScreenState extends State<SelectScreen> {
               nameResolutionEnabled ? widget.requestUserNameResolve : null,
           commentLogWriter: widget.commentLogWriter,
           autoSaveCommentLog: _settingsNotifier.value.autoSaveCommentLog,
+          autoSaveCommentLogPath:
+              _settingsNotifier.value.autoSaveCommentLogPath,
           ngUserIds: _settingsNotifier.value.ngUserIdSet,
           ngWords: _settingsNotifier.value.ngWordList,
           onToggleNgUser: _toggleNgUser,
@@ -668,11 +671,7 @@ class _SelectScreenState extends State<SelectScreen> {
           userSessionStore: userSessionStore,
           themeModeNotifier: widget.themeModeNotifier,
           userAttributeStore: widget.userAttributeStore,
-          // Fall back to the notifier value when _currentBroadcasterId
-          // has not been set yet (e.g. programinfo API fallback path or
-          // timing edge case during initial connection).
-          broadcasterId:
-              _currentBroadcasterId ?? widget.supplierUserIdNotifier?.value,
+          broadcasterIdNotifier: widget.supplierUserIdNotifier,
           resolveUserName: widget.resolveUserName,
           requestUserNameResolve: widget.requestUserNameResolve,
           userNameListenable: widget.userNameListenable,
@@ -746,10 +745,22 @@ class _SelectScreenState extends State<SelectScreen> {
       return;
     }
 
-    await Future.wait<void>(<Future<void>>[
-      _fetchMyProgram(userSession),
-      _fetchFollowPrograms(userSession),
-    ]);
+    // Run both fetches concurrently with the same session token.
+    // Each fetch handles its own errors internally, but we wrap
+    // Future.wait in a try-catch as a safety net so that an unexpected
+    // error in one fetch never prevents the refresh timer from being
+    // rescheduled (which would silently stop all future updates).
+    try {
+      await Future.wait<void>(<Future<void>>[
+        _fetchMyProgram(userSession),
+        _fetchFollowPrograms(userSession),
+      ]);
+    } on Object catch (e) {
+      log(
+        'Unexpected error during program fetch: $e',
+        name: 'SelectScreen',
+      );
+    }
 
     if (!mounted) {
       return;
@@ -792,15 +803,46 @@ class _SelectScreenState extends State<SelectScreen> {
       return;
     }
 
-    final FollowProgram? program =
-        await repository.fetchOwnProgram(userSession: userSession);
-    if (!mounted) {
-      return;
-    }
+    try {
+      // Retry up to 3 times on first load only, mirroring
+      // _fetchFollowPrograms behaviour.  Once we have a result the API
+      // response is authoritative — the user may simply not be broadcasting.
+      FollowProgram? program;
+      const int maxAttempts = 3;
+      for (int attempt = 0; attempt < maxAttempts; attempt++) {
+        program = await repository.fetchOwnProgram(userSession: userSession);
+        if (!mounted) {
+          return;
+        }
+        if (program != null || _myProgram != null) {
+          break;
+        }
+        if (attempt < maxAttempts - 1) {
+          await Future<void>.delayed(
+            Duration(seconds: math.pow(2, attempt).toInt()),
+          );
+          if (!mounted) {
+            return;
+          }
+        }
+      }
 
-    setState(() {
-      _myProgram = program;
-    });
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _myProgram = program;
+      });
+    } on Object catch (e) {
+      // Catch Object (not just Exception) to match the safety net in
+      // _fetchAllPrograms and ensure Error types are also logged here
+      // rather than only at the Future.wait level.
+      log(
+        'Error in _fetchMyProgram: $e',
+        name: 'SelectScreen',
+      );
+    }
   }
 
   Future<void> _fetchFollowPrograms(String userSession) async {

@@ -14,7 +14,7 @@ class UserManagementSettingsScreen extends StatefulWidget {
     super.key,
     required this.settingsStore,
     this.userAttributeStore,
-    this.broadcasterId,
+    this.broadcasterIdNotifier,
     this.resolveUserName,
     this.requestUserNameResolve,
     this.userNameListenable,
@@ -22,7 +22,7 @@ class UserManagementSettingsScreen extends StatefulWidget {
 
   final SettingsStore settingsStore;
   final UserAttributeStore? userAttributeStore;
-  final String? broadcasterId;
+  final ValueNotifier<String?>? broadcasterIdNotifier;
   final String? Function(String userId)? resolveUserName;
   final void Function(String userId)? requestUserNameResolve;
   final Listenable? userNameListenable;
@@ -40,6 +40,26 @@ class _UserManagementSettingsScreenState
   void initState() {
     super.initState();
     _loadSettings();
+    widget.broadcasterIdNotifier?.addListener(_onBroadcasterIdChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant UserManagementSettingsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.broadcasterIdNotifier != widget.broadcasterIdNotifier) {
+      oldWidget.broadcasterIdNotifier?.removeListener(_onBroadcasterIdChanged);
+      widget.broadcasterIdNotifier?.addListener(_onBroadcasterIdChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.broadcasterIdNotifier?.removeListener(_onBroadcasterIdChanged);
+    super.dispose();
+  }
+
+  void _onBroadcasterIdChanged() {
+    setState(() {});
   }
 
   Future<void> _loadSettings() async {
@@ -127,30 +147,34 @@ class _UserManagementSettingsScreenState
                       },
                     ),
                     if (widget.userAttributeStore != null)
-                      ListTile(
-                        key: const Key('nickname-list-tile'),
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.badge),
-                        title: const Text('コテハン一覧管理'),
-                        subtitle: widget.broadcasterId == null
-                            ? const Text('放送に接続すると利用できます')
-                            : null,
-                        trailing: const Icon(Icons.chevron_right),
-                        enabled: widget.broadcasterId != null,
-                        onTap: widget.broadcasterId != null
-                            ? () async {
-                                await Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => NicknameListScreen(
-                                      userAttributeStore:
-                                          widget.userAttributeStore!,
-                                      broadcasterId: widget.broadcasterId!,
+                      Builder(builder: (BuildContext context) {
+                        final String? broadcasterId =
+                            widget.broadcasterIdNotifier?.value;
+                        final bool enabled = broadcasterId != null;
+                        return ListTile(
+                          key: const Key('nickname-list-tile'),
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.badge),
+                          title: const Text('コテハン管理'),
+                          subtitle:
+                              enabled ? null : const Text('放送に接続すると利用できます'),
+                          trailing: const Icon(Icons.chevron_right),
+                          enabled: enabled,
+                          onTap: enabled
+                              ? () async {
+                                  await Navigator.of(context).push(
+                                    MaterialPageRoute<void>(
+                                      builder: (_) => NicknameListScreen(
+                                        userAttributeStore:
+                                            widget.userAttributeStore!,
+                                        broadcasterId: broadcasterId,
+                                      ),
                                     ),
-                                  ),
-                                );
-                              }
-                            : null,
-                      ),
+                                  );
+                                }
+                              : null,
+                        );
+                      }),
                   ],
                 ),
               ],

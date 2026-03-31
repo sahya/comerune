@@ -44,6 +44,10 @@ class MyProgramRepository {
     required String userSession,
   }) async {
     if (userSession.trim().isEmpty) {
+      log(
+        'Skipped fetch: user session is empty',
+        name: 'MyProgramRepository',
+      );
       return null;
     }
 
@@ -78,30 +82,50 @@ class MyProgramRepository {
   FollowProgram? _parseResponse(String body) {
     final Object? decoded = jsonDecode(body);
     if (decoded is! Map<String, dynamic>) {
+      log(
+        'Unexpected response type: ${decoded.runtimeType}',
+        name: 'MyProgramRepository',
+      );
       return null;
     }
 
     final Object? data = decoded['data'];
     if (data is! Map<String, dynamic>) {
+      log(
+        'Missing or invalid "data" field in response',
+        name: 'MyProgramRepository',
+      );
       return null;
     }
 
     final Object? programs = data['programs'];
     if (programs is! List || programs.isEmpty) {
+      // Not broadcasting — this is a normal case, no warning needed.
       return null;
     }
 
     // The user can only have one on-air program at a time.
     final Object? item = programs.first;
     if (item is! Map<String, dynamic>) {
+      log(
+        'First program item has unexpected type: ${item.runtimeType}',
+        name: 'MyProgramRepository',
+      );
       return null;
     }
 
-    return parseProgramItem(
+    final FollowProgram? result = parseProgramItem(
       item,
       requireProviderName: false,
       isOwnBroadcast: true,
     );
+    if (result == null) {
+      log(
+        'Failed to parse own program item (missing id or title)',
+        name: 'MyProgramRepository',
+      );
+    }
+    return result;
   }
 
   void dispose() {
