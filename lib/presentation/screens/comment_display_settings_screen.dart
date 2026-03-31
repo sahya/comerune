@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../application/settings/settings_store.dart';
@@ -96,11 +97,34 @@ class _CommentDisplaySettingsScreenState
                       subtitle: const Text('接続終了時にコメントをファイルに保存'),
                       contentPadding: EdgeInsets.zero,
                       value: settings.autoSaveCommentLog,
-                      onChanged: (bool value) {
-                        _updateAndSave(
-                            settings.copyWith(autoSaveCommentLog: value));
+                      onChanged: (bool value) async {
+                        if (value) {
+                          final String? directory =
+                              await FilePicker.platform.getDirectoryPath();
+                          if (directory == null) {
+                            return;
+                          }
+                          _updateAndSave(settings.copyWith(
+                            autoSaveCommentLog: true,
+                            autoSaveCommentLogPath: directory,
+                          ));
+                        } else {
+                          _updateAndSave(
+                            settings.copyWith(autoSaveCommentLog: false),
+                          );
+                        }
                       },
                     ),
+                    if (settings.autoSaveCommentLog)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text(
+                          '保存先: ${settings.autoSaveCommentLogPath.isEmpty ? '（デフォルト）' : settings.autoSaveCommentLogPath}',
+                          style: Theme.of(context).textTheme.bodySmall,
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                      ),
                     const SizedBox(height: 8),
                     SettingsIntSliderField(
                       key: const Key('comment-font-size-slider'),

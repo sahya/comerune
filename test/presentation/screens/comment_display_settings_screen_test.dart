@@ -52,24 +52,29 @@ void main() {
       expect(resolveTile.onChanged, isNull);
     });
 
-    testWidgets('auto-save comment log toggle persists value', (
+    testWidgets('auto-save comment log toggle persists value when turned off', (
       WidgetTester tester,
     ) async {
+      // Pre-set auto-save to ON so we can test turning it OFF
+      // (turning ON requires a file picker which cannot be mocked easily).
+      final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+      await prefs.setBool('settings.comment.autoSaveCommentLog', true);
       final SharedPreferencesSettingsStore settingsStore =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+          SharedPreferencesSettingsStore(prefs: prefs);
 
       await tester.pumpWidget(_buildScreen(settingsStore));
       await tester.pumpAndSettle();
 
-      // Default is false
+      // Verify initial state is ON
       AppSettings loaded = await settingsStore.load();
-      expect(loaded.autoSaveCommentLog, isFalse);
+      expect(loaded.autoSaveCommentLog, isTrue);
 
+      // Toggle OFF
       await toggleSwitchByKey(
           tester, _listKey, const Key('auto-save-comment-log-switch'));
 
       loaded = await settingsStore.load();
-      expect(loaded.autoSaveCommentLog, isTrue);
+      expect(loaded.autoSaveCommentLog, isFalse);
     });
 
     testWidgets('disables statistics child toggles when parent toggle is off', (

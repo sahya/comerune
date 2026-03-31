@@ -6,8 +6,19 @@ import com.example.comerune.speech.domain.model.SpeechSettings
 
 class DefaultCommentNormalizer(
     private val duplicateDetector: DuplicateDetector? = null,
-    private val timeProvider: () -> Long = System::currentTimeMillis
+    private val timeProvider: () -> Long = System::currentTimeMillis,
+    private val presetNgWords: List<String> = emptyList()
 ) : CommentNormalizer {
+
+    /** Pre-normalized preset NG words, computed once at construction time. */
+    private val normalizedPresetNgWords: List<String> =
+        presetNgWords.filter { it.isNotBlank() }.map { NgWordTextNormalizer.normalize(it) }
+
+    /** Cache for user NG words normalization. Invalidated when the source list changes. */
+    @Volatile
+    private var cachedUserNgWordsSource: List<String> = emptyList()
+    @Volatile
+    private var cachedNormalizedUserNgWords: List<String> = emptyList()
 
     /** Cache of compiled Regex objects keyed by pattern string. Max 100 entries. */
     private val regexCache = java.util.concurrent.ConcurrentHashMap<String, Regex>()
@@ -245,11 +256,30 @@ class DefaultCommentNormalizer(
      * NG word check (spec Section 3.5.5):
      * Checks if preprocessed text contains any NG word (partial match, case-insensitive).
      * Returns "ng_word" skip reason if match found, null otherwise.
+     *
+     * Applies keyword-hack-resistant normalization via [NgWordTextNormalizer] to
+     * defeat evasion techniques (space insertion, full/half-width mixing,
+     * katakana/hiragana swapping, look-alike kanji, etc.).
+     *
+     * Both user-configured NG words and preset NG words are checked.
      */
     internal fun detectNgWord(text: String, settings: SpeechSettings): String? {
-        if (settings.ngWords.isEmpty()) return null
-        val lowerText = text.lowercase()
-        return if (settings.ngWords.filter { it.isNotBlank() }.any { lowerText.contains(it.lowercase()) }) {
+        // Build normalized user NG words with caching
+        val userNgWords = if (settings.ngWords === cachedUserNgWordsSource || settings.ngWords == cachedUserNgWordsSource) {
+            cachedNormalizedUserNgWords
+        } else {
+            val normalized = settings.ngWords.filter { it.isNotBlank() }.map { NgWordTextNormalizer.normalize(it) }
+            cachedUserNgWordsSource = settings.ngWords
+            cachedNormalizedUserNgWords = normalized
+            normalized
+        }
+
+        val allNormalized = normalizedPresetNgWords + userNgWords
+        if (allNormalized.isEmpty()) return null
+
+        val normalizedText = NgWordTextNormalizer.normalize(text)
+
+        return if (allNormalized.any { normalizedText.contains(it) }) {
             SKIP_NG_WORD
         } else {
             null
