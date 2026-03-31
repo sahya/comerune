@@ -82,7 +82,7 @@ void main() {
     test('default values match Kotlin side', () {
       const settings = SpeechSettings();
       expect(settings.enabled, true);
-      expect(settings.speakerId, 0); // 四国めたん・あまあま
+      expect(settings.speakerId, 10000); // VOICEVOX Nemo・男声2
       expect(settings.speedScale, 1.15);
       expect(settings.pitchScale, 0.0);
       expect(settings.intonationScale, 1.0);
