@@ -172,7 +172,7 @@ void main() {
 
       final bool stalledReconnected = await supervisor.onNdgrStreamStalled();
       expect(stalledReconnected, isTrue);
-      expect(supervisor.reconnectCount, 2);
+      expect(supervisor.reconnectCount, 0);
 
       supervisor.recordReceivedAt(DateTime(2026, 1, 1));
       final bool failed = supervisor.fail(ConnectionErrorCode.ndgrStreamFailed);
@@ -219,7 +219,7 @@ void main() {
 
       final bool reconnected = await supervisor.onNdgrStreamStalled();
       expect(reconnected, isTrue);
-      expect(supervisor.reconnectCount, 2);
+      expect(supervisor.reconnectCount, 0);
 
       supervisor.recordReceivedAt(DateTime(2026, 1, 1));
       final bool failed = supervisor.fail(ConnectionErrorCode.ndgrStreamFailed);
@@ -440,7 +440,7 @@ void main() {
       final bool reconnected = await supervisor.onNdgrStreamStalled();
       expect(reconnected, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingNdgr);
-      expect(supervisor.reconnectCount, 1);
+      expect(supervisor.reconnectCount, 0);
       expect(ndgrClient.disconnectCalls, 1);
       expect(ndgrClient.connectCalls, 2);
       expect(ndgrClient.connectedUris, <Uri>[ndgrUri, ndgrUri]);
@@ -505,7 +505,7 @@ void main() {
       final bool reconnected = await supervisor.onLegacyWsDisconnected();
       expect(reconnected, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingLegacy);
-      expect(supervisor.reconnectCount, 1);
+      expect(supervisor.reconnectCount, 0);
       expect(legacyClient.disconnectCalls, 1);
       expect(legacyClient.connectCalls, 2);
       expect(legacyClient.connectedUris, <Uri>[legacyUrl, legacyUrl]);
@@ -542,7 +542,7 @@ void main() {
       final bool reconnected = await supervisor.onSessionWsDisconnected();
       expect(reconnected, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingNdgr);
-      expect(supervisor.reconnectCount, 1);
+      expect(supervisor.reconnectCount, 0);
       expect(sessionWsClient.connectCalls, 2);
       expect(sessionWsClient.disconnectCalls, 1);
       expect(ndgrClient.disconnectCalls, 1);
@@ -579,7 +579,7 @@ void main() {
       await _drainEventLoop();
 
       expect(supervisor.status, ConnectionStatus.streamingNdgr);
-      expect(supervisor.reconnectCount, 1);
+      expect(supervisor.reconnectCount, 0);
       expect(sessionWsClient.connectCalls, 2);
       expect(ndgrClient.connectedUris.last, secondNdgrUri);
     });
@@ -653,7 +653,7 @@ void main() {
       final bool reconnected = await supervisor.onLegacyWsDisconnected();
       expect(reconnected, isTrue);
       expect(supervisor.status, ConnectionStatus.streamingLegacy);
-      expect(supervisor.reconnectCount, 4);
+      expect(supervisor.reconnectCount, 0);
       expect(sessionWsClient.connectCalls, 2);
       expect(sessionWsClient.disconnectCalls, 1);
       expect(legacyClient.disconnectCalls, 4);
@@ -685,7 +685,7 @@ void main() {
       await _drainEventLoop();
 
       expect(supervisor.status, ConnectionStatus.streamingLegacy);
-      expect(supervisor.reconnectCount, 1);
+      expect(supervisor.reconnectCount, 0);
       expect(legacyClient.disconnectCalls, 1);
       expect(legacyClient.connectCalls, 2);
       expect(legacyClient.connectedUris, <Uri>[legacyUrl, legacyUrl]);
@@ -858,11 +858,56 @@ void main() {
       await _drainEventLoop();
 
       expect(supervisor.status, ConnectionStatus.streamingNdgr);
-      expect(supervisor.reconnectCount, 1);
+      expect(supervisor.reconnectCount, 0);
       expect(ndgrClient.disconnectCalls, 1);
       expect(ndgrClient.connectCalls, 2);
       expect(ndgrClient.connectedResumeCursors.last?.at, 'now');
       expect(ndgrClient.connectedResumeCursors.last?.next, 'segment-1');
+    });
+
+    test(
+        'reconnectCount resets after successful reconnect so subsequent stalls can reconnect',
+        () async {
+      final Uri ndgrUri = Uri.parse('https://example.com/api/view/v4/stream');
+      final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
+        endpointsQueue: <SessionEndpoints>[
+          SessionEndpoints(ndgrViewApiUri: ndgrUri),
+        ],
+      );
+      final FakeNdgrClient ndgrClient = FakeNdgrClient();
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: sessionWsClient,
+        ndgrClient: ndgrClient,
+        legacyCommentClient: FakeLegacyCommentClient(),
+        maxReconnectAttempts: 2,
+        delayExecutor: (_) async {},
+        jitterProvider: (_) => Duration.zero,
+      );
+      addTearDown(supervisor.dispose);
+
+      final bool started = await _startAndDrain(supervisor);
+      expect(started, isTrue);
+      expect(supervisor.status, ConnectionStatus.streamingNdgr);
+
+      // First stall — reconnect succeeds.
+      ndgrClient.emitStalled();
+      await _drainEventLoop();
+      expect(supervisor.status, ConnectionStatus.streamingNdgr);
+      expect(supervisor.reconnectCount, 0);
+
+      // Second stall — reconnect succeeds again.
+      ndgrClient.emitStalled();
+      await _drainEventLoop();
+      expect(supervisor.status, ConnectionStatus.streamingNdgr);
+      expect(supervisor.reconnectCount, 0);
+
+      // Third stall — reconnect succeeds again (would have failed if
+      // count was not reset, because maxReconnectAttempts is 2).
+      ndgrClient.emitStalled();
+      await _drainEventLoop();
+      expect(supervisor.status, ConnectionStatus.streamingNdgr);
+      expect(supervisor.reconnectCount, 0);
+      expect(ndgrClient.connectCalls, 4);
     });
 
     test(
