@@ -9,9 +9,8 @@ import '../widgets/settings_widgets.dart';
 /// Mixin that provides the common load/save pattern shared by settings screens.
 ///
 /// Subclasses must implement [settingsStore] and call [loadSettings] from
-/// [initState].  Override [onSettingsLoaded] or [onSettingsUpdated] to run
-/// screen-specific side-effects (e.g. syncing a theme notifier or populating
-/// text controllers).
+/// [initState].  Screen-specific side-effects (e.g. syncing a theme notifier
+/// or populating text controllers) should be run after [loadSettings] returns.
 mixin SettingsScreenMixin<T extends StatefulWidget> on State<T> {
   /// The store used to persist and retrieve [AppSettings].
   SettingsStore get settingsStore;
