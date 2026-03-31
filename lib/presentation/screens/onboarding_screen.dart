@@ -190,9 +190,9 @@ class _CommentViewPage extends StatelessWidget {
       iconColor: const Color(0xFF42A5F5),
       title: 'リアルタイムでコメントを表示',
       body: '放送に届くコメントを\nリアルタイムで見やすく表示します。\n\n'
-          'お気に入りのユーザーをマークしたり、\n'
+          'お気に入りユーザーのマークや\n'
           'NGワードで快適な環境を作れます。\n'
-          '大切なコメントを見逃しません。',
+          'コメントの統計やログ保存も。',
       colorScheme: colorScheme,
     );
   }
@@ -212,7 +212,8 @@ class _SpeechPage extends StatelessWidget {
       body: '棒読みちゃんや VOICEVOX と連携して、\n'
           'コメントを音声で読み上げます。\n\n'
           '画面から目を離しているときでも\n'
-          'リスナーの声を逃さず受け取れます。',
+          'リスナーの声を逃さず受け取れます。\n'
+          'ニックネームの読み上げにも対応。',
       colorScheme: colorScheme,
     );
   }
@@ -231,7 +232,7 @@ class _StartPage extends StatelessWidget {
       title: '準備完了！',
       body: 'ログインして放送番号を入力すれば\n'
           'すぐにコメントを見られます。\n\n'
-          '設定はいつでも変更できるので、\n'
+          'テーマや色覚モードなど設定も充実。\n'
           'まずは気軽に使ってみてください。\n\n'
           'あなたの配信を応援しています！',
       colorScheme: colorScheme,
