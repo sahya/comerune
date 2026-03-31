@@ -166,6 +166,55 @@ void main() {
       expect(content, contains('shared content'));
     });
 
+    test('save uses customDirectory when provided', () async {
+      final Directory customDir = Directory('${tempDir.path}/custom_save_dir');
+      final FileCommentLogWriter writer =
+          FileCommentLogWriter(directory: tempDir, tempDirectory: tempDir);
+
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: '1',
+          timestamp: DateTime(2026, 3, 28, 12, 0, 0),
+          content: 'custom dir test',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      final String? path = await writer.save(
+        lv: 'lv500',
+        messages: messages,
+        customDirectory: customDir,
+      );
+
+      expect(path, isNotNull);
+      expect(path, contains('custom_save_dir'));
+      expect(customDir.existsSync(), isTrue);
+      final String content = await File(path!).readAsString();
+      expect(content, contains('custom dir test'));
+    });
+
+    test('save uses default directory when customDirectory is null', () async {
+      final FileCommentLogWriter writer =
+          FileCommentLogWriter(directory: tempDir, tempDirectory: tempDir);
+
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: '1',
+          timestamp: DateTime(2026, 3, 28, 12, 0, 0),
+          content: 'default dir test',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      final String? path = await writer.save(
+        lv: 'lv600',
+        messages: messages,
+      );
+
+      expect(path, isNotNull);
+      expect(path, startsWith(tempDir.path));
+    });
+
     test('escapes tabs and newlines in content', () async {
       final FileCommentLogWriter writer =
           FileCommentLogWriter(directory: tempDir, tempDirectory: tempDir);
