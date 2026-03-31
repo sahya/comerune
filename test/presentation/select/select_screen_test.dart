@@ -1115,6 +1115,50 @@ void main() {
     });
 
     testWidgets(
+        'own program still displays when follow program fetch throws',
+        (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+      final SettingsStore settingsStore = SharedPreferencesSettingsStore(
+        prefs: InMemorySharedPreferences(),
+      );
+      final InMemoryUserSessionStore userSessionStore =
+          InMemoryUserSessionStore();
+      await userSessionStore.save('test_session');
+
+      final _FakeMyProgramRepository myRepository =
+          _FakeMyProgramRepository(FollowProgram(
+        programId: 'lv100',
+        title: '自分の放送',
+        providerName: '自分',
+        isOwnBroadcast: true,
+      ));
+
+      final _FakeFollowProgramRepository followRepository =
+          _FakeFollowProgramRepository(const <FollowProgram>[]);
+      followRepository.shouldThrow = true;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: supervisor,
+            settingsStore: settingsStore,
+            userSessionStore: userSessionStore,
+            followProgramRepository: followRepository,
+            myProgramRepository: myRepository,
+          ),
+        ),
+      );
+
+      // Flush retry timers.
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+
+      // Own broadcast section should still appear despite follow fetch error.
+      expect(find.text('あなたの放送'), findsOneWidget);
+      expect(find.text('自分の放送'), findsOneWidget);
+    });
+
+    testWidgets(
         'follow programs still display when own program fetch throws',
         (WidgetTester tester) async {
       final ConnectionSupervisor supervisor = ConnectionSupervisor();
@@ -1196,10 +1240,16 @@ class _FakeFollowProgramRepository extends FollowProgramRepository {
 
   final List<FollowProgram> _programs;
 
+  /// When true, [fetchOnAirPrograms] throws an exception instead of returning.
+  bool shouldThrow = false;
+
   @override
   Future<List<FollowProgram>> fetchOnAirPrograms({
     required String userSession,
   }) async {
+    if (shouldThrow) {
+      throw Exception('Simulated follow API error');
+    }
     return _programs;
   }
 }

@@ -724,10 +724,21 @@ class _SelectScreenState extends State<SelectScreen> {
     }
 
     // Run both fetches concurrently with the same session token.
-    await Future.wait<void>(<Future<void>>[
-      _fetchMyProgram(userSession),
-      _fetchFollowPrograms(userSession),
-    ]);
+    // Each fetch handles its own errors internally, but we wrap
+    // Future.wait in a try-catch as a safety net so that an unexpected
+    // error in one fetch never prevents the refresh timer from being
+    // rescheduled (which would silently stop all future updates).
+    try {
+      await Future.wait<void>(<Future<void>>[
+        _fetchMyProgram(userSession),
+        _fetchFollowPrograms(userSession),
+      ]);
+    } on Object catch (e) {
+      log(
+        'Unexpected error during program fetch: $e',
+        name: 'SelectScreen',
+      );
+    }
 
     if (!mounted) {
       return;
