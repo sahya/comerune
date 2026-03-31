@@ -47,6 +47,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
   List<VoicevoxModelInfo>? _voicevoxModels;
   String? _queueLimitError;
   String? _maxDelayError;
+  bool _isLoadingModel = false;
+  int _loadModelGeneration = 0;
 
   @override
   void initState() {
@@ -115,10 +117,14 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
   }
 
   /// Load the VVM model corresponding to [speakerId] into the native engine.
-  void _loadModelForSpeaker(int speakerId) {
+  ///
+  /// Returns `true` if the model was loaded successfully, `false` otherwise.
+  /// Uses a generation counter to discard stale results when the user changes
+  /// speakers rapidly.
+  Future<bool> _loadModelForSpeaker(int speakerId) async {
     final platform = widget.platform;
     final models = _voicevoxModels;
-    if (platform == null || models == null) return;
+    if (platform == null || models == null) return false;
 
     // Find which model contains this speaker ID.
     VoicevoxModelInfo? model;
@@ -128,10 +134,28 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
         break;
       }
     }
-    if (model == null) return;
+    if (model == null) return false;
 
-    // Fire and forget — loading happens asynchronously on the native side.
-    platform.loadModel(model.modelId);
+    final int generation = ++_loadModelGeneration;
+    setState(() {
+      _isLoadingModel = true;
+    });
+
+    try {
+      await platform.loadModel(model.modelId);
+      if (!mounted || generation != _loadModelGeneration) return false;
+      setState(() {
+        _isLoadingModel = false;
+      });
+      return true;
+    } on Object catch (e) {
+      debugPrint('[TtsSettings] loadModel FAILED: $e');
+      if (!mounted || generation != _loadModelGeneration) return false;
+      setState(() {
+        _isLoadingModel = false;
+      });
+      return false;
+    }
   }
 
   void _onQueueLimitFocusChanged() {
@@ -326,11 +350,12 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
           border: OutlineInputBorder(),
         ),
         items: items,
-        onChanged: (int? value) {
-          if (value == null) return;
-          _updateAndSave(settings.copyWith(voicevoxSpeaker: value));
-          _loadModelForSpeaker(value);
-        },
+        onChanged: _isLoadingModel
+            ? null
+            : (int? value) {
+                if (value == null) return;
+                _onSpeakerChanged(settings, value);
+              },
       );
     }
 
@@ -353,6 +378,38 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
         _updateAndSave(settings.copyWith(voicevoxSpeaker: value));
       },
     );
+  }
+
+  Future<void> _onSpeakerChanged(AppSettings settings, int newSpeaker) async {
+    final int previousSpeaker = settings.voicevoxSpeaker;
+    final AppSettings next = settings.copyWith(voicevoxSpeaker: newSpeaker);
+
+    // Update UI immediately (dropdown shows new selection) and save.
+    setState(() {
+      _settings = next;
+    });
+    unawaited(_saveSettings(next));
+
+    // Load the model and only push settings after loading succeeds.
+    final bool loaded = await _loadModelForSpeaker(newSpeaker);
+    if (!mounted) return;
+
+    if (loaded) {
+      _pushSettingsToEngine(next);
+    } else {
+      // Revert to previous speaker on failure.
+      final AppSettings reverted =
+          next.copyWith(voicevoxSpeaker: previousSpeaker);
+      setState(() {
+        _settings = reverted;
+      });
+      unawaited(_saveSettings(reverted));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('話者の読み込みに失敗しました')),
+        );
+      }
+    }
   }
 
   @override
@@ -400,6 +457,13 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                   title: 'VOICEVOX',
                   children: <Widget>[
                     _buildVoicevoxSpeakerDropdown(settings),
+                    if (_isLoadingModel)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: LinearProgressIndicator(
+                          key: Key('speaker-loading-indicator'),
+                        ),
+                      ),
                     if (widget.platform != null) ...[
                       const SizedBox(height: 8),
                       Align(

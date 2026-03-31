@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -460,8 +462,174 @@ void main() {
       final AppSettings loaded = await settingsStore.load();
       expect(loaded.voicevoxSpeed, 1.5);
     });
+
+    testWidgets(
+        'speaker change awaits loadModel and pushes settings after completion',
+        (WidgetTester tester) async {
+      final settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final fakePlatform = FakeCommentSpeechPlatform();
+      final loadCompleter = Completer<void>();
+      fakePlatform.loadModelCompleter = loadCompleter;
+      fakePlatform.availableModelsToReturn = _twoModelsList;
+
+      await tester
+          .pumpWidget(_buildScreenWithPlatform(settingsStore, fakePlatform));
+      await tester.pumpAndSettle();
+
+      fakePlatform.lastUpdatedSettings = null;
+
+      // Select speaker 2 from dropdown
+      await scrollToKeyInList(
+          tester, _listKey, const Key('voicevox-speaker-dropdown'));
+      await tester.tap(find.byKey(const Key('voicevox-speaker-dropdown')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('モデルB (ID:2)').last);
+      await tester.pump();
+
+      // Loading indicator should be visible
+      expect(
+        find.byKey(const Key('speaker-loading-indicator'), skipOffstage: false),
+        findsOneWidget,
+      );
+      // Settings should NOT have been pushed yet (model still loading)
+      expect(fakePlatform.lastUpdatedSettings, isNull);
+
+      // Complete the model load
+      loadCompleter.complete();
+      await tester.pumpAndSettle();
+
+      // Now settings should be pushed with the new speaker
+      expect(fakePlatform.lastUpdatedSettings, isNotNull);
+      expect(fakePlatform.lastUpdatedSettings!.speakerId, 2);
+
+      // Loading indicator should be gone
+      expect(
+        find.byKey(const Key('speaker-loading-indicator'), skipOffstage: false),
+        findsNothing,
+      );
+    });
+
+    testWidgets(
+        'speaker change reverts to previous speaker on loadModel failure',
+        (WidgetTester tester) async {
+      final settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final fakePlatform = FakeCommentSpeechPlatform();
+      fakePlatform.loadModelError = Exception('load failed');
+      fakePlatform.availableModelsToReturn = _twoModelsList;
+
+      await tester
+          .pumpWidget(_buildScreenWithPlatform(settingsStore, fakePlatform));
+      await tester.pumpAndSettle();
+
+      fakePlatform.lastUpdatedSettings = null;
+
+      // Select speaker 2 from dropdown
+      await scrollToKeyInList(
+          tester, _listKey, const Key('voicevox-speaker-dropdown'));
+      await tester.tap(find.byKey(const Key('voicevox-speaker-dropdown')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('モデルB (ID:2)').last);
+      await tester.pumpAndSettle();
+
+      // Settings should NOT have been pushed (model load failed)
+      expect(fakePlatform.lastUpdatedSettings, isNull);
+
+      // Should show snackbar error
+      expect(find.text('話者の読み込みに失敗しました'), findsOneWidget);
+
+      // Speaker should be reverted to original (0)
+      final loaded = await settingsStore.load();
+      expect(loaded.voicevoxSpeaker, 0);
+    });
+
+    testWidgets(
+        'rapid speaker changes only apply the last selection (race condition)',
+        (WidgetTester tester) async {
+      final settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final fakePlatform = FakeCommentSpeechPlatform();
+      final firstCompleter = Completer<void>();
+      fakePlatform.loadModelCompleter = firstCompleter;
+      fakePlatform.availableModelsToReturn = _threeModelsList;
+
+      await tester
+          .pumpWidget(_buildScreenWithPlatform(settingsStore, fakePlatform));
+      await tester.pumpAndSettle();
+
+      fakePlatform.lastUpdatedSettings = null;
+
+      // Select speaker 2
+      await scrollToKeyInList(
+          tester, _listKey, const Key('voicevox-speaker-dropdown'));
+      await tester.tap(find.byKey(const Key('voicevox-speaker-dropdown')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('モデルB (ID:2)').last);
+      await tester.pump();
+
+      // While first load is in progress, select speaker 3
+      final secondCompleter = Completer<void>();
+      fakePlatform.loadModelCompleter = secondCompleter;
+
+      await tester.tap(find.byKey(const Key('voicevox-speaker-dropdown')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('モデルC (ID:3)').last);
+      await tester.pump();
+
+      // Complete first load (should be discarded as stale)
+      firstCompleter.complete();
+      await tester.pump();
+
+      // Settings should NOT have been pushed from stale first load
+      expect(fakePlatform.lastUpdatedSettings, isNull);
+
+      // Complete second load
+      secondCompleter.complete();
+      await tester.pumpAndSettle();
+
+      // Settings should be pushed with speaker 3 (the latest selection)
+      expect(fakePlatform.lastUpdatedSettings, isNotNull);
+      expect(fakePlatform.lastUpdatedSettings!.speakerId, 3);
+    });
   });
 }
+
+/// Two-model fixture for speaker-change tests.
+final List<Map<String, dynamic>> _twoModelsList = [
+  {
+    'modelId': 'model-a',
+    'displayName': 'モデルA',
+    'speakerIds': [0],
+    'vvmFileName': 'a.vvm',
+    'fileSizeBytes': 1000,
+    'isBundled': true,
+    'downloadState': 'DOWNLOADED',
+  },
+  {
+    'modelId': 'model-b',
+    'displayName': 'モデルB',
+    'speakerIds': [2],
+    'vvmFileName': 'b.vvm',
+    'fileSizeBytes': 1000,
+    'isBundled': false,
+    'downloadState': 'DOWNLOADED',
+  },
+];
+
+/// Three-model fixture for race-condition tests.
+final List<Map<String, dynamic>> _threeModelsList = [
+  ..._twoModelsList,
+  {
+    'modelId': 'model-c',
+    'displayName': 'モデルC',
+    'speakerIds': [3],
+    'vvmFileName': 'c.vvm',
+    'fileSizeBytes': 1000,
+    'isBundled': false,
+    'downloadState': 'DOWNLOADED',
+  },
+];
 
 Widget _buildScreen(SettingsStore settingsStore) {
   return MaterialApp(

@@ -21,6 +21,15 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
   /// If non-null, [submitComment] will throw this for every call.
   Object? submitCommentError;
 
+  /// If non-null, [loadModel] will throw this.
+  Object? loadModelError;
+
+  /// If non-null, [loadModel] will wait for this completer before returning.
+  Completer<void>? loadModelCompleter;
+
+  /// Tracks all modelIds passed to [loadModel].
+  final List<String> loadedModelIds = <String>[];
+
   /// The models to return from [getAvailableModels].
   List<Map<String, dynamic>> availableModelsToReturn = [];
 
@@ -105,7 +114,15 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
   }
 
   @override
-  Future<void> loadModel(String modelId) async {}
+  Future<void> loadModel(String modelId) async {
+    loadedModelIds.add(modelId);
+    if (loadModelCompleter != null) {
+      await loadModelCompleter!.future;
+    }
+    if (loadModelError != null) {
+      throw loadModelError!;
+    }
+  }
 
   @override
   Future<void> cancelDownload(String modelId) async {}
