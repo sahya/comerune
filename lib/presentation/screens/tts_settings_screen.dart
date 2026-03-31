@@ -4,9 +4,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../application/settings/settings_store.dart';
+import '../../comment_speech/comment_speech.dart';
 import '../../domain/models/app_settings.dart';
+import '../../domain/models/voicevox_model_info.dart';
 import '../widgets/settings_widgets.dart';
 import 'ng_user_list_screen.dart';
+import 'voice_library_screen.dart';
 
 // TODO(#13): 棒読みちゃん対応は UIから非表示とした。サーバーを管理しない方針のため、
 // 今後削除するか再実装するかは未定。万が一機会があれば再検討する。
@@ -15,9 +18,11 @@ class TtsSettingsScreen extends StatefulWidget {
   const TtsSettingsScreen({
     super.key,
     required this.settingsStore,
+    this.platform,
   });
 
   final SettingsStore settingsStore;
+  final CommentSpeechPlatform? platform;
 
   @override
   State<TtsSettingsScreen> createState() => _TtsSettingsScreenState();
@@ -38,6 +43,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
   late final FocusNode _ngWordsFocusNode;
 
   AppSettings? _settings;
+  List<VoicevoxModelInfo>? _voicevoxModels;
   String? _queueLimitError;
   String? _maxDelayError;
 
@@ -82,9 +88,49 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
     _maxDelayController.text = loaded.maxDelaySeconds.toString();
     _ngWordsController.text = loaded.ngWords;
 
+    if (widget.platform != null) {
+      await _refreshVoicevoxModels();
+    }
+
     setState(() {
       _settings = loaded;
     });
+  }
+
+  Future<void> _refreshVoicevoxModels() async {
+    final platform = widget.platform;
+    if (platform == null) return;
+    try {
+      final rawList = await platform.getAvailableModels();
+      final allModels =
+          rawList.map((m) => VoicevoxModelInfo.fromMap(m)).toList();
+      if (!mounted) return;
+      setState(() {
+        _voicevoxModels = allModels;
+      });
+    } on Object {
+      // Model listing failed; keep existing state.
+    }
+  }
+
+  /// Load the VVM model corresponding to [speakerId] into the native engine.
+  void _loadModelForSpeaker(int speakerId) {
+    final platform = widget.platform;
+    final models = _voicevoxModels;
+    if (platform == null || models == null) return;
+
+    // Find which model contains this speaker ID.
+    VoicevoxModelInfo? model;
+    for (final m in models) {
+      if (m.speakerIds.contains(speakerId)) {
+        model = m;
+        break;
+      }
+    }
+    if (model == null) return;
+
+    // Fire and forget — loading happens asynchronously on the native side.
+    platform.loadModel(model.modelId);
   }
 
   void _onQueueLimitFocusChanged() {
@@ -210,6 +256,87 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
     _updateAndSave(current.copyWith(maxDelaySeconds: parsed));
   }
 
+  Widget _buildVoicevoxSpeakerDropdown(AppSettings settings) {
+    final List<VoicevoxModelInfo>? models = _voicevoxModels;
+
+    // When models are available, build items from downloaded/bundled models.
+    if (models != null && models.isNotEmpty) {
+      final List<DropdownMenuItem<int>> items = [];
+      for (final model in models) {
+        if (model.downloadState != ModelDownloadState.downloaded &&
+            !model.isBundled) {
+          continue;
+        }
+        for (final speakerId in model.speakerIds) {
+          items.add(
+            DropdownMenuItem<int>(
+              value: speakerId,
+              child: Text('${model.displayName} (ID:$speakerId)'),
+            ),
+          );
+        }
+      }
+
+      // If the current speaker is not in the list, add a fallback entry
+      // to avoid a Flutter assertion error.
+      final bool currentInList =
+          items.any((item) => item.value == settings.voicevoxSpeaker);
+      if (!currentInList && items.isNotEmpty) {
+        // Defer the state update to avoid calling setState during build.
+        final int firstSpeaker = items.first.value!;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _updateAndSave(settings.copyWith(voicevoxSpeaker: firstSpeaker));
+          }
+        });
+      }
+
+      if (items.isEmpty) {
+        items.add(
+          const DropdownMenuItem<int>(
+            value: 0,
+            child: Text('四国めたん・あまあま (ID:0)'),
+          ),
+        );
+      }
+
+      return DropdownButtonFormField<int>(
+        key: const Key('voicevox-speaker-dropdown'),
+        value: currentInList ? settings.voicevoxSpeaker : items.first.value,
+        decoration: const InputDecoration(
+          labelText: '話者',
+          border: OutlineInputBorder(),
+        ),
+        items: items,
+        onChanged: (int? value) {
+          if (value == null) return;
+          _updateAndSave(settings.copyWith(voicevoxSpeaker: value));
+          _loadModelForSpeaker(value);
+        },
+      );
+    }
+
+    // Fallback: static dropdown when platform is not available.
+    return DropdownButtonFormField<int>(
+      key: const Key('voicevox-speaker-dropdown'),
+      value: settings.voicevoxSpeaker,
+      decoration: const InputDecoration(
+        labelText: '話者',
+        border: OutlineInputBorder(),
+      ),
+      items: const <DropdownMenuItem<int>>[
+        DropdownMenuItem<int>(
+          value: 0,
+          child: Text('四国めたん・あまあま (ID:0)'),
+        ),
+      ],
+      onChanged: (int? value) {
+        if (value == null) return;
+        _updateAndSave(settings.copyWith(voicevoxSpeaker: value));
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final AppSettings? settings = _settings;
@@ -254,27 +381,28 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                   key: const Key('voicevox-section'),
                   title: 'VOICEVOX',
                   children: <Widget>[
-                    DropdownButtonFormField<int>(
-                      key: const Key('voicevox-speaker-dropdown'),
-                      value: settings.voicevoxSpeaker,
-                      decoration: const InputDecoration(
-                        labelText: '話者',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: const <DropdownMenuItem<int>>[
-                        DropdownMenuItem<int>(
-                          value: 0,
-                          child: Text('四国めたん・あまあま (ID:0)'),
+                    _buildVoicevoxSpeakerDropdown(settings),
+                    if (widget.platform != null) ...[
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: OutlinedButton.icon(
+                          key: const Key('voicevox-add-speaker-btn'),
+                          onPressed: () async {
+                            await Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => VoiceLibraryScreen(
+                                  platform: widget.platform!,
+                                ),
+                              ),
+                            );
+                            await _refreshVoicevoxModels();
+                          },
+                          icon: const Icon(Icons.add),
+                          label: const Text('話者を追加'),
                         ),
-                      ],
-                      onChanged: (int? value) {
-                        if (value == null) {
-                          return;
-                        }
-                        _updateAndSave(
-                            settings.copyWith(voicevoxSpeaker: value));
-                      },
-                    ),
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     SettingsDoubleSliderField(
                       key: const Key('voicevox-speed-slider'),

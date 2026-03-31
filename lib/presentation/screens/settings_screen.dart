@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../application/settings/settings_store.dart';
+import '../../comment_speech/comment_speech.dart';
 import '../../data/auth/user_session_store.dart';
 import '../../domain/models/app_settings.dart';
 import '../../data/user/user_attribute_store.dart';
@@ -24,6 +25,7 @@ class SettingsScreen extends StatefulWidget {
     this.resolveUserName,
     this.requestUserNameResolve,
     this.userNameListenable,
+    this.speechPlatform,
   });
 
   final SettingsStore settingsStore;
@@ -34,6 +36,7 @@ class SettingsScreen extends StatefulWidget {
   final String? Function(String userId)? resolveUserName;
   final void Function(String userId)? requestUserNameResolve;
   final Listenable? userNameListenable;
+  final CommentSpeechPlatform? speechPlatform;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -269,6 +272,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         MaterialPageRoute<void>(
                           builder: (_) => TtsSettingsScreen(
                             settingsStore: widget.settingsStore,
+                            platform: widget.speechPlatform,
                           ),
                         ),
                       );
