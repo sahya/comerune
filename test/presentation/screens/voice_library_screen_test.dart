@@ -143,7 +143,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Tap download button for not-downloaded model.
-      await tester.tap(find.byKey(const Key('download-btn-1')));
+      await tester.tap(find.byKey(const Key('download-btn-n0')));
       // Pump once to allow settingsStore.load() and showDialog to execute,
       // but don't settle (asset loading and cooldown timer are pending).
       await tester.pump();
@@ -167,7 +167,7 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('download-btn-1')));
+      await tester.tap(find.byKey(const Key('download-btn-n0')));
       await tester.pump();
       await tester.pump();
 
@@ -198,7 +198,7 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('download-btn-1')));
+      await tester.tap(find.byKey(const Key('download-btn-n0')));
       await tester.pump();
       await tester.pump();
 
