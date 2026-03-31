@@ -247,5 +247,18 @@ void main() {
         );
       }
     });
+
+    test('identifies built-in rules as protected', () {
+      expect(
+        isDefaultNicoDictionaryRule(defaultNicoDictionaryRules.first),
+        isTrue,
+      );
+      expect(
+        isDefaultNicoDictionaryRule(
+          const ReplaceRule(pattern: 'custom', replacement: 'カスタム'),
+        ),
+        isFalse,
+      );
+    });
   });
 }

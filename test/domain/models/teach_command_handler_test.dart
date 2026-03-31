@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/comment_speech/src/models/replace_rule.dart';
+import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/domain/models/teach_command.dart';
 import 'package:comerune/domain/models/teach_command_handler.dart';
 
@@ -180,6 +181,24 @@ void main() {
       expect(result.updatedRules!.length, 0);
       // Original list should remain unchanged.
       expect(original.length, 1);
+    });
+
+    test('rejects removing built-in rule and keeps it unchanged', () {
+      final ReplaceRule builtInRule = defaultNicoDictionaryRules.firstWhere(
+        (ReplaceRule rule) => rule.pattern == '初見',
+      );
+      final List<ReplaceRule> existing = <ReplaceRule>[builtInRule];
+
+      final TeachCommandResult result = TeachCommandHandler.executeUnteach(
+        command: const UnteachCommand(pattern: '初見'),
+        currentRules: existing,
+      );
+
+      expect(result.success, isFalse);
+      expect(result.updatedRules, isNull);
+      expect(result.message, contains('削除できません'));
+      expect(existing, hasLength(1));
+      expect(existing.first, builtInRule);
     });
   });
 }

@@ -1,4 +1,5 @@
 import '../../comment_speech/src/models/replace_rule.dart';
+import 'app_settings.dart';
 import 'teach_command.dart';
 
 /// teach/unteach コマンドの実行結果。
@@ -125,6 +126,14 @@ class TeachCommandHandler {
     final int existingIndex = updatedRules.indexWhere(
       (ReplaceRule rule) => rule.pattern == escapedPattern,
     );
+
+    if (existingIndex >= 0 &&
+        isDefaultNicoDictionaryRule(updatedRules[existingIndex])) {
+      return const TeachCommandResult(
+        success: false,
+        message: '既定の辞書ルールは削除できません。無効化してください',
+      );
+    }
 
     if (existingIndex < 0) {
       return TeachCommandResult(

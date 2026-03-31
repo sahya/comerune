@@ -173,6 +173,7 @@ class _DictionaryRulesScreenState extends State<DictionaryRulesScreen> {
                   separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (BuildContext context, int index) {
                     final ReplaceRule rule = _rules[index];
+                    final bool isProtected = isDefaultNicoDictionaryRule(rule);
                     return ListTile(
                       key: Key('dictionary-rule-tile-$index'),
                       leading: Switch(
@@ -196,9 +197,15 @@ class _DictionaryRulesScreenState extends State<DictionaryRulesScreen> {
                       ),
                       trailing: IconButton(
                         key: Key('dictionary-rule-delete-$index'),
-                        icon: const Icon(Icons.delete_outline),
-                        tooltip: '削除',
-                        onPressed: () => _deleteRule(index),
+                        icon: Icon(
+                          isProtected
+                              ? Icons.lock_outline
+                              : Icons.delete_outline,
+                        ),
+                        tooltip:
+                            isProtected ? '既定の辞書ルールは削除できません。無効化してください' : '削除',
+                        onPressed:
+                            isProtected ? null : () => _deleteRule(index),
                       ),
                       onTap: () => _editRule(index),
                     );

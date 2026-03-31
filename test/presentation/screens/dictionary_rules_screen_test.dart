@@ -86,6 +86,37 @@ void main() {
       expect(loaded.dictionaryRules[0].enabled, false);
     });
 
+    testWidgets('built-in rules cannot be deleted but can be disabled', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final ReplaceRule builtInRule = defaultNicoDictionaryRules.firstWhere(
+        (ReplaceRule rule) => rule.pattern == '初見',
+      );
+      final AppSettings initial = AppSettings.defaults.copyWith(
+        dictionaryRules: <ReplaceRule>[builtInRule],
+      );
+      await store.save(initial);
+
+      await tester.pumpWidget(_buildScreen(store));
+      await tester.pumpAndSettle();
+
+      final IconButton deleteButton = tester.widget(
+        find.byKey(const Key('dictionary-rule-delete-0')),
+      );
+      expect(deleteButton.onPressed, isNull);
+      expect(find.byIcon(Icons.lock_outline), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('dictionary-rule-toggle-0')));
+      await tester.pumpAndSettle();
+
+      final AppSettings loaded = await store.load();
+      expect(loaded.dictionaryRules, hasLength(1));
+      expect(loaded.dictionaryRules.first.enabled, isFalse);
+    });
+
     testWidgets('delete rule with confirmation dialog', (
       WidgetTester tester,
     ) async {
