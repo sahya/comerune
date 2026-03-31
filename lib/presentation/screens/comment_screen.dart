@@ -239,6 +239,11 @@ class _CommentScreenState extends State<CommentScreen> {
   /// reference the same mutable list as widget.messages.
   String? _lastSpeechMessageId;
 
+  /// Timestamp recorded just before the speech engine starts. Messages with a
+  /// timestamp before this value are skipped, ensuring that only comments
+  /// arriving after speech initialization are read aloud.
+  DateTime? _speechBaselineTimestamp;
+
   @override
   void initState() {
     super.initState();
@@ -465,15 +470,16 @@ class _CommentScreenState extends State<CommentScreen> {
       _speechEventSub?.cancel();
       _speechEventSub = platform.events.listen(_onSpeechEvent);
 
-      debugPrint('[CommentScreen] initSpeech: updateSettings → start()...');
-      await platform.updateSettings(widget.speechSettings);
-      await platform.start();
-
-      // Record the current tail message so we only read comments
-      // arriving AFTER initialization, not the backlog.
+      // Record baseline BEFORE awaiting engine start so that comments
+      // arriving during initialization are not accidentally skipped.
+      _speechBaselineTimestamp = DateTime.now();
       if (widget.messages.isNotEmpty) {
         _lastSpeechMessageId = widget.messages.last.id;
       }
+
+      debugPrint('[CommentScreen] initSpeech: updateSettings → start()...');
+      await platform.updateSettings(widget.speechSettings);
+      await platform.start();
 
       if (mounted) {
         setState(() {
@@ -528,6 +534,7 @@ class _CommentScreenState extends State<CommentScreen> {
       } catch (e) {
         debugPrint('[CommentScreen] stopSpeech: FAILED: $e');
       }
+      _speechBaselineTimestamp = null;
       if (mounted) {
         setState(() {
           _speechStarted = false;
@@ -603,6 +610,11 @@ class _CommentScreenState extends State<CommentScreen> {
 
     for (int i = start; i < messages.length; i++) {
       final AppMessage message = messages[i];
+      // Skip messages that arrived before speech was initialized.
+      if (_speechBaselineTimestamp != null &&
+          message.timestamp.isBefore(_speechBaselineTimestamp!)) {
+        continue;
+      }
       if (message.type != AppMessageType.chat) {
         continue;
       }

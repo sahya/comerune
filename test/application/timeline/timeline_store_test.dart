@@ -115,11 +115,13 @@ void main() {
     store.add(_message(3));
 
     // id-1 was evicted, so adding it again is treated as a new message.
+    // Because sorted insertion places it before id-2 and id-3, it gets
+    // immediately trimmed again (oldest by timestamp).
     store.add(first);
 
     expect(store.messages.map((AppMessage m) => m.id).toList(), <String>[
+      'id-2',
       'id-3',
-      'id-1',
     ]);
   });
 
@@ -200,5 +202,69 @@ void main() {
     store.clear();
 
     expect(notifyCount, 2);
+  });
+
+  test('add inserts out-of-order message at correct timestamp position', () {
+    final TimelineStore store = TimelineStore(capacity: 10);
+    store.add(_message(1));
+    store.add(_message(3));
+    store.add(_message(2)); // arrives late but has earlier timestamp
+
+    expect(store.messages.map((AppMessage m) => m.id).toList(), <String>[
+      'id-1',
+      'id-2',
+      'id-3',
+    ]);
+  });
+
+  test('addAll sorts interleaved messages by timestamp', () {
+    final TimelineStore store = TimelineStore(capacity: 10);
+    store.add(_message(1));
+    store.add(_message(5));
+
+    // Batch arrives with timestamps between existing messages.
+    store.addAll(<AppMessage>[_message(3), _message(2), _message(4)]);
+
+    expect(store.messages.map((AppMessage m) => m.id).toList(), <String>[
+      'id-1',
+      'id-2',
+      'id-3',
+      'id-4',
+      'id-5',
+    ]);
+  });
+
+  test('add places message with equal timestamp after existing ones', () {
+    final DateTime sameTime = DateTime.parse('2026-03-22T00:00:01Z');
+    final TimelineStore store = TimelineStore(capacity: 10);
+    store.add(AppMessage(
+      id: 'a',
+      timestamp: sameTime,
+      content: 'first',
+      type: AppMessageType.chat,
+    ));
+    store.add(AppMessage(
+      id: 'b',
+      timestamp: sameTime,
+      content: 'second',
+      type: AppMessageType.chat,
+    ));
+
+    expect(store.messages.map((AppMessage m) => m.id).toList(), <String>[
+      'a',
+      'b',
+    ]);
+  });
+
+  test('trimming after sorted insert removes oldest by timestamp', () {
+    final TimelineStore store = TimelineStore(capacity: 2);
+    store.add(_message(3));
+    store.add(_message(1)); // inserted at front due to earlier timestamp
+    store.add(_message(2)); // inserted in middle; front (id-1) is trimmed
+
+    expect(store.messages.map((AppMessage m) => m.id).toList(), <String>[
+      'id-2',
+      'id-3',
+    ]);
   });
 }
