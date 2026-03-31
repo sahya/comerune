@@ -235,6 +235,7 @@ class AppSettings {
     required this.starPrefixHidingEnabled,
     required this.slashPrefixSkipEnabled,
     required this.readUserName,
+    required this.voicevoxTermsAccepted,
     required this.dictionaryRules,
     required this.debugMode,
   }) : assert(
@@ -279,6 +280,7 @@ class AppSettings {
     starPrefixHidingEnabled: false,
     slashPrefixSkipEnabled: true,
     readUserName: false,
+    voicevoxTermsAccepted: false,
     dictionaryRules: defaultNicoDictionaryRules,
     debugMode: false,
   );
@@ -336,6 +338,9 @@ class AppSettings {
   /// When true, the user name is prepended to the comment text for TTS
   /// in the format `{userName}、{comment}`.
   final bool readUserName;
+
+  /// VOICEVOX 音声モデルの利用規約に同意済みかどうか。
+  final bool voicevoxTermsAccepted;
 
   /// 読み上げ時のテキスト置換ルール（ニコニコ用語辞書）。
   final List<ReplaceRule> dictionaryRules;
@@ -451,6 +456,7 @@ class AppSettings {
     bool? starPrefixHidingEnabled,
     bool? slashPrefixSkipEnabled,
     bool? readUserName,
+    bool? voicevoxTermsAccepted,
     List<ReplaceRule>? dictionaryRules,
     bool? debugMode,
   }) {
@@ -497,6 +503,8 @@ class AppSettings {
       slashPrefixSkipEnabled:
           slashPrefixSkipEnabled ?? this.slashPrefixSkipEnabled,
       readUserName: readUserName ?? this.readUserName,
+      voicevoxTermsAccepted:
+          voicevoxTermsAccepted ?? this.voicevoxTermsAccepted,
       dictionaryRules: dictionaryRules ?? this.dictionaryRules,
       debugMode: debugMode ?? this.debugMode,
     );
