@@ -21,7 +21,7 @@ class SettingsScreen extends StatefulWidget {
     this.userSessionStore,
     this.themeModeNotifier,
     this.userAttributeStore,
-    this.broadcasterId,
+    this.broadcasterIdNotifier,
     this.resolveUserName,
     this.requestUserNameResolve,
     this.userNameListenable,
@@ -32,7 +32,7 @@ class SettingsScreen extends StatefulWidget {
   final UserSessionStore? userSessionStore;
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
   final UserAttributeStore? userAttributeStore;
-  final String? broadcasterId;
+  final ValueNotifier<String?>? broadcasterIdNotifier;
   final String? Function(String userId)? resolveUserName;
   final void Function(String userId)? requestUserNameResolve;
   final Listenable? userNameListenable;
@@ -316,7 +316,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           builder: (_) => UserManagementSettingsScreen(
                             settingsStore: widget.settingsStore,
                             userAttributeStore: widget.userAttributeStore,
-                            broadcasterId: widget.broadcasterId,
+                            broadcasterIdNotifier: widget.broadcasterIdNotifier,
                             resolveUserName: widget.resolveUserName,
                             requestUserNameResolve:
                                 widget.requestUserNameResolve,
