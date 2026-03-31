@@ -32,6 +32,14 @@ class StubVoicevoxEngine : VoicevoxEngine {
         )
     }
 
+    override suspend fun loadModel(modelPath: String): Result<Unit> {
+        return Result.failure(
+            UnsupportedOperationException(
+                "VoicevoxEngine JNI not yet available. See issue #42."
+            )
+        )
+    }
+
     override fun isReady(): Boolean = ready
 
     override fun currentState(): TtsEngineState =

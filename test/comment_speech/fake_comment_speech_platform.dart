@@ -21,6 +21,9 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
   /// If non-null, [submitComment] will throw this for every call.
   Object? submitCommentError;
 
+  /// The models to return from [getAvailableModels].
+  List<Map<String, dynamic>> availableModelsToReturn = [];
+
   /// The status to return from [getStatus].
   SpeechRuntimeStatus statusToReturn = const SpeechRuntimeStatus(
     enabled: false,
@@ -84,6 +87,28 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
 
   @override
   Stream<SpeechEvent> get events => _eventController.stream;
+
+  @override
+  Future<List<Map<String, dynamic>>> getAvailableModels() async {
+    return availableModelsToReturn;
+  }
+
+  @override
+  Future<void> downloadModel(String modelId) async {}
+
+  @override
+  Future<void> deleteModel(String modelId) async {}
+
+  @override
+  Future<List<String>> getDownloadedModels() async {
+    return <String>[];
+  }
+
+  @override
+  Future<void> loadModel(String modelId) async {}
+
+  @override
+  Future<void> cancelDownload(String modelId) async {}
 
   /// Emit a speech event for testing.
   void emitEvent(SpeechEvent event) {

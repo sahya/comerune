@@ -11,6 +11,11 @@ abstract class SpeechEventType {
   static const downloadStarted = 'download_started';
   static const downloadProgress = 'download_progress';
   static const downloadCompleted = 'download_completed';
+  static const modelDownloadStarted = 'model_download_started';
+  static const modelDownloadProgress = 'model_download_progress';
+  static const modelDownloadCompleted = 'model_download_completed';
+  static const modelDownloadFailed = 'model_download_failed';
+  static const modelDeleted = 'model_deleted';
 }
 
 /// An event emitted from the native speech engine via EventChannel.
