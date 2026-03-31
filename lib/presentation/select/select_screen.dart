@@ -296,6 +296,8 @@ class _SelectScreenState extends State<SelectScreen> {
   @override
   Widget build(BuildContext context) {
     final bool hasSettingsAccess = widget.settingsStore != null;
+    final Map<String, FollowProgram> favoriteOnAirMap =
+        _buildFavoriteOnAirMap();
 
     return Scaffold(
       appBar: AppBar(
@@ -372,9 +374,9 @@ class _SelectScreenState extends State<SelectScreen> {
               onRefresh: _fetchAllPrograms,
             ),
           ),
-          if (_buildFavoriteOnAirMap().isNotEmpty)
+          if (favoriteOnAirMap.isNotEmpty)
             _FavoriteUserSection(
-              onAirProgramsByUserId: _buildFavoriteOnAirMap(),
+              onAirProgramsByUserId: favoriteOnAirMap,
               enabled: !_isConnectionInProgress,
               onTap: _connectToProgram,
               resolveUserName: widget.resolveUserName,
@@ -1374,7 +1376,8 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
 
   @override
   Widget build(BuildContext context) {
-    final entries = widget.onAirProgramsByUserId.entries.toList();
+    final List<MapEntry<String, FollowProgram>> entries =
+        widget.onAirProgramsByUserId.entries.toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
