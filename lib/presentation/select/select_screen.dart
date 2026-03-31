@@ -10,12 +10,15 @@ import '../../data/auth/user_session_store.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../data/follow/follow_program.dart';
 import '../../data/follow/follow_program_repository.dart';
+import '../../data/follow/my_program_repository.dart';
 import '../../data/user/user_attribute_store.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/utils/lv_parser.dart';
+import '../../comment_speech/comment_speech.dart'
+    show MethodChannelCommentSpeech, SpeechSettings;
 import '../screens/comment_screen.dart';
 import '../screens/settings_screen.dart';
 import '../theme/app_theme.dart';
@@ -49,9 +52,11 @@ class SelectScreen extends StatefulWidget {
     this.requestUserNameResolve,
     this.userNameListenable,
     this.supplierUserIdNotifier,
+    this.beginAtNotifier,
     this.commentLogWriter,
     this.themeModeNotifier,
     this.followProgramRepository,
+    this.myProgramRepository,
     this.userAttributeStore,
     super.key,
   });
@@ -70,8 +75,10 @@ class SelectScreen extends StatefulWidget {
   final void Function(String userId)? requestUserNameResolve;
   final Listenable? userNameListenable;
   final ValueNotifier<String?>? supplierUserIdNotifier;
+  final ValueNotifier<DateTime?>? beginAtNotifier;
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
   final FollowProgramRepository? followProgramRepository;
+  final MyProgramRepository? myProgramRepository;
   final UserAttributeStore? userAttributeStore;
 
   @override
@@ -89,7 +96,7 @@ class _SelectScreenState extends State<SelectScreen> {
   DateTime? _followBeginAt;
   final ValueNotifier<bool?> _loginStateNotifier = ValueNotifier<bool?>(null);
   List<FollowProgram> _followPrograms = const <FollowProgram>[];
-  bool _isLoadingFollowPrograms = false;
+  FollowProgram? _myProgram;
   Timer? _followRefreshTimer;
   final ValueNotifier<
           ({Map<String, int> colors, Map<String, String> nicknames})>
@@ -98,6 +105,8 @@ class _SelectScreenState extends State<SelectScreen> {
     (colors: const <String, int>{}, nicknames: const <String, String>{}),
   );
   String? _currentBroadcasterId;
+  final MethodChannelCommentSpeech _speechPlatform =
+      MethodChannelCommentSpeech();
 
   static const Duration _followRefreshInterval = Duration(seconds: 60);
 
@@ -110,11 +119,19 @@ class _SelectScreenState extends State<SelectScreen> {
     _controller.addListener(_onInputChanged);
     widget.connectionSupervisor.addListener(_onSupervisorChanged);
     widget.supplierUserIdNotifier?.addListener(_onSupplierUserIdChanged);
+    // If the supplier user ID is already known (e.g. widget rebuilt while
+    // connected), load user attributes immediately so that
+    // _currentBroadcasterId is set before the user can open settings.
+    final String? initialSupplierId = widget.supplierUserIdNotifier?.value;
+    if (initialSupplierId != null) {
+      unawaited(_loadUserAttributes(initialSupplierId));
+    }
     if (widget.settingsStore != null) {
       unawaited(_reloadSettingsFromStore());
     }
     unawaited(_refreshLoginState());
-    unawaited(_fetchFollowPrograms());
+    unawaited(_fetchAllPrograms());
+    _requestFavoriteUserNameResolution();
   }
 
   @override
@@ -188,8 +205,30 @@ class _SelectScreenState extends State<SelectScreen> {
         break;
     }
 
+    if (_previousStatus != ConnectionStatus.ended &&
+        status == ConnectionStatus.ended) {
+      _addBroadcastEndedNotification();
+    }
+
     _previousStatus = status;
     setState(() {});
+  }
+
+  void _addBroadcastEndedNotification() {
+    final TimelineStore? store = widget.timelineStore;
+    if (store == null) {
+      return;
+    }
+
+    final DateTime now = DateTime.now();
+    store.add(
+      AppMessage(
+        id: 'system:broadcast_ended:${now.millisecondsSinceEpoch}',
+        timestamp: now,
+        content: '放送が終了しました',
+        type: AppMessageType.notification,
+      ),
+    );
   }
 
   bool get _isConnectionInProgress =>
@@ -250,7 +289,7 @@ class _SelectScreenState extends State<SelectScreen> {
     );
 
     if (mounted) {
-      unawaited(_fetchFollowPrograms());
+      unawaited(_fetchAllPrograms());
     }
   }
 
@@ -319,18 +358,25 @@ class _SelectScreenState extends State<SelectScreen> {
               ],
             ),
           ),
+          if (_myProgram != null)
+            _MyBroadcastSection(
+              program: _myProgram!,
+              enabled: !_isConnectionInProgress,
+              onTap: () => _connectToProgram(_myProgram!),
+            ),
           Expanded(
             child: _FollowProgramList(
               programs: _followPrograms,
-              isLoading: _isLoadingFollowPrograms,
               enabled: !_isConnectionInProgress,
               onTap: _connectToProgram,
-              onRefresh: _fetchFollowPrograms,
+              onRefresh: _fetchAllPrograms,
             ),
           ),
           if (_settingsNotifier.value.favoriteUserIdSet.isNotEmpty)
             _FavoriteUserSection(
               userIds: _settingsNotifier.value.favoriteUserIdSet,
+              resolveUserName: widget.resolveUserName,
+              userNameListenable: widget.userNameListenable,
             ),
         ],
       ),
@@ -347,6 +393,7 @@ class _SelectScreenState extends State<SelectScreen> {
       if (widget.programTitleNotifier != null) widget.programTitleNotifier!,
       if (widget.userNameListenable != null) widget.userNameListenable!,
       if (widget.supplierUserIdNotifier != null) widget.supplierUserIdNotifier!,
+      if (widget.beginAtNotifier != null) widget.beginAtNotifier!,
     ];
 
     return ListenableBuilder(
@@ -357,11 +404,15 @@ class _SelectScreenState extends State<SelectScreen> {
         final bool nameResolutionEnabled =
             _settingsNotifier.value.resolveUserName;
         final String? supplierUserId = widget.supplierUserIdNotifier?.value;
-        final String? resolvedName =
-            nameResolutionEnabled && supplierUserId != null
-                ? widget.resolveUserName?.call(supplierUserId)
-                : null;
-        final String? broadcasterName = resolvedName ?? _followBroadcasterName;
+        // Resolve broadcaster name from cache regardless of the per-comment
+        // name resolution setting, so the broadcaster name is always
+        // displayed when available (seeded by programinfo API via
+        // seedCache).
+        final String? cachedBroadcasterName = supplierUserId != null
+            ? widget.resolveUserName?.call(supplierUserId)
+            : null;
+        final String? broadcasterName =
+            cachedBroadcasterName ?? _followBroadcasterName;
         final String? broadcasterIconUrl = _followBroadcasterIconUrl ??
             _buildIconUrlFromUserId(supplierUserId);
 
@@ -379,8 +430,11 @@ class _SelectScreenState extends State<SelectScreen> {
           connectionMethod: _connectionMethod,
           programTitle: widget.programTitleNotifier?.value,
           broadcasterName: broadcasterName,
+          broadcasterUserId: supplierUserId,
           broadcasterIconUrl: broadcasterIconUrl,
-          beginAt: _followBeginAt,
+          // Prefer the follow-list beginAt (available immediately) and
+          // fall back to the programinfo API value (resolved async).
+          beginAt: _followBeginAt ?? widget.beginAtNotifier?.value,
           showUserName: _settingsNotifier.value.showUserName,
           commentFontSize: _settingsNotifier.value.commentFontSize,
           resolveUserName:
@@ -417,8 +471,30 @@ class _SelectScreenState extends State<SelectScreen> {
           viewerCount: widget.statisticsStore?.viewerCount,
           totalCommentCount: widget.statisticsStore?.totalCommentCount ?? 0,
           activeUserCount: widget.statisticsStore?.activeUserCount ?? 0,
+          speechPlatform: _speechPlatform,
+          speechSettings: _buildSpeechSettings(),
+          readUserName: _settingsNotifier.value.readUserName,
         );
       },
+    );
+  }
+
+  SpeechSettings _buildSpeechSettings() {
+    final AppSettings s = _settingsNotifier.value;
+    final bool active =
+        s.autoReadEnabled && s.speechEngine == SpeechEngine.voicevox;
+    debugPrint(
+        '[SelectScreen] buildSpeechSettings: active=$active, engine=${s.speechEngine}, speaker=${s.voicevoxSpeaker}, speed=${s.voicevoxSpeed}');
+    return SpeechSettings(
+      enabled: active,
+      speakerId: s.voicevoxSpeaker,
+      speedScale: s.voicevoxSpeed,
+      pitchScale: s.voicevoxPitch,
+      intonationScale: s.voicevoxIntonation,
+      volumeScale: s.voicevoxVolume,
+      maxQueueSize: s.queueLimit,
+      ngWords: s.ngWordList,
+      dictionaryRules: s.dictionaryRules,
     );
   }
 
@@ -462,6 +538,16 @@ class _SelectScreenState extends State<SelectScreen> {
     final String? supplierUserId = widget.supplierUserIdNotifier?.value;
     if (supplierUserId != null && supplierUserId != _currentBroadcasterId) {
       unawaited(_loadUserAttributes(supplierUserId));
+    }
+  }
+
+  void _requestFavoriteUserNameResolution() {
+    final void Function(String)? request = widget.requestUserNameResolve;
+    if (request == null) {
+      return;
+    }
+    for (final String userId in _settingsNotifier.value.favoriteUserIdSet) {
+      request(userId);
     }
   }
 
@@ -576,19 +662,30 @@ class _SelectScreenState extends State<SelectScreen> {
           userSessionStore: userSessionStore,
           themeModeNotifier: widget.themeModeNotifier,
           userAttributeStore: widget.userAttributeStore,
-          broadcasterId: _currentBroadcasterId,
+          // Fall back to the notifier value when _currentBroadcasterId
+          // has not been set yet (e.g. programinfo API fallback path or
+          // timing edge case during initial connection).
+          broadcasterId:
+              _currentBroadcasterId ?? widget.supplierUserIdNotifier?.value,
+          resolveUserName: widget.resolveUserName,
+          requestUserNameResolve: widget.requestUserNameResolve,
+          userNameListenable: widget.userNameListenable,
+          speechPlatform: MethodChannelCommentSpeech(),
         ),
       ),
     );
 
     await _reloadSettingsFromStore();
     await _refreshLoginState();
-    await _fetchFollowPrograms();
+    await _fetchAllPrograms();
     // Reload user attributes in case nicknames were edited in settings.
-    if (_currentBroadcasterId != null) {
-      final String broadcasterId = _currentBroadcasterId!;
+    // Use the notifier value as fallback in the same way as the broadcasterId
+    // passed to SettingsScreen above.
+    final String? activeBroadcasterId =
+        _currentBroadcasterId ?? widget.supplierUserIdNotifier?.value;
+    if (activeBroadcasterId != null) {
       _currentBroadcasterId = null;
-      await _loadUserAttributes(broadcasterId);
+      await _loadUserAttributes(activeBroadcasterId);
     }
   }
 
@@ -611,22 +708,64 @@ class _SelectScreenState extends State<SelectScreen> {
     _loginStateNotifier.value = session.isNotEmpty;
   }
 
-  Future<void> _fetchFollowPrograms() async {
-    final FollowProgramRepository? repository = widget.followProgramRepository;
+  Future<String> _loadUserSession() async {
     final UserSessionStore? sessionStore = widget.userSessionStore;
-    if (repository == null || sessionStore == null) {
+    if (sessionStore == null) {
+      return '';
+    }
+    try {
+      return await sessionStore.load();
+    } on Exception {
+      return '';
+    }
+  }
+
+  /// Fetches both the user's own broadcast and follow programs in one pass,
+  /// sharing a single [userSession] load to avoid redundant secure storage I/O.
+  Future<void> _fetchAllPrograms() async {
+    final String userSession = await _loadUserSession();
+    if (!mounted) {
+      return;
+    }
+
+    // Run both fetches concurrently with the same session token.
+    await Future.wait<void>(<Future<void>>[
+      _fetchMyProgram(userSession),
+      _fetchFollowPrograms(userSession),
+    ]);
+
+    if (!mounted) {
+      return;
+    }
+
+    _followRefreshTimer?.cancel();
+    _followRefreshTimer = Timer(
+      _followRefreshInterval,
+      () => unawaited(_fetchAllPrograms()),
+    );
+  }
+
+  Future<void> _fetchMyProgram(String userSession) async {
+    final MyProgramRepository? repository = widget.myProgramRepository;
+    if (repository == null) {
+      return;
+    }
+
+    final FollowProgram? program =
+        await repository.fetchOwnProgram(userSession: userSession);
+    if (!mounted) {
       return;
     }
 
     setState(() {
-      _isLoadingFollowPrograms = true;
+      _myProgram = program;
     });
+  }
 
-    String userSession;
-    try {
-      userSession = await sessionStore.load();
-    } on Exception {
-      userSession = '';
+  Future<void> _fetchFollowPrograms(String userSession) async {
+    final FollowProgramRepository? repository = widget.followProgramRepository;
+    if (repository == null) {
+      return;
     }
 
     // Retry up to 3 times on first load only. Once we have a result
@@ -658,12 +797,7 @@ class _SelectScreenState extends State<SelectScreen> {
 
     setState(() {
       _followPrograms = programs;
-      _isLoadingFollowPrograms = false;
     });
-
-    _followRefreshTimer?.cancel();
-    _followRefreshTimer =
-        Timer(_followRefreshInterval, () => unawaited(_fetchFollowPrograms()));
   }
 
   static String? _buildIconUrlFromUserId(String? userId) {
@@ -690,6 +824,7 @@ class _SelectScreenState extends State<SelectScreen> {
     }
 
     _settingsNotifier.value = loaded;
+    _requestFavoriteUserNameResolution();
     if (widget.themeModeNotifier != null &&
         widget.themeModeNotifier!.value != loaded.themeMode) {
       widget.themeModeNotifier!.value = loaded.themeMode;
@@ -796,29 +931,18 @@ class _LoginStatusBanner extends StatelessWidget {
 class _FollowProgramList extends StatelessWidget {
   const _FollowProgramList({
     required this.programs,
-    required this.isLoading,
     required this.enabled,
     required this.onTap,
     required this.onRefresh,
   });
 
   final List<FollowProgram> programs;
-  final bool isLoading;
   final bool enabled;
   final void Function(FollowProgram program) onTap;
   final Future<void> Function() onRefresh;
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading && programs.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
-
     if (programs.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -1033,12 +1157,200 @@ class _FollowProgramTile extends StatelessWidget {
   }
 }
 
-class _FavoriteUserSection extends StatelessWidget {
+class _MyBroadcastSection extends StatelessWidget {
+  const _MyBroadcastSection({
+    required this.program,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final FollowProgram program;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final String? elapsed = program.elapsedLabel();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: <Widget>[
+              const Icon(Icons.videocam, size: 16, color: Colors.orange),
+              const SizedBox(width: 6),
+              Text(
+                'あなたの放送',
+                style: theme.textTheme.titleSmall,
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Semantics(
+          button: true,
+          label: 'あなたの放送 ${program.title} タップして接続',
+          child: InkWell(
+            onTap: enabled ? onTap : null,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: <Widget>[
+                  _buildIconWithBroadcastIndicator(theme),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Text(
+                          program.title,
+                          style: theme.textTheme.bodyMedium,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          program.programId,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  if (elapsed != null) ...<Widget>[
+                    Icon(Icons.access_time,
+                        size: 11, color: theme.colorScheme.outline),
+                    const SizedBox(width: 3),
+                    Text(
+                      elapsed,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.outline,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Icon(
+                    Icons.play_circle_outline,
+                    size: 20,
+                    color: enabled
+                        ? theme.colorScheme.primary
+                        : theme.disabledColor,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const Divider(height: 1),
+      ],
+    );
+  }
+
+  Widget _buildIconWithBroadcastIndicator(ThemeData theme) {
+    return SizedBox(
+      width: 40,
+      height: 40,
+      child: Stack(
+        children: <Widget>[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: _buildIcon(),
+          ),
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: Colors.orange,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: theme.colorScheme.surface,
+                  width: 1.5,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIcon() {
+    final String? iconUrl = program.providerIconUrl;
+    if (iconUrl != null && iconUrl.isNotEmpty) {
+      return Image.network(
+        iconUrl,
+        width: 40,
+        height: 40,
+        fit: BoxFit.cover,
+        cacheWidth: 80,
+        cacheHeight: 80,
+        errorBuilder: (_, __, ___) => _buildFallbackIcon(),
+      );
+    }
+    return _buildFallbackIcon();
+  }
+
+  static Widget _buildFallbackIcon() {
+    return Container(
+      width: 40,
+      height: 40,
+      color: Colors.orange.shade100,
+      child: const Icon(Icons.videocam, size: 22, color: Colors.orange),
+    );
+  }
+}
+
+class _FavoriteUserSection extends StatefulWidget {
   const _FavoriteUserSection({
     required this.userIds,
+    this.resolveUserName,
+    this.userNameListenable,
   });
 
   final Set<String> userIds;
+  final String? Function(String userId)? resolveUserName;
+  final Listenable? userNameListenable;
+
+  @override
+  State<_FavoriteUserSection> createState() => _FavoriteUserSectionState();
+}
+
+class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
+  @override
+  void initState() {
+    super.initState();
+    widget.userNameListenable?.addListener(_onUserNameChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _FavoriteUserSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.userNameListenable != widget.userNameListenable) {
+      oldWidget.userNameListenable?.removeListener(_onUserNameChanged);
+      widget.userNameListenable?.addListener(_onUserNameChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.userNameListenable?.removeListener(_onUserNameChanged);
+    super.dispose();
+  }
+
+  void _onUserNameChanged() {
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1058,7 +1370,7 @@ class _FavoriteUserSection extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(
-                '${userIds.length}件',
+                '${widget.userIds.length}件',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: Theme.of(context).colorScheme.outline,
                     ),
@@ -1067,8 +1379,9 @@ class _FavoriteUserSection extends StatelessWidget {
           ),
         ),
         const Divider(height: 1),
-        ...userIds.map((String userId) {
+        ...widget.userIds.map((String userId) {
           final String? iconUrl = buildNicoIconUrl(userId);
+          final String? nickname = widget.resolveUserName?.call(userId);
           return ListTile(
             dense: true,
             leading: ClipOval(
@@ -1090,8 +1403,10 @@ class _FavoriteUserSection extends StatelessWidget {
               ),
             ),
             title: Text(
-              userId,
+              nickname != null ? '$nickname ($userId)' : userId,
               style: const TextStyle(fontSize: 13),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
             ),
           );
         }),

@@ -9,6 +9,7 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import com.example.comerune.speech.domain.model.PlayerState
 import com.example.comerune.speech.domain.player.WavPlayer
+import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -25,27 +26,34 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
     private var state: PlayerState = PlayerState.IDLE
     private var tempFile: File? = null
     private var released: Boolean = false
+    private var activeContinuation: CancellableContinuation<Unit>? = null
 
     private val audioManager: AudioManager =
         context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     private val audioAttributes: AudioAttributes =
-        AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_MEDIA)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-            .build()
+        AudioAttributes.Builder().apply {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                setUsage(AudioAttributes.USAGE_ASSISTANT)
+            } else {
+                setUsage(AudioAttributes.USAGE_MEDIA)
+            }
+            setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+        }.build()
 
     private val focusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
         when (focusChange) {
-            AudioManager.AUDIOFOCUS_LOSS,
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+            AudioManager.AUDIOFOCUS_LOSS -> {
                 stopInternal()
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                pauseInternal()
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
                 // Allow ducking; continue playback at reduced volume managed by the system
             }
             AudioManager.AUDIOFOCUS_GAIN -> {
-                // No action needed for initial version
+                resumeInternal()
             }
         }
     }
@@ -53,7 +61,7 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
     // Lazy to avoid class-loading crash on API < 26 where AudioFocusRequest
     // does not exist.  The play() method already guards with a runtime check.
     private val audioFocusRequest: AudioFocusRequest by lazy {
-        AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+        AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
             .setAudioAttributes(audioAttributes)
             .setOnAudioFocusChangeListener(focusChangeListener)
             .build()
@@ -105,36 +113,40 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
                     val player = MediaPlayer()
                     synchronized(lock) {
                         mediaPlayer = player
+                        activeContinuation = continuation
                     }
 
                     try {
+                        player.setAudioAttributes(audioAttributes)
                         player.setDataSource(file.absolutePath)
                         player.prepare()
 
                         player.setOnCompletionListener {
                             abandonAudioFocus()
                             releaseMediaPlayer()
+                            val cont: CancellableContinuation<Unit>?
                             synchronized(lock) {
                                 state = PlayerState.IDLE
+                                cont = activeContinuation
+                                activeContinuation = null
                             }
                             cleanupTempFile()
-                            if (continuation.isActive) {
-                                continuation.resume(Unit)
-                            }
+                            cont?.takeIf { it.isActive }?.resume(Unit)
                         }
 
                         player.setOnErrorListener { _, what, extra ->
                             abandonAudioFocus()
                             releaseMediaPlayer()
+                            val cont: CancellableContinuation<Unit>?
                             synchronized(lock) {
                                 state = PlayerState.ERROR
+                                cont = activeContinuation
+                                activeContinuation = null
                             }
                             cleanupTempFile()
-                            if (continuation.isActive) {
-                                continuation.resumeWithException(
-                                    IOException("MediaPlayer error: what=$what, extra=$extra")
-                                )
-                            }
+                            cont?.takeIf { it.isActive }?.resumeWithException(
+                                IOException("MediaPlayer error: what=$what, extra=$extra")
+                            )
                             true
                         }
 
@@ -144,13 +156,14 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
 
                         val focusResult = audioManager.requestAudioFocus(audioFocusRequest)
                         if (focusResult != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                            synchronized(lock) {
+                                activeContinuation = null
+                            }
                             releaseMediaPlayer()
                             cleanupTempFile()
-                            if (continuation.isActive) {
-                                continuation.resumeWithException(
-                                    IllegalStateException("Audio focus request denied")
-                                )
-                            }
+                            continuation.resumeWithException(
+                                IllegalStateException("Audio focus request denied")
+                            )
                             return@suspendCancellableCoroutine
                         }
 
@@ -161,12 +174,11 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
                     } catch (e: Exception) {
                         synchronized(lock) {
                             state = PlayerState.ERROR
+                            activeContinuation = null
                         }
                         releaseMediaPlayer()
                         cleanupTempFile()
-                        if (continuation.isActive) {
-                            throw e
-                        }
+                        throw e
                     }
                 }
             }.onFailure {
@@ -209,8 +221,47 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
         }
     }
 
+    private fun pauseInternal() {
+        synchronized(lock) {
+            mediaPlayer?.let { player ->
+                try {
+                    if (player.isPlaying) {
+                        player.pause()
+                        state = PlayerState.PAUSED
+                    }
+                } catch (_: IllegalStateException) {
+                    // MediaPlayer may already be in an invalid state
+                }
+            }
+        }
+    }
+
+    private fun resumeInternal() {
+        val resumeFailed: Boolean
+        synchronized(lock) {
+            resumeFailed = if (state == PlayerState.PAUSED) {
+                mediaPlayer?.let { player ->
+                    try {
+                        player.start()
+                        state = PlayerState.PLAYING
+                        false
+                    } catch (_: IllegalStateException) {
+                        true
+                    }
+                } ?: true
+            } else {
+                false
+            }
+        }
+        // If resume failed, stop entirely so the worker loop can proceed.
+        if (resumeFailed) {
+            stopInternal()
+        }
+    }
+
     private fun stopInternal() {
         abandonAudioFocus()
+        val cont: CancellableContinuation<Unit>?
         synchronized(lock) {
             mediaPlayer?.let { player ->
                 try {
@@ -222,9 +273,18 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
                 }
             }
             state = PlayerState.STOPPED
+            cont = activeContinuation
+            activeContinuation = null
         }
         releaseMediaPlayer()
         cleanupTempFile()
+        // Resume the suspended play() coroutine so the worker loop is unblocked.
+        // Use IOException (not CancellationException) to avoid cancelling the entire
+        // worker coroutine — the caller treats this as a normal playback failure and
+        // proceeds to the next queue item.
+        cont?.takeIf { it.isActive }?.resumeWithException(
+            IOException("Playback interrupted")
+        )
     }
 
     private fun releaseMediaPlayer() {

@@ -4,6 +4,7 @@ import 'package:comerune/application/settings/settings_store.dart';
 import 'package:comerune/application/timeline/timeline_store.dart';
 import 'package:comerune/data/follow/follow_program.dart';
 import 'package:comerune/data/follow/follow_program_repository.dart';
+import 'package:comerune/data/follow/my_program_repository.dart';
 import 'package:comerune/data/user/user_attribute_store.dart';
 import 'package:comerune/domain/connection/connection_supervisor.dart';
 import 'package:comerune/domain/models/app_message.dart';
@@ -265,6 +266,86 @@ void main() {
 
     expect(find.byType(CommentScreen), findsOneWidget);
     expect(find.byKey(const Key('comment-row-msg-1')), findsOneWidget);
+  });
+
+  testWidgets(
+      'adds broadcast ended notification to timeline when status becomes ended',
+      (WidgetTester tester) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+    final TimelineStore timelineStore = TimelineStore();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SelectScreen(
+          connectionSupervisor: supervisor,
+          timelineStore: timelineStore,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.enterText(inputField(), 'lv345678901');
+    await tester.pump();
+    await tester.tap(connectButton());
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CommentScreen), findsOneWidget);
+
+    // Transition to streaming and then end broadcast.
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(supervisor.onNdgrEndpointResolved(), isTrue);
+    expect(supervisor.endBroadcast(), isTrue);
+    await tester.pumpAndSettle();
+
+    final List<AppMessage> messages = timelineStore.messages.toList();
+    final AppMessage notification = messages.firstWhere(
+      (AppMessage m) => m.type == AppMessageType.notification,
+    );
+    expect(notification.content, '放送が終了しました');
+    expect(notification.id, startsWith('system:broadcast_ended:'));
+
+    // Verify the notification is visible in the comment screen.
+    expect(find.textContaining('放送が終了しました'), findsOneWidget);
+  });
+
+  testWidgets(
+      'does not add duplicate notification when endBroadcast is called twice',
+      (WidgetTester tester) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+    final TimelineStore timelineStore = TimelineStore();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SelectScreen(
+          connectionSupervisor: supervisor,
+          timelineStore: timelineStore,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.enterText(inputField(), 'lv345678901');
+    await tester.pump();
+    await tester.tap(connectButton());
+    await tester.pumpAndSettle();
+
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(supervisor.onNdgrEndpointResolved(), isTrue);
+    expect(supervisor.endBroadcast(), isTrue);
+    await tester.pumpAndSettle();
+
+    // Restart and end again to verify no duplicate notification.
+    expect(supervisor.startConnection(), isTrue);
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(supervisor.onNdgrEndpointResolved(), isTrue);
+    expect(supervisor.endBroadcast(), isTrue);
+    await tester.pumpAndSettle();
+
+    final List<AppMessage> notifications = timelineStore.messages
+        .where((AppMessage m) => m.type == AppMessageType.notification)
+        .toList();
+    // Each ended transition should produce exactly one notification.
+    expect(notifications, hasLength(2));
   });
 
   testWidgets('shows settings button when settingsStore is provided', (
@@ -703,6 +784,10 @@ void main() {
         programs: <FollowProgram>[],
       );
 
+      // Flush retry timers (1s + 2s backoff for 3 attempts) so no
+      // pending timer remains after the test.
+      await tester.pump(const Duration(seconds: 4));
+
       expect(find.text('フォロー中の放送'), findsNothing);
     });
   });
@@ -856,6 +941,148 @@ void main() {
       expect(coloredText.style?.color, isNotNull);
     });
   });
+
+  group('my broadcast section', () {
+    Future<void> pumpWithMyProgram(
+      WidgetTester tester, {
+      FollowProgram? myProgram,
+      List<FollowProgram> followPrograms = const <FollowProgram>[],
+    }) async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+      final SettingsStore settingsStore = SharedPreferencesSettingsStore(
+        prefs: InMemorySharedPreferences(),
+      );
+      final InMemoryUserSessionStore userSessionStore =
+          InMemoryUserSessionStore();
+      await userSessionStore.save('test_session');
+
+      final _FakeMyProgramRepository myRepository =
+          _FakeMyProgramRepository(myProgram);
+      final _FakeFollowProgramRepository followRepository =
+          _FakeFollowProgramRepository(followPrograms);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: supervisor,
+            settingsStore: settingsStore,
+            userSessionStore: userSessionStore,
+            followProgramRepository: followRepository,
+            myProgramRepository: myRepository,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('shows own broadcast section when user is broadcasting',
+        (WidgetTester tester) async {
+      await pumpWithMyProgram(
+        tester,
+        myProgram: FollowProgram(
+          programId: 'lv100',
+          title: '自分のテスト放送',
+          providerName: '自分',
+          isOwnBroadcast: true,
+        ),
+      );
+
+      // Flush follow-program retry timers.
+      await tester.pump(const Duration(seconds: 4));
+
+      expect(find.text('あなたの放送'), findsOneWidget);
+      expect(find.text('自分のテスト放送'), findsOneWidget);
+    });
+
+    testWidgets('hides own broadcast section when not broadcasting',
+        (WidgetTester tester) async {
+      await pumpWithMyProgram(tester);
+
+      // Flush retry timers.
+      await tester.pump(const Duration(seconds: 4));
+
+      expect(find.text('あなたの放送'), findsNothing);
+    });
+
+    testWidgets('own broadcast section appears above follow list',
+        (WidgetTester tester) async {
+      await pumpWithMyProgram(
+        tester,
+        myProgram: FollowProgram(
+          programId: 'lv100',
+          title: '自分の放送',
+          providerName: '自分',
+          isOwnBroadcast: true,
+        ),
+        followPrograms: <FollowProgram>[
+          FollowProgram(
+            programId: 'lv200',
+            title: 'フォロー放送',
+            providerName: 'フォロー放送者',
+          ),
+        ],
+      );
+
+      expect(find.text('あなたの放送'), findsOneWidget);
+      expect(find.text('フォロー中の放送'), findsOneWidget);
+
+      final double mySection = tester.getTopLeft(find.text('あなたの放送')).dy;
+      final double followSection = tester.getTopLeft(find.text('フォロー中の放送')).dy;
+      expect(mySection, lessThan(followSection));
+    });
+
+    testWidgets('tapping own broadcast tile starts connection',
+        (WidgetTester tester) async {
+      await pumpWithMyProgram(
+        tester,
+        myProgram: FollowProgram(
+          programId: 'lv100200300',
+          title: '自分の放送タップテスト',
+          providerName: '自分',
+          isOwnBroadcast: true,
+        ),
+      );
+
+      // Flush follow-program retry timers.
+      await tester.pump(const Duration(seconds: 4));
+
+      await tester.tap(find.text('自分の放送タップテスト'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CommentScreen), findsOneWidget);
+    });
+
+    testWidgets('shows videocam icon in header', (WidgetTester tester) async {
+      await pumpWithMyProgram(
+        tester,
+        myProgram: FollowProgram(
+          programId: 'lv100',
+          title: '放送',
+          providerName: '自分',
+          isOwnBroadcast: true,
+        ),
+      );
+
+      // Flush retry timers.
+      await tester.pump(const Duration(seconds: 4));
+
+      // Header icon (16px) and fallback tile icon (22px) both use videocam.
+      expect(find.byIcon(Icons.videocam), findsAtLeastNWidgets(1));
+    });
+  });
+}
+
+class _FakeMyProgramRepository extends MyProgramRepository {
+  _FakeMyProgramRepository(this._program);
+
+  final FollowProgram? _program;
+
+  @override
+  Future<FollowProgram?> fetchOwnProgram({
+    required String userSession,
+  }) async {
+    return _program;
+  }
 }
 
 class _FakeFollowProgramRepository extends FollowProgramRepository {

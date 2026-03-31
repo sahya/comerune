@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -33,7 +34,43 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         private const val VOICEVOX_DIR = "voicevox"
         private const val OPEN_JTALK_DICT_DIR_NAME = "open_jtalk_dic_utf_8-1.11"
         private const val VVM_DIR_NAME = "voicevox_models"
-        /** Increment this when remote assets change to force re-download. */
+
+        /**
+         * Apply speech parameters to an AudioQuery JSON string.
+         *
+         * Exposed as a companion function for testability — no instance
+         * state is required.
+         *
+         * @throws org.json.JSONException if [audioQueryJson] is not valid JSON
+         */
+        internal fun applyParametersToAudioQuery(
+            audioQueryJson: String,
+            request: SpeechRequest
+        ): String {
+            val json = JSONObject(audioQueryJson)
+            json.put("speedScale", sanitize(request.speedScale, 1.15f).toDouble())
+            json.put("pitchScale", sanitize(request.pitchScale, 0.0f).toDouble())
+            json.put("intonationScale", sanitize(request.intonationScale, 1.0f).toDouble())
+            json.put("volumeScale", sanitize(request.volumeScale, 0.7f).toDouble())
+            json.put("prePhonemeLength", sanitize(request.prePhonemeLength, 0.1f).toDouble())
+            json.put("postPhonemeLength", sanitize(request.postPhonemeLength, 0.1f).toDouble())
+            return json.toString()
+        }
+
+        /**
+         * Return [fallback] when [value] is NaN or infinite.
+         *
+         * Fallback values must match the defaults in [SpeechSettings].
+         */
+        private fun sanitize(value: Float, fallback: Float): Float =
+            if (value.isNaN() || value.isInfinite()) fallback else value
+
+        /**
+         * Increment this when remote assets change to force re-download.
+         * The effective version used for comparison also includes the app's
+         * versionCode so that APK upgrades automatically invalidate cached
+         * assets (see [getEffectiveAssetVersion]).
+         */
         private const val ASSET_VERSION = "1"
         private const val VERSION_FILE = ".asset_version"
 
@@ -87,9 +124,11 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
 
                     ensureAssetsAvailable(baseDir, dictDir, modelDir)
 
+                    Log.i(TAG, "Calling NativeVoicevoxBridge.nativeInitialize(${dictDir.absolutePath})")
                     val initialized = NativeVoicevoxBridge.nativeInitialize(
                         dictDir.absolutePath
                     )
+                    Log.i(TAG, "nativeInitialize returned: $initialized")
                     if (!initialized) {
                         throw RuntimeException(
                             "NativeVoicevoxBridge.nativeInitialize failed"
@@ -99,19 +138,21 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                     val vvmFiles = modelDir.listFiles { file ->
                         file.extension == "vvm"
                     }
+                    Log.i(TAG, "VVM files found: ${vvmFiles?.map { it.name } ?: "null"}")
                     if (vvmFiles.isNullOrEmpty()) {
                         Log.w(TAG, "No .vvm files found in ${modelDir.absolutePath}")
                     } else {
                         for (vvm in vvmFiles) {
+                            Log.i(TAG, "Loading voice model: ${vvm.absolutePath} (${vvm.length()} bytes)")
                             val loaded = NativeVoicevoxBridge.nativeLoadModel(
                                 vvm.absolutePath
                             )
+                            Log.i(TAG, "nativeLoadModel(${vvm.name}) returned: $loaded")
                             if (!loaded) {
                                 throw RuntimeException(
                                     "Failed to load voice model: ${vvm.name}"
                                 )
                             }
-                            Log.i(TAG, "Loaded voice model: ${vvm.name}")
                         }
                     }
                 }
@@ -119,13 +160,16 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                 state = TtsEngineState.READY
                 Log.i(TAG, "VOICEVOX engine initialized successfully")
                 Result.success(Unit)
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 state = TtsEngineState.ERROR
                 Log.e(TAG, "Initialization failed", e)
-                val message = if (e is IOException) {
-                    "VOICEVOXモデルのダウンロードに失敗しました。ネットワーク接続を確認してください。"
-                } else {
-                    e.message ?: "Unknown initialization error"
+                val message = when (e) {
+                    is IOException ->
+                        "VOICEVOXモデルのダウンロードに失敗しました。ネットワーク接続を確認してください。"
+                    is UnsatisfiedLinkError ->
+                        "VOICEVOXネイティブライブラリの読み込みに失敗しました。このデバイスのアーキテクチャはサポートされていない可能性があります。"
+                    else ->
+                        e.message ?: "Unknown initialization error"
                 }
                 Result.failure(RuntimeException(message, e))
             }
@@ -145,39 +189,20 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
 
             try {
                 val wavBytes = withContext(Dispatchers.IO) {
-                    NativeVoicevoxBridge.nativeTts(
-                        text = request.text,
-                        speakerId = request.speakerId,
-                        speedScale = request.speedScale,
-                        pitchScale = request.pitchScale,
-                        intonationScale = request.intonationScale,
-                        volumeScale = request.volumeScale,
-                        prePhonemeLength = request.prePhonemeLength,
-                        postPhonemeLength = request.postPhonemeLength
-                    )
+                    synthesizeViaAudioQuery(request)
                 }
 
-                if (wavBytes == null) {
-                    // Only restore READY if release() hasn't been called
-                    if (state == TtsEngineState.SYNTHESIZING) {
-                        state = TtsEngineState.READY
-                    }
-                    Result.failure(
-                        RuntimeException("TTS synthesis returned null (text length=${request.text.length})")
-                    )
-                } else {
-                    // Only restore READY if release() hasn't been called
-                    if (state == TtsEngineState.SYNTHESIZING) {
-                        state = TtsEngineState.READY
-                    }
-                    Result.success(
-                        WavSynthesisResult(
-                            wavBytes = wavBytes,
-                            text = request.text,
-                            durationEstimateMs = estimateDurationFromWav(wavBytes)
-                        )
-                    )
+                // Only restore READY if release() hasn't been called
+                if (state == TtsEngineState.SYNTHESIZING) {
+                    state = TtsEngineState.READY
                 }
+                Result.success(
+                    WavSynthesisResult(
+                        wavBytes = wavBytes,
+                        text = request.text,
+                        durationEstimateMs = estimateDurationFromWav(wavBytes)
+                    )
+                )
             } catch (e: Exception) {
                 // Only restore READY if release() hasn't been called concurrently.
                 // If state is UNINITIALIZED, release() ran during synthesis — don't overwrite.
@@ -188,6 +213,52 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                 Result.failure(e)
             }
         }
+
+    /**
+     * Synthesize WAV via the AudioQuery path, which allows applying
+     * volumeScale, speedScale, pitchScale, intonationScale, and
+     * pre/postPhonemeLength parameters at the synthesis level.
+     *
+     * This prevents audio clipping that occurs with the TTS one-shot API
+     * where these parameters are ignored.
+     *
+     * @throws RuntimeException if AudioQuery creation or synthesis fails
+     */
+    private fun synthesizeViaAudioQuery(request: SpeechRequest): ByteArray {
+        val audioQueryJson = NativeVoicevoxBridge.nativeCreateAudioQuery(
+            text = request.text,
+            speakerId = request.speakerId
+        ) ?: throw RuntimeException(
+            "AudioQuery creation returned null (text length=${request.text.length})"
+        )
+
+        val modifiedJson = applyParametersToAudioQuery(
+            audioQueryJson,
+            request
+        )
+
+        return NativeVoicevoxBridge.nativeSynthesis(
+            audioQueryJson = modifiedJson,
+            speakerId = request.speakerId
+        ) ?: throw RuntimeException(
+            "Synthesis from AudioQuery returned null (text length=${request.text.length})"
+        )
+    }
+
+    /**
+     * Apply speech parameters to an AudioQuery JSON object.
+     *
+     * The AudioQuery JSON from VOICEVOX contains fields like
+     * `speedScale`, `pitchScale`, `intonationScale`, `volumeScale`,
+     * `prePhonemeLength`, `postPhonemeLength` at the top level.
+     * This method overrides them with the values from [request].
+     *
+     * @throws org.json.JSONException if [audioQueryJson] is not valid JSON
+     */
+    private fun applyParametersToAudioQuery(
+        audioQueryJson: String,
+        request: SpeechRequest
+    ): String = Companion.applyParametersToAudioQuery(audioQueryJson, request)
 
     override fun isReady(): Boolean = state == TtsEngineState.READY
 
@@ -209,27 +280,56 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             Log.i(TAG, "VOICEVOX engine already released, skipping")
             return
         }
-        NativeVoicevoxBridge.nativeRelease()
-        Log.i(TAG, "VOICEVOX engine released")
+        try {
+            NativeVoicevoxBridge.nativeRelease()
+            Log.i(TAG, "VOICEVOX engine released")
+        } catch (e: Throwable) {
+            Log.w(TAG, "nativeRelease failed (native library may not have loaded): ${e.message}")
+        }
     }
 
     // ── Asset download ──────────────────────────────────────────────────
 
     /**
+     * Return a version string that combines [ASSET_VERSION] with the app's
+     * `versionCode`. This ensures that an APK upgrade (which changes
+     * versionCode) invalidates cached assets even when [ASSET_VERSION]
+     * itself has not been bumped.
+     */
+    private fun getEffectiveAssetVersion(): String {
+        val versionCode = try {
+            val packageInfo =
+                context.packageManager.getPackageInfo(context.packageName, 0)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                packageInfo.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                packageInfo.versionCode.toLong()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to read versionCode, falling back to 0", e)
+            0L
+        }
+        return "${ASSET_VERSION}_$versionCode"
+    }
+
+    /**
      * Ensure that the OpenJTalk dictionary and VVM model are present on disk.
      * Downloads them from GitHub releases if missing or if the version marker
-     * does not match [ASSET_VERSION].
+     * does not match the effective asset version (which includes the app's
+     * versionCode).
      */
     private fun ensureAssetsAvailable(baseDir: File, dictDir: File, modelDir: File) {
+        val effectiveVersion = getEffectiveAssetVersion()
         val versionFile = File(baseDir, VERSION_FILE)
         val versionMatches = versionFile.exists() &&
-            versionFile.readText().trim() == ASSET_VERSION
+            versionFile.readText().trim() == effectiveVersion
 
         if (versionMatches &&
             dictDir.exists() && (dictDir.listFiles()?.isNotEmpty() == true) &&
             modelDir.exists() && (modelDir.listFiles()?.any { it.extension == "vvm" } == true)
         ) {
-            Log.i(TAG, "Assets already downloaded (version $ASSET_VERSION)")
+            Log.i(TAG, "Assets already downloaded (version $effectiveVersion)")
             return
         }
 
@@ -264,9 +364,9 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         )
 
         // Write version marker so subsequent launches skip download
-        versionFile.writeText(ASSET_VERSION)
+        versionFile.writeText(effectiveVersion)
         emitDownloadEvent("download_completed", "")
-        Log.i(TAG, "All assets downloaded (version $ASSET_VERSION)")
+        Log.i(TAG, "All assets downloaded (version $effectiveVersion)")
     }
 
     /**

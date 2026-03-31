@@ -12,14 +12,34 @@ package com.example.comerune.speech.infrastructure.engine
  * was chosen for domain clarity within this app, but the underlying value
  * is always passed as a `VoicevoxStyleId` to the native API.
  *
- * Note: VOICEVOX Core 0.16.2 TTS one-shot API does not support
- * speed/pitch/intonation/volume parameters. Those fields are accepted
- * for future compatibility (audio_query path) but are currently ignored
- * on the native side.
+ * Two synthesis paths are available:
+ * - **TTS one-shot** ([nativeTts]): Simple text→WAV, but does not support
+ *   speed/pitch/intonation/volume parameters.
+ * - **AudioQuery-based** ([nativeCreateAudioQuery] + [nativeSynthesis]):
+ *   Generates an AudioQuery JSON that can be modified (e.g. volumeScale,
+ *   speedScale) before synthesis. This is the preferred path for parameter
+ *   control.
  */
 object NativeVoicevoxBridge {
 
     init {
+        // Pre-load dependencies in the correct order so that the Android
+        // linker can find them when voicevox_jni is loaded.
+        //
+        // voicevox_jni → voicevox_core → voicevox_onnxruntime
+        //
+        // Without explicit pre-loading, Android's linker namespace isolation
+        // prevents the C++ dlopen from resolving these libraries.
+        try {
+            System.loadLibrary("voicevox_onnxruntime")
+        } catch (e: UnsatisfiedLinkError) {
+            android.util.Log.w("NativeVoicevoxBridge", "voicevox_onnxruntime preload failed: ${e.message}")
+        }
+        try {
+            System.loadLibrary("voicevox_core")
+        } catch (e: UnsatisfiedLinkError) {
+            android.util.Log.w("NativeVoicevoxBridge", "voicevox_core preload failed: ${e.message}")
+        }
         System.loadLibrary("voicevox_jni")
     }
 
@@ -56,17 +76,19 @@ object NativeVoicevoxBridge {
     /**
      * Synthesize speech from text using the TTS one-shot API.
      *
-     * Speed/pitch/intonation/volume parameters are reserved for a future
-     * audio_query-based path and are currently ignored.
+     * This is a convenience method that combines audio_query creation and
+     * synthesis in one call, but does **not** support speed/pitch/intonation/
+     * volume parameters. Prefer [nativeCreateAudioQuery] + [nativeSynthesis]
+     * when parameter control is needed.
      *
      * @param text Japanese text to synthesize
      * @param speakerId VOICEVOX style ID
-     * @param speedScale reserved (ignored in 0.16.2 TTS one-shot)
-     * @param pitchScale reserved (ignored in 0.16.2 TTS one-shot)
-     * @param intonationScale reserved (ignored in 0.16.2 TTS one-shot)
-     * @param volumeScale reserved (ignored in 0.16.2 TTS one-shot)
-     * @param prePhonemeLength reserved (ignored in 0.16.2 TTS one-shot)
-     * @param postPhonemeLength reserved (ignored in 0.16.2 TTS one-shot)
+     * @param speedScale ignored in TTS one-shot
+     * @param pitchScale ignored in TTS one-shot
+     * @param intonationScale ignored in TTS one-shot
+     * @param volumeScale ignored in TTS one-shot
+     * @param prePhonemeLength ignored in TTS one-shot
+     * @param postPhonemeLength ignored in TTS one-shot
      * @return WAV byte array, or null on error
      */
     external fun nativeTts(
@@ -78,6 +100,34 @@ object NativeVoicevoxBridge {
         volumeScale: Float,
         prePhonemeLength: Float,
         postPhonemeLength: Float
+    ): ByteArray?
+
+    /**
+     * Create an AudioQuery JSON from Japanese text.
+     *
+     * The returned JSON can be modified (e.g. to adjust volumeScale,
+     * speedScale, pitchScale) before passing to [nativeSynthesis].
+     *
+     * @param text Japanese text to analyze
+     * @param speakerId VOICEVOX style ID
+     * @return AudioQuery JSON string, or null on error
+     */
+    external fun nativeCreateAudioQuery(
+        text: String,
+        speakerId: Int
+    ): String?
+
+    /**
+     * Synthesize WAV audio from an AudioQuery JSON.
+     *
+     * @param audioQueryJson AudioQuery JSON (from [nativeCreateAudioQuery],
+     *        possibly modified)
+     * @param speakerId VOICEVOX style ID
+     * @return WAV byte array, or null on error
+     */
+    external fun nativeSynthesis(
+        audioQueryJson: String,
+        speakerId: Int
     ): ByteArray?
 
     /**

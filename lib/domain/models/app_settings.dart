@@ -1,5 +1,7 @@
 import 'dart:developer' as developer;
 
+import '../../comment_speech/src/models/replace_rule.dart';
+
 enum AppThemeMode {
   system,
   light,
@@ -69,6 +71,9 @@ extension AppThemeModeValue on AppThemeMode {
   }
 }
 
+// TODO(#13): 棒読みちゃん(bouyomi)はUIから非表示。サーバー管理しない方針のため、
+// 今後削除するか再実装するかは未定。bouyomi の enum 値・設定フィールドは
+// 後方互換のため残している。
 enum SpeechEngine {
   bouyomi,
   voicevox,
@@ -179,6 +184,19 @@ extension PastCommentFetchCountValue on PastCommentFetchCount {
   }
 }
 
+/// ニコニコ用語のデフォルト読み上げ辞書ルール。
+const List<ReplaceRule> defaultNicoDictionaryRules = <ReplaceRule>[
+  ReplaceRule(pattern: r'[wｗ]{3,}', replacement: 'わらわら'),
+  ReplaceRule(pattern: r'[wｗ]{1,2}$', replacement: 'わら'),
+  ReplaceRule(pattern: r'8{3,}|８{3,}', replacement: 'ぱちぱちぱち'),
+  ReplaceRule(pattern: r'おつ$', replacement: 'おつかれ'),
+  ReplaceRule(pattern: r'わこつ', replacement: 'わくおつ'),
+  ReplaceRule(pattern: r'うぽつ', replacement: 'うぷおつ'),
+  ReplaceRule(pattern: r'初見', replacement: 'しょけん'),
+  ReplaceRule(pattern: r'[kｋ][wｗ][sｓ][kｋ]', replacement: 'くわしく'),
+  ReplaceRule(pattern: r'[kｋ][sｓ][kｋ]', replacement: 'かそく'),
+];
+
 class AppSettings {
   const AppSettings({
     required this.themeMode,
@@ -213,6 +231,8 @@ class AppSettings {
     required this.highlightPickupEnabled,
     required this.starPrefixHidingEnabled,
     required this.slashPrefixSkipEnabled,
+    required this.readUserName,
+    required this.dictionaryRules,
     required this.debugMode,
   }) : assert(
           commentFontSize >= commentFontSizeMin &&
@@ -224,7 +244,7 @@ class AppSettings {
   static const AppSettings defaults = AppSettings(
     themeMode: AppThemeMode.light,
     autoReadEnabled: false,
-    speechEngine: SpeechEngine.bouyomi,
+    speechEngine: SpeechEngine.voicevox,
     bouyomiHost: '',
     bouyomiSpeed: -1,
     bouyomiTone: -1,
@@ -254,6 +274,8 @@ class AppSettings {
     highlightPickupEnabled: false,
     starPrefixHidingEnabled: false,
     slashPrefixSkipEnabled: true,
+    readUserName: false,
+    dictionaryRules: defaultNicoDictionaryRules,
     debugMode: false,
   );
 
@@ -302,6 +324,13 @@ class AppSettings {
   /// When true, comments starting with `/` are skipped for TTS
   /// but displayed normally.
   final bool slashPrefixSkipEnabled;
+
+  /// When true, the user name is prepended to the comment text for TTS
+  /// in the format `{userName}、{comment}`.
+  final bool readUserName;
+
+  /// 読み上げ時のテキスト置換ルール（ニコニコ用語辞書）。
+  final List<ReplaceRule> dictionaryRules;
 
   final bool debugMode;
 
@@ -434,6 +463,8 @@ class AppSettings {
     bool? highlightPickupEnabled,
     bool? starPrefixHidingEnabled,
     bool? slashPrefixSkipEnabled,
+    bool? readUserName,
+    List<ReplaceRule>? dictionaryRules,
     bool? debugMode,
   }) {
     return AppSettings(
@@ -476,6 +507,8 @@ class AppSettings {
           starPrefixHidingEnabled ?? this.starPrefixHidingEnabled,
       slashPrefixSkipEnabled:
           slashPrefixSkipEnabled ?? this.slashPrefixSkipEnabled,
+      readUserName: readUserName ?? this.readUserName,
+      dictionaryRules: dictionaryRules ?? this.dictionaryRules,
       debugMode: debugMode ?? this.debugMode,
     );
   }

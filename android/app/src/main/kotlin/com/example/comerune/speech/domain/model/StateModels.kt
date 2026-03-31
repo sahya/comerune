@@ -14,12 +14,15 @@ enum class TtsEngineState {
  * - [IDLE]: The player is ready and waiting for audio, or has finished playing the
  *   previous item. This is the initial state and the state after successful playback.
  * - [PLAYING]: Audio is actively being played.
+ * - [PAUSED]: Playback was temporarily paused (e.g., due to transient audio focus loss).
+ *   Playback will resume automatically when audio focus is regained.
  * - [STOPPED]: Playback was manually interrupted (e.g., by a skip or stop command).
  * - [ERROR]: An unrecoverable playback failure occurred.
  */
 enum class PlayerState {
     IDLE,
     PLAYING,
+    PAUSED,
     STOPPED,
     ERROR
 }

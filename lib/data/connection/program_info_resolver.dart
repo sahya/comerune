@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
 
+import '../utils/begin_at_parser.dart';
+
 /// Resolves the NDGR view URI from the niconico programinfo API.
 ///
 /// Follows the same flow as N Air (official niconico streaming tool):
@@ -144,6 +146,10 @@ class ProgramInfoResolver {
     final ({String? userId, String? name}) broadcasterInfo =
         _extractBroadcasterInfo(data);
 
+    // Extract the program start time so the UI can show elapsed time
+    // instead of wall-clock time for each comment.
+    final DateTime? beginAt = parseBeginAt(data);
+
     log(
       'Resolved NDGR viewUri for $lv via programinfo',
       name: 'ProgramInfoResolver',
@@ -153,6 +159,7 @@ class ProgramInfoResolver {
       title: title,
       supplierUserId: broadcasterInfo.userId,
       broadcasterName: broadcasterInfo.name,
+      beginAt: beginAt,
     );
   }
 
@@ -228,24 +235,33 @@ class ProgramInfoResolver {
   }
 }
 
+/// Resolved program metadata returned by [ProgramInfoResolver.resolve].
 class ProgramInfo {
   const ProgramInfo({
     required this.viewUri,
     this.title,
     this.supplierUserId,
     this.broadcasterName,
+    this.beginAt,
   });
 
+  /// The NDGR view URI extracted from `data.rooms[0].viewUri`.
   final Uri viewUri;
+
+  /// The program title from `data.title`, or `null` when absent.
   final String? title;
 
-  /// The broadcaster's user ID, extracted from `broadcaster[0].id`
-  /// or `supplier.programProviderId`.
+  /// The broadcaster's user ID, extracted from `data.broadcaster[0].id`
+  /// or `data.supplier.programProviderId`.
   final String? supplierUserId;
 
-  /// The broadcaster's display name, extracted from `broadcaster[0].name`.
+  /// The broadcaster's display name, extracted from `data.broadcaster[0].name`.
   /// Available immediately without an additional HTTP request.
   final String? broadcasterName;
+
+  /// The program start time from `data.beginAt`, used to display elapsed
+  /// time for comments. `null` when the field is absent or unparseable.
+  final DateTime? beginAt;
 }
 
 class ProgramInfoResolveException implements Exception {

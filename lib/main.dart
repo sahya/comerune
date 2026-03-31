@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'application/foreground_service/foreground_service_controller.dart';
+import 'application/migration/app_migration_runner.dart';
 import 'application/onboarding/onboarding_store.dart';
 import 'application/settings/settings_store.dart';
 import 'application/settings/shared_preferences_adapter.dart';
@@ -17,6 +18,7 @@ import 'data/auth/user_session_store.dart';
 import 'data/comment_log/comment_log_writer.dart';
 import 'data/connection/program_info_resolver.dart';
 import 'data/follow/follow_program_repository.dart';
+import 'data/follow/my_program_repository.dart';
 import 'data/foreground_service/foreground_service_manager.dart';
 import 'data/connection/web_socket_channel_legacy_web_socket.dart';
 import 'data/user/user_attribute_store.dart';
@@ -53,6 +55,14 @@ Future<void> main() async {
       SharedPreferencesUserAttributeStore(
     prefs: SharedPreferencesAdapter(prefs),
   );
+  // Run one-time migration tasks when the app version changes.
+  // Awaited so that migrations complete before the app reads settings or
+  // user data that a migration might alter.
+  final AppMigrationRunner migrationRunner = AppMigrationRunner(
+    prefs: SharedPreferencesAdapter(prefs),
+  );
+  await migrationRunner.run();
+
   // Remove user attribute entries not accessed for over 1 year.
   unawaited(userAttributeStore.cleanup());
 
@@ -121,9 +131,12 @@ class _ComeruneAppState extends State<ComeruneApp> {
       ValueNotifier<String?>(null);
   final ValueNotifier<String?> _supplierUserIdNotifier =
       ValueNotifier<String?>(null);
+  final ValueNotifier<DateTime?> _beginAtNotifier =
+      ValueNotifier<DateTime?>(null);
   late final ValueNotifier<AppThemeMode> _themeModeNotifier;
   late final UserNameResolver _userNameResolver;
   late final FollowProgramRepository _followProgramRepository;
+  late final MyProgramRepository _myProgramRepository;
   ForegroundServiceController? _foregroundServiceController;
 
   @override
@@ -138,6 +151,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
 
     _userNameResolver = UserNameResolver();
     _followProgramRepository = FollowProgramRepository();
+    _myProgramRepository = MyProgramRepository();
     _timelineStore = TimelineStore(capacity: _ndgrHistoryCount);
     _statisticsStore = StatisticsStore();
     _sessionWsClient = _SessionWsClientAdapter(
@@ -153,6 +167,9 @@ class _ComeruneAppState extends State<ComeruneApp> {
       },
       onBroadcasterNameResolved: (String userId, String name) {
         _userNameResolver.seedCache(userId, name);
+      },
+      onBeginAtResolved: (DateTime beginAt) {
+        _beginAtNotifier.value = beginAt;
       },
     );
     _ndgrClient = _NdgrClientAdapter(
@@ -208,8 +225,10 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _statisticsStore.dispose();
     _userNameResolver.dispose();
     _followProgramRepository.dispose();
+    _myProgramRepository.dispose();
     _programTitleNotifier.dispose();
     _supplierUserIdNotifier.dispose();
+    _beginAtNotifier.dispose();
     _themeModeNotifier
       ..removeListener(_onThemeModeChanged)
       ..dispose();
@@ -224,6 +243,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _currentLv = lv;
     _programTitleNotifier.value = null;
     _supplierUserIdNotifier.value = null;
+    _beginAtNotifier.value = null;
     _ndgrHistoryCount = settings.pastCommentFetchCount.historyCount;
     _timelineStore.setCapacity(_ndgrHistoryCount);
     _statisticsStore.reset();
@@ -264,9 +284,11 @@ class _ComeruneAppState extends State<ComeruneApp> {
                 requestUserNameResolve: _userNameResolver.requestResolve,
                 userNameListenable: _userNameResolver,
                 supplierUserIdNotifier: _supplierUserIdNotifier,
+                beginAtNotifier: _beginAtNotifier,
                 commentLogWriter: widget.commentLogWriter,
                 themeModeNotifier: _themeModeNotifier,
                 followProgramRepository: _followProgramRepository,
+                myProgramRepository: _myProgramRepository,
                 userAttributeStore: widget.userAttributeStore,
               ),
       ),
@@ -282,12 +304,14 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     void Function(String title)? onProgramTitleResolved,
     void Function(String userId)? onSupplierUserIdResolved,
     void Function(String userId, String name)? onBroadcasterNameResolved,
+    void Function(DateTime beginAt)? onBeginAtResolved,
   })  : _lvProvider = lvProvider,
         _userSessionProvider = userSessionProvider,
         _programInfoResolver = programInfoResolver,
         _onProgramTitleResolved = onProgramTitleResolved,
         _onSupplierUserIdResolved = onSupplierUserIdResolved,
-        _onBroadcasterNameResolved = onBroadcasterNameResolved;
+        _onBroadcasterNameResolved = onBroadcasterNameResolved,
+        _onBeginAtResolved = onBeginAtResolved;
 
   final String Function() _lvProvider;
   final Future<String> Function() _userSessionProvider;
@@ -295,6 +319,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
   final void Function(String title)? _onProgramTitleResolved;
   final void Function(String userId)? _onSupplierUserIdResolved;
   final void Function(String userId, String name)? _onBroadcasterNameResolved;
+  final void Function(DateTime beginAt)? _onBeginAtResolved;
   final StreamController<reconnect.SessionWsEvent> _eventsController =
       StreamController<reconnect.SessionWsEvent>.broadcast();
 
@@ -326,13 +351,22 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
         lv: lv,
         userSession: userSession,
       );
+      // Notify callbacks in dependency order:
+      //   1. title — no dependencies, shown first in the UI header.
+      //   2. beginAt — no dependencies, enables elapsed-time display
+      //      as soon as comments start arriving.
+      //   3. broadcasterName — seeds the name cache so that the
+      //      subsequent supplierUserId callback can skip a redundant
+      //      HTTP resolve.
+      //   4. supplierUserId — triggers name resolution; the cache is
+      //      already warm if broadcasterName was available.
       if (programInfo.title != null) {
         _onProgramTitleResolved?.call(programInfo.title!);
       }
+      if (programInfo.beginAt != null) {
+        _onBeginAtResolved?.call(programInfo.beginAt!);
+      }
       if (programInfo.supplierUserId != null) {
-        // Seed the cache with the broadcaster name BEFORE requesting
-        // resolution, so that requestResolve() sees the cached entry
-        // and skips the redundant HTTP call.
         if (programInfo.broadcasterName != null) {
           _onBroadcasterNameResolved?.call(
             programInfo.supplierUserId!,

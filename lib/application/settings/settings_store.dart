@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:developer' as developer;
+
+import '../../comment_speech/src/models/replace_rule.dart';
 import '../../domain/models/app_settings.dart';
 
 abstract class SettingsStore {
@@ -77,15 +81,16 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       'settings.filter.starPrefixHiding';
   static const String _kSlashPrefixSkipEnabled =
       'settings.filter.slashPrefixSkip';
+  static const String _kReadUserName = 'settings.tts.readUserName';
+  static const String _kDictionaryRules = 'settings.speech.dictionaryRules';
   static const String _kDebugMode = 'settings.debugMode';
 
   @override
   Future<AppSettings> load() async {
     const AppSettings defaults = AppSettings.defaults;
     final String? engineValue = _prefs.getString(_kSpeechEngine);
-    final SpeechEngine speechEngine = engineValue == 'voicevox'
-        ? SpeechEngine.voicevox
-        : SpeechEngine.bouyomi;
+    final SpeechEngine speechEngine =
+        engineValue == 'bouyomi' ? SpeechEngine.bouyomi : SpeechEngine.voicevox;
 
     return AppSettings(
       themeMode: AppThemeModeValue.fromStorageValue(
@@ -146,6 +151,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
           defaults.starPrefixHidingEnabled,
       slashPrefixSkipEnabled: _prefs.getBool(_kSlashPrefixSkipEnabled) ??
           defaults.slashPrefixSkipEnabled,
+      readUserName: _prefs.getBool(_kReadUserName) ?? defaults.readUserName,
+      dictionaryRules: _loadDictionaryRules(),
       debugMode: _prefs.getBool(_kDebugMode) ?? defaults.debugMode,
     );
   }
@@ -211,6 +218,32 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       _kSlashPrefixSkipEnabled,
       settings.slashPrefixSkipEnabled,
     );
+    await _prefs.setBool(_kReadUserName, settings.readUserName);
     await _prefs.setBool(_kDebugMode, settings.debugMode);
+    await _prefs.setString(
+      _kDictionaryRules,
+      jsonEncode(
+        settings.dictionaryRules.map((ReplaceRule r) => r.toMap()).toList(),
+      ),
+    );
+  }
+
+  List<ReplaceRule> _loadDictionaryRules() {
+    final String? raw = _prefs.getString(_kDictionaryRules);
+    if (raw == null) {
+      return defaultNicoDictionaryRules;
+    }
+    try {
+      final List<dynamic> decoded = jsonDecode(raw) as List<dynamic>;
+      return decoded
+          .map((dynamic e) => ReplaceRule.fromMap(e as Map<String, dynamic>))
+          .toList();
+    } on Object catch (e) {
+      developer.log(
+        'Failed to parse dictionaryRules, falling back to defaults: $e',
+        name: 'SettingsStore',
+      );
+      return defaultNicoDictionaryRules;
+    }
   }
 }

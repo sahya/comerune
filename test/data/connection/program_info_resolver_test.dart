@@ -39,6 +39,7 @@ void main() {
       expect(result.title, 'Test Program');
       expect(result.supplierUserId, isNull);
       expect(result.broadcasterName, isNull);
+      expect(result.beginAt, isNull);
 
       expect(httpClient.requests, hasLength(1));
       final _CapturedRequest request = httpClient.requests[0];
@@ -194,6 +195,251 @@ void main() {
       expect(result.title, 'No IDs');
       expect(result.supplierUserId, isNull);
       expect(result.broadcasterName, isNull);
+
+      resolver.dispose();
+    });
+
+    test('extracts beginAt from ISO 8601 string', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'BeginAt Program',
+          'beginAt': '2025-07-01T12:00:00+09:00',
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri':
+                  'https://mpn.live.nicovideo.jp/api/view/v4/BeginAtTest',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv2000',
+        userSession: 'session',
+      );
+
+      expect(result.beginAt, isNotNull);
+      expect(result.beginAt, isA<DateTime>());
+      // 2025-07-01T12:00:00+09:00 == 2025-07-01T03:00:00Z
+      expect(result.beginAt!.toUtc(), DateTime.utc(2025, 7, 1, 3, 0, 0));
+
+      resolver.dispose();
+    });
+
+    test('returns null beginAt when field is absent', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'No BeginAt',
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/NoBeginAt',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv2001',
+        userSession: 'session',
+      );
+
+      expect(result.beginAt, isNull);
+
+      resolver.dispose();
+    });
+
+    test('extracts beginAt from integer (seconds since epoch)', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      // 1719828000 == 2024-07-01T10:00:00Z
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'BeginAt Integer',
+          'beginAt': 1719828000,
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/BeginAtInt',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv2002',
+        userSession: 'session',
+      );
+
+      expect(result.beginAt, isNotNull);
+      expect(
+        result.beginAt!.toUtc(),
+        DateTime.utc(2024, 7, 1, 10, 0, 0),
+      );
+
+      resolver.dispose();
+    });
+
+    test('returns null beginAt for empty string', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'Empty BeginAt',
+          'beginAt': '',
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri':
+                  'https://mpn.live.nicovideo.jp/api/view/v4/EmptyBeginAt',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv2003',
+        userSession: 'session',
+      );
+
+      expect(result.beginAt, isNull);
+
+      resolver.dispose();
+    });
+
+    test('returns null beginAt for invalid date string', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'Invalid BeginAt',
+          'beginAt': 'not-a-date',
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri':
+                  'https://mpn.live.nicovideo.jp/api/view/v4/InvalidBeginAt',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv2004',
+        userSession: 'session',
+      );
+
+      expect(result.beginAt, isNull);
+
+      resolver.dispose();
+    });
+
+    test('returns null beginAt when value is explicit null', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'Null BeginAt',
+          'beginAt': null,
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri':
+                  'https://mpn.live.nicovideo.jp/api/view/v4/NullBeginAt',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv2005',
+        userSession: 'session',
+      );
+
+      expect(result.beginAt, isNull);
+
+      resolver.dispose();
+    });
+
+    test('returns null beginAt for unexpected type (bool)', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'Bool BeginAt',
+          'beginAt': true,
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri':
+                  'https://mpn.live.nicovideo.jp/api/view/v4/BoolBeginAt',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv2006',
+        userSession: 'session',
+      );
+
+      expect(result.beginAt, isNull);
+
+      resolver.dispose();
+    });
+
+    test('returns null beginAt for float value', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'Float BeginAt',
+          'beginAt': 1719828000.5,
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri':
+                  'https://mpn.live.nicovideo.jp/api/view/v4/FloatBeginAt',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv2007',
+        userSession: 'session',
+      );
+
+      expect(result.beginAt, isNull);
 
       resolver.dispose();
     });
