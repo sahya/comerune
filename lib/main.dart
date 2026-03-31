@@ -124,7 +124,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
   late final StreamSubscription<AppMessage> _legacyMessageSubscription;
   late final StreamSubscription<int?> _ndgrViewerCountSubscription;
 
-  late bool _showOnboarding;
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   String _currentLv = '';
   int _ndgrHistoryCount = 100;
   final ValueNotifier<String?> _programTitleNotifier =
@@ -142,7 +142,17 @@ class _ComeruneAppState extends State<ComeruneApp> {
   @override
   void initState() {
     super.initState();
-    _showOnboarding = !widget.onboardingStore.isCompleted();
+    if (!widget.onboardingStore.isCompleted()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final NavigatorState? navigator = _navigatorKey.currentState;
+        if (navigator != null) {
+          showOnboardingDialog(
+            context: navigator.context,
+            onboardingStore: widget.onboardingStore,
+          );
+        }
+      });
+    }
     _ndgrHistoryCount =
         widget.initialSettings.pastCommentFetchCount.historyCount;
     _themeModeNotifier =
@@ -262,35 +272,27 @@ class _ComeruneAppState extends State<ComeruneApp> {
         themeMode: currentMode == AppThemeMode.system
             ? ThemeMode.system
             : ThemeMode.light,
-        home: _showOnboarding
-            ? OnboardingScreen(
-                onboardingStore: widget.onboardingStore,
-                onCompleted: () {
-                  setState(() {
-                    _showOnboarding = false;
-                  });
-                },
-              )
-            : SelectScreen(
-                connectionSupervisor: _connectionSupervisor,
-                timelineStore: _timelineStore,
-                statisticsStore: _statisticsStore,
-                settingsStore: widget.settingsStore,
-                initialSettings: widget.initialSettings,
-                onPrepareConnection: _prepareConnection,
-                userSessionStore: widget.userSessionStore,
-                programTitleNotifier: _programTitleNotifier,
-                resolveUserName: _userNameResolver.getCachedName,
-                requestUserNameResolve: _userNameResolver.requestResolve,
-                userNameListenable: _userNameResolver,
-                supplierUserIdNotifier: _supplierUserIdNotifier,
-                beginAtNotifier: _beginAtNotifier,
-                commentLogWriter: widget.commentLogWriter,
-                themeModeNotifier: _themeModeNotifier,
-                followProgramRepository: _followProgramRepository,
-                myProgramRepository: _myProgramRepository,
-                userAttributeStore: widget.userAttributeStore,
-              ),
+        navigatorKey: _navigatorKey,
+        home: SelectScreen(
+          connectionSupervisor: _connectionSupervisor,
+          timelineStore: _timelineStore,
+          statisticsStore: _statisticsStore,
+          settingsStore: widget.settingsStore,
+          initialSettings: widget.initialSettings,
+          onPrepareConnection: _prepareConnection,
+          userSessionStore: widget.userSessionStore,
+          programTitleNotifier: _programTitleNotifier,
+          resolveUserName: _userNameResolver.getCachedName,
+          requestUserNameResolve: _userNameResolver.requestResolve,
+          userNameListenable: _userNameResolver,
+          supplierUserIdNotifier: _supplierUserIdNotifier,
+          beginAtNotifier: _beginAtNotifier,
+          commentLogWriter: widget.commentLogWriter,
+          themeModeNotifier: _themeModeNotifier,
+          followProgramRepository: _followProgramRepository,
+          myProgramRepository: _myProgramRepository,
+          userAttributeStore: widget.userAttributeStore,
+        ),
       ),
     );
   }
