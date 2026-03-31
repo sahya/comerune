@@ -1494,34 +1494,28 @@ class _CommentScreenState extends State<CommentScreen> {
         ? Directory(widget.autoSaveCommentLogPath)
         : null;
 
+    String? savedPath;
     try {
-      final String? savedPath = await writer.save(
+      savedPath = await writer.save(
         lv: widget.lv,
         messages: messages,
         customDirectory: customDir,
       );
-
-      if (!mounted) {
-        return;
-      }
-
-      if (savedPath != null) {
-        ScaffoldMessenger.of(context)
-          ..clearSnackBars()
-          ..showSnackBar(
-            SnackBar(content: Text('コメントログを保存しました: $savedPath')),
-          );
-      } else if (messages.isNotEmpty) {
-        ScaffoldMessenger.of(context)
-          ..clearSnackBars()
-          ..showSnackBar(
-            const SnackBar(content: Text('コメントログの自動保存に失敗しました')),
-          );
-      }
     } on Object {
-      if (!mounted) {
-        return;
-      }
+      // savedPath remains null; fall through to error notification.
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    if (savedPath != null) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(content: Text('コメントログを保存しました: $savedPath')),
+        );
+    } else if (messages.isNotEmpty) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
         ..showSnackBar(
