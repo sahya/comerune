@@ -124,7 +124,6 @@ class _ComeruneAppState extends State<ComeruneApp> {
   late final StreamSubscription<AppMessage> _legacyMessageSubscription;
   late final StreamSubscription<int?> _ndgrViewerCountSubscription;
 
-  late bool _showOnboarding;
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   String _currentLv = '';
   int _ndgrHistoryCount = 100;
@@ -143,8 +142,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
   @override
   void initState() {
     super.initState();
-    _showOnboarding = !widget.onboardingStore.isCompleted();
-    if (_showOnboarding) {
+    if (!widget.onboardingStore.isCompleted()) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final NavigatorState? navigator = _navigatorKey.currentState;
         if (navigator != null) {
