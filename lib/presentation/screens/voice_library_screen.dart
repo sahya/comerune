@@ -96,13 +96,20 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
   Future<void> _onDownload(VoicevoxModelInfo model) async {
     try {
       await _manager.downloadModel(model.modelId);
-      // Automatically load the model into the engine after download.
-      await _manager.loadModel(model.modelId);
     } on Object catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('ダウンロードに失敗しました: $e')),
       );
+      return;
+    }
+    // ダウンロード成功後、モデルのロードを試みる（失敗しても問題ない）
+    try {
+      await _manager.loadModel(model.modelId);
+    } on Object catch (e) {
+      // エンジン未初期化等でロード失敗しても、ダウンロードは成功しているので問題ない
+      // 次回エンジン初期化時に自動ロードされる
+      debugPrint('[VoiceLibrary] loadModel after download skipped: $e');
     }
   }
 

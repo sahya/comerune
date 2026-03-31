@@ -126,7 +126,6 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
     final models = _voicevoxModels;
     if (platform == null || models == null) return false;
 
-    // Find which model contains this speaker ID.
     VoicevoxModelInfo? model;
     for (final m in models) {
       if (m.speakerIds.contains(speakerId)) {
@@ -135,6 +134,11 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
       }
     }
     if (model == null) return false;
+
+    // モデルが既にダウンロード済みまたはバンドル済みの場合のみロード
+    if (model.downloadState != ModelDownloadState.downloaded && !model.isBundled) {
+      return false;
+    }
 
     try {
       await platform.loadModel(model.modelId);
@@ -373,13 +377,15 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
       final bool currentInList =
           items.any((item) => item.value == settings.voicevoxSpeaker);
       if (!currentInList && items.isNotEmpty) {
-        // Defer the state update to avoid calling setState during build.
         final int firstSpeaker = items.first.value!;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            _updateAndSave(settings.copyWith(voicevoxSpeaker: firstSpeaker));
-          }
-        });
+        if (firstSpeaker != settings.voicevoxSpeaker) {
+          // Defer the state update to avoid calling setState during build.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              _updateAndSave(settings.copyWith(voicevoxSpeaker: firstSpeaker));
+            }
+          });
+        }
       }
 
       if (items.isEmpty) {

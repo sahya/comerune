@@ -126,19 +126,19 @@ class CommentSpeechPlugin :
                 handleAsync(result) {
                     val initResult = ctrl.initialize()
                     if (initResult.isSuccess) {
-                        // Ensure bundled models are available and load them
+                        // 初期化成功後、ダウンロード済みモデルをロード
+                        // (ensureAssetsAvailableでn0.vvmがDL済みの場合も含む)
                         val repo = modelRepository
                         val eng = engine
                         if (repo != null && eng != null) {
-                            for (model in VoicevoxModelManifest.models.filter { it.isBundled }) {
-                                repo.ensureBundledModel(model)
+                            for (model in VoicevoxModelManifest.models) {
                                 val modelFile = repo.getModelFile(model.modelId)
                                 if (modelFile != null) {
                                     val loadResult = eng.loadModel(modelFile.absolutePath)
                                     if (loadResult.isFailure) {
                                         Log.w(
                                             TAG,
-                                            "Failed to load bundled model ${model.modelId}: ${loadResult.exceptionOrNull()?.message}"
+                                            "Failed to load model ${model.modelId}: ${loadResult.exceptionOrNull()?.message}"
                                         )
                                     }
                                 }
@@ -321,6 +321,18 @@ class CommentSpeechPlugin :
                     return
                 }
                 handleAsync(result) {
+                    // エンジンが未初期化の場合は先に初期化する
+                    // initialize内でmodelDir内の全VVMが自動ロードされるため、
+                    // 対象モデルが既にロード済みならloadModelをスキップする
+                    if (!eng.isReady()) {
+                        val initResult = ctrl.initialize()
+                        if (initResult.isFailure) {
+                            return@handleAsync initResult
+                        }
+                        // initialize()でmodelDir内のVVMが全てロードされるため、
+                        // 対象ファイルがmodelDir内にあれば追加ロード不要
+                        return@handleAsync Result.success(Unit)
+                    }
                     eng.loadModel(modelFile.absolutePath)
                 }
             }

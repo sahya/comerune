@@ -6,31 +6,21 @@ import 'package:comerune/presentation/screens/voice_library_screen.dart';
 
 import '../../comment_speech/fake_comment_speech_platform.dart';
 
-final _bundledModel = <String, dynamic>{
-  'modelId': '0',
-  'displayName': '四国めたん',
-  'speakerIds': [0, 1, 2, 3],
-  'vvmFileName': '0.vvm',
-  'fileSizeBytes': 52000000,
-  'isBundled': true,
-  'downloadState': 'DOWNLOADED',
-};
-
-final _notDownloadedModel = <String, dynamic>{
-  'modelId': '1',
-  'displayName': 'ずんだもん',
-  'speakerIds': [4, 5, 6, 7],
-  'vvmFileName': '1.vvm',
+final _nemoModel = <String, dynamic>{
+  'modelId': 'n0',
+  'displayName': 'VOICEVOX Nemo',
+  'speakerIds': [10000, 10001, 10002, 10003, 10004, 10005, 10006, 10007, 10008],
+  'vvmFileName': 'n0.vvm',
   'fileSizeBytes': 52000000,
   'isBundled': false,
   'downloadState': 'NOT_DOWNLOADED',
 };
 
-final _downloadedModel = <String, dynamic>{
-  'modelId': '2',
-  'displayName': '春日部つむぎ',
-  'speakerIds': [8],
-  'vvmFileName': '2.vvm',
+final _nemoDownloadedModel = <String, dynamic>{
+  'modelId': 'n0',
+  'displayName': 'VOICEVOX Nemo',
+  'speakerIds': [10000, 10001, 10002, 10003, 10004, 10005, 10006, 10007, 10008],
+  'vvmFileName': 'n0.vvm',
   'fileSizeBytes': 52000000,
   'isBundled': false,
   'downloadState': 'DOWNLOADED',
@@ -48,9 +38,7 @@ void main() {
   setUp(() {
     fakePlatform = FakeCommentSpeechPlatform();
     fakePlatform.availableModelsToReturn = [
-      _bundledModel,
-      _notDownloadedModel,
-      _downloadedModel,
+      _nemoModel,
     ];
   });
 
@@ -62,58 +50,43 @@ void main() {
     await tester.pumpWidget(_buildScreen(fakePlatform));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('voice-model-card-0')), findsOneWidget);
-    expect(find.byKey(const Key('voice-model-card-1')), findsOneWidget);
-    expect(find.byKey(const Key('voice-model-card-2')), findsOneWidget);
-  });
-
-  testWidgets('shows bundled badge for bundled model', (tester) async {
-    await tester.pumpWidget(_buildScreen(fakePlatform));
-    await tester.pumpAndSettle();
-
-    expect(find.text('内蔵'), findsOneWidget);
+    expect(find.byKey(const Key('voice-model-card-n0')), findsOneWidget);
   });
 
   testWidgets('shows download button for not-downloaded model', (tester) async {
     await tester.pumpWidget(_buildScreen(fakePlatform));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('download-btn-1')), findsOneWidget);
+    expect(find.byKey(const Key('download-btn-n0')), findsOneWidget);
   });
 
-  testWidgets('shows delete button for downloaded non-bundled model',
-      (tester) async {
+  testWidgets('shows delete button for downloaded model', (tester) async {
+    fakePlatform.availableModelsToReturn = [_nemoDownloadedModel];
     await tester.pumpWidget(_buildScreen(fakePlatform));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('delete-btn-2')), findsOneWidget);
-  });
-
-  testWidgets('does not show delete button for bundled model', (tester) async {
-    await tester.pumpWidget(_buildScreen(fakePlatform));
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const Key('delete-btn-0')), findsNothing);
+    expect(find.byKey(const Key('delete-btn-n0')), findsOneWidget);
   });
 
   testWidgets('shows delete confirmation dialog', (tester) async {
+    fakePlatform.availableModelsToReturn = [_nemoDownloadedModel];
     await tester.pumpWidget(_buildScreen(fakePlatform));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('delete-btn-2')));
+    await tester.tap(find.byKey(const Key('delete-btn-n0')));
     await tester.pumpAndSettle();
 
-    expect(find.text('春日部つむぎ を削除しますか？'), findsOneWidget);
+    expect(find.text('VOICEVOX Nemo を削除しますか？'), findsOneWidget);
   });
 
   testWidgets('shows progress bar during download', (tester) async {
     await tester.pumpWidget(_buildScreen(fakePlatform));
     await tester.pumpAndSettle();
 
-    // Emit download started event for model 1
+    // Emit download started event for Nemo model
     fakePlatform.emitEvent(const SpeechEvent(
       type: SpeechEventType.modelDownloadStarted,
-      payload: {'modelId': '1'},
+      payload: {'modelId': 'n0'},
     ));
     await tester.pump();
 
@@ -121,7 +94,7 @@ void main() {
     fakePlatform.emitEvent(const SpeechEvent(
       type: SpeechEventType.modelDownloadProgress,
       payload: {
-        'modelId': '1',
+        'modelId': 'n0',
         'bytesDownloaded': 26000000,
         'totalBytes': 52000000,
       },

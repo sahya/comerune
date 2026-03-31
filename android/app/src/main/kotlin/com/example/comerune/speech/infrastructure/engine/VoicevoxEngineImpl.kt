@@ -77,7 +77,7 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         private const val OPEN_JTALK_DICT_URL =
             "https://github.com/r9y9/open_jtalk/releases/download/v1.11.1/open_jtalk_dic_utf_8-1.11.tar.gz"
         private const val VVM_DOWNLOAD_URL =
-            "https://github.com/VOICEVOX/voicevox_vvm/releases/download/0.16.2/0.vvm"
+            "https://github.com/VOICEVOX/voicevox_vvm/releases/download/0.16.2/n0.vvm"
 
         private const val CONNECT_TIMEOUT_MS = 30_000
         private const val READ_TIMEOUT_MS = 120_000
@@ -357,10 +357,11 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             return
         }
 
-        // Version mismatch or first download — clear stale files
-        if (baseDir.exists()) {
-            baseDir.deleteRecursively()
-            Log.i(TAG, "Cleared stale assets at ${baseDir.absolutePath}")
+        // バージョン不一致または初回ダウンロード — 辞書ディレクトリのみ削除
+        // modelDir内のファイルはユーザーがダウンロードしたモデルを保護するため削除しない
+        if (dictDir.exists()) {
+            dictDir.deleteRecursively()
+            Log.i(TAG, "Cleared stale dictionary at ${dictDir.absolutePath}")
         }
 
         if (!baseDir.mkdirs() && !baseDir.exists()) {
@@ -376,16 +377,28 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             displayName = OPEN_JTALK_DICT_DIR_NAME
         )
 
-        // Download VVM model
-        emitDownloadEvent("download_started", "0.vvm")
-        if (!modelDir.mkdirs() && !modelDir.exists()) {
-            throw IOException("Failed to create directory: ${modelDir.absolutePath}")
+        // Download VVM model (Nemo) — 既にダウンロード済みならスキップ
+        val nemoFile = File(modelDir, "n0.vvm")
+        if (!nemoFile.exists()) {
+            emitDownloadEvent("download_started", "n0.vvm")
+            if (!modelDir.mkdirs() && !modelDir.exists()) {
+                throw IOException("Failed to create directory: ${modelDir.absolutePath}")
+            }
+            downloadFile(
+                url = VVM_DOWNLOAD_URL,
+                targetFile = nemoFile,
+                displayName = "n0.vvm"
+            )
+        } else {
+            Log.i(TAG, "n0.vvm already exists, skipping download")
         }
-        downloadFile(
-            url = VVM_DOWNLOAD_URL,
-            targetFile = File(modelDir, "0.vvm"),
-            displayName = "0.vvm"
-        )
+
+        // 旧モデルファイル(0.vvm)が残っていれば削除
+        val legacyModel = File(modelDir, "0.vvm")
+        if (legacyModel.exists()) {
+            legacyModel.delete()
+            Log.i(TAG, "Removed legacy model: 0.vvm")
+        }
 
         // Write version marker so subsequent launches skip download
         versionFile.writeText(effectiveVersion)
