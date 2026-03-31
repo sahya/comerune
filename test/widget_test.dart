@@ -17,7 +17,7 @@ void main() {
       prefs: prefs,
     );
 
-    // Mark onboarding as completed so SelectScreen is shown.
+    // Mark onboarding as completed so no dialog appears.
     final OnboardingStore onboardingStore =
         SharedPreferencesOnboardingStore(prefs: prefs);
     await onboardingStore.markCompleted();
@@ -42,9 +42,11 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('接続開始'), findsOneWidget);
+    // No onboarding dialog
+    expect(find.text('comerune へようこそ'), findsNothing);
   });
 
-  testWidgets('ComeruneApp shows onboarding when not completed',
+  testWidgets('ComeruneApp shows onboarding dialog when not completed',
       (WidgetTester tester) async {
     final InMemorySharedPreferences prefs = InMemorySharedPreferences();
     final SettingsStore settingsStore = SharedPreferencesSettingsStore(
@@ -63,7 +65,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // Dialog is shown on top of SelectScreen
     expect(find.text('comerune へようこそ'), findsOneWidget);
-    expect(find.byKey(const Key('select_screen_input')), findsNothing);
+    // SelectScreen is behind the dialog (still in widget tree)
+    expect(find.byKey(const Key('select_screen_input')), findsOneWidget);
+
+    // Flush follow-program fetch retry timers.
+    await tester.pump(const Duration(seconds: 4));
   });
 }
