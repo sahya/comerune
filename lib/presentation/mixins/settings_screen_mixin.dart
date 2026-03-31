@@ -19,9 +19,9 @@ mixin SettingsScreenMixin<T extends StatefulWidget> on State<T> {
 
   /// Loads settings from [settingsStore] and calls [setState].
   ///
-  /// Subclasses can override [onSettingsLoaded] to perform additional
-  /// actions after the settings are loaded (e.g. populating text controllers).
-  @mustCallSuper
+  /// Subclasses can override this method to perform additional actions
+  /// (e.g. loading models). If overriding completely, call [onSettingsLoaded]
+  /// and set [settings] manually.
   Future<void> loadSettings() async {
     final AppSettings loaded = await settingsStore.load();
     if (!mounted) {

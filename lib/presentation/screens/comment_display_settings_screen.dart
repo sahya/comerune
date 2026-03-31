@@ -20,8 +20,7 @@ class CommentDisplaySettingsScreen extends StatefulWidget {
 }
 
 class _CommentDisplaySettingsScreenState
-    extends State<CommentDisplaySettingsScreen>
-    with SettingsScreenMixin {
+    extends State<CommentDisplaySettingsScreen> with SettingsScreenMixin {
   @override
   SettingsStore get settingsStore => widget.settingsStore;
 

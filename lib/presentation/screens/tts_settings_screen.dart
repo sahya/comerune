@@ -560,8 +560,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                       divisions: 20,
                       value: settings.voicevoxVolume,
                       onChanged: (double value) {
-                        updateAndSave(
-                            settings.copyWith(voicevoxVolume: value));
+                        updateAndSave(settings.copyWith(voicevoxVolume: value));
                       },
                     ),
                     const SizedBox(height: 12),
