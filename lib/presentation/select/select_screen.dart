@@ -137,6 +137,7 @@ class _SelectScreenState extends State<SelectScreen> {
     }
     unawaited(_refreshLoginState());
     unawaited(_fetchAllPrograms());
+    unawaited(_fetchFavoriteUserStatusAndSchedule());
     _requestFavoriteUserNameResolution();
   }
 
@@ -377,7 +378,7 @@ class _SelectScreenState extends State<SelectScreen> {
               programs: _followPrograms,
               enabled: !_isConnectionInProgress,
               onTap: _connectToProgram,
-              onRefresh: _fetchAllPrograms,
+              onRefresh: _refreshAll,
             ),
           ),
           if (_favoriteOnAirMap.isNotEmpty)
@@ -682,7 +683,7 @@ class _SelectScreenState extends State<SelectScreen> {
 
     await _reloadSettingsFromStore();
     await _refreshLoginState();
-    await _fetchAllPrograms();
+    await _refreshAll();
     // Reload user attributes in case nicknames were edited in settings.
     // Use the notifier value as fallback in the same way as the broadcasterId
     // passed to SettingsScreen above.
@@ -725,19 +726,29 @@ class _SelectScreenState extends State<SelectScreen> {
     }
   }
 
-  /// Fetches the user's own broadcast, follow programs, and favorite user
-  /// broadcast status in one pass.
+  /// Refreshes all data: follow programs, own broadcast, and favorite user
+  /// broadcast status. Called by pull-to-refresh.
+  Future<void> _refreshAll() async {
+    await Future.wait<void>(<Future<void>>[
+      _fetchAllPrograms(),
+      _fetchFavoriteUserStatus(),
+    ]);
+    if (mounted) {
+      _scheduleFavoriteRefresh();
+    }
+  }
+
+  /// Fetches the user's own broadcast and follow programs, then schedules
+  /// the next refresh after [_followRefreshInterval].
   Future<void> _fetchAllPrograms() async {
     final String userSession = await _loadUserSession();
     if (!mounted) {
       return;
     }
 
-    // Run all fetches concurrently.
     await Future.wait<void>(<Future<void>>[
       _fetchMyProgram(userSession),
       _fetchFollowPrograms(userSession),
-      _fetchFavoriteUserStatus(),
     ]);
 
     if (!mounted) {
@@ -749,10 +760,19 @@ class _SelectScreenState extends State<SelectScreen> {
       _followRefreshInterval,
       () => unawaited(_fetchAllPrograms()),
     );
-
-    _scheduleFavoriteRefresh();
   }
 
+  /// Fetches favorite user status once, then starts the 30-second refresh
+  /// cycle. Called from [initState].
+  Future<void> _fetchFavoriteUserStatusAndSchedule() async {
+    await _fetchFavoriteUserStatus();
+    if (mounted) {
+      _scheduleFavoriteRefresh();
+    }
+  }
+
+  /// Schedules the next favorite-user broadcast check after
+  /// [_favoriteRefreshInterval].
   void _scheduleFavoriteRefresh() {
     _favoriteRefreshTimer?.cancel();
     _favoriteRefreshTimer = Timer(

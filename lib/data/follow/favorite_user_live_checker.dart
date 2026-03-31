@@ -17,6 +17,8 @@ class FavoriteUserLiveChecker {
 
   static const String _baseUrl = 'https://live.nicovideo.jp/watch/user/';
 
+  static const Duration _responseTimeout = Duration(seconds: 10);
+
   final HttpClient _httpClient;
 
   /// Checks broadcast status for the given [userIds].
@@ -50,7 +52,8 @@ class FavoriteUserLiveChecker {
       final HttpClientRequest request = await _httpClient.getUrl(uri);
       request.followRedirects = false;
 
-      final HttpClientResponse response = await request.close();
+      final HttpClientResponse response =
+          await request.close().timeout(_responseTimeout);
       try {
         final int statusCode = response.statusCode;
         if (_isRedirect(statusCode)) {
