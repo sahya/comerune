@@ -443,6 +443,8 @@ class _SelectScreenState extends State<SelectScreen> {
               nameResolutionEnabled ? widget.requestUserNameResolve : null,
           commentLogWriter: widget.commentLogWriter,
           autoSaveCommentLog: _settingsNotifier.value.autoSaveCommentLog,
+          autoSaveCommentLogPath:
+              _settingsNotifier.value.autoSaveCommentLogPath,
           ngUserIds: _settingsNotifier.value.ngUserIdSet,
           ngWords: _settingsNotifier.value.ngWordList,
           onToggleNgUser: _toggleNgUser,

@@ -42,6 +42,15 @@ object VoicevoxModelManifest {
             downloadUrl = "${VVM_BASE_URL}3.vvm",
             fileSizeBytes = 52_000_000L,
             isBundled = false
+        ),
+        VoicevoxModelInfo(
+            modelId = "n0",
+            displayName = "VOICEVOX Nemo",
+            speakerIds = listOf(10000, 10001, 10002, 10003, 10004, 10005, 10006, 10007, 10008),
+            vvmFileName = "n0.vvm",
+            downloadUrl = "${VVM_BASE_URL}n0.vvm",
+            fileSizeBytes = 52_000_000L,
+            isBundled = false
         )
     )
 

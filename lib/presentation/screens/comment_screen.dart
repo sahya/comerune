@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -105,6 +106,7 @@ class CommentScreen extends StatefulWidget {
     this.requestUserNameResolve,
     this.commentLogWriter,
     this.autoSaveCommentLog = false,
+    this.autoSaveCommentLogPath = '',
     this.ngUserIds = const <String>{},
     this.ngWords = const <String>[],
     this.onToggleNgUser,
@@ -157,6 +159,7 @@ class CommentScreen extends StatefulWidget {
 
   final CommentLogWriter? commentLogWriter;
   final bool autoSaveCommentLog;
+  final String autoSaveCommentLogPath;
 
   /// Set of user IDs marked as NG (blocked).
   final Set<String> ngUserIds;
@@ -1526,6 +1529,14 @@ class _CommentScreenState extends State<CommentScreen> {
         return;
       }
 
+      if (mounted) {
+        final String fileName = tempPath.split('/').last;
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            SnackBar(content: Text('コメントログを保存しました: $fileName')),
+          );
+      }
       await Share.shareXFiles(<XFile>[XFile(tempPath)]);
     } finally {
       if (mounted) {
@@ -1544,7 +1555,39 @@ class _CommentScreenState extends State<CommentScreen> {
 
     final List<AppMessage> messages =
         widget.messages.where(_shouldDisplayMessage).toList(growable: false);
-    await writer.save(lv: widget.lv, messages: messages);
+
+    final Directory? customDir = widget.autoSaveCommentLogPath.isNotEmpty
+        ? Directory(widget.autoSaveCommentLogPath)
+        : null;
+
+    String? savedPath;
+    try {
+      savedPath = await writer.save(
+        lv: widget.lv,
+        messages: messages,
+        customDirectory: customDir,
+      );
+    } on Object {
+      // savedPath remains null; fall through to error notification.
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    if (savedPath != null) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(content: Text('コメントログを保存しました: $savedPath')),
+        );
+    } else if (messages.isNotEmpty) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          const SnackBar(content: Text('コメントログの自動保存に失敗しました')),
+        );
+    }
   }
 
   void _scrollToEdge({bool animated = true}) {
