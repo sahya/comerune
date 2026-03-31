@@ -1114,8 +1114,7 @@ void main() {
       expect(find.text('リトライ後の放送'), findsOneWidget);
     });
 
-    testWidgets(
-        'own program still displays when follow program fetch throws',
+    testWidgets('own program still displays when follow program fetch throws',
         (WidgetTester tester) async {
       final ConnectionSupervisor supervisor = ConnectionSupervisor();
       final SettingsStore settingsStore = SharedPreferencesSettingsStore(
@@ -1158,8 +1157,7 @@ void main() {
       expect(find.text('自分の放送'), findsOneWidget);
     });
 
-    testWidgets(
-        'follow programs still display when own program fetch throws',
+    testWidgets('follow programs still display when own program fetch throws',
         (WidgetTester tester) async {
       final ConnectionSupervisor supervisor = ConnectionSupervisor();
       final SettingsStore settingsStore = SharedPreferencesSettingsStore(
