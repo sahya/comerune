@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:comerune/application/settings/settings_store.dart';
 import 'package:comerune/comment_speech/comment_speech.dart';
 import 'package:comerune/presentation/screens/voice_library_screen.dart';
 
 import '../../comment_speech/fake_comment_speech_platform.dart';
+import '../../helpers/in_memory_shared_preferences.dart';
 
 final _bundledModel = <String, dynamic>{
   'modelId': '0',
@@ -36,9 +38,16 @@ final _downloadedModel = <String, dynamic>{
   'downloadState': 'DOWNLOADED',
 };
 
-Widget _buildScreen(FakeCommentSpeechPlatform platform) {
+Widget _buildScreen(
+  FakeCommentSpeechPlatform platform, {
+  SettingsStore? settingsStore,
+}) {
   return MaterialApp(
-    home: VoiceLibraryScreen(platform: platform),
+    home: VoiceLibraryScreen(
+      platform: platform,
+      settingsStore: settingsStore ??
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences()),
+    ),
   );
 }
 
