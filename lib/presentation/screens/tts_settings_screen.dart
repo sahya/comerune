@@ -171,19 +171,13 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
     final platform = widget.platform;
     if (platform == null) return;
 
-    final speechSettings = SpeechSettings(
-      enabled: settings.autoReadEnabled &&
-          settings.speechEngine == SpeechEngine.voicevox,
-      speakerId: settings.voicevoxSpeaker,
-      speedScale: settings.voicevoxSpeed,
-      pitchScale: settings.voicevoxPitch,
-      intonationScale: settings.voicevoxIntonation,
-      volumeScale: settings.voicevoxVolume,
-      maxQueueSize: settings.queueLimit,
-      ngWords: settings.ngWordList,
-      dictionaryRules: settings.dictionaryRules,
+    unawaited(
+      platform.updateSettings(settings.toSpeechSettings()).catchError(
+        (Object e) {
+          debugPrint('[TtsSettings] pushSettings FAILED: $e');
+        },
+      ),
     );
-    unawaited(platform.updateSettings(speechSettings));
   }
 
   Future<void> _saveSettings(AppSettings next) =>
