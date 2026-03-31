@@ -9,6 +9,7 @@ import '../../application/statistics/statistics_store.dart';
 import '../../application/timeline/timeline_store.dart';
 import '../../data/auth/user_session_store.dart';
 import '../../data/comment_log/comment_log_writer.dart';
+import '../../data/follow/favorite_user_live_checker.dart';
 import '../../data/follow/follow_program.dart';
 import '../../data/follow/follow_program_repository.dart';
 import '../../data/follow/my_program_repository.dart';
@@ -99,6 +100,10 @@ class _SelectScreenState extends State<SelectScreen> {
   List<FollowProgram> _followPrograms = const <FollowProgram>[];
   FollowProgram? _myProgram;
   Timer? _followRefreshTimer;
+  final FavoriteUserLiveChecker _favoriteUserLiveChecker =
+      FavoriteUserLiveChecker();
+  Map<String, String> _favoriteOnAirMap = const <String, String>{};
+  Timer? _favoriteRefreshTimer;
   final ValueNotifier<
           ({Map<String, int> colors, Map<String, String> nicknames})>
       _userAttrNotifier =
@@ -110,6 +115,7 @@ class _SelectScreenState extends State<SelectScreen> {
       MethodChannelCommentSpeech();
 
   static const Duration _followRefreshInterval = Duration(seconds: 60);
+  static const Duration _favoriteRefreshInterval = Duration(seconds: 30);
 
   @override
   void initState() {
@@ -132,6 +138,7 @@ class _SelectScreenState extends State<SelectScreen> {
     }
     unawaited(_refreshLoginState());
     unawaited(_fetchAllPrograms());
+    unawaited(_fetchFavoriteUserStatusAndSchedule());
     _requestFavoriteUserNameResolution();
   }
 
@@ -165,6 +172,8 @@ class _SelectScreenState extends State<SelectScreen> {
   @override
   void dispose() {
     _followRefreshTimer?.cancel();
+    _favoriteRefreshTimer?.cancel();
+    _favoriteUserLiveChecker.dispose();
     widget.connectionSupervisor.removeListener(_onSupervisorChanged);
     widget.supplierUserIdNotifier?.removeListener(_onSupplierUserIdChanged);
     _loginStateNotifier.dispose();
@@ -370,12 +379,15 @@ class _SelectScreenState extends State<SelectScreen> {
               programs: _followPrograms,
               enabled: !_isConnectionInProgress,
               onTap: _connectToProgram,
-              onRefresh: _fetchAllPrograms,
+              onRefresh: _refreshAll,
             ),
           ),
-          if (_settingsNotifier.value.favoriteUserIdSet.isNotEmpty)
+          if (_favoriteOnAirMap.isNotEmpty)
             _FavoriteUserSection(
-              userIds: _settingsNotifier.value.favoriteUserIdSet,
+              onAirUserPrograms: _favoriteOnAirMap,
+              enabled: !_isConnectionInProgress,
+              onTap: _connectToFavoriteUser,
+              onRefresh: _fetchFavoriteUserStatus,
               resolveUserName: widget.resolveUserName,
               userNameListenable: widget.userNameListenable,
             ),
@@ -670,7 +682,7 @@ class _SelectScreenState extends State<SelectScreen> {
 
     await _reloadSettingsFromStore();
     await _refreshLoginState();
-    await _fetchAllPrograms();
+    await _refreshAll();
     // Reload user attributes in case nicknames were edited in settings.
     // Use the notifier value as fallback in the same way as the broadcasterId
     // passed to SettingsScreen above.
@@ -713,8 +725,20 @@ class _SelectScreenState extends State<SelectScreen> {
     }
   }
 
-  /// Fetches both the user's own broadcast and follow programs in one pass,
-  /// sharing a single [userSession] load to avoid redundant secure storage I/O.
+  /// Refreshes all data: follow programs, own broadcast, and favorite user
+  /// broadcast status. Called by pull-to-refresh.
+  Future<void> _refreshAll() async {
+    await Future.wait<void>(<Future<void>>[
+      _fetchAllPrograms(),
+      _fetchFavoriteUserStatus(),
+    ]);
+    if (mounted) {
+      _scheduleFavoriteRefresh();
+    }
+  }
+
+  /// Fetches the user's own broadcast and follow programs, then schedules
+  /// the next refresh after [_followRefreshInterval].
   Future<void> _fetchAllPrograms() async {
     final String userSession = await _loadUserSession();
     if (!mounted) {
@@ -749,6 +773,30 @@ class _SelectScreenState extends State<SelectScreen> {
     );
   }
 
+  /// Fetches favorite user status once, then starts the 30-second refresh
+  /// cycle. Called from [initState].
+  Future<void> _fetchFavoriteUserStatusAndSchedule() async {
+    await _fetchFavoriteUserStatus();
+    if (mounted) {
+      _scheduleFavoriteRefresh();
+    }
+  }
+
+  /// Schedules the next favorite-user broadcast check after
+  /// [_favoriteRefreshInterval].
+  void _scheduleFavoriteRefresh() {
+    _favoriteRefreshTimer?.cancel();
+    _favoriteRefreshTimer = Timer(
+      _favoriteRefreshInterval,
+      () async {
+        await _fetchFavoriteUserStatus();
+        if (mounted) {
+          _scheduleFavoriteRefresh();
+        }
+      },
+    );
+  }
+
   Future<void> _fetchMyProgram(String userSession) async {
     final MyProgramRepository? repository = widget.myProgramRepository;
     if (repository == null) {
@@ -762,8 +810,7 @@ class _SelectScreenState extends State<SelectScreen> {
       FollowProgram? program;
       const int maxAttempts = 3;
       for (int attempt = 0; attempt < maxAttempts; attempt++) {
-        program =
-            await repository.fetchOwnProgram(userSession: userSession);
+        program = await repository.fetchOwnProgram(userSession: userSession);
         if (!mounted) {
           return;
         }
@@ -845,6 +892,36 @@ class _SelectScreenState extends State<SelectScreen> {
     _followBroadcasterIconUrl = program.providerIconUrl;
     _followBeginAt = program.beginAt;
     _controller.text = program.programId;
+    unawaited(_connect());
+  }
+
+  Future<void> _fetchFavoriteUserStatus() async {
+    final Set<String> favoriteIds = _settingsNotifier.value.favoriteUserIdSet;
+    if (favoriteIds.isEmpty) {
+      if (_favoriteOnAirMap.isNotEmpty) {
+        setState(() {
+          _favoriteOnAirMap = const <String, String>{};
+        });
+      }
+      return;
+    }
+
+    final Map<String, String> result =
+        await _favoriteUserLiveChecker.checkBroadcastStatus(favoriteIds);
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _favoriteOnAirMap = result;
+    });
+  }
+
+  void _connectToFavoriteUser(String userId, String programId) {
+    _followBroadcasterName = widget.resolveUserName?.call(userId);
+    _followBroadcasterIconUrl = buildNicoIconUrl(userId);
+    _followBeginAt = null;
+    _controller.text = programId;
     unawaited(_connect());
   }
 
@@ -1349,12 +1426,19 @@ class _MyBroadcastSection extends StatelessWidget {
 
 class _FavoriteUserSection extends StatefulWidget {
   const _FavoriteUserSection({
-    required this.userIds,
+    required this.onAirUserPrograms,
+    required this.enabled,
+    required this.onTap,
+    this.onRefresh,
     this.resolveUserName,
     this.userNameListenable,
   });
 
-  final Set<String> userIds;
+  /// Map of userId to programId (lv number) for users currently on air.
+  final Map<String, String> onAirUserPrograms;
+  final bool enabled;
+  final void Function(String userId, String programId) onTap;
+  final VoidCallback? onRefresh;
   final String? Function(String userId)? resolveUserName;
   final Listenable? userNameListenable;
 
@@ -1390,15 +1474,17 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
 
   @override
   Widget build(BuildContext context) {
+    final List<MapEntry<String, String>> entries =
+        widget.onAirUserPrograms.entries.toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         const Divider(height: 1),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.only(left: 16, right: 4, top: 4, bottom: 4),
           child: Row(
             children: <Widget>[
-              const Icon(Icons.person_add, size: 16),
+              const Icon(Icons.sensors, size: 16, color: Colors.red),
               const SizedBox(width: 6),
               Text(
                 'お気に入りユーザー',
@@ -1406,43 +1492,72 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
               ),
               const SizedBox(width: 8),
               Text(
-                '${widget.userIds.length}件',
+                '${entries.length}件',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: Theme.of(context).colorScheme.outline,
                     ),
               ),
+              const Spacer(),
+              if (widget.onRefresh != null)
+                SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: IconButton(
+                    icon: const Icon(Icons.refresh, size: 18),
+                    padding: EdgeInsets.zero,
+                    tooltip: '配信状態を更新',
+                    onPressed: widget.onRefresh,
+                  ),
+                ),
             ],
           ),
         ),
         const Divider(height: 1),
-        ...widget.userIds.map((String userId) {
+        ...entries.map((MapEntry<String, String> entry) {
+          final String userId = entry.key;
+          final String programId = entry.value;
           final String? iconUrl = buildNicoIconUrl(userId);
           final String? nickname = widget.resolveUserName?.call(userId);
-          return ListTile(
-            dense: true,
-            leading: ClipOval(
-              child: SizedBox(
-                width: 32,
-                height: 32,
-                child: iconUrl != null
-                    ? Image.network(
-                        iconUrl,
-                        width: 32,
-                        height: 32,
-                        fit: BoxFit.cover,
-                        cacheWidth: 64,
-                        cacheHeight: 64,
-                        errorBuilder: (_, __, ___) =>
-                            const Icon(Icons.person, size: 20),
-                      )
-                    : const Icon(Icons.person, size: 20),
+          final String displayName = nickname ?? userId;
+          return Semantics(
+            button: true,
+            label: '$displayNameの放送 $programId タップして接続',
+            child: ListTile(
+              dense: true,
+              enabled: widget.enabled,
+              onTap:
+                  widget.enabled ? () => widget.onTap(userId, programId) : null,
+              leading: ClipOval(
+                child: SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: iconUrl != null
+                      ? Image.network(
+                          iconUrl,
+                          width: 32,
+                          height: 32,
+                          fit: BoxFit.cover,
+                          cacheWidth: 64,
+                          cacheHeight: 64,
+                          errorBuilder: (_, __, ___) =>
+                              const Icon(Icons.person, size: 20),
+                        )
+                      : const Icon(Icons.person, size: 20),
+                ),
               ),
-            ),
-            title: Text(
-              nickname != null ? '$nickname ($userId)' : userId,
-              style: const TextStyle(fontSize: 13),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
+              title: Text(
+                nickname != null ? '$nickname ($userId)' : userId,
+                style: const TextStyle(fontSize: 13),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+              trailing: Icon(
+                Icons.play_circle_outline,
+                size: 20,
+                color: widget.enabled
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).disabledColor,
+              ),
             ),
           );
         }),
