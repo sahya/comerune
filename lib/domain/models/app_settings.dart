@@ -231,6 +231,7 @@ class AppSettings {
     required this.highlightPickupEnabled,
     required this.starPrefixHidingEnabled,
     required this.slashPrefixSkipEnabled,
+    required this.readUserName,
     required this.dictionaryRules,
     required this.debugMode,
   }) : assert(
@@ -273,6 +274,7 @@ class AppSettings {
     highlightPickupEnabled: false,
     starPrefixHidingEnabled: false,
     slashPrefixSkipEnabled: true,
+    readUserName: false,
     dictionaryRules: defaultNicoDictionaryRules,
     debugMode: false,
   );
@@ -322,6 +324,10 @@ class AppSettings {
   /// When true, comments starting with `/` are skipped for TTS
   /// but displayed normally.
   final bool slashPrefixSkipEnabled;
+
+  /// When true, the user name is prepended to the comment text for TTS
+  /// in the format `{userName}、{comment}`.
+  final bool readUserName;
 
   /// 読み上げ時のテキスト置換ルール（ニコニコ用語辞書）。
   final List<ReplaceRule> dictionaryRules;
@@ -457,6 +463,7 @@ class AppSettings {
     bool? highlightPickupEnabled,
     bool? starPrefixHidingEnabled,
     bool? slashPrefixSkipEnabled,
+    bool? readUserName,
     List<ReplaceRule>? dictionaryRules,
     bool? debugMode,
   }) {
@@ -500,6 +507,7 @@ class AppSettings {
           starPrefixHidingEnabled ?? this.starPrefixHidingEnabled,
       slashPrefixSkipEnabled:
           slashPrefixSkipEnabled ?? this.slashPrefixSkipEnabled,
+      readUserName: readUserName ?? this.readUserName,
       dictionaryRules: dictionaryRules ?? this.dictionaryRules,
       debugMode: debugMode ?? this.debugMode,
     );

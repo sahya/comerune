@@ -462,6 +462,7 @@ class _SelectScreenState extends State<SelectScreen> {
           activeUserCount: widget.statisticsStore?.activeUserCount ?? 0,
           speechPlatform: _speechPlatform,
           speechSettings: _buildSpeechSettings(),
+          readUserName: _settingsNotifier.value.readUserName,
         );
       },
     );

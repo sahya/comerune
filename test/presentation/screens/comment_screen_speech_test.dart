@@ -388,6 +388,93 @@ void main() {
       expect(fakePlatform.submittedComments.first.text, 'hello world');
     });
 
+    testWidgets('readUserName ON prepends nickname to TTS text', (
+      WidgetTester tester,
+    ) async {
+      final List<AppMessage> messages = <AppMessage>[
+        _chatMessage(id: 'msg-1', content: '最初'),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          messages: messages,
+          readUserName: true,
+          userNicknameMap: const <String, String>{'user-1': 'テスト太郎'},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final _SpeechTestHostState host =
+          tester.state(find.byType(_SpeechTestHost));
+      host.addMessage(
+        _chatMessage(id: 'msg-2', content: 'こんにちは', userId: 'user-1'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.submittedComments, hasLength(1));
+      expect(fakePlatform.submittedComments.first.text, 'テスト太郎、こんにちは');
+    });
+
+    testWidgets('readUserName ON falls back to content only when no name', (
+      WidgetTester tester,
+    ) async {
+      final List<AppMessage> messages = <AppMessage>[
+        _chatMessage(id: 'msg-1', content: '最初'),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          messages: messages,
+          readUserName: true,
+          // No nickname mapping for 'user-1'.
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final _SpeechTestHostState host =
+          tester.state(find.byType(_SpeechTestHost));
+      host.addMessage(
+        _chatMessage(id: 'msg-2', content: 'こんにちは', userId: 'user-1'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.submittedComments, hasLength(1));
+      expect(fakePlatform.submittedComments.first.text, 'こんにちは');
+    });
+
+    testWidgets('readUserName OFF sends content only (default)', (
+      WidgetTester tester,
+    ) async {
+      final List<AppMessage> messages = <AppMessage>[
+        _chatMessage(id: 'msg-1', content: '最初'),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          messages: messages,
+          readUserName: false,
+          userNicknameMap: const <String, String>{'user-1': 'テスト太郎'},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final _SpeechTestHostState host =
+          tester.state(find.byType(_SpeechTestHost));
+      host.addMessage(
+        _chatMessage(id: 'msg-2', content: 'こんにちは', userId: 'user-1'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.submittedComments, hasLength(1));
+      expect(fakePlatform.submittedComments.first.text, 'こんにちは');
+    });
+
     testWidgets('speech is stopped when settings change to disabled', (
       WidgetTester tester,
     ) async {
@@ -534,6 +621,8 @@ class _SpeechTestHost extends StatefulWidget {
     this.ngUserIds = const <String>{},
     this.ngWords = const <String>[],
     this.starPrefixHidingEnabled = false,
+    this.readUserName = false,
+    this.userNicknameMap = const <String, String>{},
   });
 
   final List<AppMessage> initialMessages;
@@ -542,6 +631,8 @@ class _SpeechTestHost extends StatefulWidget {
   final Set<String> ngUserIds;
   final List<String> ngWords;
   final bool starPrefixHidingEnabled;
+  final bool readUserName;
+  final Map<String, String> userNicknameMap;
 
   @override
   State<_SpeechTestHost> createState() => _SpeechTestHostState();
@@ -593,6 +684,8 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
       ngUserIds: _ngUserIds,
       ngWords: widget.ngWords,
       starPrefixHidingEnabled: widget.starPrefixHidingEnabled,
+      readUserName: widget.readUserName,
+      userNicknameMap: widget.userNicknameMap,
     );
   }
 }
@@ -604,6 +697,8 @@ Widget _buildScreen({
   Set<String> ngUserIds = const <String>{},
   List<String> ngWords = const <String>[],
   bool starPrefixHidingEnabled = false,
+  bool readUserName = false,
+  Map<String, String> userNicknameMap = const <String, String>{},
 }) {
   return MaterialApp(
     home: _SpeechTestHost(
@@ -613,6 +708,8 @@ Widget _buildScreen({
       ngUserIds: ngUserIds,
       ngWords: ngWords,
       starPrefixHidingEnabled: starPrefixHidingEnabled,
+      readUserName: readUserName,
+      userNicknameMap: userNicknameMap,
     ),
   );
 }
