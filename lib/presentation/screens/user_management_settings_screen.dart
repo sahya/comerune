@@ -44,6 +44,15 @@ class _UserManagementSettingsScreenState
   }
 
   @override
+  void didUpdateWidget(covariant UserManagementSettingsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.broadcasterIdNotifier != widget.broadcasterIdNotifier) {
+      oldWidget.broadcasterIdNotifier?.removeListener(_onBroadcasterIdChanged);
+      widget.broadcasterIdNotifier?.addListener(_onBroadcasterIdChanged);
+    }
+  }
+
+  @override
   void dispose() {
     widget.broadcasterIdNotifier?.removeListener(_onBroadcasterIdChanged);
     super.dispose();

@@ -121,6 +121,72 @@ void main() {
     });
 
     testWidgets(
+        'switches listener when broadcasterIdNotifier instance changes',
+        (WidgetTester tester) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final ValueNotifier<String?> notifierA =
+          ValueNotifier<String?>('broadcaster-a');
+      final ValueNotifier<String?> notifierB =
+          ValueNotifier<String?>(null);
+
+      // Build with notifierA (enabled)
+      await tester.pumpWidget(
+        MaterialApp(
+          home: UserManagementSettingsScreen(
+            settingsStore: settingsStore,
+            userAttributeStore: _FakeUserAttributeStore(),
+            broadcasterIdNotifier: notifierA,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      ListTile nicknameTile = tester.widget(
+        find.byKey(const Key('nickname-list-tile')),
+      );
+      expect(nicknameTile.enabled, isTrue);
+
+      // Rebuild with notifierB (disabled)
+      await tester.pumpWidget(
+        MaterialApp(
+          home: UserManagementSettingsScreen(
+            settingsStore: settingsStore,
+            userAttributeStore: _FakeUserAttributeStore(),
+            broadcasterIdNotifier: notifierB,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      nicknameTile = tester.widget(
+        find.byKey(const Key('nickname-list-tile')),
+      );
+      expect(nicknameTile.enabled, isFalse);
+
+      // Old notifier changes should not affect the widget
+      notifierA.value = null;
+      await tester.pump();
+      // Widget should still reflect notifierB
+      nicknameTile = tester.widget(
+        find.byKey(const Key('nickname-list-tile')),
+      );
+      expect(nicknameTile.enabled, isFalse);
+
+      // New notifier changes should affect the widget
+      notifierB.value = 'broadcaster-b';
+      await tester.pumpAndSettle();
+
+      nicknameTile = tester.widget(
+        find.byKey(const Key('nickname-list-tile')),
+      );
+      expect(nicknameTile.enabled, isTrue);
+
+      notifierA.dispose();
+      notifierB.dispose();
+    });
+
+    testWidgets(
         'nickname tile disables reactively when broadcasterId becomes null',
         (WidgetTester tester) async {
       final SharedPreferencesSettingsStore settingsStore =
