@@ -81,6 +81,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       'settings.filter.starPrefixHiding';
   static const String _kSlashPrefixSkipEnabled =
       'settings.filter.slashPrefixSkip';
+  static const String _kReadUserName = 'settings.tts.readUserName';
   static const String _kDictionaryRules = 'settings.speech.dictionaryRules';
   static const String _kDebugMode = 'settings.debugMode';
 
@@ -150,6 +151,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
           defaults.starPrefixHidingEnabled,
       slashPrefixSkipEnabled: _prefs.getBool(_kSlashPrefixSkipEnabled) ??
           defaults.slashPrefixSkipEnabled,
+      readUserName: _prefs.getBool(_kReadUserName) ?? defaults.readUserName,
       dictionaryRules: _loadDictionaryRules(),
       debugMode: _prefs.getBool(_kDebugMode) ?? defaults.debugMode,
     );
@@ -216,6 +218,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       _kSlashPrefixSkipEnabled,
       settings.slashPrefixSkipEnabled,
     );
+    await _prefs.setBool(_kReadUserName, settings.readUserName);
     await _prefs.setBool(_kDebugMode, settings.debugMode);
     await _prefs.setString(
       _kDictionaryRules,

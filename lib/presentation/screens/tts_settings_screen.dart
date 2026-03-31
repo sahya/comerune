@@ -237,6 +237,16 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                             settings.copyWith(autoReadEnabled: value));
                       },
                     ),
+                    SwitchListTile(
+                      key: const Key('read-user-name-switch'),
+                      title: const Text('名前を読み上げる'),
+                      subtitle: const Text('ONにすると「名前、コメント」の形式で読み上げます'),
+                      contentPadding: EdgeInsets.zero,
+                      value: settings.readUserName,
+                      onChanged: (bool value) {
+                        _updateAndSave(settings.copyWith(readUserName: value));
+                      },
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
