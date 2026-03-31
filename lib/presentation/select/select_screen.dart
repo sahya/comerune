@@ -17,7 +17,8 @@ import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/utils/lv_parser.dart';
-import '../../comment_speech/comment_speech.dart';
+import '../../comment_speech/comment_speech.dart'
+    show MethodChannelCommentSpeech, SpeechSettings;
 import '../screens/comment_screen.dart';
 import '../screens/settings_screen.dart';
 import '../theme/app_theme.dart';
@@ -480,21 +481,9 @@ class _SelectScreenState extends State<SelectScreen> {
 
   SpeechSettings _buildSpeechSettings() {
     final AppSettings s = _settingsNotifier.value;
-    final bool active =
-        s.autoReadEnabled && s.speechEngine == SpeechEngine.voicevox;
     debugPrint(
-        '[SelectScreen] buildSpeechSettings: active=$active, engine=${s.speechEngine}, speaker=${s.voicevoxSpeaker}, speed=${s.voicevoxSpeed}');
-    return SpeechSettings(
-      enabled: active,
-      speakerId: s.voicevoxSpeaker,
-      speedScale: s.voicevoxSpeed,
-      pitchScale: s.voicevoxPitch,
-      intonationScale: s.voicevoxIntonation,
-      volumeScale: s.voicevoxVolume,
-      maxQueueSize: s.queueLimit,
-      ngWords: s.ngWordList,
-      dictionaryRules: s.dictionaryRules,
-    );
+        '[SelectScreen] buildSpeechSettings: engine=${s.speechEngine}, speaker=${s.voicevoxSpeaker}, speed=${s.voicevoxSpeed}');
+    return s.toSpeechSettings();
   }
 
   Future<void> _stopAllConnections() async {
@@ -669,6 +658,7 @@ class _SelectScreenState extends State<SelectScreen> {
           resolveUserName: widget.resolveUserName,
           requestUserNameResolve: widget.requestUserNameResolve,
           userNameListenable: widget.userNameListenable,
+          speechPlatform: MethodChannelCommentSpeech(),
         ),
       ),
     );
