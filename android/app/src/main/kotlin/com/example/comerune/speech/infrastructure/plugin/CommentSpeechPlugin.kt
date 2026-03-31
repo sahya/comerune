@@ -322,15 +322,12 @@ class CommentSpeechPlugin :
                 }
                 handleAsync(result) {
                     // エンジンが未初期化の場合は先に初期化する
-                    // initialize内でmodelDir内の全VVMが自動ロードされるため、
-                    // 対象モデルが既にロード済みならloadModelをスキップする
+                    // initialize()でmodelDir内の全VVMが自動ロードされるため追加ロード不要
                     if (!eng.isReady()) {
                         val initResult = ctrl.initialize()
                         if (initResult.isFailure) {
                             return@handleAsync initResult
                         }
-                        // initialize()でmodelDir内のVVMが全てロードされるため、
-                        // 対象ファイルがmodelDir内にあれば追加ロード不要
                         return@handleAsync Result.success(Unit)
                     }
                     eng.loadModel(modelFile.absolutePath)

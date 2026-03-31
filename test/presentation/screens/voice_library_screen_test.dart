@@ -79,6 +79,22 @@ void main() {
     expect(find.text('VOICEVOX Nemo を削除しますか？'), findsOneWidget);
   });
 
+  testWidgets('does not show download button for downloaded model',
+      (tester) async {
+    fakePlatform.availableModelsToReturn = [_nemoDownloadedModel];
+    await tester.pumpWidget(_buildScreen(fakePlatform));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('download-btn-n0')), findsNothing);
+  });
+
+  testWidgets('shows model name in card', (tester) async {
+    await tester.pumpWidget(_buildScreen(fakePlatform));
+    await tester.pumpAndSettle();
+
+    expect(find.text('VOICEVOX Nemo'), findsOneWidget);
+  });
+
   testWidgets('shows progress bar during download', (tester) async {
     await tester.pumpWidget(_buildScreen(fakePlatform));
     await tester.pumpAndSettle();

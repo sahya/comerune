@@ -5,6 +5,7 @@ import android.util.Log
 import com.example.comerune.speech.domain.engine.VoicevoxEngine
 import com.example.comerune.speech.domain.model.SpeechRequest
 import com.example.comerune.speech.domain.model.TtsEngineState
+import com.example.comerune.speech.domain.model.VoicevoxModelManifest
 import com.example.comerune.speech.domain.model.WavSynthesisResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -76,8 +77,9 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
 
         private const val OPEN_JTALK_DICT_URL =
             "https://github.com/r9y9/open_jtalk/releases/download/v1.11.1/open_jtalk_dic_utf_8-1.11.tar.gz"
-        private const val VVM_DOWNLOAD_URL =
-            "https://github.com/VOICEVOX/voicevox_vvm/releases/download/0.16.2/n0.vvm"
+        // マニフェスト (VoicevoxModelManifest) のデフォルトモデルと同期すること
+        private val VVM_DOWNLOAD_URL =
+            VoicevoxModelManifest.models.first().downloadUrl
 
         private const val CONNECT_TIMEOUT_MS = 30_000
         private const val READ_TIMEOUT_MS = 120_000
@@ -377,20 +379,21 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             displayName = OPEN_JTALK_DICT_DIR_NAME
         )
 
-        // Download VVM model (Nemo) — 既にダウンロード済みならスキップ
-        val nemoFile = File(modelDir, "n0.vvm")
-        if (!nemoFile.exists()) {
-            emitDownloadEvent("download_started", "n0.vvm")
+        // Download VVM model — 既にダウンロード済みならスキップ
+        val defaultModel = VoicevoxModelManifest.models.first()
+        val vvmFile = File(modelDir, defaultModel.vvmFileName)
+        if (!vvmFile.exists()) {
+            emitDownloadEvent("download_started", defaultModel.vvmFileName)
             if (!modelDir.mkdirs() && !modelDir.exists()) {
                 throw IOException("Failed to create directory: ${modelDir.absolutePath}")
             }
             downloadFile(
                 url = VVM_DOWNLOAD_URL,
-                targetFile = nemoFile,
-                displayName = "n0.vvm"
+                targetFile = vvmFile,
+                displayName = defaultModel.vvmFileName
             )
         } else {
-            Log.i(TAG, "n0.vvm already exists, skipping download")
+            Log.i(TAG, "${defaultModel.vvmFileName} already exists, skipping download")
         }
 
         // 旧モデルファイル(0.vvm)が残っていれば削除
