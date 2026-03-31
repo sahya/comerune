@@ -118,7 +118,7 @@ void main() {
           tester.state(find.byType(_SpeechTestHost));
       host.addMessage(AppMessage(
         id: 'op-1',
-        timestamp: DateTime(2026, 3, 30, 12, 0, 1),
+        timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 1)),
         content: '運営メッセージ',
         type: AppMessageType.operator,
       ));
@@ -148,7 +148,7 @@ void main() {
           tester.state(find.byType(_SpeechTestHost));
       host.addMessage(AppMessage(
         id: 'msg-2',
-        timestamp: DateTime(2026, 3, 30, 12, 0, 1),
+        timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 1)),
         userId: 'blocked-user',
         content: 'ブロックされたユーザー',
         type: AppMessageType.chat,
@@ -180,7 +180,7 @@ void main() {
       // First message from the user is submitted.
       host.addMessage(AppMessage(
         id: 'msg-2',
-        timestamp: DateTime(2026, 3, 30, 12, 0, 1),
+        timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 1)),
         userId: 'user-a',
         content: '普通のコメント',
         type: AppMessageType.chat,
@@ -195,7 +195,7 @@ void main() {
       // Subsequent message from user-a should be skipped.
       host.addMessage(AppMessage(
         id: 'msg-3',
-        timestamp: DateTime(2026, 3, 30, 12, 0, 2),
+        timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 2)),
         userId: 'user-a',
         content: 'ブロック後のコメント',
         type: AppMessageType.chat,
@@ -227,7 +227,7 @@ void main() {
       // Message from NG user is skipped.
       host.addMessage(AppMessage(
         id: 'msg-2',
-        timestamp: DateTime(2026, 3, 30, 12, 0, 1),
+        timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 1)),
         userId: 'user-b',
         content: 'NGユーザーのコメント',
         type: AppMessageType.chat,
@@ -242,7 +242,7 @@ void main() {
       // New message from user-b should now be submitted.
       host.addMessage(AppMessage(
         id: 'msg-3',
-        timestamp: DateTime(2026, 3, 30, 12, 0, 2),
+        timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 2)),
         userId: 'user-b',
         content: 'NG解除後のコメント',
         type: AppMessageType.chat,
@@ -517,6 +517,52 @@ void main() {
       expect(fakePlatform.lastUpdatedSettings?.speakerId, 3);
     });
 
+    testWidgets('messages with timestamp before speech init are not read', (
+      WidgetTester tester,
+    ) async {
+      // Start with an existing message whose timestamp is in the past.
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'old-1',
+          timestamp: DateTime(2020, 1, 1),
+          userId: 'user-1',
+          content: '過去のコメント',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          messages: messages,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Add another message with a past timestamp (simulating a backlog
+      // message that arrives after speech initialization).
+      final _SpeechTestHostState host =
+          tester.state(find.byType(_SpeechTestHost));
+      host.addMessage(AppMessage(
+        id: 'old-2',
+        timestamp: DateTime(2020, 1, 2),
+        userId: 'user-1',
+        content: '過去のバックログ',
+        type: AppMessageType.chat,
+      ));
+      await tester.pumpAndSettle();
+
+      // Past-timestamp messages must be skipped.
+      expect(fakePlatform.submittedComments, isEmpty);
+
+      // A message with a future timestamp should be submitted.
+      host.addMessage(_chatMessage(id: 'new-1', content: '新しいコメント'));
+      await tester.pumpAndSettle();
+      expect(fakePlatform.submittedComments, hasLength(1));
+      expect(fakePlatform.submittedComments.first.text, '新しいコメント');
+    });
+
     testWidgets('submitComment error does not crash', (
       WidgetTester tester,
     ) async {
@@ -729,7 +775,7 @@ AppMessage _chatMessage({
 }) {
   return AppMessage(
     id: id,
-    timestamp: DateTime(2026, 3, 30, 12, 0, 0),
+    timestamp: DateTime.now().add(const Duration(hours: 1)),
     userId: userId ?? 'user-1',
     content: content,
     type: AppMessageType.chat,

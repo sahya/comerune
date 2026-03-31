@@ -239,9 +239,9 @@ class _CommentScreenState extends State<CommentScreen> {
   /// reference the same mutable list as widget.messages.
   String? _lastSpeechMessageId;
 
-  /// Timestamp recorded when speech is initialized. Messages with a timestamp
-  /// before this value are skipped during the first submission pass, ensuring
-  /// that only comments arriving after the user opened the screen are read.
+  /// Timestamp recorded just before the speech engine starts. Messages with a
+  /// timestamp before this value are skipped, ensuring that only comments
+  /// arriving after speech initialization are read aloud.
   DateTime? _speechBaselineTimestamp;
 
   @override
@@ -470,16 +470,16 @@ class _CommentScreenState extends State<CommentScreen> {
       _speechEventSub?.cancel();
       _speechEventSub = platform.events.listen(_onSpeechEvent);
 
-      debugPrint('[CommentScreen] initSpeech: updateSettings → start()...');
-      await platform.updateSettings(widget.speechSettings);
-      await platform.start();
-
-      // Record the current tail message so we only read comments
-      // arriving AFTER initialization, not the backlog.
+      // Record baseline BEFORE awaiting engine start so that comments
+      // arriving during initialization are not accidentally skipped.
       _speechBaselineTimestamp = DateTime.now();
       if (widget.messages.isNotEmpty) {
         _lastSpeechMessageId = widget.messages.last.id;
       }
+
+      debugPrint('[CommentScreen] initSpeech: updateSettings → start()...');
+      await platform.updateSettings(widget.speechSettings);
+      await platform.start();
 
       if (mounted) {
         setState(() {
@@ -534,6 +534,7 @@ class _CommentScreenState extends State<CommentScreen> {
       } catch (e) {
         debugPrint('[CommentScreen] stopSpeech: FAILED: $e');
       }
+      _speechBaselineTimestamp = null;
       if (mounted) {
         setState(() {
           _speechStarted = false;
