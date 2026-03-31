@@ -21,6 +21,9 @@ class TeachCommandResult {
 
 /// teach/unteach コマンドを実行するハンドラー。
 class TeachCommandHandler {
+  static const int _maxPatternLength = 100;
+  static const int _maxReplacementLength = 200;
+
   /// `/teach` コマンドを実行する。
   ///
   /// - [command] 解析済みの teach コマンド
@@ -36,6 +39,20 @@ class TeachCommandHandler {
       return const TeachCommandResult(
         success: false,
         message: '使い方: /teach パターン 読み',
+      );
+    }
+
+    // 文字列長の上限チェック。
+    if (command.pattern.length > _maxPatternLength) {
+      return const TeachCommandResult(
+        success: false,
+        message: 'パターンが長すぎます（100文字以内）',
+      );
+    }
+    if (command.replacement.length > _maxReplacementLength) {
+      return const TeachCommandResult(
+        success: false,
+        message: '読みが長すぎます（200文字以内）',
       );
     }
 

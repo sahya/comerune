@@ -97,6 +97,32 @@ void main() {
       expect(result.updatedRules!.first.pattern, r'\(test\)');
     });
 
+    test('rejects pattern exceeding max length', () {
+      final String longPattern = 'あ' * 101;
+      final TeachCommandResult result = TeachCommandHandler.executeTeach(
+        command: TeachCommand(pattern: longPattern, replacement: '読み'),
+        currentRules: const <ReplaceRule>[],
+        containsNgWord: neverNg,
+      );
+
+      expect(result.success, isFalse);
+      expect(result.updatedRules, isNull);
+      expect(result.message, contains('長すぎます'));
+    });
+
+    test('rejects replacement exceeding max length', () {
+      final String longReplacement = 'あ' * 201;
+      final TeachCommandResult result = TeachCommandHandler.executeTeach(
+        command: TeachCommand(pattern: 'パターン', replacement: longReplacement),
+        currentRules: const <ReplaceRule>[],
+        containsNgWord: neverNg,
+      );
+
+      expect(result.success, isFalse);
+      expect(result.updatedRules, isNull);
+      expect(result.message, contains('長すぎます'));
+    });
+
     test('escapes dot in pattern', () {
       final TeachCommandResult result = TeachCommandHandler.executeTeach(
         command: const TeachCommand(pattern: 'a.b', replacement: 'エードットビー'),

@@ -699,39 +699,44 @@ class _CommentScreenState extends State<CommentScreen> {
       return;
     }
 
-    final AppSettings settings = await store.load();
+    try {
+      final AppSettings settings = await store.load();
 
-    TeachCommandResult result;
-    final TeachCommand? teach = TeachCommandParser.parseTeach(message.content);
-    if (teach != null) {
-      result = TeachCommandHandler.executeTeach(
-        command: teach,
-        currentRules: settings.dictionaryRules,
-        containsNgWord: settings.containsNgWord,
-      );
-    } else {
-      final UnteachCommand? unteach =
-          TeachCommandParser.parseUnteach(message.content);
-      if (unteach == null) {
-        return;
+      TeachCommandResult result;
+      final TeachCommand? teach =
+          TeachCommandParser.parseTeach(message.content);
+      if (teach != null) {
+        result = TeachCommandHandler.executeTeach(
+          command: teach,
+          currentRules: settings.dictionaryRules,
+          containsNgWord: settings.containsNgWord,
+        );
+      } else {
+        final UnteachCommand? unteach =
+            TeachCommandParser.parseUnteach(message.content);
+        if (unteach == null) {
+          return;
+        }
+        result = TeachCommandHandler.executeUnteach(
+          command: unteach,
+          currentRules: settings.dictionaryRules,
+        );
       }
-      result = TeachCommandHandler.executeUnteach(
-        command: unteach,
-        currentRules: settings.dictionaryRules,
-      );
-    }
 
-    if (result.success && result.updatedRules != null) {
-      final AppSettings updated =
-          settings.copyWith(dictionaryRules: result.updatedRules);
-      await store.save(updated);
-      widget.onDictionaryRulesChanged?.call(updated);
-    }
+      if (result.success && result.updatedRules != null) {
+        final AppSettings updated =
+            settings.copyWith(dictionaryRules: result.updatedRules);
+        await store.save(updated);
+        widget.onDictionaryRulesChanged?.call(updated);
+      }
 
-    if (mounted) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(result.message)));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(result.message)));
+      }
+    } on Object catch (e) {
+      debugPrint('[CommentScreen] _handleTeachCommand FAILED: $e');
     }
   }
 
