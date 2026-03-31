@@ -10,6 +10,7 @@ import '../../data/auth/user_session_store.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../data/follow/follow_program.dart';
 import '../../data/follow/follow_program_repository.dart';
+import '../../data/follow/my_program_repository.dart';
 import '../../data/user/user_attribute_store.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
@@ -54,6 +55,7 @@ class SelectScreen extends StatefulWidget {
     this.commentLogWriter,
     this.themeModeNotifier,
     this.followProgramRepository,
+    this.myProgramRepository,
     this.userAttributeStore,
     super.key,
   });
@@ -75,6 +77,7 @@ class SelectScreen extends StatefulWidget {
   final ValueNotifier<DateTime?>? beginAtNotifier;
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
   final FollowProgramRepository? followProgramRepository;
+  final MyProgramRepository? myProgramRepository;
   final UserAttributeStore? userAttributeStore;
 
   @override
@@ -92,6 +95,7 @@ class _SelectScreenState extends State<SelectScreen> {
   DateTime? _followBeginAt;
   final ValueNotifier<bool?> _loginStateNotifier = ValueNotifier<bool?>(null);
   List<FollowProgram> _followPrograms = const <FollowProgram>[];
+  FollowProgram? _myProgram;
   Timer? _followRefreshTimer;
   final ValueNotifier<
           ({Map<String, int> colors, Map<String, String> nicknames})>
@@ -125,7 +129,7 @@ class _SelectScreenState extends State<SelectScreen> {
       unawaited(_reloadSettingsFromStore());
     }
     unawaited(_refreshLoginState());
-    unawaited(_fetchFollowPrograms());
+    unawaited(_fetchAllPrograms());
     _requestFavoriteUserNameResolution();
   }
 
@@ -284,7 +288,7 @@ class _SelectScreenState extends State<SelectScreen> {
     );
 
     if (mounted) {
-      unawaited(_fetchFollowPrograms());
+      unawaited(_fetchAllPrograms());
     }
   }
 
@@ -353,12 +357,18 @@ class _SelectScreenState extends State<SelectScreen> {
               ],
             ),
           ),
+          if (_myProgram != null)
+            _MyBroadcastSection(
+              program: _myProgram!,
+              enabled: !_isConnectionInProgress,
+              onTap: () => _connectToProgram(_myProgram!),
+            ),
           Expanded(
             child: _FollowProgramList(
               programs: _followPrograms,
               enabled: !_isConnectionInProgress,
               onTap: _connectToProgram,
-              onRefresh: _fetchFollowPrograms,
+              onRefresh: _fetchAllPrograms,
             ),
           ),
           if (_settingsNotifier.value.favoriteUserIdSet.isNotEmpty)
@@ -665,7 +675,7 @@ class _SelectScreenState extends State<SelectScreen> {
 
     await _reloadSettingsFromStore();
     await _refreshLoginState();
-    await _fetchFollowPrograms();
+    await _fetchAllPrograms();
     // Reload user attributes in case nicknames were edited in settings.
     // Use the notifier value as fallback in the same way as the broadcasterId
     // passed to SettingsScreen above.
@@ -696,18 +706,64 @@ class _SelectScreenState extends State<SelectScreen> {
     _loginStateNotifier.value = session.isNotEmpty;
   }
 
-  Future<void> _fetchFollowPrograms() async {
-    final FollowProgramRepository? repository = widget.followProgramRepository;
+  Future<String> _loadUserSession() async {
     final UserSessionStore? sessionStore = widget.userSessionStore;
-    if (repository == null || sessionStore == null) {
+    if (sessionStore == null) {
+      return '';
+    }
+    try {
+      return await sessionStore.load();
+    } on Exception {
+      return '';
+    }
+  }
+
+  /// Fetches both the user's own broadcast and follow programs in one pass,
+  /// sharing a single [userSession] load to avoid redundant secure storage I/O.
+  Future<void> _fetchAllPrograms() async {
+    final String userSession = await _loadUserSession();
+    if (!mounted) {
       return;
     }
 
-    String userSession;
-    try {
-      userSession = await sessionStore.load();
-    } on Exception {
-      userSession = '';
+    // Run both fetches concurrently with the same session token.
+    await Future.wait<void>(<Future<void>>[
+      _fetchMyProgram(userSession),
+      _fetchFollowPrograms(userSession),
+    ]);
+
+    if (!mounted) {
+      return;
+    }
+
+    _followRefreshTimer?.cancel();
+    _followRefreshTimer = Timer(
+      _followRefreshInterval,
+      () => unawaited(_fetchAllPrograms()),
+    );
+  }
+
+  Future<void> _fetchMyProgram(String userSession) async {
+    final MyProgramRepository? repository = widget.myProgramRepository;
+    if (repository == null) {
+      return;
+    }
+
+    final FollowProgram? program =
+        await repository.fetchOwnProgram(userSession: userSession);
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _myProgram = program;
+    });
+  }
+
+  Future<void> _fetchFollowPrograms(String userSession) async {
+    final FollowProgramRepository? repository = widget.followProgramRepository;
+    if (repository == null) {
+      return;
     }
 
     // Retry up to 3 times on first load only. Once we have a result
@@ -740,10 +796,6 @@ class _SelectScreenState extends State<SelectScreen> {
     setState(() {
       _followPrograms = programs;
     });
-
-    _followRefreshTimer?.cancel();
-    _followRefreshTimer =
-        Timer(_followRefreshInterval, () => unawaited(_fetchFollowPrograms()));
   }
 
   static String? _buildIconUrlFromUserId(String? userId) {
@@ -1099,6 +1151,160 @@ class _FollowProgramTile extends StatelessWidget {
       height: 40,
       color: Colors.grey.shade300,
       child: const Icon(Icons.person, size: 22, color: Colors.grey),
+    );
+  }
+}
+
+class _MyBroadcastSection extends StatelessWidget {
+  const _MyBroadcastSection({
+    required this.program,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final FollowProgram program;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final String? elapsed = program.elapsedLabel();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: <Widget>[
+              const Icon(Icons.videocam, size: 16, color: Colors.orange),
+              const SizedBox(width: 6),
+              Text(
+                'あなたの放送',
+                style: theme.textTheme.titleSmall,
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Semantics(
+          button: true,
+          label: 'あなたの放送 ${program.title} タップして接続',
+          child: InkWell(
+            onTap: enabled ? onTap : null,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: <Widget>[
+                  _buildIconWithBroadcastIndicator(theme),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Text(
+                          program.title,
+                          style: theme.textTheme.bodyMedium,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          program.programId,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  if (elapsed != null) ...<Widget>[
+                    Icon(Icons.access_time,
+                        size: 11, color: theme.colorScheme.outline),
+                    const SizedBox(width: 3),
+                    Text(
+                      elapsed,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.outline,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Icon(
+                    Icons.play_circle_outline,
+                    size: 20,
+                    color: enabled
+                        ? theme.colorScheme.primary
+                        : theme.disabledColor,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const Divider(height: 1),
+      ],
+    );
+  }
+
+  Widget _buildIconWithBroadcastIndicator(ThemeData theme) {
+    return SizedBox(
+      width: 40,
+      height: 40,
+      child: Stack(
+        children: <Widget>[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: _buildIcon(),
+          ),
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: Colors.orange,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: theme.colorScheme.surface,
+                  width: 1.5,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIcon() {
+    final String? iconUrl = program.providerIconUrl;
+    if (iconUrl != null && iconUrl.isNotEmpty) {
+      return Image.network(
+        iconUrl,
+        width: 40,
+        height: 40,
+        fit: BoxFit.cover,
+        cacheWidth: 80,
+        cacheHeight: 80,
+        errorBuilder: (_, __, ___) => _buildFallbackIcon(),
+      );
+    }
+    return _buildFallbackIcon();
+  }
+
+  static Widget _buildFallbackIcon() {
+    return Container(
+      width: 40,
+      height: 40,
+      color: Colors.orange.shade100,
+      child: const Icon(Icons.videocam, size: 22, color: Colors.orange),
     );
   }
 }

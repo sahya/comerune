@@ -17,6 +17,7 @@ import 'data/auth/user_session_store.dart';
 import 'data/comment_log/comment_log_writer.dart';
 import 'data/connection/program_info_resolver.dart';
 import 'data/follow/follow_program_repository.dart';
+import 'data/follow/my_program_repository.dart';
 import 'data/foreground_service/foreground_service_manager.dart';
 import 'data/connection/web_socket_channel_legacy_web_socket.dart';
 import 'data/user/user_attribute_store.dart';
@@ -125,6 +126,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
   late final ValueNotifier<AppThemeMode> _themeModeNotifier;
   late final UserNameResolver _userNameResolver;
   late final FollowProgramRepository _followProgramRepository;
+  late final MyProgramRepository _myProgramRepository;
   ForegroundServiceController? _foregroundServiceController;
 
   @override
@@ -138,6 +140,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
 
     _userNameResolver = UserNameResolver();
     _followProgramRepository = FollowProgramRepository();
+    _myProgramRepository = MyProgramRepository();
     _timelineStore = TimelineStore(capacity: _ndgrHistoryCount);
     _statisticsStore = StatisticsStore();
     _sessionWsClient = _SessionWsClientAdapter(
@@ -211,6 +214,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _statisticsStore.dispose();
     _userNameResolver.dispose();
     _followProgramRepository.dispose();
+    _myProgramRepository.dispose();
     _programTitleNotifier.dispose();
     _supplierUserIdNotifier.dispose();
     _beginAtNotifier.dispose();
@@ -264,6 +268,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
           commentLogWriter: widget.commentLogWriter,
           themeModeNotifier: _themeModeNotifier,
           followProgramRepository: _followProgramRepository,
+          myProgramRepository: _myProgramRepository,
           userAttributeStore: widget.userAttributeStore,
         ),
       ),
