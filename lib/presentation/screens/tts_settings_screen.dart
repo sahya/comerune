@@ -646,6 +646,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                           ),
                         );
                         await _loadSettings();
+                        if (_settings != null) {
+                          _pushSettingsToEngine(_settings!);
+                        }
                       },
                     ),
                     ListTile(
