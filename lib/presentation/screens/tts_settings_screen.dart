@@ -8,6 +8,7 @@ import '../../comment_speech/comment_speech.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/voicevox_model_info.dart';
 import '../widgets/settings_widgets.dart';
+import 'dictionary_rules_screen.dart';
 import 'ng_user_list_screen.dart';
 import 'voice_library_screen.dart';
 
@@ -561,6 +562,28 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
+                    ListTile(
+                      key: const Key('dictionary-rules-tile'),
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.book),
+                      title: const Text('読み上げ辞書'),
+                      subtitle: Text(
+                        settings.dictionaryRules.isEmpty
+                            ? '未登録'
+                            : '${settings.dictionaryRules.length}件登録中',
+                      ),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () async {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => DictionaryRulesScreen(
+                              settingsStore: widget.settingsStore,
+                            ),
+                          ),
+                        );
+                        await _loadSettings();
+                      },
+                    ),
                     ListTile(
                       key: const Key('ng-user-list-tile'),
                       contentPadding: EdgeInsets.zero,
