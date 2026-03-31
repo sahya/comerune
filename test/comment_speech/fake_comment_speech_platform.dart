@@ -11,6 +11,7 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
   bool stopCalled = false;
   bool releaseCalled = false;
   SpeechSettings? lastUpdatedSettings;
+  final List<SpeechSettings> updateSettingsCalls = <SpeechSettings>[];
   final List<RawComment> submittedComments = <RawComment>[];
   final StreamController<SpeechEvent> _eventController =
       StreamController<SpeechEvent>.broadcast();
@@ -20,15 +21,6 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
 
   /// If non-null, [submitComment] will throw this for every call.
   Object? submitCommentError;
-
-  /// If non-null, [loadModel] will throw this.
-  Object? loadModelError;
-
-  /// If non-null, [loadModel] will wait for this completer before returning.
-  Completer<void>? loadModelCompleter;
-
-  /// Tracks all modelIds passed to [loadModel].
-  final List<String> loadedModelIds = <String>[];
 
   /// The models to return from [getAvailableModels].
   List<Map<String, dynamic>> availableModelsToReturn = [];
@@ -41,6 +33,16 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
     queueSize: 0,
     currentSpeakerId: 0,
   );
+
+  /// If non-null, [loadModel] will throw this.
+  Object? loadModelError;
+
+  /// If non-null, [loadModel] will wait for this completer before returning.
+  /// Useful for testing loading indicators and race conditions.
+  Completer<void>? loadModelCompleter;
+
+  /// Tracks which model IDs were passed to [loadModel].
+  final List<String> loadedModelIds = <String>[];
 
   @override
   Future<void> initialize() async {
@@ -82,6 +84,7 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
   @override
   Future<void> updateSettings(SpeechSettings settings) async {
     lastUpdatedSettings = settings;
+    updateSettingsCalls.add(settings);
   }
 
   @override
