@@ -1069,6 +1069,96 @@ void main() {
       // Header icon (16px) and fallback tile icon (22px) both use videocam.
       expect(find.byIcon(Icons.videocam), findsAtLeastNWidgets(1));
     });
+
+    testWidgets('retries fetching own program on initial null response',
+        (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+      final SettingsStore settingsStore = SharedPreferencesSettingsStore(
+        prefs: InMemorySharedPreferences(),
+      );
+      final InMemoryUserSessionStore userSessionStore =
+          InMemoryUserSessionStore();
+      await userSessionStore.save('test_session');
+
+      final _FakeMyProgramRepository myRepository =
+          _FakeMyProgramRepository(FollowProgram(
+        programId: 'lv999',
+        title: 'リトライ後の放送',
+        providerName: '自分',
+        isOwnBroadcast: true,
+      ));
+      // Return null on the first call, then the real program.
+      myRepository.nullResponseCount = 1;
+
+      final _FakeFollowProgramRepository followRepository =
+          _FakeFollowProgramRepository(const <FollowProgram>[]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: supervisor,
+            settingsStore: settingsStore,
+            userSessionStore: userSessionStore,
+            followProgramRepository: followRepository,
+            myProgramRepository: myRepository,
+          ),
+        ),
+      );
+
+      // Flush retry delays (exponential backoff: 1s, 2s).
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+
+      expect(myRepository.fetchCallCount, greaterThanOrEqualTo(2));
+      expect(find.text('あなたの放送'), findsOneWidget);
+      expect(find.text('リトライ後の放送'), findsOneWidget);
+    });
+
+    testWidgets(
+        'follow programs still display when own program fetch throws',
+        (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+      final SettingsStore settingsStore = SharedPreferencesSettingsStore(
+        prefs: InMemorySharedPreferences(),
+      );
+      final InMemoryUserSessionStore userSessionStore =
+          InMemoryUserSessionStore();
+      await userSessionStore.save('test_session');
+
+      final _FakeMyProgramRepository myRepository =
+          _FakeMyProgramRepository(null);
+      myRepository.shouldThrow = true;
+
+      final _FakeFollowProgramRepository followRepository =
+          _FakeFollowProgramRepository(<FollowProgram>[
+        FollowProgram(
+          programId: 'lv200',
+          title: 'フォロー放送',
+          providerName: 'フォロー放送者',
+        ),
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: supervisor,
+            settingsStore: settingsStore,
+            userSessionStore: userSessionStore,
+            followProgramRepository: followRepository,
+            myProgramRepository: myRepository,
+          ),
+        ),
+      );
+
+      // Flush retry timers.
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+
+      // Own broadcast section should not appear.
+      expect(find.text('あなたの放送'), findsNothing);
+      // Follow programs should still display despite the error.
+      expect(find.text('フォロー放送'), findsOneWidget);
+    });
   });
 }
 
@@ -1077,10 +1167,26 @@ class _FakeMyProgramRepository extends MyProgramRepository {
 
   final FollowProgram? _program;
 
+  int fetchCallCount = 0;
+
+  /// When non-null, [fetchOwnProgram] returns `null` for the first
+  /// [nullResponseCount] calls, then returns [_program].
+  int? nullResponseCount;
+
+  /// When true, [fetchOwnProgram] throws an exception instead of returning.
+  bool shouldThrow = false;
+
   @override
   Future<FollowProgram?> fetchOwnProgram({
     required String userSession,
   }) async {
+    fetchCallCount++;
+    if (shouldThrow) {
+      throw Exception('Simulated API error');
+    }
+    if (nullResponseCount != null && fetchCallCount <= nullResponseCount!) {
+      return null;
+    }
     return _program;
   }
 }
