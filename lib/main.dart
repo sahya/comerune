@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'application/foreground_service/foreground_service_controller.dart';
 import 'application/migration/app_migration_runner.dart';
+import 'application/onboarding/onboarding_store.dart';
 import 'application/settings/settings_store.dart';
 import 'application/settings/shared_preferences_adapter.dart';
 import 'application/statistics/statistics_store.dart';
@@ -29,6 +30,7 @@ import 'domain/connection/ndgr_client.dart' as ndgr_impl;
 import 'domain/connection/session_ws_client.dart' as session_impl;
 import 'domain/models/app_message.dart';
 import 'domain/models/app_settings.dart';
+import 'presentation/screens/onboarding_screen.dart';
 import 'presentation/select/select_screen.dart';
 import 'presentation/theme/app_theme.dart';
 
@@ -64,6 +66,10 @@ Future<void> main() async {
   // Remove user attribute entries not accessed for over 1 year.
   unawaited(userAttributeStore.cleanup());
 
+  final OnboardingStore onboardingStore = SharedPreferencesOnboardingStore(
+    prefs: SharedPreferencesAdapter(prefs),
+  );
+
   ForegroundServiceManager? foregroundServiceManager;
   if (Platform.isAndroid) {
     foregroundServiceManager = ForegroundServiceManager();
@@ -78,6 +84,7 @@ Future<void> main() async {
       commentLogWriter: commentLogWriter,
       userAttributeStore: userAttributeStore,
       foregroundServiceManager: foregroundServiceManager,
+      onboardingStore: onboardingStore,
     ),
   );
 }
@@ -91,6 +98,7 @@ class ComeruneApp extends StatefulWidget {
     this.commentLogWriter,
     this.userAttributeStore,
     this.foregroundServiceManager,
+    required this.onboardingStore,
   });
 
   final SettingsStore settingsStore;
@@ -99,6 +107,7 @@ class ComeruneApp extends StatefulWidget {
   final CommentLogWriter? commentLogWriter;
   final UserAttributeStore? userAttributeStore;
   final ForegroundServiceManager? foregroundServiceManager;
+  final OnboardingStore onboardingStore;
 
   @override
   State<ComeruneApp> createState() => _ComeruneAppState();
@@ -115,6 +124,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
   late final StreamSubscription<AppMessage> _legacyMessageSubscription;
   late final StreamSubscription<int?> _ndgrViewerCountSubscription;
 
+  late bool _showOnboarding;
   String _currentLv = '';
   int _ndgrHistoryCount = 100;
   final ValueNotifier<String?> _programTitleNotifier =
@@ -132,6 +142,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
   @override
   void initState() {
     super.initState();
+    _showOnboarding = !widget.onboardingStore.isCompleted();
     _ndgrHistoryCount =
         widget.initialSettings.pastCommentFetchCount.historyCount;
     _themeModeNotifier =
@@ -251,26 +262,35 @@ class _ComeruneAppState extends State<ComeruneApp> {
         themeMode: currentMode == AppThemeMode.system
             ? ThemeMode.system
             : ThemeMode.light,
-        home: SelectScreen(
-          connectionSupervisor: _connectionSupervisor,
-          timelineStore: _timelineStore,
-          statisticsStore: _statisticsStore,
-          settingsStore: widget.settingsStore,
-          initialSettings: widget.initialSettings,
-          onPrepareConnection: _prepareConnection,
-          userSessionStore: widget.userSessionStore,
-          programTitleNotifier: _programTitleNotifier,
-          resolveUserName: _userNameResolver.getCachedName,
-          requestUserNameResolve: _userNameResolver.requestResolve,
-          userNameListenable: _userNameResolver,
-          supplierUserIdNotifier: _supplierUserIdNotifier,
-          beginAtNotifier: _beginAtNotifier,
-          commentLogWriter: widget.commentLogWriter,
-          themeModeNotifier: _themeModeNotifier,
-          followProgramRepository: _followProgramRepository,
-          myProgramRepository: _myProgramRepository,
-          userAttributeStore: widget.userAttributeStore,
-        ),
+        home: _showOnboarding
+            ? OnboardingScreen(
+                onboardingStore: widget.onboardingStore,
+                onCompleted: () {
+                  setState(() {
+                    _showOnboarding = false;
+                  });
+                },
+              )
+            : SelectScreen(
+                connectionSupervisor: _connectionSupervisor,
+                timelineStore: _timelineStore,
+                statisticsStore: _statisticsStore,
+                settingsStore: widget.settingsStore,
+                initialSettings: widget.initialSettings,
+                onPrepareConnection: _prepareConnection,
+                userSessionStore: widget.userSessionStore,
+                programTitleNotifier: _programTitleNotifier,
+                resolveUserName: _userNameResolver.getCachedName,
+                requestUserNameResolve: _userNameResolver.requestResolve,
+                userNameListenable: _userNameResolver,
+                supplierUserIdNotifier: _supplierUserIdNotifier,
+                beginAtNotifier: _beginAtNotifier,
+                commentLogWriter: widget.commentLogWriter,
+                themeModeNotifier: _themeModeNotifier,
+                followProgramRepository: _followProgramRepository,
+                myProgramRepository: _myProgramRepository,
+                userAttributeStore: widget.userAttributeStore,
+              ),
       ),
     );
   }
