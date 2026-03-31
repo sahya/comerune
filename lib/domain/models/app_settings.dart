@@ -2,6 +2,7 @@ import 'dart:developer' as developer;
 
 import '../../comment_speech/src/models/replace_rule.dart';
 import '../../comment_speech/src/models/speech_settings.dart';
+import '../utils/newline_parser.dart';
 
 enum AppThemeMode {
   system,
@@ -234,6 +235,7 @@ class AppSettings {
     required this.starPrefixHidingEnabled,
     required this.slashPrefixSkipEnabled,
     required this.readUserName,
+    required this.voicevoxTermsAccepted,
     required this.dictionaryRules,
     required this.debugMode,
   }) : assert(
@@ -278,6 +280,7 @@ class AppSettings {
     starPrefixHidingEnabled: false,
     slashPrefixSkipEnabled: true,
     readUserName: false,
+    voicevoxTermsAccepted: false,
     dictionaryRules: defaultNicoDictionaryRules,
     debugMode: false,
   );
@@ -336,6 +339,9 @@ class AppSettings {
   /// in the format `{userName}、{comment}`.
   final bool readUserName;
 
+  /// VOICEVOX 音声モデルの利用規約に同意済みかどうか。
+  final bool voicevoxTermsAccepted;
+
   /// 読み上げ時のテキスト置換ルール（ニコニコ用語辞書）。
   final List<ReplaceRule> dictionaryRules;
 
@@ -347,15 +353,7 @@ class AppSettings {
   /// The result is pre-lowered so that callers can compare with a single
   /// [String.contains] against lower-cased content.
   List<String> get ngWordList {
-    if (ngWords.trim().isEmpty) {
-      return const <String>[];
-    }
-    return ngWords
-        .split('\n')
-        .map((String w) => w.trim())
-        .where((String w) => w.isNotEmpty)
-        .map((String w) => w.toLowerCase())
-        .toList();
+    return parseNewlineSeparatedLowerList(ngWords);
   }
 
   /// Returns `true` when [content] contains any of the configured NG words.
@@ -373,14 +371,7 @@ class AppSettings {
   }
 
   Set<String> get ngUserIdSet {
-    if (ngUserIds.trim().isEmpty) {
-      return const <String>{};
-    }
-    return ngUserIds
-        .split('\n')
-        .map((String id) => id.trim())
-        .where((String id) => id.isNotEmpty)
-        .toSet();
+    return parseNewlineSeparatedSet(ngUserIds);
   }
 
   bool isNgUser(String? userId) {
@@ -409,14 +400,7 @@ class AppSettings {
   }
 
   Set<String> get favoriteUserIdSet {
-    if (favoriteUserIds.trim().isEmpty) {
-      return const <String>{};
-    }
-    return favoriteUserIds
-        .split('\n')
-        .map((String id) => id.trim())
-        .where((String id) => id.isNotEmpty)
-        .toSet();
+    return parseNewlineSeparatedSet(favoriteUserIds);
   }
 
   AppSettings addFavoriteUserId(String userId) {
@@ -472,6 +456,7 @@ class AppSettings {
     bool? starPrefixHidingEnabled,
     bool? slashPrefixSkipEnabled,
     bool? readUserName,
+    bool? voicevoxTermsAccepted,
     List<ReplaceRule>? dictionaryRules,
     bool? debugMode,
   }) {
@@ -518,6 +503,8 @@ class AppSettings {
       slashPrefixSkipEnabled:
           slashPrefixSkipEnabled ?? this.slashPrefixSkipEnabled,
       readUserName: readUserName ?? this.readUserName,
+      voicevoxTermsAccepted:
+          voicevoxTermsAccepted ?? this.voicevoxTermsAccepted,
       dictionaryRules: dictionaryRules ?? this.dictionaryRules,
       debugMode: debugMode ?? this.debugMode,
     );

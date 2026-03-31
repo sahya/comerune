@@ -376,6 +376,29 @@ void main() {
       expect(loaded.readUserName, isTrue);
     });
 
+    test('voicevoxTermsAccepted defaults to false when not stored', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.voicevoxTermsAccepted, isFalse);
+    });
+
+    test('round-trips voicevoxTermsAccepted value', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        voicevoxTermsAccepted: true,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.voicevoxTermsAccepted, isTrue);
+    });
+
     test('falls back to defaults for malformed dictionaryRules array',
         () async {
       final InMemorySharedPreferences prefs = InMemorySharedPreferences();

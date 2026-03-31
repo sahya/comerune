@@ -6,6 +6,7 @@ import '../../application/settings/settings_store.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/voicevox_model_info.dart';
+import '../mixins/settings_screen_mixin.dart';
 import '../widgets/settings_widgets.dart';
 import 'dictionary_rules_screen.dart';
 import 'ng_user_list_screen.dart';
@@ -28,7 +29,8 @@ class TtsSettingsScreen extends StatefulWidget {
   State<TtsSettingsScreen> createState() => _TtsSettingsScreenState();
 }
 
-class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
+class _TtsSettingsScreenState extends State<TtsSettingsScreen>
+    with SettingsScreenMixin {
   static const int _queueLimitMin = 1;
   static const int _queueLimitMax = 100;
   static const int _maxDelayMin = 1;
@@ -42,7 +44,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
   late final FocusNode _maxDelayFocusNode;
   late final FocusNode _ngWordsFocusNode;
 
-  AppSettings? _settings;
+  @override
+  SettingsStore get settingsStore => widget.settingsStore;
+
   List<VoicevoxModelInfo>? _voicevoxModels;
   String? _queueLimitError;
   String? _maxDelayError;
@@ -63,7 +67,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
     _maxDelayFocusNode = FocusNode()..addListener(_onMaxDelayFocusChanged);
     _ngWordsFocusNode = FocusNode()..addListener(_onNgWordsFocusChanged);
 
-    _loadSettings();
+    loadSettings();
   }
 
   @override
@@ -83,22 +87,28 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
     super.dispose();
   }
 
-  Future<void> _loadSettings() async {
-    final AppSettings loaded = await widget.settingsStore.load();
+  @override
+  void onSettingsLoaded(AppSettings loaded) {
+    _queueLimitController.text = loaded.queueLimit.toString();
+    _maxDelayController.text = loaded.maxDelaySeconds.toString();
+    _ngWordsController.text = loaded.ngWords;
+  }
+
+  @override
+  Future<void> loadSettings() async {
+    final AppSettings loaded = await settingsStore.load();
     if (!mounted) {
       return;
     }
 
-    _queueLimitController.text = loaded.queueLimit.toString();
-    _maxDelayController.text = loaded.maxDelaySeconds.toString();
-    _ngWordsController.text = loaded.ngWords;
+    onSettingsLoaded(loaded);
 
     if (widget.platform != null) {
       await _refreshVoicevoxModels();
     }
 
     setState(() {
-      _settings = loaded;
+      settings = loaded;
     });
   }
 
@@ -151,22 +161,22 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
 
   /// Handle speaker change: save immediately, load the model, then push
   /// settings to the engine only after the model is ready.
-  Future<void> _onSpeakerChanged(AppSettings settings, int newSpeaker) async {
-    final int previousSpeaker = settings.voicevoxSpeaker;
+  Future<void> _onSpeakerChanged(AppSettings current, int newSpeaker) async {
+    final int previousSpeaker = current.voicevoxSpeaker;
     final int generation = ++_speakerChangeGeneration;
 
     // Optimistically update the UI and persist the new speaker.
-    final AppSettings next = settings.copyWith(voicevoxSpeaker: newSpeaker);
+    final AppSettings next = current.copyWith(voicevoxSpeaker: newSpeaker);
     setState(() {
-      _settings = next;
+      settings = next;
       _isLoadingModel = true;
     });
-    unawaited(_saveSettings(next));
+    unawaited(saveSettings(next));
 
     final bool success = await _loadModelForSpeaker(newSpeaker);
 
     // If another speaker change happened while we were loading, discard this
-    // result — the newer change takes precedence.
+    // result -- the newer change takes precedence.
     if (generation != _speakerChangeGeneration || !mounted) return;
 
     if (success) {
@@ -179,10 +189,10 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
       final AppSettings reverted =
           next.copyWith(voicevoxSpeaker: previousSpeaker);
       setState(() {
-        _settings = reverted;
+        settings = reverted;
         _isLoadingModel = false;
       });
-      unawaited(_saveSettings(reverted));
+      unawaited(saveSettings(reverted));
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -216,13 +226,11 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
     _saveNgWords();
   }
 
-  void _updateAndSave(AppSettings next) {
+  @override
+  void updateAndSave(AppSettings next) {
     debugPrint(
         '[TtsSettings] save: autoRead=${next.autoReadEnabled}, engine=${next.speechEngine}, speaker=${next.voicevoxSpeaker}, speed=${next.voicevoxSpeed}');
-    setState(() {
-      _settings = next;
-    });
-    unawaited(_saveSettings(next));
+    super.updateAndSave(next);
     _pushSettingsToEngine(next);
   }
 
@@ -242,11 +250,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
     );
   }
 
-  Future<void> _saveSettings(AppSettings next) =>
-      saveSettingsToStore(widget.settingsStore, next);
-
   void _saveNgWords() {
-    final AppSettings? current = _settings;
+    final AppSettings? current = settings;
     if (current == null) {
       return;
     }
@@ -258,11 +263,11 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
 
     // TODO(issue-12-followup): NGワードは正規表現入力のため、保存前に
     // RegExp.tryParse 相当で妥当性を検証し、無効パターンは保存を抑止する。
-    _updateAndSave(current.copyWith(ngWords: ngWords));
+    updateAndSave(current.copyWith(ngWords: ngWords));
   }
 
   void _saveQueueLimit() {
-    final AppSettings? current = _settings;
+    final AppSettings? current = settings;
     if (current == null) {
       return;
     }
@@ -295,11 +300,11 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
       return;
     }
 
-    _updateAndSave(current.copyWith(queueLimit: parsed));
+    updateAndSave(current.copyWith(queueLimit: parsed));
   }
 
   void _saveMaxDelaySeconds() {
-    final AppSettings? current = _settings;
+    final AppSettings? current = settings;
     if (current == null) {
       return;
     }
@@ -332,7 +337,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
       return;
     }
 
-    _updateAndSave(current.copyWith(maxDelaySeconds: parsed));
+    updateAndSave(current.copyWith(maxDelaySeconds: parsed));
   }
 
   String _buildCreditText(int speakerId) {
@@ -382,7 +387,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
           // Defer the state update to avoid calling setState during build.
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
-              _updateAndSave(settings.copyWith(voicevoxSpeaker: firstSpeaker));
+              updateAndSave(settings.copyWith(voicevoxSpeaker: firstSpeaker));
             }
           });
         }
@@ -446,14 +451,14 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
       ],
       onChanged: (int? value) {
         if (value == null) return;
-        _updateAndSave(settings.copyWith(voicevoxSpeaker: value));
+        updateAndSave(settings.copyWith(voicevoxSpeaker: value));
       },
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final AppSettings? settings = _settings;
+    final AppSettings? settings = this.settings;
 
     return Scaffold(
       appBar: AppBar(
@@ -474,7 +479,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       contentPadding: EdgeInsets.zero,
                       value: settings.autoReadEnabled,
                       onChanged: (bool value) {
-                        _updateAndSave(
+                        updateAndSave(
                             settings.copyWith(autoReadEnabled: value));
                       },
                     ),
@@ -485,7 +490,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       contentPadding: EdgeInsets.zero,
                       value: settings.readUserName,
                       onChanged: (bool value) {
-                        _updateAndSave(settings.copyWith(readUserName: value));
+                        updateAndSave(settings.copyWith(readUserName: value));
                       },
                     ),
                   ],
@@ -507,6 +512,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                               MaterialPageRoute<void>(
                                 builder: (_) => VoiceLibraryScreen(
                                   platform: widget.platform!,
+                                  settingsStore: widget.settingsStore,
                                 ),
                               ),
                             );
@@ -526,7 +532,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       divisions: 15,
                       value: settings.voicevoxSpeed,
                       onChanged: (double value) {
-                        _updateAndSave(settings.copyWith(voicevoxSpeed: value));
+                        updateAndSave(settings.copyWith(voicevoxSpeed: value));
                       },
                     ),
                     SettingsDoubleSliderField(
@@ -537,7 +543,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       divisions: 30,
                       value: settings.voicevoxPitch,
                       onChanged: (double value) {
-                        _updateAndSave(settings.copyWith(voicevoxPitch: value));
+                        updateAndSave(settings.copyWith(voicevoxPitch: value));
                       },
                     ),
                     SettingsDoubleSliderField(
@@ -548,7 +554,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       divisions: 20,
                       value: settings.voicevoxIntonation,
                       onChanged: (double value) {
-                        _updateAndSave(
+                        updateAndSave(
                           settings.copyWith(voicevoxIntonation: value),
                         );
                       },
@@ -561,8 +567,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       divisions: 20,
                       value: settings.voicevoxVolume,
                       onChanged: (double value) {
-                        _updateAndSave(
-                            settings.copyWith(voicevoxVolume: value));
+                        updateAndSave(settings.copyWith(voicevoxVolume: value));
                       },
                     ),
                     const SizedBox(height: 12),
@@ -614,7 +619,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       contentPadding: EdgeInsets.zero,
                       value: settings.slashPrefixSkipEnabled,
                       onChanged: (bool value) {
-                        _updateAndSave(
+                        updateAndSave(
                           settings.copyWith(slashPrefixSkipEnabled: value),
                         );
                       },
@@ -628,7 +633,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       contentPadding: EdgeInsets.zero,
                       value: settings.starPrefixHidingEnabled,
                       onChanged: (bool value) {
-                        _updateAndSave(
+                        updateAndSave(
                           settings.copyWith(starPrefixHidingEnabled: value),
                         );
                       },
@@ -639,7 +644,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       contentPadding: EdgeInsets.zero,
                       value: settings.omitUrl,
                       onChanged: (bool value) {
-                        _updateAndSave(settings.copyWith(omitUrl: value));
+                        updateAndSave(settings.copyWith(omitUrl: value));
                       },
                     ),
                     SwitchListTile(
@@ -648,7 +653,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       contentPadding: EdgeInsets.zero,
                       value: settings.suppressDuplicate,
                       onChanged: (bool value) {
-                        _updateAndSave(
+                        updateAndSave(
                             settings.copyWith(suppressDuplicate: value));
                       },
                     ),
@@ -684,9 +689,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                             ),
                           ),
                         );
-                        await _loadSettings();
-                        if (_settings != null) {
-                          _pushSettingsToEngine(_settings!);
+                        await loadSettings();
+                        if (this.settings != null) {
+                          _pushSettingsToEngine(this.settings!);
                         }
                       },
                     ),
@@ -709,9 +714,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                             ),
                           ),
                         );
-                        await _loadSettings();
-                        if (_settings != null) {
-                          _pushSettingsToEngine(_settings!);
+                        await loadSettings();
+                        if (this.settings != null) {
+                          _pushSettingsToEngine(this.settings!);
                         }
                       },
                     ),

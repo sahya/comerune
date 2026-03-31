@@ -36,15 +36,7 @@ Color colorFromARGB32(int argb32) {
 }
 
 String _formatHms(DateTime value, {DateTime? beginAt}) {
-  final String? elapsed = formatCommentElapsed(beginAt, value);
-  if (elapsed != null) {
-    return elapsed;
-  }
-  final DateTime local = value.toLocal();
-  final String hh = local.hour.toString().padLeft(2, '0');
-  final String mm = local.minute.toString().padLeft(2, '0');
-  final String ss = local.second.toString().padLeft(2, '0');
-  return '$hh:$mm:$ss';
+  return formatCommentTime(value, beginAt: beginAt);
 }
 
 String _formatHmsOrDash(DateTime? value, {DateTime? beginAt}) {
@@ -950,6 +942,7 @@ class _CommentScreenState extends State<CommentScreen> {
           allMessages: widget.messages,
           isNgUser: isNg,
           themeMode: widget.themeMode,
+          beginAt: widget.beginAt,
           currentColorValue: widget.userColorMap[userId],
           onColorChanged: widget.onUserColorChanged != null
               ? (int colorValue) {
