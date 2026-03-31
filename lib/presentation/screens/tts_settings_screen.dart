@@ -161,6 +161,29 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
       _settings = next;
     });
     unawaited(_saveSettings(next));
+    _pushSettingsToEngine(next);
+  }
+
+  /// Push the current settings to the native speech engine so that changes
+  /// (speed, pitch, intonation, volume, speaker, etc.) take effect immediately
+  /// without requiring the user to navigate back.
+  void _pushSettingsToEngine(AppSettings settings) {
+    final platform = widget.platform;
+    if (platform == null) return;
+
+    final speechSettings = SpeechSettings(
+      enabled: settings.autoReadEnabled &&
+          settings.speechEngine == SpeechEngine.voicevox,
+      speakerId: settings.voicevoxSpeaker,
+      speedScale: settings.voicevoxSpeed,
+      pitchScale: settings.voicevoxPitch,
+      intonationScale: settings.voicevoxIntonation,
+      volumeScale: settings.voicevoxVolume,
+      maxQueueSize: settings.queueLimit,
+      ngWords: settings.ngWordList,
+      dictionaryRules: settings.dictionaryRules,
+    );
+    unawaited(platform.updateSettings(speechSettings));
   }
 
   Future<void> _saveSettings(AppSettings next) =>
