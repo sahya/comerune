@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../application/settings/settings_store.dart';
@@ -47,6 +46,11 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
   List<VoicevoxModelInfo>? _voicevoxModels;
   String? _queueLimitError;
   String? _maxDelayError;
+  bool _isLoadingModel = false;
+
+  /// Generation counter to discard stale model-load results when the user
+  /// changes the speaker multiple times in quick succession.
+  int _speakerChangeGeneration = 0;
 
   @override
   void initState() {
@@ -115,10 +119,12 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
   }
 
   /// Load the VVM model corresponding to [speakerId] into the native engine.
-  void _loadModelForSpeaker(int speakerId) {
+  ///
+  /// Returns `true` when the model was loaded successfully, `false` otherwise.
+  Future<bool> _loadModelForSpeaker(int speakerId) async {
     final platform = widget.platform;
     final models = _voicevoxModels;
-    if (platform == null || models == null) return;
+    if (platform == null || models == null) return false;
 
     // Find which model contains this speaker ID.
     VoicevoxModelInfo? model;
@@ -128,10 +134,61 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
         break;
       }
     }
-    if (model == null) return;
+    if (model == null) return false;
 
-    // Fire and forget — loading happens asynchronously on the native side.
-    platform.loadModel(model.modelId);
+    try {
+      await platform.loadModel(model.modelId);
+      return true;
+    } on Object catch (e) {
+      debugPrint('[TtsSettings] loadModel FAILED for speaker $speakerId: $e');
+      return false;
+    }
+  }
+
+  /// Handle speaker change: save immediately, load the model, then push
+  /// settings to the engine only after the model is ready.
+  Future<void> _onSpeakerChanged(AppSettings settings, int newSpeaker) async {
+    final int previousSpeaker = settings.voicevoxSpeaker;
+    final int generation = ++_speakerChangeGeneration;
+
+    // Optimistically update the UI and persist the new speaker.
+    final AppSettings next = settings.copyWith(voicevoxSpeaker: newSpeaker);
+    setState(() {
+      _settings = next;
+      _isLoadingModel = true;
+    });
+    unawaited(_saveSettings(next));
+
+    final bool success = await _loadModelForSpeaker(newSpeaker);
+
+    // If another speaker change happened while we were loading, discard this
+    // result — the newer change takes precedence.
+    if (generation != _speakerChangeGeneration || !mounted) return;
+
+    if (success) {
+      setState(() {
+        _isLoadingModel = false;
+      });
+      _pushSettingsToEngine(next);
+    } else {
+      // Revert to the previous speaker and notify the user.
+      final AppSettings reverted =
+          next.copyWith(voicevoxSpeaker: previousSpeaker);
+      setState(() {
+        _settings = reverted;
+        _isLoadingModel = false;
+      });
+      unawaited(_saveSettings(reverted));
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            key: Key('speaker-load-error-snackbar'),
+            content: Text('話者の読み込みに失敗しました。前の話者に戻します。'),
+          ),
+        );
+      }
+    }
   }
 
   void _onQueueLimitFocusChanged() {
@@ -334,19 +391,36 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
         );
       }
 
-      return DropdownButtonFormField<int>(
-        key: const Key('voicevox-speaker-dropdown'),
-        value: currentInList ? settings.voicevoxSpeaker : items.first.value,
-        decoration: const InputDecoration(
-          labelText: '話者',
-          border: OutlineInputBorder(),
-        ),
-        items: items,
-        onChanged: (int? value) {
-          if (value == null) return;
-          _updateAndSave(settings.copyWith(voicevoxSpeaker: value));
-          _loadModelForSpeaker(value);
-        },
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          DropdownButtonFormField<int>(
+            key: const Key('voicevox-speaker-dropdown'),
+            value: currentInList ? settings.voicevoxSpeaker : items.first.value,
+            decoration: const InputDecoration(
+              labelText: '話者',
+              border: OutlineInputBorder(),
+            ),
+            items: items,
+            onChanged: _isLoadingModel
+                ? null
+                : (int? value) {
+                    if (value == null) return;
+                    _onSpeakerChanged(settings, value);
+                  },
+          ),
+          if (_isLoadingModel)
+            Semantics(
+              label: '話者モデルを読み込み中',
+              child: const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: LinearProgressIndicator(
+                  key: Key('speaker-loading-indicator'),
+                ),
+              ),
+            ),
+        ],
       );
     }
 
@@ -605,6 +679,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                           ),
                         );
                         await _loadSettings();
+                        if (_settings != null) {
+                          _pushSettingsToEngine(_settings!);
+                        }
                       },
                     ),
                     ListTile(
@@ -627,6 +704,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                           ),
                         );
                         await _loadSettings();
+                        if (_settings != null) {
+                          _pushSettingsToEngine(_settings!);
+                        }
                       },
                     ),
                   ],
