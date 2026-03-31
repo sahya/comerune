@@ -481,21 +481,9 @@ class _SelectScreenState extends State<SelectScreen> {
 
   SpeechSettings _buildSpeechSettings() {
     final AppSettings s = _settingsNotifier.value;
-    final bool active =
-        s.autoReadEnabled && s.speechEngine == SpeechEngine.voicevox;
     debugPrint(
-        '[SelectScreen] buildSpeechSettings: active=$active, engine=${s.speechEngine}, speaker=${s.voicevoxSpeaker}, speed=${s.voicevoxSpeed}');
-    return SpeechSettings(
-      enabled: active,
-      speakerId: s.voicevoxSpeaker,
-      speedScale: s.voicevoxSpeed,
-      pitchScale: s.voicevoxPitch,
-      intonationScale: s.voicevoxIntonation,
-      volumeScale: s.voicevoxVolume,
-      maxQueueSize: s.queueLimit,
-      ngWords: s.ngWordList,
-      dictionaryRules: s.dictionaryRules,
-    );
+        '[SelectScreen] buildSpeechSettings: engine=${s.speechEngine}, speaker=${s.voicevoxSpeaker}, speed=${s.voicevoxSpeed}');
+    return s.toSpeechSettings();
   }
 
   Future<void> _stopAllConnections() async {

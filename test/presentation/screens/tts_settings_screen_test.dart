@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/application/settings/settings_store.dart';
+import 'package:comerune/comment_speech/comment_speech.dart';
 import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/presentation/screens/tts_settings_screen.dart';
 
+import '../../comment_speech/fake_comment_speech_platform.dart';
 import '../../helpers/in_memory_shared_preferences.dart';
 import '../../helpers/settings_test_helpers.dart';
 
@@ -350,6 +352,114 @@ void main() {
       final AppSettings loaded = await settingsStore.load();
       expect(loaded.voicevoxVolume, 0.8);
     });
+
+    testWidgets(
+        'slider change pushes updated SpeechSettings to platform engine', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeCommentSpeechPlatform fakePlatform =
+          FakeCommentSpeechPlatform();
+
+      await tester
+          .pumpWidget(_buildScreenWithPlatform(settingsStore, fakePlatform));
+      await tester.pumpAndSettle();
+
+      // Initially no updateSettings call has been made (beyond _loadSettings).
+      fakePlatform.lastUpdatedSettings = null;
+
+      // Change speed slider
+      await scrollToKeyInList(
+          tester, _listKey, const Key('voicevox-speed-slider'));
+      final Finder speedSliderFinder = find.byKey(
+        const Key('voicevox-speed-slider'),
+        skipOffstage: false,
+      );
+      final Finder speedInnerSlider = find.descendant(
+        of: speedSliderFinder,
+        matching: find.byType(Slider),
+      );
+      final Slider speedSlider = tester.widget<Slider>(speedInnerSlider);
+      speedSlider.onChanged!(1.5);
+      await tester.pumpAndSettle();
+
+      // Verify updateSettings was called with the new speed value
+      expect(fakePlatform.lastUpdatedSettings, isNotNull);
+      expect(fakePlatform.lastUpdatedSettings!.speedScale, 1.5);
+
+      // Change pitch slider
+      fakePlatform.lastUpdatedSettings = null;
+      await scrollToKeyInList(
+          tester, _listKey, const Key('voicevox-pitch-slider'));
+      final Finder pitchSliderFinder = find.byKey(
+        const Key('voicevox-pitch-slider'),
+        skipOffstage: false,
+      );
+      final Finder pitchInnerSlider = find.descendant(
+        of: pitchSliderFinder,
+        matching: find.byType(Slider),
+      );
+      final Slider pitchSlider = tester.widget<Slider>(pitchInnerSlider);
+      pitchSlider.onChanged!(0.1);
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.lastUpdatedSettings, isNotNull);
+      expect(fakePlatform.lastUpdatedSettings!.pitchScale, 0.1);
+      // Previous speed change should also be reflected
+      expect(fakePlatform.lastUpdatedSettings!.speedScale, 1.5);
+    });
+
+    testWidgets(
+        'auto-read toggle pushes updated SpeechSettings to platform engine', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeCommentSpeechPlatform fakePlatform =
+          FakeCommentSpeechPlatform();
+
+      await tester
+          .pumpWidget(_buildScreenWithPlatform(settingsStore, fakePlatform));
+      await tester.pumpAndSettle();
+
+      fakePlatform.lastUpdatedSettings = null;
+
+      await toggleSwitchByKey(tester, _listKey, const Key('auto-read-switch'));
+
+      expect(fakePlatform.lastUpdatedSettings, isNotNull);
+      expect(fakePlatform.lastUpdatedSettings!.enabled, isTrue);
+    });
+
+    testWidgets('does not call updateSettings when platform is null', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      // Build without platform (platform is null)
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      // Change speed slider - should not throw
+      await scrollToKeyInList(
+          tester, _listKey, const Key('voicevox-speed-slider'));
+      final Finder speedSliderFinder = find.byKey(
+        const Key('voicevox-speed-slider'),
+        skipOffstage: false,
+      );
+      final Finder speedInnerSlider = find.descendant(
+        of: speedSliderFinder,
+        matching: find.byType(Slider),
+      );
+      final Slider speedSlider = tester.widget<Slider>(speedInnerSlider);
+      speedSlider.onChanged!(1.5);
+      await tester.pumpAndSettle();
+
+      // Verify value was saved to store (existing behavior still works)
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.voicevoxSpeed, 1.5);
+    });
   });
 }
 
@@ -357,6 +467,18 @@ Widget _buildScreen(SettingsStore settingsStore) {
   return MaterialApp(
     home: TtsSettingsScreen(
       settingsStore: settingsStore,
+    ),
+  );
+}
+
+Widget _buildScreenWithPlatform(
+  SettingsStore settingsStore,
+  CommentSpeechPlatform platform,
+) {
+  return MaterialApp(
+    home: TtsSettingsScreen(
+      settingsStore: settingsStore,
+      platform: platform,
     ),
   );
 }
