@@ -501,6 +501,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                               MaterialPageRoute<void>(
                                 builder: (_) => VoiceLibraryScreen(
                                   platform: widget.platform!,
+                                  settingsStore: widget.settingsStore,
                                 ),
                               ),
                             );
