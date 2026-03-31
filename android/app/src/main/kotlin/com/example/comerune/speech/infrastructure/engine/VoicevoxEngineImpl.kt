@@ -260,6 +260,24 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         request: SpeechRequest
     ): String = Companion.applyParametersToAudioQuery(audioQueryJson, request)
 
+    override suspend fun loadModel(modelPath: String): Result<Unit> =
+        mutex.withLock {
+            try {
+                withContext(Dispatchers.IO) {
+                    Log.i(TAG, "Loading model: $modelPath")
+                    val loaded = NativeVoicevoxBridge.nativeLoadModel(modelPath)
+                    if (!loaded) {
+                        throw RuntimeException("Failed to load model: $modelPath")
+                    }
+                    Log.i(TAG, "Model loaded successfully: $modelPath")
+                }
+                Result.success(Unit)
+            } catch (e: Throwable) {
+                Log.e(TAG, "loadModel failed", e)
+                Result.failure(e)
+            }
+        }
+
     override fun isReady(): Boolean = state == TtsEngineState.READY
 
     override fun currentState(): TtsEngineState = state

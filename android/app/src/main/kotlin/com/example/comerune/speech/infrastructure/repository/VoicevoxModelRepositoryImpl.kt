@@ -145,7 +145,7 @@ class VoicevoxModelRepositoryImpl(private val context: Context) : VoicevoxModelR
      * Ensure the bundled model (copied from assets) is available on disk.
      * This should be called during initialization for bundled models.
      */
-    fun ensureBundledModel(modelInfo: VoicevoxModelInfo) {
+    override fun ensureBundledModel(modelInfo: VoicevoxModelInfo) {
         if (!modelInfo.isBundled) return
 
         val targetFile = File(modelDir, modelInfo.vvmFileName)
