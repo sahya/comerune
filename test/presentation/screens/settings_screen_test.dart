@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:comerune/application/settings/settings_store.dart';
 import 'package:comerune/data/auth/user_session_store.dart';
 import 'package:comerune/domain/models/app_settings.dart';
+import 'package:comerune/presentation/models/user_name_resolution.dart';
 import 'package:comerune/presentation/screens/settings_screen.dart';
 
 import '../../helpers/in_memory_shared_preferences.dart';
@@ -172,18 +173,56 @@ void main() {
       expect(find.text('フォントサイズ: 14px'), findsOneWidget);
     });
   });
+
+  group('UserNameResolution regression', () {
+    testWidgets('null userNameResolution does not crash on render', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      // userNameResolution is omitted (null).
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SettingsScreen), findsOneWidget);
+    });
+
+    testWidgets('accepts non-null userNameResolution without crashing', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(
+        _buildScreen(
+          settingsStore,
+          userNameResolution: UserNameResolution(
+            resolve: (_) => null,
+            requestResolve: (_) {},
+            listenable: ChangeNotifier(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SettingsScreen), findsOneWidget);
+    });
+  });
 }
 
 Widget _buildScreen(
   SettingsStore settingsStore, {
   UserSessionStore? userSessionStore,
   ValueNotifier<AppThemeMode>? themeModeNotifier,
+  UserNameResolution? userNameResolution,
 }) {
   return MaterialApp(
     home: SettingsScreen(
       settingsStore: settingsStore,
       userSessionStore: userSessionStore,
       themeModeNotifier: themeModeNotifier,
+      userNameResolution: userNameResolution,
     ),
   );
 }

@@ -528,8 +528,7 @@ void main() {
 
       expect(stats.totalComments, 4,
           reason: 'only chat/operator/notification from non-NG users counted');
-      expect(stats.uniqueUserCount, 4,
-          reason: '4 distinct displayable users');
+      expect(stats.uniqueUserCount, 4, reason: '4 distinct displayable users');
     });
 
     test(
@@ -538,7 +537,11 @@ void main() {
       final DateTime base = DateTime(2026, 3, 31, 10, 0, 0);
       final List<AppMessage> messages = <AppMessage>[
         _msg(id: '1', timestamp: base, userId: 'u1'),
-        _msg(id: '2', timestamp: base, userId: 'donor1', type: AppMessageType.gift),
+        _msg(
+            id: '2',
+            timestamp: base,
+            userId: 'donor1',
+            type: AppMessageType.gift),
         _msg(
             id: '3',
             timestamp: base,
@@ -588,7 +591,8 @@ void main() {
       if (peaks.isNotEmpty) {
         for (final AppMessage msg in peaks.first.representativeComments) {
           expect(msg.type, isNot(AppMessageType.gift),
-              reason: 'gift messages must not appear as representative comments');
+              reason:
+                  'gift messages must not appear as representative comments');
         }
       }
     });
@@ -655,7 +659,8 @@ void main() {
       if (peaks.isNotEmpty) {
         for (final AppMessage msg in peaks.first.representativeComments) {
           expect(ngIds.contains(msg.userId), isFalse,
-              reason: 'NG user messages must not appear in representative comments');
+              reason:
+                  'NG user messages must not appear in representative comments');
         }
       }
     });
@@ -719,8 +724,7 @@ void main() {
       for (final HighlightPeak peak in peaks) {
         for (final AppMessage msg in peak.representativeComments) {
           expect(excludedIds.contains(msg.userId), isFalse,
-              reason:
-                  'detectPeaks must apply the same filter as fromMessages: '
+              reason: 'detectPeaks must apply the same filter as fromMessages: '
                   'found excluded userId=${msg.userId}');
           expect(msg.type, isNot(AppMessageType.gift));
           expect(msg.type, isNot(AppMessageType.nicoad));

@@ -2004,6 +2004,169 @@ void main() {
       expect(find.text('コメント統計サマリ'), findsNothing);
     });
   });
+
+  group('UserNameResolution regression', () {
+    testWidgets('null userNameResolution does not crash on render', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-null-res',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-abc',
+          content: 'テストコメント',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          // userNameResolution is intentionally omitted (null)
+        ),
+      );
+
+      // Screen must render without exception.
+      expect(find.byType(CommentScreen), findsOneWidget);
+      // Without resolution, falls back to raw userId.
+      expect(find.textContaining('user-abc'), findsOneWidget);
+    });
+
+    testWidgets('requestResolve is called for each message userId on init', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<String> resolvedIds = <String>[];
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-req-1',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-111',
+          content: 'first',
+          type: AppMessageType.chat,
+        ),
+        AppMessage(
+          id: 'msg-req-2',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 1),
+          userId: 'user-222',
+          content: 'second',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          userNameResolution: UserNameResolution(
+            resolve: (_) => null,
+            requestResolve: resolvedIds.add,
+            listenable: ChangeNotifier(),
+          ),
+        ),
+      );
+
+      expect(resolvedIds, containsAll(<String>['user-111', 'user-222']));
+    });
+
+    testWidgets('requestResolve is called for new messages added after init', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<String> resolvedIds = <String>[];
+      final GlobalKey<_CommentScreenHostWithResolutionState> hostKey =
+          GlobalKey<_CommentScreenHostWithResolutionState>();
+
+      await tester.pumpWidget(
+        _CommentScreenHostWithResolution(
+          key: hostKey,
+          supervisor: supervisor,
+          requestResolve: resolvedIds.add,
+        ),
+      );
+
+      // No messages yet; nothing resolved.
+      expect(resolvedIds, isEmpty);
+
+      hostKey.currentState!.addMessage(
+        AppMessage(
+          id: 'msg-new-req',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-new-333',
+          content: 'new comment',
+          type: AppMessageType.chat,
+        ),
+      );
+      await tester.pump();
+
+      expect(resolvedIds, contains('user-new-333'));
+    });
+
+    testWidgets('resolve returning null shows fallback to raw userId', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-fallback',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'fallback-user',
+          content: 'fallback test',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          userNameResolution: UserNameResolution(
+            resolve: (_) => null,
+            requestResolve: (_) {},
+            listenable: ChangeNotifier(),
+          ),
+        ),
+      );
+
+      // Null resolve → only userId shown, no "name (id)" format.
+      expect(find.textContaining('fallback-user'), findsOneWidget);
+      expect(find.textContaining('(fallback-user)'), findsNothing);
+    });
+
+    testWidgets('resolve returning a value shows "name (id)" format', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-resolved-val',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'resolved-user',
+          content: 'resolved test',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          userNameResolution: UserNameResolution(
+            resolve: (String userId) => 'リゾルバ名',
+            requestResolve: (_) {},
+            listenable: ChangeNotifier(),
+          ),
+        ),
+      );
+
+      expect(
+        find.textContaining('リゾルバ名 (resolved-user)'),
+        findsOneWidget,
+      );
+    });
+  });
 }
 
 class _NicknameCommentScreenHost extends StatefulWidget {
@@ -2209,4 +2372,51 @@ AppMessage _message({
     content: content,
     type: type,
   );
+}
+
+/// Stateful host used by the requestResolve-on-new-message regression test.
+class _CommentScreenHostWithResolution extends StatefulWidget {
+  const _CommentScreenHostWithResolution({
+    super.key,
+    required this.supervisor,
+    required this.requestResolve,
+  });
+
+  final ConnectionSupervisor supervisor;
+  final void Function(String userId) requestResolve;
+
+  @override
+  State<_CommentScreenHostWithResolution> createState() =>
+      _CommentScreenHostWithResolutionState();
+}
+
+class _CommentScreenHostWithResolutionState
+    extends State<_CommentScreenHostWithResolution> {
+  List<AppMessage> _messages = const <AppMessage>[];
+
+  void addMessage(AppMessage message) {
+    setState(() {
+      _messages = List<AppMessage>.from(_messages)..add(message);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: CommentScreen(
+        lv: 'lv-res-host',
+        connectionSupervisor: widget.supervisor,
+        messages: _messages,
+        onStopAllConnections: () async {},
+        onReconnectSameLv: () async {},
+        onDifferentLvConnected: (_, __) async {},
+        userNameResolution: UserNameResolution(
+          resolve: (_) => null,
+          requestResolve: widget.requestResolve,
+          listenable: ChangeNotifier(),
+        ),
+        themeMode: AppThemeMode.light,
+      ),
+    );
+  }
 }

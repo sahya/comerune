@@ -102,8 +102,8 @@ void main() {
 
     test('returns H:MM:SS format (hours not zero-padded)', () {
       // Regression: hours should NOT be zero-padded (H:MM:SS not HH:MM:SS).
-      final DateTime start =
-          DateTime.now().subtract(const Duration(hours: 2, minutes: 5, seconds: 9));
+      final DateTime start = DateTime.now()
+          .subtract(const Duration(hours: 2, minutes: 5, seconds: 9));
       final String? result = formatElapsed(start);
       expect(result, isNotNull);
       // Must match single-digit-hour pattern like '2:05:09', not '02:05:09'.
@@ -295,7 +295,9 @@ void main() {
   // Duration formatting consistency across functions
   // ---------------------------------------------------------------------------
   group('Duration formatting consistency', () {
-    test('formatCommentElapsed and formatTimestamp produce identical elapsed output', () {
+    test(
+        'formatCommentElapsed and formatTimestamp produce identical elapsed output',
+        () {
       final DateTime beginAt = DateTime(2026, 3, 22, 10, 0, 0);
       final DateTime value = DateTime(2026, 3, 22, 11, 23, 45);
       expect(
@@ -320,10 +322,26 @@ void main() {
 
     test('formatCommentElapsed output matches H:MM:SS pattern', () {
       final List<(DateTime, DateTime, String)> cases = [
-        (DateTime(2026, 3, 22, 10, 0, 0), DateTime(2026, 3, 22, 10, 0, 0), '0:00:00'),
-        (DateTime(2026, 3, 22, 10, 0, 0), DateTime(2026, 3, 22, 10, 0, 1), '0:00:01'),
-        (DateTime(2026, 3, 22, 10, 0, 0), DateTime(2026, 3, 22, 11, 23, 45), '1:23:45'),
-        (DateTime(2026, 3, 22, 10, 0, 0), DateTime(2026, 3, 22, 22, 30, 15), '12:30:15'),
+        (
+          DateTime(2026, 3, 22, 10, 0, 0),
+          DateTime(2026, 3, 22, 10, 0, 0),
+          '0:00:00'
+        ),
+        (
+          DateTime(2026, 3, 22, 10, 0, 0),
+          DateTime(2026, 3, 22, 10, 0, 1),
+          '0:00:01'
+        ),
+        (
+          DateTime(2026, 3, 22, 10, 0, 0),
+          DateTime(2026, 3, 22, 11, 23, 45),
+          '1:23:45'
+        ),
+        (
+          DateTime(2026, 3, 22, 10, 0, 0),
+          DateTime(2026, 3, 22, 22, 30, 15),
+          '12:30:15'
+        ),
       ];
       for (final (beginAt, ts, expected) in cases) {
         expect(formatCommentElapsed(beginAt, ts), expected,

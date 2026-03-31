@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:comerune/application/settings/settings_store.dart';
 import 'package:comerune/data/user/user_attribute_store.dart';
 import 'package:comerune/domain/models/app_settings.dart';
+import 'package:comerune/presentation/models/user_name_resolution.dart';
 import 'package:comerune/presentation/screens/user_management_settings_screen.dart';
 
 import '../../helpers/in_memory_shared_preferences.dart';
@@ -73,6 +74,48 @@ void main() {
       );
       expect(nicknameTile.enabled, isTrue);
       expect(find.text('放送に接続すると利用できます'), findsNothing);
+    });
+
+    testWidgets('null userNameResolution does not crash on render', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      // Pass no userNameResolution (null).
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byType(UserManagementSettingsScreen),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('accepts non-null userNameResolution without crashing', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: UserManagementSettingsScreen(
+            settingsStore: settingsStore,
+            userNameResolution: UserNameResolution(
+              resolve: (_) => null,
+              requestResolve: (_) {},
+              listenable: ChangeNotifier(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byType(UserManagementSettingsScreen),
+        findsOneWidget,
+      );
     });
 
     testWidgets('auto-nickname registration toggle persists value', (

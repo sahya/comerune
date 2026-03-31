@@ -97,6 +97,51 @@ void main() {
       listenable.dispose();
     });
 
+    testWidgets('null userNameResolution does not crash', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings initial =
+          AppSettings.defaults.addFavoriteUserId('55555');
+      await store.save(initial);
+
+      // userNameResolution is omitted (null).
+      await tester.pumpWidget(_buildScreen(store));
+      await tester.pumpAndSettle();
+
+      // Should render without throwing; userId shown as fallback.
+      expect(find.byType(FavoriteUserListScreen), findsOneWidget);
+      expect(find.text('55555'), findsOneWidget);
+    });
+
+    testWidgets('requestResolve is called for each favorite userId on init', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings initial = AppSettings.defaults
+          .addFavoriteUserId('aaa')
+          .addFavoriteUserId('bbb');
+      await store.save(initial);
+
+      final List<String> requested = <String>[];
+
+      await tester.pumpWidget(_buildScreen(
+        store,
+        userNameResolution: UserNameResolution(
+          resolve: (_) => null,
+          requestResolve: requested.add,
+          listenable: ChangeNotifier(),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(requested, containsAll(<String>['aaa', 'bbb']));
+    });
+
     testWidgets('delete confirmation dialog shows nickname when available',
         (WidgetTester tester) async {
       final SharedPreferencesSettingsStore store =
