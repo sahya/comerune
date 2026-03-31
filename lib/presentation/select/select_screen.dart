@@ -102,6 +102,7 @@ class _SelectScreenState extends State<SelectScreen> {
   final FavoriteUserLiveChecker _favoriteUserLiveChecker =
       FavoriteUserLiveChecker();
   Map<String, String> _favoriteOnAirMap = const <String, String>{};
+  Timer? _favoriteRefreshTimer;
   final ValueNotifier<
           ({Map<String, int> colors, Map<String, String> nicknames})>
       _userAttrNotifier =
@@ -113,6 +114,7 @@ class _SelectScreenState extends State<SelectScreen> {
       MethodChannelCommentSpeech();
 
   static const Duration _followRefreshInterval = Duration(seconds: 60);
+  static const Duration _favoriteRefreshInterval = Duration(seconds: 30);
 
   @override
   void initState() {
@@ -168,6 +170,7 @@ class _SelectScreenState extends State<SelectScreen> {
   @override
   void dispose() {
     _followRefreshTimer?.cancel();
+    _favoriteRefreshTimer?.cancel();
     _favoriteUserLiveChecker.dispose();
     widget.connectionSupervisor.removeListener(_onSupervisorChanged);
     widget.supplierUserIdNotifier?.removeListener(_onSupplierUserIdChanged);
@@ -382,6 +385,7 @@ class _SelectScreenState extends State<SelectScreen> {
               onAirUserPrograms: _favoriteOnAirMap,
               enabled: !_isConnectionInProgress,
               onTap: _connectToFavoriteUser,
+              onRefresh: _fetchFavoriteUserStatus,
               resolveUserName: widget.resolveUserName,
               userNameListenable: widget.userNameListenable,
             ),
@@ -721,15 +725,15 @@ class _SelectScreenState extends State<SelectScreen> {
     }
   }
 
-  /// Fetches both the user's own broadcast and follow programs in one pass,
-  /// sharing a single [userSession] load to avoid redundant secure storage I/O.
+  /// Fetches the user's own broadcast, follow programs, and favorite user
+  /// broadcast status in one pass.
   Future<void> _fetchAllPrograms() async {
     final String userSession = await _loadUserSession();
     if (!mounted) {
       return;
     }
 
-    // Run all fetches concurrently with the same session token.
+    // Run all fetches concurrently.
     await Future.wait<void>(<Future<void>>[
       _fetchMyProgram(userSession),
       _fetchFollowPrograms(userSession),
@@ -744,6 +748,21 @@ class _SelectScreenState extends State<SelectScreen> {
     _followRefreshTimer = Timer(
       _followRefreshInterval,
       () => unawaited(_fetchAllPrograms()),
+    );
+
+    _scheduleFavoriteRefresh();
+  }
+
+  void _scheduleFavoriteRefresh() {
+    _favoriteRefreshTimer?.cancel();
+    _favoriteRefreshTimer = Timer(
+      _favoriteRefreshInterval,
+      () async {
+        await _fetchFavoriteUserStatus();
+        if (mounted) {
+          _scheduleFavoriteRefresh();
+        }
+      },
     );
   }
 
@@ -1348,6 +1367,7 @@ class _FavoriteUserSection extends StatefulWidget {
     required this.onAirUserPrograms,
     required this.enabled,
     required this.onTap,
+    this.onRefresh,
     this.resolveUserName,
     this.userNameListenable,
   });
@@ -1356,6 +1376,7 @@ class _FavoriteUserSection extends StatefulWidget {
   final Map<String, String> onAirUserPrograms;
   final bool enabled;
   final void Function(String userId, String programId) onTap;
+  final VoidCallback? onRefresh;
   final String? Function(String userId)? resolveUserName;
   final Listenable? userNameListenable;
 
@@ -1398,7 +1419,7 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
       children: <Widget>[
         const Divider(height: 1),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.only(left: 16, right: 4, top: 4, bottom: 4),
           child: Row(
             children: <Widget>[
               const Icon(Icons.sensors, size: 16, color: Colors.red),
@@ -1414,6 +1435,18 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
                       color: Theme.of(context).colorScheme.outline,
                     ),
               ),
+              const Spacer(),
+              if (widget.onRefresh != null)
+                SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: IconButton(
+                    icon: const Icon(Icons.refresh, size: 18),
+                    padding: EdgeInsets.zero,
+                    tooltip: '配信状態を更新',
+                    onPressed: widget.onRefresh,
+                  ),
+                ),
             ],
           ),
         ),
