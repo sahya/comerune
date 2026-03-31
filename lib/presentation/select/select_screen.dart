@@ -1408,40 +1408,45 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
           final FollowProgram program = entry.value;
           final String? iconUrl = buildNicoIconUrl(userId);
           final String? nickname = widget.resolveUserName?.call(userId);
-          return ListTile(
-            dense: true,
-            enabled: widget.enabled,
-            onTap: widget.enabled ? () => widget.onTap(program) : null,
-            leading: ClipOval(
-              child: SizedBox(
-                width: 32,
-                height: 32,
-                child: iconUrl != null
-                    ? Image.network(
-                        iconUrl,
-                        width: 32,
-                        height: 32,
-                        fit: BoxFit.cover,
-                        cacheWidth: 64,
-                        cacheHeight: 64,
-                        errorBuilder: (_, __, ___) =>
-                            const Icon(Icons.person, size: 20),
-                      )
-                    : const Icon(Icons.person, size: 20),
+          final String displayName = nickname ?? userId;
+          return Semantics(
+            button: true,
+            label: '$displayNameの放送 ${program.title} タップして接続',
+            child: ListTile(
+              dense: true,
+              enabled: widget.enabled,
+              onTap: widget.enabled ? () => widget.onTap(program) : null,
+              leading: ClipOval(
+                child: SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: iconUrl != null
+                      ? Image.network(
+                          iconUrl,
+                          width: 32,
+                          height: 32,
+                          fit: BoxFit.cover,
+                          cacheWidth: 64,
+                          cacheHeight: 64,
+                          errorBuilder: (_, __, ___) =>
+                              const Icon(Icons.person, size: 20),
+                        )
+                      : const Icon(Icons.person, size: 20),
+                ),
               ),
-            ),
-            title: Text(
-              nickname != null ? '$nickname ($userId)' : userId,
-              style: const TextStyle(fontSize: 13),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
-            ),
-            trailing: Icon(
-              Icons.play_circle_outline,
-              size: 20,
-              color: widget.enabled
-                  ? Theme.of(context).colorScheme.primary
-                  : Theme.of(context).disabledColor,
+              title: Text(
+                nickname != null ? '$nickname ($userId)' : userId,
+                style: const TextStyle(fontSize: 13),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+              trailing: Icon(
+                Icons.play_circle_outline,
+                size: 20,
+                color: widget.enabled
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).disabledColor,
+              ),
             ),
           );
         }),

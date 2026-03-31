@@ -142,6 +142,14 @@ void main() {
       expect(extractSupplierUserId(item), '111');
     });
 
+    test('falls back to supplier when programProvider id is null', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'programProvider': <String, dynamic>{'name': 'User'},
+        'supplier': <String, dynamic>{'programProviderId': 55555},
+      };
+      expect(extractSupplierUserId(item), '55555');
+    });
+
     test('returns null when neither is present', () {
       expect(extractSupplierUserId(<String, dynamic>{}), isNull);
     });
