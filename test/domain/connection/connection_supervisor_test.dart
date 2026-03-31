@@ -619,7 +619,7 @@ void main() {
       expect(supervisor.status, ConnectionStatus.ended);
       expect(supervisor.lastError, ConnectionErrorCode.broadcastEnded);
       expect(supervisor.lastErrorDetail, contains('END_PROGRAM'));
-      expect(supervisor.reconnectCount, isNonZero);
+      expect(supervisor.reconnectCount, 1);
     });
 
     test('legacy reconnect falls back to session after 3 consecutive failures',
