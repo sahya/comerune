@@ -30,6 +30,7 @@ import 'domain/connection/ndgr_client.dart' as ndgr_impl;
 import 'domain/connection/session_ws_client.dart' as session_impl;
 import 'domain/models/app_message.dart';
 import 'domain/models/app_settings.dart';
+import 'domain/models/user_name_resolution.dart';
 import 'presentation/screens/onboarding_screen.dart';
 import 'presentation/select/select_screen.dart';
 import 'presentation/theme/app_theme.dart';
@@ -282,9 +283,11 @@ class _ComeruneAppState extends State<ComeruneApp> {
           onPrepareConnection: _prepareConnection,
           userSessionStore: widget.userSessionStore,
           programTitleNotifier: _programTitleNotifier,
-          resolveUserName: _userNameResolver.getCachedName,
-          requestUserNameResolve: _userNameResolver.requestResolve,
-          userNameListenable: _userNameResolver,
+          userNameResolution: UserNameResolution(
+            resolve: _userNameResolver.getCachedName,
+            requestResolve: _userNameResolver.requestResolve,
+            listenable: _userNameResolver,
+          ),
           supplierUserIdNotifier: _supplierUserIdNotifier,
           beginAtNotifier: _beginAtNotifier,
           commentLogWriter: widget.commentLogWriter,
