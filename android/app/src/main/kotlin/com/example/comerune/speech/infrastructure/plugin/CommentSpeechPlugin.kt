@@ -11,7 +11,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import android.util.Log
 import com.example.comerune.speech.domain.controller.SpeechController
 import com.example.comerune.speech.domain.controller.SpeechControllerImpl
 import com.example.comerune.speech.domain.engine.VoicevoxEngine
