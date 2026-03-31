@@ -789,7 +789,10 @@ class _SelectScreenState extends State<SelectScreen> {
       setState(() {
         _myProgram = program;
       });
-    } on Exception catch (e) {
+    } on Object catch (e) {
+      // Catch Object (not just Exception) to match the safety net in
+      // _fetchAllPrograms and ensure Error types are also logged here
+      // rather than only at the Future.wait level.
       log(
         'Error in _fetchMyProgram: $e',
         name: 'SelectScreen',
