@@ -121,6 +121,7 @@ class _DictionaryRuleFormState extends State<DictionaryRuleForm> {
             decoration: const InputDecoration(
               labelText: '読み',
               hintText: '例: わらわら',
+              helperText: '空にするとマッチ部分が削除されます',
               border: OutlineInputBorder(),
             ),
           ),
