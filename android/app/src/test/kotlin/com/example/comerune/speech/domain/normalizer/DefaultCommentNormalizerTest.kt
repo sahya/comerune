@@ -365,6 +365,140 @@ class DefaultCommentNormalizerTest {
         assertEquals("visit badsite https://example.com", result.normalizedText)
     }
 
+    // --- NG Word Keyword Hack Resistance Tests ---
+
+    @Test
+    fun `NG word with space insertion is detected`() {
+        val settings = defaultSettings.copy(ngWords = listOf("エロ"))
+        val result = normalizer.normalize(raw("エ ロ動画"), settings)
+        assertEquals("ng_word", result.skipReason)
+    }
+
+    @Test
+    fun `NG word with zero-width space is detected`() {
+        val settings = defaultSettings.copy(ngWords = listOf("エロ"))
+        val result = normalizer.normalize(raw("エ\u200Bロ動画"), settings)
+        assertEquals("ng_word", result.skipReason)
+    }
+
+    @Test
+    fun `NG word with full-width katakana is detected`() {
+        val settings = defaultSettings.copy(ngWords = listOf("エロ"))
+        val result = normalizer.normalize(raw("ｴﾛ動画"), settings)
+        assertEquals("ng_word", result.skipReason)
+    }
+
+    @Test
+    fun `NG word with hiragana variant is detected`() {
+        val settings = defaultSettings.copy(ngWords = listOf("エロ"))
+        val result = normalizer.normalize(raw("えろ動画"), settings)
+        assertEquals("ng_word", result.skipReason)
+    }
+
+    @Test
+    fun `NG word with look-alike kanji is detected`() {
+        val settings = defaultSettings.copy(ngWords = listOf("エロ"))
+        val result = normalizer.normalize(raw("工口動画"), settings)
+        assertEquals("ng_word", result.skipReason)
+    }
+
+    @Test
+    fun `NG word with repeated characters is detected`() {
+        val settings = defaultSettings.copy(ngWords = listOf("エロ"))
+        val result = normalizer.normalize(raw("エエエロロロ"), settings)
+        assertEquals("ng_word", result.skipReason)
+    }
+
+    @Test
+    fun `NG word with symbol insertion is detected`() {
+        val settings = defaultSettings.copy(ngWords = listOf("エロ"))
+        val result = normalizer.normalize(raw("エ★ロ"), settings)
+        assertEquals("ng_word", result.skipReason)
+    }
+
+    @Test
+    fun `NG word with mixed evasion techniques is detected`() {
+        val settings = defaultSettings.copy(ngWords = listOf("エロ"))
+        val result = normalizer.normalize(raw("工 \u200B口"), settings)
+        assertEquals("ng_word", result.skipReason)
+    }
+
+    @Test
+    fun `NG word case-insensitive with normalization`() {
+        val settings = defaultSettings.copy(ngWords = listOf("KILL"))
+        val result = normalizer.normalize(raw("ｋｉｌｌ him"), settings)
+        assertEquals("ng_word", result.skipReason)
+    }
+
+    @Test
+    fun `clean text with similar-looking characters is not false positive`() {
+        val settings = defaultSettings.copy(ngWords = listOf("エロ"))
+        val result = normalizer.normalize(raw("工場見学"), settings)
+        assertNull(result.skipReason)
+    }
+
+    @Test
+    fun `kanji 力士 is not false positive for カシ`() {
+        val settings = defaultSettings.copy(ngWords = listOf("カス"))
+        val result = normalizer.normalize(raw("力士の試合"), settings)
+        assertNull(result.skipReason)
+    }
+
+    @Test
+    fun `kanji 八百屋 is not false positive`() {
+        val settings = defaultSettings.copy(ngWords = listOf("ハゲ"))
+        val result = normalizer.normalize(raw("八百屋さん"), settings)
+        assertNull(result.skipReason)
+    }
+
+    @Test
+    fun `kanji 二千円 is not false positive`() {
+        val settings = defaultSettings.copy(ngWords = listOf("ニート"))
+        val result = normalizer.normalize(raw("二千円"), settings)
+        assertNull(result.skipReason)
+    }
+
+    // --- Preset NG Word Tests ---
+
+    @Test
+    fun `preset NG words are checked`() {
+        val normalizerWithPreset = DefaultCommentNormalizer(
+            presetNgWords = listOf("テスト禁止語")
+        )
+        val result = normalizerWithPreset.normalize(raw("これはテスト禁止語です"), defaultSettings)
+        assertEquals("ng_word", result.skipReason)
+    }
+
+    @Test
+    fun `preset NG words apply normalization`() {
+        val normalizerWithPreset = DefaultCommentNormalizer(
+            presetNgWords = listOf("禁止ワード")
+        )
+        val result = normalizerWithPreset.normalize(raw("禁 止 ワ ー ド"), defaultSettings)
+        assertEquals("ng_word", result.skipReason)
+    }
+
+    @Test
+    fun `preset and user NG words are both checked`() {
+        val normalizerWithPreset = DefaultCommentNormalizer(
+            presetNgWords = listOf("プリセット語")
+        )
+        val settings = defaultSettings.copy(ngWords = listOf("ユーザー語"))
+        val result1 = normalizerWithPreset.normalize(raw("これはユーザー語です"), settings)
+        assertEquals("ng_word", result1.skipReason)
+        val result2 = normalizerWithPreset.normalize(raw("これはプリセット語です"), settings)
+        assertEquals("ng_word", result2.skipReason)
+    }
+
+    @Test
+    fun `preset NG words do not cause false positive on clean text`() {
+        val normalizerWithPreset = DefaultCommentNormalizer(
+            presetNgWords = listOf("テスト禁止")
+        )
+        val result = normalizerWithPreset.normalize(raw("こんにちは"), defaultSettings)
+        assertNull(result.skipReason)
+    }
+
     // --- Processing Order Tests ---
 
     @Test
