@@ -6,33 +6,39 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/in_memory_shared_preferences.dart';
 
 void main() {
-  group('OnboardingScreen', () {
+  group('showOnboardingDialog', () {
     late InMemorySharedPreferences prefs;
     late SharedPreferencesOnboardingStore store;
-    late bool completed;
 
     setUp(() {
       prefs = InMemorySharedPreferences();
       store = SharedPreferencesOnboardingStore(prefs: prefs);
-      completed = false;
     });
 
-    Widget buildScreen() {
-      return MaterialApp(
-        home: OnboardingScreen(
-          onboardingStore: store,
-          onCompleted: () {
-            completed = true;
-          },
+    Future<void> showDialog(WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (BuildContext context) {
+              // Show dialog after first frame.
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                showOnboardingDialog(
+                  context: context,
+                  onboardingStore: store,
+                );
+              });
+              return const Scaffold(body: Text('home'));
+            },
+          ),
         ),
       );
+      await tester.pumpAndSettle();
     }
 
     testWidgets('shows welcome page on initial display', (
       WidgetTester tester,
     ) async {
-      await tester.pumpWidget(buildScreen());
-      await tester.pumpAndSettle();
+      await showDialog(tester);
 
       expect(find.text('comerune へようこそ'), findsOneWidget);
       expect(find.text('つぎへ'), findsOneWidget);
@@ -41,8 +47,7 @@ void main() {
     testWidgets('navigates to next page on button tap', (
       WidgetTester tester,
     ) async {
-      await tester.pumpWidget(buildScreen());
-      await tester.pumpAndSettle();
+      await showDialog(tester);
 
       await tester.tap(find.text('つぎへ'));
       await tester.pumpAndSettle();
@@ -51,10 +56,8 @@ void main() {
     });
 
     testWidgets('navigates forward by swiping', (WidgetTester tester) async {
-      await tester.pumpWidget(buildScreen());
-      await tester.pumpAndSettle();
+      await showDialog(tester);
 
-      // Swipe left to go to page 2
       await tester.drag(find.byType(PageView), const Offset(-400, 0));
       await tester.pumpAndSettle();
 
@@ -64,10 +67,8 @@ void main() {
     testWidgets('shows start button on last page', (
       WidgetTester tester,
     ) async {
-      await tester.pumpWidget(buildScreen());
-      await tester.pumpAndSettle();
+      await showDialog(tester);
 
-      // Navigate to last page by swiping 3 times
       for (int i = 0; i < 3; i++) {
         await tester.drag(find.byType(PageView), const Offset(-400, 0));
         await tester.pumpAndSettle();
@@ -78,13 +79,11 @@ void main() {
       expect(find.text('つぎへ'), findsNothing);
     });
 
-    testWidgets('completes onboarding and marks store on start button tap', (
+    testWidgets('completes onboarding and closes dialog on start button tap', (
       WidgetTester tester,
     ) async {
-      await tester.pumpWidget(buildScreen());
-      await tester.pumpAndSettle();
+      await showDialog(tester);
 
-      // Navigate to last page
       for (int i = 0; i < 3; i++) {
         await tester.drag(find.byType(PageView), const Offset(-400, 0));
         await tester.pumpAndSettle();
@@ -93,18 +92,31 @@ void main() {
       await tester.tap(find.text('はじめる'));
       await tester.pumpAndSettle();
 
-      expect(completed, isTrue);
+      // Dialog closed, home screen visible
+      expect(find.text('comerune へようこそ'), findsNothing);
+      expect(find.text('home'), findsOneWidget);
       expect(store.isCompleted(), isTrue);
     });
 
     testWidgets('displays page indicator with correct count', (
       WidgetTester tester,
     ) async {
-      await tester.pumpWidget(buildScreen());
+      await showDialog(tester);
+
+      expect(find.byType(AnimatedContainer), findsNWidgets(4));
+    });
+
+    testWidgets('cannot be dismissed by tapping barrier', (
+      WidgetTester tester,
+    ) async {
+      await showDialog(tester);
+
+      // Tap outside the dialog card
+      await tester.tapAt(const Offset(10, 10));
       await tester.pumpAndSettle();
 
-      // 4 page indicator dots rendered as AnimatedContainer
-      expect(find.byType(AnimatedContainer), findsNWidgets(4));
+      // Dialog is still showing
+      expect(find.text('comerune へようこそ'), findsOneWidget);
     });
   });
 }

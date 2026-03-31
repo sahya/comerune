@@ -2,25 +2,37 @@ import 'package:flutter/material.dart';
 
 import '../../application/onboarding/onboarding_store.dart';
 
-/// 初回起動時に表示するオンボーディングガイド。
+/// 初回起動時にダイアログとして表示するオンボーディングガイド。
 ///
-/// 4 ページ構成の PageView で、温かみのあるコンテンツを通じて
-/// アプリの主要機能を紹介する。完了後に [onCompleted] が呼ばれる。
-class OnboardingScreen extends StatefulWidget {
-  const OnboardingScreen({
-    super.key,
-    required this.onboardingStore,
-    required this.onCompleted,
-  });
-
-  final OnboardingStore onboardingStore;
-  final VoidCallback onCompleted;
-
-  @override
-  State<OnboardingScreen> createState() => _OnboardingScreenState();
+/// [barrierDismissible] を false にしているため、最終ページの
+/// 「はじめる」ボタンを押さないと閉じられない。
+Future<void> showOnboardingDialog({
+  required BuildContext context,
+  required OnboardingStore onboardingStore,
+}) {
+  return showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    barrierColor: Colors.white.withValues(alpha: 0.82),
+    builder: (BuildContext context) {
+      return PopScope(
+        canPop: false,
+        child: _OnboardingDialog(onboardingStore: onboardingStore),
+      );
+    },
+  );
 }
 
-class _OnboardingScreenState extends State<OnboardingScreen> {
+class _OnboardingDialog extends StatefulWidget {
+  const _OnboardingDialog({required this.onboardingStore});
+
+  final OnboardingStore onboardingStore;
+
+  @override
+  State<_OnboardingDialog> createState() => _OnboardingDialogState();
+}
+
+class _OnboardingDialogState extends State<_OnboardingDialog> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
   bool _isCompleting = false;
@@ -39,7 +51,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       _isCompleting = true;
     });
     await widget.onboardingStore.markCompleted();
-    widget.onCompleted();
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
   }
 
   void _nextPage() {
@@ -53,65 +67,85 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final ColorScheme colorScheme = theme.colorScheme;
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: <Widget>[
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                onPageChanged: (int page) {
-                  setState(() {
-                    _currentPage = page;
-                  });
-                },
-                children: <Widget>[
-                  _WelcomePage(colorScheme: colorScheme),
-                  _CommentViewPage(colorScheme: colorScheme),
-                  _SpeechPage(colorScheme: colorScheme),
-                  _StartPage(colorScheme: colorScheme),
-                ],
+    return Center(
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+          constraints: const BoxConstraints(maxWidth: 400),
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
               ),
-            ),
-            _PageIndicator(
-              currentPage: _currentPage,
-              pageCount: _pageCount,
-              colorScheme: colorScheme,
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-              child: _currentPage == _pageCount - 1
-                  ? FilledButton(
-                      onPressed: _completeOnboarding,
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size(double.infinity, 52),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                SizedBox(
+                  height: 340,
+                  child: PageView(
+                    controller: _pageController,
+                    onPageChanged: (int page) {
+                      setState(() {
+                        _currentPage = page;
+                      });
+                    },
+                    children: <Widget>[
+                      _WelcomePage(colorScheme: colorScheme),
+                      _CommentViewPage(colorScheme: colorScheme),
+                      _SpeechPage(colorScheme: colorScheme),
+                      _StartPage(colorScheme: colorScheme),
+                    ],
+                  ),
+                ),
+                _PageIndicator(
+                  currentPage: _currentPage,
+                  pageCount: _pageCount,
+                  colorScheme: colorScheme,
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                  child: _currentPage == _pageCount - 1
+                      ? FilledButton(
+                          onPressed: _completeOnboarding,
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size(double.infinity, 48),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          child: const Text(
+                            'はじめる',
+                            style: TextStyle(fontSize: 16),
+                          ),
+                        )
+                      : OutlinedButton(
+                          onPressed: _nextPage,
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(double.infinity, 48),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          child: const Text(
+                            'つぎへ',
+                            style: TextStyle(fontSize: 16),
+                          ),
                         ),
-                      ),
-                      child: const Text(
-                        'はじめる',
-                        style: TextStyle(fontSize: 17),
-                      ),
-                    )
-                  : OutlinedButton(
-                      onPressed: _nextPage,
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(double.infinity, 52),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      child: const Text(
-                        'つぎへ',
-                        style: TextStyle(fontSize: 17),
-                      ),
-                    ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -258,33 +292,33 @@ class _OnboardingPageLayout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
+      padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
           Container(
-            width: 96,
-            height: 96,
+            width: 72,
+            height: 72,
             decoration: BoxDecoration(
               color: iconColor.withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, size: 48, color: iconColor),
+            child: Icon(icon, size: 36, color: iconColor),
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 20),
           Text(
             title,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
           Text(
             body,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: colorScheme.onSurfaceVariant,
-                  height: 1.6,
+                  height: 1.5,
                 ),
             textAlign: TextAlign.center,
           ),
