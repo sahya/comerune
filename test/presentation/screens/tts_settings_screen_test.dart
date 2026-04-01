@@ -596,6 +596,44 @@ void main() {
         expect(platform.loadedModelIds, contains('model-b'));
       });
 
+      testWidgets('speaker change in same model skips redundant model load', (
+        WidgetTester tester,
+      ) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final FakeCommentSpeechPlatform platform = _createPlatformWithModels();
+        // Put speaker 2 in the same model as speaker 1.
+        platform.availableModelsToReturn[1]['speakerIds'] = <int>[1, 2];
+        platform.statusToReturn = const SpeechRuntimeStatus(
+          enabled: true,
+          engineState: 'READY',
+          playerState: 'IDLE',
+          queueSize: 0,
+          currentSpeakerId: 1,
+        );
+
+        await tester
+            .pumpWidget(_buildScreenWithPlatform(settingsStore, platform));
+        await tester.pumpAndSettle();
+
+        platform.lastUpdatedSettings = null;
+        platform.loadedModelIds.clear();
+
+        await scrollToKeyInList(
+            tester, _listKey, const Key('voicevox-speaker-dropdown'));
+        final DropdownButtonFormField<int> dropdown =
+            tester.widget<DropdownButtonFormField<int>>(
+          find.byKey(const Key('voicevox-speaker-dropdown'),
+              skipOffstage: false),
+        );
+        dropdown.onChanged!(2);
+        await tester.pumpAndSettle();
+
+        expect(platform.loadedModelIds, isEmpty);
+        expect(platform.lastUpdatedSettings, isNotNull);
+        expect(platform.lastUpdatedSettings!.speakerId, 2);
+      });
+
       testWidgets('failed model load reverts speaker and shows error snackbar',
           (
         WidgetTester tester,

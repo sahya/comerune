@@ -153,6 +153,18 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         platform,
         logTag: '[TtsSettings]',
       );
+      final SpeechRuntimeStatus status = await platform.getStatus();
+      if (_isSpeakerInSameModel(
+        status.currentSpeakerId,
+        speakerId,
+        models,
+      )) {
+        debugPrint(
+          '[TtsSettings] loadModel skip: currentSpeaker=${status.currentSpeakerId} '
+          'and targetSpeaker=$speakerId are in same modelId=${model.modelId}',
+        );
+        return true;
+      }
       await platform.loadModel(model.modelId);
       debugPrint(
           '[TtsSettings] loadModel success: speaker=$speakerId modelId=${model.modelId}');
@@ -164,9 +176,39 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     }
   }
 
+  bool _isSpeakerInSameModel(
+    int currentSpeakerId,
+    int targetSpeakerId,
+    List<VoicevoxModelInfo> models,
+  ) {
+    String? currentModelId;
+    String? targetModelId;
+
+    for (final VoicevoxModelInfo m in models) {
+      if (currentModelId == null && m.speakerIds.contains(currentSpeakerId)) {
+        currentModelId = m.modelId;
+      }
+      if (targetModelId == null && m.speakerIds.contains(targetSpeakerId)) {
+        targetModelId = m.modelId;
+      }
+      if (currentModelId != null && targetModelId != null) {
+        break;
+      }
+    }
+
+    return currentModelId != null &&
+        targetModelId != null &&
+        currentModelId == targetModelId;
+  }
+
   /// Handle speaker change: save immediately, load the model, then push
   /// settings to the engine only after the model is ready.
   Future<void> _onSpeakerChanged(AppSettings current, int newSpeaker) async {
+    if (newSpeaker == current.voicevoxSpeaker) {
+      debugPrint('[TtsSettings] speaker unchanged: $newSpeaker');
+      return;
+    }
+
     final int previousSpeaker = current.voicevoxSpeaker;
     final int generation = ++_speakerChangeGeneration;
 
