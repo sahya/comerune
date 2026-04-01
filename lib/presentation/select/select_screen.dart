@@ -130,6 +130,7 @@ class _SelectScreenState extends State<SelectScreen> {
   String? _currentBroadcasterId;
   final MethodChannelCommentSpeech _speechPlatform =
       MethodChannelCommentSpeech();
+  int _broadcastEndedNotificationSequence = 0;
 
   static const Duration _followRefreshInterval = Duration(seconds: 60);
   static const Duration _favoriteRefreshInterval = Duration(seconds: 30);
@@ -250,7 +251,10 @@ class _SelectScreenState extends State<SelectScreen> {
     final DateTime now = DateTime.now();
     store.add(
       AppMessage(
-        id: '$kSystemBroadcastEndedMessageIdPrefix${now.millisecondsSinceEpoch}',
+        id: buildBroadcastEndedNotificationId(
+          epochMilliseconds: now.millisecondsSinceEpoch,
+          sequence: _broadcastEndedNotificationSequence++,
+        ),
         timestamp: now,
         content: '放送が終了しました',
         type: AppMessageType.notification,
