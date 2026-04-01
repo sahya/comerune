@@ -63,12 +63,10 @@ class _CommentDisplaySettingsScreenState
                       subtitle: const Text('数値IDをニックネームに変換'),
                       contentPadding: EdgeInsets.zero,
                       value: settings.resolveUserName,
-                      onChanged: settings.showUserName
-                          ? (bool value) {
-                              updateAndSave(
-                                  settings.copyWith(resolveUserName: value));
-                            }
-                          : null,
+                      onChanged: (bool value) {
+                        updateAndSave(
+                            settings.copyWith(resolveUserName: value));
+                      },
                     ),
                     SwitchListTile(
                       key: const Key('auto-save-comment-log-switch'),

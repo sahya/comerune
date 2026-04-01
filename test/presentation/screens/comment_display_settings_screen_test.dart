@@ -32,7 +32,8 @@ void main() {
       expect(loaded.showUserName, isFalse);
     });
 
-    testWidgets('disables resolveUserName switch when showUserName is off', (
+    testWidgets('keeps resolveUserName switch enabled when showUserName is off',
+        (
       WidgetTester tester,
     ) async {
       final SharedPreferencesSettingsStore settingsStore =
@@ -45,11 +46,23 @@ void main() {
       await toggleSwitchByKey(
           tester, _listKey, const Key('show-user-name-switch'));
 
-      // resolveUserName switch should now be disabled
+      // resolveUserName switch should remain enabled and be toggleable.
       final SwitchListTile resolveTile = tester.widget(
         find.byKey(const Key('resolve-user-name-switch'), skipOffstage: false),
       );
-      expect(resolveTile.onChanged, isNull);
+      expect(resolveTile.onChanged, isNotNull);
+
+      AppSettings loaded = await settingsStore.load();
+      expect(loaded.resolveUserName, isTrue);
+
+      await toggleSwitchByKey(
+        tester,
+        _listKey,
+        const Key('resolve-user-name-switch'),
+      );
+      loaded = await settingsStore.load();
+      expect(loaded.resolveUserName, isFalse);
+      expect(loaded.showUserName, isFalse);
     });
 
     testWidgets('auto-save comment log toggle persists value when turned off', (

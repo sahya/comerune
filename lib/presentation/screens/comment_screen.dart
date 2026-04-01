@@ -480,7 +480,10 @@ class _CommentScreenState extends State<CommentScreen> {
     for (int i = start; i < newMessages.length; i++) {
       final AppMessage m = newMessages[i];
       if (m.type == AppMessageType.chat) {
-        _debugLogLazy(() => '[CommentScreen] newComment: ${m.content}');
+        _debugLogLazy(
+          () =>
+              '[CommentScreen] newComment: id=${m.id}, user=${m.userId ?? "unknown"}, chars=${m.content.length}',
+        );
       }
     }
   }
@@ -568,7 +571,10 @@ class _CommentScreenState extends State<CommentScreen> {
         try {
           await platform.stop(clearQueue: true);
         } catch (e) {
-          debugPrint('[CommentScreen] initSpeech: abort stop FAILED: $e');
+          _errorLog(
+            '[CommentScreen] initSpeech: abort stop FAILED',
+            error: e,
+          );
         }
         return;
       }
@@ -755,7 +761,10 @@ class _CommentScreenState extends State<CommentScreen> {
       if (widget.readUserName) {
         final String? displayName = _resolveSpeechDisplayName(message);
         if (displayName != null && displayName.isNotEmpty) {
-          speechText = '$displayName、$speechText';
+          final String nameWithHonorific = _appendSan(displayName);
+          if (nameWithHonorific.isNotEmpty) {
+            speechText = '$speechText、$nameWithHonorific';
+          }
         }
       }
 
@@ -1160,22 +1169,20 @@ class _CommentScreenState extends State<CommentScreen> {
 
   String? _resolveSpeechDisplayName(AppMessage message) {
     final String? userId = message.userId;
-    if (userId == null || userId.isEmpty) {
-      return null;
-    }
-
-    final String? nickname = widget.userNicknameMap[userId];
-    if (nickname != null && nickname.isNotEmpty) {
-      return nickname;
-    }
-
-    if (!_isNumericUserId(userId)) {
-      return null;
+    if (userId != null && userId.isNotEmpty) {
+      final String? nickname = widget.userNicknameMap[userId];
+      if (nickname != null && nickname.isNotEmpty) {
+        return nickname;
+      }
     }
 
     final String? userName = message.userName;
     if (userName != null && userName.isNotEmpty) {
       return userName;
+    }
+
+    if (userId == null || userId.isEmpty) {
+      return null;
     }
 
     final String? resolvedName = widget.resolveUserName?.call(userId);
@@ -1186,8 +1193,14 @@ class _CommentScreenState extends State<CommentScreen> {
     return null;
   }
 
-  bool _isNumericUserId(String userId) {
-    return int.tryParse(userId) != null;
+  String _appendSan(String displayName) {
+    final String trimmedName = displayName.trim();
+    if (trimmedName.isEmpty ||
+        trimmedName.endsWith('さん') ||
+        trimmedName.endsWith('ちゃん')) {
+      return trimmedName;
+    }
+    return '$trimmedNameさん';
   }
 
   void _toggleSortOrder() {
@@ -1732,6 +1745,7 @@ class _CommentScreenState extends State<CommentScreen> {
     const Map<String, String> lookAlike = <String, String>{
       '工': 'エ',
       '口': 'ロ',
+      '冂': 'ロ',
       '力': 'カ',
       '夕': 'タ',
       '二': 'ニ',
@@ -1746,6 +1760,7 @@ class _CommentScreenState extends State<CommentScreen> {
       '又': 'マ',
       '丁': 'テ',
       '己': 'コ',
+      '匚': 'コ',
       '巳': 'ミ',
       '也': 'ヤ',
       '刀': 'カ',
