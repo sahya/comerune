@@ -113,23 +113,34 @@ class MethodChannelCommentSpeech implements CommentSpeechPlatform {
 
   @override
   Future<List<Map<String, dynamic>>> getAvailableModels() async {
+    debugPrint('[MethodChannel] → getAvailableModels()');
     final result = await _methodChannel.invokeListMethod<Map<dynamic, dynamic>>(
       'getAvailableModels',
     );
-    if (result == null) return [];
-    return result.map((m) => Map<String, dynamic>.from(m)).toList();
+    if (result == null) {
+      debugPrint('[MethodChannel] ← getAvailableModels(): 0 models (null)');
+      return [];
+    }
+    final models = result.map((m) => Map<String, dynamic>.from(m)).toList();
+    debugPrint(
+        '[MethodChannel] ← getAvailableModels(): ${models.length} models');
+    return models;
   }
 
   @override
   Future<void> downloadModel(String modelId) async {
+    debugPrint('[MethodChannel] → downloadModel(modelId=$modelId)');
     await _methodChannel
         .invokeMethod<void>('downloadModel', {'modelId': modelId});
+    debugPrint('[MethodChannel] ← downloadModel() done modelId=$modelId');
   }
 
   @override
   Future<void> deleteModel(String modelId) async {
+    debugPrint('[MethodChannel] → deleteModel(modelId=$modelId)');
     await _methodChannel
         .invokeMethod<void>('deleteModel', {'modelId': modelId});
+    debugPrint('[MethodChannel] ← deleteModel() done modelId=$modelId');
   }
 
   @override
@@ -141,12 +152,16 @@ class MethodChannelCommentSpeech implements CommentSpeechPlatform {
 
   @override
   Future<void> loadModel(String modelId) async {
+    debugPrint('[MethodChannel] → loadModel(modelId=$modelId)');
     await _methodChannel.invokeMethod<void>('loadModel', {'modelId': modelId});
+    debugPrint('[MethodChannel] ← loadModel() done modelId=$modelId');
   }
 
   @override
   Future<void> cancelDownload(String modelId) async {
+    debugPrint('[MethodChannel] → cancelDownload(modelId=$modelId)');
     await _methodChannel
         .invokeMethod<void>('cancelDownload', {'modelId': modelId});
+    debugPrint('[MethodChannel] ← cancelDownload() done modelId=$modelId');
   }
 }

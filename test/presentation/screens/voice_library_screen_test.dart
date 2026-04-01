@@ -142,6 +142,33 @@ void main() {
     expect(find.text('50%'), findsOneWidget);
   });
 
+  testWidgets('download initializes engine before loading model',
+      (tester) async {
+    final prefs = InMemorySharedPreferences();
+    final settingsStore = SharedPreferencesSettingsStore(prefs: prefs);
+    await settingsStore
+        .save(AppSettings.defaults.copyWith(voicevoxTermsAccepted: true));
+    fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+      enabled: false,
+      engineState: 'UNINITIALIZED',
+      playerState: 'UNKNOWN',
+      queueSize: 0,
+      currentSpeakerId: 0,
+    );
+
+    await tester.pumpWidget(_buildScreen(
+      fakePlatform,
+      settingsStore: settingsStore,
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('download-btn-1')));
+    await tester.pumpAndSettle();
+
+    expect(fakePlatform.initializeCalled, isTrue);
+    expect(fakePlatform.loadedModelIds, contains('1'));
+  });
+
   group('VOICEVOX terms dialog', () {
     testWidgets('shows terms dialog when terms not accepted', (tester) async {
       final prefs = InMemorySharedPreferences();
