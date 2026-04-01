@@ -14,6 +14,15 @@ import '../../helpers/settings_test_helpers.dart';
 
 const Key _listKey = Key('tts-settings-list');
 
+Future<void> _selectNemoStyle(WidgetTester tester, String styleLabel) async {
+  final Finder dropdownFinder =
+      find.byKey(const Key('voicevox-style-dropdown'), skipOffstage: false);
+  await tester.tap(dropdownFinder);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(styleLabel).last);
+  await tester.pumpAndSettle();
+}
+
 Future<List<String>> _captureDebugLogs(Future<void> Function() action) async {
   final List<String> logs = <String>[];
   final originalDebugPrint = debugPrint;
@@ -371,7 +380,7 @@ void main() {
       expect(loaded.voicevoxVolume, 0.8);
     });
 
-    testWidgets('VOICEVOX energetic preset button persists values', (
+    testWidgets('VOICEVOX style dropdown energetic persists values', (
       WidgetTester tester,
     ) async {
       final SharedPreferencesSettingsStore settingsStore =
@@ -383,15 +392,9 @@ void main() {
       await scrollToKeyInList(
         tester,
         _listKey,
-        const Key('voicevox-preset-energetic-btn'),
+        const Key('voicevox-style-dropdown'),
       );
-      await tester.tap(
-        find.byKey(
-          const Key('voicevox-preset-energetic-btn'),
-          skipOffstage: false,
-        ),
-      );
-      await tester.pumpAndSettle();
+      await _selectNemoStyle(tester, '元気');
 
       final AppSettings loaded = await settingsStore.load();
       expect(loaded.voicevoxSpeed, closeTo(1.3, 0.0001));
@@ -400,7 +403,7 @@ void main() {
       expect(loaded.voicevoxVolume, closeTo(1.0, 0.0001));
     });
 
-    testWidgets('VOICEVOX calm preset button pushes settings to platform', (
+    testWidgets('VOICEVOX style dropdown calm pushes settings to platform', (
       WidgetTester tester,
     ) async {
       final SharedPreferencesSettingsStore settingsStore =
@@ -417,15 +420,9 @@ void main() {
       await scrollToKeyInList(
         tester,
         _listKey,
-        const Key('voicevox-preset-calm-btn'),
+        const Key('voicevox-style-dropdown'),
       );
-      await tester.tap(
-        find.byKey(
-          const Key('voicevox-preset-calm-btn'),
-          skipOffstage: false,
-        ),
-      );
-      await tester.pumpAndSettle();
+      await _selectNemoStyle(tester, '落ち着き');
 
       expect(fakePlatform.lastUpdatedSettings, isNotNull);
       expect(
@@ -438,7 +435,7 @@ void main() {
           fakePlatform.lastUpdatedSettings!.volumeScale, closeTo(1.0, 0.0001));
     });
 
-    testWidgets('VOICEVOX standard preset button resets values to defaults', (
+    testWidgets('VOICEVOX style dropdown standard resets values to defaults', (
       WidgetTester tester,
     ) async {
       final SharedPreferencesSettingsStore settingsStore =
@@ -458,15 +455,9 @@ void main() {
       await scrollToKeyInList(
         tester,
         _listKey,
-        const Key('voicevox-preset-standard-btn'),
+        const Key('voicevox-style-dropdown'),
       );
-      await tester.tap(
-        find.byKey(
-          const Key('voicevox-preset-standard-btn'),
-          skipOffstage: false,
-        ),
-      );
-      await tester.pumpAndSettle();
+      await _selectNemoStyle(tester, '標準');
 
       final AppSettings loaded = await settingsStore.load();
       expect(loaded.voicevoxSpeed, closeTo(1.0, 0.0001));
@@ -475,7 +466,7 @@ void main() {
       expect(loaded.voicevoxVolume, closeTo(1.0, 0.0001));
     });
 
-    testWidgets('hides preset buttons when selected speaker is non-Nemo', (
+    testWidgets('hides style dropdown when selected speaker is non-Nemo', (
       WidgetTester tester,
     ) async {
       final SharedPreferencesSettingsStore settingsStore =
@@ -503,17 +494,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const Key('voicevox-preset-energetic-btn'),
-            skipOffstage: false),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const Key('voicevox-preset-calm-btn'), skipOffstage: false),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const Key('voicevox-preset-standard-btn'),
-            skipOffstage: false),
+        find.byKey(const Key('voicevox-style-dropdown'), skipOffstage: false),
         findsNothing,
       );
     });

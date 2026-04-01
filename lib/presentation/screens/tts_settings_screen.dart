@@ -12,6 +12,8 @@ import 'dictionary_rules_screen.dart';
 import 'ng_user_list_screen.dart';
 import 'voice_library_screen.dart';
 
+enum _NemoStylePreset { standard, energetic, calm }
+
 // TODO(#13): 棒読みちゃん対応は UIから非表示とした。サーバーを管理しない方針のため、
 // 今後削除するか再実装するかは未定。万が一機会があれば再検討する。
 // 棒読みちゃん関連のドメインモデル・設定ストアのフィールドは後方互換のため残している。
@@ -60,6 +62,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   SettingsStore get settingsStore => widget.settingsStore;
 
   List<VoicevoxModelInfo>? _voicevoxModels;
+  Set<int> _nemoSpeakerIds = <int>{};
   String? _queueLimitError;
   String? _maxDelayError;
   bool _isLoadingModel = false;
@@ -143,9 +146,16 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
       final rawList = await platform.getAvailableModels();
       final allModels =
           rawList.map((m) => VoicevoxModelInfo.fromMap(m)).toList();
+      final Set<int> nemoSpeakerIds = <int>{};
+      for (final VoicevoxModelInfo model in allModels) {
+        if (model.modelId == 'n0') {
+          nemoSpeakerIds.addAll(model.speakerIds);
+        }
+      }
       if (!mounted) return;
       setState(() {
         _voicevoxModels = allModels;
+        _nemoSpeakerIds = nemoSpeakerIds;
       });
     } on Object {
       // Model listing failed; keep existing state.
@@ -569,7 +579,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
             initialValue:
                 currentInList ? settings.voicevoxSpeaker : items.first.value,
             decoration: const InputDecoration(
-              labelText: 'スタイル（話者）',
+              labelText: '話者',
               border: OutlineInputBorder(),
             ),
             items: items,
@@ -610,7 +620,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
       initialValue:
           fallbackCurrentInList ? settings.voicevoxSpeaker : fallbackSpeakerId,
       decoration: const InputDecoration(
-        labelText: 'スタイル（話者）',
+        labelText: '話者',
         border: OutlineInputBorder(),
       ),
       items: const <DropdownMenuItem<int>>[
@@ -680,16 +690,106 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     if (_nemoSpeakerNames.containsKey(speakerId)) {
       return true;
     }
-    final List<VoicevoxModelInfo>? models = _voicevoxModels;
-    if (models == null) {
-      return false;
+    return _nemoSpeakerIds.contains(speakerId);
+  }
+
+  bool _matchesNemoPreset(
+    AppSettings settings, {
+    required double speed,
+    required double pitch,
+    required double intonation,
+    required double volume,
+  }) {
+    const double epsilon = 0.0001;
+    return (settings.voicevoxSpeed - speed).abs() <= epsilon &&
+        (settings.voicevoxPitch - pitch).abs() <= epsilon &&
+        (settings.voicevoxIntonation - intonation).abs() <= epsilon &&
+        (settings.voicevoxVolume - volume).abs() <= epsilon;
+  }
+
+  _NemoStylePreset _currentNemoStyleValue(AppSettings settings) {
+    if (_matchesNemoPreset(
+      settings,
+      speed: _energeticPresetSpeed,
+      pitch: _energeticPresetPitch,
+      intonation: _energeticPresetIntonation,
+      volume: _energeticPresetVolume,
+    )) {
+      return _NemoStylePreset.energetic;
     }
-    for (final VoicevoxModelInfo model in models) {
-      if (model.modelId == 'n0' && model.speakerIds.contains(speakerId)) {
-        return true;
-      }
+    if (_matchesNemoPreset(
+      settings,
+      speed: _calmPresetSpeed,
+      pitch: _calmPresetPitch,
+      intonation: _calmPresetIntonation,
+      volume: _calmPresetVolume,
+    )) {
+      return _NemoStylePreset.calm;
     }
-    return false;
+    return _NemoStylePreset.standard;
+  }
+
+  void _applyNemoStyle(AppSettings settings, _NemoStylePreset styleValue) {
+    switch (styleValue) {
+      case _NemoStylePreset.energetic:
+        _applyVoicevoxPreset(
+          settings,
+          speed: _energeticPresetSpeed,
+          pitch: _energeticPresetPitch,
+          intonation: _energeticPresetIntonation,
+          volume: _energeticPresetVolume,
+        );
+        return;
+      case _NemoStylePreset.calm:
+        _applyVoicevoxPreset(
+          settings,
+          speed: _calmPresetSpeed,
+          pitch: _calmPresetPitch,
+          intonation: _calmPresetIntonation,
+          volume: _calmPresetVolume,
+        );
+        return;
+      case _NemoStylePreset.standard:
+        _applyVoicevoxPreset(
+          settings,
+          speed: _standardPresetSpeed,
+          pitch: _standardPresetPitch,
+          intonation: _standardPresetIntonation,
+          volume: _standardPresetVolume,
+        );
+        return;
+    }
+  }
+
+  Widget _buildNemoStyleDropdown(AppSettings settings) {
+    return DropdownButtonFormField<_NemoStylePreset>(
+      key: const Key('voicevox-style-dropdown'),
+      initialValue: _currentNemoStyleValue(settings),
+      decoration: const InputDecoration(
+        labelText: 'スタイル',
+        border: OutlineInputBorder(),
+      ),
+      items: const <DropdownMenuItem<_NemoStylePreset>>[
+        DropdownMenuItem<_NemoStylePreset>(
+          value: _NemoStylePreset.standard,
+          child: Text('標準'),
+        ),
+        DropdownMenuItem<_NemoStylePreset>(
+          value: _NemoStylePreset.energetic,
+          child: Text('元気'),
+        ),
+        DropdownMenuItem<_NemoStylePreset>(
+          value: _NemoStylePreset.calm,
+          child: Text('落ち着き'),
+        ),
+      ],
+      onChanged: _isLoadingModel
+          ? null
+          : (_NemoStylePreset? value) {
+              if (value == null) return;
+              _applyNemoStyle(settings, value);
+            },
+    );
   }
 
   @override
@@ -761,57 +861,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                     ],
                     if (_isNemoPresetVisible(settings)) ...[
                       const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: <Widget>[
-                          OutlinedButton(
-                            key: const Key('voicevox-preset-energetic-btn'),
-                            onPressed: _isLoadingModel
-                                ? null
-                                : () {
-                                    _applyVoicevoxPreset(
-                                      settings,
-                                      speed: _energeticPresetSpeed,
-                                      pitch: _energeticPresetPitch,
-                                      intonation: _energeticPresetIntonation,
-                                      volume: _energeticPresetVolume,
-                                    );
-                                  },
-                            child: const Text('元気寄り'),
-                          ),
-                          OutlinedButton(
-                            key: const Key('voicevox-preset-calm-btn'),
-                            onPressed: _isLoadingModel
-                                ? null
-                                : () {
-                                    _applyVoicevoxPreset(
-                                      settings,
-                                      speed: _calmPresetSpeed,
-                                      pitch: _calmPresetPitch,
-                                      intonation: _calmPresetIntonation,
-                                      volume: _calmPresetVolume,
-                                    );
-                                  },
-                            child: const Text('落ち着き寄り'),
-                          ),
-                          OutlinedButton(
-                            key: const Key('voicevox-preset-standard-btn'),
-                            onPressed: _isLoadingModel
-                                ? null
-                                : () {
-                                    _applyVoicevoxPreset(
-                                      settings,
-                                      speed: _standardPresetSpeed,
-                                      pitch: _standardPresetPitch,
-                                      intonation: _standardPresetIntonation,
-                                      volume: _standardPresetVolume,
-                                    );
-                                  },
-                            child: const Text('標準'),
-                          ),
-                        ],
-                      ),
+                      _buildNemoStyleDropdown(settings),
                     ],
                     const SizedBox(height: 12),
                     SettingsDoubleSliderField(
