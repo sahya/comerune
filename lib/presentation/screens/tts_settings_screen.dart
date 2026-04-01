@@ -131,7 +131,10 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   /// Load the VVM model corresponding to [speakerId] into the native engine.
   ///
   /// Returns `true` when the model was loaded successfully, `false` otherwise.
-  Future<bool> _loadModelForSpeaker(int speakerId) async {
+  Future<bool> _loadModelForSpeaker(
+    int speakerId, {
+    int? fallbackCurrentSpeakerId,
+  }) async {
     final platform = widget.platform;
     final models = _voicevoxModels;
     if (platform == null || models == null) return false;
@@ -167,6 +170,13 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
           '[TtsSettings] loadModel decision=load_model '
           'reason=status_refresh_failed '
           'speaker=$speakerId modelId=${model.modelId} error=$e',
+        );
+      }
+      if (currentSpeakerId == null && fallbackCurrentSpeakerId != null) {
+        currentSpeakerId = fallbackCurrentSpeakerId;
+        debugPrint(
+          '[TtsSettings] status-check(skip-guard): using settings fallback '
+          'currentSpeaker=$currentSpeakerId targetSpeaker=$speakerId',
         );
       }
       if (currentSpeakerId != null &&
@@ -243,7 +253,10 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     });
     unawaited(saveSettings(next));
 
-    final bool success = await _loadModelForSpeaker(newSpeaker);
+    final bool success = await _loadModelForSpeaker(
+      newSpeaker,
+      fallbackCurrentSpeakerId: previousSpeaker,
+    );
 
     // If another speaker change happened while we were loading, discard this
     // result -- the newer change takes precedence.

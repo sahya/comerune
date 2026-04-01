@@ -702,6 +702,52 @@ void main() {
         expect(platform.lastUpdatedSettings!.speakerId, 1);
       });
 
+      testWidgets(
+          'speaker change skips redundant model load when status refresh fails and settings speaker is same model',
+          (
+        WidgetTester tester,
+      ) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        await settingsStore.save(AppSettings.defaults.copyWith(
+          voicevoxSpeaker: 1,
+        ));
+
+        final FakeCommentSpeechPlatform platform = _createPlatformWithModels();
+        // Put speaker 2 in the same model as speaker 1.
+        platform.availableModelsToReturn[1]['speakerIds'] = <int>[1, 2];
+        platform.statusToReturn = const SpeechRuntimeStatus(
+          enabled: true,
+          engineState: 'READY',
+          playerState: 'IDLE',
+          queueSize: 0,
+          currentSpeakerId: 1,
+        );
+        platform.getStatusError = Exception('status failed');
+        platform.getStatusErrorAtCall = 2;
+
+        await tester
+            .pumpWidget(_buildScreenWithPlatform(settingsStore, platform));
+        await tester.pumpAndSettle();
+
+        platform.loadedModelIds.clear();
+        platform.lastUpdatedSettings = null;
+
+        await scrollToKeyInList(
+            tester, _listKey, const Key('voicevox-speaker-dropdown'));
+        final DropdownButtonFormField<int> dropdown =
+            tester.widget<DropdownButtonFormField<int>>(
+          find.byKey(const Key('voicevox-speaker-dropdown'),
+              skipOffstage: false),
+        );
+        dropdown.onChanged!(2);
+        await tester.pumpAndSettle();
+
+        expect(platform.loadedModelIds, isEmpty);
+        expect(platform.lastUpdatedSettings, isNotNull);
+        expect(platform.lastUpdatedSettings!.speakerId, 2);
+      });
+
       testWidgets('speaker change loads model when currentSpeakerId is unknown',
           (
         WidgetTester tester,
