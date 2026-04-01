@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../../app_logging.dart';
 import '../../application/settings/settings_store.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../data/comment_log/comment_log_writer.dart';
@@ -44,6 +45,27 @@ String _formatHmsOrDash(DateTime? value, {DateTime? beginAt}) {
   }
 
   return _formatHms(value, beginAt: beginAt);
+}
+
+void _debugLog(String message) {
+  appDebugLog(message);
+}
+
+void _debugLogLazy(String Function() messageBuilder) {
+  appDebugLogLazy(messageBuilder);
+}
+
+void _errorLog(
+  String message, {
+  Object? error,
+  StackTrace? stackTrace,
+}) {
+  appErrorLog(
+    name: 'CommentScreen',
+    message: message,
+    error: error,
+    stackTrace: stackTrace,
+  );
 }
 
 String _commentLineText({
@@ -261,10 +283,13 @@ class _CommentScreenState extends State<CommentScreen> {
 
     _requestUserNameResolution(widget.messages);
 
-    debugPrint(
-        '[CommentScreen] initState: speech.enabled=${widget.speechSettings.enabled}, platform=${widget.speechPlatform != null ? "ok" : "null"}');
+    _debugLogLazy(
+      () =>
+          '[CommentScreen] initState: speech.enabled=${widget.speechSettings.enabled}, '
+          'platform=${widget.speechPlatform != null ? "ok" : "null"}',
+    );
     if (widget.speechSettings.enabled && widget.speechPlatform != null) {
-      debugPrint('[CommentScreen] initState: scheduling speech init');
+      _debugLog('[CommentScreen] initState: scheduling speech init');
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           unawaited(_initializeAndStartSpeech());
@@ -302,15 +327,16 @@ class _CommentScreenState extends State<CommentScreen> {
 
     final String lastId =
         widget.messages.isNotEmpty ? widget.messages.last.id : 'empty';
-    debugPrint(
-      '[CommentScreen] didUpdate: msgs ${oldWidget.messages.length}→${widget.messages.length}, '
-      'identical=${identical(oldWidget.messages, widget.messages)}, lastId=$lastId',
+    _debugLogLazy(
+      () =>
+          '[CommentScreen] didUpdate: msgs ${oldWidget.messages.length}→${widget.messages.length}, '
+          'identical=${identical(oldWidget.messages, widget.messages)}, lastId=$lastId',
     );
 
     if (oldWidget.speechSettings != widget.speechSettings) {
-      debugPrint(
-        '[CommentScreen] didUpdate: speechSettings changed: '
-        'enabled ${oldWidget.speechSettings.enabled}→${widget.speechSettings.enabled}',
+      _debugLogLazy(
+        () => '[CommentScreen] didUpdate: speechSettings changed: '
+            'enabled ${oldWidget.speechSettings.enabled}→${widget.speechSettings.enabled}',
       );
       unawaited(_handleSpeechSettingsChanged(oldWidget.speechSettings));
     }
@@ -343,11 +369,12 @@ class _CommentScreenState extends State<CommentScreen> {
   @override
   void dispose() {
     unawaited(WakelockPlus.disable());
-    debugPrint('[CommentScreen] dispose: speechStarted=$_speechStarted');
+    _debugLogLazy(
+        () => '[CommentScreen] dispose: speechStarted=$_speechStarted');
     _stopSpeechPollTimer();
     _speechEventSub?.cancel();
     if (_speechStarted) {
-      debugPrint('[CommentScreen] dispose: stopping speech engine');
+      _debugLog('[CommentScreen] dispose: stopping speech engine');
       unawaited(widget.speechPlatform?.stop(clearQueue: true));
     }
     widget.connectionSupervisor.removeListener(_handleConnectionChanged);
@@ -418,7 +445,7 @@ class _CommentScreenState extends State<CommentScreen> {
     for (int i = start; i < newMessages.length; i++) {
       final AppMessage m = newMessages[i];
       if (m.type == AppMessageType.chat) {
-        debugPrint('[CommentScreen] newComment: ${m.content}');
+        _debugLogLazy(() => '[CommentScreen] newComment: ${m.content}');
       }
     }
   }
@@ -428,41 +455,47 @@ class _CommentScreenState extends State<CommentScreen> {
   // ---------------------------------------------------------------------------
 
   Future<void> _initializeAndStartSpeech() async {
-    debugPrint(
-        '[CommentScreen] initSpeech: enter (initializing=$_speechInitializing, initialized=$_speechInitialized)');
+    _debugLogLazy(
+      () => '[CommentScreen] initSpeech: enter '
+          '(initializing=$_speechInitializing, initialized=$_speechInitialized)',
+    );
     if (_speechInitializing) return;
     final CommentSpeechPlatform? platform = widget.speechPlatform;
     if (platform == null) {
-      debugPrint('[CommentScreen] initSpeech: platform=null, abort');
+      _debugLog('[CommentScreen] initSpeech: platform=null, abort');
       return;
     }
     _speechInitializing = true;
 
     // Check if engine is already ready from a previous session.
     if (!_speechInitialized) {
-      debugPrint('[CommentScreen] initSpeech: checking engine status...');
+      _debugLog('[CommentScreen] initSpeech: checking engine status...');
       try {
         final SpeechRuntimeStatus status = await platform.getStatus();
-        debugPrint(
-            '[CommentScreen] initSpeech: engine=${status.engineState}, player=${status.playerState}, queue=${status.queueSize}');
+        _debugLogLazy(
+          () => '[CommentScreen] initSpeech: engine=${status.engineState}, '
+              'player=${status.playerState}, queue=${status.queueSize}',
+        );
         if (status.engineState == 'READY') {
           _speechInitialized = true;
-          debugPrint('[CommentScreen] initSpeech: engine already READY');
+          _debugLog('[CommentScreen] initSpeech: engine already READY');
         }
       } catch (e) {
-        debugPrint('[CommentScreen] initSpeech: getStatus failed: $e');
+        _errorLog('[CommentScreen] initSpeech: getStatus failed', error: e);
       }
     }
 
     // Show setup dialog for first-time download & initialization.
     if (!_speechInitialized) {
-      debugPrint('[CommentScreen] initSpeech: showing SetupDialog...');
+      _debugLog('[CommentScreen] initSpeech: showing SetupDialog...');
       if (!mounted) {
         _speechInitializing = false;
         return;
       }
       final bool success = await VoicevoxSetupDialog.show(context, platform);
-      debugPrint('[CommentScreen] initSpeech: SetupDialog result=$success');
+      _debugLogLazy(
+        () => '[CommentScreen] initSpeech: SetupDialog result=$success',
+      );
       if (!success || !mounted) {
         _speechInitializing = false;
         return;
@@ -482,7 +515,7 @@ class _CommentScreenState extends State<CommentScreen> {
         _lastSpeechMessageId = widget.messages.last.id;
       }
 
-      debugPrint('[CommentScreen] initSpeech: updateSettings → start()...');
+      _debugLog('[CommentScreen] initSpeech: updateSettings → start()...');
       await platform.updateSettings(widget.speechSettings);
       await platform.start();
 
@@ -493,10 +526,16 @@ class _CommentScreenState extends State<CommentScreen> {
         });
       }
       _startSpeechPollTimer();
-      debugPrint(
-          '[CommentScreen] Speech started. baseline=$_lastSpeechMessageId, msgCount=${widget.messages.length}');
+      _debugLogLazy(
+        () => '[CommentScreen] Speech started. baseline=$_lastSpeechMessageId, '
+            'msgCount=${widget.messages.length}',
+      );
     } catch (e, stackTrace) {
-      debugPrint('[CommentScreen] initSpeech: FAILED: $e\n$stackTrace');
+      _errorLog(
+        '[CommentScreen] initSpeech: FAILED',
+        error: e,
+        stackTrace: stackTrace,
+      );
       if (mounted) {
         setState(() {
           _speechEngineState = 'ERROR';
@@ -510,34 +549,38 @@ class _CommentScreenState extends State<CommentScreen> {
   Future<void> _handleSpeechSettingsChanged(
     SpeechSettings oldSettings,
   ) async {
-    debugPrint(
-        '[CommentScreen] settingsChanged: enabled ${oldSettings.enabled}→${widget.speechSettings.enabled}, started=$_speechStarted');
+    _debugLogLazy(
+      () => '[CommentScreen] settingsChanged: enabled ${oldSettings.enabled}→'
+          '${widget.speechSettings.enabled}, started=$_speechStarted',
+    );
     if (!oldSettings.enabled && widget.speechSettings.enabled) {
-      debugPrint('[CommentScreen] settingsChanged: → enabling speech');
+      _debugLog('[CommentScreen] settingsChanged: → enabling speech');
       await _initializeAndStartSpeech();
     } else if (oldSettings.enabled && !widget.speechSettings.enabled) {
-      debugPrint('[CommentScreen] settingsChanged: → disabling speech');
+      _debugLog('[CommentScreen] settingsChanged: → disabling speech');
       await _stopSpeech();
     } else if (widget.speechSettings.enabled && _speechStarted) {
-      debugPrint('[CommentScreen] settingsChanged: → pushing update to engine');
+      _debugLog('[CommentScreen] settingsChanged: → pushing update to engine');
       try {
         await widget.speechPlatform?.updateSettings(widget.speechSettings);
       } catch (e) {
-        debugPrint(
-            '[CommentScreen] settingsChanged: updateSettings FAILED: $e');
+        _errorLog(
+          '[CommentScreen] settingsChanged: updateSettings FAILED',
+          error: e,
+        );
       }
     }
   }
 
   Future<void> _stopSpeech() async {
-    debugPrint('[CommentScreen] stopSpeech: started=$_speechStarted');
+    _debugLogLazy(() => '[CommentScreen] stopSpeech: started=$_speechStarted');
     _stopSpeechPollTimer();
     if (_speechStarted) {
       try {
         await widget.speechPlatform?.stop(clearQueue: true);
-        debugPrint('[CommentScreen] stopSpeech: stopped');
+        _debugLog('[CommentScreen] stopSpeech: stopped');
       } catch (e) {
-        debugPrint('[CommentScreen] stopSpeech: FAILED: $e');
+        _errorLog('[CommentScreen] stopSpeech: FAILED', error: e);
       }
       _speechBaselineTimestamp = null;
       if (mounted) {
@@ -550,8 +593,10 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   void _onSpeechEvent(SpeechEvent event) {
-    debugPrint(
-        '[CommentScreen] speechEvent: ${event.type}, payload=${event.payload}');
+    _debugLogLazy(
+      () =>
+          '[CommentScreen] speechEvent: ${event.type}, payload=${event.payload}',
+    );
     if (event.type == SpeechEventType.engineStateChanged) {
       final String state = event.payload['state'] as String? ?? '';
       if (mounted) {
@@ -611,7 +656,9 @@ class _CommentScreenState extends State<CommentScreen> {
 
     _lastSpeechMessageId = currentLastId;
     final int candidates = messages.length - start;
-    debugPrint('[CommentScreen] submitNewComments: candidates=$candidates');
+    _debugLogLazy(
+      () => '[CommentScreen] submitNewComments: candidates=$candidates',
+    );
 
     for (int i = start; i < messages.length; i++) {
       final AppMessage message = messages[i];
@@ -626,17 +673,19 @@ class _CommentScreenState extends State<CommentScreen> {
       // Skip NG users.
       final String? userId = message.userId;
       if (userId != null && widget.ngUserIds.contains(userId)) {
-        debugPrint('[CommentScreen] submitComment: SKIP NG user=$userId');
+        _debugLogLazy(
+          () => '[CommentScreen] submitComment: SKIP NG user=$userId',
+        );
         continue;
       }
       // Skip star-prefix hidden comments.
       if (widget.starPrefixHidingEnabled && message.content.startsWith('☆')) {
-        debugPrint('[CommentScreen] submitComment: SKIP star-prefix');
+        _debugLog('[CommentScreen] submitComment: SKIP star-prefix');
         continue;
       }
       // Skip comments containing NG words.
       if (_containsNgWord(message.content)) {
-        debugPrint('[CommentScreen] submitComment: SKIP NG word');
+        _debugLog('[CommentScreen] submitComment: SKIP NG word');
         continue;
       }
 
@@ -658,7 +707,7 @@ class _CommentScreenState extends State<CommentScreen> {
         }
       }
 
-      debugPrint('[CommentScreen] submitComment: $speechText');
+      _debugLogLazy(() => '[CommentScreen] submitComment: $speechText');
       final RawComment comment = RawComment(
         id: message.id,
         text: speechText,
@@ -667,7 +716,7 @@ class _CommentScreenState extends State<CommentScreen> {
       );
       unawaited(
         platform.submitComment(comment).then((_) {}).catchError((Object e) {
-          debugPrint('[CommentScreen] submitComment FAILED: $e');
+          _errorLog('[CommentScreen] submitComment FAILED', error: e);
         }),
       );
     }
@@ -730,7 +779,7 @@ class _CommentScreenState extends State<CommentScreen> {
           ..showSnackBar(SnackBar(content: Text(result.message)));
       }
     } on Object catch (e) {
-      debugPrint('[CommentScreen] _handleTeachCommand FAILED: $e');
+      _errorLog('[CommentScreen] _handleTeachCommand FAILED', error: e);
     }
   }
 
