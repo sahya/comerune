@@ -19,6 +19,21 @@ Finder inputField() => find.byKey(const Key('select_screen_input'));
 Finder connectButton() => find.byKey(const Key('select_screen_connect_button'));
 
 void main() {
+  test('buildBroadcastEndedNotificationId is unique for same milliseconds', () {
+    final String id0 = buildBroadcastEndedNotificationId(
+      epochMilliseconds: 1234567890,
+      sequence: 0,
+    );
+    final String id1 = buildBroadcastEndedNotificationId(
+      epochMilliseconds: 1234567890,
+      sequence: 1,
+    );
+
+    expect(id0, isNot(id1));
+    expect(id0, startsWith('system:broadcast_ended:1234567890:'));
+    expect(id1, startsWith('system:broadcast_ended:1234567890:'));
+  });
+
   Future<void> pumpSelectScreen(
     WidgetTester tester,
     ConnectionSupervisor supervisor,
