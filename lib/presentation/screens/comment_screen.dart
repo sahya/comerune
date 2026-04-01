@@ -725,7 +725,10 @@ class _CommentScreenState extends State<CommentScreen> {
       if (widget.readUserName) {
         final String? displayName = _resolveSpeechDisplayName(message);
         if (displayName != null && displayName.isNotEmpty) {
-          speechText = '$displayName、$speechText';
+          final String nameWithHonorific = _appendSan(displayName);
+          if (nameWithHonorific.isNotEmpty) {
+            speechText = '$speechText、$nameWithHonorific';
+          }
         }
       }
 
@@ -1135,22 +1138,20 @@ class _CommentScreenState extends State<CommentScreen> {
 
   String? _resolveSpeechDisplayName(AppMessage message) {
     final String? userId = message.userId;
-    if (userId == null || userId.isEmpty) {
-      return null;
-    }
-
-    final String? nickname = widget.userNicknameMap[userId];
-    if (nickname != null && nickname.isNotEmpty) {
-      return nickname;
-    }
-
-    if (!_isNumericUserId(userId)) {
-      return null;
+    if (userId != null && userId.isNotEmpty) {
+      final String? nickname = widget.userNicknameMap[userId];
+      if (nickname != null && nickname.isNotEmpty) {
+        return nickname;
+      }
     }
 
     final String? userName = message.userName;
     if (userName != null && userName.isNotEmpty) {
       return userName;
+    }
+
+    if (userId == null || userId.isEmpty) {
+      return null;
     }
 
     final String? resolvedName = widget.resolveUserName?.call(userId);
@@ -1161,8 +1162,14 @@ class _CommentScreenState extends State<CommentScreen> {
     return null;
   }
 
-  bool _isNumericUserId(String userId) {
-    return int.tryParse(userId) != null;
+  String _appendSan(String displayName) {
+    final String trimmedName = displayName.trim();
+    if (trimmedName.isEmpty ||
+        trimmedName.endsWith('さん') ||
+        trimmedName.endsWith('ちゃん')) {
+      return trimmedName;
+    }
+    return '$trimmedNameさん';
   }
 
   void _toggleSortOrder() {
