@@ -51,7 +51,7 @@ jobs:
   ci:
     needs: validate
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     permissions:
       contents: read
 
@@ -76,6 +76,29 @@ jobs:
 
       - name: Run tests
         run: flutter test
+
+      - name: Build release APK for size check
+        run: flutter build apk --release --target-platform android-arm64
+
+      - name: Report APK size regression warning
+        env:
+          APK_PATH: build/app/outputs/flutter-apk/app-release.apk
+          APK_WARN_MB: 100
+        run: |
+          if [ ! -f "$APK_PATH" ]; then
+            echo "::error::APK not found at $APK_PATH"
+            exit 1
+          fi
+
+          APK_SIZE_BYTES=$(stat -c%s "$APK_PATH")
+          APK_SIZE_MB=$(awk -v bytes="$APK_SIZE_BYTES" 'BEGIN { printf "%.2f", bytes / (1024 * 1024) }')
+          WARN_BYTES=$((APK_WARN_MB * 1024 * 1024))
+
+          echo "Release APK size: ${APK_SIZE_MB} MB (${APK_SIZE_BYTES} bytes)"
+
+          if [ "$APK_SIZE_BYTES" -gt "$WARN_BYTES" ]; then
+            echo "::warning::Release APK size ${APK_SIZE_MB} MB exceeds warning threshold ${APK_WARN_MB} MB"
+          fi
 
   # TODO: チーム拡大時は environment protection rules + required reviewers を設定し、
   #       リリース実行者を制限する（workflow_dispatch は write 権限者全員が実行可能なため）

@@ -21,6 +21,14 @@ const SpeechRuntimeStatus _initializingStatus = SpeechRuntimeStatus(
   currentSpeakerId: 0,
 );
 
+const SpeechRuntimeStatus _downloadingStatus = SpeechRuntimeStatus(
+  enabled: true,
+  engineState: 'DOWNLOADING',
+  playerState: 'IDLE',
+  queueSize: 0,
+  currentSpeakerId: 0,
+);
+
 const SpeechRuntimeStatus _uninitializedStatus = SpeechRuntimeStatus(
   enabled: false,
   engineState: 'UNINITIALIZED',
@@ -35,8 +43,10 @@ void main() {
       final platform = FakeCommentSpeechPlatform()
         ..statusToReturn = _readyStatus;
 
-      await ensureEngineReadyForModelLoad(platform,
-          pollInterval: Duration.zero);
+      await ensureEngineReadyForModelLoad(
+        platform,
+        pollInterval: Duration.zero,
+      );
 
       expect(platform.initializeCalled, isFalse);
       expect(platform.getStatusCallCount, 1);
@@ -46,8 +56,10 @@ void main() {
       final platform = FakeCommentSpeechPlatform()
         ..statusToReturn = _uninitializedStatus;
 
-      await ensureEngineReadyForModelLoad(platform,
-          pollInterval: Duration.zero);
+      await ensureEngineReadyForModelLoad(
+        platform,
+        pollInterval: Duration.zero,
+      );
 
       expect(platform.initializeCalled, isTrue);
       expect(platform.getStatusCallCount, 1);
@@ -70,29 +82,50 @@ void main() {
       expect(platform.getStatusCallCount, 2);
     });
 
-    test('waits transitional state then initializes when UNINITIALIZED',
-        () async {
-      final platform = FakeCommentSpeechPlatform()
-        ..statusSequenceToReturn = <SpeechRuntimeStatus>[
-          _initializingStatus,
-          _uninitializedStatus,
-        ];
+    test(
+      'extends wait budget when asset preparation state is observed',
+      () async {
+        final platform = FakeCommentSpeechPlatform()
+          ..statusSequenceToReturn = <SpeechRuntimeStatus>[
+            _downloadingStatus,
+            _downloadingStatus,
+            _readyStatus,
+          ];
 
-      await ensureEngineReadyForModelLoad(
-        platform,
-        pollInterval: Duration.zero,
-        maxPollAttempts: 2,
-      );
+        await ensureEngineReadyForModelLoad(
+          platform,
+          pollInterval: Duration.zero,
+          maxPollAttempts: 1,
+        );
 
-      expect(platform.initializeCalled, isTrue);
-      expect(platform.getStatusCallCount, 2);
-    });
+        expect(platform.initializeCalled, isFalse);
+        expect(platform.getStatusCallCount, 3);
+      },
+    );
+
+    test(
+      'waits transitional state then initializes when UNINITIALIZED',
+      () async {
+        final platform = FakeCommentSpeechPlatform()
+          ..statusSequenceToReturn = <SpeechRuntimeStatus>[
+            _initializingStatus,
+            _uninitializedStatus,
+          ];
+
+        await ensureEngineReadyForModelLoad(
+          platform,
+          pollInterval: Duration.zero,
+          maxPollAttempts: 2,
+        );
+
+        expect(platform.initializeCalled, isTrue);
+        expect(platform.getStatusCallCount, 2);
+      },
+    );
 
     test('throws timeout when transitional state does not settle', () async {
       final platform = FakeCommentSpeechPlatform()
-        ..statusSequenceToReturn = <SpeechRuntimeStatus>[
-          _initializingStatus,
-        ];
+        ..statusSequenceToReturn = <SpeechRuntimeStatus>[_initializingStatus];
 
       await expectLater(
         () => ensureEngineReadyForModelLoad(
