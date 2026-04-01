@@ -1216,8 +1216,10 @@ void main() {
         ),
       );
 
-      expect(find.byKey(const Key('comment-row-chat-clean-preset')),
-          findsOneWidget);
+      expect(
+        find.byKey(const Key('comment-row-chat-clean-preset')),
+        findsOneWidget,
+      );
       expect(find.byKey(const Key('comment-row-chat-ng-preset')), findsNothing);
     });
 
@@ -1326,7 +1328,9 @@ void main() {
       );
 
       expect(
-          find.byKey(const Key('comment-row-chat-light-ero')), findsOneWidget);
+        find.byKey(const Key('comment-row-chat-light-ero')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('long-press on comment row opens actions sheet', (

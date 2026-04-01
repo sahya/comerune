@@ -1,10 +1,5 @@
 /// Download state of a VOICEVOX voice model.
-enum ModelDownloadState {
-  notDownloaded,
-  downloading,
-  downloaded,
-  error,
-}
+enum ModelDownloadState { notDownloaded, downloading, downloaded, error }
 
 /// Information about a VOICEVOX voice model.
 class VoicevoxModelInfo {

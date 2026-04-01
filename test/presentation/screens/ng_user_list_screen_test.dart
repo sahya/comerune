@@ -30,8 +30,9 @@ void main() {
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
       // Pre-save settings with NG user IDs.
-      final AppSettings initial =
-          AppSettings.defaults.addNgUserId('user123').addNgUserId('user456');
+      final AppSettings initial = AppSettings.defaults
+          .addNgUserId('user123')
+          .addNgUserId('user456');
       await store.save(initial);
 
       await tester.pumpWidget(_buildScreen(store));
@@ -50,8 +51,9 @@ void main() {
       final SharedPreferencesSettingsStore store =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
-      final AppSettings initial =
-          AppSettings.defaults.addNgUserId('user123').addNgUserId('user456');
+      final AppSettings initial = AppSettings.defaults
+          .addNgUserId('user123')
+          .addNgUserId('user456');
       await store.save(initial);
 
       await tester.pumpWidget(_buildScreen(store));
@@ -63,10 +65,7 @@ void main() {
 
       // Confirm dialog should appear.
       expect(find.text('NG解除'), findsOneWidget);
-      expect(
-        find.text('ユーザーID「user123」のNG登録を解除しますか？'),
-        findsOneWidget,
-      );
+      expect(find.text('ユーザーID「user123」のNG登録を解除しますか？'), findsOneWidget);
 
       // Tap confirm button.
       await tester.tap(find.byKey(const Key('ng-remove-confirm-button')));
@@ -77,10 +76,7 @@ void main() {
       expect(find.text('user456'), findsOneWidget);
 
       // Snackbar feedback should appear.
-      expect(
-        find.text('user123 のNGを解除しました'),
-        findsOneWidget,
-      );
+      expect(find.text('user123 のNGを解除しました'), findsOneWidget);
 
       // Verify persistence.
       final AppSettings loaded = await store.load();
@@ -138,7 +134,5 @@ void main() {
 }
 
 Widget _buildScreen(SettingsStore settingsStore) {
-  return MaterialApp(
-    home: NgUserListScreen(settingsStore: settingsStore),
-  );
+  return MaterialApp(home: NgUserListScreen(settingsStore: settingsStore));
 }

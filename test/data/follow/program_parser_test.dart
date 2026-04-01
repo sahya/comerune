@@ -59,9 +59,7 @@ void main() {
     test('falls back to supplier uri50x50', () {
       final Map<String, dynamic> item = <String, dynamic>{
         'supplier': <String, dynamic>{
-          'icons': <String, dynamic>{
-            'uri50x50': 'https://example.com/50.jpg',
-          },
+          'icons': <String, dynamic>{'uri50x50': 'https://example.com/50.jpg'},
         },
       };
       expect(extractProviderIconUrl(item), 'https://example.com/50.jpg');

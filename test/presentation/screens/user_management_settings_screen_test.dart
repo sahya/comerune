@@ -11,19 +11,14 @@ import '../../helpers/settings_test_helpers.dart';
 
 void main() {
   group('UserManagementSettingsScreen', () {
-    testWidgets('shows favorite user list tile', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('shows favorite user list tile', (WidgetTester tester) async {
       final SharedPreferencesSettingsStore settingsStore =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
       await tester.pumpWidget(_buildScreen(settingsStore));
       await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const Key('favorite-user-list-tile')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('favorite-user-list-tile')), findsOneWidget);
       expect(find.text('未登録'), findsOneWidget);
     });
 
@@ -59,8 +54,9 @@ void main() {
     ) async {
       final SharedPreferencesSettingsStore settingsStore =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-      final ValueNotifier<String?> notifier =
-          ValueNotifier<String?>('broadcaster-1');
+      final ValueNotifier<String?> notifier = ValueNotifier<String?>(
+        'broadcaster-1',
+      );
 
       await tester.pumpWidget(
         MaterialApp(
@@ -83,149 +79,153 @@ void main() {
     });
 
     testWidgets(
-        'nickname tile enables reactively when broadcasterId becomes non-null',
-        (WidgetTester tester) async {
-      final SharedPreferencesSettingsStore settingsStore =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-      final ValueNotifier<String?> notifier = ValueNotifier<String?>(null);
+      'nickname tile enables reactively when broadcasterId becomes non-null',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final ValueNotifier<String?> notifier = ValueNotifier<String?>(null);
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: UserManagementSettingsScreen(
-            settingsStore: settingsStore,
-            userAttributeStore: _FakeUserAttributeStore(),
-            broadcasterIdNotifier: notifier,
+        await tester.pumpWidget(
+          MaterialApp(
+            home: UserManagementSettingsScreen(
+              settingsStore: settingsStore,
+              userAttributeStore: _FakeUserAttributeStore(),
+              broadcasterIdNotifier: notifier,
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      // Initially disabled
-      ListTile nicknameTile = tester.widget(
-        find.byKey(const Key('nickname-list-tile')),
-      );
-      expect(nicknameTile.enabled, isFalse);
+        // Initially disabled
+        ListTile nicknameTile = tester.widget(
+          find.byKey(const Key('nickname-list-tile')),
+        );
+        expect(nicknameTile.enabled, isFalse);
 
-      // Simulate broadcaster ID resolved asynchronously
-      notifier.value = 'broadcaster-1';
-      await tester.pumpAndSettle();
+        // Simulate broadcaster ID resolved asynchronously
+        notifier.value = 'broadcaster-1';
+        await tester.pumpAndSettle();
 
-      // Now enabled
-      nicknameTile = tester.widget(
-        find.byKey(const Key('nickname-list-tile')),
-      );
-      expect(nicknameTile.enabled, isTrue);
-      expect(find.text('放送に接続すると利用できます'), findsNothing);
+        // Now enabled
+        nicknameTile = tester.widget(
+          find.byKey(const Key('nickname-list-tile')),
+        );
+        expect(nicknameTile.enabled, isTrue);
+        expect(find.text('放送に接続すると利用できます'), findsNothing);
 
-      notifier.dispose();
-    });
-
-    testWidgets('switches listener when broadcasterIdNotifier instance changes',
-        (WidgetTester tester) async {
-      final SharedPreferencesSettingsStore settingsStore =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-      final ValueNotifier<String?> notifierA =
-          ValueNotifier<String?>('broadcaster-a');
-      final ValueNotifier<String?> notifierB = ValueNotifier<String?>(null);
-
-      // Build with notifierA (enabled)
-      await tester.pumpWidget(
-        MaterialApp(
-          home: UserManagementSettingsScreen(
-            settingsStore: settingsStore,
-            userAttributeStore: _FakeUserAttributeStore(),
-            broadcasterIdNotifier: notifierA,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      ListTile nicknameTile = tester.widget(
-        find.byKey(const Key('nickname-list-tile')),
-      );
-      expect(nicknameTile.enabled, isTrue);
-
-      // Rebuild with notifierB (disabled)
-      await tester.pumpWidget(
-        MaterialApp(
-          home: UserManagementSettingsScreen(
-            settingsStore: settingsStore,
-            userAttributeStore: _FakeUserAttributeStore(),
-            broadcasterIdNotifier: notifierB,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      nicknameTile = tester.widget(
-        find.byKey(const Key('nickname-list-tile')),
-      );
-      expect(nicknameTile.enabled, isFalse);
-
-      // Old notifier changes should not affect the widget
-      notifierA.value = null;
-      await tester.pump();
-      // Widget should still reflect notifierB
-      nicknameTile = tester.widget(
-        find.byKey(const Key('nickname-list-tile')),
-      );
-      expect(nicknameTile.enabled, isFalse);
-
-      // New notifier changes should affect the widget
-      notifierB.value = 'broadcaster-b';
-      await tester.pumpAndSettle();
-
-      nicknameTile = tester.widget(
-        find.byKey(const Key('nickname-list-tile')),
-      );
-      expect(nicknameTile.enabled, isTrue);
-
-      notifierA.dispose();
-      notifierB.dispose();
-    });
+        notifier.dispose();
+      },
+    );
 
     testWidgets(
-        'nickname tile disables reactively when broadcasterId becomes null',
-        (WidgetTester tester) async {
-      final SharedPreferencesSettingsStore settingsStore =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-      final ValueNotifier<String?> notifier =
-          ValueNotifier<String?>('broadcaster-1');
+      'switches listener when broadcasterIdNotifier instance changes',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final ValueNotifier<String?> notifierA = ValueNotifier<String?>(
+          'broadcaster-a',
+        );
+        final ValueNotifier<String?> notifierB = ValueNotifier<String?>(null);
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: UserManagementSettingsScreen(
-            settingsStore: settingsStore,
-            userAttributeStore: _FakeUserAttributeStore(),
-            broadcasterIdNotifier: notifier,
+        // Build with notifierA (enabled)
+        await tester.pumpWidget(
+          MaterialApp(
+            home: UserManagementSettingsScreen(
+              settingsStore: settingsStore,
+              userAttributeStore: _FakeUserAttributeStore(),
+              broadcasterIdNotifier: notifierA,
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      // Initially enabled
-      ListTile nicknameTile = tester.widget(
-        find.byKey(const Key('nickname-list-tile')),
-      );
-      expect(nicknameTile.enabled, isTrue);
+        ListTile nicknameTile = tester.widget(
+          find.byKey(const Key('nickname-list-tile')),
+        );
+        expect(nicknameTile.enabled, isTrue);
 
-      // Simulate disconnect
-      notifier.value = null;
-      await tester.pumpAndSettle();
+        // Rebuild with notifierB (disabled)
+        await tester.pumpWidget(
+          MaterialApp(
+            home: UserManagementSettingsScreen(
+              settingsStore: settingsStore,
+              userAttributeStore: _FakeUserAttributeStore(),
+              broadcasterIdNotifier: notifierB,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      // Now disabled
-      nicknameTile = tester.widget(
-        find.byKey(const Key('nickname-list-tile')),
-      );
-      expect(nicknameTile.enabled, isFalse);
-      expect(find.text('放送に接続すると利用できます'), findsOneWidget);
+        nicknameTile = tester.widget(
+          find.byKey(const Key('nickname-list-tile')),
+        );
+        expect(nicknameTile.enabled, isFalse);
 
-      notifier.dispose();
-    });
+        // Old notifier changes should not affect the widget
+        notifierA.value = null;
+        await tester.pump();
+        // Widget should still reflect notifierB
+        nicknameTile = tester.widget(
+          find.byKey(const Key('nickname-list-tile')),
+        );
+        expect(nicknameTile.enabled, isFalse);
 
-    testWidgets('nickname tile label is コテハン管理', (
-      WidgetTester tester,
-    ) async {
+        // New notifier changes should affect the widget
+        notifierB.value = 'broadcaster-b';
+        await tester.pumpAndSettle();
+
+        nicknameTile = tester.widget(
+          find.byKey(const Key('nickname-list-tile')),
+        );
+        expect(nicknameTile.enabled, isTrue);
+
+        notifierA.dispose();
+        notifierB.dispose();
+      },
+    );
+
+    testWidgets(
+      'nickname tile disables reactively when broadcasterId becomes null',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final ValueNotifier<String?> notifier = ValueNotifier<String?>(
+          'broadcaster-1',
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: UserManagementSettingsScreen(
+              settingsStore: settingsStore,
+              userAttributeStore: _FakeUserAttributeStore(),
+              broadcasterIdNotifier: notifier,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Initially enabled
+        ListTile nicknameTile = tester.widget(
+          find.byKey(const Key('nickname-list-tile')),
+        );
+        expect(nicknameTile.enabled, isTrue);
+
+        // Simulate disconnect
+        notifier.value = null;
+        await tester.pumpAndSettle();
+
+        // Now disabled
+        nicknameTile = tester.widget(
+          find.byKey(const Key('nickname-list-tile')),
+        );
+        expect(nicknameTile.enabled, isFalse);
+        expect(find.text('放送に接続すると利用できます'), findsOneWidget);
+
+        notifier.dispose();
+      },
+    );
+
+    testWidgets('nickname tile label is コテハン管理', (WidgetTester tester) async {
       final SharedPreferencesSettingsStore settingsStore =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
       final ValueNotifier<String?> notifier = ValueNotifier<String?>(null);
@@ -248,8 +248,9 @@ void main() {
       notifier.dispose();
     });
 
-    testWidgets('nickname tile is not shown when userAttributeStore is null',
-        (WidgetTester tester) async {
+    testWidgets('nickname tile is not shown when userAttributeStore is null', (
+      WidgetTester tester,
+    ) async {
       final SharedPreferencesSettingsStore settingsStore =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
@@ -267,45 +268,47 @@ void main() {
       expect(find.byKey(const Key('nickname-list-tile')), findsNothing);
     });
 
-    testWidgets('dispose does not throw when broadcasterIdNotifier is provided',
-        (WidgetTester tester) async {
+    testWidgets(
+      'dispose does not throw when broadcasterIdNotifier is provided',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final ValueNotifier<String?> notifier = ValueNotifier<String?>(
+          'broadcaster-1',
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: UserManagementSettingsScreen(
+              settingsStore: settingsStore,
+              userAttributeStore: _FakeUserAttributeStore(),
+              broadcasterIdNotifier: notifier,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Navigate away to trigger dispose
+        await tester.pumpWidget(const MaterialApp(home: Scaffold()));
+        await tester.pumpAndSettle();
+
+        // Changing the notifier after dispose should not throw
+        notifier.value = 'broadcaster-2';
+        await tester.pump();
+
+        notifier.dispose();
+      },
+    );
+
+    testWidgets('dispose does not throw when broadcasterIdNotifier is null', (
+      WidgetTester tester,
+    ) async {
       final SharedPreferencesSettingsStore settingsStore =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-      final ValueNotifier<String?> notifier =
-          ValueNotifier<String?>('broadcaster-1');
 
       await tester.pumpWidget(
         MaterialApp(
-          home: UserManagementSettingsScreen(
-            settingsStore: settingsStore,
-            userAttributeStore: _FakeUserAttributeStore(),
-            broadcasterIdNotifier: notifier,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      // Navigate away to trigger dispose
-      await tester.pumpWidget(const MaterialApp(home: Scaffold()));
-      await tester.pumpAndSettle();
-
-      // Changing the notifier after dispose should not throw
-      notifier.value = 'broadcaster-2';
-      await tester.pump();
-
-      notifier.dispose();
-    });
-
-    testWidgets('dispose does not throw when broadcasterIdNotifier is null',
-        (WidgetTester tester) async {
-      final SharedPreferencesSettingsStore settingsStore =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: UserManagementSettingsScreen(
-            settingsStore: settingsStore,
-          ),
+          home: UserManagementSettingsScreen(settingsStore: settingsStore),
         ),
       );
       await tester.pumpAndSettle();
@@ -329,7 +332,9 @@ void main() {
       expect(loaded.autoNicknameRegistration, isTrue);
 
       toggleSwitchByKeySync(
-          tester, const Key('auto-nickname-registration-switch'));
+        tester,
+        const Key('auto-nickname-registration-switch'),
+      );
       await tester.pumpAndSettle();
 
       loaded = await settingsStore.load();
@@ -340,9 +345,7 @@ void main() {
 
 Widget _buildScreen(SettingsStore settingsStore) {
   return MaterialApp(
-    home: UserManagementSettingsScreen(
-      settingsStore: settingsStore,
-    ),
+    home: UserManagementSettingsScreen(settingsStore: settingsStore),
   );
 }
 

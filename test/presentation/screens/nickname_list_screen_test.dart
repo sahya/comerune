@@ -47,8 +47,9 @@ void main() {
       expect(find.text('新コテハン'), findsOneWidget);
       expect(find.text('旧コテハン'), findsNothing);
 
-      final Map<String, String> saved =
-          await store.loadNicknames('broadcaster');
+      final Map<String, String> saved = await store.loadNicknames(
+        'broadcaster',
+      );
       expect(saved, <String, String>{'100': '新コテハン'});
     });
 
@@ -71,8 +72,9 @@ void main() {
 
       expect(find.byKey(const Key('nickname-list-empty')), findsOneWidget);
 
-      final Map<String, String> saved =
-          await store.loadNicknames('broadcaster');
+      final Map<String, String> saved = await store.loadNicknames(
+        'broadcaster',
+      );
       expect(saved, isEmpty);
     });
   });

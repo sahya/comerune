@@ -9,7 +9,8 @@ class InMemoryUserAttributeStore implements UserAttributeStore {
   @override
   Future<Map<String, int>> loadColors(String broadcasterId) async {
     return Map<String, int>.from(
-        _colors[broadcasterId] ?? const <String, int>{});
+      _colors[broadcasterId] ?? const <String, int>{},
+    );
   }
 
   @override

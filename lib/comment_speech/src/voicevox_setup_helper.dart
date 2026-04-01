@@ -32,8 +32,9 @@ class VoicevoxSetupHelper {
 
   final CommentSpeechPlatform _platform;
 
-  final ValueNotifier<VoicevoxSetupState> state =
-      ValueNotifier(VoicevoxSetupState.idle);
+  final ValueNotifier<VoicevoxSetupState> state = ValueNotifier(
+    VoicevoxSetupState.idle,
+  );
   final ValueNotifier<String> statusMessage = ValueNotifier('');
   final ValueNotifier<double> progress = ValueNotifier(0.0);
   final ValueNotifier<String?> errorMessage = ValueNotifier(null);
@@ -197,10 +198,7 @@ class _VoicevoxSetupDialogState extends State<VoicevoxSetupDialog> {
                   : _helper.progress.value,
             ),
             const SizedBox(height: 8),
-            Text(
-              _progressText(),
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
+            Text(_progressText(), style: Theme.of(context).textTheme.bodySmall),
           ],
         ],
       ),

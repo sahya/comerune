@@ -46,22 +46,25 @@ void main() {
       expect(model.downloadState, ModelDownloadState.notDownloaded);
     });
 
-    test(
-        'model_download_started updates model state to downloading '
+    test('model_download_started updates model state to downloading '
         'and sets progress to 0.0', () async {
       fakePlatform.availableModelsToReturn = [sampleModelMap];
       await manager.refreshModels();
 
-      fakePlatform.emitEvent(const SpeechEvent(
-        type: SpeechEventType.modelDownloadStarted,
-        payload: {'modelId': '1'},
-      ));
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadStarted,
+          payload: {'modelId': '1'},
+        ),
+      );
 
       // Allow the stream event to be processed.
       await Future<void>.delayed(Duration.zero);
 
-      expect(manager.models.value.first.downloadState,
-          ModelDownloadState.downloading);
+      expect(
+        manager.models.value.first.downloadState,
+        ModelDownloadState.downloading,
+      );
       expect(manager.downloadProgress.value['1'], 0.0);
     });
 
@@ -69,74 +72,88 @@ void main() {
       fakePlatform.availableModelsToReturn = [sampleModelMap];
       await manager.refreshModels();
 
-      fakePlatform.emitEvent(const SpeechEvent(
-        type: SpeechEventType.modelDownloadStarted,
-        payload: {'modelId': '1'},
-      ));
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadStarted,
+          payload: {'modelId': '1'},
+        ),
+      );
       await Future<void>.delayed(Duration.zero);
 
-      fakePlatform.emitEvent(const SpeechEvent(
-        type: SpeechEventType.modelDownloadProgress,
-        payload: {
-          'modelId': '1',
-          'bytesDownloaded': 26000000,
-          'totalBytes': 52000000,
-        },
-      ));
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadProgress,
+          payload: {
+            'modelId': '1',
+            'bytesDownloaded': 26000000,
+            'totalBytes': 52000000,
+          },
+        ),
+      );
       await Future<void>.delayed(Duration.zero);
 
       expect(manager.downloadProgress.value['1'], 0.5);
     });
 
-    test(
-        'model_download_completed updates model state to downloaded '
+    test('model_download_completed updates model state to downloaded '
         'and removes progress', () async {
       fakePlatform.availableModelsToReturn = [sampleModelMap];
       await manager.refreshModels();
 
       // Start download first.
-      fakePlatform.emitEvent(const SpeechEvent(
-        type: SpeechEventType.modelDownloadStarted,
-        payload: {'modelId': '1'},
-      ));
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadStarted,
+          payload: {'modelId': '1'},
+        ),
+      );
       await Future<void>.delayed(Duration.zero);
       expect(manager.downloadProgress.value.containsKey('1'), true);
 
       // Complete download.
-      fakePlatform.emitEvent(const SpeechEvent(
-        type: SpeechEventType.modelDownloadCompleted,
-        payload: {'modelId': '1'},
-      ));
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadCompleted,
+          payload: {'modelId': '1'},
+        ),
+      );
       await Future<void>.delayed(Duration.zero);
 
-      expect(manager.models.value.first.downloadState,
-          ModelDownloadState.downloaded);
+      expect(
+        manager.models.value.first.downloadState,
+        ModelDownloadState.downloaded,
+      );
       expect(manager.downloadProgress.value.containsKey('1'), false);
     });
 
-    test(
-        'model_download_failed updates model state to error '
+    test('model_download_failed updates model state to error '
         'and removes progress', () async {
       fakePlatform.availableModelsToReturn = [sampleModelMap];
       await manager.refreshModels();
 
       // Start download first.
-      fakePlatform.emitEvent(const SpeechEvent(
-        type: SpeechEventType.modelDownloadStarted,
-        payload: {'modelId': '1'},
-      ));
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadStarted,
+          payload: {'modelId': '1'},
+        ),
+      );
       await Future<void>.delayed(Duration.zero);
       expect(manager.downloadProgress.value.containsKey('1'), true);
 
       // Fail download.
-      fakePlatform.emitEvent(const SpeechEvent(
-        type: SpeechEventType.modelDownloadFailed,
-        payload: {'modelId': '1'},
-      ));
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadFailed,
+          payload: {'modelId': '1'},
+        ),
+      );
       await Future<void>.delayed(Duration.zero);
 
       expect(
-          manager.models.value.first.downloadState, ModelDownloadState.error);
+        manager.models.value.first.downloadState,
+        ModelDownloadState.error,
+      );
       expect(manager.downloadProgress.value.containsKey('1'), false);
     });
 
@@ -148,17 +165,23 @@ void main() {
       };
       fakePlatform.availableModelsToReturn = [downloadedModelMap];
       await manager.refreshModels();
-      expect(manager.models.value.first.downloadState,
-          ModelDownloadState.downloaded);
+      expect(
+        manager.models.value.first.downloadState,
+        ModelDownloadState.downloaded,
+      );
 
-      fakePlatform.emitEvent(const SpeechEvent(
-        type: SpeechEventType.modelDeleted,
-        payload: {'modelId': '1'},
-      ));
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDeleted,
+          payload: {'modelId': '1'},
+        ),
+      );
       await Future<void>.delayed(Duration.zero);
 
-      expect(manager.models.value.first.downloadState,
-          ModelDownloadState.notDownloaded);
+      expect(
+        manager.models.value.first.downloadState,
+        ModelDownloadState.notDownloaded,
+      );
     });
 
     test('cancelDownload delegates to platform', () async {

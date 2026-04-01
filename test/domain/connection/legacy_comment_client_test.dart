@@ -72,8 +72,8 @@ void main() {
       );
 
       final List<AppMessage> emitted = <AppMessage>[];
-      final StreamSubscription<AppMessage> subscription =
-          client.messages.listen(emitted.add);
+      final StreamSubscription<AppMessage> subscription = client.messages
+          .listen(emitted.add);
 
       await client.connect('wss://legacy.example/ws');
       fakeSocket.add(_legacyFixture('invalid_json.txt'));
@@ -139,21 +139,23 @@ void main() {
       await client.dispose();
     });
 
-    test('notifies connectionFailed when websocket connection throws',
-        () async {
-      final LegacyCommentClient client = LegacyCommentClient(
-        webSocketConnector: (_) async => throw StateError('connect failed'),
-      );
+    test(
+      'notifies connectionFailed when websocket connection throws',
+      () async {
+        final LegacyCommentClient client = LegacyCommentClient(
+          webSocketConnector: (_) async => throw StateError('connect failed'),
+        );
 
-      final Future<LegacyCommentClientError> firstError = client.errors.first;
-      await client.connect('wss://legacy.example/ws');
+        final Future<LegacyCommentClientError> firstError = client.errors.first;
+        await client.connect('wss://legacy.example/ws');
 
-      final LegacyCommentClientError error = await firstError;
-      expect(error.code, LegacyCommentClientErrorCode.connectionFailed);
-      expect(error.cause, isA<StateError>());
+        final LegacyCommentClientError error = await firstError;
+        expect(error.code, LegacyCommentClientErrorCode.connectionFailed);
+        expect(error.cause, isA<StateError>());
 
-      await client.dispose();
-    });
+        await client.dispose();
+      },
+    );
   });
 }
 
@@ -171,8 +173,9 @@ Future<void> _flushEvents() async {
 }
 
 String _legacyFixture(String name) {
-  final Uri fixtureUri =
-      Directory.current.uri.resolve('test/fixtures/legacy/$name');
+  final Uri fixtureUri = Directory.current.uri.resolve(
+    'test/fixtures/legacy/$name',
+  );
   return File.fromUri(fixtureUri).readAsStringSync();
 }
 

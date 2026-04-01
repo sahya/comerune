@@ -47,10 +47,7 @@ void main() {
         request.uri.toString(),
         'https://live2.nicovideo.jp/watch/lv350186414/programinfo',
       );
-      expect(
-        request.headers['X-Niconico-Session'],
-        'user_session_abc123',
-      );
+      expect(request.headers['X-Niconico-Session'], 'user_session_abc123');
       expect(request.headers['User-Agent'], isNotNull);
 
       resolver.dispose();
@@ -90,41 +87,43 @@ void main() {
       resolver.dispose();
     });
 
-    test('falls back to supplier name and ID when broadcaster is absent',
-        () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
-      httpClient.responseBody = jsonEncode(<String, Object?>{
-        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
-        'data': <String, Object?>{
-          'title': 'Supplier Fallback',
-          'supplier': <String, Object?>{
-            'name': 'テスト配信者',
-            'programProviderId': 12345,
-          },
-          'rooms': <Object?>[
-            <String, Object?>{
-              'viewUri':
-                  'https://mpn.live.nicovideo.jp/api/view/v4/TestSupplier',
+    test(
+      'falls back to supplier name and ID when broadcaster is absent',
+      () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseBody = jsonEncode(<String, Object?>{
+          'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+          'data': <String, Object?>{
+            'title': 'Supplier Fallback',
+            'supplier': <String, Object?>{
+              'name': 'テスト配信者',
+              'programProviderId': 12345,
             },
-          ],
-        },
-      });
+            'rooms': <Object?>[
+              <String, Object?>{
+                'viewUri':
+                    'https://mpn.live.nicovideo.jp/api/view/v4/TestSupplier',
+              },
+            ],
+          },
+        });
 
-      final ProgramInfoResolver resolver = ProgramInfoResolver(
-        httpClient: httpClient,
-      );
+        final ProgramInfoResolver resolver = ProgramInfoResolver(
+          httpClient: httpClient,
+        );
 
-      final ProgramInfo result = await resolver.resolve(
-        lv: 'lv999',
-        userSession: 'session',
-      );
+        final ProgramInfo result = await resolver.resolve(
+          lv: 'lv999',
+          userSession: 'session',
+        );
 
-      expect(result.title, 'Supplier Fallback');
-      expect(result.supplierUserId, '12345');
-      expect(result.broadcasterName, 'テスト配信者');
+        expect(result.title, 'Supplier Fallback');
+        expect(result.supplierUserId, '12345');
+        expect(result.broadcasterName, 'テスト配信者');
 
-      resolver.dispose();
-    });
+        resolver.dispose();
+      },
+    );
 
     test('prefers broadcaster over supplier when both exist', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
@@ -135,9 +134,7 @@ void main() {
           'broadcaster': <Object?>[
             <String, Object?>{'id': 11111, 'name': '配信者B'},
           ],
-          'supplier': <String, Object?>{
-            'programProviderId': 22222,
-          },
+          'supplier': <String, Object?>{'programProviderId': 22222},
           'rooms': <Object?>[
             <String, Object?>{
               'viewUri':
@@ -163,42 +160,41 @@ void main() {
     });
 
     test(
-        'returns null supplierUserId when neither broadcaster nor supplier has ID',
-        () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
-      httpClient.responseBody = jsonEncode(<String, Object?>{
-        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
-        'data': <String, Object?>{
-          'title': 'No IDs',
-          'broadcaster': <Object?>[
-            <String, Object?>{'name': '名前だけ'},
-          ],
-          'supplier': <String, Object?>{
-            'name': 'テスト配信者',
+      'returns null supplierUserId when neither broadcaster nor supplier has ID',
+      () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseBody = jsonEncode(<String, Object?>{
+          'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+          'data': <String, Object?>{
+            'title': 'No IDs',
+            'broadcaster': <Object?>[
+              <String, Object?>{'name': '名前だけ'},
+            ],
+            'supplier': <String, Object?>{'name': 'テスト配信者'},
+            'rooms': <Object?>[
+              <String, Object?>{
+                'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/NoIds',
+              },
+            ],
           },
-          'rooms': <Object?>[
-            <String, Object?>{
-              'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/NoIds',
-            },
-          ],
-        },
-      });
+        });
 
-      final ProgramInfoResolver resolver = ProgramInfoResolver(
-        httpClient: httpClient,
-      );
+        final ProgramInfoResolver resolver = ProgramInfoResolver(
+          httpClient: httpClient,
+        );
 
-      final ProgramInfo result = await resolver.resolve(
-        lv: 'lv888',
-        userSession: 'session',
-      );
+        final ProgramInfo result = await resolver.resolve(
+          lv: 'lv888',
+          userSession: 'session',
+        );
 
-      expect(result.title, 'No IDs');
-      expect(result.supplierUserId, isNull);
-      expect(result.broadcasterName, 'テスト配信者');
+        expect(result.title, 'No IDs');
+        expect(result.supplierUserId, isNull);
+        expect(result.broadcasterName, 'テスト配信者');
 
-      resolver.dispose();
-    });
+        resolver.dispose();
+      },
+    );
 
     test('extracts beginAt from ISO 8601 string', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
@@ -287,10 +283,7 @@ void main() {
       );
 
       expect(result.beginAt, isNotNull);
-      expect(
-        result.beginAt!.toUtc(),
-        DateTime.utc(2024, 7, 1, 10, 0, 0),
-      );
+      expect(result.beginAt!.toUtc(), DateTime.utc(2024, 7, 1, 10, 0, 0));
 
       resolver.dispose();
     });
@@ -445,37 +438,40 @@ void main() {
       resolver.dispose();
     });
 
-    test('sends request without auth headers when user_session is empty',
-        () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
-      httpClient.responseBody = jsonEncode(<String, Object?>{
-        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
-        'data': <String, Object?>{
-          'title': 'Public Program',
-          'rooms': <Object?>[
-            <String, Object?>{
-              'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/PublicTest',
-            },
-          ],
-        },
-      });
+    test(
+      'sends request without auth headers when user_session is empty',
+      () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseBody = jsonEncode(<String, Object?>{
+          'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+          'data': <String, Object?>{
+            'title': 'Public Program',
+            'rooms': <Object?>[
+              <String, Object?>{
+                'viewUri':
+                    'https://mpn.live.nicovideo.jp/api/view/v4/PublicTest',
+              },
+            ],
+          },
+        });
 
-      final ProgramInfoResolver resolver = ProgramInfoResolver(
-        httpClient: httpClient,
-      );
+        final ProgramInfoResolver resolver = ProgramInfoResolver(
+          httpClient: httpClient,
+        );
 
-      final ProgramInfo result = await resolver.resolve(lv: 'lv123');
-      expect(result.title, 'Public Program');
+        final ProgramInfo result = await resolver.resolve(lv: 'lv123');
+        expect(result.title, 'Public Program');
 
-      expect(httpClient.requests, hasLength(1));
-      final _CapturedRequest request = httpClient.requests[0];
-      // No auth headers should be set.
-      expect(request.headers['Cookie'], isNull);
-      expect(request.headers['X-Niconico-Session'], isNull);
-      expect(request.headers['User-Agent'], isNotNull);
+        expect(httpClient.requests, hasLength(1));
+        final _CapturedRequest request = httpClient.requests[0];
+        // No auth headers should be set.
+        expect(request.headers['Cookie'], isNull);
+        expect(request.headers['X-Niconico-Session'], isNull);
+        expect(request.headers['User-Agent'], isNotNull);
 
-      resolver.dispose();
-    });
+        resolver.dispose();
+      },
+    );
 
     test('throws when API returns non-200', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
@@ -498,10 +494,7 @@ void main() {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'meta': <String, Object?>{'status': 200},
-        'data': <String, Object?>{
-          'status': 'onAir',
-          'rooms': <Object?>[],
-        },
+        'data': <String, Object?>{'status': 'onAir', 'rooms': <Object?>[]},
       });
 
       final ProgramInfoResolver resolver = ProgramInfoResolver(
@@ -521,9 +514,7 @@ void main() {
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'meta': <String, Object?>{'status': 200},
         'data': <String, Object?>{
-          'rooms': <Object?>[
-            <String, Object?>{},
-          ],
+          'rooms': <Object?>[<String, Object?>{}],
         },
       });
 
@@ -542,12 +533,10 @@ void main() {
 
   group('ProgramInfoResolveException', () {
     test('toString includes message', () {
-      final ProgramInfoResolveException exception =
-          ProgramInfoResolveException('test error');
-      expect(
-        exception.toString(),
-        'ProgramInfoResolveException: test error',
+      final ProgramInfoResolveException exception = ProgramInfoResolveException(
+        'test error',
       );
+      expect(exception.toString(), 'ProgramInfoResolveException: test error');
     });
   });
 }
@@ -566,10 +555,7 @@ class _FakeHttpClient implements HttpClient {
 
   @override
   Future<HttpClientRequest> getUrl(Uri url) async {
-    return _FakeHttpClientRequest(
-      uri: url,
-      client: this,
-    );
+    return _FakeHttpClientRequest(uri: url, client: this);
   }
 
   @override
@@ -604,9 +590,7 @@ class _FakeHttpClientRequest implements HttpClientRequest {
       }
     });
 
-    client.requests.add(
-      _CapturedRequest(uri: uri, headers: headerMap),
-    );
+    client.requests.add(_CapturedRequest(uri: uri, headers: headerMap));
 
     return _FakeHttpClientResponse(
       statusCode: client.responseStatusCode,
@@ -647,7 +631,7 @@ class _FakeHttpHeaders implements HttpHeaders {
 class _FakeHttpClientResponse extends Stream<List<int>>
     implements HttpClientResponse {
   _FakeHttpClientResponse({required this.statusCode, required String body})
-      : _body = body;
+    : _body = body;
 
   @override
   final int statusCode;

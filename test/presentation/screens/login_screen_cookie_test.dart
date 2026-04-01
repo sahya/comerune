@@ -41,47 +41,31 @@ void main() {
     });
 
     test('returns null when no user_session cookie exists', () {
-      expect(
-        parseNicoUserSessionCookie('nicosid=12345; other=xyz'),
-        isNull,
-      );
+      expect(parseNicoUserSessionCookie('nicosid=12345; other=xyz'), isNull);
     });
 
     test('returns null for empty cookie string', () {
-      expect(
-        parseNicoUserSessionCookie(''),
-        isNull,
-      );
+      expect(parseNicoUserSessionCookie(''), isNull);
     });
 
     test('returns null when user_session value is empty', () {
-      expect(
-        parseNicoUserSessionCookie('user_session='),
-        isNull,
-      );
+      expect(parseNicoUserSessionCookie('user_session='), isNull);
     });
 
     test('handles cookie string with extra whitespace', () {
       expect(
-        parseNicoUserSessionCookie(
-          '  user_session = abc123 ;  other = xyz  ',
-        ),
+        parseNicoUserSessionCookie('  user_session = abc123 ;  other = xyz  '),
         isNull, // "user_session " (with space) won't match exact name
       );
     });
 
     test('handles single cookie without semicolons', () {
-      expect(
-        parseNicoUserSessionCookie('user_session=only_one'),
-        'only_one',
-      );
+      expect(parseNicoUserSessionCookie('user_session=only_one'), 'only_one');
     });
 
     test('prefers first matching cookie', () {
       expect(
-        parseNicoUserSessionCookie(
-          'user_session=first; user_session=second',
-        ),
+        parseNicoUserSessionCookie('user_session=first; user_session=second'),
         'first',
       );
     });

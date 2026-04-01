@@ -10,16 +10,18 @@ import 'helpers/in_memory_shared_preferences.dart';
 import 'helpers/in_memory_user_session_store.dart';
 
 void main() {
-  testWidgets('ComeruneApp boots to select screen',
-      (WidgetTester tester) async {
+  testWidgets('ComeruneApp boots to select screen', (
+    WidgetTester tester,
+  ) async {
     final InMemorySharedPreferences prefs = InMemorySharedPreferences();
     final SettingsStore settingsStore = SharedPreferencesSettingsStore(
       prefs: prefs,
     );
 
     // Mark onboarding as completed so no dialog appears.
-    final OnboardingStore onboardingStore =
-        SharedPreferencesOnboardingStore(prefs: prefs);
+    final OnboardingStore onboardingStore = SharedPreferencesOnboardingStore(
+      prefs: prefs,
+    );
     await onboardingStore.markCompleted();
 
     await tester.pumpWidget(
@@ -46,14 +48,16 @@ void main() {
     expect(find.text('comerune へようこそ'), findsNothing);
   });
 
-  testWidgets('ComeruneApp shows onboarding dialog when not completed',
-      (WidgetTester tester) async {
+  testWidgets('ComeruneApp shows onboarding dialog when not completed', (
+    WidgetTester tester,
+  ) async {
     final InMemorySharedPreferences prefs = InMemorySharedPreferences();
     final SettingsStore settingsStore = SharedPreferencesSettingsStore(
       prefs: prefs,
     );
-    final OnboardingStore onboardingStore =
-        SharedPreferencesOnboardingStore(prefs: prefs);
+    final OnboardingStore onboardingStore = SharedPreferencesOnboardingStore(
+      prefs: prefs,
+    );
 
     await tester.pumpWidget(
       ComeruneApp(

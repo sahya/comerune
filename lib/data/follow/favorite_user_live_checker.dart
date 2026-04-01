@@ -11,7 +11,7 @@ import 'dart:io';
 /// A 200 response or any error means the user is not broadcasting.
 class FavoriteUserLiveChecker {
   FavoriteUserLiveChecker({HttpClient? httpClient})
-      : _httpClient = httpClient ?? HttpClient() {
+    : _httpClient = httpClient ?? HttpClient() {
     _httpClient.connectionTimeout = const Duration(seconds: 10);
   }
 
@@ -26,15 +26,14 @@ class FavoriteUserLiveChecker {
   /// Returns a map of userId to programId (e.g. `lv348712105`) for users
   /// who are currently broadcasting. Users who are not broadcasting are
   /// omitted from the result.
-  Future<Map<String, String>> checkBroadcastStatus(
-    Set<String> userIds,
-  ) async {
+  Future<Map<String, String>> checkBroadcastStatus(Set<String> userIds) async {
     if (userIds.isEmpty) {
       return const <String, String>{};
     }
 
-    final List<Future<MapEntry<String, String>?>> futures =
-        userIds.map(_checkSingleUser).toList();
+    final List<Future<MapEntry<String, String>?>> futures = userIds
+        .map(_checkSingleUser)
+        .toList();
     final List<MapEntry<String, String>?> results = await Future.wait(futures);
 
     final Map<String, String> onAirMap = <String, String>{};
@@ -52,8 +51,9 @@ class FavoriteUserLiveChecker {
       final HttpClientRequest request = await _httpClient.getUrl(uri);
       request.followRedirects = false;
 
-      final HttpClientResponse response =
-          await request.close().timeout(_responseTimeout);
+      final HttpClientResponse response = await request.close().timeout(
+        _responseTimeout,
+      );
       try {
         final int statusCode = response.statusCode;
         if (_isRedirect(statusCode)) {
