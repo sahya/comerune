@@ -157,10 +157,15 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
       try {
         final SpeechRuntimeStatus status = await platform.getStatus();
         currentSpeakerId = status.currentSpeakerId;
+        debugPrint(
+          '[TtsSettings] status-check(skip-guard): currentSpeaker=$currentSpeakerId '
+          'targetSpeaker=$speakerId modelId=${model.modelId}',
+        );
       } on Object catch (e) {
         // Fallback to loading the model when status refresh fails.
         debugPrint(
-          '[TtsSettings] loadModel status refresh failed; continue loading. '
+          '[TtsSettings] loadModel decision=load_model '
+          'reason=status_refresh_failed '
           'speaker=$speakerId modelId=${model.modelId} error=$e',
         );
       }
@@ -171,11 +176,16 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
             models,
           )) {
         debugPrint(
-          '[TtsSettings] loadModel skip: currentSpeaker=$currentSpeakerId '
+          '[TtsSettings] loadModel decision=skip_same_model '
+          'currentSpeaker=$currentSpeakerId '
           'and targetSpeaker=$speakerId are in same modelId=${model.modelId}',
         );
         return true;
       }
+      debugPrint(
+        '[TtsSettings] loadModel decision=load_model '
+        'speaker=$speakerId modelId=${model.modelId}',
+      );
       await platform.loadModel(model.modelId);
       debugPrint(
           '[TtsSettings] loadModel success: speaker=$speakerId modelId=${model.modelId}');
@@ -216,7 +226,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   /// settings to the engine only after the model is ready.
   Future<void> _onSpeakerChanged(AppSettings current, int newSpeaker) async {
     if (newSpeaker == current.voicevoxSpeaker) {
-      debugPrint('[TtsSettings] speaker unchanged: $newSpeaker');
+      debugPrint(
+        '[TtsSettings] speaker change decision=no_op_same_speaker speaker=$newSpeaker',
+      );
       return;
     }
 

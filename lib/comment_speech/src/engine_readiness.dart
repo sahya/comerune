@@ -23,10 +23,12 @@ Future<void> ensureEngineReadyForModelLoad(
   int maxPollAttempts = 20,
 }) async {
   SpeechRuntimeStatus status = await platform.getStatus();
-  debugPrint('$logTag ensureEngineReady: currentState=${status.engineState}');
+  debugPrint(
+    '$logTag status-check(ready-guard): engineState=${status.engineState}',
+  );
 
   if (_isReady(status.engineState)) {
-    debugPrint('$logTag ensureEngineReady: already READY');
+    debugPrint('$logTag ensureEngineReady: decision=already_ready');
     return;
   }
 
@@ -39,17 +41,18 @@ Future<void> ensureEngineReadyForModelLoad(
       maxPollAttempts: maxPollAttempts,
     );
     if (_isReady(status.engineState)) {
-      debugPrint('$logTag ensureEngineReady: READY after waiting');
+      debugPrint('$logTag ensureEngineReady: decision=ready_after_wait');
       return;
     }
   }
 
   if (_canInitialize(status.engineState)) {
     debugPrint(
-      '$logTag ensureEngineReady: calling initialize() from state=${status.engineState}',
+      '$logTag ensureEngineReady: decision=initialize '
+      'fromState=${status.engineState}',
     );
     await platform.initialize();
-    debugPrint('$logTag ensureEngineReady: initialize() completed');
+    debugPrint('$logTag ensureEngineReady: decision=initialize_completed');
     return;
   }
 
@@ -70,7 +73,7 @@ Future<SpeechRuntimeStatus> _waitForStableState(
     await Future<void>.delayed(pollInterval);
     latest = await platform.getStatus();
     debugPrint(
-      '$logTag ensureEngineReady: waiting state=${latest.engineState} '
+      '$logTag status-check(wait-guard): engineState=${latest.engineState} '
       '(attempt=$i/$maxPollAttempts)',
     );
     if (!_isTransitional(latest.engineState)) {
