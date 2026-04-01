@@ -1024,13 +1024,16 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
 
   @override
   Widget build(BuildContext context) {
-    final UserNameResolution? userNameResolution = widget.resolveUserName == null
-        ? null
-        : UserNameResolution(
-            resolve: widget.resolveUserName!,
-            requestResolve: widget.requestUserNameResolve ?? (_) {},
-            listenable: _NoopListenable.instance,
-          );
+    final bool hasUserNameResolutionCallbacks =
+        widget.resolveUserName != null || widget.requestUserNameResolve != null;
+    final UserNameResolution? userNameResolution =
+        hasUserNameResolutionCallbacks
+            ? UserNameResolution(
+                resolve: widget.resolveUserName ?? (_) => null,
+                requestResolve: widget.requestUserNameResolve ?? (_) {},
+                listenable: _NoopListenable.instance,
+              )
+            : null;
 
     return CommentScreen(
       lv: 'lv123456789',

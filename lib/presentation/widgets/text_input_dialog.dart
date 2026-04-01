@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 /// Shows a dialog with a single text input field.
 ///
 /// Returns the trimmed text when the user confirms, or `null` when cancelled.
+/// When [clearButtonLabel] is provided and tapped, this returns `''`.
 Future<String?> showTextInputDialog({
   required BuildContext context,
   required String title,
