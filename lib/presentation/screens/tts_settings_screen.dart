@@ -237,13 +237,19 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   Future<void> _onSpeakerChanged(AppSettings current, int newSpeaker) async {
     if (newSpeaker == current.voicevoxSpeaker) {
       debugPrint(
-        '[TtsSettings] speaker change decision=no_op_same_speaker speaker=$newSpeaker',
+        '[TtsSettings] speaker change decision=no_op_same_speaker '
+        'fromSpeaker=${current.voicevoxSpeaker} toSpeaker=$newSpeaker',
       );
       return;
     }
 
     final int previousSpeaker = current.voicevoxSpeaker;
     final int generation = ++_speakerChangeGeneration;
+    debugPrint(
+      '[TtsSettings] speaker change requested: '
+      'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker '
+      'generation=$generation',
+    );
 
     // Optimistically update the UI and persist the new speaker.
     final AppSettings next = current.copyWith(voicevoxSpeaker: newSpeaker);
@@ -260,12 +266,33 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
 
     // If another speaker change happened while we were loading, discard this
     // result -- the newer change takes precedence.
-    if (generation != _speakerChangeGeneration || !mounted) return;
+    if (generation != _speakerChangeGeneration) {
+      debugPrint(
+        '[TtsSettings] speaker change discarded stale result: '
+        'reason=stale_generation '
+        'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker '
+        'generation=$generation latestGeneration=$_speakerChangeGeneration',
+      );
+      return;
+    }
+    if (!mounted) {
+      debugPrint(
+        '[TtsSettings] speaker change discarded result: '
+        'reason=widget_unmounted '
+        'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker '
+        'generation=$generation latestGeneration=$_speakerChangeGeneration',
+      );
+      return;
+    }
 
     if (success) {
       setState(() {
         _isLoadingModel = false;
       });
+      debugPrint(
+        '[TtsSettings] speaker change applied: '
+        'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker',
+      );
       _pushSettingsToEngine(next);
     } else {
       // Revert to the previous speaker and notify the user.
@@ -276,6 +303,11 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         _isLoadingModel = false;
       });
       unawaited(saveSettings(reverted));
+      debugPrint(
+        '[TtsSettings] speaker change reverted: '
+        'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker '
+        'revertedToSpeaker=$previousSpeaker',
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

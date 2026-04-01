@@ -105,21 +105,20 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
   }
 
   Future<void> _onDownload(VoicevoxModelInfo model) async {
-    // Check terms acceptance before downloading.
+    // Show terms dialog before every download.
     final AppSettings settings = await widget.settingsStore.load();
+    if (!mounted) return;
+    final accepted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const _VoicevoxTermsDialog(),
+    );
+    if (accepted != true) return;
+    // Persist acceptance for compatibility with existing settings schema.
     if (!settings.voicevoxTermsAccepted) {
-      if (!mounted) return;
-      final accepted = await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const _VoicevoxTermsDialog(),
-      );
-      if (accepted != true) return;
-      // Persist acceptance.
       final updated = settings.copyWith(voicevoxTermsAccepted: true);
       await widget.settingsStore.save(updated);
     }
-    if (!mounted) return;
     try {
       debugPrint(
         '[VoiceLibrary] download start: modelId=${model.modelId}, name=${model.displayName}',

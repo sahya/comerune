@@ -52,6 +52,17 @@ Widget _buildScreen(
   );
 }
 
+Future<void> _agreeVoicevoxTermsDialog(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump();
+
+  final dialog = find.byType(AlertDialog);
+  expect(dialog, findsOneWidget);
+  final context = tester.element(dialog);
+  Navigator.of(context).pop(true);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   late FakeCommentSpeechPlatform fakePlatform;
 
@@ -163,7 +174,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('download-btn-1')));
-    await tester.pumpAndSettle();
+    await _agreeVoicevoxTermsDialog(tester);
 
     expect(fakePlatform.initializeCalled, isTrue);
     expect(fakePlatform.loadedModelIds, contains('1'));
@@ -189,7 +200,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('download-btn-1')));
-    await tester.pumpAndSettle();
+    await _agreeVoicevoxTermsDialog(tester);
 
     expect(fakePlatform.initializeCalled, isFalse);
     expect(fakePlatform.loadedModelIds, contains('1'));
@@ -216,7 +227,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('download-btn-1')));
-    await tester.pumpAndSettle();
+    await _agreeVoicevoxTermsDialog(tester);
 
     expect(find.textContaining('モデルの読み込みに失敗しました'), findsOneWidget);
   });
@@ -275,7 +286,8 @@ void main() {
       expect(loaded.voicevoxTermsAccepted, isFalse);
     });
 
-    testWidgets('skips dialog when terms already accepted', (tester) async {
+    testWidgets('shows dialog even when terms already accepted',
+        (tester) async {
       final prefs = InMemorySharedPreferences();
       final settingsStore = SharedPreferencesSettingsStore(prefs: prefs);
       // Pre-accept terms.
@@ -292,8 +304,8 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      // Dialog should NOT appear — download proceeds directly.
-      expect(find.text('VOICEVOX 利用規約'), findsNothing);
+      // Dialog should appear on every download.
+      expect(find.text('VOICEVOX 利用規約'), findsOneWidget);
     });
   });
 }

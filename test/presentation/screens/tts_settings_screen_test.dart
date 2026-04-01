@@ -14,6 +14,22 @@ import '../../helpers/settings_test_helpers.dart';
 
 const Key _listKey = Key('tts-settings-list');
 
+Future<List<String>> _captureDebugLogs(Future<void> Function() action) async {
+  final List<String> logs = <String>[];
+  final originalDebugPrint = debugPrint;
+  debugPrint = (String? message, {int? wrapWidth}) {
+    if (message != null) {
+      logs.add(message);
+    }
+  };
+  try {
+    await action();
+  } finally {
+    debugPrint = originalDebugPrint;
+  }
+  return logs;
+}
+
 void main() {
   group('TtsSettingsScreen', () {
     testWidgets('shows VOICEVOX section without engine selection', (
@@ -552,11 +568,19 @@ void main() {
               skipOffstage: false),
         );
         // Initial speaker is 0 in this test setup.
-        dropdown.onChanged!(0);
-        await tester.pumpAndSettle();
+        final List<String> logs = await _captureDebugLogs(() async {
+          dropdown.onChanged!(0);
+          await tester.pumpAndSettle();
+        });
 
         expect(platform.loadedModelIds, isEmpty);
         expect(platform.lastUpdatedSettings, isNull);
+        expect(
+          logs.any((line) =>
+              line.contains('decision=no_op_same_speaker') &&
+              line.contains('fromSpeaker=0 toSpeaker=0')),
+          isTrue,
+        );
       });
 
       testWidgets(
@@ -913,29 +937,74 @@ void main() {
           find.byKey(const Key('voicevox-speaker-dropdown'),
               skipOffstage: false),
         );
-        dropdown1.onChanged!(1);
-        await tester.pump();
+        final List<String> logs = await _captureDebugLogs(() async {
+          // First change: speaker 0 -> 1 (slow).
+          dropdown1.onChanged!(1);
+          await tester.pump();
 
-        // While model-b is still loading, change to speaker 2 (instant).
-        platform.loadModelCompleter = null; // Second load returns immediately.
-        // We need to get the dropdown widget again — but it's disabled.
-        // The _onSpeakerChanged is already in-flight for speaker 1.
-        // We simulate the second change by completing the first load after
-        // a second change is queued. Instead, let's complete first load
-        // and verify the generation counter works.
+          // Trigger a second change while the first load is still in-flight.
+          platform.loadModelCompleter =
+              null; // Second load returns immediately.
+          dropdown1.onChanged!(2);
+          await tester.pumpAndSettle();
 
-        // Actually, the dropdown is disabled during loading, so the user
-        // cannot trigger a second change through UI while loading.
-        // The generation counter guards programmatic / timing edge cases.
-        // Let's verify the first load completes correctly.
-        firstLoadCompleter.complete();
+          // Complete the stale first load.
+          firstLoadCompleter.complete();
+          await tester.pumpAndSettle();
+        });
+
+        // The final speaker should be the second request target (2).
+        final AppSettings loaded = await settingsStore.load();
+        expect(loaded.voicevoxSpeaker, 2);
+        expect(platform.lastUpdatedSettings, isNotNull);
+        expect(platform.lastUpdatedSettings!.speakerId, 2);
+        expect(platform.loadedModelIds,
+            containsAll(<String>['model-b', 'model-c']));
+        expect(
+          logs.any((line) => line.contains('reason=stale_generation')),
+          isTrue,
+        );
+      });
+
+      testWidgets(
+          'in-flight speaker change logs widget_unmounted reason when screen is disposed',
+          (
+        WidgetTester tester,
+      ) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final FakeCommentSpeechPlatform platform = _createPlatformWithModels();
+        final Completer<void> loadCompleter = Completer<void>();
+        platform.loadModelCompleter = loadCompleter;
+
+        await tester
+            .pumpWidget(_buildScreenWithPlatform(settingsStore, platform));
         await tester.pumpAndSettle();
 
-        // The final speaker should be 1.
-        final AppSettings loaded = await settingsStore.load();
-        expect(loaded.voicevoxSpeaker, 1);
-        expect(platform.lastUpdatedSettings, isNotNull);
-        expect(platform.lastUpdatedSettings!.speakerId, 1);
+        await scrollToKeyInList(
+            tester, _listKey, const Key('voicevox-speaker-dropdown'));
+        final DropdownButtonFormField<int> dropdown =
+            tester.widget<DropdownButtonFormField<int>>(
+          find.byKey(const Key('voicevox-speaker-dropdown'),
+              skipOffstage: false),
+        );
+
+        final List<String> logs = await _captureDebugLogs(() async {
+          dropdown.onChanged!(1);
+          await tester.pump();
+
+          // Dispose the screen while model load is still in-flight.
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump();
+
+          loadCompleter.complete();
+          await tester.pumpAndSettle();
+        });
+
+        expect(
+          logs.any((line) => line.contains('reason=widget_unmounted')),
+          isTrue,
+        );
       });
     });
   });
