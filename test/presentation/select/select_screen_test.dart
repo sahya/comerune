@@ -8,6 +8,7 @@ import 'package:comerune/data/follow/my_program_repository.dart';
 import 'package:comerune/data/user/user_attribute_store.dart';
 import 'package:comerune/domain/connection/connection_supervisor.dart';
 import 'package:comerune/domain/models/app_message.dart';
+import 'package:comerune/domain/models/user_name_resolution.dart';
 import 'package:comerune/presentation/select/select_screen.dart';
 import 'package:comerune/presentation/screens/comment_screen.dart';
 
@@ -19,6 +20,21 @@ Finder inputField() => find.byKey(const Key('select_screen_input'));
 Finder connectButton() => find.byKey(const Key('select_screen_connect_button'));
 
 void main() {
+  test('buildBroadcastEndedNotificationId is unique for same milliseconds', () {
+    final String id0 = buildBroadcastEndedNotificationId(
+      epochMilliseconds: 1234567890,
+      sequence: 0,
+    );
+    final String id1 = buildBroadcastEndedNotificationId(
+      epochMilliseconds: 1234567890,
+      sequence: 1,
+    );
+
+    expect(id0, isNot(id1));
+    expect(id0, startsWith('system:broadcast_ended:1234567890:'));
+    expect(id1, startsWith('system:broadcast_ended:1234567890:'));
+  });
+
   Future<void> pumpSelectScreen(
     WidgetTester tester,
     ConnectionSupervisor supervisor,
@@ -266,6 +282,51 @@ void main() {
 
     expect(find.byType(CommentScreen), findsOneWidget);
     expect(find.byKey(const Key('comment-row-msg-1')), findsOneWidget);
+  });
+
+  testWidgets(
+      'keeps name resolution callbacks enabled when showUserName is false',
+      (WidgetTester tester) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+    final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+    await prefs.setBool('settings.comment.showUserName', false);
+    await prefs.setBool('settings.comment.resolveUserName', true);
+    await prefs.setBool('settings.tts.readUserName', true);
+    final SettingsStore settingsStore =
+        SharedPreferencesSettingsStore(prefs: prefs);
+    final List<String> requestedUserIds = <String>[];
+    final UserNameResolution userNameResolution = UserNameResolution(
+      resolve: (_) => '解決名',
+      requestResolve: requestedUserIds.add,
+      listenable: ChangeNotifier(),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SelectScreen(
+          connectionSupervisor: supervisor,
+          settingsStore: settingsStore,
+          userNameResolution: userNameResolution,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(inputField(), 'lv345678901');
+    await tester.pump();
+    await tester.tap(connectButton());
+    await tester.pumpAndSettle();
+
+    final CommentScreen commentScreen = tester.widget<CommentScreen>(
+      find.byType(CommentScreen),
+    );
+    expect(commentScreen.showUserName, isFalse);
+    expect(commentScreen.readUserName, isTrue);
+    expect(commentScreen.userNameResolution?.resolve, isNotNull);
+    expect(commentScreen.userNameResolution?.requestResolve, isNotNull);
+
+    commentScreen.userNameResolution?.requestResolve('12345');
+    expect(requestedUserIds, <String>['12345']);
   });
 
   testWidgets(

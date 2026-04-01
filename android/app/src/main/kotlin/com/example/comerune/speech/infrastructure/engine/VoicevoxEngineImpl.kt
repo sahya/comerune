@@ -118,7 +118,7 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                 )
             }
 
-            state = TtsEngineState.INITIALIZING
+            updateEngineState(TtsEngineState.INITIALIZING, "initialize_started")
             loadedModelPaths.clear()
             loadedModelIds.clear()
 
@@ -129,6 +129,7 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                     val modelDir = File(baseDir, VVM_DIR_NAME)
 
                     ensureAssetsAvailable(baseDir, dictDir, modelDir)
+                    updateEngineState(TtsEngineState.INITIALIZING, "assets_ready")
 
                     Log.i(TAG, "Calling NativeVoicevoxBridge.nativeInitialize(${dictDir.absolutePath})")
                     val initialized = NativeVoicevoxBridge.nativeInitialize(
@@ -167,11 +168,11 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                     }
                 }
 
-                state = TtsEngineState.READY
+                updateEngineState(TtsEngineState.READY, "initialize_completed")
                 Log.i(TAG, "VOICEVOX engine initialized successfully")
                 Result.success(Unit)
             } catch (e: Throwable) {
-                state = TtsEngineState.ERROR
+                updateEngineState(TtsEngineState.ERROR, "initialize_failed")
                 loadedModelPaths.clear()
                 loadedModelIds.clear()
                 Log.e(TAG, "Initialization failed", e)
@@ -439,6 +440,10 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                 dictDir.deleteRecursively()
                 Log.i(TAG, "Cleared stale dictionary directory: ${dictDir.absolutePath}")
             }
+            updateEngineState(
+                TtsEngineState.DOWNLOADING,
+                "download_dict:$OPEN_JTALK_DICT_DIR_NAME"
+            )
             emitDownloadEvent("download_started", OPEN_JTALK_DICT_DIR_NAME)
             downloadAndExtractTarGz(
                 url = OPEN_JTALK_DICT_URL,
@@ -457,6 +462,10 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         val baseModelFile = File(modelDir, "0.vvm")
         val shouldRefreshBaseModel = !hasBaseVvm || !versionMatches
         if (shouldRefreshBaseModel) {
+            updateEngineState(
+                TtsEngineState.DOWNLOADING,
+                "download_model:${baseModelFile.name}"
+            )
             emitDownloadEvent("download_started", "0.vvm")
             downloadFile(
                 url = VVM_DOWNLOAD_URL,
@@ -572,6 +581,10 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             }
 
             // Extract tar.gz
+            updateEngineState(
+                TtsEngineState.EXTRACTING,
+                "extract:$displayName"
+            )
             GZIPInputStream(tempFile.inputStream()).use { gzip ->
                 extractTar(gzip, targetDir, stripPrefix)
             }
@@ -760,6 +773,13 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         onDownloadEvent?.invoke(
             mapOf("type" to type, "payload" to mapOf("fileName" to fileName))
         )
+    }
+
+    private fun updateEngineState(next: TtsEngineState, reason: String) {
+        val current = state
+        if (current == next) return
+        state = next
+        Log.i(TAG, "Engine state changed: $current -> $next ($reason)")
     }
 
     /**

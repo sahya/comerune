@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -85,9 +87,8 @@ String _commentLineText({
     return '$timestamp  $content';
   }
 
-  final String displayName = resolvedUserName != null
-      ? '$resolvedUserName ($userId)'
-      : userId;
+  final String displayName =
+      resolvedUserName != null ? '$resolvedUserName ($userId)' : userId;
 
   return '$timestamp  $displayName  $content';
 }
@@ -119,6 +120,7 @@ class CommentScreen extends StatefulWidget {
     this.autoSaveCommentLogPath = '',
     this.ngUserIds = const <String>{},
     this.ngWords = const <String>[],
+    this.presetNgWords = const <String>[],
     this.onToggleNgUser,
     this.starPrefixHidingEnabled = false,
     this.userColorMap = const <String, int>{},
@@ -149,7 +151,7 @@ class CommentScreen extends StatefulWidget {
   final Future<void> Function() onStopAllConnections;
   final Future<void> Function() onReconnectSameLv;
   final Future<void> Function(String previousLv, String nextLv)
-  onDifferentLvConnected;
+      onDifferentLvConnected;
   final Future<void> Function()? onOpenSettings;
   final bool debugMode;
   final ConnectionMethod? connectionMethod;
@@ -173,6 +175,11 @@ class CommentScreen extends StatefulWidget {
 
   /// List of NG words for content-based filtering (case-insensitive).
   final List<String> ngWords;
+
+  /// System preset NG words (non-user editable in UI).
+  ///
+  /// When empty, the widget attempts to load `preset_ng_words.json` from assets.
+  final List<String> presetNgWords;
 
   /// Called to toggle NG status for a user.
   final void Function(String userId)? onToggleNgUser;
@@ -267,6 +274,8 @@ class _CommentScreenState extends State<CommentScreen> {
   /// timestamp before this value are skipped, ensuring that only comments
   /// arriving after speech initialization are read aloud.
   DateTime? _speechBaselineTimestamp;
+  List<String> _effectivePresetNgWords = const <String>[];
+  List<String> _normalizedEffectiveNgWords = const <String>[];
 
   @override
   void initState() {
@@ -280,6 +289,11 @@ class _CommentScreenState extends State<CommentScreen> {
     _syncWakelockForStatus(_lastStatus);
 
     _requestUserNameResolution(widget.messages);
+    _effectivePresetNgWords = widget.presetNgWords;
+    _refreshNormalizedNgWords();
+    if (widget.presetNgWords.isEmpty) {
+      unawaited(_loadPresetNgWordsFromAsset());
+    }
 
     _debugLogLazy(
       () =>
@@ -310,6 +324,21 @@ class _CommentScreenState extends State<CommentScreen> {
       _lastStatus = widget.connectionSupervisor.status;
     }
 
+    if (!_listEqualsShallow(oldWidget.ngWords, widget.ngWords) ||
+        !_listEqualsShallow(oldWidget.presetNgWords, widget.presetNgWords)) {
+      if (widget.presetNgWords.isNotEmpty) {
+        _effectivePresetNgWords = widget.presetNgWords;
+        _refreshNormalizedNgWords();
+      } else if (oldWidget.presetNgWords.isNotEmpty &&
+          widget.presetNgWords.isEmpty) {
+        _effectivePresetNgWords = const <String>[];
+        _refreshNormalizedNgWords();
+        unawaited(_loadPresetNgWordsFromAsset());
+      } else {
+        _refreshNormalizedNgWords();
+      }
+    }
+
     if (oldWidget.lv != widget.lv) {
       _autoScrollEnabled = true;
       _pinnedMessageIds.clear();
@@ -323,9 +352,8 @@ class _CommentScreenState extends State<CommentScreen> {
       _cleanUpStalePinnedIds();
     }
 
-    final String lastId = widget.messages.isNotEmpty
-        ? widget.messages.last.id
-        : 'empty';
+    final String lastId =
+        widget.messages.isNotEmpty ? widget.messages.last.id : 'empty';
     _debugLogLazy(
       () =>
           '[CommentScreen] didUpdate: msgs ${oldWidget.messages.length}→${widget.messages.length}, '
@@ -334,8 +362,7 @@ class _CommentScreenState extends State<CommentScreen> {
 
     if (oldWidget.speechSettings != widget.speechSettings) {
       _debugLogLazy(
-        () =>
-            '[CommentScreen] didUpdate: speechSettings changed: '
+        () => '[CommentScreen] didUpdate: speechSettings changed: '
             'enabled ${oldWidget.speechSettings.enabled}→${widget.speechSettings.enabled}',
       );
       unawaited(_handleSpeechSettingsChanged(oldWidget.speechSettings));
@@ -449,7 +476,10 @@ class _CommentScreenState extends State<CommentScreen> {
     for (int i = start; i < newMessages.length; i++) {
       final AppMessage m = newMessages[i];
       if (m.type == AppMessageType.chat) {
-        _debugLogLazy(() => '[CommentScreen] newComment: ${m.content}');
+        _debugLogLazy(
+          () =>
+              '[CommentScreen] newComment: id=${m.id}, user=${m.userId ?? "unknown"}, chars=${m.content.length}',
+        );
       }
     }
   }
@@ -460,8 +490,7 @@ class _CommentScreenState extends State<CommentScreen> {
 
   Future<void> _initializeAndStartSpeech() async {
     _debugLogLazy(
-      () =>
-          '[CommentScreen] initSpeech: enter '
+      () => '[CommentScreen] initSpeech: enter '
           '(initializing=$_speechInitializing, initialized=$_speechInitialized)',
     );
     if (_speechInitializing) return;
@@ -478,8 +507,7 @@ class _CommentScreenState extends State<CommentScreen> {
       try {
         final SpeechRuntimeStatus status = await platform.getStatus();
         _debugLogLazy(
-          () =>
-              '[CommentScreen] initSpeech: engine=${status.engineState}, '
+          () => '[CommentScreen] initSpeech: engine=${status.engineState}, '
               'player=${status.playerState}, queue=${status.queueSize}',
         );
         if (status.engineState == 'READY') {
@@ -539,7 +567,10 @@ class _CommentScreenState extends State<CommentScreen> {
         try {
           await platform.stop(clearQueue: true);
         } catch (e) {
-          debugPrint('[CommentScreen] initSpeech: abort stop FAILED: $e');
+          _errorLog(
+            '[CommentScreen] initSpeech: abort stop FAILED',
+            error: e,
+          );
         }
         return;
       }
@@ -552,8 +583,7 @@ class _CommentScreenState extends State<CommentScreen> {
       }
       _startSpeechPollTimer();
       _debugLogLazy(
-        () =>
-            '[CommentScreen] Speech started. baseline=$_lastSpeechMessageId, '
+        () => '[CommentScreen] Speech started. baseline=$_lastSpeechMessageId, '
             'msgCount=${widget.messages.length}',
       );
     } catch (e, stackTrace) {
@@ -574,8 +604,7 @@ class _CommentScreenState extends State<CommentScreen> {
 
   Future<void> _handleSpeechSettingsChanged(SpeechSettings oldSettings) async {
     _debugLogLazy(
-      () =>
-          '[CommentScreen] settingsChanged: enabled ${oldSettings.enabled}→'
+      () => '[CommentScreen] settingsChanged: enabled ${oldSettings.enabled}→'
           '${widget.speechSettings.enabled}, started=$_speechStarted',
     );
     if (!oldSettings.enabled && widget.speechSettings.enabled) {
@@ -723,7 +752,10 @@ class _CommentScreenState extends State<CommentScreen> {
       if (widget.readUserName) {
         final String? displayName = _resolveSpeechDisplayName(message);
         if (displayName != null && displayName.isNotEmpty) {
-          speechText = '$displayName、$speechText';
+          final String nameWithHonorific = _appendSan(displayName);
+          if (nameWithHonorific.isNotEmpty) {
+            speechText = '$speechText、$nameWithHonorific';
+          }
         }
       }
 
@@ -743,15 +775,12 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   /// Returns `true` when [content] contains any configured NG word.
-  ///
-  /// [widget.ngWords] is pre-lowered by [AppSettings.ngWordList], so only the
-  /// content needs to be lower-cased for case-insensitive matching.
   bool _containsNgWord(String content) {
-    if (widget.ngWords.isEmpty) {
+    if (_normalizedEffectiveNgWords.isEmpty) {
       return false;
     }
-    final String lowerContent = content.toLowerCase();
-    return widget.ngWords.any((String word) => lowerContent.contains(word));
+    final String normalizedContent = _normalizeNgWordText(content);
+    return _normalizedEffectiveNgWords.any(normalizedContent.contains);
   }
 
   Future<void> _handleTeachCommand(AppMessage message) async {
@@ -893,9 +922,8 @@ class _CommentScreenState extends State<CommentScreen> {
                     key: const Key('save-comment-log-button'),
                     icon: const Icon(Icons.save_outlined),
                     tooltip: 'コメントログを保存',
-                    onPressed: _isSavingLog
-                        ? null
-                        : () => unawaited(_saveLogManual()),
+                    onPressed:
+                        _isSavingLog ? null : () => unawaited(_saveLogManual()),
                   ),
                 IconButton(
                   key: const Key('sort-toggle-button'),
@@ -1110,9 +1138,8 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   void _cleanUpStalePinnedIds() {
-    final Set<String> currentIds = widget.messages
-        .map((AppMessage m) => m.id)
-        .toSet();
+    final Set<String> currentIds =
+        widget.messages.map((AppMessage m) => m.id).toSet();
     _pinnedMessageIds.removeWhere((String id) => !currentIds.contains(id));
   }
 
@@ -1139,22 +1166,20 @@ class _CommentScreenState extends State<CommentScreen> {
 
   String? _resolveSpeechDisplayName(AppMessage message) {
     final String? userId = message.userId;
-    if (userId == null || userId.isEmpty) {
-      return null;
-    }
-
-    final String? nickname = widget.userNicknameMap[userId];
-    if (nickname != null && nickname.isNotEmpty) {
-      return nickname;
-    }
-
-    if (!_isNumericUserId(userId)) {
-      return null;
+    if (userId != null && userId.isNotEmpty) {
+      final String? nickname = widget.userNicknameMap[userId];
+      if (nickname != null && nickname.isNotEmpty) {
+        return nickname;
+      }
     }
 
     final String? userName = message.userName;
     if (userName != null && userName.isNotEmpty) {
       return userName;
+    }
+
+    if (userId == null || userId.isEmpty) {
+      return null;
     }
 
     final String? resolvedName = widget.userNameResolution?.resolve(userId);
@@ -1165,8 +1190,14 @@ class _CommentScreenState extends State<CommentScreen> {
     return null;
   }
 
-  bool _isNumericUserId(String userId) {
-    return int.tryParse(userId) != null;
+  String _appendSan(String displayName) {
+    final String trimmedName = displayName.trim();
+    if (trimmedName.isEmpty ||
+        trimmedName.endsWith('さん') ||
+        trimmedName.endsWith('ちゃん')) {
+      return trimmedName;
+    }
+    return '$trimmedNameさん';
   }
 
   void _toggleSortOrder() {
@@ -1323,18 +1354,16 @@ class _CommentScreenState extends State<CommentScreen> {
         widget.connectionSupervisor.lastError;
     final String base = _failedMessage(errorCode);
     final String detail = widget.connectionSupervisor.lastErrorDetail ?? '';
-    final String compactDetail = detail.isEmpty
-        ? '-'
-        : _compactSingleLine(detail);
+    final String compactDetail =
+        detail.isEmpty ? '-' : _compactSingleLine(detail);
 
     if (widget.debugMode) {
       final String code = errorCode?.code ?? 'UNKNOWN_ERROR';
       return '$base [code: $code] 原因: $compactDetail 再接続ボタンで再試行できます。';
     }
 
-    final String detailSuffix = detail.isEmpty
-        ? ''
-        : ' 原因: ${_compactSingleLine(detail)}';
+    final String detailSuffix =
+        detail.isEmpty ? '' : ' 原因: ${_compactSingleLine(detail)}';
     return '$base$detailSuffix 再接続ボタンで再試行できます。';
   }
 
@@ -1427,13 +1456,8 @@ class _CommentScreenState extends State<CommentScreen> {
       return false;
     }
 
-    if (widget.ngWords.isNotEmpty) {
-      final String lowerContent = message.content.toLowerCase();
-      for (final String word in widget.ngWords) {
-        if (lowerContent.contains(word)) {
-          return false;
-        }
-      }
+    if (_containsNgWord(message.content)) {
+      return false;
     }
 
     return true;
@@ -1460,8 +1484,7 @@ class _CommentScreenState extends State<CommentScreen> {
       return true;
     }
 
-    final double distanceToBottom =
-        _scrollController.position.maxScrollExtent -
+    final double distanceToBottom = _scrollController.position.maxScrollExtent -
         _scrollController.position.pixels;
     return distanceToBottom <= _autoScrollResumeThreshold;
   }
@@ -1472,6 +1495,349 @@ class _CommentScreenState extends State<CommentScreen> {
     }
 
     return _scrollController.position.pixels <= _autoScrollResumeThreshold;
+  }
+
+  Future<void> _loadPresetNgWordsFromAsset() async {
+    try {
+      final String jsonText = await rootBundle
+          .loadString('android/app/src/main/assets/preset_ng_words.json');
+      final Object decoded = jsonDecode(jsonText);
+      if (decoded is! Map<String, dynamic>) {
+        return;
+      }
+      final Object? categoriesObject = decoded['categories'];
+      if (categoriesObject is! Map<String, dynamic>) {
+        return;
+      }
+      final List<String> words = <String>[];
+      for (final Object? categoryObject in categoriesObject.values) {
+        if (categoryObject is! Map<String, dynamic>) {
+          continue;
+        }
+        final Object? wordsObject = categoryObject['words'];
+        if (wordsObject is! List<dynamic>) {
+          continue;
+        }
+        for (final Object? wordObject in wordsObject) {
+          if (wordObject is String && wordObject.trim().isNotEmpty) {
+            words.add(wordObject.trim());
+          }
+        }
+      }
+      if (!mounted || widget.presetNgWords.isNotEmpty) {
+        return;
+      }
+      _effectivePresetNgWords = words;
+      _refreshNormalizedNgWords();
+      setState(() {});
+    } catch (_) {
+      // Keep empty preset list when asset is unavailable (e.g. tests without bundle).
+    }
+  }
+
+  void _refreshNormalizedNgWords() {
+    final List<String> source = <String>[
+      ..._effectivePresetNgWords,
+      ...widget.ngWords,
+    ];
+    final List<String> normalized = source
+        .where((String word) => word.trim().isNotEmpty)
+        .map(_normalizeNgWordText)
+        .where((String word) => word.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    _normalizedEffectiveNgWords = normalized;
+  }
+
+  bool _listEqualsShallow(List<String> a, List<String> b) {
+    if (identical(a, b)) {
+      return true;
+    }
+    if (a.length != b.length) {
+      return false;
+    }
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  String _normalizeNgWordText(String text) {
+    String result = text;
+    result = _normalizeFullWidthAscii(result);
+    result = _normalizeHalfWidthKatakana(result);
+    result = _removeControlAndInvisible(result);
+    result = _applyLookAlikeTable(result);
+    result = _katakanaToHiragana(result);
+    result = result.toLowerCase();
+    result = _removeSpacesAndSymbols(result);
+    result = _compressDuplicates(result);
+    return result;
+  }
+
+  String _normalizeFullWidthAscii(String text) {
+    final StringBuffer sb = StringBuffer();
+    for (final int cp in text.runes) {
+      if (cp == 0x3000) {
+        sb.write(' ');
+      } else if (cp >= 0xFF10 && cp <= 0xFF19) {
+        sb.writeCharCode(cp - 0xFEE0);
+      } else if (cp >= 0xFF21 && cp <= 0xFF3A) {
+        sb.writeCharCode(cp - 0xFEE0);
+      } else if (cp >= 0xFF41 && cp <= 0xFF5A) {
+        sb.writeCharCode(cp - 0xFEE0);
+      } else {
+        sb.writeCharCode(cp);
+      }
+    }
+    return sb.toString();
+  }
+
+  String _normalizeHalfWidthKatakana(String text) {
+    if (text.isEmpty) {
+      return text;
+    }
+    const Map<String, String> map = <String, String>{
+      'ｱ': 'ア',
+      'ｲ': 'イ',
+      'ｳ': 'ウ',
+      'ｴ': 'エ',
+      'ｵ': 'オ',
+      'ｶ': 'カ',
+      'ｷ': 'キ',
+      'ｸ': 'ク',
+      'ｹ': 'ケ',
+      'ｺ': 'コ',
+      'ｻ': 'サ',
+      'ｼ': 'シ',
+      'ｽ': 'ス',
+      'ｾ': 'セ',
+      'ｿ': 'ソ',
+      'ﾀ': 'タ',
+      'ﾁ': 'チ',
+      'ﾂ': 'ツ',
+      'ﾃ': 'テ',
+      'ﾄ': 'ト',
+      'ﾅ': 'ナ',
+      'ﾆ': 'ニ',
+      'ﾇ': 'ヌ',
+      'ﾈ': 'ネ',
+      'ﾉ': 'ノ',
+      'ﾊ': 'ハ',
+      'ﾋ': 'ヒ',
+      'ﾌ': 'フ',
+      'ﾍ': 'ヘ',
+      'ﾎ': 'ホ',
+      'ﾏ': 'マ',
+      'ﾐ': 'ミ',
+      'ﾑ': 'ム',
+      'ﾒ': 'メ',
+      'ﾓ': 'モ',
+      'ﾔ': 'ヤ',
+      'ﾕ': 'ユ',
+      'ﾖ': 'ヨ',
+      'ﾗ': 'ラ',
+      'ﾘ': 'リ',
+      'ﾙ': 'ル',
+      'ﾚ': 'レ',
+      'ﾛ': 'ロ',
+      'ﾜ': 'ワ',
+      'ｦ': 'ヲ',
+      'ﾝ': 'ン',
+      'ｧ': 'ァ',
+      'ｨ': 'ィ',
+      'ｩ': 'ゥ',
+      'ｪ': 'ェ',
+      'ｫ': 'ォ',
+      'ｯ': 'ッ',
+      'ｬ': 'ャ',
+      'ｭ': 'ュ',
+      'ｮ': 'ョ',
+      'ｰ': 'ー',
+    };
+    const Map<String, String> voiced = <String, String>{
+      'ｳ': 'ヴ',
+      'ｶ': 'ガ',
+      'ｷ': 'ギ',
+      'ｸ': 'グ',
+      'ｹ': 'ゲ',
+      'ｺ': 'ゴ',
+      'ｻ': 'ザ',
+      'ｼ': 'ジ',
+      'ｽ': 'ズ',
+      'ｾ': 'ゼ',
+      'ｿ': 'ゾ',
+      'ﾀ': 'ダ',
+      'ﾁ': 'ヂ',
+      'ﾂ': 'ヅ',
+      'ﾃ': 'デ',
+      'ﾄ': 'ド',
+      'ﾊ': 'バ',
+      'ﾋ': 'ビ',
+      'ﾌ': 'ブ',
+      'ﾍ': 'ベ',
+      'ﾎ': 'ボ',
+      'ﾜ': 'ヷ',
+      'ｦ': 'ヺ',
+    };
+    const Map<String, String> semiVoiced = <String, String>{
+      'ﾊ': 'パ',
+      'ﾋ': 'ピ',
+      'ﾌ': 'プ',
+      'ﾍ': 'ペ',
+      'ﾎ': 'ポ',
+    };
+    final List<String> chars = text.split('');
+    final StringBuffer sb = StringBuffer();
+    int i = 0;
+    while (i < chars.length) {
+      final String ch = chars[i];
+      final String? next = i + 1 < chars.length ? chars[i + 1] : null;
+      if (next == 'ﾞ') {
+        final String? combined = voiced[ch];
+        if (combined != null) {
+          sb.write(combined);
+          i += 2;
+          continue;
+        }
+      } else if (next == 'ﾟ') {
+        final String? combined = semiVoiced[ch];
+        if (combined != null) {
+          sb.write(combined);
+          i += 2;
+          continue;
+        }
+      }
+      sb.write(map[ch] ?? ch);
+      i++;
+    }
+    return sb.toString();
+  }
+
+  String _removeControlAndInvisible(String text) {
+    final StringBuffer sb = StringBuffer();
+    for (final int cp in text.runes) {
+      final bool invisible = cp == 0x200B ||
+          cp == 0x200C ||
+          cp == 0x200D ||
+          cp == 0xFEFF ||
+          cp == 0x00AD ||
+          (cp >= 0xFE00 && cp <= 0xFE0F) ||
+          (cp >= 0xE0100 && cp <= 0xE01EF) ||
+          ((cp >= 0x0000 && cp <= 0x001F) && cp != 0x0020) ||
+          (cp >= 0x007F && cp <= 0x009F);
+      if (!invisible) {
+        sb.writeCharCode(cp);
+      }
+    }
+    return sb.toString();
+  }
+
+  String _applyLookAlikeTable(String text) {
+    const Map<String, String> lookAlike = <String, String>{
+      '工': 'エ',
+      '口': 'ロ',
+      '冂': 'ロ',
+      '力': 'カ',
+      '夕': 'タ',
+      '二': 'ニ',
+      '卜': 'ト',
+      '八': 'ハ',
+      '千': 'チ',
+      '十': 'ジ',
+      '人': 'ヒ',
+      '入': 'イ',
+      '匕': 'ヒ',
+      '乃': 'ノ',
+      '又': 'マ',
+      '丁': 'テ',
+      '己': 'コ',
+      '匚': 'コ',
+      '巳': 'ミ',
+      '也': 'ヤ',
+      '刀': 'カ',
+    };
+    return text.split('').map((String ch) => lookAlike[ch] ?? ch).join();
+  }
+
+  String _katakanaToHiragana(String text) {
+    final StringBuffer sb = StringBuffer();
+    for (final int cp in text.runes) {
+      if (cp >= 0x30A1 && cp <= 0x30F6) {
+        sb.writeCharCode(cp - 0x60);
+      } else if (cp == 0x30F7) {
+        sb.write('わ');
+      } else if (cp == 0x30F8) {
+        sb.write('ゐ');
+      } else if (cp == 0x30F9) {
+        sb.write('ゑ');
+      } else if (cp == 0x30FA) {
+        sb.write('を');
+      } else {
+        sb.writeCharCode(cp);
+      }
+    }
+    return sb.toString();
+  }
+
+  String _removeSpacesAndSymbols(String text) {
+    final StringBuffer sb = StringBuffer();
+    for (final int cp in text.runes) {
+      if (_isLetterOrDigitCodePoint(cp)) {
+        sb.writeCharCode(cp);
+      }
+    }
+    return sb.toString();
+  }
+
+  bool _isLetterOrDigitCodePoint(int cp) {
+    final bool asciiAlphaNum = (cp >= 0x30 && cp <= 0x39) ||
+        (cp >= 0x41 && cp <= 0x5A) ||
+        (cp >= 0x61 && cp <= 0x7A);
+    if (asciiAlphaNum) {
+      return true;
+    }
+    final bool fullWidthAlphaNum = (cp >= 0xFF10 && cp <= 0xFF19) ||
+        (cp >= 0xFF21 && cp <= 0xFF3A) ||
+        (cp >= 0xFF41 && cp <= 0xFF5A);
+    if (fullWidthAlphaNum) {
+      return true;
+    }
+    final bool jpLetters = (cp >= 0x3040 && cp <= 0x30FF);
+    if (jpLetters) {
+      return true;
+    }
+    final bool cjk = (cp >= 0x3400 && cp <= 0x9FFF);
+    return cjk;
+  }
+
+  String _compressDuplicates(String text) {
+    if (text.length < 3) {
+      return text;
+    }
+    final List<int> codePoints = text.runes.toList(growable: false);
+    if (codePoints.length < 3) {
+      return text;
+    }
+    final StringBuffer sb = StringBuffer();
+    int i = 0;
+    while (i < codePoints.length) {
+      final int cp = codePoints[i];
+      int count = 1;
+      int j = i + 1;
+      while (j < codePoints.length && codePoints[j] == cp) {
+        count++;
+        j++;
+      }
+      final int output = count > 2 ? 2 : count;
+      for (int k = 0; k < output; k++) {
+        sb.writeCharCode(cp);
+      }
+      i = j;
+    }
+    return sb.toString();
   }
 
   bool _isAutoSaveTrigger(ConnectionStatus status) {
@@ -1596,9 +1962,8 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   void _scrollToMinuteOffset(int minuteOffset) {
-    final List<AppMessage> visibleMessages = widget.messages
-        .where(_shouldDisplayMessage)
-        .toList(growable: false);
+    final List<AppMessage> visibleMessages =
+        widget.messages.where(_shouldDisplayMessage).toList(growable: false);
     final List<AppMessage> sorted = _applySortOrder(visibleMessages);
     if (sorted.isEmpty) {
       return;
@@ -1904,8 +2269,8 @@ class _StatusBarState extends State<_StatusBar> {
   Widget build(BuildContext context) {
     final Color wifiColor =
         widget.supervisor.wifiIndicatorColor == WifiIndicatorColor.green
-        ? widget.themeColors.statusConnected
-        : widget.themeColors.statusDisconnected;
+            ? widget.themeColors.statusConnected
+            : widget.themeColors.statusDisconnected;
 
     return Semantics(
       button: true,
@@ -2199,8 +2564,7 @@ class _PinnedCommentsSection extends StatelessWidget {
               resolvedUserName: resolveDisplayName(message),
               showUserName: showUserName,
               fontSize: fontSize,
-              userColor:
-                  message.userId != null &&
+              userColor: message.userId != null &&
                       userColorMap.containsKey(message.userId!)
                   ? colorFromARGB32(userColorMap[message.userId!]!)
                   : null,

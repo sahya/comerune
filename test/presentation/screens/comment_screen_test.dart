@@ -1186,6 +1186,149 @@ void main() {
       expect(find.byKey(const Key('comment-row-chat-normal')), findsOneWidget);
     });
 
+    testWidgets('preset NG words are also applied to display filtering', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'chat-clean-preset',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '普通のコメント',
+          type: AppMessageType.chat,
+        ),
+        AppMessage(
+          id: 'chat-ng-preset',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 1),
+          userId: 'user-2',
+          content: 'これは爆破予告です',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngWords: const <String>[],
+          presetNgWords: const <String>['爆破予告'],
+        ),
+      );
+
+      expect(find.byKey(const Key('comment-row-chat-clean-preset')),
+          findsOneWidget);
+      expect(find.byKey(const Key('comment-row-chat-ng-preset')), findsNothing);
+    });
+
+    testWidgets('NG filtering handles keyword hack patterns in display', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'chat-hack-ng',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '工 口ネタ',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngWords: const <String>['エロ'],
+        ),
+      );
+
+      expect(find.byKey(const Key('comment-row-chat-hack-ng')), findsNothing);
+    });
+
+    testWidgets('NG filtering handles expanded look-alike table entries', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'chat-lookalike-expanded',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '冂リ匚ンネタ',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngWords: const <String>['ロリコン'],
+        ),
+      );
+
+      expect(
+        find.byKey(const Key('comment-row-chat-lookalike-expanded')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('NG filtering handles half-width voiced katakana bypass', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'chat-halfwidth-voiced',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: 'ﾊﾞﾅﾅネタ',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngWords: const <String>['バナナ'],
+        ),
+      );
+
+      expect(
+        find.byKey(const Key('comment-row-chat-halfwidth-voiced')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('light erotic joke is not blocked by default preset policy', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'chat-light-ero',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: 'ちょびっとエロい話',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngWords: const <String>[],
+          presetNgWords: const <String>['爆破予告', '児童ポルノ'],
+        ),
+      );
+
+      expect(
+          find.byKey(const Key('comment-row-chat-light-ero')), findsOneWidget);
+    });
+
     testWidgets('long-press on comment row opens actions sheet', (
       WidgetTester tester,
     ) async {
@@ -2371,6 +2514,7 @@ Widget _buildScreen({
   double commentFontSize = commentFontSizeDefault,
   Set<String> ngUserIds = const <String>{},
   List<String> ngWords = const <String>[],
+  List<String> presetNgWords = const <String>[],
   Map<String, int> userColorMap = const <String, int>{},
   Map<String, String> userNicknameMap = const <String, String>{},
   bool statisticsEnabled = false,
@@ -2412,6 +2556,7 @@ Widget _buildScreen({
       beginAt: beginAt,
       ngUserIds: ngUserIds,
       ngWords: ngWords,
+      presetNgWords: presetNgWords,
       userColorMap: userColorMap,
       userNicknameMap: userNicknameMap,
       starPrefixHidingEnabled: starPrefixHidingEnabled,

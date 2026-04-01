@@ -1,9 +1,10 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../app_logging.dart';
 import '../../application/settings/settings_store.dart';
 import '../../application/statistics/statistics_store.dart';
 import '../../application/timeline/timeline_store.dart';
@@ -25,6 +26,23 @@ import '../../comment_speech/comment_speech.dart'
 import '../screens/comment_screen.dart';
 import '../screens/settings_screen.dart';
 import '../theme/app_theme.dart';
+
+void _debugLog(String message) {
+  if (kDebugMode) {
+    debugPrint(message);
+  }
+}
+
+void _errorLog(
+  String message, {
+  Object? error,
+}) {
+  appErrorLog(
+    name: 'SelectScreen',
+    message: message,
+    error: error,
+  );
+}
 
 /// Builds a niconico user icon URL from a numeric user ID.
 ///
@@ -71,7 +89,7 @@ class SelectScreen extends StatefulWidget {
   final UserSessionStore? userSessionStore;
   final CommentLogWriter? commentLogWriter;
   final Future<void> Function(String lv, AppSettings settings)?
-  onPrepareConnection;
+      onPrepareConnection;
   final ValueNotifier<String?>? programTitleNotifier;
   final UserNameResolution? userNameResolution;
   final ValueNotifier<String?>? broadcasterNameNotifier;
@@ -104,15 +122,15 @@ class _SelectScreenState extends State<SelectScreen> {
   Map<String, String> _favoriteOnAirMap = const <String, String>{};
   Timer? _favoriteRefreshTimer;
   final ValueNotifier<
-    ({Map<String, int> colors, Map<String, String> nicknames})
-  >
-  _userAttrNotifier =
+          ({Map<String, int> colors, Map<String, String> nicknames})>
+      _userAttrNotifier =
       ValueNotifier<({Map<String, int> colors, Map<String, String> nicknames})>(
-        (colors: const <String, int>{}, nicknames: const <String, String>{}),
-      );
+    (colors: const <String, int>{}, nicknames: const <String, String>{}),
+  );
   String? _currentBroadcasterId;
   final MethodChannelCommentSpeech _speechPlatform =
       MethodChannelCommentSpeech();
+  int _broadcastEndedNotificationSequence = 0;
 
   static const Duration _followRefreshInterval = Duration(seconds: 60);
   static const Duration _favoriteRefreshInterval = Duration(seconds: 30);
@@ -233,7 +251,10 @@ class _SelectScreenState extends State<SelectScreen> {
     final DateTime now = DateTime.now();
     store.add(
       AppMessage(
-        id: '$kSystemBroadcastEndedMessageIdPrefix${now.millisecondsSinceEpoch}',
+        id: buildBroadcastEndedNotificationId(
+          epochMilliseconds: now.millisecondsSinceEpoch,
+          sequence: _broadcastEndedNotificationSequence++,
+        ),
         timestamp: now,
         content: '放送が終了しました',
         type: AppMessageType.notification,
@@ -426,12 +447,10 @@ class _SelectScreenState extends State<SelectScreen> {
         final String? cachedBroadcasterName = supplierUserId != null
             ? widget.userNameResolution?.resolve(supplierUserId)
             : null;
-        final String? broadcasterName =
-            cachedBroadcasterName ??
+        final String? broadcasterName = cachedBroadcasterName ??
             widget.broadcasterNameNotifier?.value ??
             _followBroadcasterName;
-        final String? broadcasterIconUrl =
-            _followBroadcasterIconUrl ??
+        final String? broadcasterIconUrl = _followBroadcasterIconUrl ??
             _buildIconUrlFromUserId(supplierUserId);
 
         return CommentScreen(
@@ -455,9 +474,8 @@ class _SelectScreenState extends State<SelectScreen> {
           beginAt: _followBeginAt ?? widget.beginAtNotifier?.value,
           showUserName: _settingsNotifier.value.showUserName,
           commentFontSize: _settingsNotifier.value.commentFontSize,
-          userNameResolution: nameResolutionEnabled
-              ? widget.userNameResolution
-              : null,
+          userNameResolution:
+              nameResolutionEnabled ? widget.userNameResolution : null,
           commentLogWriter: widget.commentLogWriter,
           autoSaveCommentLog: _settingsNotifier.value.autoSaveCommentLog,
           autoSaveCommentLogPath:
@@ -468,19 +486,15 @@ class _SelectScreenState extends State<SelectScreen> {
           starPrefixHidingEnabled:
               _settingsNotifier.value.starPrefixHidingEnabled,
           userColorMap: _userAttrNotifier.value.colors,
-          onUserColorChanged: widget.userAttributeStore != null
-              ? _onUserColorChanged
-              : null,
-          onUserColorRemoved: widget.userAttributeStore != null
-              ? _onUserColorRemoved
-              : null,
+          onUserColorChanged:
+              widget.userAttributeStore != null ? _onUserColorChanged : null,
+          onUserColorRemoved:
+              widget.userAttributeStore != null ? _onUserColorRemoved : null,
           userNicknameMap: _userAttrNotifier.value.nicknames,
-          onNicknameChanged: widget.userAttributeStore != null
-              ? _onNicknameChanged
-              : null,
-          onNicknameRemoved: widget.userAttributeStore != null
-              ? _onNicknameRemoved
-              : null,
+          onNicknameChanged:
+              widget.userAttributeStore != null ? _onNicknameChanged : null,
+          onNicknameRemoved:
+              widget.userAttributeStore != null ? _onNicknameRemoved : null,
           autoNicknameRegistration:
               _settingsNotifier.value.autoNicknameRegistration,
           themeMode: _settingsNotifier.value.themeMode,
@@ -506,7 +520,7 @@ class _SelectScreenState extends State<SelectScreen> {
 
   SpeechSettings _buildSpeechSettings() {
     final AppSettings s = _settingsNotifier.value;
-    debugPrint(
+    _debugLog(
       '[SelectScreen] buildSpeechSettings: engine=${s.speechEngine}, speaker=${s.voicevoxSpeaker}, speed=${s.voicevoxSpeed}',
     );
     return s.toSpeechSettings();
@@ -528,8 +542,8 @@ class _SelectScreenState extends State<SelectScreen> {
     );
     await widget.onPrepareConnection?.call(lv, settings);
 
-    final bool retried = widget.connectionSupervisor
-        .retryConnectionFromTerminal();
+    final bool retried =
+        widget.connectionSupervisor.retryConnectionFromTerminal();
     if (!retried && widget.connectionSupervisor.canStartConnection) {
       widget.connectionSupervisor.startConnection();
     }
@@ -576,8 +590,8 @@ class _SelectScreenState extends State<SelectScreen> {
     final Map<String, int> colors = await widget.userAttributeStore!.loadColors(
       broadcasterId,
     );
-    final Map<String, String> nicknames = await widget.userAttributeStore!
-        .loadNicknames(broadcasterId);
+    final Map<String, String> nicknames =
+        await widget.userAttributeStore!.loadNicknames(broadcasterId);
     if (!mounted || _currentBroadcasterId != broadcasterId) {
       return;
     }
@@ -773,7 +787,7 @@ class _SelectScreenState extends State<SelectScreen> {
         _fetchFollowPrograms(userSession),
       ]);
     } on Object catch (e) {
-      log('Unexpected error during program fetch: $e', name: 'SelectScreen');
+      _errorLog('Unexpected error during program fetch', error: e);
     }
 
     if (!mounted) {
@@ -849,7 +863,7 @@ class _SelectScreenState extends State<SelectScreen> {
       // Catch Object (not just Exception) to match the safety net in
       // _fetchAllPrograms and ensure Error types are also logged here
       // rather than only at the Future.wait level.
-      log('Error in _fetchMyProgram: $e', name: 'SelectScreen');
+      _errorLog('Error in _fetchMyProgram', error: e);
     }
   }
 
@@ -914,8 +928,8 @@ class _SelectScreenState extends State<SelectScreen> {
       return;
     }
 
-    final Map<String, String> result = await _favoriteUserLiveChecker
-        .checkBroadcastStatus(favoriteIds);
+    final Map<String, String> result =
+        await _favoriteUserLiveChecker.checkBroadcastStatus(favoriteIds);
     if (!mounted) {
       return;
     }
@@ -1089,8 +1103,8 @@ class _FollowProgramList extends StatelessWidget {
               Text(
                 '${programs.length}件',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: Theme.of(context).colorScheme.outline,
-                ),
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
               ),
               const Spacer(),
               SizedBox(
@@ -1200,9 +1214,8 @@ class _FollowProgramTile extends StatelessWidget {
               Icon(
                 Icons.play_circle_outline,
                 size: 20,
-                color: enabled
-                    ? theme.colorScheme.primary
-                    : theme.disabledColor,
+                color:
+                    enabled ? theme.colorScheme.primary : theme.disabledColor,
               ),
             ],
           ),
@@ -1491,10 +1504,8 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
 
   @override
   Widget build(BuildContext context) {
-    final List<MapEntry<String, String>> entries = widget
-        .onAirUserPrograms
-        .entries
-        .toList();
+    final List<MapEntry<String, String>> entries =
+        widget.onAirUserPrograms.entries.toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -1510,8 +1521,8 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
               Text(
                 '${entries.length}件',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: Theme.of(context).colorScheme.outline,
-                ),
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
               ),
               const Spacer(),
               if (widget.onRefresh != null)
@@ -1541,9 +1552,8 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
             child: ListTile(
               dense: true,
               enabled: widget.enabled,
-              onTap: widget.enabled
-                  ? () => widget.onTap(userId, programId)
-                  : null,
+              onTap:
+                  widget.enabled ? () => widget.onTap(userId, programId) : null,
               leading: ClipOval(
                 child: SizedBox(
                   width: 32,
