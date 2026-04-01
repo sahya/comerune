@@ -230,7 +230,7 @@ class _SelectScreenState extends State<SelectScreen> {
     final DateTime now = DateTime.now();
     store.add(
       AppMessage(
-        id: 'system:broadcast_ended:${now.millisecondsSinceEpoch}',
+        id: '$kSystemBroadcastEndedMessageIdPrefix${now.millisecondsSinceEpoch}',
         timestamp: now,
         content: '放送が終了しました',
         type: AppMessageType.notification,
