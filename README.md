@@ -114,8 +114,15 @@ Makefileも用意しています。
 make build           # デバッグAPK
 make build-release   # リリースAPK
 make test            # テスト実行
+make format          # 安全フォーマット（既存の作業差分以外は自動で戻す）
+make format-all      # 全体フォーマット（専用PR向け）
 make check           # 静的解析 + フォーマット + テスト（まとめて）
 ```
+
+フォーマット運用の推奨:
+
+- 通常のIssue対応では `make format` を使い、スコープ外の大量差分混入を防ぐ
+- リポジトリ全体の整形を行う場合は `make format-all` を使い、**機能変更と分離した別PR** で実施する
 
 開発には Flutter SDK 3.3.0 以上と Android SDK が必要です。
 
