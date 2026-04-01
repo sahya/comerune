@@ -199,6 +199,24 @@ const List<ReplaceRule> defaultNicoDictionaryRules = <ReplaceRule>[
   ReplaceRule(pattern: r'[kｋ][sｓ][kｋ]', replacement: 'かそく'),
 ];
 
+/// Returns `true` when [rule] matches one of the built-in dictionary rules.
+///
+/// The [enabled] flag is ignored so that a disabled built-in rule is still
+/// recognized as protected.
+bool isDefaultNicoDictionaryPattern(String pattern) {
+  return defaultNicoDictionaryRules.any(
+    (ReplaceRule defaultRule) => defaultRule.pattern == pattern,
+  );
+}
+
+/// Returns `true` when [rule] is one of the built-in dictionary rules.
+///
+/// Protection is pattern-based so that even if replacement text was changed by
+/// older versions, the same built-in pattern remains protected.
+bool isDefaultNicoDictionaryRule(ReplaceRule rule) {
+  return isDefaultNicoDictionaryPattern(rule.pattern);
+}
+
 class AppSettings {
   const AppSettings({
     required this.themeMode,
