@@ -51,13 +51,21 @@ jobs:
   ci:
     needs: validate
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     permissions:
       contents: read
+    env:
+      APK_SIZE_WARN_MB: 100
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Set up Java
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          distribution: temurin
+          java-version: '17'
 
       - name: Set up Flutter
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
@@ -76,6 +84,31 @@ jobs:
 
       - name: Run tests
         run: flutter test
+
+      - name: Verify Java runtime
+        run: java -version
+
+      - name: Build release APK for size check
+        run: flutter build apk --release --target-platform android-arm64
+
+      - name: Report APK size threshold warning
+        env:
+          APK_PATH: build/app/outputs/flutter-apk/app-release.apk
+        run: |
+          if [ ! -f "$APK_PATH" ]; then
+            echo "::error::APK not found at $APK_PATH"
+            exit 1
+          fi
+
+          APK_SIZE_BYTES=$(stat -c%s "$APK_PATH")
+          APK_SIZE_MB=$(awk -v bytes="$APK_SIZE_BYTES" 'BEGIN { printf "%.2f", bytes / (1024 * 1024) }')
+          WARN_BYTES=$((APK_SIZE_WARN_MB * 1024 * 1024))
+
+          echo "Release APK size: ${APK_SIZE_MB} MB (${APK_SIZE_BYTES} bytes)"
+
+          if [ "$APK_SIZE_BYTES" -gt "$WARN_BYTES" ]; then
+            echo "::warning::Release APK size ${APK_SIZE_MB} MB exceeds warning threshold ${APK_SIZE_WARN_MB} MB"
+          fi
 
   # TODO: チーム拡大時は environment protection rules + required reviewers を設定し、
   #       リリース実行者を制限する（workflow_dispatch は write 権限者全員が実行可能なため）
