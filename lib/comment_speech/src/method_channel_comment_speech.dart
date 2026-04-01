@@ -17,6 +17,8 @@ class MethodChannelCommentSpeech implements CommentSpeechPlatform {
   static const _eventChannel = EventChannel(
     'com.example.comerune.speech/events',
   );
+  // Progress events are emitted very frequently during downloads and can
+  // flood logs. Keep lifecycle/state events visible, but suppress these.
   static const Set<String> _noisyEventTypes = <String>{
     SpeechEventType.downloadProgress,
     SpeechEventType.modelDownloadProgress,
