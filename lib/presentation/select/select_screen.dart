@@ -59,13 +59,6 @@ String? buildNicoIconUrl(String? userId) {
   return 'https://secure-dcdn.cdn.nimg.jp/nicoaccount/usericon/$prefix/$numericId.jpg';
 }
 
-String buildBroadcastEndedNotificationId({
-  required int epochMilliseconds,
-  required int sequence,
-}) {
-  return 'system:broadcast_ended:$epochMilliseconds:$sequence';
-}
-
 class SelectScreen extends StatefulWidget {
   const SelectScreen({
     required this.connectionSupervisor,
