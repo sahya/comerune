@@ -20,11 +20,11 @@ const Set<String> _initializableStates = <String>{
 const Duration voicevoxReadyPollInterval = Duration(milliseconds: 500);
 const int voicevoxReadyMaxPollAttempts = 600;
 
-void _debugLog(String message) {
+void _debugLog(String Function() messageBuilder) {
   if (!kDebugMode) {
     return;
   }
-  debugPrint(message);
+  debugPrint(messageBuilder());
 }
 
 Future<void> ensureEngineReadyForModelLoad(
@@ -35,11 +35,12 @@ Future<void> ensureEngineReadyForModelLoad(
 }) async {
   SpeechRuntimeStatus status = await platform.getStatus();
   _debugLog(
-    '$logTag status-check(ready-guard): engineState=${status.engineState}',
+    () =>
+        '$logTag status-check(ready-guard): engineState=${status.engineState}',
   );
 
   if (_isReady(status.engineState)) {
-    _debugLog('$logTag ensureEngineReady: decision=already_ready');
+    _debugLog(() => '$logTag ensureEngineReady: decision=already_ready');
     return;
   }
 
@@ -52,18 +53,18 @@ Future<void> ensureEngineReadyForModelLoad(
       maxPollAttempts: maxPollAttempts,
     );
     if (_isReady(status.engineState)) {
-      _debugLog('$logTag ensureEngineReady: decision=ready_after_wait');
+      _debugLog(() => '$logTag ensureEngineReady: decision=ready_after_wait');
       return;
     }
   }
 
   if (_canInitialize(status.engineState)) {
     _debugLog(
-      '$logTag ensureEngineReady: decision=initialize '
-      'fromState=${status.engineState}',
+      () => '$logTag ensureEngineReady: decision=initialize '
+          'fromState=${status.engineState}',
     );
     await platform.initialize();
-    _debugLog('$logTag ensureEngineReady: decision=initialize_completed');
+    _debugLog(() => '$logTag ensureEngineReady: decision=initialize_completed');
     return;
   }
 
@@ -84,8 +85,9 @@ Future<SpeechRuntimeStatus> _waitForStableState(
     await Future<void>.delayed(pollInterval);
     latest = await platform.getStatus();
     _debugLog(
-      '$logTag status-check(wait-guard): engineState=${latest.engineState} '
-      '(attempt=$i/$maxPollAttempts)',
+      () =>
+          '$logTag status-check(wait-guard): engineState=${latest.engineState} '
+          '(attempt=$i/$maxPollAttempts)',
     );
     if (!_isTransitional(latest.engineState)) {
       return latest;

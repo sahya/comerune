@@ -17,6 +17,28 @@ void _debugLog(String message) {
   debugPrint(message);
 }
 
+void _errorLog(
+  String message, {
+  Object? error,
+  StackTrace? stackTrace,
+}) {
+  if (kDebugMode) {
+    final String suffix = error != null ? ': $error' : '';
+    debugPrint('$message$suffix');
+    if (stackTrace != null) {
+      debugPrint('$stackTrace');
+    }
+    return;
+  }
+  developer.log(
+    message,
+    name: 'VoiceLibrary',
+    error: error,
+    stackTrace: stackTrace,
+    level: 900,
+  );
+}
+
 class VoiceLibraryScreen extends StatefulWidget {
   const VoiceLibraryScreen({
     super.key,
@@ -134,8 +156,10 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
       await _manager.downloadModel(model.modelId);
       _debugLog('[VoiceLibrary] download completed: modelId=${model.modelId}');
     } on Object catch (e) {
-      _debugLog(
-          '[VoiceLibrary] download FAILED: modelId=${model.modelId} error=$e');
+      _errorLog(
+        '[VoiceLibrary] download FAILED: modelId=${model.modelId}',
+        error: e,
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('ダウンロードに失敗しました: $e')),
@@ -156,8 +180,10 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
         '[VoiceLibrary] loadModel success after download: modelId=${model.modelId}',
       );
     } on Object catch (e) {
-      _debugLog(
-          '[VoiceLibrary] initialize/load FAILED: modelId=${model.modelId} error=$e');
+      _errorLog(
+        '[VoiceLibrary] initialize/load FAILED: modelId=${model.modelId}',
+        error: e,
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('モデルの読み込みに失敗しました: $e')),

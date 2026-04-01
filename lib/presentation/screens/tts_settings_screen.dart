@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -20,6 +21,28 @@ void _debugLog(String message) {
     return;
   }
   debugPrint(message);
+}
+
+void _errorLog(
+  String message, {
+  Object? error,
+  StackTrace? stackTrace,
+}) {
+  if (kDebugMode) {
+    final String suffix = error != null ? ': $error' : '';
+    debugPrint('$message$suffix');
+    if (stackTrace != null) {
+      debugPrint('$stackTrace');
+    }
+    return;
+  }
+  developer.log(
+    message,
+    name: 'TtsSettings',
+    error: error,
+    stackTrace: stackTrace,
+    level: 900,
+  );
 }
 
 // TODO(#13): 棒読みちゃん対応は UIから非表示とした。サーバーを管理しない方針のため、
@@ -403,7 +426,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     unawaited(
       platform.updateSettings(settings.toSpeechSettings()).catchError(
         (Object e) {
-          _debugLog('[TtsSettings] pushSettings FAILED: $e');
+          _errorLog('[TtsSettings] pushSettings FAILED', error: e);
         },
       ),
     );

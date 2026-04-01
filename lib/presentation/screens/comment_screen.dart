@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -52,6 +53,35 @@ void _debugLog(String message) {
     return;
   }
   debugPrint(message);
+}
+
+void _debugLogLazy(String Function() messageBuilder) {
+  if (!kDebugMode) {
+    return;
+  }
+  debugPrint(messageBuilder());
+}
+
+void _errorLog(
+  String message, {
+  Object? error,
+  StackTrace? stackTrace,
+}) {
+  if (kDebugMode) {
+    final String suffix = error != null ? ': $error' : '';
+    debugPrint('$message$suffix');
+    if (stackTrace != null) {
+      debugPrint('$stackTrace');
+    }
+    return;
+  }
+  developer.log(
+    message,
+    name: 'CommentScreen',
+    error: error,
+    stackTrace: stackTrace,
+    level: 900,
+  );
 }
 
 String _commentLineText({
@@ -504,7 +534,11 @@ class _CommentScreenState extends State<CommentScreen> {
       _debugLog(
           '[CommentScreen] Speech started. baseline=$_lastSpeechMessageId, msgCount=${widget.messages.length}');
     } catch (e, stackTrace) {
-      _debugLog('[CommentScreen] initSpeech: FAILED: $e\n$stackTrace');
+      _errorLog(
+        '[CommentScreen] initSpeech: FAILED',
+        error: e,
+        stackTrace: stackTrace,
+      );
       if (mounted) {
         setState(() {
           _speechEngineState = 'ERROR';
@@ -531,8 +565,10 @@ class _CommentScreenState extends State<CommentScreen> {
       try {
         await widget.speechPlatform?.updateSettings(widget.speechSettings);
       } catch (e) {
-        _debugLog(
-            '[CommentScreen] settingsChanged: updateSettings FAILED: $e');
+        _errorLog(
+          '[CommentScreen] settingsChanged: updateSettings FAILED',
+          error: e,
+        );
       }
     }
   }
@@ -545,7 +581,7 @@ class _CommentScreenState extends State<CommentScreen> {
         await widget.speechPlatform?.stop(clearQueue: true);
         _debugLog('[CommentScreen] stopSpeech: stopped');
       } catch (e) {
-        _debugLog('[CommentScreen] stopSpeech: FAILED: $e');
+        _errorLog('[CommentScreen] stopSpeech: FAILED', error: e);
       }
       _speechBaselineTimestamp = null;
       if (mounted) {
@@ -558,8 +594,10 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   void _onSpeechEvent(SpeechEvent event) {
-    _debugLog(
-        '[CommentScreen] speechEvent: ${event.type}, payload=${event.payload}');
+    _debugLogLazy(
+      () =>
+          '[CommentScreen] speechEvent: ${event.type}, payload=${event.payload}',
+    );
     if (event.type == SpeechEventType.engineStateChanged) {
       final String state = event.payload['state'] as String? ?? '';
       if (mounted) {
@@ -619,7 +657,9 @@ class _CommentScreenState extends State<CommentScreen> {
 
     _lastSpeechMessageId = currentLastId;
     final int candidates = messages.length - start;
-    _debugLog('[CommentScreen] submitNewComments: candidates=$candidates');
+    _debugLogLazy(
+      () => '[CommentScreen] submitNewComments: candidates=$candidates',
+    );
 
     for (int i = start; i < messages.length; i++) {
       final AppMessage message = messages[i];
@@ -666,7 +706,7 @@ class _CommentScreenState extends State<CommentScreen> {
         }
       }
 
-      _debugLog('[CommentScreen] submitComment: $speechText');
+      _debugLogLazy(() => '[CommentScreen] submitComment: $speechText');
       final RawComment comment = RawComment(
         id: message.id,
         text: speechText,
@@ -675,7 +715,7 @@ class _CommentScreenState extends State<CommentScreen> {
       );
       unawaited(
         platform.submitComment(comment).then((_) {}).catchError((Object e) {
-          _debugLog('[CommentScreen] submitComment FAILED: $e');
+          _errorLog('[CommentScreen] submitComment FAILED', error: e);
         }),
       );
     }
@@ -738,7 +778,7 @@ class _CommentScreenState extends State<CommentScreen> {
           ..showSnackBar(SnackBar(content: Text(result.message)));
       }
     } on Object catch (e) {
-      _debugLog('[CommentScreen] _handleTeachCommand FAILED: $e');
+      _errorLog('[CommentScreen] _handleTeachCommand FAILED', error: e);
     }
   }
 
