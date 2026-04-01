@@ -71,7 +71,7 @@ class SelectScreen extends StatefulWidget {
   final UserSessionStore? userSessionStore;
   final CommentLogWriter? commentLogWriter;
   final Future<void> Function(String lv, AppSettings settings)?
-      onPrepareConnection;
+  onPrepareConnection;
   final ValueNotifier<String?>? programTitleNotifier;
   final UserNameResolution? userNameResolution;
   final ValueNotifier<String?>? broadcasterNameNotifier;
@@ -104,11 +104,12 @@ class _SelectScreenState extends State<SelectScreen> {
   Map<String, String> _favoriteOnAirMap = const <String, String>{};
   Timer? _favoriteRefreshTimer;
   final ValueNotifier<
-          ({Map<String, int> colors, Map<String, String> nicknames})>
-      _userAttrNotifier =
+    ({Map<String, int> colors, Map<String, String> nicknames})
+  >
+  _userAttrNotifier =
       ValueNotifier<({Map<String, int> colors, Map<String, String> nicknames})>(
-    (colors: const <String, int>{}, nicknames: const <String, String>{}),
-  );
+        (colors: const <String, int>{}, nicknames: const <String, String>{}),
+      );
   String? _currentBroadcasterId;
   final MethodChannelCommentSpeech _speechPlatform =
       MethodChannelCommentSpeech();
@@ -425,10 +426,12 @@ class _SelectScreenState extends State<SelectScreen> {
         final String? cachedBroadcasterName = supplierUserId != null
             ? widget.userNameResolution?.resolve(supplierUserId)
             : null;
-        final String? broadcasterName = cachedBroadcasterName ??
+        final String? broadcasterName =
+            cachedBroadcasterName ??
             widget.broadcasterNameNotifier?.value ??
             _followBroadcasterName;
-        final String? broadcasterIconUrl = _followBroadcasterIconUrl ??
+        final String? broadcasterIconUrl =
+            _followBroadcasterIconUrl ??
             _buildIconUrlFromUserId(supplierUserId);
 
         return CommentScreen(
@@ -452,10 +455,8 @@ class _SelectScreenState extends State<SelectScreen> {
           beginAt: _followBeginAt ?? widget.beginAtNotifier?.value,
           showUserName: _settingsNotifier.value.showUserName,
           commentFontSize: _settingsNotifier.value.commentFontSize,
-          resolveUserName:
-              nameResolutionEnabled ? widget.userNameResolution?.resolve : null,
-          requestUserNameResolve: nameResolutionEnabled
-              ? widget.userNameResolution?.requestResolve
+          userNameResolution: nameResolutionEnabled
+              ? widget.userNameResolution
               : null,
           commentLogWriter: widget.commentLogWriter,
           autoSaveCommentLog: _settingsNotifier.value.autoSaveCommentLog,
@@ -467,15 +468,19 @@ class _SelectScreenState extends State<SelectScreen> {
           starPrefixHidingEnabled:
               _settingsNotifier.value.starPrefixHidingEnabled,
           userColorMap: _userAttrNotifier.value.colors,
-          onUserColorChanged:
-              widget.userAttributeStore != null ? _onUserColorChanged : null,
-          onUserColorRemoved:
-              widget.userAttributeStore != null ? _onUserColorRemoved : null,
+          onUserColorChanged: widget.userAttributeStore != null
+              ? _onUserColorChanged
+              : null,
+          onUserColorRemoved: widget.userAttributeStore != null
+              ? _onUserColorRemoved
+              : null,
           userNicknameMap: _userAttrNotifier.value.nicknames,
-          onNicknameChanged:
-              widget.userAttributeStore != null ? _onNicknameChanged : null,
-          onNicknameRemoved:
-              widget.userAttributeStore != null ? _onNicknameRemoved : null,
+          onNicknameChanged: widget.userAttributeStore != null
+              ? _onNicknameChanged
+              : null,
+          onNicknameRemoved: widget.userAttributeStore != null
+              ? _onNicknameRemoved
+              : null,
           autoNicknameRegistration:
               _settingsNotifier.value.autoNicknameRegistration,
           themeMode: _settingsNotifier.value.themeMode,
@@ -502,7 +507,8 @@ class _SelectScreenState extends State<SelectScreen> {
   SpeechSettings _buildSpeechSettings() {
     final AppSettings s = _settingsNotifier.value;
     debugPrint(
-        '[SelectScreen] buildSpeechSettings: engine=${s.speechEngine}, speaker=${s.voicevoxSpeaker}, speed=${s.voicevoxSpeed}');
+      '[SelectScreen] buildSpeechSettings: engine=${s.speechEngine}, speaker=${s.voicevoxSpeaker}, speed=${s.voicevoxSpeed}',
+    );
     return s.toSpeechSettings();
   }
 
@@ -522,8 +528,8 @@ class _SelectScreenState extends State<SelectScreen> {
     );
     await widget.onPrepareConnection?.call(lv, settings);
 
-    final bool retried =
-        widget.connectionSupervisor.retryConnectionFromTerminal();
+    final bool retried = widget.connectionSupervisor
+        .retryConnectionFromTerminal();
     if (!retried && widget.connectionSupervisor.canStartConnection) {
       widget.connectionSupervisor.startConnection();
     }
@@ -567,10 +573,11 @@ class _SelectScreenState extends State<SelectScreen> {
       return;
     }
     _currentBroadcasterId = broadcasterId;
-    final Map<String, int> colors =
-        await widget.userAttributeStore!.loadColors(broadcasterId);
-    final Map<String, String> nicknames =
-        await widget.userAttributeStore!.loadNicknames(broadcasterId);
+    final Map<String, int> colors = await widget.userAttributeStore!.loadColors(
+      broadcasterId,
+    );
+    final Map<String, String> nicknames = await widget.userAttributeStore!
+        .loadNicknames(broadcasterId);
     if (!mounted || _currentBroadcasterId != broadcasterId) {
       return;
     }
@@ -586,11 +593,13 @@ class _SelectScreenState extends State<SelectScreen> {
     );
     final String? broadcasterId = _currentBroadcasterId;
     if (broadcasterId != null && widget.userAttributeStore != null) {
-      unawaited(widget.userAttributeStore!.setColor(
-        broadcasterId: broadcasterId,
-        userId: userId,
-        colorValue: colorValue,
-      ));
+      unawaited(
+        widget.userAttributeStore!.setColor(
+          broadcasterId: broadcasterId,
+          userId: userId,
+          colorValue: colorValue,
+        ),
+      );
     }
   }
 
@@ -603,10 +612,12 @@ class _SelectScreenState extends State<SelectScreen> {
     );
     final String? broadcasterId = _currentBroadcasterId;
     if (broadcasterId != null && widget.userAttributeStore != null) {
-      unawaited(widget.userAttributeStore!.removeColor(
-        broadcasterId: broadcasterId,
-        userId: userId,
-      ));
+      unawaited(
+        widget.userAttributeStore!.removeColor(
+          broadcasterId: broadcasterId,
+          userId: userId,
+        ),
+      );
     }
   }
 
@@ -619,11 +630,13 @@ class _SelectScreenState extends State<SelectScreen> {
     );
     final String? broadcasterId = _currentBroadcasterId;
     if (broadcasterId != null && widget.userAttributeStore != null) {
-      unawaited(widget.userAttributeStore!.setNickname(
-        broadcasterId: broadcasterId,
-        userId: userId,
-        nickname: nickname,
-      ));
+      unawaited(
+        widget.userAttributeStore!.setNickname(
+          broadcasterId: broadcasterId,
+          userId: userId,
+          nickname: nickname,
+        ),
+      );
     }
   }
 
@@ -636,10 +649,12 @@ class _SelectScreenState extends State<SelectScreen> {
     );
     final String? broadcasterId = _currentBroadcasterId;
     if (broadcasterId != null && widget.userAttributeStore != null) {
-      unawaited(widget.userAttributeStore!.removeNickname(
-        broadcasterId: broadcasterId,
-        userId: userId,
-      ));
+      unawaited(
+        widget.userAttributeStore!.removeNickname(
+          broadcasterId: broadcasterId,
+          userId: userId,
+        ),
+      );
     }
   }
 
@@ -758,10 +773,7 @@ class _SelectScreenState extends State<SelectScreen> {
         _fetchFollowPrograms(userSession),
       ]);
     } on Object catch (e) {
-      log(
-        'Unexpected error during program fetch: $e',
-        name: 'SelectScreen',
-      );
+      log('Unexpected error during program fetch: $e', name: 'SelectScreen');
     }
 
     if (!mounted) {
@@ -788,15 +800,12 @@ class _SelectScreenState extends State<SelectScreen> {
   /// [_favoriteRefreshInterval].
   void _scheduleFavoriteRefresh() {
     _favoriteRefreshTimer?.cancel();
-    _favoriteRefreshTimer = Timer(
-      _favoriteRefreshInterval,
-      () async {
-        await _fetchFavoriteUserStatus();
-        if (mounted) {
-          _scheduleFavoriteRefresh();
-        }
-      },
-    );
+    _favoriteRefreshTimer = Timer(_favoriteRefreshInterval, () async {
+      await _fetchFavoriteUserStatus();
+      if (mounted) {
+        _scheduleFavoriteRefresh();
+      }
+    });
   }
 
   Future<void> _fetchMyProgram(String userSession) async {
@@ -840,10 +849,7 @@ class _SelectScreenState extends State<SelectScreen> {
       // Catch Object (not just Exception) to match the safety net in
       // _fetchAllPrograms and ensure Error types are also logged here
       // rather than only at the Future.wait level.
-      log(
-        'Error in _fetchMyProgram: $e',
-        name: 'SelectScreen',
-      );
+      log('Error in _fetchMyProgram: $e', name: 'SelectScreen');
     }
   }
 
@@ -908,8 +914,8 @@ class _SelectScreenState extends State<SelectScreen> {
       return;
     }
 
-    final Map<String, String> result =
-        await _favoriteUserLiveChecker.checkBroadcastStatus(favoriteIds);
+    final Map<String, String> result = await _favoriteUserLiveChecker
+        .checkBroadcastStatus(favoriteIds);
     if (!mounted) {
       return;
     }
@@ -997,8 +1003,11 @@ class _LoginStatusBanner extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             children: <Widget>[
-              Icon(Icons.check_circle,
-                  color: colors.loginBannerOkIcon, size: 18),
+              Icon(
+                Icons.check_circle,
+                color: colors.loginBannerOkIcon,
+                size: 18,
+              ),
               const SizedBox(width: 8),
               Text(
                 'ニコニコ ログイン済み',
@@ -1023,14 +1032,18 @@ class _LoginStatusBanner extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
               children: <Widget>[
-                Icon(Icons.warning_amber_rounded,
-                    color: colors.loginBannerWarningIcon, size: 18),
+                Icon(
+                  Icons.warning_amber_rounded,
+                  color: colors.loginBannerWarningIcon,
+                  size: 18,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'ログインが必要です。タップして設定を開く',
-                    style:
-                        TextStyle(color: colors.loginBannerWarningForeground),
+                    style: TextStyle(
+                      color: colors.loginBannerWarningForeground,
+                    ),
                   ),
                 ),
                 Icon(Icons.chevron_right, color: colors.loginBannerWarningIcon),
@@ -1071,16 +1084,13 @@ class _FollowProgramList extends StatelessWidget {
             children: <Widget>[
               const Icon(Icons.sensors, size: 16, color: Colors.red),
               const SizedBox(width: 6),
-              Text(
-                'フォロー中の放送',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
+              Text('フォロー中の放送', style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(width: 8),
               Text(
                 '${programs.length}件',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.outline,
-                    ),
+                  color: Theme.of(context).colorScheme.outline,
+                ),
               ),
               const Spacer(),
               SizedBox(
@@ -1173,8 +1183,11 @@ class _FollowProgramTile extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               if (elapsed != null) ...<Widget>[
-                Icon(Icons.access_time,
-                    size: 11, color: theme.colorScheme.outline),
+                Icon(
+                  Icons.access_time,
+                  size: 11,
+                  color: theme.colorScheme.outline,
+                ),
                 const SizedBox(width: 3),
                 Text(
                   elapsed,
@@ -1187,8 +1200,9 @@ class _FollowProgramTile extends StatelessWidget {
               Icon(
                 Icons.play_circle_outline,
                 size: 20,
-                color:
-                    enabled ? theme.colorScheme.primary : theme.disabledColor,
+                color: enabled
+                    ? theme.colorScheme.primary
+                    : theme.disabledColor,
               ),
             ],
           ),
@@ -1297,10 +1311,7 @@ class _MyBroadcastSection extends StatelessWidget {
             children: <Widget>[
               const Icon(Icons.videocam, size: 16, color: Colors.orange),
               const SizedBox(width: 6),
-              Text(
-                'あなたの放送',
-                style: theme.textTheme.titleSmall,
-              ),
+              Text('あなたの放送', style: theme.textTheme.titleSmall),
             ],
           ),
         ),
@@ -1341,8 +1352,11 @@ class _MyBroadcastSection extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   if (elapsed != null) ...<Widget>[
-                    Icon(Icons.access_time,
-                        size: 11, color: theme.colorScheme.outline),
+                    Icon(
+                      Icons.access_time,
+                      size: 11,
+                      color: theme.colorScheme.outline,
+                    ),
                     const SizedBox(width: 3),
                     Text(
                       elapsed,
@@ -1458,8 +1472,9 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.userNameResolution?.listenable !=
         widget.userNameResolution?.listenable) {
-      oldWidget.userNameResolution?.listenable
-          .removeListener(_onUserNameChanged);
+      oldWidget.userNameResolution?.listenable.removeListener(
+        _onUserNameChanged,
+      );
       widget.userNameResolution?.listenable.addListener(_onUserNameChanged);
     }
   }
@@ -1476,8 +1491,10 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
 
   @override
   Widget build(BuildContext context) {
-    final List<MapEntry<String, String>> entries =
-        widget.onAirUserPrograms.entries.toList();
+    final List<MapEntry<String, String>> entries = widget
+        .onAirUserPrograms
+        .entries
+        .toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -1488,16 +1505,13 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
             children: <Widget>[
               const Icon(Icons.sensors, size: 16, color: Colors.red),
               const SizedBox(width: 6),
-              Text(
-                'お気に入りユーザー',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
+              Text('お気に入りユーザー', style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(width: 8),
               Text(
                 '${entries.length}件',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.outline,
-                    ),
+                  color: Theme.of(context).colorScheme.outline,
+                ),
               ),
               const Spacer(),
               if (widget.onRefresh != null)
@@ -1527,8 +1541,9 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
             child: ListTile(
               dense: true,
               enabled: widget.enabled,
-              onTap:
-                  widget.enabled ? () => widget.onTap(userId, programId) : null,
+              onTap: widget.enabled
+                  ? () => widget.onTap(userId, programId)
+                  : null,
               leading: ClipOval(
                 child: SizedBox(
                   width: 32,

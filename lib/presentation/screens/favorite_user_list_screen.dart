@@ -5,6 +5,7 @@ import '../../domain/models/app_settings.dart';
 import '../../domain/models/user_name_resolution.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/empty_state_message.dart';
+import '../widgets/text_input_dialog.dart';
 
 class FavoriteUserListScreen extends StatefulWidget {
   const FavoriteUserListScreen({
@@ -36,8 +37,9 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.userNameResolution?.listenable !=
         widget.userNameResolution?.listenable) {
-      oldWidget.userNameResolution?.listenable
-          .removeListener(_onUserNameChanged);
+      oldWidget.userNameResolution?.listenable.removeListener(
+        _onUserNameChanged,
+      );
       widget.userNameResolution?.listenable.addListener(_onUserNameChanged);
     }
   }
@@ -76,38 +78,15 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
   }
 
   Future<void> _addFavoriteUserId() async {
-    final TextEditingController controller = TextEditingController();
-    final String? userId = await showDialog<String>(
+    final String? userId = await showTextInputDialog(
       context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text('ユーザーID追加'),
-          content: TextField(
-            key: const Key('favorite-user-id-input'),
-            controller: controller,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              hintText: 'ユーザーIDを入力',
-            ),
-            autofocus: true,
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('キャンセル'),
-            ),
-            TextButton(
-              key: const Key('favorite-add-confirm-button'),
-              onPressed: () =>
-                  Navigator.of(dialogContext).pop(controller.text.trim()),
-              child: const Text('追加'),
-            ),
-          ],
-        );
-      },
+      title: 'ユーザーID追加',
+      hintText: 'ユーザーIDを入力',
+      confirmLabel: '追加',
+      textFieldKey: const Key('favorite-user-id-input'),
+      confirmButtonKey: const Key('favorite-add-confirm-button'),
+      keyboardType: TextInputType.number,
     );
-
-    controller.dispose();
 
     if (userId == null || userId.isEmpty || !mounted) {
       return;
@@ -116,9 +95,7 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
     if (int.tryParse(userId) == null) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('ユーザーIDは数値で入力してください')),
-        );
+        ..showSnackBar(const SnackBar(content: Text('ユーザーIDは数値で入力してください')));
       return;
     }
 
@@ -138,9 +115,7 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text('$userId を追加しました')),
-      );
+      ..showSnackBar(SnackBar(content: Text('$userId を追加しました')));
   }
 
   Future<void> _removeFavoriteUserId(String userId) async {
@@ -173,17 +148,13 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text('$userId を削除しました')),
-      );
+      ..showSnackBar(SnackBar(content: Text('$userId を削除しました')));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('お気に入りユーザー管理'),
-      ),
+      appBar: AppBar(title: const Text('お気に入りユーザー管理')),
       floatingActionButton: FloatingActionButton(
         key: const Key('favorite-add-button'),
         onPressed: _addFavoriteUserId,
@@ -192,39 +163,41 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _favoriteUserIds.isEmpty
-              ? const EmptyStateMessage(
-                  key: Key('favorite-user-list-empty'),
-                  message: 'お気に入りユーザーIDは登録されていません\n'
-                      '右下のボタンからユーザーIDを追加すると\n'
-                      '接続画面に放送中の番組が表示されます',
-                )
-              : ListView.separated(
-                  key: const Key('favorite-user-id-list'),
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: _favoriteUserIds.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (BuildContext context, int index) {
-                    final String userId = _favoriteUserIds[index];
-                    final String? nickname =
-                        widget.userNameResolution?.resolve(userId);
-                    return ListTile(
-                      key: Key('favorite-user-tile-$index'),
-                      leading: const Icon(Icons.person, size: 20),
-                      title: Text(
-                        nickname != null ? '$nickname ($userId)' : userId,
-                        style: const TextStyle(fontSize: 14),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                      ),
-                      trailing: IconButton(
-                        key: Key('favorite-user-remove-$index'),
-                        icon: const Icon(Icons.delete_outline),
-                        tooltip: '削除',
-                        onPressed: () => _removeFavoriteUserId(userId),
-                      ),
-                    );
-                  },
-                ),
+          ? const EmptyStateMessage(
+              key: Key('favorite-user-list-empty'),
+              message:
+                  'お気に入りユーザーIDは登録されていません\n'
+                  '右下のボタンからユーザーIDを追加すると\n'
+                  '接続画面に放送中の番組が表示されます',
+            )
+          : ListView.separated(
+              key: const Key('favorite-user-id-list'),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              itemCount: _favoriteUserIds.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (BuildContext context, int index) {
+                final String userId = _favoriteUserIds[index];
+                final String? nickname = widget.userNameResolution?.resolve(
+                  userId,
+                );
+                return ListTile(
+                  key: Key('favorite-user-tile-$index'),
+                  leading: const Icon(Icons.person, size: 20),
+                  title: Text(
+                    nickname != null ? '$nickname ($userId)' : userId,
+                    style: const TextStyle(fontSize: 14),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                  trailing: IconButton(
+                    key: Key('favorite-user-remove-$index'),
+                    icon: const Icon(Icons.delete_outline),
+                    tooltip: '削除',
+                    onPressed: () => _removeFavoriteUserId(userId),
+                  ),
+                );
+              },
+            ),
     );
   }
 }
