@@ -15,12 +15,12 @@ class SubmitResult {
   });
 
   factory SubmitResult.fromMap(Map<String, dynamic> map) => SubmitResult(
-        accepted: (map['accepted'] as bool?) ?? false,
-        skipped: (map['skipped'] as bool?) ?? false,
-        normalizedText: map['normalizedText'] as String?,
-        skipReason: map['skipReason'] as String?,
-        queueSize: (map['queueSize'] as int?) ?? 0,
-      );
+    accepted: (map['accepted'] as bool?) ?? false,
+    skipped: (map['skipped'] as bool?) ?? false,
+    normalizedText: map['normalizedText'] as String?,
+    skipReason: map['skipReason'] as String?,
+    queueSize: (map['queueSize'] as int?) ?? 0,
+  );
 
   @override
   bool operator ==(Object other) =>

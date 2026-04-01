@@ -4,14 +4,7 @@ import '../../comment_speech/src/models/replace_rule.dart';
 import '../../comment_speech/src/models/speech_settings.dart';
 import '../utils/newline_parser.dart';
 
-enum AppThemeMode {
-  system,
-  light,
-  dark,
-  protanopia,
-  deuteranopia,
-  tritanopia,
-}
+enum AppThemeMode { system, light, dark, protanopia, deuteranopia, tritanopia }
 
 extension AppThemeModeValue on AppThemeMode {
   String get storageValue {
@@ -76,10 +69,7 @@ extension AppThemeModeValue on AppThemeMode {
 // TODO(#13): 棒読みちゃん(bouyomi)はUIから非表示。サーバー管理しない方針のため、
 // 今後削除するか再実装するかは未定。bouyomi の enum 値・設定フィールドは
 // 後方互換のため残している。
-enum SpeechEngine {
-  bouyomi,
-  voicevox,
-}
+enum SpeechEngine { bouyomi, voicevox }
 
 /// コメント文字サイズの最小値 (px)。
 const double commentFontSizeMin = 10;
@@ -123,12 +113,7 @@ double commentFontSizeFromStorageValue(String? raw) {
   }
 }
 
-enum PastCommentFetchCount {
-  count100,
-  count500,
-  count1000,
-  all,
-}
+enum PastCommentFetchCount { count100, count500, count1000, all }
 
 extension PastCommentFetchCountValue on PastCommentFetchCount {
   String get storageValue {
@@ -257,11 +242,11 @@ class AppSettings {
     required this.dictionaryRules,
     required this.debugMode,
   }) : assert(
-          commentFontSize >= commentFontSizeMin &&
-              commentFontSize <= commentFontSizeMax,
-          'commentFontSize must be between $commentFontSizeMin and $commentFontSizeMax, '
-          'but was $commentFontSize',
-        );
+         commentFontSize >= commentFontSizeMin &&
+             commentFontSize <= commentFontSizeMax,
+         'commentFontSize must be between $commentFontSizeMin and $commentFontSizeMax, '
+         'but was $commentFontSize',
+       );
 
   static const AppSettings defaults = AppSettings(
     themeMode: AppThemeMode.light,
@@ -383,9 +368,7 @@ class AppSettings {
       return false;
     }
     final String lowerContent = content.toLowerCase();
-    return words.any(
-      (String word) => lowerContent.contains(word),
-    );
+    return words.any((String word) => lowerContent.contains(word));
   }
 
   Set<String> get ngUserIdSet {
@@ -530,14 +513,14 @@ class AppSettings {
 
   /// Convert to [SpeechSettings] for the platform speech engine.
   SpeechSettings toSpeechSettings() => SpeechSettings(
-        enabled: autoReadEnabled && speechEngine == SpeechEngine.voicevox,
-        speakerId: voicevoxSpeaker,
-        speedScale: voicevoxSpeed,
-        pitchScale: voicevoxPitch,
-        intonationScale: voicevoxIntonation,
-        volumeScale: voicevoxVolume,
-        maxQueueSize: queueLimit,
-        ngWords: ngWordList,
-        dictionaryRules: dictionaryRules,
-      );
+    enabled: autoReadEnabled && speechEngine == SpeechEngine.voicevox,
+    speakerId: voicevoxSpeaker,
+    speedScale: voicevoxSpeed,
+    pitchScale: voicevoxPitch,
+    intonationScale: voicevoxIntonation,
+    volumeScale: voicevoxVolume,
+    maxQueueSize: queueLimit,
+    ngWords: ngWordList,
+    dictionaryRules: dictionaryRules,
+  );
 }

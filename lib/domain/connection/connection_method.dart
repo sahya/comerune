@@ -1,4 +1,1 @@
-enum ConnectionMethod {
-  ndgr,
-  legacy,
-}
+enum ConnectionMethod { ndgr, legacy }

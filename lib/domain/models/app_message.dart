@@ -11,13 +11,7 @@ String buildBroadcastEndedNotificationId({
   return '$kSystemBroadcastEndedMessageIdPrefix$epochMilliseconds:$sequence';
 }
 
-enum AppMessageType {
-  chat,
-  operator,
-  notification,
-  gift,
-  nicoad,
-}
+enum AppMessageType { chat, operator, notification, gift, nicoad }
 
 class AppMessage {
   const AppMessage({

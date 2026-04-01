@@ -19,11 +19,7 @@ void _debugLogLazy(String Function() messageBuilder) {
   appDebugLogLazy(messageBuilder);
 }
 
-void _errorLog(
-  String message, {
-  Object? error,
-  StackTrace? stackTrace,
-}) {
+void _errorLog(String message, {Object? error, StackTrace? stackTrace}) {
   appErrorLog(
     name: 'TtsSettings',
     message: message,
@@ -162,8 +158,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     if (platform == null) return;
     try {
       final rawList = await platform.getAvailableModels();
-      final allModels =
-          rawList.map((m) => VoicevoxModelInfo.fromMap(m)).toList();
+      final allModels = rawList
+          .map((m) => VoicevoxModelInfo.fromMap(m))
+          .toList();
       final Set<int> nemoSpeakerIds = <int>{};
       for (final VoicevoxModelInfo model in allModels) {
         if (model.modelId == 'n0') {
@@ -240,20 +237,18 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         );
       }
       if (currentSpeakerId != null &&
-          _isSpeakerInSameModel(
-            currentSpeakerId,
-            speakerId,
-            models,
-          )) {
+          _isSpeakerInSameModel(currentSpeakerId, speakerId, models)) {
         _debugLogLazy(
-          () => '[TtsSettings] loadModel decision=skip_same_model '
+          () =>
+              '[TtsSettings] loadModel decision=skip_same_model '
               'currentSpeaker=$currentSpeakerId '
               'and targetSpeaker=$speakerId are in same modelId=${selectedModel.modelId}',
         );
         return true;
       }
       _debugLogLazy(
-        () => '[TtsSettings] loadModel decision=load_model '
+        () =>
+            '[TtsSettings] loadModel decision=load_model '
             'speaker=$speakerId modelId=${selectedModel.modelId}',
       );
       await platform.loadModel(selectedModel.modelId);
@@ -301,7 +296,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   Future<void> _onSpeakerChanged(AppSettings current, int newSpeaker) async {
     if (newSpeaker == current.voicevoxSpeaker) {
       _debugLogLazy(
-        () => '[TtsSettings] speaker change decision=no_op_same_speaker '
+        () =>
+            '[TtsSettings] speaker change decision=no_op_same_speaker '
             'fromSpeaker=${current.voicevoxSpeaker} toSpeaker=$newSpeaker',
       );
       return;
@@ -310,7 +306,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     final int previousSpeaker = current.voicevoxSpeaker;
     final int generation = ++_speakerChangeGeneration;
     _debugLogLazy(
-      () => '[TtsSettings] speaker change requested: '
+      () =>
+          '[TtsSettings] speaker change requested: '
           'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker '
           'generation=$generation',
     );
@@ -332,7 +329,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     // result -- the newer change takes precedence.
     if (generation != _speakerChangeGeneration) {
       _debugLogLazy(
-        () => '[TtsSettings] speaker change discarded stale result: '
+        () =>
+            '[TtsSettings] speaker change discarded stale result: '
             'reason=stale_generation '
             'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker '
             'generation=$generation latestGeneration=$_speakerChangeGeneration',
@@ -341,7 +339,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     }
     if (!mounted) {
       _debugLogLazy(
-        () => '[TtsSettings] speaker change discarded result: '
+        () =>
+            '[TtsSettings] speaker change discarded result: '
             'reason=widget_unmounted '
             'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker '
             'generation=$generation latestGeneration=$_speakerChangeGeneration',
@@ -354,21 +353,24 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         _isLoadingModel = false;
       });
       _debugLogLazy(
-        () => '[TtsSettings] speaker change applied: '
+        () =>
+            '[TtsSettings] speaker change applied: '
             'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker',
       );
       _pushSettingsToEngine(next);
     } else {
       // Revert to the previous speaker and notify the user.
-      final AppSettings reverted =
-          next.copyWith(voicevoxSpeaker: previousSpeaker);
+      final AppSettings reverted = next.copyWith(
+        voicevoxSpeaker: previousSpeaker,
+      );
       setState(() {
         settings = reverted;
         _isLoadingModel = false;
       });
       unawaited(saveSettings(reverted));
       _debugLogLazy(
-        () => '[TtsSettings] speaker change reverted: '
+        () =>
+            '[TtsSettings] speaker change reverted: '
             'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker '
             'revertedToSpeaker=$previousSpeaker',
       );
@@ -408,7 +410,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   @override
   void updateAndSave(AppSettings next) {
     _debugLogLazy(
-      () => '[TtsSettings] save: autoRead=${next.autoReadEnabled}, '
+      () =>
+          '[TtsSettings] save: autoRead=${next.autoReadEnabled}, '
           'engine=${next.speechEngine}, speaker=${next.voicevoxSpeaker}, '
           'speed=${next.voicevoxSpeed}',
     );
@@ -424,11 +427,11 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     if (platform == null) return;
 
     unawaited(
-      platform.updateSettings(settings.toSpeechSettings()).catchError(
-        (Object e) {
-          _errorLog('[TtsSettings] pushSettings FAILED', error: e);
-        },
-      ),
+      platform.updateSettings(settings.toSpeechSettings()).catchError((
+        Object e,
+      ) {
+        _errorLog('[TtsSettings] pushSettings FAILED', error: e);
+      }),
     );
   }
 
@@ -580,8 +583,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
 
       // If the current speaker is not in the list, add a fallback entry
       // to avoid a Flutter assertion error.
-      final bool currentInList =
-          items.any((item) => item.value == settings.voicevoxSpeaker);
+      final bool currentInList = items.any(
+        (item) => item.value == settings.voicevoxSpeaker,
+      );
       if (!currentInList && items.isNotEmpty) {
         // Defer the state update to avoid calling setState during build.
         final int firstSpeaker = items.first.value!;
@@ -607,8 +611,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         children: [
           DropdownButtonFormField<int>(
             key: const Key('voicevox-speaker-dropdown'),
-            initialValue:
-                currentInList ? settings.voicevoxSpeaker : items.first.value,
+            initialValue: currentInList
+                ? settings.voicevoxSpeaker
+                : items.first.value,
             decoration: const InputDecoration(
               labelText: '話者',
               border: OutlineInputBorder(),
@@ -648,8 +653,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
 
     return DropdownButtonFormField<int>(
       key: const Key('voicevox-speaker-dropdown'),
-      initialValue:
-          fallbackCurrentInList ? settings.voicevoxSpeaker : fallbackSpeakerId,
+      initialValue: fallbackCurrentInList
+          ? settings.voicevoxSpeaker
+          : fallbackSpeakerId,
       decoration: const InputDecoration(
         labelText: '話者',
         border: OutlineInputBorder(),
@@ -828,9 +834,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     final AppSettings? settings = this.settings;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('読み上げ設定'),
-      ),
+      appBar: AppBar(title: const Text('読み上げ設定')),
       body: settings == null
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -847,7 +851,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                       value: settings.autoReadEnabled,
                       onChanged: (bool value) {
                         updateAndSave(
-                            settings.copyWith(autoReadEnabled: value));
+                          settings.copyWith(autoReadEnabled: value),
+                        );
                       },
                     ),
                     SwitchListTile(
@@ -945,8 +950,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                     Text(
                       _buildCreditText(settings.voicevoxSpeaker),
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.outline,
-                          ),
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
                     ),
                   ],
                 ),
@@ -1025,7 +1030,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                       value: settings.suppressDuplicate,
                       onChanged: (bool value) {
                         updateAndSave(
-                            settings.copyWith(suppressDuplicate: value));
+                          settings.copyWith(suppressDuplicate: value),
+                        );
                       },
                     ),
                     TextFormField(

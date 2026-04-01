@@ -45,10 +45,14 @@ class CommentFrequencyChart extends StatelessWidget {
       );
     }
 
-    final int maxCount =
-        commentsPerMinute.values.fold<int>(0, (int a, int b) => a > b ? a : b);
-    final int totalMinutes =
-        commentsPerMinute.keys.fold<int>(0, (int a, int b) => a > b ? a : b);
+    final int maxCount = commentsPerMinute.values.fold<int>(
+      0,
+      (int a, int b) => a > b ? a : b,
+    );
+    final int totalMinutes = commentsPerMinute.keys.fold<int>(
+      0,
+      (int a, int b) => a > b ? a : b,
+    );
 
     return Semantics(
       label: 'コメント頻度グラフ: ${totalMinutes + 1}分間、最大$maxCountコメント/分',
@@ -78,8 +82,10 @@ class CommentFrequencyChart extends StatelessWidget {
   }
 
   Widget _buildTimeAxis() {
-    final int maxMinute =
-        commentsPerMinute.keys.fold<int>(0, (int a, int b) => a > b ? a : b);
+    final int maxMinute = commentsPerMinute.keys.fold<int>(
+      0,
+      (int a, int b) => a > b ? a : b,
+    );
 
     final List<String> labels = <String>[];
     if (maxMinute <= 60) {
@@ -141,10 +147,14 @@ class _BarChartBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final int maxMinute =
-        commentsPerMinute.keys.fold<int>(0, (int a, int b) => a > b ? a : b);
-    final int maxCount =
-        commentsPerMinute.values.fold<int>(0, (int a, int b) => a > b ? a : b);
+    final int maxMinute = commentsPerMinute.keys.fold<int>(
+      0,
+      (int a, int b) => a > b ? a : b,
+    );
+    final int maxCount = commentsPerMinute.values.fold<int>(
+      0,
+      (int a, int b) => a > b ? a : b,
+    );
     final int totalBars = maxMinute + 1;
 
     if (totalBars <= 0 || maxCount <= 0) {
@@ -153,8 +163,9 @@ class _BarChartBody extends StatelessWidget {
 
     // Calculate bar width, ensuring minimum touch target.
     final double barWidth = math.max(2, width / totalBars - 1);
-    final double gap =
-        totalBars > 1 ? (width - barWidth * totalBars) / (totalBars - 1) : 0;
+    final double gap = totalBars > 1
+        ? (width - barWidth * totalBars) / (totalBars - 1)
+        : 0;
 
     return GestureDetector(
       onTapUp: onBarTapped == null
@@ -163,9 +174,9 @@ class _BarChartBody extends StatelessWidget {
               final double dx = details.localPosition.dx;
               final double effectiveBarWidth = barWidth + gap;
               final int index = (dx / effectiveBarWidth).floor().clamp(
-                    0,
-                    totalBars - 1,
-                  );
+                0,
+                totalBars - 1,
+              );
               onBarTapped!.call(index);
             },
       child: CustomPaint(
@@ -220,8 +231,9 @@ class _BarChartPainter extends CustomPainter {
       final double x = minute * (barWidth + gap);
       final double y = size.height - barHeight;
 
-      final Paint paint =
-          peakMinutes.contains(minute) ? peakPaint : normalPaint;
+      final Paint paint = peakMinutes.contains(minute)
+          ? peakPaint
+          : normalPaint;
       canvas.drawRRect(
         RRect.fromRectAndCorners(
           Rect.fromLTWH(x, y, barWidth, barHeight),

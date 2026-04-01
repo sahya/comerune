@@ -167,10 +167,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Scroll down to make the copy button visible (chart pushes it down).
-      await tester.drag(
-        find.byType(ListView),
-        const Offset(0, -300),
-      );
+      await tester.drag(find.byType(ListView), const Offset(0, -300));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('stats-copy-button')));
@@ -332,10 +329,7 @@ void main() {
         await tester.pumpAndSettle();
       }
 
-      expect(
-        find.byKey(const Key('highlight-pickup-title')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('highlight-pickup-title')), findsOneWidget);
       expect(find.byKey(const Key('highlight-peak-0')), findsOneWidget);
     });
 

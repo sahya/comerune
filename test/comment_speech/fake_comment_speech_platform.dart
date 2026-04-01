@@ -103,11 +103,7 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
     if (submitCommentError != null) {
       throw submitCommentError!;
     }
-    return const SubmitResult(
-      accepted: true,
-      skipped: false,
-      queueSize: 1,
-    );
+    return const SubmitResult(accepted: true, skipped: false, queueSize: 1);
   }
 
   @override

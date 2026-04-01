@@ -5,16 +5,18 @@ import 'package:comerune/domain/models/teach_command.dart';
 void main() {
   group('TeachCommandParser.parseTeach', () {
     test('parses valid /teach command', () {
-      final TeachCommand? result =
-          TeachCommandParser.parseTeach('/teach ニコニコ にこにこ');
+      final TeachCommand? result = TeachCommandParser.parseTeach(
+        '/teach ニコニコ にこにこ',
+      );
       expect(result, isNotNull);
       expect(result!.pattern, 'ニコニコ');
       expect(result.replacement, 'にこにこ');
     });
 
     test('parses /teach with multiple spaces in replacement', () {
-      final TeachCommand? result =
-          TeachCommandParser.parseTeach('/teach hello good morning');
+      final TeachCommand? result = TeachCommandParser.parseTeach(
+        '/teach hello good morning',
+      );
       expect(result, isNotNull);
       expect(result!.pattern, 'hello');
       expect(result.replacement, 'good morning');
@@ -43,8 +45,9 @@ void main() {
 
   group('TeachCommandParser.parseUnteach', () {
     test('parses valid /unteach command', () {
-      final UnteachCommand? result =
-          TeachCommandParser.parseUnteach('/unteach ニコニコ');
+      final UnteachCommand? result = TeachCommandParser.parseUnteach(
+        '/unteach ニコニコ',
+      );
       expect(result, isNotNull);
       expect(result!.pattern, 'ニコニコ');
     });
