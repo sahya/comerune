@@ -1278,6 +1278,34 @@ void main() {
       expect(find.byKey(const Key('comment-row-chat-hack-ng')), findsNothing);
     });
 
+    testWidgets('NG filtering handles half-width voiced katakana bypass', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'chat-halfwidth-voiced',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: 'ﾊﾞﾅﾅネタ',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngWords: const <String>['バナナ'],
+        ),
+      );
+
+      expect(
+        find.byKey(const Key('comment-row-chat-halfwidth-voiced')),
+        findsNothing,
+      );
+    });
+
     testWidgets('light erotic joke is not blocked by default preset policy', (
       WidgetTester tester,
     ) async {

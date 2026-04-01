@@ -1573,7 +1573,9 @@ class _CommentScreenState extends State<CommentScreen> {
   String _normalizeFullWidthAscii(String text) {
     final StringBuffer sb = StringBuffer();
     for (final int cp in text.runes) {
-      if (cp >= 0xFF10 && cp <= 0xFF19) {
+      if (cp == 0x3000) {
+        sb.write(' ');
+      } else if (cp >= 0xFF10 && cp <= 0xFF19) {
         sb.writeCharCode(cp - 0xFEE0);
       } else if (cp >= 0xFF21 && cp <= 0xFF3A) {
         sb.writeCharCode(cp - 0xFEE0);
@@ -1648,7 +1650,63 @@ class _CommentScreenState extends State<CommentScreen> {
       'ｮ': 'ョ',
       'ｰ': 'ー',
     };
-    return text.split('').map((String ch) => map[ch] ?? ch).join();
+    const Map<String, String> voiced = <String, String>{
+      'ｳ': 'ヴ',
+      'ｶ': 'ガ',
+      'ｷ': 'ギ',
+      'ｸ': 'グ',
+      'ｹ': 'ゲ',
+      'ｺ': 'ゴ',
+      'ｻ': 'ザ',
+      'ｼ': 'ジ',
+      'ｽ': 'ズ',
+      'ｾ': 'ゼ',
+      'ｿ': 'ゾ',
+      'ﾀ': 'ダ',
+      'ﾁ': 'ヂ',
+      'ﾂ': 'ヅ',
+      'ﾃ': 'デ',
+      'ﾄ': 'ド',
+      'ﾊ': 'バ',
+      'ﾋ': 'ビ',
+      'ﾌ': 'ブ',
+      'ﾍ': 'ベ',
+      'ﾎ': 'ボ',
+      'ﾜ': 'ヷ',
+      'ｦ': 'ヺ',
+    };
+    const Map<String, String> semiVoiced = <String, String>{
+      'ﾊ': 'パ',
+      'ﾋ': 'ピ',
+      'ﾌ': 'プ',
+      'ﾍ': 'ペ',
+      'ﾎ': 'ポ',
+    };
+    final List<String> chars = text.split('');
+    final StringBuffer sb = StringBuffer();
+    int i = 0;
+    while (i < chars.length) {
+      final String ch = chars[i];
+      final String? next = i + 1 < chars.length ? chars[i + 1] : null;
+      if (next == 'ﾞ') {
+        final String? combined = voiced[ch];
+        if (combined != null) {
+          sb.write(combined);
+          i += 2;
+          continue;
+        }
+      } else if (next == 'ﾟ') {
+        final String? combined = semiVoiced[ch];
+        if (combined != null) {
+          sb.write(combined);
+          i += 2;
+          continue;
+        }
+      }
+      sb.write(map[ch] ?? ch);
+      i++;
+    }
+    return sb.toString();
   }
 
   String _removeControlAndInvisible(String text) {
