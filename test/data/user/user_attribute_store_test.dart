@@ -78,14 +78,8 @@ void main() {
         colorValue: 0xFF1E88E5,
       );
 
-      expect(
-        await store.loadColors('b1'),
-        <String, int>{'u1': 0xFFE53935},
-      );
-      expect(
-        await store.loadColors('b2'),
-        <String, int>{'u1': 0xFF1E88E5},
-      );
+      expect(await store.loadColors('b1'), <String, int>{'u1': 0xFFE53935});
+      expect(await store.loadColors('b2'), <String, int>{'u1': 0xFF1E88E5});
     });
 
     test('removeColor removes the color for a user', () async {
@@ -153,8 +147,9 @@ void main() {
     // -----------------------------------------------------------------------
 
     test('loadNicknames returns empty map when no data exists', () async {
-      final Map<String, String> result =
-          await store.loadNicknames('broadcaster1');
+      final Map<String, String> result = await store.loadNicknames(
+        'broadcaster1',
+      );
       expect(result, isEmpty);
     });
 
@@ -227,14 +222,8 @@ void main() {
         nickname: 'たろう',
       );
 
-      expect(
-        await store.loadColors('b1'),
-        <String, int>{'u1': 0xFFE53935},
-      );
-      expect(
-        await store.loadNicknames('b1'),
-        <String, String>{'u1': 'たろう'},
-      );
+      expect(await store.loadColors('b1'), <String, int>{'u1': 0xFFE53935});
+      expect(await store.loadNicknames('b1'), <String, String>{'u1': 'たろう'});
     });
 
     test('removeColor preserves nickname', () async {
@@ -252,10 +241,7 @@ void main() {
       await store.removeColor(broadcasterId: 'b1', userId: 'u1');
 
       expect(await store.loadColors('b1'), isEmpty);
-      expect(
-        await store.loadNicknames('b1'),
-        <String, String>{'u1': 'たろう'},
-      );
+      expect(await store.loadNicknames('b1'), <String, String>{'u1': 'たろう'});
     });
 
     test('removeNickname preserves color', () async {
@@ -272,10 +258,7 @@ void main() {
 
       await store.removeNickname(broadcasterId: 'b1', userId: 'u1');
 
-      expect(
-        await store.loadColors('b1'),
-        <String, int>{'u1': 0xFFE53935},
-      );
+      expect(await store.loadColors('b1'), <String, int>{'u1': 0xFFE53935});
       expect(await store.loadNicknames('b1'), isEmpty);
     });
 
@@ -329,14 +312,8 @@ void main() {
         nickname: 'たろう',
       );
 
-      expect(
-        await store.loadColors('b1'),
-        <String, int>{'u1': 4293467445},
-      );
-      expect(
-        await store.loadNicknames('b1'),
-        <String, String>{'u1': 'たろう'},
-      );
+      expect(await store.loadColors('b1'), <String, int>{'u1': 4293467445});
+      expect(await store.loadNicknames('b1'), <String, String>{'u1': 'たろう'});
     });
 
     // -----------------------------------------------------------------------
@@ -403,16 +380,18 @@ void main() {
         expect(removed, 0);
       });
 
-      test('removes entry with missing _lastUsedAt (treated as epoch 0)',
-          () async {
-        await prefs.setString('usercolor.no_ts', '{"u1": 123}');
-        await prefs.setString('usercolor._index', '["no_ts"]');
+      test(
+        'removes entry with missing _lastUsedAt (treated as epoch 0)',
+        () async {
+          await prefs.setString('usercolor.no_ts', '{"u1": 123}');
+          await prefs.setString('usercolor._index', '["no_ts"]');
 
-        final int removed = await store.cleanup();
+          final int removed = await store.cleanup();
 
-        expect(removed, 1);
-        expect(prefs.getString('usercolor.no_ts'), isNull);
-      });
+          expect(removed, 1);
+          expect(prefs.getString('usercolor.no_ts'), isNull);
+        },
+      );
 
       test('custom maxAge is respected', () async {
         final int recentTimestamp = DateTime.now()
@@ -426,30 +405,29 @@ void main() {
 
         expect(await store.cleanup(), 0);
 
-        expect(
-          await store.cleanup(maxAge: const Duration(days: 5)),
-          1,
-        );
+        expect(await store.cleanup(maxAge: const Duration(days: 5)), 1);
         expect(prefs.getString('usercolor.ten_days'), isNull);
       });
 
-      test('loadColors updates _lastUsedAt so entry survives cleanup',
-          () async {
-        final int oldTimestamp = DateTime.now()
-            .subtract(const Duration(days: 366))
-            .millisecondsSinceEpoch;
-        await prefs.setString(
-          'usercolor.aging',
-          '{"u1": 111, "_lastUsedAt": $oldTimestamp}',
-        );
-        await prefs.setString('usercolor._index', '["aging"]');
+      test(
+        'loadColors updates _lastUsedAt so entry survives cleanup',
+        () async {
+          final int oldTimestamp = DateTime.now()
+              .subtract(const Duration(days: 366))
+              .millisecondsSinceEpoch;
+          await prefs.setString(
+            'usercolor.aging',
+            '{"u1": 111, "_lastUsedAt": $oldTimestamp}',
+          );
+          await prefs.setString('usercolor._index', '["aging"]');
 
-        await store.loadColors('aging');
+          await store.loadColors('aging');
 
-        final int removed = await store.cleanup();
-        expect(removed, 0);
-        expect(await store.loadColors('aging'), <String, int>{'u1': 111});
-      });
+          final int removed = await store.cleanup();
+          expect(removed, 0);
+          expect(await store.loadColors('aging'), <String, int>{'u1': 111});
+        },
+      );
     });
   });
 }

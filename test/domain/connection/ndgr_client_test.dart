@@ -9,165 +9,170 @@ import 'package:comerune/domain/models/app_message.dart';
 
 void main() {
   group('NdgrClient', () {
-    test('limits initial history count across backward and previous streams',
-        () async {
-      final HttpServer server =
-          await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      addTearDown(() async {
-        await server.close(force: true);
-      });
+    test(
+      'limits initial history count across backward and previous streams',
+      () async {
+        final HttpServer server = await HttpServer.bind(
+          InternetAddress.loopbackIPv4,
+          0,
+        );
+        addTearDown(() async {
+          await server.close(force: true);
+        });
 
-      final Uri base = Uri(
-        scheme: 'http',
-        host: server.address.host,
-        port: server.port,
-      );
+        final Uri base = Uri(
+          scheme: 'http',
+          host: server.address.host,
+          port: server.port,
+        );
 
-      final Uri viewUri = base.replace(path: '/view');
-      final Uri backwardUri = base.replace(path: '/backward');
-      final Uri previousUri = base.replace(path: '/previous');
+        final Uri viewUri = base.replace(path: '/view');
+        final Uri backwardUri = base.replace(path: '/backward');
+        final Uri previousUri = base.replace(path: '/previous');
 
-      server.listen((HttpRequest request) async {
-        if (request.uri.path == '/view') {
-          final List<int> headBody = <int>[
-            ..._delimit(
-              _encodeChunkedEntryBackward(
-                backwardSegmentUri: backwardUri.toString(),
+        server.listen((HttpRequest request) async {
+          if (request.uri.path == '/view') {
+            final List<int> headBody = <int>[
+              ..._delimit(
+                _encodeChunkedEntryBackward(
+                  backwardSegmentUri: backwardUri.toString(),
+                ),
               ),
-            ),
-            ..._delimit(
-              _encodeChunkedEntryPrevious(
-                previousUri: previousUri.toString(),
+              ..._delimit(
+                _encodeChunkedEntryPrevious(
+                  previousUri: previousUri.toString(),
+                ),
               ),
-            ),
-          ];
-          request.response.add(headBody);
+            ];
+            request.response.add(headBody);
+            await request.response.close();
+            return;
+          }
+
+          if (request.uri.path == '/backward') {
+            final List<int> packed = _encodePackedSegment(<List<int>>[
+              _encodeChunkedMessage(id: 'backward-1', content: 'backward-1'),
+            ]);
+            request.response.add(packed);
+            await request.response.close();
+            return;
+          }
+
+          if (request.uri.path == '/previous') {
+            final List<int> previousBody = <int>[
+              ..._delimit(
+                _encodeChunkedMessage(id: 'previous-1', content: 'previous-1'),
+              ),
+              ..._delimit(
+                _encodeChunkedMessage(id: 'previous-2', content: 'previous-2'),
+              ),
+            ];
+            request.response.add(previousBody);
+            await request.response.close();
+            return;
+          }
+
+          request.response.statusCode = HttpStatus.notFound;
           await request.response.close();
-          return;
-        }
+        });
 
-        if (request.uri.path == '/backward') {
-          final List<int> packed = _encodePackedSegment(<List<int>>[
-            _encodeChunkedMessage(id: 'backward-1', content: 'backward-1'),
-          ]);
-          request.response.add(packed);
-          await request.response.close();
-          return;
-        }
+        final NdgrClient client = NdgrClient(
+          stallThreshold: const Duration(minutes: 1),
+          stallCheckInterval: const Duration(seconds: 5),
+        );
+        addTearDown(client.dispose);
 
-        if (request.uri.path == '/previous') {
-          final List<int> previousBody = <int>[
-            ..._delimit(
-              _encodeChunkedMessage(id: 'previous-1', content: 'previous-1'),
-            ),
-            ..._delimit(
-              _encodeChunkedMessage(id: 'previous-2', content: 'previous-2'),
-            ),
-          ];
-          request.response.add(previousBody);
-          await request.response.close();
-          return;
-        }
+        final List<AppMessage> messages = <AppMessage>[];
+        final StreamSubscription<NdgrClientEvent> subscription = client.events
+            .listen((NdgrClientEvent event) {
+              if (event.type == NdgrClientEventType.message &&
+                  event.message != null) {
+                messages.add(event.message!);
+              }
+            });
+        addTearDown(subscription.cancel);
 
-        request.response.statusCode = HttpStatus.notFound;
-        await request.response.close();
-      });
+        await client.connect(viewUri, historyCount: 2);
 
-      final NdgrClient client = NdgrClient(
-        stallThreshold: const Duration(minutes: 1),
-        stallCheckInterval: const Duration(seconds: 5),
-      );
-      addTearDown(client.dispose);
-
-      final List<AppMessage> messages = <AppMessage>[];
-      final StreamSubscription<NdgrClientEvent> subscription =
-          client.events.listen((
-        NdgrClientEvent event,
-      ) {
-        if (event.type == NdgrClientEventType.message &&
-            event.message != null) {
-          messages.add(event.message!);
-        }
-      });
-      addTearDown(subscription.cancel);
-
-      await client.connect(viewUri, historyCount: 2);
-
-      expect(messages.length, 2);
-      expect(messages[0].content, 'backward-1');
-      expect(messages[1].content, 'previous-1');
-    });
+        expect(messages.length, 2);
+        expect(messages[0].content, 'backward-1');
+        expect(messages[1].content, 'previous-1');
+      },
+    );
 
     test(
-        'does not notify stall before first frame and stop aborts provided client connection',
-        () async {
-      final HttpServer server =
-          await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      final Completer<void> releaseView = Completer<void>();
-      addTearDown(() async {
+      'does not notify stall before first frame and stop aborts provided client connection',
+      () async {
+        final HttpServer server = await HttpServer.bind(
+          InternetAddress.loopbackIPv4,
+          0,
+        );
+        final Completer<void> releaseView = Completer<void>();
+        addTearDown(() async {
+          if (!releaseView.isCompleted) {
+            releaseView.complete();
+          }
+          await server.close(force: true);
+        });
+
+        server.listen((HttpRequest request) async {
+          if (request.uri.path == '/view') {
+            await releaseView.future;
+            await request.response.close();
+            return;
+          }
+
+          request.response.statusCode = HttpStatus.notFound;
+          await request.response.close();
+        });
+
+        final Uri viewUri = Uri(
+          scheme: 'http',
+          host: server.address.host,
+          port: server.port,
+          path: '/view',
+        );
+
+        DateTime now = DateTime.parse('2026-03-22T00:00:00Z');
+        final NdgrClient client = NdgrClient(
+          httpClient: HttpClient(),
+          now: () => now,
+          stallThreshold: const Duration(seconds: 15),
+          stallCheckInterval: const Duration(milliseconds: 5),
+        );
+        addTearDown(client.dispose);
+
+        bool stalled = false;
+        final StreamSubscription<NdgrClientEvent> subscription = client.events
+            .listen((NdgrClientEvent event) {
+              if (event.type == NdgrClientEventType.stalled) {
+                stalled = true;
+              }
+            });
+        addTearDown(subscription.cancel);
+
+        final Future<void> connectFuture = client.connect(viewUri);
+
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        now = now.add(const Duration(seconds: 16));
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        expect(stalled, isFalse);
+
+        await client.stop();
         if (!releaseView.isCompleted) {
           releaseView.complete();
         }
-        await server.close(force: true);
-      });
 
-      server.listen((HttpRequest request) async {
-        if (request.uri.path == '/view') {
-          await releaseView.future;
-          await request.response.close();
-          return;
-        }
-
-        request.response.statusCode = HttpStatus.notFound;
-        await request.response.close();
-      });
-
-      final Uri viewUri = Uri(
-        scheme: 'http',
-        host: server.address.host,
-        port: server.port,
-        path: '/view',
-      );
-
-      DateTime now = DateTime.parse('2026-03-22T00:00:00Z');
-      final NdgrClient client = NdgrClient(
-        httpClient: HttpClient(),
-        now: () => now,
-        stallThreshold: const Duration(seconds: 15),
-        stallCheckInterval: const Duration(milliseconds: 5),
-      );
-      addTearDown(client.dispose);
-
-      bool stalled = false;
-      final StreamSubscription<NdgrClientEvent> subscription =
-          client.events.listen((
-        NdgrClientEvent event,
-      ) {
-        if (event.type == NdgrClientEventType.stalled) {
-          stalled = true;
-        }
-      });
-      addTearDown(subscription.cancel);
-
-      final Future<void> connectFuture = client.connect(viewUri);
-
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-      now = now.add(const Duration(seconds: 16));
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-      expect(stalled, isFalse);
-
-      await client.stop();
-      if (!releaseView.isCompleted) {
-        releaseView.complete();
-      }
-
-      await connectFuture.timeout(const Duration(seconds: 1));
-      expect(client.isRunning, isFalse);
-    });
+        await connectFuture.timeout(const Duration(seconds: 1));
+        expect(client.isRunning, isFalse);
+      },
+    );
 
     test('notifies stall after first frame is received', () async {
-      final HttpServer server =
-          await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final HttpServer server = await HttpServer.bind(
+        InternetAddress.loopbackIPv4,
+        0,
+      );
       final Completer<void> releaseSegment = Completer<void>();
       addTearDown(() async {
         if (!releaseSegment.isCompleted) {
@@ -188,9 +193,7 @@ void main() {
         if (request.uri.path == '/view') {
           final List<int> headBody = <int>[
             ..._delimit(
-              _encodeChunkedEntrySegment(
-                segmentUri: segmentUri.toString(),
-              ),
+              _encodeChunkedEntrySegment(segmentUri: segmentUri.toString()),
             ),
           ];
           request.response.add(headBody);
@@ -227,12 +230,13 @@ void main() {
       addTearDown(client.dispose);
 
       final Completer<Duration> stalled = Completer<Duration>();
-      final StreamSubscription<NdgrClientEvent> subscription =
-          client.events.listen((NdgrClientEvent event) {
-        if (event.type == NdgrClientEventType.stalled && !stalled.isCompleted) {
-          stalled.complete(event.stallDuration!);
-        }
-      });
+      final StreamSubscription<NdgrClientEvent> subscription = client.events
+          .listen((NdgrClientEvent event) {
+            if (event.type == NdgrClientEventType.stalled &&
+                !stalled.isCompleted) {
+              stalled.complete(event.stallDuration!);
+            }
+          });
       addTearDown(subscription.cancel);
 
       final Future<void> connectFuture = client.connect(viewUri);
@@ -253,8 +257,10 @@ void main() {
     });
 
     test('emits connected once after first successful head response', () async {
-      final HttpServer server =
-          await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final HttpServer server = await HttpServer.bind(
+        InternetAddress.loopbackIPv4,
+        0,
+      );
       addTearDown(() async {
         await server.close(force: true);
       });
@@ -290,12 +296,12 @@ void main() {
       addTearDown(client.dispose);
 
       int connectedCount = 0;
-      final StreamSubscription<NdgrClientEvent> subscription =
-          client.events.listen((NdgrClientEvent event) {
-        if (event.type == NdgrClientEventType.connected) {
-          connectedCount += 1;
-        }
-      });
+      final StreamSubscription<NdgrClientEvent> subscription = client.events
+          .listen((NdgrClientEvent event) {
+            if (event.type == NdgrClientEventType.connected) {
+              connectedCount += 1;
+            }
+          });
       addTearDown(subscription.cancel);
 
       await client.connect(viewUri);
@@ -303,8 +309,10 @@ void main() {
     });
 
     test('reports connect failure only via Future exception', () async {
-      final HttpServer server =
-          await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final HttpServer server = await HttpServer.bind(
+        InternetAddress.loopbackIPv4,
+        0,
+      );
       addTearDown(() async {
         await server.close(force: true);
       });
@@ -328,18 +336,13 @@ void main() {
       addTearDown(client.dispose);
 
       final List<NdgrClientEventType> eventTypes = <NdgrClientEventType>[];
-      final StreamSubscription<NdgrClientEvent> subscription =
-          client.events.listen((
-        NdgrClientEvent event,
-      ) {
-        eventTypes.add(event.type);
-      });
+      final StreamSubscription<NdgrClientEvent> subscription = client.events
+          .listen((NdgrClientEvent event) {
+            eventTypes.add(event.type);
+          });
       addTearDown(subscription.cancel);
 
-      await expectLater(
-        client.connect(viewUri),
-        throwsA(isA<HttpException>()),
-      );
+      await expectLater(client.connect(viewUri), throwsA(isA<HttpException>()));
       expect(eventTypes, isEmpty);
     });
 
@@ -389,13 +392,13 @@ void main() {
         addTearDown(client.dispose);
 
         final List<AppMessage> messages = <AppMessage>[];
-        final StreamSubscription<NdgrClientEvent> subscription =
-            client.events.listen((NdgrClientEvent event) {
-          if (event.type == NdgrClientEventType.message &&
-              event.message != null) {
-            messages.add(event.message!);
-          }
-        });
+        final StreamSubscription<NdgrClientEvent> subscription = client.events
+            .listen((NdgrClientEvent event) {
+              if (event.type == NdgrClientEventType.message &&
+                  event.message != null) {
+                messages.add(event.message!);
+              }
+            });
         addTearDown(subscription.cancel);
 
         await client.connect(viewUri);
@@ -455,8 +458,10 @@ void main() {
     });
 
     test('uses typed at query cursor when requesting view endpoint', () async {
-      final HttpServer server =
-          await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final HttpServer server = await HttpServer.bind(
+        InternetAddress.loopbackIPv4,
+        0,
+      );
       addTearDown(() async {
         await server.close(force: true);
       });
@@ -488,10 +493,7 @@ void main() {
 
   group('NdgrAt', () {
     test('rejects negative unix timestamp', () {
-      expect(
-        () => NdgrAt.timestamp(-1),
-        throwsA(isA<ArgumentError>()),
-      );
+      expect(() => NdgrAt.timestamp(-1), throwsA(isA<ArgumentError>()));
     });
   });
 }
@@ -530,10 +532,7 @@ List<int> _encodeChunkedMessage({
   final List<int> chat = _stringField(1, content);
   final List<int> nicoliveMessage = _bytesField(1, chat);
 
-  return <int>[
-    ..._bytesField(1, meta),
-    ..._bytesField(2, nicoliveMessage),
-  ];
+  return <int>[..._bytesField(1, meta), ..._bytesField(2, nicoliveMessage)];
 }
 
 List<int> _encodePackedSegment(List<List<int>> messages, {String? nextUri}) {
@@ -551,10 +550,7 @@ List<int> _encodePackedSegment(List<List<int>> messages, {String? nextUri}) {
 }
 
 List<int> _delimit(List<int> bytes) {
-  return <int>[
-    ..._encodeVarint(bytes.length),
-    ...bytes,
-  ];
+  return <int>[..._encodeVarint(bytes.length), ...bytes];
 }
 
 List<int> _varintField(int fieldNumber, int value) {

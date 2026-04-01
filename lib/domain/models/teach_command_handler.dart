@@ -97,10 +97,7 @@ class TeachCommandHandler {
       replacement: command.replacement,
     );
 
-    if (_hasProtectedDictionaryRuleWithPattern(
-      updatedRules,
-      escapedPattern,
-    )) {
+    if (_hasProtectedDictionaryRuleWithPattern(updatedRules, escapedPattern)) {
       return const TeachCommandResult(
         success: false,
         message: '既定の辞書ルールは編集できません。設定画面で無効化してください',
@@ -147,10 +144,7 @@ class TeachCommandHandler {
       (ReplaceRule rule) => rule.pattern == escapedPattern,
     );
 
-    if (_hasProtectedDictionaryRuleWithPattern(
-      updatedRules,
-      escapedPattern,
-    )) {
+    if (_hasProtectedDictionaryRuleWithPattern(updatedRules, escapedPattern)) {
       return const TeachCommandResult(
         success: false,
         message: '既定の辞書ルールは削除できません。設定画面で無効化してください',

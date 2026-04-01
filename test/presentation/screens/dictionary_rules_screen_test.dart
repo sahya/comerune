@@ -198,9 +198,7 @@ void main() {
       expect(loaded.dictionaryRules.length, 1);
     });
 
-    testWidgets('add new rule via form', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('add new rule via form', (WidgetTester tester) async {
       final SharedPreferencesSettingsStore store =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
@@ -242,9 +240,7 @@ void main() {
       expect(loaded.dictionaryRules[0].enabled, true);
     });
 
-    testWidgets('edit existing rule via form', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('edit existing rule via form', (WidgetTester tester) async {
       final SharedPreferencesSettingsStore store =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
@@ -263,14 +259,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verify form is pre-filled.
-      expect(
-        find.widgetWithText(TextFormField, 'old'),
-        findsOneWidget,
-      );
-      expect(
-        find.widgetWithText(TextFormField, 'ancient'),
-        findsOneWidget,
-      );
+      expect(find.widgetWithText(TextFormField, 'old'), findsOneWidget);
+      expect(find.widgetWithText(TextFormField, 'ancient'), findsOneWidget);
 
       // Edit the pattern field.
       await tester.enterText(
@@ -374,7 +364,5 @@ void main() {
 }
 
 Widget _buildScreen(SettingsStore settingsStore) {
-  return MaterialApp(
-    home: DictionaryRulesScreen(settingsStore: settingsStore),
-  );
+  return MaterialApp(home: DictionaryRulesScreen(settingsStore: settingsStore));
 }

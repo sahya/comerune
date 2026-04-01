@@ -285,129 +285,133 @@ void main() {
   });
 
   testWidgets(
-      'keeps name resolution callbacks enabled when showUserName is false',
-      (WidgetTester tester) async {
-    final ConnectionSupervisor supervisor = ConnectionSupervisor();
-    final InMemorySharedPreferences prefs = InMemorySharedPreferences();
-    await prefs.setBool('settings.comment.showUserName', false);
-    await prefs.setBool('settings.comment.resolveUserName', true);
-    await prefs.setBool('settings.tts.readUserName', true);
-    final SettingsStore settingsStore =
-        SharedPreferencesSettingsStore(prefs: prefs);
-    final List<String> requestedUserIds = <String>[];
-    final UserNameResolution userNameResolution = UserNameResolution(
-      resolve: (_) => '解決名',
-      requestResolve: requestedUserIds.add,
-      listenable: ChangeNotifier(),
-    );
+    'keeps name resolution callbacks enabled when showUserName is false',
+    (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+      final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+      await prefs.setBool('settings.comment.showUserName', false);
+      await prefs.setBool('settings.comment.resolveUserName', true);
+      await prefs.setBool('settings.tts.readUserName', true);
+      final SettingsStore settingsStore = SharedPreferencesSettingsStore(
+        prefs: prefs,
+      );
+      final List<String> requestedUserIds = <String>[];
+      final UserNameResolution userNameResolution = UserNameResolution(
+        resolve: (_) => '解決名',
+        requestResolve: requestedUserIds.add,
+        listenable: ChangeNotifier(),
+      );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: SelectScreen(
-          connectionSupervisor: supervisor,
-          settingsStore: settingsStore,
-          userNameResolution: userNameResolution,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: supervisor,
+            settingsStore: settingsStore,
+            userNameResolution: userNameResolution,
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    await tester.enterText(inputField(), 'lv345678901');
-    await tester.pump();
-    await tester.tap(connectButton());
-    await tester.pumpAndSettle();
+      await tester.enterText(inputField(), 'lv345678901');
+      await tester.pump();
+      await tester.tap(connectButton());
+      await tester.pumpAndSettle();
 
-    final CommentScreen commentScreen = tester.widget<CommentScreen>(
-      find.byType(CommentScreen),
-    );
-    expect(commentScreen.showUserName, isFalse);
-    expect(commentScreen.readUserName, isTrue);
-    expect(commentScreen.userNameResolution?.resolve, isNotNull);
-    expect(commentScreen.userNameResolution?.requestResolve, isNotNull);
+      final CommentScreen commentScreen = tester.widget<CommentScreen>(
+        find.byType(CommentScreen),
+      );
+      expect(commentScreen.showUserName, isFalse);
+      expect(commentScreen.readUserName, isTrue);
+      expect(commentScreen.userNameResolution?.resolve, isNotNull);
+      expect(commentScreen.userNameResolution?.requestResolve, isNotNull);
 
-    commentScreen.userNameResolution?.requestResolve('12345');
-    expect(requestedUserIds, <String>['12345']);
-  });
+      commentScreen.userNameResolution?.requestResolve('12345');
+      expect(requestedUserIds, <String>['12345']);
+    },
+  );
 
   testWidgets(
-      'adds broadcast ended notification to timeline when status becomes ended',
-      (WidgetTester tester) async {
-    final ConnectionSupervisor supervisor = ConnectionSupervisor();
-    final TimelineStore timelineStore = TimelineStore();
+    'adds broadcast ended notification to timeline when status becomes ended',
+    (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+      final TimelineStore timelineStore = TimelineStore();
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: SelectScreen(
-          connectionSupervisor: supervisor,
-          timelineStore: timelineStore,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: supervisor,
+            timelineStore: timelineStore,
+          ),
         ),
-      ),
-    );
-    await tester.pump();
+      );
+      await tester.pump();
 
-    await tester.enterText(inputField(), 'lv345678901');
-    await tester.pump();
-    await tester.tap(connectButton());
-    await tester.pumpAndSettle();
+      await tester.enterText(inputField(), 'lv345678901');
+      await tester.pump();
+      await tester.tap(connectButton());
+      await tester.pumpAndSettle();
 
-    expect(find.byType(CommentScreen), findsOneWidget);
+      expect(find.byType(CommentScreen), findsOneWidget);
 
-    // Transition to streaming and then end broadcast.
-    expect(supervisor.onSessionWsConnected(), isTrue);
-    expect(supervisor.onNdgrEndpointResolved(), isTrue);
-    expect(supervisor.endBroadcast(), isTrue);
-    await tester.pumpAndSettle();
+      // Transition to streaming and then end broadcast.
+      expect(supervisor.onSessionWsConnected(), isTrue);
+      expect(supervisor.onNdgrEndpointResolved(), isTrue);
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pumpAndSettle();
 
-    final List<AppMessage> messages = timelineStore.messages.toList();
-    final AppMessage notification = messages.firstWhere(
-      (AppMessage m) => m.type == AppMessageType.notification,
-    );
-    expect(notification.content, '放送が終了しました');
-    expect(notification.id, startsWith(kSystemBroadcastEndedMessageIdPrefix));
+      final List<AppMessage> messages = timelineStore.messages.toList();
+      final AppMessage notification = messages.firstWhere(
+        (AppMessage m) => m.type == AppMessageType.notification,
+      );
+      expect(notification.content, '放送が終了しました');
+      expect(notification.id, startsWith(kSystemBroadcastEndedMessageIdPrefix));
 
-    // Verify the notification is visible in the comment screen.
-    expect(find.textContaining('放送が終了しました'), findsOneWidget);
-  });
+      // Verify the notification is visible in the comment screen.
+      expect(find.textContaining('放送が終了しました'), findsOneWidget);
+    },
+  );
 
   testWidgets(
-      'does not add duplicate notification when endBroadcast is called twice',
-      (WidgetTester tester) async {
-    final ConnectionSupervisor supervisor = ConnectionSupervisor();
-    final TimelineStore timelineStore = TimelineStore();
+    'does not add duplicate notification when endBroadcast is called twice',
+    (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+      final TimelineStore timelineStore = TimelineStore();
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: SelectScreen(
-          connectionSupervisor: supervisor,
-          timelineStore: timelineStore,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: supervisor,
+            timelineStore: timelineStore,
+          ),
         ),
-      ),
-    );
-    await tester.pump();
+      );
+      await tester.pump();
 
-    await tester.enterText(inputField(), 'lv345678901');
-    await tester.pump();
-    await tester.tap(connectButton());
-    await tester.pumpAndSettle();
+      await tester.enterText(inputField(), 'lv345678901');
+      await tester.pump();
+      await tester.tap(connectButton());
+      await tester.pumpAndSettle();
 
-    expect(supervisor.onSessionWsConnected(), isTrue);
-    expect(supervisor.onNdgrEndpointResolved(), isTrue);
-    expect(supervisor.endBroadcast(), isTrue);
-    await tester.pumpAndSettle();
+      expect(supervisor.onSessionWsConnected(), isTrue);
+      expect(supervisor.onNdgrEndpointResolved(), isTrue);
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pumpAndSettle();
 
-    // Restart and end again to verify no duplicate notification.
-    expect(supervisor.startConnection(), isTrue);
-    expect(supervisor.onSessionWsConnected(), isTrue);
-    expect(supervisor.onNdgrEndpointResolved(), isTrue);
-    expect(supervisor.endBroadcast(), isTrue);
-    await tester.pumpAndSettle();
+      // Restart and end again to verify no duplicate notification.
+      expect(supervisor.startConnection(), isTrue);
+      expect(supervisor.onSessionWsConnected(), isTrue);
+      expect(supervisor.onNdgrEndpointResolved(), isTrue);
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pumpAndSettle();
 
-    final List<AppMessage> notifications = timelineStore.messages
-        .where((AppMessage m) => m.type == AppMessageType.notification)
-        .toList();
-    // Each ended transition should produce exactly one notification.
-    expect(notifications, hasLength(2));
-  });
+      final List<AppMessage> notifications = timelineStore.messages
+          .where((AppMessage m) => m.type == AppMessageType.notification)
+          .toList();
+      // Each ended transition should produce exactly one notification.
+      expect(notifications, hasLength(2));
+    },
+  );
 
   testWidgets('shows settings button when settingsStore is provided', (
     WidgetTester tester,
@@ -496,50 +500,40 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const Key('login-status-banner-ok')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('login-status-banner-ok')), findsOneWidget);
     expect(find.text('ニコニコ ログイン済み'), findsOneWidget);
-    expect(
-      find.byKey(const Key('login-status-banner-required')),
-      findsNothing,
-    );
+    expect(find.byKey(const Key('login-status-banner-required')), findsNothing);
   });
 
   testWidgets(
-      'hides login banner when settingsStore is provided but userSessionStore is null',
-      (
-    WidgetTester tester,
-  ) async {
-    final ConnectionSupervisor supervisor = ConnectionSupervisor();
-    final SettingsStore settingsStore = SharedPreferencesSettingsStore(
-      prefs: InMemorySharedPreferences(),
-    );
+    'hides login banner when settingsStore is provided but userSessionStore is null',
+    (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+      final SettingsStore settingsStore = SharedPreferencesSettingsStore(
+        prefs: InMemorySharedPreferences(),
+      );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: SelectScreen(
-          connectionSupervisor: supervisor,
-          settingsStore: settingsStore,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: supervisor,
+            settingsStore: settingsStore,
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const Key('login-status-banner-ok')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const Key('login-status-banner-required')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const Key('select_screen_settings_button')),
-      findsOneWidget,
-    );
-  });
+      expect(find.byKey(const Key('login-status-banner-ok')), findsNothing);
+      expect(
+        find.byKey(const Key('login-status-banner-required')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('select_screen_settings_button')),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('hides login banner when settingsStore is null', (
     WidgetTester tester,
@@ -548,79 +542,75 @@ void main() {
 
     await pumpSelectScreen(tester, supervisor);
 
-    expect(
-      find.byKey(const Key('login-status-banner-ok')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const Key('login-status-banner-required')),
-      findsNothing,
-    );
+    expect(find.byKey(const Key('login-status-banner-ok')), findsNothing);
+    expect(find.byKey(const Key('login-status-banner-required')), findsNothing);
   });
 
   testWidgets(
-      'reflects nickname and color changes in comment screen immediately',
-      (WidgetTester tester) async {
-    final ConnectionSupervisor supervisor = ConnectionSupervisor();
-    final TimelineStore timelineStore = TimelineStore();
-    final ValueNotifier<String?> supplierUserIdNotifier =
-        ValueNotifier<String?>(null);
-    final _FakeUserAttributeStore userAttributeStore =
-        _FakeUserAttributeStore();
+    'reflects nickname and color changes in comment screen immediately',
+    (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+      final TimelineStore timelineStore = TimelineStore();
+      final ValueNotifier<String?> supplierUserIdNotifier =
+          ValueNotifier<String?>(null);
+      final _FakeUserAttributeStore userAttributeStore =
+          _FakeUserAttributeStore();
 
-    timelineStore.add(
-      AppMessage(
-        id: 'msg-1',
-        timestamp: DateTime(2026, 3, 29, 20, 0, 0),
-        userId: 'user-1',
-        content: 'hello',
-        type: AppMessageType.chat,
-      ),
-    );
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: SelectScreen(
-          connectionSupervisor: supervisor,
-          timelineStore: timelineStore,
-          supplierUserIdNotifier: supplierUserIdNotifier,
-          userAttributeStore: userAttributeStore,
+      timelineStore.add(
+        AppMessage(
+          id: 'msg-1',
+          timestamp: DateTime(2026, 3, 29, 20, 0, 0),
+          userId: 'user-1',
+          content: 'hello',
+          type: AppMessageType.chat,
         ),
-      ),
-    );
-    await tester.pump();
+      );
 
-    await tester.enterText(inputField(), 'lv345678901');
-    await tester.pump();
-    await tester.tap(connectButton());
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: supervisor,
+            timelineStore: timelineStore,
+            supplierUserIdNotifier: supplierUserIdNotifier,
+            userAttributeStore: userAttributeStore,
+          ),
+        ),
+      );
+      await tester.pump();
 
-    supplierUserIdNotifier.value = 'broadcaster-1';
-    await tester.pumpAndSettle();
+      await tester.enterText(inputField(), 'lv345678901');
+      await tester.pump();
+      await tester.tap(connectButton());
+      await tester.pumpAndSettle();
 
-    CommentScreen commentScreen = tester.widget<CommentScreen>(
-      find.byType(CommentScreen),
-    );
-    commentScreen.onNicknameChanged?.call('user-1', 'コテハン名');
-    await tester.pump();
+      supplierUserIdNotifier.value = 'broadcaster-1';
+      await tester.pumpAndSettle();
 
-    expect(find.textContaining('コテハン名 (user-1)'), findsOneWidget);
+      CommentScreen commentScreen = tester.widget<CommentScreen>(
+        find.byType(CommentScreen),
+      );
+      commentScreen.onNicknameChanged?.call('user-1', 'コテハン名');
+      await tester.pump();
 
-    commentScreen = tester.widget<CommentScreen>(find.byType(CommentScreen));
-    commentScreen.onUserColorChanged?.call('user-1', 0xFFE53935);
-    await tester.pump();
+      expect(find.textContaining('コテハン名 (user-1)'), findsOneWidget);
 
-    final Text textWidget = tester.widget(
-      find.descendant(
-        of: find.byKey(const Key('comment-row-msg-1')),
-        matching: find.byType(Text),
-      ),
-    );
-    expect(textWidget.style?.color, colorFromARGB32(0xFFE53935));
-  });
+      commentScreen = tester.widget<CommentScreen>(find.byType(CommentScreen));
+      commentScreen.onUserColorChanged?.call('user-1', 0xFFE53935);
+      await tester.pump();
 
-  testWidgets('resets user color and nickname maps when connected lv changes',
-      (WidgetTester tester) async {
+      final Text textWidget = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('comment-row-msg-1')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(textWidget.style?.color, colorFromARGB32(0xFFE53935));
+    },
+  );
+
+  testWidgets('resets user color and nickname maps when connected lv changes', (
+    WidgetTester tester,
+  ) async {
     final ConnectionSupervisor supervisor = ConnectionSupervisor();
     final TimelineStore timelineStore = TimelineStore();
     final ValueNotifier<String?> supplierUserIdNotifier =
@@ -690,51 +680,53 @@ void main() {
     expect(find.textContaining('初期コテハン (user-1)'), findsNothing);
   });
 
-  testWidgets('shows broadcasterName from notifier when supplierUserId is null',
-      (WidgetTester tester) async {
-    final ConnectionSupervisor supervisor = ConnectionSupervisor();
-    final TimelineStore timelineStore = TimelineStore();
-    final ValueNotifier<String?> supplierUserIdNotifier =
-        ValueNotifier<String?>(null);
-    final ValueNotifier<String?> broadcasterNameNotifier =
-        ValueNotifier<String?>(null);
+  testWidgets(
+    'shows broadcasterName from notifier when supplierUserId is null',
+    (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+      final TimelineStore timelineStore = TimelineStore();
+      final ValueNotifier<String?> supplierUserIdNotifier =
+          ValueNotifier<String?>(null);
+      final ValueNotifier<String?> broadcasterNameNotifier =
+          ValueNotifier<String?>(null);
 
-    timelineStore.add(
-      AppMessage(
-        id: 'msg-1',
-        timestamp: DateTime(2026, 3, 29, 20, 0, 0),
-        userId: 'user-1',
-        content: 'hello',
-        type: AppMessageType.chat,
-      ),
-    );
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: SelectScreen(
-          connectionSupervisor: supervisor,
-          timelineStore: timelineStore,
-          supplierUserIdNotifier: supplierUserIdNotifier,
-          broadcasterNameNotifier: broadcasterNameNotifier,
+      timelineStore.add(
+        AppMessage(
+          id: 'msg-1',
+          timestamp: DateTime(2026, 3, 29, 20, 0, 0),
+          userId: 'user-1',
+          content: 'hello',
+          type: AppMessageType.chat,
         ),
-      ),
-    );
-    await tester.pump();
+      );
 
-    await tester.enterText(inputField(), 'lv345678901');
-    await tester.pump();
-    await tester.tap(connectButton());
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: supervisor,
+            timelineStore: timelineStore,
+            supplierUserIdNotifier: supplierUserIdNotifier,
+            broadcasterNameNotifier: broadcasterNameNotifier,
+          ),
+        ),
+      );
+      await tester.pump();
 
-    broadcasterNameNotifier.value = 'URL入力フォールバック名';
-    await tester.pumpAndSettle();
+      await tester.enterText(inputField(), 'lv345678901');
+      await tester.pump();
+      await tester.tap(connectButton());
+      await tester.pumpAndSettle();
 
-    final CommentScreen commentScreen = tester.widget<CommentScreen>(
-      find.byType(CommentScreen),
-    );
-    expect(commentScreen.broadcasterName, 'URL入力フォールバック名');
-    expect(commentScreen.broadcasterUserId, isNull);
-  });
+      broadcasterNameNotifier.value = 'URL入力フォールバック名';
+      await tester.pumpAndSettle();
+
+      final CommentScreen commentScreen = tester.widget<CommentScreen>(
+        find.byType(CommentScreen),
+      );
+      expect(commentScreen.broadcasterName, 'URL入力フォールバック名');
+      expect(commentScreen.broadcasterUserId, isNull);
+    },
+  );
 
   group('follow program list', () {
     Future<void> pumpWithFollowPrograms(
@@ -781,10 +773,7 @@ void main() {
       );
 
       expect(find.text('テスト放送タイトル'), findsOneWidget);
-      expect(
-        find.text('テスト放送者 / テストコミュニティ - lv123456789'),
-        findsOneWidget,
-      );
+      expect(find.text('テスト放送者 / テストコミュニティ - lv123456789'), findsOneWidget);
     });
 
     testWidgets('shows provider info without community when absent', (
@@ -804,22 +793,12 @@ void main() {
       expect(find.text('放送者A - lv987654321'), findsOneWidget);
     });
 
-    testWidgets('shows program count in header', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('shows program count in header', (WidgetTester tester) async {
       await pumpWithFollowPrograms(
         tester,
         programs: <FollowProgram>[
-          FollowProgram(
-            programId: 'lv111',
-            title: '放送1',
-            providerName: '放送者1',
-          ),
-          FollowProgram(
-            programId: 'lv222',
-            title: '放送2',
-            providerName: '放送者2',
-          ),
+          FollowProgram(programId: 'lv111', title: '放送1', providerName: '放送者1'),
+          FollowProgram(programId: 'lv222', title: '放送2', providerName: '放送者2'),
         ],
       );
 
@@ -886,10 +865,7 @@ void main() {
     testWidgets('hides list when programs are empty', (
       WidgetTester tester,
     ) async {
-      await pumpWithFollowPrograms(
-        tester,
-        programs: <FollowProgram>[],
-      );
+      await pumpWithFollowPrograms(tester, programs: <FollowProgram>[]);
 
       // Flush retry timers (1s + 2s backoff for 3 attempts) so no
       // pending timer remains after the test.
@@ -948,105 +924,108 @@ void main() {
     }
 
     testWidgets(
-        'color loaded via supplierUserIdNotifier is reflected in comment row',
-        (WidgetTester tester) async {
-      // Pre-seed color data for broadcaster
-      await userAttributeStore.setColor(
-        broadcasterId: 'broadcaster-1',
-        userId: 'user-1',
-        colorValue: 0xFFE53935,
-      );
+      'color loaded via supplierUserIdNotifier is reflected in comment row',
+      (WidgetTester tester) async {
+        // Pre-seed color data for broadcaster
+        await userAttributeStore.setColor(
+          broadcasterId: 'broadcaster-1',
+          userId: 'user-1',
+          colorValue: 0xFFE53935,
+        );
 
-      await pumpAndNavigate(tester);
+        await pumpAndNavigate(tester);
 
-      // Initially no custom color (broadcaster not resolved yet)
-      Text text = tester.widget(
-        find.descendant(
-          of: find.byKey(const Key('comment-row-msg-1')),
-          matching: find.byType(Text),
-        ),
-      );
-      expect(text.style?.color, isNull);
+        // Initially no custom color (broadcaster not resolved yet)
+        Text text = tester.widget(
+          find.descendant(
+            of: find.byKey(const Key('comment-row-msg-1')),
+            matching: find.byType(Text),
+          ),
+        );
+        expect(text.style?.color, isNull);
 
-      // Trigger attribute load by resolving supplier user ID
-      supplierUserIdNotifier.value = 'broadcaster-1';
-      await tester.pumpAndSettle();
+        // Trigger attribute load by resolving supplier user ID
+        supplierUserIdNotifier.value = 'broadcaster-1';
+        await tester.pumpAndSettle();
 
-      // Verify color is now reflected
-      text = tester.widget(
-        find.descendant(
-          of: find.byKey(const Key('comment-row-msg-1')),
-          matching: find.byType(Text),
-        ),
-      );
-      expect(text.style?.color, isNotNull);
-    });
-
-    testWidgets(
-        'nickname loaded via supplierUserIdNotifier is reflected in comment row',
-        (WidgetTester tester) async {
-      // Pre-seed nickname data for broadcaster
-      await userAttributeStore.setNickname(
-        broadcasterId: 'broadcaster-1',
-        userId: 'user-1',
-        nickname: 'テストニックネーム',
-      );
-
-      await pumpAndNavigate(tester);
-
-      // Initially no nickname
-      Text text = tester.widget(
-        find.descendant(
-          of: find.byKey(const Key('comment-row-msg-1')),
-          matching: find.byType(Text),
-        ),
-      );
-      expect(text.data, isNot(contains('テストニックネーム')));
-
-      // Trigger attribute load
-      supplierUserIdNotifier.value = 'broadcaster-1';
-      await tester.pumpAndSettle();
-
-      // Verify nickname is now reflected
-      text = tester.widget(
-        find.descendant(
-          of: find.byKey(const Key('comment-row-msg-1')),
-          matching: find.byType(Text),
-        ),
-      );
-      expect(text.data, contains('テストニックネーム'));
-    });
+        // Verify color is now reflected
+        text = tester.widget(
+          find.descendant(
+            of: find.byKey(const Key('comment-row-msg-1')),
+            matching: find.byType(Text),
+          ),
+        );
+        expect(text.style?.color, isNotNull);
+      },
+    );
 
     testWidgets(
-        'color change via user detail sheet is reflected in comment row',
-        (WidgetTester tester) async {
-      await pumpAndNavigate(tester);
+      'nickname loaded via supplierUserIdNotifier is reflected in comment row',
+      (WidgetTester tester) async {
+        // Pre-seed nickname data for broadcaster
+        await userAttributeStore.setNickname(
+          broadcasterId: 'broadcaster-1',
+          userId: 'user-1',
+          nickname: 'テストニックネーム',
+        );
 
-      // Set broadcaster ID so callbacks work
-      supplierUserIdNotifier.value = 'broadcaster-1';
-      await tester.pumpAndSettle();
+        await pumpAndNavigate(tester);
 
-      // Long press → comment actions sheet
-      await tester.longPress(find.byKey(const Key('comment-row-msg-1')));
-      await tester.pumpAndSettle();
+        // Initially no nickname
+        Text text = tester.widget(
+          find.descendant(
+            of: find.byKey(const Key('comment-row-msg-1')),
+            matching: find.byType(Text),
+          ),
+        );
+        expect(text.data, isNot(contains('テストニックネーム')));
 
-      // Tap "ユーザー詳細"
-      await tester.tap(find.byKey(const Key('action-user-detail')));
-      await tester.pumpAndSettle();
+        // Trigger attribute load
+        supplierUserIdNotifier.value = 'broadcaster-1';
+        await tester.pumpAndSettle();
 
-      // Tap red color (0xFFE53935 = 4293212469)
-      await tester.tap(find.byKey(const Key('user-color-4293212469')));
-      await tester.pumpAndSettle();
+        // Verify nickname is now reflected
+        text = tester.widget(
+          find.descendant(
+            of: find.byKey(const Key('comment-row-msg-1')),
+            matching: find.byType(Text),
+          ),
+        );
+        expect(text.data, contains('テストニックネーム'));
+      },
+    );
 
-      // Verify color is reflected in comment row
-      final Text coloredText = tester.widget(
-        find.descendant(
-          of: find.byKey(const Key('comment-row-msg-1')),
-          matching: find.byType(Text),
-        ),
-      );
-      expect(coloredText.style?.color, isNotNull);
-    });
+    testWidgets(
+      'color change via user detail sheet is reflected in comment row',
+      (WidgetTester tester) async {
+        await pumpAndNavigate(tester);
+
+        // Set broadcaster ID so callbacks work
+        supplierUserIdNotifier.value = 'broadcaster-1';
+        await tester.pumpAndSettle();
+
+        // Long press → comment actions sheet
+        await tester.longPress(find.byKey(const Key('comment-row-msg-1')));
+        await tester.pumpAndSettle();
+
+        // Tap "ユーザー詳細"
+        await tester.tap(find.byKey(const Key('action-user-detail')));
+        await tester.pumpAndSettle();
+
+        // Tap red color (0xFFE53935 = 4293212469)
+        await tester.tap(find.byKey(const Key('user-color-4293212469')));
+        await tester.pumpAndSettle();
+
+        // Verify color is reflected in comment row
+        final Text coloredText = tester.widget(
+          find.descendant(
+            of: find.byKey(const Key('comment-row-msg-1')),
+            matching: find.byType(Text),
+          ),
+        );
+        expect(coloredText.style?.color, isNotNull);
+      },
+    );
   });
 
   group('my broadcast section', () {
@@ -1063,8 +1042,9 @@ void main() {
           InMemoryUserSessionStore();
       await userSessionStore.save('test_session');
 
-      final _FakeMyProgramRepository myRepository =
-          _FakeMyProgramRepository(myProgram);
+      final _FakeMyProgramRepository myRepository = _FakeMyProgramRepository(
+        myProgram,
+      );
       final _FakeFollowProgramRepository followRepository =
           _FakeFollowProgramRepository(followPrograms);
 
@@ -1082,8 +1062,9 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('shows own broadcast section when user is broadcasting',
-        (WidgetTester tester) async {
+    testWidgets('shows own broadcast section when user is broadcasting', (
+      WidgetTester tester,
+    ) async {
       await pumpWithMyProgram(
         tester,
         myProgram: FollowProgram(
@@ -1101,8 +1082,9 @@ void main() {
       expect(find.text('自分のテスト放送'), findsOneWidget);
     });
 
-    testWidgets('hides own broadcast section when not broadcasting',
-        (WidgetTester tester) async {
+    testWidgets('hides own broadcast section when not broadcasting', (
+      WidgetTester tester,
+    ) async {
       await pumpWithMyProgram(tester);
 
       // Flush retry timers.
@@ -1111,8 +1093,9 @@ void main() {
       expect(find.text('あなたの放送'), findsNothing);
     });
 
-    testWidgets('own broadcast section appears above follow list',
-        (WidgetTester tester) async {
+    testWidgets('own broadcast section appears above follow list', (
+      WidgetTester tester,
+    ) async {
       await pumpWithMyProgram(
         tester,
         myProgram: FollowProgram(
@@ -1138,8 +1121,9 @@ void main() {
       expect(mySection, lessThan(followSection));
     });
 
-    testWidgets('tapping own broadcast tile starts connection',
-        (WidgetTester tester) async {
+    testWidgets('tapping own broadcast tile starts connection', (
+      WidgetTester tester,
+    ) async {
       await pumpWithMyProgram(
         tester,
         myProgram: FollowProgram(
@@ -1177,8 +1161,9 @@ void main() {
       expect(find.byIcon(Icons.videocam), findsAtLeastNWidgets(1));
     });
 
-    testWidgets('retries fetching own program on initial null response',
-        (WidgetTester tester) async {
+    testWidgets('retries fetching own program on initial null response', (
+      WidgetTester tester,
+    ) async {
       final ConnectionSupervisor supervisor = ConnectionSupervisor();
       final SettingsStore settingsStore = SharedPreferencesSettingsStore(
         prefs: InMemorySharedPreferences(),
@@ -1187,13 +1172,14 @@ void main() {
           InMemoryUserSessionStore();
       await userSessionStore.save('test_session');
 
-      final _FakeMyProgramRepository myRepository =
-          _FakeMyProgramRepository(FollowProgram(
-        programId: 'lv999',
-        title: 'リトライ後の放送',
-        providerName: '自分',
-        isOwnBroadcast: true,
-      ));
+      final _FakeMyProgramRepository myRepository = _FakeMyProgramRepository(
+        FollowProgram(
+          programId: 'lv999',
+          title: 'リトライ後の放送',
+          providerName: '自分',
+          isOwnBroadcast: true,
+        ),
+      );
       // Return null on the first call, then the real program.
       myRepository.nullResponseCount = 1;
 
@@ -1221,8 +1207,9 @@ void main() {
       expect(find.text('リトライ後の放送'), findsOneWidget);
     });
 
-    testWidgets('own program still displays when follow program fetch throws',
-        (WidgetTester tester) async {
+    testWidgets('own program still displays when follow program fetch throws', (
+      WidgetTester tester,
+    ) async {
       final ConnectionSupervisor supervisor = ConnectionSupervisor();
       final SettingsStore settingsStore = SharedPreferencesSettingsStore(
         prefs: InMemorySharedPreferences(),
@@ -1231,13 +1218,14 @@ void main() {
           InMemoryUserSessionStore();
       await userSessionStore.save('test_session');
 
-      final _FakeMyProgramRepository myRepository =
-          _FakeMyProgramRepository(FollowProgram(
-        programId: 'lv100',
-        title: '自分の放送',
-        providerName: '自分',
-        isOwnBroadcast: true,
-      ));
+      final _FakeMyProgramRepository myRepository = _FakeMyProgramRepository(
+        FollowProgram(
+          programId: 'lv100',
+          title: '自分の放送',
+          providerName: '自分',
+          isOwnBroadcast: true,
+        ),
+      );
 
       final _FakeFollowProgramRepository followRepository =
           _FakeFollowProgramRepository(const <FollowProgram>[]);
@@ -1264,8 +1252,9 @@ void main() {
       expect(find.text('自分の放送'), findsOneWidget);
     });
 
-    testWidgets('follow programs still display when own program fetch throws',
-        (WidgetTester tester) async {
+    testWidgets('follow programs still display when own program fetch throws', (
+      WidgetTester tester,
+    ) async {
       final ConnectionSupervisor supervisor = ConnectionSupervisor();
       final SettingsStore settingsStore = SharedPreferencesSettingsStore(
         prefs: InMemorySharedPreferences(),
@@ -1274,18 +1263,19 @@ void main() {
           InMemoryUserSessionStore();
       await userSessionStore.save('test_session');
 
-      final _FakeMyProgramRepository myRepository =
-          _FakeMyProgramRepository(null);
+      final _FakeMyProgramRepository myRepository = _FakeMyProgramRepository(
+        null,
+      );
       myRepository.shouldThrow = true;
 
       final _FakeFollowProgramRepository followRepository =
           _FakeFollowProgramRepository(<FollowProgram>[
-        FollowProgram(
-          programId: 'lv200',
-          title: 'フォロー放送',
-          providerName: 'フォロー放送者',
-        ),
-      ]);
+            FollowProgram(
+              programId: 'lv200',
+              title: 'フォロー放送',
+              providerName: 'フォロー放送者',
+            ),
+          ]);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -1326,9 +1316,7 @@ class _FakeMyProgramRepository extends MyProgramRepository {
   bool shouldThrow = false;
 
   @override
-  Future<FollowProgram?> fetchOwnProgram({
-    required String userSession,
-  }) async {
+  Future<FollowProgram?> fetchOwnProgram({required String userSession}) async {
     fetchCallCount++;
     if (shouldThrow) {
       throw Exception('Simulated API error');
@@ -1365,20 +1353,20 @@ class _FakeUserAttributeStore implements UserAttributeStore {
         const <String, Map<String, int>>{},
     Map<String, Map<String, String>> nicknamesByBroadcaster =
         const <String, Map<String, String>>{},
-  })  : _colorsByBroadcaster = colorsByBroadcaster.map(
-          (String broadcasterId, Map<String, int> colors) =>
-              MapEntry<String, Map<String, int>>(
-            broadcasterId,
-            Map<String, int>.from(colors),
-          ),
-        ),
-        _nicknamesByBroadcaster = nicknamesByBroadcaster.map(
-          (String broadcasterId, Map<String, String> nicknames) =>
-              MapEntry<String, Map<String, String>>(
-            broadcasterId,
-            Map<String, String>.from(nicknames),
-          ),
-        );
+  }) : _colorsByBroadcaster = colorsByBroadcaster.map(
+         (String broadcasterId, Map<String, int> colors) =>
+             MapEntry<String, Map<String, int>>(
+               broadcasterId,
+               Map<String, int>.from(colors),
+             ),
+       ),
+       _nicknamesByBroadcaster = nicknamesByBroadcaster.map(
+         (String broadcasterId, Map<String, String> nicknames) =>
+             MapEntry<String, Map<String, String>>(
+               broadcasterId,
+               Map<String, String>.from(nicknames),
+             ),
+       );
 
   final Map<String, Map<String, int>> _colorsByBroadcaster;
   final Map<String, Map<String, String>> _nicknamesByBroadcaster;
@@ -1403,8 +1391,10 @@ class _FakeUserAttributeStore implements UserAttributeStore {
     required String userId,
     required int colorValue,
   }) async {
-    final Map<String, int> colors =
-        _colorsByBroadcaster.putIfAbsent(broadcasterId, () => <String, int>{});
+    final Map<String, int> colors = _colorsByBroadcaster.putIfAbsent(
+      broadcasterId,
+      () => <String, int>{},
+    );
     colors[userId] = colorValue;
   }
 

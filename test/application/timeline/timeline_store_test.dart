@@ -6,8 +6,9 @@ import 'package:comerune/domain/models/app_message.dart';
 AppMessage _message(int index) {
   return AppMessage(
     id: 'id-$index',
-    timestamp:
-        DateTime.parse('2026-03-22T00:00:00Z').add(Duration(seconds: index)),
+    timestamp: DateTime.parse(
+      '2026-03-22T00:00:00Z',
+    ).add(Duration(seconds: index)),
     userId: 'user-$index',
     content: 'content-$index',
     type: AppMessageType.chat,
@@ -237,18 +238,22 @@ void main() {
   test('add places message with equal timestamp after existing ones', () {
     final DateTime sameTime = DateTime.parse('2026-03-22T00:00:01Z');
     final TimelineStore store = TimelineStore(capacity: 10);
-    store.add(AppMessage(
-      id: 'a',
-      timestamp: sameTime,
-      content: 'first',
-      type: AppMessageType.chat,
-    ));
-    store.add(AppMessage(
-      id: 'b',
-      timestamp: sameTime,
-      content: 'second',
-      type: AppMessageType.chat,
-    ));
+    store.add(
+      AppMessage(
+        id: 'a',
+        timestamp: sameTime,
+        content: 'first',
+        type: AppMessageType.chat,
+      ),
+    );
+    store.add(
+      AppMessage(
+        id: 'b',
+        timestamp: sameTime,
+        content: 'second',
+        type: AppMessageType.chat,
+      ),
+    );
 
     expect(store.messages.map((AppMessage m) => m.id).toList(), <String>[
       'a',

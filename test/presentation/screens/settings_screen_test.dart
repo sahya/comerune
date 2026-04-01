@@ -132,10 +132,7 @@ void main() {
       await tester.pumpWidget(_buildScreen(settingsStore));
       await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const Key('tts-settings-tile')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('tts-settings-tile')), findsOneWidget);
       expect(
         find.byKey(const Key('comment-display-settings-tile')),
         findsOneWidget,
@@ -146,9 +143,7 @@ void main() {
       );
     });
 
-    testWidgets('tts tile shows auto-read status', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('tts tile shows auto-read status', (WidgetTester tester) async {
       final SharedPreferencesSettingsStore settingsStore =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 

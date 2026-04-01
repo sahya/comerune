@@ -27,11 +27,7 @@ void main() {
     });
 
     test('toMap handles null optional fields', () {
-      const comment = RawComment(
-        id: 'c2',
-        text: 'test',
-        postedAtEpochMs: 0,
-      );
+      const comment = RawComment(id: 'c2', text: 'test', postedAtEpochMs: 0);
       final map = comment.toMap();
       expect(map['userId'], isNull);
       expect(map['score'], isNull);
@@ -208,9 +204,7 @@ void main() {
     });
 
     test('fromMap handles missing payload', () {
-      final event = SpeechEvent.fromMap({
-        'type': 'error',
-      });
+      final event = SpeechEvent.fromMap({'type': 'error'});
       expect(event.type, 'error');
       expect(event.payload, isEmpty);
     });
@@ -232,10 +226,7 @@ void main() {
         'player_state_changed',
         'error',
       ]) {
-        final event = SpeechEvent.fromMap({
-          'type': type,
-          'payload': {},
-        });
+        final event = SpeechEvent.fromMap({'type': type, 'payload': {}});
         expect(event.type, type);
       }
     });

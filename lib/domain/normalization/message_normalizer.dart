@@ -72,7 +72,8 @@ class DefaultLegacyChatExtractor implements LegacyChatExtractor {
 
     final String? userId =
         _readString(chat['user_id']) ?? _readString(chat['userId']);
-    final DateTime timestamp = _parseTimestamp(chat['timestamp']) ??
+    final DateTime timestamp =
+        _parseTimestamp(chat['timestamp']) ??
         _parseTimestamp(chat['date']) ??
         receivedAt;
 
@@ -126,10 +127,10 @@ class MessageNormalizer {
     LegacyChatExtractor? legacyChatExtractor,
     LegacyMessageIdGenerator? idGenerator,
     DateTime Function()? clockNow,
-  })  : _legacyChatExtractor =
-            legacyChatExtractor ?? const DefaultLegacyChatExtractor(),
-        _clockNow = clockNow ?? DateTime.now,
-        _idGenerator = idGenerator;
+  }) : _legacyChatExtractor =
+           legacyChatExtractor ?? const DefaultLegacyChatExtractor(),
+       _clockNow = clockNow ?? DateTime.now,
+       _idGenerator = idGenerator;
 
   final LegacyChatExtractor _legacyChatExtractor;
   final DateTime Function() _clockNow;
@@ -163,8 +164,10 @@ class MessageNormalizer {
 
     final Map<String, Object?> payload = _toStringObjectMap(decoded);
 
-    final LegacyChatExtraction? extraction =
-        _legacyChatExtractor.extract(payload, receivedAt: now);
+    final LegacyChatExtraction? extraction = _legacyChatExtractor.extract(
+      payload,
+      receivedAt: now,
+    );
     if (extraction == null) {
       log(
         'Legacy payload does not contain chat key. payload=${_sanitizeLegacyPayloadForLog(decoded, fallbackRaw: rawJson)}',
@@ -241,8 +244,10 @@ Object? _sanitizeForLog(Object? value, {String? key}) {
       if (_isSensitiveKey(stringKey)) {
         sanitized[stringKey] = _maskedLogValue;
       } else {
-        sanitized[stringKey] =
-            _sanitizeForLog(mapValue as Object?, key: stringKey);
+        sanitized[stringKey] = _sanitizeForLog(
+          mapValue as Object?,
+          key: stringKey,
+        );
       }
     });
     return sanitized;

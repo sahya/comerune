@@ -77,27 +77,30 @@ void main() {
       expect(isLegacyUnsupportedFormatMessage(message), isTrue);
     });
 
-    test('does not classify user notification with same content as unsupported',
-        () {
-      final AppMessage message = AppMessage(
-        id: 'manual-1',
-        timestamp: DateTime.parse('2026-03-22T00:00:00Z'),
-        userId: 'user-1',
-        content: kLegacyUnsupportedFormatContent,
-        type: AppMessageType.notification,
-        raw: <String, Object?>{'payload': 'manual'},
-      );
+    test(
+      'does not classify user notification with same content as unsupported',
+      () {
+        final AppMessage message = AppMessage(
+          id: 'manual-1',
+          timestamp: DateTime.parse('2026-03-22T00:00:00Z'),
+          userId: 'user-1',
+          content: kLegacyUnsupportedFormatContent,
+          type: AppMessageType.notification,
+          raw: <String, Object?>{'payload': 'manual'},
+        );
 
-      expect(isLegacyUnsupportedFormatMessage(message), isFalse);
-    });
+        expect(isLegacyUnsupportedFormatMessage(message), isFalse);
+      },
+    );
 
     test('returns null when JSON parse fails', () {
       final MessageNormalizer normalizer = MessageNormalizer(
         idGenerator: _sequentialIdGenerator(),
       );
 
-      final AppMessage? message =
-          normalizer.normalizeLegacyJson(_legacyFixture('invalid_json.txt'));
+      final AppMessage? message = normalizer.normalizeLegacyJson(
+        _legacyFixture('invalid_json.txt'),
+      );
 
       expect(message, isNull);
     });
@@ -161,7 +164,8 @@ class _InjectedExtractor implements LegacyChatExtractor {
 }
 
 String _legacyFixture(String name) {
-  final Uri fixtureUri =
-      Directory.current.uri.resolve('test/fixtures/legacy/$name');
+  final Uri fixtureUri = Directory.current.uri.resolve(
+    'test/fixtures/legacy/$name',
+  );
   return File.fromUri(fixtureUri).readAsStringSync();
 }

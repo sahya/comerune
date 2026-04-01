@@ -2,10 +2,7 @@ import 'package:flutter/material.dart';
 
 /// A centered message widget for empty list states.
 class EmptyStateMessage extends StatelessWidget {
-  const EmptyStateMessage({
-    super.key,
-    required this.message,
-  });
+  const EmptyStateMessage({super.key, required this.message});
 
   final String message;
 

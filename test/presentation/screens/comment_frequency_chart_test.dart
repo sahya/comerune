@@ -11,9 +11,7 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
-            body: CommentFrequencyChart(
-              commentsPerMinute: <int, int>{},
-            ),
+            body: CommentFrequencyChart(commentsPerMinute: <int, int>{}),
           ),
         ),
       );

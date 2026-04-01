@@ -22,10 +22,7 @@ void main() {
             builder: (BuildContext context) {
               // Show dialog after first frame.
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                showOnboardingDialog(
-                  context: context,
-                  onboardingStore: store,
-                );
+                showOnboardingDialog(context: context, onboardingStore: store);
               });
               return const Scaffold(body: Text('home'));
             },
@@ -64,9 +61,7 @@ void main() {
       expect(find.text('リアルタイムでコメントを表示'), findsOneWidget);
     });
 
-    testWidgets('shows start button on last page', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('shows start button on last page', (WidgetTester tester) async {
       await showDialog(tester);
 
       for (int i = 0; i < 3; i++) {

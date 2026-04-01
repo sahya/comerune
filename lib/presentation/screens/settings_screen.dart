@@ -141,9 +141,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       });
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('ログアウトしました')),
-        );
+        ..showSnackBar(const SnackBar(content: Text('ログアウトしました')));
     }
   }
 
@@ -161,9 +159,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     final AppSettings? settings = this.settings;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('設定'),
-      ),
+      appBar: AppBar(title: const Text('設定')),
       body: settings == null
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -184,18 +180,16 @@ class _SettingsScreenState extends State<SettingsScreen>
                           .map(
                             (AppThemeMode mode) =>
                                 DropdownMenuItem<AppThemeMode>(
-                              value: mode,
-                              child: Text(mode.label),
-                            ),
+                                  value: mode,
+                                  child: Text(mode.label),
+                                ),
                           )
                           .toList(),
                       onChanged: (AppThemeMode? value) {
                         if (value == null) {
                           return;
                         }
-                        updateAndSave(
-                          settings.copyWith(themeMode: value),
-                        );
+                        updateAndSave(settings.copyWith(themeMode: value));
                       },
                     ),
                     const SizedBox(height: 8),
@@ -213,8 +207,10 @@ class _SettingsScreenState extends State<SettingsScreen>
                     if (_isLoggedIn) ...<Widget>[
                       Row(
                         children: <Widget>[
-                          Icon(Icons.check_circle,
-                              color: Theme.of(context).colorScheme.primary),
+                          Icon(
+                            Icons.check_circle,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
                           const SizedBox(width: 8),
                           const Text('ログイン済み'),
                         ],
