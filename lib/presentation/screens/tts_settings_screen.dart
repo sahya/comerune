@@ -153,14 +153,25 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         platform,
         logTag: '[TtsSettings]',
       );
-      final SpeechRuntimeStatus status = await platform.getStatus();
-      if (_isSpeakerInSameModel(
-        status.currentSpeakerId,
-        speakerId,
-        models,
-      )) {
+      int? currentSpeakerId;
+      try {
+        final SpeechRuntimeStatus status = await platform.getStatus();
+        currentSpeakerId = status.currentSpeakerId;
+      } on Object catch (e) {
+        // Fallback to loading the model when status refresh fails.
         debugPrint(
-          '[TtsSettings] loadModel skip: currentSpeaker=${status.currentSpeakerId} '
+          '[TtsSettings] loadModel status refresh failed; continue loading. '
+          'speaker=$speakerId modelId=${model.modelId} error=$e',
+        );
+      }
+      if (currentSpeakerId != null &&
+          _isSpeakerInSameModel(
+            currentSpeakerId,
+            speakerId,
+            models,
+          )) {
+        debugPrint(
+          '[TtsSettings] loadModel skip: currentSpeaker=$currentSpeakerId '
           'and targetSpeaker=$speakerId are in same modelId=${model.modelId}',
         );
         return true;

@@ -41,6 +41,13 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
   /// Number of calls to [getStatus].
   int getStatusCallCount = 0;
 
+  /// If non-null, [getStatus] throws this.
+  Object? getStatusError;
+
+  /// When [getStatusError] is set, this limits throwing to this call number.
+  /// If null, every [getStatus] call throws.
+  int? getStatusErrorAtCall;
+
   /// If non-null, [loadModel] will throw this.
   Object? loadModelError;
 
@@ -105,6 +112,11 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
   @override
   Future<SpeechRuntimeStatus> getStatus() async {
     getStatusCallCount++;
+    if (getStatusError != null &&
+        (getStatusErrorAtCall == null ||
+            getStatusCallCount == getStatusErrorAtCall)) {
+      throw getStatusError!;
+    }
     if (statusSequenceToReturn.isNotEmpty) {
       final int index = _statusSequenceIndex;
       if (_statusSequenceIndex < statusSequenceToReturn.length - 1) {

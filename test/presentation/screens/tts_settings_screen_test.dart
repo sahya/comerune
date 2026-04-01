@@ -634,6 +634,45 @@ void main() {
         expect(platform.lastUpdatedSettings!.speakerId, 2);
       });
 
+      testWidgets(
+          'speaker change continues model load when status refresh fails', (
+        WidgetTester tester,
+      ) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final FakeCommentSpeechPlatform platform = _createPlatformWithModels();
+        platform.statusToReturn = const SpeechRuntimeStatus(
+          enabled: true,
+          engineState: 'READY',
+          playerState: 'IDLE',
+          queueSize: 0,
+          currentSpeakerId: 0,
+        );
+        platform.getStatusError = Exception('status failed');
+        platform.getStatusErrorAtCall = 2;
+
+        await tester
+            .pumpWidget(_buildScreenWithPlatform(settingsStore, platform));
+        await tester.pumpAndSettle();
+
+        platform.loadedModelIds.clear();
+        platform.lastUpdatedSettings = null;
+
+        await scrollToKeyInList(
+            tester, _listKey, const Key('voicevox-speaker-dropdown'));
+        final DropdownButtonFormField<int> dropdown =
+            tester.widget<DropdownButtonFormField<int>>(
+          find.byKey(const Key('voicevox-speaker-dropdown'),
+              skipOffstage: false),
+        );
+        dropdown.onChanged!(1);
+        await tester.pumpAndSettle();
+
+        expect(platform.loadedModelIds, contains('model-b'));
+        expect(platform.lastUpdatedSettings, isNotNull);
+        expect(platform.lastUpdatedSettings!.speakerId, 1);
+      });
+
       testWidgets('failed model load reverts speaker and shows error snackbar',
           (
         WidgetTester tester,
