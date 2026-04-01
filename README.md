@@ -117,7 +117,7 @@ make test            # テスト実行
 make check           # 静的解析 + フォーマット + テスト（まとめて）
 ```
 
-開発には Flutter SDK 3.3.0 以上と Android SDK が必要です。
+開発には Flutter SDK 3.22.0 以上（Dart SDK 3.4.0 以上）と Android SDK が必要です。
 
 ---
 
