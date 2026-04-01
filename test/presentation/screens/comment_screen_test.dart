@@ -1278,6 +1278,34 @@ void main() {
       expect(find.byKey(const Key('comment-row-chat-hack-ng')), findsNothing);
     });
 
+    testWidgets('NG filtering handles expanded look-alike table entries', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'chat-lookalike-expanded',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '冂リ匚ンネタ',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngWords: const <String>['ロリコン'],
+        ),
+      );
+
+      expect(
+        find.byKey(const Key('comment-row-chat-lookalike-expanded')),
+        findsNothing,
+      );
+    });
+
     testWidgets('NG filtering handles half-width voiced katakana bypass', (
       WidgetTester tester,
     ) async {
