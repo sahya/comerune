@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -685,6 +687,43 @@ void main() {
       fakePlatform.stopCalled = false;
 
       expect(supervisor.endBroadcast(), isTrue);
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.stopCalled, isTrue);
+    });
+
+    testWidgets(
+        'speech startup aborts if the broadcast ends while start is pending',
+        (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final Completer<void> startCompleter = Completer<void>();
+      fakePlatform.startCompleter = startCompleter;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CommentScreen(
+            lv: 'lv123456789',
+            connectionSupervisor: supervisor,
+            messages: const <AppMessage>[],
+            onStopAllConnections: () async {},
+            onReconnectSameLv: () async {},
+            onDifferentLvConnected: (_, __) async {},
+            themeMode: AppThemeMode.light,
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(fakePlatform.startCalled, isTrue);
+      expect(fakePlatform.stopCalled, isFalse);
+
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pump();
+      expect(fakePlatform.stopCalled, isFalse);
+
+      startCompleter.complete();
       await tester.pumpAndSettle();
 
       expect(fakePlatform.stopCalled, isTrue);

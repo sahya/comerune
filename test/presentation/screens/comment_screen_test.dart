@@ -211,6 +211,52 @@ void main() {
       expect(row.color, themeColors.broadcastEndedBackground);
     });
 
+    testWidgets(
+        'broadcast ended notification is excluded from stats and saved logs',
+        (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final _FakeCommentLogWriter commentLogWriter = _FakeCommentLogWriter();
+      final List<AppMessage> messages = <AppMessage>[
+        _message(
+          id: 'chat-real',
+          type: AppMessageType.chat,
+          content: '通常コメント',
+        ),
+        AppMessage(
+          id: '${kSystemBroadcastEndedMessageIdPrefix}1234567890',
+          timestamp: DateTime(2026, 3, 30, 12, 35, 0),
+          content: '放送が終了しました',
+          type: AppMessageType.notification,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          autoSaveCommentLog: true,
+          commentLogWriter: commentLogWriter,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pumpAndSettle();
+
+      expect(commentLogWriter.lastSavedMessages, hasLength(1));
+      expect(commentLogWriter.lastSavedMessages!.single.id, 'chat-real');
+
+      final Finder totalRow = find.byKey(const Key('stats-total-comments'));
+      expect(totalRow, findsOneWidget);
+      final List<Text> totalRowTexts = tester
+          .widgetList<Text>(find.descendant(
+            of: totalRow,
+            matching: find.byType(Text),
+          ))
+          .toList();
+      expect(totalRowTexts.last.data, '1');
+    });
+
     testWidgets('does not render gift and nicoad messages on v1.2', (
       WidgetTester tester,
     ) async {
@@ -2418,6 +2464,8 @@ Widget _buildScreen({
   bool starPrefixHidingEnabled = false,
   DateTime? beginAt,
   CommentLogWriter? commentLogWriter,
+  bool autoSaveCommentLog = false,
+  String autoSaveCommentLogPath = '',
 }) {
   return MaterialApp(
     home: CommentScreen(
@@ -2449,6 +2497,8 @@ Widget _buildScreen({
       totalCommentCount: totalCommentCount,
       activeUserCount: activeUserCount,
       commentLogWriter: commentLogWriter,
+      autoSaveCommentLog: autoSaveCommentLog,
+      autoSaveCommentLogPath: autoSaveCommentLogPath,
     ),
   );
 }
@@ -2476,12 +2526,19 @@ AppMessage _message({
 }
 
 class _FakeCommentLogWriter implements CommentLogWriter {
+  List<AppMessage>? lastSavedMessages;
+  List<AppMessage>? lastTempMessages;
+  int saveCallCount = 0;
+  int writeToTempFileCallCount = 0;
+
   @override
   Future<String?> save({
     required String lv,
     required List<AppMessage> messages,
     Directory? customDirectory,
   }) async {
+    saveCallCount++;
+    lastSavedMessages = List<AppMessage>.from(messages);
     return '/tmp/$lv.txt';
   }
 
@@ -2490,6 +2547,8 @@ class _FakeCommentLogWriter implements CommentLogWriter {
     required String lv,
     required List<AppMessage> messages,
   }) async {
+    writeToTempFileCallCount++;
+    lastTempMessages = List<AppMessage>.from(messages);
     return '/tmp/$lv.tmp.txt';
   }
 }

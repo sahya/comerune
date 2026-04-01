@@ -491,6 +491,25 @@ class _CommentScreenState extends State<CommentScreen> {
       await platform.updateSettings(widget.speechSettings);
       await platform.start();
 
+      final ConnectionStatus currentStatus = widget.connectionSupervisor.status;
+      if (!mounted ||
+          !widget.speechSettings.enabled ||
+          currentStatus == ConnectionStatus.ended ||
+          currentStatus == ConnectionStatus.failed ||
+          currentStatus == ConnectionStatus.stopped) {
+        _speechEventSub?.cancel();
+        _speechEventSub = null;
+        _speechBaselineTimestamp = null;
+        _speechStarted = false;
+        _speechEngineState = '';
+        try {
+          await platform.stop(clearQueue: true);
+        } catch (e) {
+          debugPrint('[CommentScreen] initSpeech: abort stop FAILED: $e');
+        }
+        return;
+      }
+
       if (mounted) {
         setState(() {
           _speechStarted = true;
@@ -1482,13 +1501,14 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   void _showStatsSheet() {
-    final bool hasMessages = widget.messages.any(_shouldDisplayMessage);
+    final List<AppMessage> messagesForStatsAndLogs = _messagesForStatsAndLogs();
+    final bool hasMessages = messagesForStatsAndLogs.isNotEmpty;
     if (!hasMessages) {
       return;
     }
 
     final CommentLogStats stats = CommentLogStats.fromMessages(
-      widget.messages,
+      messagesForStatsAndLogs,
       ngUserIds: widget.ngUserIds,
     );
 
@@ -1506,7 +1526,7 @@ class _CommentScreenState extends State<CommentScreen> {
             programTitle: widget.programTitle,
             lv: widget.lv,
             highlightPickupEnabled: widget.highlightPickupEnabled,
-            messages: widget.messages,
+            messages: messagesForStatsAndLogs,
             ngUserIds: widget.ngUserIds,
             onBarTapped: (int minuteOffset) {
               Navigator.of(sheetContext).pop();
@@ -1565,7 +1585,8 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   Future<void> _saveLogManual() async {
-    final bool hasMessages = widget.messages.any(_shouldDisplayMessage);
+    final List<AppMessage> messagesForStatsAndLogs = _messagesForStatsAndLogs();
+    final bool hasMessages = messagesForStatsAndLogs.isNotEmpty;
     if (!hasMessages) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -1587,10 +1608,10 @@ class _CommentScreenState extends State<CommentScreen> {
     });
 
     try {
-      final List<AppMessage> messages =
-          widget.messages.where(_shouldDisplayMessage).toList(growable: false);
-      final String? tempPath =
-          await writer.writeToTempFile(lv: widget.lv, messages: messages);
+      final String? tempPath = await writer.writeToTempFile(
+        lv: widget.lv,
+        messages: messagesForStatsAndLogs,
+      );
       if (tempPath == null) {
         if (mounted) {
           ScaffoldMessenger.of(context)
@@ -1626,8 +1647,7 @@ class _CommentScreenState extends State<CommentScreen> {
       return;
     }
 
-    final List<AppMessage> messages =
-        widget.messages.where(_shouldDisplayMessage).toList(growable: false);
+    final List<AppMessage> messagesForStatsAndLogs = _messagesForStatsAndLogs();
 
     final Directory? customDir = widget.autoSaveCommentLogPath.isNotEmpty
         ? Directory(widget.autoSaveCommentLogPath)
@@ -1637,7 +1657,7 @@ class _CommentScreenState extends State<CommentScreen> {
     try {
       savedPath = await writer.save(
         lv: widget.lv,
-        messages: messages,
+        messages: messagesForStatsAndLogs,
         customDirectory: customDir,
       );
     } on Object {
@@ -1654,7 +1674,7 @@ class _CommentScreenState extends State<CommentScreen> {
         ..showSnackBar(
           SnackBar(content: Text('コメントログを保存しました: $savedPath')),
         );
-    } else if (messages.isNotEmpty) {
+    } else if (messagesForStatsAndLogs.isNotEmpty) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
         ..showSnackBar(
@@ -1665,6 +1685,19 @@ class _CommentScreenState extends State<CommentScreen> {
 
   bool _isSystemBroadcastEndedMessage(AppMessage message) {
     return message.id.startsWith(kSystemBroadcastEndedMessageIdPrefix);
+  }
+
+  List<AppMessage> _messagesForStatsAndLogs() {
+    return widget.messages
+        .where(_shouldIncludeInStatsAndLogs)
+        .toList(growable: false);
+  }
+
+  bool _shouldIncludeInStatsAndLogs(AppMessage message) {
+    if (_isSystemBroadcastEndedMessage(message)) {
+      return false;
+    }
+    return _shouldDisplayMessage(message);
   }
 
   void _scrollToEdge({bool animated = true}) {
