@@ -14,6 +14,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
+import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.GZIPInputStream
 
 /**
@@ -91,6 +92,8 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
     private val stateLock = Any()
 
     private val mutex = Mutex()
+    private val loadedModelPaths: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    private val loadedModelIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
     /**
      * Optional callback invoked during asset download to report progress.
@@ -115,6 +118,8 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             }
 
             state = TtsEngineState.INITIALIZING
+            loadedModelPaths.clear()
+            loadedModelIds.clear()
 
             try {
                 withContext(Dispatchers.IO) {
@@ -143,16 +148,20 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                         Log.w(TAG, "No .vvm files found in ${modelDir.absolutePath}")
                     } else {
                         for (vvm in vvmFiles) {
-                            Log.i(TAG, "Loading voice model: ${vvm.absolutePath} (${vvm.length()} bytes)")
-                            val loaded = NativeVoicevoxBridge.nativeLoadModel(
-                                vvm.absolutePath
+                            val normalizedPath = normalizeModelPath(vvm.absolutePath)
+                            val modelId = extractModelId(normalizedPath)
+                            Log.i(
+                                TAG,
+                                "Loading voice model: $normalizedPath (${vvm.length()} bytes)"
                             )
+                            val loaded = NativeVoicevoxBridge.nativeLoadModel(normalizedPath)
                             Log.i(TAG, "nativeLoadModel(${vvm.name}) returned: $loaded")
                             if (!loaded) {
                                 throw RuntimeException(
                                     "Failed to load voice model: ${vvm.name}"
                                 )
                             }
+                            markModelLoaded(normalizedPath, modelId)
                         }
                     }
                 }
@@ -162,6 +171,8 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                 Result.success(Unit)
             } catch (e: Throwable) {
                 state = TtsEngineState.ERROR
+                loadedModelPaths.clear()
+                loadedModelIds.clear()
                 Log.e(TAG, "Initialization failed", e)
                 val message = when (e) {
                     is IOException ->
@@ -267,15 +278,35 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                     IllegalStateException("Cannot load model from state: $state")
                 )
             }
+            val normalizedPath = normalizeModelPath(modelPath)
+            val modelId = extractModelId(normalizedPath)
+            val alreadyLoadedByPath = loadedModelPaths.contains(normalizedPath)
+            val alreadyLoadedById = modelId != null && loadedModelIds.contains(modelId)
+            if (alreadyLoadedByPath || alreadyLoadedById) {
+                val reason = when {
+                    alreadyLoadedByPath && alreadyLoadedById -> "already_loaded_path_and_id"
+                    alreadyLoadedByPath -> "already_loaded_path"
+                    else -> "already_loaded_id"
+                }
+                Log.i(
+                    TAG,
+                    "loadModel skip: reason=$reason modelId=${modelId ?: "unknown"} modelPath=$normalizedPath"
+                )
+                return@withLock Result.success(Unit)
+            }
 
             try {
                 withContext(Dispatchers.IO) {
-                    Log.i(TAG, "Loading model: $modelPath")
-                    val loaded = NativeVoicevoxBridge.nativeLoadModel(modelPath)
+                    Log.i(TAG, "Loading model: $normalizedPath")
+                    val loaded = NativeVoicevoxBridge.nativeLoadModel(normalizedPath)
                     if (!loaded) {
-                        throw RuntimeException("Failed to load model: $modelPath")
+                        throw RuntimeException("Failed to load model: $normalizedPath")
                     }
-                    Log.i(TAG, "Model loaded successfully: $modelPath")
+                    markModelLoaded(normalizedPath, modelId)
+                    Log.i(
+                        TAG,
+                        "Model loaded successfully: modelId=${modelId ?: "unknown"} path=$normalizedPath"
+                    )
                 }
                 Result.success(Unit)
             } catch (e: Throwable) {
@@ -297,6 +328,8 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                 true
             } else {
                 state = TtsEngineState.UNINITIALIZED
+                loadedModelPaths.clear()
+                loadedModelIds.clear()
                 false
             }
         }
@@ -391,6 +424,23 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         versionFile.writeText(effectiveVersion)
         emitDownloadEvent("download_completed", "")
         Log.i(TAG, "All assets downloaded (version $effectiveVersion)")
+    }
+
+    private fun normalizeModelPath(path: String): String = try {
+        File(path).canonicalPath
+    } catch (_: IOException) {
+        File(path).absolutePath
+    }
+
+    private fun extractModelId(modelPath: String): String? =
+        File(modelPath).nameWithoutExtension
+            .takeIf { it.isNotBlank() }
+
+    private fun markModelLoaded(modelPath: String, modelId: String?) {
+        loadedModelPaths.add(modelPath)
+        if (!modelId.isNullOrBlank()) {
+            loadedModelIds.add(modelId)
+        }
     }
 
     /**
