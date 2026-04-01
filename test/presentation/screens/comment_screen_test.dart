@@ -145,7 +145,7 @@ void main() {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
       final List<AppMessage> messages = <AppMessage>[
         AppMessage(
-          id: 'system:broadcast_ended:1234567890',
+          id: '${kSystemBroadcastEndedMessageIdPrefix}1234567890',
           timestamp: DateTime(2026, 3, 30, 12, 35, 0),
           userId: 'user-ng',
           content: '放送が終了しました',
@@ -170,7 +170,11 @@ void main() {
       );
 
       expect(
-        find.byKey(const Key('comment-row-system:broadcast_ended:1234567890')),
+        find.byKey(
+          const Key(
+            'comment-row-${kSystemBroadcastEndedMessageIdPrefix}1234567890',
+          ),
+        ),
         findsOneWidget,
       );
       expect(find.byKey(const Key('comment-row-chat-hidden')), findsNothing);
@@ -184,7 +188,7 @@ void main() {
       final AppThemeColors themeColors = AppTheme.colorsFor(AppThemeMode.light);
       final List<AppMessage> messages = <AppMessage>[
         AppMessage(
-          id: 'system:broadcast_ended:1234567890',
+          id: '${kSystemBroadcastEndedMessageIdPrefix}1234567890',
           timestamp: DateTime(2026, 3, 30, 12, 35, 0),
           content: '放送が終了しました',
           type: AppMessageType.notification,
@@ -199,8 +203,9 @@ void main() {
       );
 
       final Container row = tester.widget(find.descendant(
-        of: find
-            .byKey(const Key('comment-row-system:broadcast_ended:1234567890')),
+        of: find.byKey(const Key(
+          'comment-row-${kSystemBroadcastEndedMessageIdPrefix}1234567890',
+        )),
         matching: find.byType(Container),
       ));
       expect(row.color, themeColors.broadcastEndedBackground);

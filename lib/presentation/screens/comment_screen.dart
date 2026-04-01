@@ -1664,7 +1664,7 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   bool _isSystemBroadcastEndedMessage(AppMessage message) {
-    return message.id.startsWith('system:broadcast_ended:');
+    return message.id.startsWith(kSystemBroadcastEndedMessageIdPrefix);
   }
 
   void _scrollToEdge({bool animated = true}) {
@@ -2315,7 +2315,7 @@ class _CommentRowState extends State<_CommentRow> {
   }
 
   bool _isBroadcastEndedMessage(AppMessage message) {
-    return message.id.startsWith('system:broadcast_ended:');
+    return message.id.startsWith(kSystemBroadcastEndedMessageIdPrefix);
   }
 }
 

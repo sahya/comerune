@@ -1,3 +1,5 @@
+const String kSystemBroadcastEndedMessageIdPrefix = 'system:broadcast_ended:';
+
 enum AppMessageType {
   chat,
   operator,
