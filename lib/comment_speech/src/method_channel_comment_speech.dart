@@ -8,6 +8,12 @@ import 'models/speech_runtime_status.dart';
 import 'models/speech_settings.dart';
 import 'models/submit_result.dart';
 
+void _debugLog(String message) {
+  if (kDebugMode) {
+    debugPrint(message);
+  }
+}
+
 /// [CommentSpeechPlatform] implementation backed by MethodChannel and
 /// EventChannel that delegates to the Android Kotlin plugin.
 class MethodChannelCommentSpeech implements CommentSpeechPlatform {

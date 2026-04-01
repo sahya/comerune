@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../app_logging.dart';
@@ -360,8 +361,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
       _pushSettingsToEngine(next);
     } else {
       // Revert to the previous speaker and notify the user.
-      final AppSettings reverted =
-          next.copyWith(voicevoxSpeaker: previousSpeaker);
+      final AppSettings reverted = next.copyWith(
+        voicevoxSpeaker: previousSpeaker,
+      );
       setState(() {
         settings = reverted;
         _isLoadingModel = false;
@@ -580,8 +582,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
 
       // If the current speaker is not in the list, add a fallback entry
       // to avoid a Flutter assertion error.
-      final bool currentInList =
-          items.any((item) => item.value == settings.voicevoxSpeaker);
+      final bool currentInList = items.any(
+        (item) => item.value == settings.voicevoxSpeaker,
+      );
       if (!currentInList && items.isNotEmpty) {
         // Defer the state update to avoid calling setState during build.
         final int firstSpeaker = items.first.value!;
@@ -828,9 +831,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     final AppSettings? settings = this.settings;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('読み上げ設定'),
-      ),
+      appBar: AppBar(title: const Text('読み上げ設定')),
       body: settings == null
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -847,7 +848,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                       value: settings.autoReadEnabled,
                       onChanged: (bool value) {
                         updateAndSave(
-                            settings.copyWith(autoReadEnabled: value));
+                          settings.copyWith(autoReadEnabled: value),
+                        );
                       },
                     ),
                     SwitchListTile(
@@ -1025,7 +1027,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                       value: settings.suppressDuplicate,
                       onChanged: (bool value) {
                         updateAndSave(
-                            settings.copyWith(suppressDuplicate: value));
+                          settings.copyWith(suppressDuplicate: value),
+                        );
                       },
                     ),
                     TextFormField(

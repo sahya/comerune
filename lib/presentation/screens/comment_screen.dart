@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:share_plus/share_plus.dart';
@@ -23,6 +24,12 @@ import 'comment_log_stats_sheet.dart';
 import 'user_detail_sheet.dart';
 
 const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
+
+void _debugLog(String message) {
+  if (kDebugMode) {
+    debugPrint(message);
+  }
+}
 
 /// Converts an ARGB32 integer to [Color] without using the deprecated
 /// `Color(int)` constructor.
@@ -352,8 +359,10 @@ class _CommentScreenState extends State<CommentScreen> {
       _submitNewCommentsForSpeech(widget.messages);
     }
 
-    final bool hasNewMessages =
-        _hasNewMessages(oldWidget.messages, widget.messages);
+    final bool hasNewMessages = _hasNewMessages(
+      oldWidget.messages,
+      widget.messages,
+    );
     if (hasNewMessages) {
       // Log new comment texts for debugging.
       _logNewComments(oldWidget.messages, widget.messages);
@@ -633,21 +642,18 @@ class _CommentScreenState extends State<CommentScreen> {
 
   void _startSpeechPollTimer() {
     _stopSpeechPollTimer();
-    _speechPollTimer = Timer.periodic(
-      const Duration(seconds: 2),
-      (_) {
-        if (!mounted) return;
-        // Only poll when the app is not in a resumed (foreground) state.
-        // When resumed, didUpdateWidget already submits new comments.
-        final AppLifecycleState? lifecycleState =
-            WidgetsBinding.instance.lifecycleState;
-        if (lifecycleState == AppLifecycleState.resumed) return;
+    _speechPollTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!mounted) return;
+      // Only poll when the app is not in a resumed (foreground) state.
+      // When resumed, didUpdateWidget already submits new comments.
+      final AppLifecycleState? lifecycleState =
+          WidgetsBinding.instance.lifecycleState;
+      if (lifecycleState == AppLifecycleState.resumed) return;
 
-        if (_speechStarted && widget.speechSettings.enabled) {
-          _submitNewCommentsForSpeech(widget.messages);
-        }
-      },
-    );
+      if (_speechStarted && widget.speechSettings.enabled) {
+        _submitNewCommentsForSpeech(widget.messages);
+      }
+    });
   }
 
   void _stopSpeechPollTimer() {
@@ -753,9 +759,7 @@ class _CommentScreenState extends State<CommentScreen> {
       return false;
     }
     final String lowerContent = content.toLowerCase();
-    return widget.ngWords.any(
-      (String word) => lowerContent.contains(word),
-    );
+    return widget.ngWords.any((String word) => lowerContent.contains(word));
   }
 
   Future<void> _handleTeachCommand(AppMessage message) async {
@@ -768,8 +772,9 @@ class _CommentScreenState extends State<CommentScreen> {
       final AppSettings settings = await store.load();
 
       TeachCommandResult result;
-      final TeachCommand? teach =
-          TeachCommandParser.parseTeach(message.content);
+      final TeachCommand? teach = TeachCommandParser.parseTeach(
+        message.content,
+      );
       if (teach != null) {
         result = TeachCommandHandler.executeTeach(
           command: teach,
@@ -777,8 +782,9 @@ class _CommentScreenState extends State<CommentScreen> {
           containsNgWord: settings.containsNgWord,
         );
       } else {
-        final UnteachCommand? unteach =
-            TeachCommandParser.parseUnteach(message.content);
+        final UnteachCommand? unteach = TeachCommandParser.parseUnteach(
+          message.content,
+        );
         if (unteach == null) {
           return;
         }
@@ -789,8 +795,9 @@ class _CommentScreenState extends State<CommentScreen> {
       }
 
       if (result.success && result.updatedRules != null) {
-        final AppSettings updated =
-            settings.copyWith(dictionaryRules: result.updatedRules);
+        final AppSettings updated = settings.copyWith(
+          dictionaryRules: result.updatedRules,
+        );
         await store.save(updated);
         widget.onDictionaryRulesChanged?.call(updated);
       }
@@ -862,8 +869,9 @@ class _CommentScreenState extends State<CommentScreen> {
               .where(_shouldDisplayMessage)
               .toList(growable: false);
 
-          final List<AppMessage> sortedMessages =
-              _applySortOrder(visibleMessages);
+          final List<AppMessage> sortedMessages = _applySortOrder(
+            visibleMessages,
+          );
           final AppThemeMode effectiveMode = AppTheme.resolveEffectiveMode(
             widget.themeMode,
             MediaQuery.platformBrightnessOf(context),
@@ -1061,9 +1069,11 @@ class _CommentScreenState extends State<CommentScreen> {
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               ListTile(
-                key: Key(isPinned
-                    ? 'action-unpin-${message.id}'
-                    : 'action-pin-${message.id}'),
+                key: Key(
+                  isPinned
+                      ? 'action-unpin-${message.id}'
+                      : 'action-pin-${message.id}',
+                ),
                 leading: Icon(
                   isPinned ? Icons.push_pin : Icons.push_pin_outlined,
                 ),
@@ -1433,10 +1443,7 @@ class _CommentScreenState extends State<CommentScreen> {
     return true;
   }
 
-  bool _hasNewMessages(
-    List<AppMessage> previous,
-    List<AppMessage> current,
-  ) {
+  bool _hasNewMessages(List<AppMessage> previous, List<AppMessage> current) {
     if (identical(previous, current)) {
       return false;
     }
@@ -1640,9 +1647,7 @@ class _CommentScreenState extends State<CommentScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context)
           ..clearSnackBars()
-          ..showSnackBar(
-            const SnackBar(content: Text('保存するコメントがありません')),
-          );
+          ..showSnackBar(const SnackBar(content: Text('保存するコメントがありません')));
       }
       return;
     }
@@ -1665,9 +1670,7 @@ class _CommentScreenState extends State<CommentScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context)
             ..clearSnackBars()
-            ..showSnackBar(
-              const SnackBar(content: Text('コメントログの保存に失敗しました')),
-            );
+            ..showSnackBar(const SnackBar(content: Text('コメントログの保存に失敗しました')));
         }
         return;
       }
@@ -1676,9 +1679,7 @@ class _CommentScreenState extends State<CommentScreen> {
         final String fileName = tempPath.split('/').last;
         ScaffoldMessenger.of(context)
           ..clearSnackBars()
-          ..showSnackBar(
-            SnackBar(content: Text('コメントログを保存しました: $fileName')),
-          );
+          ..showSnackBar(SnackBar(content: Text('コメントログを保存しました: $fileName')));
       }
       await Share.shareXFiles(<XFile>[XFile(tempPath)]);
     } finally {
@@ -1726,9 +1727,7 @@ class _CommentScreenState extends State<CommentScreen> {
     } else if (messagesForStatsAndLogs.isNotEmpty) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
-        ..showSnackBar(
-          const SnackBar(content: Text('コメントログの自動保存に失敗しました')),
-        );
+        ..showSnackBar(const SnackBar(content: Text('コメントログの自動保存に失敗しました')));
     }
   }
 
@@ -1793,10 +1792,7 @@ class _ProgramTitleBar extends StatelessWidget {
         children: <Widget>[
           if (broadcasterIconUrl != null &&
               broadcasterIconUrl!.isNotEmpty) ...<Widget>[
-            _BroadcasterIcon(
-              url: broadcasterIconUrl,
-              size: 20,
-            ),
+            _BroadcasterIcon(url: broadcasterIconUrl, size: 20),
             const SizedBox(width: 8),
           ],
           Expanded(
@@ -2109,10 +2105,7 @@ class _StatusBarState extends State<_StatusBar> {
 }
 
 class _BroadcasterIcon extends StatelessWidget {
-  const _BroadcasterIcon({
-    required this.url,
-    required this.size,
-  });
+  const _BroadcasterIcon({required this.url, required this.size});
 
   final String? url;
   final double size;
@@ -2131,15 +2124,9 @@ class _BroadcasterIcon extends StatelessWidget {
                 fit: BoxFit.cover,
                 cacheWidth: (size * 2).round(),
                 cacheHeight: (size * 2).round(),
-                errorBuilder: (_, __, ___) => Icon(
-                  Icons.person,
-                  size: size,
-                ),
+                errorBuilder: (_, __, ___) => Icon(Icons.person, size: size),
               )
-            : Icon(
-                Icons.person,
-                size: size,
-              ),
+            : Icon(Icons.person, size: size),
       ),
     );
   }
@@ -2265,10 +2252,7 @@ class _PinnedCommentRow extends StatelessWidget {
                 resolvedUserName: resolvedUserName,
                 beginAt: beginAt,
               ),
-              style: TextStyle(
-                fontSize: fontSize,
-                color: userColor,
-              ),
+              style: TextStyle(fontSize: fontSize, color: userColor),
             ),
           ),
           SizedBox(
@@ -2279,10 +2263,7 @@ class _PinnedCommentRow extends StatelessWidget {
               onPressed: onUnpin,
               padding: EdgeInsets.zero,
               iconSize: 16,
-              icon: Icon(
-                Icons.close,
-                color: themeColors.subtleTextColor,
-              ),
+              icon: Icon(Icons.close, color: themeColors.subtleTextColor),
             ),
           ),
         ],

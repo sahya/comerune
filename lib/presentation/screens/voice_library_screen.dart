@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
@@ -70,9 +71,7 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('話者ライブラリ'),
-      ),
+      appBar: AppBar(title: const Text('話者ライブラリ')),
       body: ValueListenableBuilder<List<VoicevoxModelInfo>>(
         valueListenable: _manager.models,
         builder: (context, models, _) {
@@ -154,6 +153,10 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('ダウンロードに失敗しました: $e')),
       );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('ダウンロードに失敗しました: $e')));
       return;
     }
 
@@ -179,6 +182,10 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('モデルの読み込みに失敗しました: $e')),
       );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('モデルの読み込みに失敗しました: $e')));
     }
   }
 
@@ -205,9 +212,9 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
       await _manager.deleteModel(model.modelId);
     } on Object catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('削除に失敗しました: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('削除に失敗しました: $e')));
     }
   }
 
@@ -216,9 +223,9 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
       await _manager.cancelDownload(model.modelId);
     } on Object catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('キャンセルに失敗しました: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('キャンセルに失敗しました: $e')));
     }
   }
 }
@@ -275,10 +282,9 @@ class _VoiceModelCard extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
                   'ダウンロードに失敗しました',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: Colors.red),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: Colors.red),
                 ),
               ),
             const SizedBox(height: 8),
@@ -392,9 +398,9 @@ class _VoicevoxTermsDialogState extends State<_VoicevoxTermsDialog> {
         stackTrace: stackTrace,
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('規約の読み込みに失敗しました')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('規約の読み込みに失敗しました')));
         Navigator.of(context).pop(false);
       }
     }
@@ -465,8 +471,9 @@ class _VoicevoxTermsDialogState extends State<_VoicevoxTermsDialog> {
                       thumbVisibility: true,
                       child: SingleChildScrollView(
                         controller: _scrollController,
-                        child: _termsContentCache ??=
-                            _buildTermsContent(context),
+                        child: _termsContentCache ??= _buildTermsContent(
+                          context,
+                        ),
                       ),
                     ),
             ),
@@ -506,35 +513,43 @@ class _VoicevoxTermsDialogState extends State<_VoicevoxTermsDialog> {
 
       if (line == '## 禁止事項') {
         // Section header – bold + colored.
-        spans.add(TextSpan(
-          text: '\n禁止事項\n',
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: theme.colorScheme.error,
+        spans.add(
+          TextSpan(
+            text: '\n禁止事項\n',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: theme.colorScheme.error,
+            ),
           ),
-        ));
+        );
       } else if (line.contains('公序良俗に反する行為')) {
-        spans.add(TextSpan(
-          text: '$line\n',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: theme.colorScheme.error,
+        spans.add(
+          TextSpan(
+            text: '$line\n',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: theme.colorScheme.error,
+            ),
           ),
-        ));
+        );
       } else if (line.startsWith('# ')) {
-        spans.add(TextSpan(
-          text: '\n${line.substring(2)}\n',
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
+        spans.add(
+          TextSpan(
+            text: '\n${line.substring(2)}\n',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
           ),
-        ));
+        );
       } else if (line.startsWith('## ')) {
-        spans.add(TextSpan(
-          text: '\n${line.substring(3)}\n',
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.bold,
+        spans.add(
+          TextSpan(
+            text: '\n${line.substring(3)}\n',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
           ),
-        ));
+        );
       } else if (line == '---') {
         spans.add(const TextSpan(text: '\n────────────────────\n'));
       } else {
@@ -544,30 +559,33 @@ class _VoicevoxTermsDialogState extends State<_VoicevoxTermsDialog> {
 
     // Supplementary text at the end.
     spans.add(const TextSpan(text: '\n'));
-    spans.add(TextSpan(
-      text: '────────────────────\n\n',
-      style: theme.textTheme.bodySmall,
-    ));
-    spans.add(TextSpan(
-      text: '補足事項\n',
-      style: theme.textTheme.titleSmall?.copyWith(
-        fontWeight: FontWeight.bold,
+    spans.add(
+      TextSpan(
+        text: '────────────────────\n\n',
+        style: theme.textTheme.bodySmall,
       ),
-    ));
-    spans.add(TextSpan(
-      text: '・読み上げ内容はユーザーの責任のもとでご利用ください。'
-          'ライブ配信ではコメント投稿者が内容を制御するため、'
-          '不適切な内容が読み上げられる可能性があります。\n'
-          '・NGワードフィルター機能を活用することで、'
-          '不適切な読み上げを防止できます。\n',
-      style: theme.textTheme.bodyMedium,
-    ));
+    );
+    spans.add(
+      TextSpan(
+        text: '補足事項\n',
+        style: theme.textTheme.titleSmall?.copyWith(
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+    spans.add(
+      TextSpan(
+        text: '・読み上げ内容はユーザーの責任のもとでご利用ください。'
+            'ライブ配信ではコメント投稿者が内容を制御するため、'
+            '不適切な内容が読み上げられる可能性があります。\n'
+            '・NGワードフィルター機能を活用することで、'
+            '不適切な読み上げを防止できます。\n',
+        style: theme.textTheme.bodyMedium,
+      ),
+    );
 
     return Text.rich(
-      TextSpan(
-        style: theme.textTheme.bodyMedium,
-        children: spans,
-      ),
+      TextSpan(style: theme.textTheme.bodyMedium, children: spans),
     );
   }
 }
