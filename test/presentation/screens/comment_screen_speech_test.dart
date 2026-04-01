@@ -647,6 +647,42 @@ void main() {
       expect(fakePlatform.submittedComments.first.text, 'こんにちは、解決名さん');
     });
 
+    testWidgets(
+        'requests user name resolution for new comments when showUserName is false',
+        (
+      WidgetTester tester,
+    ) async {
+      final List<AppMessage> messages = <AppMessage>[
+        _chatMessage(id: 'msg-1', content: '最初', userId: '11111'),
+      ];
+      final List<String> requestedUserIds = <String>[];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          messages: messages,
+          showUserName: false,
+          readUserName: true,
+          requestUserNameResolve: requestedUserIds.add,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Initial messages are requested in initState.
+      expect(requestedUserIds, contains('11111'));
+
+      requestedUserIds.clear();
+      final _SpeechTestHostState host =
+          tester.state(find.byType(_SpeechTestHost));
+      host.addMessage(
+        _chatMessage(id: 'msg-2', content: 'こんにちは', userId: '24680'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(requestedUserIds, contains('24680'));
+    });
+
     testWidgets('readUserName OFF sends content only (default)', (
       WidgetTester tester,
     ) async {
@@ -909,6 +945,7 @@ class _SpeechTestHost extends StatefulWidget {
     this.readUserName = false,
     this.userNicknameMap = const <String, String>{},
     this.resolveUserName,
+    this.requestUserNameResolve,
   });
 
   final List<AppMessage> initialMessages;
@@ -921,6 +958,7 @@ class _SpeechTestHost extends StatefulWidget {
   final bool readUserName;
   final Map<String, String> userNicknameMap;
   final String? Function(String userId)? resolveUserName;
+  final void Function(String userId)? requestUserNameResolve;
 
   @override
   State<_SpeechTestHost> createState() => _SpeechTestHostState();
@@ -976,6 +1014,7 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
       readUserName: widget.readUserName,
       userNicknameMap: widget.userNicknameMap,
       resolveUserName: widget.resolveUserName,
+      requestUserNameResolve: widget.requestUserNameResolve,
     );
   }
 }
@@ -991,6 +1030,7 @@ Widget _buildScreen({
   bool readUserName = false,
   Map<String, String> userNicknameMap = const <String, String>{},
   String? Function(String userId)? resolveUserName,
+  void Function(String userId)? requestUserNameResolve,
 }) {
   return MaterialApp(
     home: _SpeechTestHost(
@@ -1004,6 +1044,7 @@ Widget _buildScreen({
       readUserName: readUserName,
       userNicknameMap: userNicknameMap,
       resolveUserName: resolveUserName,
+      requestUserNameResolve: requestUserNameResolve,
     ),
   );
 }
