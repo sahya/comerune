@@ -57,8 +57,9 @@ void main() {
   group('VoicevoxModelInfo.copyWith', () {
     test('creates a new instance with updated downloadState', () {
       final original = VoicevoxModelInfo.fromMap(sampleMap);
-      final copied =
-          original.copyWith(downloadState: ModelDownloadState.downloaded);
+      final copied = original.copyWith(
+        downloadState: ModelDownloadState.downloaded,
+      );
 
       expect(copied.downloadState, ModelDownloadState.downloaded);
       expect(copied.modelId, original.modelId);

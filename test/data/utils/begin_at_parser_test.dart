@@ -35,10 +35,7 @@ void main() {
 
       expect(result, isNotNull);
       expect(result!.isUtc, isTrue);
-      expect(
-        result.millisecondsSinceEpoch,
-        1719835200 * 1000,
-      );
+      expect(result.millisecondsSinceEpoch, 1719835200 * 1000);
     });
 
     test('returns null when beginAt is missing', () {
@@ -48,17 +45,13 @@ void main() {
     });
 
     test('returns null when beginAt is null', () {
-      final DateTime? result = parseBeginAt(<String, dynamic>{
-        'beginAt': null,
-      });
+      final DateTime? result = parseBeginAt(<String, dynamic>{'beginAt': null});
 
       expect(result, isNull);
     });
 
     test('returns null when beginAt is empty string', () {
-      final DateTime? result = parseBeginAt(<String, dynamic>{
-        'beginAt': '',
-      });
+      final DateTime? result = parseBeginAt(<String, dynamic>{'beginAt': ''});
 
       expect(result, isNull);
     });
@@ -80,9 +73,7 @@ void main() {
     });
 
     test('returns null for unsupported type (bool)', () {
-      final DateTime? result = parseBeginAt(<String, dynamic>{
-        'beginAt': true,
-      });
+      final DateTime? result = parseBeginAt(<String, dynamic>{'beginAt': true});
 
       expect(result, isNull);
     });

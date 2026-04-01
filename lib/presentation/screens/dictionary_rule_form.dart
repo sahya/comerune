@@ -10,10 +10,7 @@ import '../../comment_speech/src/models/replace_rule.dart';
 /// Returns the edited [ReplaceRule] via `Navigator.pop` on save,
 /// or `null` on cancel.
 class DictionaryRuleForm extends StatefulWidget {
-  const DictionaryRuleForm({
-    super.key,
-    this.rule,
-  });
+  const DictionaryRuleForm({super.key, this.rule});
 
   /// The rule to edit. `null` means adding a new rule.
   final ReplaceRule? rule;

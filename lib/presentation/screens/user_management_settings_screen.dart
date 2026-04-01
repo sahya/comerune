@@ -29,7 +29,8 @@ class UserManagementSettingsScreen extends StatefulWidget {
 }
 
 class _UserManagementSettingsScreenState
-    extends State<UserManagementSettingsScreen> with SettingsScreenMixin {
+    extends State<UserManagementSettingsScreen>
+    with SettingsScreenMixin {
   @override
   SettingsStore get settingsStore => widget.settingsStore;
 
@@ -64,9 +65,7 @@ class _UserManagementSettingsScreenState
     final AppSettings? settings = this.settings;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('ユーザー管理'),
-      ),
+      appBar: AppBar(title: const Text('ユーザー管理')),
       body: settings == null
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -113,41 +112,42 @@ class _UserManagementSettingsScreenState
                       value: settings.autoNicknameRegistration,
                       onChanged: (bool value) {
                         updateAndSave(
-                          settings.copyWith(
-                            autoNicknameRegistration: value,
-                          ),
+                          settings.copyWith(autoNicknameRegistration: value),
                         );
                       },
                     ),
                     if (widget.userAttributeStore != null)
-                      Builder(builder: (BuildContext context) {
-                        final String? broadcasterId =
-                            widget.broadcasterIdNotifier?.value;
-                        final bool enabled = broadcasterId != null;
-                        return ListTile(
-                          key: const Key('nickname-list-tile'),
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.badge),
-                          title: const Text('コテハン管理'),
-                          subtitle:
-                              enabled ? null : const Text('放送に接続すると利用できます'),
-                          trailing: const Icon(Icons.chevron_right),
-                          enabled: enabled,
-                          onTap: enabled
-                              ? () async {
-                                  await Navigator.of(context).push(
-                                    MaterialPageRoute<void>(
-                                      builder: (_) => NicknameListScreen(
-                                        userAttributeStore:
-                                            widget.userAttributeStore!,
-                                        broadcasterId: broadcasterId,
+                      Builder(
+                        builder: (BuildContext context) {
+                          final String? broadcasterId =
+                              widget.broadcasterIdNotifier?.value;
+                          final bool enabled = broadcasterId != null;
+                          return ListTile(
+                            key: const Key('nickname-list-tile'),
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.badge),
+                            title: const Text('コテハン管理'),
+                            subtitle: enabled
+                                ? null
+                                : const Text('放送に接続すると利用できます'),
+                            trailing: const Icon(Icons.chevron_right),
+                            enabled: enabled,
+                            onTap: enabled
+                                ? () async {
+                                    await Navigator.of(context).push(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) => NicknameListScreen(
+                                          userAttributeStore:
+                                              widget.userAttributeStore!,
+                                          broadcasterId: broadcasterId,
+                                        ),
                                       ),
-                                    ),
-                                  );
-                                }
-                              : null,
-                        );
-                      }),
+                                    );
+                                  }
+                                : null,
+                          );
+                        },
+                      ),
                   ],
                 ),
               ],

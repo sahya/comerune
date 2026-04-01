@@ -6,28 +6,32 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('FavoriteUserLiveChecker', () {
-    test('returns programId when user is broadcasting (302 redirect)',
-        () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
-      httpClient.responsesByUrl['https://live.nicovideo.jp/watch/user/12345'] =
-          _FakeResponseConfig(
-        statusCode: 302,
-        headers: <String, String>{
-          'location': 'https://live.nicovideo.jp/watch/lv348712105',
-        },
-      );
+    test(
+      'returns programId when user is broadcasting (302 redirect)',
+      () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient
+                .responsesByUrl['https://live.nicovideo.jp/watch/user/12345'] =
+            _FakeResponseConfig(
+              statusCode: 302,
+              headers: <String, String>{
+                'location': 'https://live.nicovideo.jp/watch/lv348712105',
+              },
+            );
 
-      final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
-        httpClient: httpClient,
-      );
+        final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
+          httpClient: httpClient,
+        );
 
-      final Map<String, String> result =
-          await checker.checkBroadcastStatus(<String>{'12345'});
+        final Map<String, String> result = await checker.checkBroadcastStatus(
+          <String>{'12345'},
+        );
 
-      expect(result, <String, String>{'12345': 'lv348712105'});
+        expect(result, <String, String>{'12345': 'lv348712105'});
 
-      checker.dispose();
-    });
+        checker.dispose();
+      },
+    );
 
     test('returns empty map when user is not broadcasting (200)', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
@@ -38,8 +42,9 @@ void main() {
         httpClient: httpClient,
       );
 
-      final Map<String, String> result =
-          await checker.checkBroadcastStatus(<String>{'12345'});
+      final Map<String, String> result = await checker.checkBroadcastStatus(
+        <String>{'12345'},
+      );
 
       expect(result, isEmpty);
 
@@ -53,8 +58,9 @@ void main() {
         httpClient: httpClient,
       );
 
-      final Map<String, String> result =
-          await checker.checkBroadcastStatus(<String>{});
+      final Map<String, String> result = await checker.checkBroadcastStatus(
+        <String>{},
+      );
 
       expect(result, isEmpty);
       expect(httpClient.requests, isEmpty);
@@ -66,32 +72,30 @@ void main() {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responsesByUrl['https://live.nicovideo.jp/watch/user/111'] =
           _FakeResponseConfig(
-        statusCode: 302,
-        headers: <String, String>{
-          'location': 'https://live.nicovideo.jp/watch/lv100001',
-        },
-      );
+            statusCode: 302,
+            headers: <String, String>{
+              'location': 'https://live.nicovideo.jp/watch/lv100001',
+            },
+          );
       httpClient.responsesByUrl['https://live.nicovideo.jp/watch/user/222'] =
           _FakeResponseConfig(statusCode: 200);
       httpClient.responsesByUrl['https://live.nicovideo.jp/watch/user/333'] =
           _FakeResponseConfig(
-        statusCode: 301,
-        headers: <String, String>{
-          'location': 'https://live.nicovideo.jp/watch/lv100003',
-        },
-      );
+            statusCode: 301,
+            headers: <String, String>{
+              'location': 'https://live.nicovideo.jp/watch/lv100003',
+            },
+          );
 
       final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
         httpClient: httpClient,
       );
 
-      final Map<String, String> result =
-          await checker.checkBroadcastStatus(<String>{'111', '222', '333'});
+      final Map<String, String> result = await checker.checkBroadcastStatus(
+        <String>{'111', '222', '333'},
+      );
 
-      expect(result, <String, String>{
-        '111': 'lv100001',
-        '333': 'lv100003',
-      });
+      expect(result, <String, String>{'111': 'lv100001', '333': 'lv100003'});
 
       checker.dispose();
     });
@@ -105,8 +109,9 @@ void main() {
         httpClient: httpClient,
       );
 
-      final Map<String, String> result =
-          await checker.checkBroadcastStatus(<String>{'999'});
+      final Map<String, String> result = await checker.checkBroadcastStatus(
+        <String>{'999'},
+      );
 
       expect(result, isEmpty);
 
@@ -117,18 +122,19 @@ void main() {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responsesByUrl['https://live.nicovideo.jp/watch/user/12345'] =
           _FakeResponseConfig(
-        statusCode: 302,
-        headers: <String, String>{
-          'location': 'https://live.nicovideo.jp/watch/somethingelse',
-        },
-      );
+            statusCode: 302,
+            headers: <String, String>{
+              'location': 'https://live.nicovideo.jp/watch/somethingelse',
+            },
+          );
 
       final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
         httpClient: httpClient,
       );
 
-      final Map<String, String> result =
-          await checker.checkBroadcastStatus(<String>{'12345'});
+      final Map<String, String> result = await checker.checkBroadcastStatus(
+        <String>{'12345'},
+      );
 
       expect(result, isEmpty);
 
@@ -144,8 +150,9 @@ void main() {
         httpClient: httpClient,
       );
 
-      final Map<String, String> result =
-          await checker.checkBroadcastStatus(<String>{'12345'});
+      final Map<String, String> result = await checker.checkBroadcastStatus(
+        <String>{'12345'},
+      );
 
       expect(result, isEmpty);
 
@@ -154,24 +161,28 @@ void main() {
 
     test('supports all redirect status codes', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
-      for (final MapEntry<String, int> entry
-          in <String, int>{'401': 303, '402': 307, '403': 308}.entries) {
-        httpClient.responsesByUrl[
-                'https://live.nicovideo.jp/watch/user/${entry.key}'] =
+      for (final MapEntry<String, int> entry in <String, int>{
+        '401': 303,
+        '402': 307,
+        '403': 308,
+      }.entries) {
+        httpClient
+                .responsesByUrl['https://live.nicovideo.jp/watch/user/${entry.key}'] =
             _FakeResponseConfig(
-          statusCode: entry.value,
-          headers: <String, String>{
-            'location': 'https://live.nicovideo.jp/watch/lv${entry.key}000',
-          },
-        );
+              statusCode: entry.value,
+              headers: <String, String>{
+                'location': 'https://live.nicovideo.jp/watch/lv${entry.key}000',
+              },
+            );
       }
 
       final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
         httpClient: httpClient,
       );
 
-      final Map<String, String> result =
-          await checker.checkBroadcastStatus(<String>{'401', '402', '403'});
+      final Map<String, String> result = await checker.checkBroadcastStatus(
+        <String>{'401', '402', '403'},
+      );
 
       expect(result, <String, String>{
         '401': 'lv401000',
@@ -212,10 +223,7 @@ class _FakeResponseConfig {
 }
 
 class _CapturedRequest {
-  _CapturedRequest({
-    required this.uri,
-    required this.followRedirects,
-  });
+  _CapturedRequest({required this.uri, required this.followRedirects});
 
   final Uri uri;
   final bool followRedirects;
@@ -235,11 +243,7 @@ class _FakeHttpClient implements HttpClient {
     }
     final _FakeResponseConfig config =
         responsesByUrl[urlStr] ?? _FakeResponseConfig(statusCode: 200);
-    return _FakeHttpClientRequest(
-      uri: url,
-      client: this,
-      config: config,
-    );
+    return _FakeHttpClientRequest(uri: url, client: this, config: config);
   }
 
   @override
@@ -283,10 +287,7 @@ class _FakeHttpClientRequest implements HttpClientRequest {
   @override
   Future<HttpClientResponse> close() async {
     client.requests.add(
-      _CapturedRequest(
-        uri: uri,
-        followRedirects: _followRedirects,
-      ),
+      _CapturedRequest(uri: uri, followRedirects: _followRedirects),
     );
 
     return _FakeHttpClientResponse(

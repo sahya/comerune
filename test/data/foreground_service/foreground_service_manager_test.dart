@@ -29,10 +29,7 @@ void main() {
         fakeOps.lastAndroidNotificationOptions?.channelImportance,
         NotificationChannelImportance.LOW,
       );
-      expect(
-        fakeOps.lastForegroundTaskOptions?.autoRunOnBoot,
-        isFalse,
-      );
+      expect(fakeOps.lastForegroundTaskOptions?.autoRunOnBoot, isFalse);
     });
 
     test('start sets isRunning to true and calls operations', () async {
@@ -99,26 +96,29 @@ void main() {
       expect(fakeOps.lastStartTitle, 'B');
     });
 
-    test('start catches exception from operations and remains not running',
-        () async {
-      fakeOps.startException = Exception('platform error');
-      await manager.start(title: 'Test', text: 'body');
+    test(
+      'start catches exception from operations and remains not running',
+      () async {
+        fakeOps.startException = Exception('platform error');
+        await manager.start(title: 'Test', text: 'body');
 
-      expect(manager.isRunning, isFalse);
-      expect(fakeOps.startCallCount, 1);
-    });
-
-    test('stop catches exception from operations and sets isRunning false',
-        () async {
-      await manager.start(title: 'Test', text: 'body');
-      fakeOps.stopException = Exception('platform error');
-      await manager.stop();
-
-      expect(manager.isRunning, isFalse);
-    });
+        expect(manager.isRunning, isFalse);
+        expect(fakeOps.startCallCount, 1);
+      },
+    );
 
     test(
-        'updateNotification catches exception from operations '
+      'stop catches exception from operations and sets isRunning false',
+      () async {
+        await manager.start(title: 'Test', text: 'body');
+        fakeOps.stopException = Exception('platform error');
+        await manager.stop();
+
+        expect(manager.isRunning, isFalse);
+      },
+    );
+
+    test('updateNotification catches exception from operations '
         'and remains running', () async {
       await manager.start(title: 'Test', text: 'body');
       fakeOps.updateException = Exception('platform error');

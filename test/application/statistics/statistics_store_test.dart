@@ -4,10 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:comerune/application/statistics/statistics_store.dart';
 import 'package:comerune/domain/models/app_message.dart';
 
-AppMessage _chatMessage({
-  required String id,
-  String? userId,
-}) {
+AppMessage _chatMessage({required String id, String? userId}) {
   return AppMessage(
     id: id,
     timestamp: DateTime.parse('2026-03-29T12:00:00Z'),
@@ -96,26 +93,28 @@ void main() {
       store.dispose();
     });
 
-    test('user with renewed activity stays active after old activity expires',
-        () {
-      DateTime fakeNow = DateTime.parse('2026-03-29T12:00:00Z');
-      final StatisticsStore store = StatisticsStore(
-        activeWindow: const Duration(minutes: 5),
-        now: () => fakeNow,
-      );
+    test(
+      'user with renewed activity stays active after old activity expires',
+      () {
+        DateTime fakeNow = DateTime.parse('2026-03-29T12:00:00Z');
+        final StatisticsStore store = StatisticsStore(
+          activeWindow: const Duration(minutes: 5),
+          now: () => fakeNow,
+        );
 
-      store.recordComment(_chatMessage(id: '1', userId: 'u1'));
+        store.recordComment(_chatMessage(id: '1', userId: 'u1'));
 
-      // u1 comments again at 3 minutes
-      fakeNow = fakeNow.add(const Duration(minutes: 3));
-      store.recordComment(_chatMessage(id: '2', userId: 'u1'));
+        // u1 comments again at 3 minutes
+        fakeNow = fakeNow.add(const Duration(minutes: 3));
+        store.recordComment(_chatMessage(id: '2', userId: 'u1'));
 
-      // At 6 minutes, old activity expired but u1 has recent activity
-      fakeNow = fakeNow.add(const Duration(minutes: 3));
-      expect(store.activeUserCount, 1);
+        // At 6 minutes, old activity expired but u1 has recent activity
+        fakeNow = fakeNow.add(const Duration(minutes: 3));
+        expect(store.activeUserCount, 1);
 
-      store.dispose();
-    });
+        store.dispose();
+      },
+    );
 
     test('updateViewerCount sets viewerCount', () {
       final StatisticsStore store = StatisticsStore();

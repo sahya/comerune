@@ -46,7 +46,8 @@ Widget _buildScreen(
   return MaterialApp(
     home: VoiceLibraryScreen(
       platform: platform,
-      settingsStore: settingsStore ??
+      settingsStore:
+          settingsStore ??
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences()),
     ),
   );
@@ -102,8 +103,9 @@ void main() {
     expect(find.byKey(const Key('download-btn-1')), findsOneWidget);
   });
 
-  testWidgets('shows delete button for downloaded non-bundled model',
-      (tester) async {
+  testWidgets('shows delete button for downloaded non-bundled model', (
+    tester,
+  ) async {
     await tester.pumpWidget(_buildScreen(fakePlatform));
     await tester.pumpAndSettle();
 
@@ -132,33 +134,39 @@ void main() {
     await tester.pumpAndSettle();
 
     // Emit download started event for model 1
-    fakePlatform.emitEvent(const SpeechEvent(
-      type: SpeechEventType.modelDownloadStarted,
-      payload: {'modelId': '1'},
-    ));
+    fakePlatform.emitEvent(
+      const SpeechEvent(
+        type: SpeechEventType.modelDownloadStarted,
+        payload: {'modelId': '1'},
+      ),
+    );
     await tester.pump();
 
     // Emit download progress event: 50%
-    fakePlatform.emitEvent(const SpeechEvent(
-      type: SpeechEventType.modelDownloadProgress,
-      payload: {
-        'modelId': '1',
-        'bytesDownloaded': 26000000,
-        'totalBytes': 52000000,
-      },
-    ));
+    fakePlatform.emitEvent(
+      const SpeechEvent(
+        type: SpeechEventType.modelDownloadProgress,
+        payload: {
+          'modelId': '1',
+          'bytesDownloaded': 26000000,
+          'totalBytes': 52000000,
+        },
+      ),
+    );
     await tester.pump();
 
     expect(find.byType(LinearProgressIndicator), findsOneWidget);
     expect(find.text('50%'), findsOneWidget);
   });
 
-  testWidgets('download initializes engine before loading model',
-      (tester) async {
+  testWidgets('download initializes engine before loading model', (
+    tester,
+  ) async {
     final prefs = InMemorySharedPreferences();
     final settingsStore = SharedPreferencesSettingsStore(prefs: prefs);
-    await settingsStore
-        .save(AppSettings.defaults.copyWith(voicevoxTermsAccepted: true));
+    await settingsStore.save(
+      AppSettings.defaults.copyWith(voicevoxTermsAccepted: true),
+    );
     fakePlatform.statusToReturn = const SpeechRuntimeStatus(
       enabled: false,
       engineState: 'UNINITIALIZED',
@@ -167,10 +175,9 @@ void main() {
       currentSpeakerId: 0,
     );
 
-    await tester.pumpWidget(_buildScreen(
-      fakePlatform,
-      settingsStore: settingsStore,
-    ));
+    await tester.pumpWidget(
+      _buildScreen(fakePlatform, settingsStore: settingsStore),
+    );
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('download-btn-1')));
@@ -183,8 +190,9 @@ void main() {
   testWidgets('download skips initialize when engine is READY', (tester) async {
     final prefs = InMemorySharedPreferences();
     final settingsStore = SharedPreferencesSettingsStore(prefs: prefs);
-    await settingsStore
-        .save(AppSettings.defaults.copyWith(voicevoxTermsAccepted: true));
+    await settingsStore.save(
+      AppSettings.defaults.copyWith(voicevoxTermsAccepted: true),
+    );
     fakePlatform.statusToReturn = const SpeechRuntimeStatus(
       enabled: true,
       engineState: 'READY',
@@ -193,10 +201,9 @@ void main() {
       currentSpeakerId: 0,
     );
 
-    await tester.pumpWidget(_buildScreen(
-      fakePlatform,
-      settingsStore: settingsStore,
-    ));
+    await tester.pumpWidget(
+      _buildScreen(fakePlatform, settingsStore: settingsStore),
+    );
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('download-btn-1')));
@@ -209,8 +216,9 @@ void main() {
   testWidgets('shows model-load error message when load fails', (tester) async {
     final prefs = InMemorySharedPreferences();
     final settingsStore = SharedPreferencesSettingsStore(prefs: prefs);
-    await settingsStore
-        .save(AppSettings.defaults.copyWith(voicevoxTermsAccepted: true));
+    await settingsStore.save(
+      AppSettings.defaults.copyWith(voicevoxTermsAccepted: true),
+    );
     fakePlatform.statusToReturn = const SpeechRuntimeStatus(
       enabled: true,
       engineState: 'READY',
@@ -220,10 +228,9 @@ void main() {
     );
     fakePlatform.loadModelError = Exception('load failed');
 
-    await tester.pumpWidget(_buildScreen(
-      fakePlatform,
-      settingsStore: settingsStore,
-    ));
+    await tester.pumpWidget(
+      _buildScreen(fakePlatform, settingsStore: settingsStore),
+    );
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('download-btn-1')));
@@ -237,10 +244,9 @@ void main() {
       final prefs = InMemorySharedPreferences();
       final settingsStore = SharedPreferencesSettingsStore(prefs: prefs);
 
-      await tester.pumpWidget(_buildScreen(
-        fakePlatform,
-        settingsStore: settingsStore,
-      ));
+      await tester.pumpWidget(
+        _buildScreen(fakePlatform, settingsStore: settingsStore),
+      );
       await tester.pumpAndSettle();
 
       // Tap download button for not-downloaded model.
@@ -262,10 +268,9 @@ void main() {
       final prefs = InMemorySharedPreferences();
       final settingsStore = SharedPreferencesSettingsStore(prefs: prefs);
 
-      await tester.pumpWidget(_buildScreen(
-        fakePlatform,
-        settingsStore: settingsStore,
-      ));
+      await tester.pumpWidget(
+        _buildScreen(fakePlatform, settingsStore: settingsStore),
+      );
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('download-btn-1')));
@@ -286,18 +291,19 @@ void main() {
       expect(loaded.voicevoxTermsAccepted, isFalse);
     });
 
-    testWidgets('shows dialog even when terms already accepted',
-        (tester) async {
+    testWidgets('shows dialog even when terms already accepted', (
+      tester,
+    ) async {
       final prefs = InMemorySharedPreferences();
       final settingsStore = SharedPreferencesSettingsStore(prefs: prefs);
       // Pre-accept terms.
-      await settingsStore
-          .save(AppSettings.defaults.copyWith(voicevoxTermsAccepted: true));
+      await settingsStore.save(
+        AppSettings.defaults.copyWith(voicevoxTermsAccepted: true),
+      );
 
-      await tester.pumpWidget(_buildScreen(
-        fakePlatform,
-        settingsStore: settingsStore,
-      ));
+      await tester.pumpWidget(
+        _buildScreen(fakePlatform, settingsStore: settingsStore),
+      );
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('download-btn-1')));

@@ -21,8 +21,8 @@ class MyProgramRepository {
   MyProgramRepository({
     HttpClient? httpClient,
     String userAgent = _defaultUserAgent,
-  })  : _httpClient = httpClient ?? HttpClient(),
-        _userAgent = userAgent {
+  }) : _httpClient = httpClient ?? HttpClient(),
+       _userAgent = userAgent {
     _httpClient.connectionTimeout = const Duration(seconds: 10);
   }
 
@@ -40,14 +40,9 @@ class MyProgramRepository {
   ///
   /// Requires a valid [userSession] for authentication.
   /// Returns `null` if the user is not broadcasting or on failure.
-  Future<FollowProgram?> fetchOwnProgram({
-    required String userSession,
-  }) async {
+  Future<FollowProgram?> fetchOwnProgram({required String userSession}) async {
     if (userSession.trim().isEmpty) {
-      log(
-        'Skipped fetch: user session is empty',
-        name: 'MyProgramRepository',
-      );
+      log('Skipped fetch: user session is empty', name: 'MyProgramRepository');
       return null;
     }
 

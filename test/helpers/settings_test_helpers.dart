@@ -8,24 +8,13 @@ Future<void> scrollToKeyInList(
 ) async {
   final Finder target = find.byKey(targetKey);
   final Finder scrollable = find
-      .descendant(
-        of: find.byKey(listKey),
-        matching: find.byType(Scrollable),
-      )
+      .descendant(of: find.byKey(listKey), matching: find.byType(Scrollable))
       .first;
   if (target.evaluate().isEmpty) {
     try {
-      await tester.scrollUntilVisible(
-        target,
-        -120,
-        scrollable: scrollable,
-      );
+      await tester.scrollUntilVisible(target, -120, scrollable: scrollable);
     } on StateError {
-      await tester.scrollUntilVisible(
-        target,
-        120,
-        scrollable: scrollable,
-      );
+      await tester.scrollUntilVisible(target, 120, scrollable: scrollable);
     }
   }
   await tester.pumpAndSettle();
@@ -58,14 +47,16 @@ Future<void> toggleSwitchByKey(
   Key switchKey,
 ) async {
   await scrollToKeyInList(tester, listKey, switchKey);
-  final SwitchListTile tile =
-      tester.widget(find.byKey(switchKey, skipOffstage: false));
+  final SwitchListTile tile = tester.widget(
+    find.byKey(switchKey, skipOffstage: false),
+  );
   tile.onChanged!.call(!tile.value);
   await tester.pumpAndSettle();
 }
 
 void toggleSwitchByKeySync(WidgetTester tester, Key switchKey) {
-  final SwitchListTile tile =
-      tester.widget(find.byKey(switchKey, skipOffstage: false));
+  final SwitchListTile tile = tester.widget(
+    find.byKey(switchKey, skipOffstage: false),
+  );
   tile.onChanged!.call(!tile.value);
 }

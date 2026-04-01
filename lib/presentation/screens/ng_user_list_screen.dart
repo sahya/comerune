@@ -6,10 +6,7 @@ import '../widgets/confirm_dialog.dart';
 import '../widgets/empty_state_message.dart';
 
 class NgUserListScreen extends StatefulWidget {
-  const NgUserListScreen({
-    super.key,
-    required this.settingsStore,
-  });
+  const NgUserListScreen({super.key, required this.settingsStore});
 
   final SettingsStore settingsStore;
 
@@ -65,47 +62,40 @@ class _NgUserListScreenState extends State<NgUserListScreen> {
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text('$userId のNGを解除しました')),
-      );
+      ..showSnackBar(SnackBar(content: Text('$userId のNGを解除しました')));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('NGユーザーID管理'),
-      ),
+      appBar: AppBar(title: const Text('NGユーザーID管理')),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _ngUserIds.isEmpty
-              ? const EmptyStateMessage(
-                  key: Key('ng-user-list-empty'),
-                  message: 'NGユーザーIDは登録されていません',
-                )
-              : ListView.separated(
-                  key: const Key('ng-user-id-list'),
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: _ngUserIds.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (BuildContext context, int index) {
-                    final String userId = _ngUserIds[index];
-                    return ListTile(
-                      key: Key('ng-user-tile-$index'),
-                      leading: const Icon(Icons.person_off, size: 20),
-                      title: Text(
-                        userId,
-                        style: const TextStyle(fontSize: 14),
-                      ),
-                      trailing: IconButton(
-                        key: Key('ng-user-remove-$index'),
-                        icon: const Icon(Icons.delete_outline),
-                        tooltip: 'NG解除',
-                        onPressed: () => _removeNgUserId(userId),
-                      ),
-                    );
-                  },
-                ),
+          ? const EmptyStateMessage(
+              key: Key('ng-user-list-empty'),
+              message: 'NGユーザーIDは登録されていません',
+            )
+          : ListView.separated(
+              key: const Key('ng-user-id-list'),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              itemCount: _ngUserIds.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (BuildContext context, int index) {
+                final String userId = _ngUserIds[index];
+                return ListTile(
+                  key: Key('ng-user-tile-$index'),
+                  leading: const Icon(Icons.person_off, size: 20),
+                  title: Text(userId, style: const TextStyle(fontSize: 14)),
+                  trailing: IconButton(
+                    key: Key('ng-user-remove-$index'),
+                    icon: const Icon(Icons.delete_outline),
+                    tooltip: 'NG解除',
+                    onPressed: () => _removeNgUserId(userId),
+                  ),
+                );
+              },
+            ),
     );
   }
 }

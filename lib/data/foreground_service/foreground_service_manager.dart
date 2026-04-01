@@ -53,10 +53,7 @@ class ForegroundServiceManager {
   /// [text] is the notification body text.
   ///
   /// No-op if already running.
-  Future<void> start({
-    required String title,
-    required String text,
-  }) async {
+  Future<void> start({required String title, required String text}) async {
     if (_isRunning) {
       return;
     }
@@ -95,10 +92,7 @@ class ForegroundServiceManager {
     }
 
     try {
-      await _ops.update(
-        notificationTitle: title,
-        notificationText: text,
-      );
+      await _ops.update(notificationTitle: title, notificationText: text);
     } catch (error, stackTrace) {
       developer.log(
         'Failed to update foreground service notification',

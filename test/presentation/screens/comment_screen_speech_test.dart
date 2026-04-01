@@ -453,8 +453,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final _SpeechTestHostState host =
-          tester.state(find.byType(_SpeechTestHost));
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
       host.addMessage(
         _chatMessage(id: 'msg-2', content: 'こんにちは', userId: 'user-1'),
       );
@@ -482,8 +483,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final _SpeechTestHostState host =
-          tester.state(find.byType(_SpeechTestHost));
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
       host.addMessage(
         _chatMessage(id: 'msg-2', content: 'こんにちは', userId: 'user-1'),
       );
@@ -545,8 +547,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final _SpeechTestHostState host =
-          tester.state(find.byType(_SpeechTestHost));
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
       host.addMessage(
         _chatMessage(
           id: 'msg-2',
@@ -592,115 +595,113 @@ void main() {
     });
 
     testWidgets(
-        'readUserName ON reads resolved name when fallback resolution succeeds',
-        (
-      WidgetTester tester,
-    ) async {
-      final List<AppMessage> messages = <AppMessage>[
-        _chatMessage(id: 'msg-1', content: '最初'),
-      ];
+      'readUserName ON reads resolved name when fallback resolution succeeds',
+      (WidgetTester tester) async {
+        final List<AppMessage> messages = <AppMessage>[
+          _chatMessage(id: 'msg-1', content: '最初'),
+        ];
 
-      await tester.pumpWidget(
-        _buildScreen(
-          speechPlatform: fakePlatform,
-          speechSettings: const SpeechSettings(enabled: true),
-          messages: messages,
-          readUserName: true,
-          resolveUserName: (String userId) {
-            return 'should-not-use';
-          },
-        ),
-      );
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+            messages: messages,
+            readUserName: true,
+            resolveUserName: (String userId) {
+              return 'should-not-use';
+            },
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      final _SpeechTestHostState host = tester.state(
-        find.byType(_SpeechTestHost),
-      );
-      host.addMessage(
-        _chatMessage(
-          id: 'msg-2',
-          content: 'こんにちは',
-          userId: '12345',
-        ),
-      );
-      await tester.pumpAndSettle();
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.addMessage(
+          _chatMessage(id: 'msg-2', content: 'こんにちは', userId: '12345'),
+        );
+        await tester.pumpAndSettle();
 
-      expect(fakePlatform.submittedComments, hasLength(1));
-      expect(
-          fakePlatform.submittedComments.first.text, 'こんにちは、should-not-useさん');
-    });
-
-    testWidgets('readUserName ON resolves name even when showUserName is false',
-        (
-      WidgetTester tester,
-    ) async {
-      final List<AppMessage> messages = <AppMessage>[
-        _chatMessage(id: 'msg-1', content: '最初'),
-      ];
-
-      await tester.pumpWidget(
-        _buildScreen(
-          speechPlatform: fakePlatform,
-          speechSettings: const SpeechSettings(enabled: true),
-          messages: messages,
-          showUserName: false,
-          readUserName: true,
-          resolveUserName: (String userId) {
-            if (userId == '12345') {
-              return '解決名';
-            }
-            return null;
-          },
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      final _SpeechTestHostState host =
-          tester.state(find.byType(_SpeechTestHost));
-      host.addMessage(
-        _chatMessage(id: 'msg-2', content: 'こんにちは', userId: '12345'),
-      );
-      await tester.pumpAndSettle();
-
-      expect(fakePlatform.submittedComments, hasLength(1));
-      expect(fakePlatform.submittedComments.first.text, 'こんにちは、解決名さん');
-    });
+        expect(fakePlatform.submittedComments, hasLength(1));
+        expect(
+          fakePlatform.submittedComments.first.text,
+          'こんにちは、should-not-useさん',
+        );
+      },
+    );
 
     testWidgets(
-        'requests user name resolution for new comments when showUserName is false',
-        (
-      WidgetTester tester,
-    ) async {
-      final List<AppMessage> messages = <AppMessage>[
-        _chatMessage(id: 'msg-1', content: '最初', userId: '11111'),
-      ];
-      final List<String> requestedUserIds = <String>[];
+      'readUserName ON resolves name even when showUserName is false',
+      (WidgetTester tester) async {
+        final List<AppMessage> messages = <AppMessage>[
+          _chatMessage(id: 'msg-1', content: '最初'),
+        ];
 
-      await tester.pumpWidget(
-        _buildScreen(
-          speechPlatform: fakePlatform,
-          speechSettings: const SpeechSettings(enabled: true),
-          messages: messages,
-          showUserName: false,
-          readUserName: true,
-          requestUserNameResolve: requestedUserIds.add,
-        ),
-      );
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+            messages: messages,
+            showUserName: false,
+            readUserName: true,
+            resolveUserName: (String userId) {
+              if (userId == '12345') {
+                return '解決名';
+              }
+              return null;
+            },
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      // Initial messages are requested in initState.
-      expect(requestedUserIds, contains('11111'));
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.addMessage(
+          _chatMessage(id: 'msg-2', content: 'こんにちは', userId: '12345'),
+        );
+        await tester.pumpAndSettle();
 
-      requestedUserIds.clear();
-      final _SpeechTestHostState host =
-          tester.state(find.byType(_SpeechTestHost));
-      host.addMessage(
-        _chatMessage(id: 'msg-2', content: 'こんにちは', userId: '24680'),
-      );
-      await tester.pumpAndSettle();
+        expect(fakePlatform.submittedComments, hasLength(1));
+        expect(fakePlatform.submittedComments.first.text, 'こんにちは、解決名さん');
+      },
+    );
 
-      expect(requestedUserIds, contains('24680'));
-    });
+    testWidgets(
+      'requests user name resolution for new comments when showUserName is false',
+      (WidgetTester tester) async {
+        final List<AppMessage> messages = <AppMessage>[
+          _chatMessage(id: 'msg-1', content: '最初', userId: '11111'),
+        ];
+        final List<String> requestedUserIds = <String>[];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+            messages: messages,
+            showUserName: false,
+            readUserName: true,
+            requestUserNameResolve: requestedUserIds.add,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Initial messages are requested in initState.
+        expect(requestedUserIds, contains('11111'));
+
+        requestedUserIds.clear();
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.addMessage(
+          _chatMessage(id: 'msg-2', content: 'こんにちは', userId: '24680'),
+        );
+        await tester.pumpAndSettle();
+
+        expect(requestedUserIds, contains('24680'));
+      },
+    );
 
     testWidgets('readUserName OFF sends content only (default)', (
       WidgetTester tester,
@@ -1028,12 +1029,12 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
         widget.resolveUserName != null || widget.requestUserNameResolve != null;
     final UserNameResolution? userNameResolution =
         hasUserNameResolutionCallbacks
-            ? UserNameResolution(
-                resolve: widget.resolveUserName ?? (_) => null,
-                requestResolve: widget.requestUserNameResolve ?? (_) {},
-                listenable: _NoopListenable.instance,
-              )
-            : null;
+        ? UserNameResolution(
+            resolve: widget.resolveUserName ?? (_) => null,
+            requestResolve: widget.requestUserNameResolve ?? (_) {},
+            listenable: _NoopListenable.instance,
+          )
+        : null;
 
     return CommentScreen(
       lv: 'lv123456789',

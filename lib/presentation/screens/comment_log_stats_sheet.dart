@@ -50,8 +50,9 @@ class CommentLogStatsSheet extends StatelessWidget {
             ngUserIds: ngUserIds,
           )
         : const <HighlightPeak>[];
-    final Set<int> peakMinutes =
-        peaks.map((HighlightPeak p) => p.minuteOffset).toSet();
+    final Set<int> peakMinutes = peaks
+        .map((HighlightPeak p) => p.minuteOffset)
+        .toSet();
 
     return DraggableScrollableSheet(
       initialChildSize: highlightPickupEnabled && peaks.isNotEmpty ? 0.65 : 0.5,
@@ -67,8 +68,10 @@ class CommentLogStatsSheet extends StatelessWidget {
             Expanded(
               child: ListView(
                 controller: scrollController,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 children: <Widget>[
                   _StatRow(
                     key: const Key('stats-total-comments'),
@@ -98,8 +101,10 @@ class CommentLogStatsSheet extends StatelessWidget {
                     const Text(
                       'コメント頻度',
                       key: Key('frequency-chart-title'),
-                      style:
-                          TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     CommentFrequencyChart(
@@ -116,8 +121,10 @@ class CommentLogStatsSheet extends StatelessWidget {
                     const Text(
                       '放送の盛り上がり',
                       key: Key('highlight-pickup-title'),
-                      style:
-                          TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     for (int i = 0; i < peaks.length; i++)
@@ -179,8 +186,10 @@ class CommentLogStatsSheet extends StatelessWidget {
   }
 
   Widget _buildActions(BuildContext context) {
-    final String shareText =
-        stats.toShareText(programTitle: programTitle, lv: lv);
+    final String shareText = stats.toShareText(
+      programTitle: programTitle,
+      lv: lv,
+    );
 
     return Row(
       children: <Widget>[
@@ -194,9 +203,7 @@ class CommentLogStatsSheet extends StatelessWidget {
               if (context.mounted) {
                 ScaffoldMessenger.of(context)
                   ..clearSnackBars()
-                  ..showSnackBar(
-                    const SnackBar(content: Text('コピーしました')),
-                  );
+                  ..showSnackBar(const SnackBar(content: Text('コピーしました')));
               }
             },
           ),
@@ -218,11 +225,7 @@ class CommentLogStatsSheet extends StatelessWidget {
 }
 
 class _StatRow extends StatelessWidget {
-  const _StatRow({
-    super.key,
-    required this.label,
-    required this.value,
-  });
+  const _StatRow({super.key, required this.label, required this.value});
 
   final String label;
   final String value;
@@ -271,10 +274,7 @@ class _HighlightPeakCard extends StatelessWidget {
             children: <Widget>[
               Row(
                 children: <Widget>[
-                  const Text(
-                    '\u{1F525}',
-                    style: TextStyle(fontSize: 16),
-                  ),
+                  const Text('\u{1F525}', style: TextStyle(fontSize: 16)),
                   const SizedBox(width: 4),
                   Text(
                     'ピーク\u{2460}'.replaceFirst(
