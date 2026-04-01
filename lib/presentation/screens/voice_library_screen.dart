@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
@@ -8,6 +9,13 @@ import '../../application/settings/settings_store.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/voicevox_model_info.dart';
+
+void _debugLog(String message) {
+  if (!kDebugMode) {
+    return;
+  }
+  debugPrint(message);
+}
 
 class VoiceLibraryScreen extends StatefulWidget {
   const VoiceLibraryScreen({
@@ -120,13 +128,13 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
       await widget.settingsStore.save(updated);
     }
     try {
-      debugPrint(
+      _debugLog(
         '[VoiceLibrary] download start: modelId=${model.modelId}, name=${model.displayName}',
       );
       await _manager.downloadModel(model.modelId);
-      debugPrint('[VoiceLibrary] download completed: modelId=${model.modelId}');
+      _debugLog('[VoiceLibrary] download completed: modelId=${model.modelId}');
     } on Object catch (e) {
-      debugPrint(
+      _debugLog(
           '[VoiceLibrary] download FAILED: modelId=${model.modelId} error=$e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -144,11 +152,11 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
       );
       // Automatically load the model into the engine after download.
       await _manager.loadModel(model.modelId);
-      debugPrint(
+      _debugLog(
         '[VoiceLibrary] loadModel success after download: modelId=${model.modelId}',
       );
     } on Object catch (e) {
-      debugPrint(
+      _debugLog(
           '[VoiceLibrary] initialize/load FAILED: modelId=${model.modelId} error=$e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

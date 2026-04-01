@@ -20,6 +20,13 @@ const Set<String> _initializableStates = <String>{
 const Duration voicevoxReadyPollInterval = Duration(milliseconds: 500);
 const int voicevoxReadyMaxPollAttempts = 600;
 
+void _debugLog(String message) {
+  if (!kDebugMode) {
+    return;
+  }
+  debugPrint(message);
+}
+
 Future<void> ensureEngineReadyForModelLoad(
   CommentSpeechPlatform platform, {
   String logTag = '[SpeechEngine]',
@@ -27,12 +34,12 @@ Future<void> ensureEngineReadyForModelLoad(
   int maxPollAttempts = 20,
 }) async {
   SpeechRuntimeStatus status = await platform.getStatus();
-  debugPrint(
+  _debugLog(
     '$logTag status-check(ready-guard): engineState=${status.engineState}',
   );
 
   if (_isReady(status.engineState)) {
-    debugPrint('$logTag ensureEngineReady: decision=already_ready');
+    _debugLog('$logTag ensureEngineReady: decision=already_ready');
     return;
   }
 
@@ -45,18 +52,18 @@ Future<void> ensureEngineReadyForModelLoad(
       maxPollAttempts: maxPollAttempts,
     );
     if (_isReady(status.engineState)) {
-      debugPrint('$logTag ensureEngineReady: decision=ready_after_wait');
+      _debugLog('$logTag ensureEngineReady: decision=ready_after_wait');
       return;
     }
   }
 
   if (_canInitialize(status.engineState)) {
-    debugPrint(
+    _debugLog(
       '$logTag ensureEngineReady: decision=initialize '
       'fromState=${status.engineState}',
     );
     await platform.initialize();
-    debugPrint('$logTag ensureEngineReady: decision=initialize_completed');
+    _debugLog('$logTag ensureEngineReady: decision=initialize_completed');
     return;
   }
 
@@ -76,7 +83,7 @@ Future<SpeechRuntimeStatus> _waitForStableState(
   for (int i = 1; i <= maxPollAttempts; i++) {
     await Future<void>.delayed(pollInterval);
     latest = await platform.getStatus();
-    debugPrint(
+    _debugLog(
       '$logTag status-check(wait-guard): engineState=${latest.engineState} '
       '(attempt=$i/$maxPollAttempts)',
     );
