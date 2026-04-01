@@ -233,10 +233,11 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         );
       } on Object catch (e) {
         // Fallback to loading the model when status refresh fails.
-        _debugLog(
+        _errorLog(
           '[TtsSettings] loadModel decision=load_model '
           'reason=status_refresh_failed '
-          'speaker=$speakerId modelId=${model.modelId} error=$e',
+          'speaker=$speakerId modelId=${model.modelId}',
+          error: e,
         );
       }
       if (currentSpeakerId == null && fallbackCurrentSpeakerId != null) {
@@ -268,8 +269,10 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
           '[TtsSettings] loadModel success: speaker=$speakerId modelId=${model.modelId}');
       return true;
     } on Object catch (e) {
-      _debugLog(
-          '[TtsSettings] loadModel FAILED: speaker=$speakerId modelId=${model.modelId} error=$e');
+      _errorLog(
+        '[TtsSettings] loadModel FAILED: speaker=$speakerId modelId=${model.modelId}',
+        error: e,
+      );
       return false;
     }
   }

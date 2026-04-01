@@ -456,7 +456,7 @@ class _CommentScreenState extends State<CommentScreen> {
     for (int i = start; i < newMessages.length; i++) {
       final AppMessage m = newMessages[i];
       if (m.type == AppMessageType.chat) {
-        _debugLog('[CommentScreen] newComment: ${m.content}');
+        _debugLogLazy(() => '[CommentScreen] newComment: ${m.content}');
       }
     }
   }
@@ -488,7 +488,7 @@ class _CommentScreenState extends State<CommentScreen> {
           _debugLog('[CommentScreen] initSpeech: engine already READY');
         }
       } catch (e) {
-        _debugLog('[CommentScreen] initSpeech: getStatus failed: $e');
+        _errorLog('[CommentScreen] initSpeech: getStatus failed', error: e);
       }
     }
 
@@ -674,7 +674,9 @@ class _CommentScreenState extends State<CommentScreen> {
       // Skip NG users.
       final String? userId = message.userId;
       if (userId != null && widget.ngUserIds.contains(userId)) {
-        _debugLog('[CommentScreen] submitComment: SKIP NG user=$userId');
+        _debugLogLazy(
+          () => '[CommentScreen] submitComment: SKIP NG user=$userId',
+        );
         continue;
       }
       // Skip star-prefix hidden comments.
