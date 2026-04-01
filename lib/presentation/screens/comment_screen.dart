@@ -480,7 +480,10 @@ class _CommentScreenState extends State<CommentScreen> {
     for (int i = start; i < newMessages.length; i++) {
       final AppMessage m = newMessages[i];
       if (m.type == AppMessageType.chat) {
-        _debugLogLazy(() => '[CommentScreen] newComment: ${m.content}');
+        _debugLogLazy(
+          () =>
+              '[CommentScreen] newComment: id=${m.id}, user=${m.userId ?? "unknown"}, chars=${m.content.length}',
+        );
       }
     }
   }
@@ -568,7 +571,10 @@ class _CommentScreenState extends State<CommentScreen> {
         try {
           await platform.stop(clearQueue: true);
         } catch (e) {
-          debugPrint('[CommentScreen] initSpeech: abort stop FAILED: $e');
+          _errorLog(
+            '[CommentScreen] initSpeech: abort stop FAILED',
+            error: e,
+          );
         }
         return;
       }
