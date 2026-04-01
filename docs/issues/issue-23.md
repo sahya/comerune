@@ -78,6 +78,13 @@ Epic: #1
 | OFF | ON | ON | 画面表示はID非表示のまま、「本文→名前さん」で読み上げ |
 | ON | ON | ON | 既存表示要件を維持しつつ、「本文→名前さん」で読み上げ |
 
+## Validation / Error Handling
+
+- 名前解決失敗（`resolveUserName` が null / 取得失敗 / 未解決）の場合でもクラッシュせず、当該コメントは本文のみ読み上げる
+- `showUserName` / `resolveUserName` / `readUserName` の切り替えは、変更後に受信するコメントへ適用される（既に送信済みの読み上げキューは再生成しない）
+- ユーザー名解決の通信失敗時は、既存のエラー処理方針に従いサイレントフォールバックし、コメント表示・接続状態・読み上げ処理本体を停止させない
+- `showUserName=false` によってコメント表示のID/名前列が非表示でも、読み上げロジック側の名前解決可否は `resolveUserName` と `readUserName` の組み合わせでのみ判定する
+
 ## Test Expectations
 
 - **widget**
