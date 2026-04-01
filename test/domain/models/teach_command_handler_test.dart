@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/comment_speech/src/models/replace_rule.dart';
+import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/domain/models/teach_command.dart';
 import 'package:comerune/domain/models/teach_command_handler.dart';
 
@@ -56,6 +57,45 @@ void main() {
       expect(result.updatedRules!.length, 1);
       expect(result.updatedRules!.first.replacement, '新読み');
       expect(result.message, contains('更新しました'));
+    });
+
+    test('rejects editing built-in rule', () {
+      final ReplaceRule builtInRule = defaultNicoDictionaryRules.firstWhere(
+        (ReplaceRule rule) => rule.pattern == '初見',
+      );
+      final List<ReplaceRule> existing = <ReplaceRule>[builtInRule];
+
+      final TeachCommandResult result = TeachCommandHandler.executeTeach(
+        command: const TeachCommand(pattern: '初見', replacement: '変更読み'),
+        currentRules: existing,
+        containsNgWord: neverNg,
+      );
+
+      expect(result.success, isFalse);
+      expect(result.updatedRules, isNull);
+      expect(result.message, contains('編集できません'));
+      expect(existing.single, builtInRule);
+    });
+
+    test('rejects editing when a protected rule exists among duplicates', () {
+      final ReplaceRule builtInRule = defaultNicoDictionaryRules.firstWhere(
+        (ReplaceRule rule) => rule.pattern == '初見',
+      );
+      final List<ReplaceRule> existing = <ReplaceRule>[
+        const ReplaceRule(pattern: '初見', replacement: 'カスタム読み'),
+        builtInRule,
+      ];
+
+      final TeachCommandResult result = TeachCommandHandler.executeTeach(
+        command: const TeachCommand(pattern: '初見', replacement: '変更読み'),
+        currentRules: existing,
+        containsNgWord: neverNg,
+      );
+
+      expect(result.success, isFalse);
+      expect(result.updatedRules, isNull);
+      expect(result.message, contains('編集できません'));
+      expect(existing, hasLength(2));
     });
 
     test('rejects pattern containing NG word', () {
@@ -180,6 +220,44 @@ void main() {
       expect(result.updatedRules!.length, 0);
       // Original list should remain unchanged.
       expect(original.length, 1);
+    });
+
+    test('rejects removing built-in rule and keeps it unchanged', () {
+      final ReplaceRule builtInRule = defaultNicoDictionaryRules.firstWhere(
+        (ReplaceRule rule) => rule.pattern == '初見',
+      );
+      final List<ReplaceRule> existing = <ReplaceRule>[builtInRule];
+
+      final TeachCommandResult result = TeachCommandHandler.executeUnteach(
+        command: const UnteachCommand(pattern: '初見'),
+        currentRules: existing,
+      );
+
+      expect(result.success, isFalse);
+      expect(result.updatedRules, isNull);
+      expect(result.message, contains('削除できません'));
+      expect(existing, hasLength(1));
+      expect(existing.first, builtInRule);
+    });
+
+    test('rejects removing when a protected rule exists among duplicates', () {
+      final ReplaceRule builtInRule = defaultNicoDictionaryRules.firstWhere(
+        (ReplaceRule rule) => rule.pattern == '初見',
+      );
+      final List<ReplaceRule> existing = <ReplaceRule>[
+        const ReplaceRule(pattern: '初見', replacement: 'カスタム読み'),
+        builtInRule,
+      ];
+
+      final TeachCommandResult result = TeachCommandHandler.executeUnteach(
+        command: const UnteachCommand(pattern: '初見'),
+        currentRules: existing,
+      );
+
+      expect(result.success, isFalse);
+      expect(result.updatedRules, isNull);
+      expect(result.message, contains('削除できません'));
+      expect(existing, hasLength(2));
     });
   });
 }
