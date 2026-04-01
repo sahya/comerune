@@ -390,7 +390,7 @@ void main() {
       expect(fakePlatform.submittedComments.first.text, 'hello world');
     });
 
-    testWidgets('readUserName ON prepends nickname to TTS text', (
+    testWidgets('readUserName ON appends nickname with さん to TTS text', (
       WidgetTester tester,
     ) async {
       final List<AppMessage> messages = <AppMessage>[
@@ -416,7 +416,65 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(fakePlatform.submittedComments, hasLength(1));
-      expect(fakePlatform.submittedComments.first.text, 'テスト太郎、こんにちは');
+      expect(fakePlatform.submittedComments.first.text, 'こんにちは、テスト太郎さん');
+    });
+
+    testWidgets('readUserName ON does not duplicate さん suffix', (
+      WidgetTester tester,
+    ) async {
+      final List<AppMessage> messages = <AppMessage>[
+        _chatMessage(id: 'msg-1', content: '最初'),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          messages: messages,
+          readUserName: true,
+          userNicknameMap: const <String, String>{'user-1': 'テストさん'},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final _SpeechTestHostState host =
+          tester.state(find.byType(_SpeechTestHost));
+      host.addMessage(
+        _chatMessage(id: 'msg-2', content: 'こんにちは', userId: 'user-1'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.submittedComments, hasLength(1));
+      expect(fakePlatform.submittedComments.first.text, 'こんにちは、テストさん');
+    });
+
+    testWidgets('readUserName ON does not append さん to names ending in ちゃん', (
+      WidgetTester tester,
+    ) async {
+      final List<AppMessage> messages = <AppMessage>[
+        _chatMessage(id: 'msg-1', content: '最初'),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          messages: messages,
+          readUserName: true,
+          userNicknameMap: const <String, String>{'user-1': 'テストちゃん'},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final _SpeechTestHostState host =
+          tester.state(find.byType(_SpeechTestHost));
+      host.addMessage(
+        _chatMessage(id: 'msg-2', content: 'こんにちは', userId: 'user-1'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.submittedComments, hasLength(1));
+      expect(fakePlatform.submittedComments.first.text, 'こんにちは、テストちゃん');
     });
 
     testWidgets('readUserName ON uses message.userName for numeric IDs', (
@@ -449,7 +507,41 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(fakePlatform.submittedComments, hasLength(1));
-      expect(fakePlatform.submittedComments.first.text, 'テスト太郎、こんにちは');
+      expect(fakePlatform.submittedComments.first.text, 'こんにちは、テスト太郎さん');
+    });
+
+    testWidgets('readUserName ON uses message.userName for non-numeric IDs', (
+      WidgetTester tester,
+    ) async {
+      final List<AppMessage> messages = <AppMessage>[
+        _chatMessage(id: 'msg-1', content: '最初'),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          messages: messages,
+          readUserName: true,
+          resolveUserName: (String _) => 'リゾルブ名',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final _SpeechTestHostState host =
+          tester.state(find.byType(_SpeechTestHost));
+      host.addMessage(
+        _chatMessage(
+          id: 'msg-2',
+          content: 'こんにちは',
+          userId: 'a123',
+          userName: '匿名',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.submittedComments, hasLength(1));
+      expect(fakePlatform.submittedComments.first.text, 'こんにちは、匿名さん');
     });
 
     testWidgets('readUserName ON falls back to content only when no name', (
@@ -481,7 +573,9 @@ void main() {
       expect(fakePlatform.submittedComments.first.text, 'こんにちは');
     });
 
-    testWidgets('readUserName ON does not read names for non-numeric IDs', (
+    testWidgets(
+        'readUserName ON reads resolved name when fallback resolution succeeds',
+        (
       WidgetTester tester,
     ) async {
       final List<AppMessage> messages = <AppMessage>[
@@ -507,14 +601,50 @@ void main() {
         _chatMessage(
           id: 'msg-2',
           content: 'こんにちは',
-          userId: 'a123',
-          userName: '匿名',
+          userId: '12345',
         ),
       );
       await tester.pumpAndSettle();
 
       expect(fakePlatform.submittedComments, hasLength(1));
-      expect(fakePlatform.submittedComments.first.text, 'こんにちは');
+      expect(
+          fakePlatform.submittedComments.first.text, 'こんにちは、should-not-useさん');
+    });
+
+    testWidgets('readUserName ON resolves name even when showUserName is false',
+        (
+      WidgetTester tester,
+    ) async {
+      final List<AppMessage> messages = <AppMessage>[
+        _chatMessage(id: 'msg-1', content: '最初'),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          messages: messages,
+          showUserName: false,
+          readUserName: true,
+          resolveUserName: (String userId) {
+            if (userId == '12345') {
+              return '解決名';
+            }
+            return null;
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final _SpeechTestHostState host =
+          tester.state(find.byType(_SpeechTestHost));
+      host.addMessage(
+        _chatMessage(id: 'msg-2', content: 'こんにちは', userId: '12345'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.submittedComments, hasLength(1));
+      expect(fakePlatform.submittedComments.first.text, 'こんにちは、解決名さん');
     });
 
     testWidgets('readUserName OFF sends content only (default)', (
@@ -775,6 +905,7 @@ class _SpeechTestHost extends StatefulWidget {
     this.ngUserIds = const <String>{},
     this.ngWords = const <String>[],
     this.starPrefixHidingEnabled = false,
+    this.showUserName = true,
     this.readUserName = false,
     this.userNicknameMap = const <String, String>{},
     this.resolveUserName,
@@ -786,6 +917,7 @@ class _SpeechTestHost extends StatefulWidget {
   final Set<String> ngUserIds;
   final List<String> ngWords;
   final bool starPrefixHidingEnabled;
+  final bool showUserName;
   final bool readUserName;
   final Map<String, String> userNicknameMap;
   final String? Function(String userId)? resolveUserName;
@@ -840,6 +972,7 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
       ngUserIds: _ngUserIds,
       ngWords: widget.ngWords,
       starPrefixHidingEnabled: widget.starPrefixHidingEnabled,
+      showUserName: widget.showUserName,
       readUserName: widget.readUserName,
       userNicknameMap: widget.userNicknameMap,
       resolveUserName: widget.resolveUserName,
@@ -854,6 +987,7 @@ Widget _buildScreen({
   Set<String> ngUserIds = const <String>{},
   List<String> ngWords = const <String>[],
   bool starPrefixHidingEnabled = false,
+  bool showUserName = true,
   bool readUserName = false,
   Map<String, String> userNicknameMap = const <String, String>{},
   String? Function(String userId)? resolveUserName,
@@ -866,6 +1000,7 @@ Widget _buildScreen({
       ngUserIds: ngUserIds,
       ngWords: ngWords,
       starPrefixHidingEnabled: starPrefixHidingEnabled,
+      showUserName: showUserName,
       readUserName: readUserName,
       userNicknameMap: userNicknameMap,
       resolveUserName: resolveUserName,
