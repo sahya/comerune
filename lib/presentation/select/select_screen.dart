@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -775,7 +774,7 @@ class _SelectScreenState extends State<SelectScreen> {
         _fetchFollowPrograms(userSession),
       ]);
     } on Object catch (e) {
-      log('Unexpected error during program fetch: $e', name: 'SelectScreen');
+      _debugLog('Unexpected error during program fetch: $e');
     }
 
     if (!mounted) {
@@ -851,7 +850,7 @@ class _SelectScreenState extends State<SelectScreen> {
       // Catch Object (not just Exception) to match the safety net in
       // _fetchAllPrograms and ensure Error types are also logged here
       // rather than only at the Future.wait level.
-      log('Error in _fetchMyProgram: $e', name: 'SelectScreen');
+      _debugLog('Error in _fetchMyProgram: $e');
     }
   }
 
