@@ -5,6 +5,7 @@ import android.util.Log
 import com.example.comerune.speech.domain.engine.VoicevoxEngine
 import com.example.comerune.speech.domain.model.SpeechRequest
 import com.example.comerune.speech.domain.model.TtsEngineState
+import com.example.comerune.speech.domain.model.VoicevoxModelManifest
 import com.example.comerune.speech.domain.model.WavSynthesisResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -300,6 +301,24 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                     Log.i(TAG, "Loading model: $normalizedPath")
                     val loaded = NativeVoicevoxBridge.nativeLoadModel(normalizedPath)
                     if (!loaded) {
+                        Log.w(
+                            TAG,
+                            "loadModel nativeLoadModel returned false: modelId=${modelId ?: "unknown"} modelPath=$normalizedPath"
+                        )
+                        val recoveredAsAlreadyLoaded =
+                            isModelAlreadyLoadedBySpeakerProbe(modelId)
+                        if (recoveredAsAlreadyLoaded) {
+                            markModelLoaded(normalizedPath, modelId)
+                            Log.i(
+                                TAG,
+                                "loadModel fallback: reason=already_loaded_by_probe modelId=${modelId ?: "unknown"} modelPath=$normalizedPath"
+                            )
+                            return@withContext
+                        }
+                        Log.w(
+                            TAG,
+                            "loadModel fallback: reason=probe_not_loaded modelId=${modelId ?: "unknown"} modelPath=$normalizedPath"
+                        )
                         throw RuntimeException("Failed to load model: $normalizedPath")
                     }
                     markModelLoaded(normalizedPath, modelId)
@@ -440,6 +459,36 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         loadedModelPaths.add(modelPath)
         if (!modelId.isNullOrBlank()) {
             loadedModelIds.add(modelId)
+        }
+    }
+
+    private fun isModelAlreadyLoadedBySpeakerProbe(modelId: String?): Boolean {
+        if (modelId.isNullOrBlank()) {
+            return false
+        }
+
+        val probeSpeakerId = VoicevoxModelManifest.findByModelId(modelId)
+            ?.speakerIds
+            ?.firstOrNull()
+            ?: return false
+
+        return try {
+            val probeQuery = NativeVoicevoxBridge.nativeCreateAudioQuery(
+                text = "ロード確認",
+                speakerId = probeSpeakerId
+            )
+            val alreadyLoaded = !probeQuery.isNullOrEmpty()
+            Log.i(
+                TAG,
+                "loadModel probe: modelId=$modelId speakerId=$probeSpeakerId alreadyLoaded=$alreadyLoaded"
+            )
+            alreadyLoaded
+        } catch (e: Throwable) {
+            Log.w(
+                TAG,
+                "loadModel probe failed: modelId=$modelId speakerId=$probeSpeakerId error=${e.message}"
+            )
+            false
         }
     }
 
