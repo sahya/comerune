@@ -52,6 +52,7 @@ class SelectScreen extends StatefulWidget {
     this.userSessionStore,
     this.programTitleNotifier,
     this.userNameResolution,
+    this.broadcasterNameNotifier,
     this.supplierUserIdNotifier,
     this.beginAtNotifier,
     this.commentLogWriter,
@@ -73,6 +74,7 @@ class SelectScreen extends StatefulWidget {
       onPrepareConnection;
   final ValueNotifier<String?>? programTitleNotifier;
   final UserNameResolution? userNameResolution;
+  final ValueNotifier<String?>? broadcasterNameNotifier;
   final ValueNotifier<String?>? supplierUserIdNotifier;
   final ValueNotifier<DateTime?>? beginAtNotifier;
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
@@ -230,7 +232,7 @@ class _SelectScreenState extends State<SelectScreen> {
     final DateTime now = DateTime.now();
     store.add(
       AppMessage(
-        id: 'system:broadcast_ended:${now.millisecondsSinceEpoch}',
+        id: '$kSystemBroadcastEndedMessageIdPrefix${now.millisecondsSinceEpoch}',
         timestamp: now,
         content: '放送が終了しました',
         type: AppMessageType.notification,
@@ -402,6 +404,8 @@ class _SelectScreenState extends State<SelectScreen> {
       if (widget.programTitleNotifier != null) widget.programTitleNotifier!,
       if (widget.userNameResolution?.listenable != null)
         widget.userNameResolution!.listenable,
+      if (widget.broadcasterNameNotifier != null)
+        widget.broadcasterNameNotifier!,
       if (widget.supplierUserIdNotifier != null) widget.supplierUserIdNotifier!,
       if (widget.beginAtNotifier != null) widget.beginAtNotifier!,
     ];
@@ -421,8 +425,9 @@ class _SelectScreenState extends State<SelectScreen> {
         final String? cachedBroadcasterName = supplierUserId != null
             ? widget.userNameResolution?.resolve(supplierUserId)
             : null;
-        final String? broadcasterName =
-            cachedBroadcasterName ?? _followBroadcasterName;
+        final String? broadcasterName = cachedBroadcasterName ??
+            widget.broadcasterNameNotifier?.value ??
+            _followBroadcasterName;
         final String? broadcasterIconUrl = _followBroadcasterIconUrl ??
             _buildIconUrlFromUserId(supplierUserId);
 

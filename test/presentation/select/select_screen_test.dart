@@ -302,7 +302,7 @@ void main() {
       (AppMessage m) => m.type == AppMessageType.notification,
     );
     expect(notification.content, '放送が終了しました');
-    expect(notification.id, startsWith('system:broadcast_ended:'));
+    expect(notification.id, startsWith(kSystemBroadcastEndedMessageIdPrefix));
 
     // Verify the notification is visible in the comment screen.
     expect(find.textContaining('放送が終了しました'), findsOneWidget);
@@ -627,6 +627,52 @@ void main() {
 
     expect(find.byKey(const Key('comment-row-msg-1')), findsNothing);
     expect(find.textContaining('初期コテハン (user-1)'), findsNothing);
+  });
+
+  testWidgets('shows broadcasterName from notifier when supplierUserId is null',
+      (WidgetTester tester) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+    final TimelineStore timelineStore = TimelineStore();
+    final ValueNotifier<String?> supplierUserIdNotifier =
+        ValueNotifier<String?>(null);
+    final ValueNotifier<String?> broadcasterNameNotifier =
+        ValueNotifier<String?>(null);
+
+    timelineStore.add(
+      AppMessage(
+        id: 'msg-1',
+        timestamp: DateTime(2026, 3, 29, 20, 0, 0),
+        userId: 'user-1',
+        content: 'hello',
+        type: AppMessageType.chat,
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SelectScreen(
+          connectionSupervisor: supervisor,
+          timelineStore: timelineStore,
+          supplierUserIdNotifier: supplierUserIdNotifier,
+          broadcasterNameNotifier: broadcasterNameNotifier,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.enterText(inputField(), 'lv345678901');
+    await tester.pump();
+    await tester.tap(connectButton());
+    await tester.pumpAndSettle();
+
+    broadcasterNameNotifier.value = 'URL入力フォールバック名';
+    await tester.pumpAndSettle();
+
+    final CommentScreen commentScreen = tester.widget<CommentScreen>(
+      find.byType(CommentScreen),
+    );
+    expect(commentScreen.broadcasterName, 'URL入力フォールバック名');
+    expect(commentScreen.broadcasterUserId, isNull);
   });
 
   group('follow program list', () {
