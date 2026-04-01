@@ -7,7 +7,9 @@ import '../../application/settings/settings_store.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../data/auth/user_session_store.dart';
 import '../../domain/models/app_settings.dart';
+import '../../domain/models/user_name_resolution.dart';
 import '../../data/user/user_attribute_store.dart';
+import '../mixins/settings_screen_mixin.dart';
 import '../widgets/settings_widgets.dart';
 import 'comment_display_settings_screen.dart';
 import 'login_screen.dart';
@@ -22,9 +24,7 @@ class SettingsScreen extends StatefulWidget {
     this.themeModeNotifier,
     this.userAttributeStore,
     this.broadcasterIdNotifier,
-    this.resolveUserName,
-    this.requestUserNameResolve,
-    this.userNameListenable,
+    this.userNameResolution,
     this.speechPlatform,
   });
 
@@ -33,17 +33,18 @@ class SettingsScreen extends StatefulWidget {
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
   final UserAttributeStore? userAttributeStore;
   final ValueNotifier<String?>? broadcasterIdNotifier;
-  final String? Function(String userId)? resolveUserName;
-  final void Function(String userId)? requestUserNameResolve;
-  final Listenable? userNameListenable;
+  final UserNameResolution? userNameResolution;
   final CommentSpeechPlatform? speechPlatform;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
-  AppSettings? _settings;
+class _SettingsScreenState extends State<SettingsScreen>
+    with SettingsScreenMixin {
+  @override
+  SettingsStore get settingsStore => widget.settingsStore;
+
   bool _isLoggedIn = false;
 
   @override
@@ -53,16 +54,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadSettings() async {
-    final AppSettings loaded = await widget.settingsStore.load();
-    if (!mounted) {
-      return;
-    }
-
+    await loadSettings();
     await _refreshLoginState();
-
-    setState(() {
-      _settings = loaded;
-    });
   }
 
   Future<void> _refreshLoginState() async {
@@ -154,23 +147,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  void _updateAndSave(AppSettings next) {
-    setState(() {
-      _settings = next;
-    });
+  @override
+  void updateAndSave(AppSettings next) {
+    super.updateAndSave(next);
     if (widget.themeModeNotifier != null &&
         widget.themeModeNotifier!.value != next.themeMode) {
       widget.themeModeNotifier!.value = next.themeMode;
     }
-    unawaited(_saveSettings(next));
   }
-
-  Future<void> _saveSettings(AppSettings next) =>
-      saveSettingsToStore(widget.settingsStore, next);
 
   @override
   Widget build(BuildContext context) {
-    final AppSettings? settings = _settings;
+    final AppSettings? settings = this.settings;
 
     return Scaffold(
       appBar: AppBar(
@@ -187,7 +175,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: <Widget>[
                     DropdownButtonFormField<AppThemeMode>(
                       key: const Key('theme-mode-dropdown'),
-                      value: settings.themeMode,
+                      initialValue: settings.themeMode,
                       decoration: const InputDecoration(
                         labelText: '配色テーマ',
                         border: OutlineInputBorder(),
@@ -205,7 +193,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         if (value == null) {
                           return;
                         }
-                        _updateAndSave(
+                        updateAndSave(
                           settings.copyWith(themeMode: value),
                         );
                       },
@@ -317,10 +305,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             settingsStore: widget.settingsStore,
                             userAttributeStore: widget.userAttributeStore,
                             broadcasterIdNotifier: widget.broadcasterIdNotifier,
-                            resolveUserName: widget.resolveUserName,
-                            requestUserNameResolve:
-                                widget.requestUserNameResolve,
-                            userNameListenable: widget.userNameListenable,
+                            userNameResolution: widget.userNameResolution,
                           ),
                         ),
                       );
@@ -338,7 +323,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       contentPadding: EdgeInsets.zero,
                       value: settings.debugMode,
                       onChanged: (bool value) {
-                        _updateAndSave(settings.copyWith(debugMode: value));
+                        updateAndSave(settings.copyWith(debugMode: value));
                       },
                     ),
                   ],

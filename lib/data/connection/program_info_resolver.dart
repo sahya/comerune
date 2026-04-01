@@ -141,8 +141,9 @@ class ProgramInfoResolver {
     // The `name` field provides the display name directly, avoiding an
     // additional HTTP request to the nickname API.
     // Some responses may also include `data.supplier.programProviderId`
-    // (undocumented but observed in related APIs). We try `broadcaster`
-    // first, then fall back to `supplier` for the user ID.
+    // (undocumented but observed in related APIs) and `data.supplier.name`.
+    // We try `broadcaster` first, then fall back to `supplier` for the user
+    // ID and display name when broadcaster is unavailable.
     final ({String? userId, String? name}) broadcasterInfo =
         _extractBroadcasterInfo(data);
 
@@ -168,7 +169,7 @@ class ProgramInfoResolver {
   ///
   /// Tries `data.broadcaster[0]` first (N Air's documented field) for both
   /// `id` and `name`, then falls back to `data.supplier.programProviderId`
-  /// for the user ID only.
+  /// for the user ID and `data.supplier.name` for the display name.
   static ({String? userId, String? name}) _extractBroadcasterInfo(
     Map<String, dynamic> data,
   ) {
@@ -186,12 +187,16 @@ class ProgramInfoResolver {
       }
     }
 
-    // Fallback: data.supplier.programProviderId (undocumented but observed).
+    // Fallback: data.supplier.programProviderId / data.supplier.name
+    // (undocumented but observed).
     final Object? supplier = data['supplier'];
     if (supplier is Map<String, dynamic>) {
+      final Object? name = supplier['name'];
+      final String? nameStr = name is String && name.isNotEmpty ? name : null;
       final Object? providerId = supplier['programProviderId'];
-      if (providerId != null) {
-        return (userId: providerId.toString(), name: null);
+      final String? userId = providerId?.toString();
+      if (userId != null || nameStr != null) {
+        return (userId: userId, name: nameStr);
       }
     }
 

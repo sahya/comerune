@@ -5,6 +5,7 @@ import android.util.Log
 import com.example.comerune.speech.domain.engine.VoicevoxEngine
 import com.example.comerune.speech.domain.model.SpeechRequest
 import com.example.comerune.speech.domain.model.TtsEngineState
+import com.example.comerune.speech.domain.model.VoicevoxModelManifest
 import com.example.comerune.speech.domain.model.WavSynthesisResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -14,6 +15,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
+import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.GZIPInputStream
 
 /**
@@ -91,6 +93,8 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
     private val stateLock = Any()
 
     private val mutex = Mutex()
+    private val loadedModelPaths: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    private val loadedModelIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
     /**
      * Optional callback invoked during asset download to report progress.
@@ -114,7 +118,9 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                 )
             }
 
-            state = TtsEngineState.INITIALIZING
+            updateEngineState(TtsEngineState.INITIALIZING, "initialize_started")
+            loadedModelPaths.clear()
+            loadedModelIds.clear()
 
             try {
                 withContext(Dispatchers.IO) {
@@ -123,6 +129,7 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                     val modelDir = File(baseDir, VVM_DIR_NAME)
 
                     ensureAssetsAvailable(baseDir, dictDir, modelDir)
+                    updateEngineState(TtsEngineState.INITIALIZING, "assets_ready")
 
                     Log.i(TAG, "Calling NativeVoicevoxBridge.nativeInitialize(${dictDir.absolutePath})")
                     val initialized = NativeVoicevoxBridge.nativeInitialize(
@@ -143,25 +150,31 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                         Log.w(TAG, "No .vvm files found in ${modelDir.absolutePath}")
                     } else {
                         for (vvm in vvmFiles) {
-                            Log.i(TAG, "Loading voice model: ${vvm.absolutePath} (${vvm.length()} bytes)")
-                            val loaded = NativeVoicevoxBridge.nativeLoadModel(
-                                vvm.absolutePath
+                            val normalizedPath = normalizeModelPath(vvm.absolutePath)
+                            val modelId = extractModelId(normalizedPath)
+                            Log.i(
+                                TAG,
+                                "Loading voice model: $normalizedPath (${vvm.length()} bytes)"
                             )
+                            val loaded = NativeVoicevoxBridge.nativeLoadModel(normalizedPath)
                             Log.i(TAG, "nativeLoadModel(${vvm.name}) returned: $loaded")
                             if (!loaded) {
                                 throw RuntimeException(
                                     "Failed to load voice model: ${vvm.name}"
                                 )
                             }
+                            markModelLoaded(normalizedPath, modelId)
                         }
                     }
                 }
 
-                state = TtsEngineState.READY
+                updateEngineState(TtsEngineState.READY, "initialize_completed")
                 Log.i(TAG, "VOICEVOX engine initialized successfully")
                 Result.success(Unit)
             } catch (e: Throwable) {
-                state = TtsEngineState.ERROR
+                updateEngineState(TtsEngineState.ERROR, "initialize_failed")
+                loadedModelPaths.clear()
+                loadedModelIds.clear()
                 Log.e(TAG, "Initialization failed", e)
                 val message = when (e) {
                     is IOException ->
@@ -267,15 +280,53 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                     IllegalStateException("Cannot load model from state: $state")
                 )
             }
+            val normalizedPath = normalizeModelPath(modelPath)
+            val modelId = extractModelId(normalizedPath)
+            val alreadyLoadedByPath = loadedModelPaths.contains(normalizedPath)
+            val alreadyLoadedById = modelId != null && loadedModelIds.contains(modelId)
+            if (alreadyLoadedByPath || alreadyLoadedById) {
+                val reason = when {
+                    alreadyLoadedByPath && alreadyLoadedById -> "already_loaded_path_and_id"
+                    alreadyLoadedByPath -> "already_loaded_path"
+                    else -> "already_loaded_id"
+                }
+                Log.i(
+                    TAG,
+                    "loadModel skip: reason=$reason modelId=${modelId ?: "unknown"} modelPath=$normalizedPath"
+                )
+                return@withLock Result.success(Unit)
+            }
 
             try {
                 withContext(Dispatchers.IO) {
-                    Log.i(TAG, "Loading model: $modelPath")
-                    val loaded = NativeVoicevoxBridge.nativeLoadModel(modelPath)
+                    Log.i(TAG, "Loading model: $normalizedPath")
+                    val loaded = NativeVoicevoxBridge.nativeLoadModel(normalizedPath)
                     if (!loaded) {
-                        throw RuntimeException("Failed to load model: $modelPath")
+                        Log.w(
+                            TAG,
+                            "loadModel nativeLoadModel returned false: modelId=${modelId ?: "unknown"} modelPath=$normalizedPath"
+                        )
+                        val recoveredAsAlreadyLoaded =
+                            isModelAlreadyLoadedBySpeakerProbe(modelId)
+                        if (recoveredAsAlreadyLoaded) {
+                            markModelLoaded(normalizedPath, modelId)
+                            Log.i(
+                                TAG,
+                                "loadModel fallback: reason=already_loaded_by_probe modelId=${modelId ?: "unknown"} modelPath=$normalizedPath"
+                            )
+                            return@withContext
+                        }
+                        Log.w(
+                            TAG,
+                            "loadModel fallback: reason=probe_not_loaded modelId=${modelId ?: "unknown"} modelPath=$normalizedPath"
+                        )
+                        throw RuntimeException("Failed to load model: $normalizedPath")
                     }
-                    Log.i(TAG, "Model loaded successfully: $modelPath")
+                    markModelLoaded(normalizedPath, modelId)
+                    Log.i(
+                        TAG,
+                        "Model loaded successfully: modelId=${modelId ?: "unknown"} path=$normalizedPath"
+                    )
                 }
                 Result.success(Unit)
             } catch (e: Throwable) {
@@ -297,6 +348,8 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                 true
             } else {
                 state = TtsEngineState.UNINITIALIZED
+                loadedModelPaths.clear()
+                loadedModelIds.clear()
                 false
             }
         }
@@ -346,51 +399,139 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
     private fun ensureAssetsAvailable(baseDir: File, dictDir: File, modelDir: File) {
         val effectiveVersion = getEffectiveAssetVersion()
         val versionFile = File(baseDir, VERSION_FILE)
-        val versionMatches = versionFile.exists() &&
-            versionFile.readText().trim() == effectiveVersion
+        val currentVersion = if (versionFile.exists()) {
+            versionFile.readText().trim()
+        } else {
+            null
+        }
+        val versionMatches = currentVersion == effectiveVersion
 
-        if (versionMatches &&
-            dictDir.exists() && (dictDir.listFiles()?.isNotEmpty() == true) &&
-            modelDir.exists() && (modelDir.listFiles()?.any { it.extension == "vvm" } == true)
-        ) {
+        val hasDict = dictDir.exists() && (dictDir.listFiles()?.isNotEmpty() == true)
+        val hasAnyVvm = modelDir.exists() && (modelDir.listFiles()?.any { it.extension == "vvm" } == true)
+        val hasBaseVvm = File(modelDir, "0.vvm").exists()
+
+        Log.i(
+            TAG,
+            "Asset readiness: versionMatches=$versionMatches " +
+                "currentVersion=${currentVersion ?: "none"} expectedVersion=$effectiveVersion " +
+                "hasDict=$hasDict hasBaseVvm=$hasBaseVvm hasAnyVvm=$hasAnyVvm"
+        )
+
+        if (versionMatches && hasDict && hasBaseVvm) {
             Log.i(TAG, "Assets already downloaded (version $effectiveVersion)")
             return
         }
 
-        // Version mismatch or first download — clear stale files
-        if (baseDir.exists()) {
-            baseDir.deleteRecursively()
-            Log.i(TAG, "Cleared stale assets at ${baseDir.absolutePath}")
-        }
-
-        if (!baseDir.mkdirs() && !baseDir.exists()) {
+        if (!baseDir.exists() && !baseDir.mkdirs()) {
             throw IOException("Failed to create directory: ${baseDir.absolutePath}")
         }
 
-        // Download OpenJTalk dictionary (tar.gz archive)
-        emitDownloadEvent("download_started", OPEN_JTALK_DICT_DIR_NAME)
-        downloadAndExtractTarGz(
-            url = OPEN_JTALK_DICT_URL,
-            targetDir = dictDir,
-            stripPrefix = OPEN_JTALK_DICT_DIR_NAME,
-            displayName = OPEN_JTALK_DICT_DIR_NAME
-        )
+        if (!versionMatches) {
+            Log.i(
+                TAG,
+                "Asset version mismatch: current=${currentVersion ?: "none"} expected=$effectiveVersion. " +
+                    "Refreshing required assets and preserving downloaded models."
+            )
+        }
 
-        // Download VVM model
-        emitDownloadEvent("download_started", "0.vvm")
+        // Refresh OpenJTalk dictionary when missing or asset version changed.
+        if (!hasDict || !versionMatches) {
+            if (dictDir.exists()) {
+                dictDir.deleteRecursively()
+                Log.i(TAG, "Cleared stale dictionary directory: ${dictDir.absolutePath}")
+            }
+            updateEngineState(
+                TtsEngineState.DOWNLOADING,
+                "download_dict:$OPEN_JTALK_DICT_DIR_NAME"
+            )
+            emitDownloadEvent("download_started", OPEN_JTALK_DICT_DIR_NAME)
+            downloadAndExtractTarGz(
+                url = OPEN_JTALK_DICT_URL,
+                targetDir = dictDir,
+                stripPrefix = OPEN_JTALK_DICT_DIR_NAME,
+                displayName = OPEN_JTALK_DICT_DIR_NAME
+            )
+        } else {
+            Log.i(TAG, "Reusing existing dictionary: ${dictDir.absolutePath}")
+        }
+
         if (!modelDir.mkdirs() && !modelDir.exists()) {
             throw IOException("Failed to create directory: ${modelDir.absolutePath}")
         }
-        downloadFile(
-            url = VVM_DOWNLOAD_URL,
-            targetFile = File(modelDir, "0.vvm"),
-            displayName = "0.vvm"
-        )
+
+        val baseModelFile = File(modelDir, "0.vvm")
+        val shouldRefreshBaseModel = !hasBaseVvm || !versionMatches
+        if (shouldRefreshBaseModel) {
+            updateEngineState(
+                TtsEngineState.DOWNLOADING,
+                "download_model:${baseModelFile.name}"
+            )
+            emitDownloadEvent("download_started", "0.vvm")
+            downloadFile(
+                url = VVM_DOWNLOAD_URL,
+                targetFile = baseModelFile,
+                displayName = "0.vvm"
+            )
+        } else {
+            Log.i(TAG, "Reusing base model: ${baseModelFile.absolutePath}")
+        }
+
+        val preservedModels = modelDir.listFiles { file ->
+            file.extension == "vvm" && file.name != "0.vvm"
+        }?.map { it.name } ?: emptyList()
+        Log.i(TAG, "Preserved downloaded models: $preservedModels")
 
         // Write version marker so subsequent launches skip download
         versionFile.writeText(effectiveVersion)
         emitDownloadEvent("download_completed", "")
         Log.i(TAG, "All assets downloaded (version $effectiveVersion)")
+    }
+
+    private fun normalizeModelPath(path: String): String = try {
+        File(path).canonicalPath
+    } catch (_: IOException) {
+        File(path).absolutePath
+    }
+
+    private fun extractModelId(modelPath: String): String? =
+        File(modelPath).nameWithoutExtension
+            .takeIf { it.isNotBlank() }
+
+    private fun markModelLoaded(modelPath: String, modelId: String?) {
+        loadedModelPaths.add(modelPath)
+        if (!modelId.isNullOrBlank()) {
+            loadedModelIds.add(modelId)
+        }
+    }
+
+    private fun isModelAlreadyLoadedBySpeakerProbe(modelId: String?): Boolean {
+        if (modelId.isNullOrBlank()) {
+            return false
+        }
+
+        val probeSpeakerId = VoicevoxModelManifest.findByModelId(modelId)
+            ?.speakerIds
+            ?.firstOrNull()
+            ?: return false
+
+        return try {
+            val probeQuery = NativeVoicevoxBridge.nativeCreateAudioQuery(
+                text = "ロード確認",
+                speakerId = probeSpeakerId
+            )
+            val alreadyLoaded = !probeQuery.isNullOrEmpty()
+            Log.i(
+                TAG,
+                "loadModel probe: modelId=$modelId speakerId=$probeSpeakerId alreadyLoaded=$alreadyLoaded"
+            )
+            alreadyLoaded
+        } catch (e: Throwable) {
+            Log.w(
+                TAG,
+                "loadModel probe failed: modelId=$modelId speakerId=$probeSpeakerId error=${e.message}"
+            )
+            false
+        }
     }
 
     /**
@@ -440,6 +581,10 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             }
 
             // Extract tar.gz
+            updateEngineState(
+                TtsEngineState.EXTRACTING,
+                "extract:$displayName"
+            )
             GZIPInputStream(tempFile.inputStream()).use { gzip ->
                 extractTar(gzip, targetDir, stripPrefix)
             }
@@ -628,6 +773,13 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         onDownloadEvent?.invoke(
             mapOf("type" to type, "payload" to mapOf("fileName" to fileName))
         )
+    }
+
+    private fun updateEngineState(next: TtsEngineState, reason: String) {
+        val current = state
+        if (current == next) return
+        state = next
+        Log.i(TAG, "Engine state changed: $current -> $next ($reason)")
     }
 
     /**

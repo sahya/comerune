@@ -1,15 +1,34 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/domain/connection/connection_method.dart';
 import 'package:comerune/domain/connection/connection_supervisor.dart';
+import 'package:comerune/data/comment_log/comment_log_writer.dart';
 import 'package:comerune/domain/models/app_message.dart';
 import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/presentation/screens/comment_screen.dart';
 import 'package:comerune/presentation/theme/app_theme.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
+// ignore: depend_on_referenced_packages
+import 'package:wakelock_plus_platform_interface/wakelock_plus_platform_interface.dart';
 
 void main() {
   group('CommentScreen', () {
+    late WakelockPlusPlatformInterface previousWakelockPlatform;
+    late _FakeWakelockPlusPlatform fakeWakelock;
+
+    setUp(() {
+      previousWakelockPlatform = wakelockPlusPlatformInstance;
+      fakeWakelock = _FakeWakelockPlusPlatform();
+      wakelockPlusPlatformInstance = fakeWakelock;
+    });
+
+    tearDown(() {
+      wakelockPlusPlatformInstance = previousWakelockPlatform;
+    });
+
     testWidgets('Wi-Fi icon color follows connection status', (
       WidgetTester tester,
     ) async {
@@ -120,6 +139,48 @@ void main() {
           find.textContaining(kLegacyUnsupportedFormatMessage), findsOneWidget);
     });
 
+    testWidgets('broadcast ended system message bypasses NG filters', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: '${kSystemBroadcastEndedMessageIdPrefix}1234567890',
+          timestamp: DateTime(2026, 3, 30, 12, 35, 0),
+          userId: 'user-ng',
+          content: '放送が終了しました',
+          type: AppMessageType.notification,
+        ),
+        AppMessage(
+          id: 'chat-hidden',
+          timestamp: DateTime(2026, 3, 30, 12, 35, 1),
+          userId: 'user-ng',
+          content: '放送が終了しました',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngUserIds: const <String>{'user-ng'},
+          ngWords: const <String>['終了'],
+        ),
+      );
+
+      expect(
+        find.byKey(
+          const Key(
+            'comment-row-${kSystemBroadcastEndedMessageIdPrefix}1234567890',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('comment-row-chat-hidden')), findsNothing);
+      expect(find.textContaining('放送が終了しました'), findsOneWidget);
+    });
+
     testWidgets('broadcast ended message uses broadcastEndedBackground color', (
       WidgetTester tester,
     ) async {
@@ -127,7 +188,7 @@ void main() {
       final AppThemeColors themeColors = AppTheme.colorsFor(AppThemeMode.light);
       final List<AppMessage> messages = <AppMessage>[
         AppMessage(
-          id: 'system:broadcast_ended:1234567890',
+          id: '${kSystemBroadcastEndedMessageIdPrefix}1234567890',
           timestamp: DateTime(2026, 3, 30, 12, 35, 0),
           content: '放送が終了しました',
           type: AppMessageType.notification,
@@ -142,11 +203,58 @@ void main() {
       );
 
       final Container row = tester.widget(find.descendant(
-        of: find
-            .byKey(const Key('comment-row-system:broadcast_ended:1234567890')),
+        of: find.byKey(const Key(
+          'comment-row-${kSystemBroadcastEndedMessageIdPrefix}1234567890',
+        )),
         matching: find.byType(Container),
       ));
       expect(row.color, themeColors.broadcastEndedBackground);
+    });
+
+    testWidgets(
+        'broadcast ended notification is excluded from stats and saved logs',
+        (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final _FakeCommentLogWriter commentLogWriter = _FakeCommentLogWriter();
+      final List<AppMessage> messages = <AppMessage>[
+        _message(
+          id: 'chat-real',
+          type: AppMessageType.chat,
+          content: '通常コメント',
+        ),
+        AppMessage(
+          id: '${kSystemBroadcastEndedMessageIdPrefix}1234567890',
+          timestamp: DateTime(2026, 3, 30, 12, 35, 0),
+          content: '放送が終了しました',
+          type: AppMessageType.notification,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          autoSaveCommentLog: true,
+          commentLogWriter: commentLogWriter,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pumpAndSettle();
+
+      expect(commentLogWriter.lastSavedMessages, hasLength(1));
+      expect(commentLogWriter.lastSavedMessages!.single.id, 'chat-real');
+
+      final Finder totalRow = find.byKey(const Key('stats-total-comments'));
+      expect(totalRow, findsOneWidget);
+      final List<Text> totalRowTexts = tester
+          .widgetList<Text>(find.descendant(
+            of: totalRow,
+            matching: find.byType(Text),
+          ))
+          .toList();
+      expect(totalRowTexts.last.data, '1');
     });
 
     testWidgets('does not render gift and nicoad messages on v1.2', (
@@ -248,6 +356,83 @@ void main() {
       final ElevatedButton stopButton =
           tester.widget(find.byKey(const Key('stop-button')));
       expect(stopButton.onPressed, isNull);
+    });
+
+    testWidgets('save button uses a save icon and label', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: <AppMessage>[
+            _message(
+              id: 'chat-save',
+              type: AppMessageType.chat,
+              content: '保存テスト',
+            ),
+          ],
+          commentLogWriter: _FakeCommentLogWriter(),
+        ),
+      );
+
+      final IconButton button =
+          tester.widget(find.byKey(const Key('save-comment-log-button')));
+      final Icon icon = button.icon as Icon;
+      expect(icon.icon, Icons.save_outlined);
+      expect(button.tooltip, 'コメントログを保存');
+    });
+
+    testWidgets('wakelock is released 45 seconds after ENDED', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+        ),
+      );
+      await tester.pump();
+
+      expect(fakeWakelock.toggles, contains(true));
+
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pump();
+      expect(fakeWakelock.toggles.where((bool value) => !value), isEmpty);
+
+      await tester.pump(const Duration(seconds: 44));
+      expect(fakeWakelock.toggles.where((bool value) => !value), isEmpty);
+
+      await tester.pump(const Duration(seconds: 1));
+      expect(fakeWakelock.toggles.where((bool value) => !value), hasLength(1));
+    });
+
+    testWidgets('wakelock release is cancelled when reconnecting', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+        ),
+      );
+      await tester.pump();
+
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pump();
+
+      expect(supervisor.startConnection(), isTrue);
+      expect(supervisor.onSessionWsConnected(), isTrue);
+      expect(supervisor.onNdgrEndpointResolved(), isTrue);
+      await tester.pump();
+
+      await tester.pump(const Duration(seconds: 46));
+      expect(fakeWakelock.toggles.where((bool value) => !value), isEmpty);
     });
 
     testWidgets(
@@ -1031,6 +1216,149 @@ void main() {
         find.byKey(const Key('comment-row-chat-normal')),
         findsOneWidget,
       );
+    });
+
+    testWidgets('preset NG words are also applied to display filtering', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'chat-clean-preset',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '普通のコメント',
+          type: AppMessageType.chat,
+        ),
+        AppMessage(
+          id: 'chat-ng-preset',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 1),
+          userId: 'user-2',
+          content: 'これは爆破予告です',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngWords: const <String>[],
+          presetNgWords: const <String>['爆破予告'],
+        ),
+      );
+
+      expect(find.byKey(const Key('comment-row-chat-clean-preset')),
+          findsOneWidget);
+      expect(find.byKey(const Key('comment-row-chat-ng-preset')), findsNothing);
+    });
+
+    testWidgets('NG filtering handles keyword hack patterns in display', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'chat-hack-ng',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '工 口ネタ',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngWords: const <String>['エロ'],
+        ),
+      );
+
+      expect(find.byKey(const Key('comment-row-chat-hack-ng')), findsNothing);
+    });
+
+    testWidgets('NG filtering handles expanded look-alike table entries', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'chat-lookalike-expanded',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: '冂リ匚ンネタ',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngWords: const <String>['ロリコン'],
+        ),
+      );
+
+      expect(
+        find.byKey(const Key('comment-row-chat-lookalike-expanded')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('NG filtering handles half-width voiced katakana bypass', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'chat-halfwidth-voiced',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: 'ﾊﾞﾅﾅネタ',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngWords: const <String>['バナナ'],
+        ),
+      );
+
+      expect(
+        find.byKey(const Key('comment-row-chat-halfwidth-voiced')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('light erotic joke is not blocked by default preset policy', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'chat-light-ero',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: 'ちょびっとエロい話',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngWords: const <String>[],
+          presetNgWords: const <String>['爆破予告', '児童ポルノ'],
+        ),
+      );
+
+      expect(
+          find.byKey(const Key('comment-row-chat-light-ero')), findsOneWidget);
     });
 
     testWidgets('long-press on comment row opens actions sheet', (
@@ -2268,6 +2596,7 @@ Widget _buildScreen({
   double commentFontSize = commentFontSizeDefault,
   Set<String> ngUserIds = const <String>{},
   List<String> ngWords = const <String>[],
+  List<String> presetNgWords = const <String>[],
   Map<String, int> userColorMap = const <String, int>{},
   Map<String, String> userNicknameMap = const <String, String>{},
   bool statisticsEnabled = false,
@@ -2278,6 +2607,9 @@ Widget _buildScreen({
   int activeUserCount = 0,
   bool starPrefixHidingEnabled = false,
   DateTime? beginAt,
+  CommentLogWriter? commentLogWriter,
+  bool autoSaveCommentLog = false,
+  String autoSaveCommentLogPath = '',
 }) {
   return MaterialApp(
     home: CommentScreen(
@@ -2298,6 +2630,7 @@ Widget _buildScreen({
       beginAt: beginAt,
       ngUserIds: ngUserIds,
       ngWords: ngWords,
+      presetNgWords: presetNgWords,
       userColorMap: userColorMap,
       userNicknameMap: userNicknameMap,
       starPrefixHidingEnabled: starPrefixHidingEnabled,
@@ -2308,6 +2641,9 @@ Widget _buildScreen({
       viewerCount: viewerCount,
       totalCommentCount: totalCommentCount,
       activeUserCount: activeUserCount,
+      commentLogWriter: commentLogWriter,
+      autoSaveCommentLog: autoSaveCommentLog,
+      autoSaveCommentLogPath: autoSaveCommentLogPath,
     ),
   );
 }
@@ -2332,4 +2668,46 @@ AppMessage _message({
     content: content,
     type: type,
   );
+}
+
+class _FakeCommentLogWriter implements CommentLogWriter {
+  List<AppMessage>? lastSavedMessages;
+  List<AppMessage>? lastTempMessages;
+  int saveCallCount = 0;
+  int writeToTempFileCallCount = 0;
+
+  @override
+  Future<String?> save({
+    required String lv,
+    required List<AppMessage> messages,
+    Directory? customDirectory,
+  }) async {
+    saveCallCount++;
+    lastSavedMessages = List<AppMessage>.from(messages);
+    return '/tmp/$lv.txt';
+  }
+
+  @override
+  Future<String?> writeToTempFile({
+    required String lv,
+    required List<AppMessage> messages,
+  }) async {
+    writeToTempFileCallCount++;
+    lastTempMessages = List<AppMessage>.from(messages);
+    return '/tmp/$lv.tmp.txt';
+  }
+}
+
+class _FakeWakelockPlusPlatform extends WakelockPlusPlatformInterface {
+  final List<bool> toggles = <bool>[];
+  bool _enabled = false;
+
+  @override
+  Future<bool> get enabled async => _enabled;
+
+  @override
+  Future<void> toggle({required bool enable}) async {
+    toggles.add(enable);
+    _enabled = enable;
+  }
 }

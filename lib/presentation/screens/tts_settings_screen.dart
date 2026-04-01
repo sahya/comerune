@@ -2,14 +2,35 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../app_logging.dart';
 import '../../application/settings/settings_store.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/voicevox_model_info.dart';
+import '../mixins/settings_screen_mixin.dart';
 import '../widgets/settings_widgets.dart';
 import 'dictionary_rules_screen.dart';
 import 'ng_user_list_screen.dart';
 import 'voice_library_screen.dart';
+
+enum _NemoStylePreset { standard, energetic, calm }
+
+void _debugLogLazy(String Function() messageBuilder) {
+  appDebugLogLazy(messageBuilder);
+}
+
+void _errorLog(
+  String message, {
+  Object? error,
+  StackTrace? stackTrace,
+}) {
+  appErrorLog(
+    name: 'TtsSettings',
+    message: message,
+    error: error,
+    stackTrace: stackTrace,
+  );
+}
 
 // TODO(#13): 棒読みちゃん対応は UIから非表示とした。サーバーを管理しない方針のため、
 // 今後削除するか再実装するかは未定。万が一機会があれば再検討する。
@@ -28,11 +49,24 @@ class TtsSettingsScreen extends StatefulWidget {
   State<TtsSettingsScreen> createState() => _TtsSettingsScreenState();
 }
 
-class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
+class _TtsSettingsScreenState extends State<TtsSettingsScreen>
+    with SettingsScreenMixin {
   static const int _queueLimitMin = 1;
   static const int _queueLimitMax = 100;
   static const int _maxDelayMin = 1;
   static const int _maxDelayMax = 60;
+  static const double _energeticPresetSpeed = 1.3;
+  static const double _energeticPresetPitch = 0.08;
+  static const double _energeticPresetIntonation = 1.3;
+  static const double _energeticPresetVolume = 1.0;
+  static const double _calmPresetSpeed = 1.0;
+  static const double _calmPresetPitch = -0.02;
+  static const double _calmPresetIntonation = 0.9;
+  static const double _calmPresetVolume = 1.0;
+  static const double _standardPresetSpeed = 1.0;
+  static const double _standardPresetPitch = 0.0;
+  static const double _standardPresetIntonation = 1.0;
+  static const double _standardPresetVolume = 1.0;
 
   late final TextEditingController _queueLimitController;
   late final TextEditingController _maxDelayController;
@@ -42,11 +76,26 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
   late final FocusNode _maxDelayFocusNode;
   late final FocusNode _ngWordsFocusNode;
 
-  AppSettings? _settings;
+  @override
+  SettingsStore get settingsStore => widget.settingsStore;
+
   List<VoicevoxModelInfo>? _voicevoxModels;
+  Set<int> _nemoSpeakerIds = <int>{};
   String? _queueLimitError;
   String? _maxDelayError;
   bool _isLoadingModel = false;
+
+  static const Map<int, String> _nemoSpeakerNames = <int, String>{
+    10000: '男声2',
+    10001: '男声1',
+    10002: '男声3',
+    10003: '女声4',
+    10004: '女声3',
+    10005: '女声1',
+    10006: '女声6',
+    10007: '女声2',
+    10008: '女声5',
+  };
 
   /// Generation counter to discard stale model-load results when the user
   /// changes the speaker multiple times in quick succession.
@@ -63,7 +112,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
     _maxDelayFocusNode = FocusNode()..addListener(_onMaxDelayFocusChanged);
     _ngWordsFocusNode = FocusNode()..addListener(_onNgWordsFocusChanged);
 
-    _loadSettings();
+    loadSettings();
   }
 
   @override
@@ -83,22 +132,28 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
     super.dispose();
   }
 
-  Future<void> _loadSettings() async {
-    final AppSettings loaded = await widget.settingsStore.load();
+  @override
+  void onSettingsLoaded(AppSettings loaded) {
+    _queueLimitController.text = loaded.queueLimit.toString();
+    _maxDelayController.text = loaded.maxDelaySeconds.toString();
+    _ngWordsController.text = loaded.ngWords;
+  }
+
+  @override
+  Future<void> loadSettings() async {
+    final AppSettings loaded = await settingsStore.load();
     if (!mounted) {
       return;
     }
 
-    _queueLimitController.text = loaded.queueLimit.toString();
-    _maxDelayController.text = loaded.maxDelaySeconds.toString();
-    _ngWordsController.text = loaded.ngWords;
+    onSettingsLoaded(loaded);
 
     if (widget.platform != null) {
       await _refreshVoicevoxModels();
     }
 
     setState(() {
-      _settings = loaded;
+      settings = loaded;
     });
   }
 
@@ -109,9 +164,16 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
       final rawList = await platform.getAvailableModels();
       final allModels =
           rawList.map((m) => VoicevoxModelInfo.fromMap(m)).toList();
+      final Set<int> nemoSpeakerIds = <int>{};
+      for (final VoicevoxModelInfo model in allModels) {
+        if (model.modelId == 'n0') {
+          nemoSpeakerIds.addAll(model.speakerIds);
+        }
+      }
       if (!mounted) return;
       setState(() {
         _voicevoxModels = allModels;
+        _nemoSpeakerIds = nemoSpeakerIds;
       });
     } on Object {
       // Model listing failed; keep existing state.
@@ -121,7 +183,10 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
   /// Load the VVM model corresponding to [speakerId] into the native engine.
   ///
   /// Returns `true` when the model was loaded successfully, `false` otherwise.
-  Future<bool> _loadModelForSpeaker(int speakerId) async {
+  Future<bool> _loadModelForSpeaker(
+    int speakerId, {
+    int? fallbackCurrentSpeakerId,
+  }) async {
     final platform = widget.platform;
     final models = _voicevoxModels;
     if (platform == null || models == null) return false;
@@ -135,50 +200,178 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
       }
     }
     if (model == null) return false;
+    final VoicevoxModelInfo selectedModel = model;
 
     try {
-      await platform.loadModel(model.modelId);
+      _debugLogLazy(
+        () =>
+            '[TtsSettings] loadModel begin: speaker=$speakerId modelId=${selectedModel.modelId}',
+      );
+      await ensureEngineReadyForModelLoad(
+        platform,
+        logTag: '[TtsSettings]',
+        pollInterval: voicevoxReadyPollInterval,
+        maxPollAttempts: voicevoxReadyMaxPollAttempts,
+      );
+      int? currentSpeakerId;
+      try {
+        final SpeechRuntimeStatus status = await platform.getStatus();
+        currentSpeakerId = status.currentSpeakerId;
+        _debugLogLazy(
+          () =>
+              '[TtsSettings] status-check(skip-guard): currentSpeaker=$currentSpeakerId '
+              'targetSpeaker=$speakerId modelId=${selectedModel.modelId}',
+        );
+      } on Object catch (e) {
+        // Fallback to loading the model when status refresh fails.
+        _errorLog(
+          '[TtsSettings] loadModel decision=load_model '
+          'reason=status_refresh_failed '
+          'speaker=$speakerId modelId=${selectedModel.modelId}',
+          error: e,
+        );
+      }
+      if (currentSpeakerId == null && fallbackCurrentSpeakerId != null) {
+        currentSpeakerId = fallbackCurrentSpeakerId;
+        _debugLogLazy(
+          () =>
+              '[TtsSettings] status-check(skip-guard): using settings fallback '
+              'currentSpeaker=$currentSpeakerId targetSpeaker=$speakerId',
+        );
+      }
+      if (currentSpeakerId != null &&
+          _isSpeakerInSameModel(
+            currentSpeakerId,
+            speakerId,
+            models,
+          )) {
+        _debugLogLazy(
+          () => '[TtsSettings] loadModel decision=skip_same_model '
+              'currentSpeaker=$currentSpeakerId '
+              'and targetSpeaker=$speakerId are in same modelId=${selectedModel.modelId}',
+        );
+        return true;
+      }
+      _debugLogLazy(
+        () => '[TtsSettings] loadModel decision=load_model '
+            'speaker=$speakerId modelId=${selectedModel.modelId}',
+      );
+      await platform.loadModel(selectedModel.modelId);
+      _debugLogLazy(
+        () =>
+            '[TtsSettings] loadModel success: speaker=$speakerId modelId=${selectedModel.modelId}',
+      );
       return true;
     } on Object catch (e) {
-      debugPrint('[TtsSettings] loadModel FAILED for speaker $speakerId: $e');
+      _errorLog(
+        '[TtsSettings] loadModel FAILED: speaker=$speakerId modelId=${selectedModel.modelId}',
+        error: e,
+      );
       return false;
     }
   }
 
+  bool _isSpeakerInSameModel(
+    int currentSpeakerId,
+    int targetSpeakerId,
+    List<VoicevoxModelInfo> models,
+  ) {
+    String? currentModelId;
+    String? targetModelId;
+
+    for (final VoicevoxModelInfo m in models) {
+      if (currentModelId == null && m.speakerIds.contains(currentSpeakerId)) {
+        currentModelId = m.modelId;
+      }
+      if (targetModelId == null && m.speakerIds.contains(targetSpeakerId)) {
+        targetModelId = m.modelId;
+      }
+      if (currentModelId != null && targetModelId != null) {
+        break;
+      }
+    }
+
+    return currentModelId != null &&
+        targetModelId != null &&
+        currentModelId == targetModelId;
+  }
+
   /// Handle speaker change: save immediately, load the model, then push
   /// settings to the engine only after the model is ready.
-  Future<void> _onSpeakerChanged(AppSettings settings, int newSpeaker) async {
-    final int previousSpeaker = settings.voicevoxSpeaker;
+  Future<void> _onSpeakerChanged(AppSettings current, int newSpeaker) async {
+    if (newSpeaker == current.voicevoxSpeaker) {
+      _debugLogLazy(
+        () => '[TtsSettings] speaker change decision=no_op_same_speaker '
+            'fromSpeaker=${current.voicevoxSpeaker} toSpeaker=$newSpeaker',
+      );
+      return;
+    }
+
+    final int previousSpeaker = current.voicevoxSpeaker;
     final int generation = ++_speakerChangeGeneration;
+    _debugLogLazy(
+      () => '[TtsSettings] speaker change requested: '
+          'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker '
+          'generation=$generation',
+    );
 
     // Optimistically update the UI and persist the new speaker.
-    final AppSettings next = settings.copyWith(voicevoxSpeaker: newSpeaker);
+    final AppSettings next = current.copyWith(voicevoxSpeaker: newSpeaker);
     setState(() {
-      _settings = next;
+      settings = next;
       _isLoadingModel = true;
     });
-    unawaited(_saveSettings(next));
+    unawaited(saveSettings(next));
 
-    final bool success = await _loadModelForSpeaker(newSpeaker);
+    final bool success = await _loadModelForSpeaker(
+      newSpeaker,
+      fallbackCurrentSpeakerId: previousSpeaker,
+    );
 
     // If another speaker change happened while we were loading, discard this
-    // result — the newer change takes precedence.
-    if (generation != _speakerChangeGeneration || !mounted) return;
+    // result -- the newer change takes precedence.
+    if (generation != _speakerChangeGeneration) {
+      _debugLogLazy(
+        () => '[TtsSettings] speaker change discarded stale result: '
+            'reason=stale_generation '
+            'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker '
+            'generation=$generation latestGeneration=$_speakerChangeGeneration',
+      );
+      return;
+    }
+    if (!mounted) {
+      _debugLogLazy(
+        () => '[TtsSettings] speaker change discarded result: '
+            'reason=widget_unmounted '
+            'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker '
+            'generation=$generation latestGeneration=$_speakerChangeGeneration',
+      );
+      return;
+    }
 
     if (success) {
       setState(() {
         _isLoadingModel = false;
       });
+      _debugLogLazy(
+        () => '[TtsSettings] speaker change applied: '
+            'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker',
+      );
       _pushSettingsToEngine(next);
     } else {
       // Revert to the previous speaker and notify the user.
       final AppSettings reverted =
           next.copyWith(voicevoxSpeaker: previousSpeaker);
       setState(() {
-        _settings = reverted;
+        settings = reverted;
         _isLoadingModel = false;
       });
-      unawaited(_saveSettings(reverted));
+      unawaited(saveSettings(reverted));
+      _debugLogLazy(
+        () => '[TtsSettings] speaker change reverted: '
+            'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker '
+            'revertedToSpeaker=$previousSpeaker',
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -212,13 +405,14 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
     _saveNgWords();
   }
 
-  void _updateAndSave(AppSettings next) {
-    debugPrint(
-        '[TtsSettings] save: autoRead=${next.autoReadEnabled}, engine=${next.speechEngine}, speaker=${next.voicevoxSpeaker}, speed=${next.voicevoxSpeed}');
-    setState(() {
-      _settings = next;
-    });
-    unawaited(_saveSettings(next));
+  @override
+  void updateAndSave(AppSettings next) {
+    _debugLogLazy(
+      () => '[TtsSettings] save: autoRead=${next.autoReadEnabled}, '
+          'engine=${next.speechEngine}, speaker=${next.voicevoxSpeaker}, '
+          'speed=${next.voicevoxSpeed}',
+    );
+    super.updateAndSave(next);
     _pushSettingsToEngine(next);
   }
 
@@ -232,17 +426,31 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
     unawaited(
       platform.updateSettings(settings.toSpeechSettings()).catchError(
         (Object e) {
-          debugPrint('[TtsSettings] pushSettings FAILED: $e');
+          _errorLog('[TtsSettings] pushSettings FAILED', error: e);
         },
       ),
     );
   }
 
-  Future<void> _saveSettings(AppSettings next) =>
-      saveSettingsToStore(widget.settingsStore, next);
+  void _applyVoicevoxPreset(
+    AppSettings current, {
+    required double speed,
+    required double pitch,
+    required double intonation,
+    required double volume,
+  }) {
+    updateAndSave(
+      current.copyWith(
+        voicevoxSpeed: speed,
+        voicevoxPitch: pitch,
+        voicevoxIntonation: intonation,
+        voicevoxVolume: volume,
+      ),
+    );
+  }
 
   void _saveNgWords() {
-    final AppSettings? current = _settings;
+    final AppSettings? current = settings;
     if (current == null) {
       return;
     }
@@ -254,11 +462,11 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
 
     // TODO(issue-12-followup): NGワードは正規表現入力のため、保存前に
     // RegExp.tryParse 相当で妥当性を検証し、無効パターンは保存を抑止する。
-    _updateAndSave(current.copyWith(ngWords: ngWords));
+    updateAndSave(current.copyWith(ngWords: ngWords));
   }
 
   void _saveQueueLimit() {
-    final AppSettings? current = _settings;
+    final AppSettings? current = settings;
     if (current == null) {
       return;
     }
@@ -291,11 +499,11 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
       return;
     }
 
-    _updateAndSave(current.copyWith(queueLimit: parsed));
+    updateAndSave(current.copyWith(queueLimit: parsed));
   }
 
   void _saveMaxDelaySeconds() {
-    final AppSettings? current = _settings;
+    final AppSettings? current = settings;
     if (current == null) {
       return;
     }
@@ -328,7 +536,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
       return;
     }
 
-    _updateAndSave(current.copyWith(maxDelaySeconds: parsed));
+    updateAndSave(current.copyWith(maxDelaySeconds: parsed));
   }
 
   String _buildCreditText(int speakerId) {
@@ -349,6 +557,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
 
   Widget _buildVoicevoxSpeakerDropdown(AppSettings settings) {
     final List<VoicevoxModelInfo>? models = _voicevoxModels;
+    const int fallbackSpeakerId = 10000;
 
     // When models are available, build items from downloaded/bundled models.
     if (models != null && models.isNotEmpty) {
@@ -358,11 +567,12 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
             !model.isBundled) {
           continue;
         }
-        for (final speakerId in model.speakerIds) {
+        final List<int> orderedSpeakerIds = _orderedSpeakerIds(model);
+        for (final speakerId in orderedSpeakerIds) {
           items.add(
             DropdownMenuItem<int>(
               value: speakerId,
-              child: Text('${model.displayName} (ID:$speakerId)'),
+              child: Text(_speakerMenuLabel(model, speakerId)),
             ),
           );
         }
@@ -377,7 +587,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
         final int firstSpeaker = items.first.value!;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
-            _updateAndSave(settings.copyWith(voicevoxSpeaker: firstSpeaker));
+            updateAndSave(settings.copyWith(voicevoxSpeaker: firstSpeaker));
           }
         });
       }
@@ -385,8 +595,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
       if (items.isEmpty) {
         items.add(
           const DropdownMenuItem<int>(
-            value: 10000,
-            child: Text('VOICEVOX Nemo・男声2 (ID:10000)'),
+            value: fallbackSpeakerId,
+            child: Text('Nemo | 男声2 (ID:10000)'),
           ),
         );
       }
@@ -397,7 +607,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
         children: [
           DropdownButtonFormField<int>(
             key: const Key('voicevox-speaker-dropdown'),
-            value: currentInList ? settings.voicevoxSpeaker : items.first.value,
+            initialValue:
+                currentInList ? settings.voicevoxSpeaker : items.first.value,
             decoration: const InputDecoration(
               labelText: '話者',
               border: OutlineInputBorder(),
@@ -425,29 +636,196 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
     }
 
     // Fallback: static dropdown when platform is not available.
+    final bool fallbackCurrentInList =
+        settings.voicevoxSpeaker == fallbackSpeakerId;
+    if (!fallbackCurrentInList) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          updateAndSave(settings.copyWith(voicevoxSpeaker: fallbackSpeakerId));
+        }
+      });
+    }
+
     return DropdownButtonFormField<int>(
       key: const Key('voicevox-speaker-dropdown'),
-      value: settings.voicevoxSpeaker,
+      initialValue:
+          fallbackCurrentInList ? settings.voicevoxSpeaker : fallbackSpeakerId,
       decoration: const InputDecoration(
         labelText: '話者',
         border: OutlineInputBorder(),
       ),
       items: const <DropdownMenuItem<int>>[
         DropdownMenuItem<int>(
-          value: 10000,
-          child: Text('VOICEVOX Nemo・男声2 (ID:10000)'),
+          value: fallbackSpeakerId,
+          child: Text('Nemo | 男声2 (ID:10000)'),
         ),
       ],
       onChanged: (int? value) {
         if (value == null) return;
-        _updateAndSave(settings.copyWith(voicevoxSpeaker: value));
+        updateAndSave(settings.copyWith(voicevoxSpeaker: value));
       },
+    );
+  }
+
+  String _speakerMenuLabel(VoicevoxModelInfo model, int speakerId) {
+    if (model.modelId == 'n0') {
+      // TTS設定のプルダウンは横幅が限られるため、接頭辞を短くして
+      // 話者名/ID（後半）が見切れにくい表示を優先する。
+      // なお、規約同意と紐づく正式名は Credit や VoiceLibrary 側で保持する。
+      final String? speakerName = _nemoSpeakerNames[speakerId];
+      if (speakerName != null) {
+        return 'Nemo | $speakerName (ID:$speakerId)';
+      }
+      return 'Nemo | Unknown (ID:$speakerId)';
+    }
+    return '${model.displayName} (ID:$speakerId)';
+  }
+
+  List<int> _orderedSpeakerIds(VoicevoxModelInfo model) {
+    if (model.modelId != 'n0') {
+      return model.speakerIds;
+    }
+    final List<int> ordered = List<int>.from(model.speakerIds);
+    ordered.sort(_compareNemoSpeakerOrder);
+    return ordered;
+  }
+
+  int _compareNemoSpeakerOrder(int a, int b) {
+    final RegExp pattern = RegExp(r'^(男声|女声)(\d+)$');
+
+    final Match? aMatch = pattern.firstMatch(_nemoSpeakerNames[a] ?? '');
+    final Match? bMatch = pattern.firstMatch(_nemoSpeakerNames[b] ?? '');
+    if (aMatch == null || bMatch == null) {
+      return a.compareTo(b);
+    }
+
+    final String aType = aMatch.group(1)!;
+    final String bType = bMatch.group(1)!;
+    final int aTypeRank = aType == '女声' ? 0 : 1;
+    final int bTypeRank = bType == '女声' ? 0 : 1;
+
+    if (aTypeRank != bTypeRank) {
+      return aTypeRank.compareTo(bTypeRank);
+    }
+
+    final int aIndex = int.parse(aMatch.group(2)!);
+    final int bIndex = int.parse(bMatch.group(2)!);
+    if (aIndex != bIndex) {
+      return aIndex.compareTo(bIndex);
+    }
+    return a.compareTo(b);
+  }
+
+  bool _isNemoPresetVisible(AppSettings settings) {
+    final int speakerId = settings.voicevoxSpeaker;
+    if (_nemoSpeakerNames.containsKey(speakerId)) {
+      return true;
+    }
+    return _nemoSpeakerIds.contains(speakerId);
+  }
+
+  bool _matchesNemoPreset(
+    AppSettings settings, {
+    required double speed,
+    required double pitch,
+    required double intonation,
+    required double volume,
+  }) {
+    const double epsilon = 0.0001;
+    return (settings.voicevoxSpeed - speed).abs() <= epsilon &&
+        (settings.voicevoxPitch - pitch).abs() <= epsilon &&
+        (settings.voicevoxIntonation - intonation).abs() <= epsilon &&
+        (settings.voicevoxVolume - volume).abs() <= epsilon;
+  }
+
+  _NemoStylePreset _currentNemoStyleValue(AppSettings settings) {
+    if (_matchesNemoPreset(
+      settings,
+      speed: _energeticPresetSpeed,
+      pitch: _energeticPresetPitch,
+      intonation: _energeticPresetIntonation,
+      volume: _energeticPresetVolume,
+    )) {
+      return _NemoStylePreset.energetic;
+    }
+    if (_matchesNemoPreset(
+      settings,
+      speed: _calmPresetSpeed,
+      pitch: _calmPresetPitch,
+      intonation: _calmPresetIntonation,
+      volume: _calmPresetVolume,
+    )) {
+      return _NemoStylePreset.calm;
+    }
+    return _NemoStylePreset.standard;
+  }
+
+  void _applyNemoStyle(AppSettings settings, _NemoStylePreset styleValue) {
+    switch (styleValue) {
+      case _NemoStylePreset.energetic:
+        _applyVoicevoxPreset(
+          settings,
+          speed: _energeticPresetSpeed,
+          pitch: _energeticPresetPitch,
+          intonation: _energeticPresetIntonation,
+          volume: _energeticPresetVolume,
+        );
+        return;
+      case _NemoStylePreset.calm:
+        _applyVoicevoxPreset(
+          settings,
+          speed: _calmPresetSpeed,
+          pitch: _calmPresetPitch,
+          intonation: _calmPresetIntonation,
+          volume: _calmPresetVolume,
+        );
+        return;
+      case _NemoStylePreset.standard:
+        _applyVoicevoxPreset(
+          settings,
+          speed: _standardPresetSpeed,
+          pitch: _standardPresetPitch,
+          intonation: _standardPresetIntonation,
+          volume: _standardPresetVolume,
+        );
+        return;
+    }
+  }
+
+  Widget _buildNemoStyleDropdown(AppSettings settings) {
+    return DropdownButtonFormField<_NemoStylePreset>(
+      key: const Key('voicevox-style-dropdown'),
+      initialValue: _currentNemoStyleValue(settings),
+      decoration: const InputDecoration(
+        labelText: 'スタイル',
+        border: OutlineInputBorder(),
+      ),
+      items: const <DropdownMenuItem<_NemoStylePreset>>[
+        DropdownMenuItem<_NemoStylePreset>(
+          value: _NemoStylePreset.standard,
+          child: Text('標準'),
+        ),
+        DropdownMenuItem<_NemoStylePreset>(
+          value: _NemoStylePreset.energetic,
+          child: Text('元気'),
+        ),
+        DropdownMenuItem<_NemoStylePreset>(
+          value: _NemoStylePreset.calm,
+          child: Text('落ち着き'),
+        ),
+      ],
+      onChanged: _isLoadingModel
+          ? null
+          : (_NemoStylePreset? value) {
+              if (value == null) return;
+              _applyNemoStyle(settings, value);
+            },
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final AppSettings? settings = _settings;
+    final AppSettings? settings = this.settings;
 
     return Scaffold(
       appBar: AppBar(
@@ -468,7 +846,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       contentPadding: EdgeInsets.zero,
                       value: settings.autoReadEnabled,
                       onChanged: (bool value) {
-                        _updateAndSave(
+                        updateAndSave(
                             settings.copyWith(autoReadEnabled: value));
                       },
                     ),
@@ -479,7 +857,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       contentPadding: EdgeInsets.zero,
                       value: settings.readUserName,
                       onChanged: (bool value) {
-                        _updateAndSave(settings.copyWith(readUserName: value));
+                        updateAndSave(settings.copyWith(readUserName: value));
                       },
                     ),
                   ],
@@ -512,6 +890,10 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                         ),
                       ),
                     ],
+                    if (_isNemoPresetVisible(settings)) ...[
+                      const SizedBox(height: 8),
+                      _buildNemoStyleDropdown(settings),
+                    ],
                     const SizedBox(height: 12),
                     SettingsDoubleSliderField(
                       key: const Key('voicevox-speed-slider'),
@@ -521,7 +903,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       divisions: 15,
                       value: settings.voicevoxSpeed,
                       onChanged: (double value) {
-                        _updateAndSave(settings.copyWith(voicevoxSpeed: value));
+                        updateAndSave(settings.copyWith(voicevoxSpeed: value));
                       },
                     ),
                     SettingsDoubleSliderField(
@@ -532,7 +914,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       divisions: 30,
                       value: settings.voicevoxPitch,
                       onChanged: (double value) {
-                        _updateAndSave(settings.copyWith(voicevoxPitch: value));
+                        updateAndSave(settings.copyWith(voicevoxPitch: value));
                       },
                     ),
                     SettingsDoubleSliderField(
@@ -543,7 +925,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       divisions: 20,
                       value: settings.voicevoxIntonation,
                       onChanged: (double value) {
-                        _updateAndSave(
+                        updateAndSave(
                           settings.copyWith(voicevoxIntonation: value),
                         );
                       },
@@ -556,8 +938,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       divisions: 20,
                       value: settings.voicevoxVolume,
                       onChanged: (double value) {
-                        _updateAndSave(
-                            settings.copyWith(voicevoxVolume: value));
+                        updateAndSave(settings.copyWith(voicevoxVolume: value));
                       },
                     ),
                     const SizedBox(height: 12),
@@ -609,7 +990,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       contentPadding: EdgeInsets.zero,
                       value: settings.slashPrefixSkipEnabled,
                       onChanged: (bool value) {
-                        _updateAndSave(
+                        updateAndSave(
                           settings.copyWith(slashPrefixSkipEnabled: value),
                         );
                       },
@@ -623,7 +1004,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       contentPadding: EdgeInsets.zero,
                       value: settings.starPrefixHidingEnabled,
                       onChanged: (bool value) {
-                        _updateAndSave(
+                        updateAndSave(
                           settings.copyWith(starPrefixHidingEnabled: value),
                         );
                       },
@@ -634,7 +1015,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       contentPadding: EdgeInsets.zero,
                       value: settings.omitUrl,
                       onChanged: (bool value) {
-                        _updateAndSave(settings.copyWith(omitUrl: value));
+                        updateAndSave(settings.copyWith(omitUrl: value));
                       },
                     ),
                     SwitchListTile(
@@ -643,7 +1024,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                       contentPadding: EdgeInsets.zero,
                       value: settings.suppressDuplicate,
                       onChanged: (bool value) {
-                        _updateAndSave(
+                        updateAndSave(
                             settings.copyWith(suppressDuplicate: value));
                       },
                     ),
@@ -679,9 +1060,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                             ),
                           ),
                         );
-                        await _loadSettings();
-                        if (_settings != null) {
-                          _pushSettingsToEngine(_settings!);
+                        await loadSettings();
+                        if (this.settings != null) {
+                          _pushSettingsToEngine(this.settings!);
                         }
                       },
                     ),
@@ -704,9 +1085,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
                             ),
                           ),
                         );
-                        await _loadSettings();
-                        if (_settings != null) {
-                          _pushSettingsToEngine(_settings!);
+                        await loadSettings();
+                        if (this.settings != null) {
+                          _pushSettingsToEngine(this.settings!);
                         }
                       },
                     ),

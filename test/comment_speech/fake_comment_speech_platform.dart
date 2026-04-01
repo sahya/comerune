@@ -34,6 +34,20 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
     currentSpeakerId: 0,
   );
 
+  /// If non-empty, [getStatus] returns values in sequence and then keeps the
+  /// last value.
+  List<SpeechRuntimeStatus> statusSequenceToReturn = const [];
+
+  /// Number of calls to [getStatus].
+  int getStatusCallCount = 0;
+
+  /// If non-null, [getStatus] throws this.
+  Object? getStatusError;
+
+  /// When [getStatusError] is set, this limits throwing to this call number.
+  /// If null, every [getStatus] call throws.
+  int? getStatusErrorAtCall;
+
   /// If non-null, [loadModel] will throw this.
   Object? loadModelError;
 
@@ -41,8 +55,20 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
   /// Useful for testing loading indicators and race conditions.
   Completer<void>? loadModelCompleter;
 
+  /// If non-null, [start] will wait for this completer before returning.
+  /// Useful for testing initialization races.
+  Completer<void>? startCompleter;
+
+  /// If non-null, [downloadModel] will throw this.
+  Object? downloadModelError;
+
+  /// Tracks which model IDs were passed to [downloadModel].
+  final List<String> downloadedModelIds = <String>[];
+
   /// Tracks which model IDs were passed to [loadModel].
   final List<String> loadedModelIds = <String>[];
+
+  int _statusSequenceIndex = 0;
 
   @override
   Future<void> initialize() async {
@@ -55,6 +81,9 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
   @override
   Future<void> start() async {
     startCalled = true;
+    if (startCompleter != null) {
+      await startCompleter!.future;
+    }
   }
 
   @override
@@ -89,6 +118,19 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
 
   @override
   Future<SpeechRuntimeStatus> getStatus() async {
+    getStatusCallCount++;
+    if (getStatusError != null &&
+        (getStatusErrorAtCall == null ||
+            getStatusCallCount == getStatusErrorAtCall)) {
+      throw getStatusError!;
+    }
+    if (statusSequenceToReturn.isNotEmpty) {
+      final int index = _statusSequenceIndex;
+      if (_statusSequenceIndex < statusSequenceToReturn.length - 1) {
+        _statusSequenceIndex++;
+      }
+      return statusSequenceToReturn[index];
+    }
     return statusToReturn;
   }
 
@@ -106,7 +148,12 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
   }
 
   @override
-  Future<void> downloadModel(String modelId) async {}
+  Future<void> downloadModel(String modelId) async {
+    downloadedModelIds.add(modelId);
+    if (downloadModelError != null) {
+      throw downloadModelError!;
+    }
+  }
 
   @override
   Future<void> deleteModel(String modelId) async {}

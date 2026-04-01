@@ -126,7 +126,7 @@ class CommentSpeechPlugin :
                 handleAsync(result) {
                     val initResult = ctrl.initialize()
                     if (initResult.isSuccess) {
-                        // Ensure bundled models are available and load them
+                        // If manifest has bundled models, ensure they are available and loaded.
                         val repo = modelRepository
                         val eng = engine
                         if (repo != null && eng != null) {
@@ -313,6 +313,7 @@ class CommentSpeechPlugin :
                 }
                 val modelFile = repo.getModelFile(modelId)
                 if (modelFile == null) {
+                    Log.w(TAG, "loadModel request failed: modelId=$modelId reason=model_file_not_found")
                     result.error(
                         "MODEL_NOT_FOUND",
                         "Model $modelId is not downloaded",
@@ -321,7 +322,28 @@ class CommentSpeechPlugin :
                     return
                 }
                 handleAsync(result) {
-                    eng.loadModel(modelFile.absolutePath)
+                    val engineStateBefore = eng.currentState()
+                    Log.d(
+                        TAG,
+                        "loadModel request: modelId=$modelId path=${modelFile.absolutePath} " +
+                            "exists=${modelFile.exists()} size=${modelFile.length()} " +
+                            "engineStateBefore=$engineStateBefore"
+                    )
+                    val loadResult = eng.loadModel(modelFile.absolutePath)
+                    val engineStateAfter = eng.currentState()
+                    if (loadResult.isSuccess) {
+                        Log.i(
+                            TAG,
+                            "loadModel success: modelId=$modelId engineStateAfter=$engineStateAfter"
+                        )
+                    } else {
+                        Log.w(
+                            TAG,
+                            "loadModel failed: modelId=$modelId engineStateAfter=$engineStateAfter " +
+                                "error=${loadResult.exceptionOrNull()?.message}"
+                        )
+                    }
+                    loadResult
                 }
             }
             "cancelDownload" -> {

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/application/settings/settings_store.dart';
 import 'package:comerune/domain/models/app_settings.dart';
+import 'package:comerune/domain/models/user_name_resolution.dart';
 import 'package:comerune/presentation/screens/favorite_user_list_screen.dart';
 
 import '../../helpers/in_memory_shared_preferences.dart';
@@ -124,11 +125,18 @@ Widget _buildScreen(
   String? Function(String userId)? resolveUserName,
   Listenable? userNameListenable,
 }) {
+  final UserNameResolution? userNameResolution = resolveUserName != null
+      ? UserNameResolution(
+          resolve: resolveUserName,
+          requestResolve: (_) {},
+          listenable: userNameListenable ?? ChangeNotifier(),
+        )
+      : null;
+
   return MaterialApp(
     home: FavoriteUserListScreen(
       settingsStore: settingsStore,
-      resolveUserName: resolveUserName,
-      userNameListenable: userNameListenable,
+      userNameResolution: userNameResolution,
     ),
   );
 }

@@ -1,12 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../../app_logging.dart';
 import '../../application/settings/settings_store.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../data/comment_log/comment_log_writer.dart';
@@ -36,15 +38,7 @@ Color colorFromARGB32(int argb32) {
 }
 
 String _formatHms(DateTime value, {DateTime? beginAt}) {
-  final String? elapsed = formatCommentElapsed(beginAt, value);
-  if (elapsed != null) {
-    return elapsed;
-  }
-  final DateTime local = value.toLocal();
-  final String hh = local.hour.toString().padLeft(2, '0');
-  final String mm = local.minute.toString().padLeft(2, '0');
-  final String ss = local.second.toString().padLeft(2, '0');
-  return '$hh:$mm:$ss';
+  return formatCommentTime(value, beginAt: beginAt);
 }
 
 String _formatHmsOrDash(DateTime? value, {DateTime? beginAt}) {
@@ -53,6 +47,27 @@ String _formatHmsOrDash(DateTime? value, {DateTime? beginAt}) {
   }
 
   return _formatHms(value, beginAt: beginAt);
+}
+
+void _debugLog(String message) {
+  appDebugLog(message);
+}
+
+void _debugLogLazy(String Function() messageBuilder) {
+  appDebugLogLazy(messageBuilder);
+}
+
+void _errorLog(
+  String message, {
+  Object? error,
+  StackTrace? stackTrace,
+}) {
+  appErrorLog(
+    name: 'CommentScreen',
+    message: message,
+    error: error,
+    stackTrace: stackTrace,
+  );
 }
 
 String _commentLineText({
@@ -109,6 +124,7 @@ class CommentScreen extends StatefulWidget {
     this.autoSaveCommentLogPath = '',
     this.ngUserIds = const <String>{},
     this.ngWords = const <String>[],
+    this.presetNgWords = const <String>[],
     this.onToggleNgUser,
     this.starPrefixHidingEnabled = false,
     this.userColorMap = const <String, int>{},
@@ -166,6 +182,11 @@ class CommentScreen extends StatefulWidget {
 
   /// List of NG words for content-based filtering (case-insensitive).
   final List<String> ngWords;
+
+  /// System preset NG words (non-user editable in UI).
+  ///
+  /// When empty, the widget attempts to load `preset_ng_words.json` from assets.
+  final List<String> presetNgWords;
 
   /// Called to toggle NG status for a user.
   final void Function(String userId)? onToggleNgUser;
@@ -227,6 +248,7 @@ class CommentScreen extends StatefulWidget {
 
 class _CommentScreenState extends State<CommentScreen> {
   static const double _autoScrollResumeThreshold = 50;
+  static const Duration _wakelockReleaseDelay = Duration(seconds: 45);
 
   late final ScrollController _scrollController;
   late ConnectionStatus _lastStatus;
@@ -240,6 +262,8 @@ class _CommentScreenState extends State<CommentScreen> {
   bool _speechInitialized = false;
   bool _speechStarted = false;
   String _speechEngineState = '';
+
+  Timer? _wakelockReleaseTimer;
 
   /// Periodic timer that ensures new comments are submitted for speech
   /// even when the widget tree is not rebuilt (e.g. while the app is
@@ -257,6 +281,8 @@ class _CommentScreenState extends State<CommentScreen> {
   /// timestamp before this value are skipped, ensuring that only comments
   /// arriving after speech initialization are read aloud.
   DateTime? _speechBaselineTimestamp;
+  List<String> _effectivePresetNgWords = const <String>[];
+  List<String> _normalizedEffectiveNgWords = const <String>[];
 
   @override
   void initState() {
@@ -267,13 +293,22 @@ class _CommentScreenState extends State<CommentScreen> {
 
     // Keep screen on while viewing comments.
     unawaited(WakelockPlus.enable());
+    _syncWakelockForStatus(_lastStatus);
 
     _requestUserNameResolution(widget.messages);
+    _effectivePresetNgWords = widget.presetNgWords;
+    _refreshNormalizedNgWords();
+    if (widget.presetNgWords.isEmpty) {
+      unawaited(_loadPresetNgWordsFromAsset());
+    }
 
-    debugPrint(
-        '[CommentScreen] initState: speech.enabled=${widget.speechSettings.enabled}, platform=${widget.speechPlatform != null ? "ok" : "null"}');
+    _debugLogLazy(
+      () =>
+          '[CommentScreen] initState: speech.enabled=${widget.speechSettings.enabled}, '
+          'platform=${widget.speechPlatform != null ? "ok" : "null"}',
+    );
     if (widget.speechSettings.enabled && widget.speechPlatform != null) {
-      debugPrint('[CommentScreen] initState: scheduling speech init');
+      _debugLog('[CommentScreen] initState: scheduling speech init');
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           unawaited(_initializeAndStartSpeech());
@@ -296,6 +331,21 @@ class _CommentScreenState extends State<CommentScreen> {
       _lastStatus = widget.connectionSupervisor.status;
     }
 
+    if (!_listEqualsShallow(oldWidget.ngWords, widget.ngWords) ||
+        !_listEqualsShallow(oldWidget.presetNgWords, widget.presetNgWords)) {
+      if (widget.presetNgWords.isNotEmpty) {
+        _effectivePresetNgWords = widget.presetNgWords;
+        _refreshNormalizedNgWords();
+      } else if (oldWidget.presetNgWords.isNotEmpty &&
+          widget.presetNgWords.isEmpty) {
+        _effectivePresetNgWords = const <String>[];
+        _refreshNormalizedNgWords();
+        unawaited(_loadPresetNgWordsFromAsset());
+      } else {
+        _refreshNormalizedNgWords();
+      }
+    }
+
     if (oldWidget.lv != widget.lv) {
       _autoScrollEnabled = true;
       _pinnedMessageIds.clear();
@@ -311,15 +361,16 @@ class _CommentScreenState extends State<CommentScreen> {
 
     final String lastId =
         widget.messages.isNotEmpty ? widget.messages.last.id : 'empty';
-    debugPrint(
-      '[CommentScreen] didUpdate: msgs ${oldWidget.messages.length}→${widget.messages.length}, '
-      'identical=${identical(oldWidget.messages, widget.messages)}, lastId=$lastId',
+    _debugLogLazy(
+      () =>
+          '[CommentScreen] didUpdate: msgs ${oldWidget.messages.length}→${widget.messages.length}, '
+          'identical=${identical(oldWidget.messages, widget.messages)}, lastId=$lastId',
     );
 
     if (oldWidget.speechSettings != widget.speechSettings) {
-      debugPrint(
-        '[CommentScreen] didUpdate: speechSettings changed: '
-        'enabled ${oldWidget.speechSettings.enabled}→${widget.speechSettings.enabled}',
+      _debugLogLazy(
+        () => '[CommentScreen] didUpdate: speechSettings changed: '
+            'enabled ${oldWidget.speechSettings.enabled}→${widget.speechSettings.enabled}',
       );
       unawaited(_handleSpeechSettingsChanged(oldWidget.speechSettings));
     }
@@ -351,12 +402,14 @@ class _CommentScreenState extends State<CommentScreen> {
 
   @override
   void dispose() {
+    _stopWakelockReleaseTimer();
     unawaited(WakelockPlus.disable());
-    debugPrint('[CommentScreen] dispose: speechStarted=$_speechStarted');
+    _debugLogLazy(
+        () => '[CommentScreen] dispose: speechStarted=$_speechStarted');
     _stopSpeechPollTimer();
     _speechEventSub?.cancel();
     if (_speechStarted) {
-      debugPrint('[CommentScreen] dispose: stopping speech engine');
+      _debugLog('[CommentScreen] dispose: stopping speech engine');
       unawaited(widget.speechPlatform?.stop(clearQueue: true));
     }
     widget.connectionSupervisor.removeListener(_handleConnectionChanged);
@@ -427,7 +480,10 @@ class _CommentScreenState extends State<CommentScreen> {
     for (int i = start; i < newMessages.length; i++) {
       final AppMessage m = newMessages[i];
       if (m.type == AppMessageType.chat) {
-        debugPrint('[CommentScreen] newComment: ${m.content}');
+        _debugLogLazy(
+          () =>
+              '[CommentScreen] newComment: id=${m.id}, user=${m.userId ?? "unknown"}, chars=${m.content.length}',
+        );
       }
     }
   }
@@ -437,41 +493,47 @@ class _CommentScreenState extends State<CommentScreen> {
   // ---------------------------------------------------------------------------
 
   Future<void> _initializeAndStartSpeech() async {
-    debugPrint(
-        '[CommentScreen] initSpeech: enter (initializing=$_speechInitializing, initialized=$_speechInitialized)');
+    _debugLogLazy(
+      () => '[CommentScreen] initSpeech: enter '
+          '(initializing=$_speechInitializing, initialized=$_speechInitialized)',
+    );
     if (_speechInitializing) return;
     final CommentSpeechPlatform? platform = widget.speechPlatform;
     if (platform == null) {
-      debugPrint('[CommentScreen] initSpeech: platform=null, abort');
+      _debugLog('[CommentScreen] initSpeech: platform=null, abort');
       return;
     }
     _speechInitializing = true;
 
     // Check if engine is already ready from a previous session.
     if (!_speechInitialized) {
-      debugPrint('[CommentScreen] initSpeech: checking engine status...');
+      _debugLog('[CommentScreen] initSpeech: checking engine status...');
       try {
         final SpeechRuntimeStatus status = await platform.getStatus();
-        debugPrint(
-            '[CommentScreen] initSpeech: engine=${status.engineState}, player=${status.playerState}, queue=${status.queueSize}');
+        _debugLogLazy(
+          () => '[CommentScreen] initSpeech: engine=${status.engineState}, '
+              'player=${status.playerState}, queue=${status.queueSize}',
+        );
         if (status.engineState == 'READY') {
           _speechInitialized = true;
-          debugPrint('[CommentScreen] initSpeech: engine already READY');
+          _debugLog('[CommentScreen] initSpeech: engine already READY');
         }
       } catch (e) {
-        debugPrint('[CommentScreen] initSpeech: getStatus failed: $e');
+        _errorLog('[CommentScreen] initSpeech: getStatus failed', error: e);
       }
     }
 
     // Show setup dialog for first-time download & initialization.
     if (!_speechInitialized) {
-      debugPrint('[CommentScreen] initSpeech: showing SetupDialog...');
+      _debugLog('[CommentScreen] initSpeech: showing SetupDialog...');
       if (!mounted) {
         _speechInitializing = false;
         return;
       }
       final bool success = await VoicevoxSetupDialog.show(context, platform);
-      debugPrint('[CommentScreen] initSpeech: SetupDialog result=$success');
+      _debugLogLazy(
+        () => '[CommentScreen] initSpeech: SetupDialog result=$success',
+      );
       if (!success || !mounted) {
         _speechInitializing = false;
         return;
@@ -491,9 +553,31 @@ class _CommentScreenState extends State<CommentScreen> {
         _lastSpeechMessageId = widget.messages.last.id;
       }
 
-      debugPrint('[CommentScreen] initSpeech: updateSettings → start()...');
+      _debugLog('[CommentScreen] initSpeech: updateSettings → start()...');
       await platform.updateSettings(widget.speechSettings);
       await platform.start();
+
+      final ConnectionStatus currentStatus = widget.connectionSupervisor.status;
+      if (!mounted ||
+          !widget.speechSettings.enabled ||
+          currentStatus == ConnectionStatus.ended ||
+          currentStatus == ConnectionStatus.failed ||
+          currentStatus == ConnectionStatus.stopped) {
+        _speechEventSub?.cancel();
+        _speechEventSub = null;
+        _speechBaselineTimestamp = null;
+        _speechStarted = false;
+        _speechEngineState = '';
+        try {
+          await platform.stop(clearQueue: true);
+        } catch (e) {
+          _errorLog(
+            '[CommentScreen] initSpeech: abort stop FAILED',
+            error: e,
+          );
+        }
+        return;
+      }
 
       if (mounted) {
         setState(() {
@@ -502,10 +586,16 @@ class _CommentScreenState extends State<CommentScreen> {
         });
       }
       _startSpeechPollTimer();
-      debugPrint(
-          '[CommentScreen] Speech started. baseline=$_lastSpeechMessageId, msgCount=${widget.messages.length}');
+      _debugLogLazy(
+        () => '[CommentScreen] Speech started. baseline=$_lastSpeechMessageId, '
+            'msgCount=${widget.messages.length}',
+      );
     } catch (e, stackTrace) {
-      debugPrint('[CommentScreen] initSpeech: FAILED: $e\n$stackTrace');
+      _errorLog(
+        '[CommentScreen] initSpeech: FAILED',
+        error: e,
+        stackTrace: stackTrace,
+      );
       if (mounted) {
         setState(() {
           _speechEngineState = 'ERROR';
@@ -519,34 +609,38 @@ class _CommentScreenState extends State<CommentScreen> {
   Future<void> _handleSpeechSettingsChanged(
     SpeechSettings oldSettings,
   ) async {
-    debugPrint(
-        '[CommentScreen] settingsChanged: enabled ${oldSettings.enabled}→${widget.speechSettings.enabled}, started=$_speechStarted');
+    _debugLogLazy(
+      () => '[CommentScreen] settingsChanged: enabled ${oldSettings.enabled}→'
+          '${widget.speechSettings.enabled}, started=$_speechStarted',
+    );
     if (!oldSettings.enabled && widget.speechSettings.enabled) {
-      debugPrint('[CommentScreen] settingsChanged: → enabling speech');
+      _debugLog('[CommentScreen] settingsChanged: → enabling speech');
       await _initializeAndStartSpeech();
     } else if (oldSettings.enabled && !widget.speechSettings.enabled) {
-      debugPrint('[CommentScreen] settingsChanged: → disabling speech');
+      _debugLog('[CommentScreen] settingsChanged: → disabling speech');
       await _stopSpeech();
     } else if (widget.speechSettings.enabled && _speechStarted) {
-      debugPrint('[CommentScreen] settingsChanged: → pushing update to engine');
+      _debugLog('[CommentScreen] settingsChanged: → pushing update to engine');
       try {
         await widget.speechPlatform?.updateSettings(widget.speechSettings);
       } catch (e) {
-        debugPrint(
-            '[CommentScreen] settingsChanged: updateSettings FAILED: $e');
+        _errorLog(
+          '[CommentScreen] settingsChanged: updateSettings FAILED',
+          error: e,
+        );
       }
     }
   }
 
   Future<void> _stopSpeech() async {
-    debugPrint('[CommentScreen] stopSpeech: started=$_speechStarted');
+    _debugLogLazy(() => '[CommentScreen] stopSpeech: started=$_speechStarted');
     _stopSpeechPollTimer();
     if (_speechStarted) {
       try {
         await widget.speechPlatform?.stop(clearQueue: true);
-        debugPrint('[CommentScreen] stopSpeech: stopped');
+        _debugLog('[CommentScreen] stopSpeech: stopped');
       } catch (e) {
-        debugPrint('[CommentScreen] stopSpeech: FAILED: $e');
+        _errorLog('[CommentScreen] stopSpeech: FAILED', error: e);
       }
       _speechBaselineTimestamp = null;
       if (mounted) {
@@ -559,8 +653,10 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   void _onSpeechEvent(SpeechEvent event) {
-    debugPrint(
-        '[CommentScreen] speechEvent: ${event.type}, payload=${event.payload}');
+    _debugLogLazy(
+      () =>
+          '[CommentScreen] speechEvent: ${event.type}, payload=${event.payload}',
+    );
     if (event.type == SpeechEventType.engineStateChanged) {
       final String state = event.payload['state'] as String? ?? '';
       if (mounted) {
@@ -620,7 +716,9 @@ class _CommentScreenState extends State<CommentScreen> {
 
     _lastSpeechMessageId = currentLastId;
     final int candidates = messages.length - start;
-    debugPrint('[CommentScreen] submitNewComments: candidates=$candidates');
+    _debugLogLazy(
+      () => '[CommentScreen] submitNewComments: candidates=$candidates',
+    );
 
     for (int i = start; i < messages.length; i++) {
       final AppMessage message = messages[i];
@@ -635,17 +733,19 @@ class _CommentScreenState extends State<CommentScreen> {
       // Skip NG users.
       final String? userId = message.userId;
       if (userId != null && widget.ngUserIds.contains(userId)) {
-        debugPrint('[CommentScreen] submitComment: SKIP NG user=$userId');
+        _debugLogLazy(
+          () => '[CommentScreen] submitComment: SKIP NG user=$userId',
+        );
         continue;
       }
       // Skip star-prefix hidden comments.
       if (widget.starPrefixHidingEnabled && message.content.startsWith('☆')) {
-        debugPrint('[CommentScreen] submitComment: SKIP star-prefix');
+        _debugLog('[CommentScreen] submitComment: SKIP star-prefix');
         continue;
       }
       // Skip comments containing NG words.
       if (_containsNgWord(message.content)) {
-        debugPrint('[CommentScreen] submitComment: SKIP NG word');
+        _debugLog('[CommentScreen] submitComment: SKIP NG word');
         continue;
       }
 
@@ -658,16 +758,17 @@ class _CommentScreenState extends State<CommentScreen> {
       }
 
       String speechText = message.content;
-      if (widget.readUserName && userId != null && userId.isNotEmpty) {
-        // Prefer nickname (kotehan), then resolved API name.
-        final String? displayName = widget.userNicknameMap[userId] ??
-            widget.resolveUserName?.call(userId);
+      if (widget.readUserName) {
+        final String? displayName = _resolveSpeechDisplayName(message);
         if (displayName != null && displayName.isNotEmpty) {
-          speechText = '$displayName、$speechText';
+          final String nameWithHonorific = _appendSan(displayName);
+          if (nameWithHonorific.isNotEmpty) {
+            speechText = '$speechText、$nameWithHonorific';
+          }
         }
       }
 
-      debugPrint('[CommentScreen] submitComment: $speechText');
+      _debugLogLazy(() => '[CommentScreen] submitComment: $speechText');
       final RawComment comment = RawComment(
         id: message.id,
         text: speechText,
@@ -676,24 +777,19 @@ class _CommentScreenState extends State<CommentScreen> {
       );
       unawaited(
         platform.submitComment(comment).then((_) {}).catchError((Object e) {
-          debugPrint('[CommentScreen] submitComment FAILED: $e');
+          _errorLog('[CommentScreen] submitComment FAILED', error: e);
         }),
       );
     }
   }
 
   /// Returns `true` when [content] contains any configured NG word.
-  ///
-  /// [widget.ngWords] is pre-lowered by [AppSettings.ngWordList], so only the
-  /// content needs to be lower-cased for case-insensitive matching.
   bool _containsNgWord(String content) {
-    if (widget.ngWords.isEmpty) {
+    if (_normalizedEffectiveNgWords.isEmpty) {
       return false;
     }
-    final String lowerContent = content.toLowerCase();
-    return widget.ngWords.any(
-      (String word) => lowerContent.contains(word),
-    );
+    final String normalizedContent = _normalizeNgWordText(content);
+    return _normalizedEffectiveNgWords.any(normalizedContent.contains);
   }
 
   Future<void> _handleTeachCommand(AppMessage message) async {
@@ -739,7 +835,7 @@ class _CommentScreenState extends State<CommentScreen> {
           ..showSnackBar(SnackBar(content: Text(result.message)));
       }
     } on Object catch (e) {
-      debugPrint('[CommentScreen] _handleTeachCommand FAILED: $e');
+      _errorLog('[CommentScreen] _handleTeachCommand FAILED', error: e);
     }
   }
 
@@ -829,8 +925,8 @@ class _CommentScreenState extends State<CommentScreen> {
                 if (widget.commentLogWriter != null)
                   IconButton(
                     key: const Key('save-comment-log-button'),
-                    icon: const Icon(Icons.ios_share),
-                    tooltip: 'コメントログを共有',
+                    icon: const Icon(Icons.save_outlined),
+                    tooltip: 'コメントログを保存',
                     onPressed:
                         _isSavingLog ? null : () => unawaited(_saveLogManual()),
                   ),
@@ -950,6 +1046,7 @@ class _CommentScreenState extends State<CommentScreen> {
           allMessages: widget.messages,
           isNgUser: isNg,
           themeMode: widget.themeMode,
+          beginAt: widget.beginAt,
           currentColorValue: widget.userColorMap[userId],
           onColorChanged: widget.onUserColorChanged != null
               ? (int colorValue) {
@@ -1070,6 +1167,42 @@ class _CommentScreenState extends State<CommentScreen> {
     return widget.resolveUserName?.call(userId);
   }
 
+  String? _resolveSpeechDisplayName(AppMessage message) {
+    final String? userId = message.userId;
+    if (userId != null && userId.isNotEmpty) {
+      final String? nickname = widget.userNicknameMap[userId];
+      if (nickname != null && nickname.isNotEmpty) {
+        return nickname;
+      }
+    }
+
+    final String? userName = message.userName;
+    if (userName != null && userName.isNotEmpty) {
+      return userName;
+    }
+
+    if (userId == null || userId.isEmpty) {
+      return null;
+    }
+
+    final String? resolvedName = widget.resolveUserName?.call(userId);
+    if (resolvedName != null && resolvedName.isNotEmpty) {
+      return resolvedName;
+    }
+
+    return null;
+  }
+
+  String _appendSan(String displayName) {
+    final String trimmedName = displayName.trim();
+    if (trimmedName.isEmpty ||
+        trimmedName.endsWith('さん') ||
+        trimmedName.endsWith('ちゃん')) {
+      return trimmedName;
+    }
+    return '$trimmedNameさん';
+  }
+
   void _toggleSortOrder() {
     setState(() {
       _sortOrder = _sortOrder == CommentSortOrder.ascending
@@ -1182,6 +1315,7 @@ class _CommentScreenState extends State<CommentScreen> {
 
   void _handleConnectionChanged() {
     final ConnectionStatus currentStatus = widget.connectionSupervisor.status;
+    _syncWakelockForStatus(currentStatus);
 
     if (widget.autoSaveCommentLog && _isAutoSaveTrigger(currentStatus)) {
       unawaited(_saveLogAuto());
@@ -1316,18 +1450,17 @@ class _CommentScreenState extends State<CommentScreen> {
         return false;
     }
 
+    if (_isSystemBroadcastEndedMessage(message)) {
+      return true;
+    }
+
     final String? userId = message.userId;
     if (userId != null && widget.ngUserIds.contains(userId)) {
       return false;
     }
 
-    if (widget.ngWords.isNotEmpty) {
-      final String lowerContent = message.content.toLowerCase();
-      for (final String word in widget.ngWords) {
-        if (lowerContent.contains(word)) {
-          return false;
-        }
-      }
+    if (_containsNgWord(message.content)) {
+      return false;
     }
 
     return true;
@@ -1370,6 +1503,349 @@ class _CommentScreenState extends State<CommentScreen> {
     return _scrollController.position.pixels <= _autoScrollResumeThreshold;
   }
 
+  Future<void> _loadPresetNgWordsFromAsset() async {
+    try {
+      final String jsonText = await rootBundle
+          .loadString('android/app/src/main/assets/preset_ng_words.json');
+      final Object decoded = jsonDecode(jsonText);
+      if (decoded is! Map<String, dynamic>) {
+        return;
+      }
+      final Object? categoriesObject = decoded['categories'];
+      if (categoriesObject is! Map<String, dynamic>) {
+        return;
+      }
+      final List<String> words = <String>[];
+      for (final Object? categoryObject in categoriesObject.values) {
+        if (categoryObject is! Map<String, dynamic>) {
+          continue;
+        }
+        final Object? wordsObject = categoryObject['words'];
+        if (wordsObject is! List<dynamic>) {
+          continue;
+        }
+        for (final Object? wordObject in wordsObject) {
+          if (wordObject is String && wordObject.trim().isNotEmpty) {
+            words.add(wordObject.trim());
+          }
+        }
+      }
+      if (!mounted || widget.presetNgWords.isNotEmpty) {
+        return;
+      }
+      _effectivePresetNgWords = words;
+      _refreshNormalizedNgWords();
+      setState(() {});
+    } catch (_) {
+      // Keep empty preset list when asset is unavailable (e.g. tests without bundle).
+    }
+  }
+
+  void _refreshNormalizedNgWords() {
+    final List<String> source = <String>[
+      ..._effectivePresetNgWords,
+      ...widget.ngWords,
+    ];
+    final List<String> normalized = source
+        .where((String word) => word.trim().isNotEmpty)
+        .map(_normalizeNgWordText)
+        .where((String word) => word.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    _normalizedEffectiveNgWords = normalized;
+  }
+
+  bool _listEqualsShallow(List<String> a, List<String> b) {
+    if (identical(a, b)) {
+      return true;
+    }
+    if (a.length != b.length) {
+      return false;
+    }
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  String _normalizeNgWordText(String text) {
+    String result = text;
+    result = _normalizeFullWidthAscii(result);
+    result = _normalizeHalfWidthKatakana(result);
+    result = _removeControlAndInvisible(result);
+    result = _applyLookAlikeTable(result);
+    result = _katakanaToHiragana(result);
+    result = result.toLowerCase();
+    result = _removeSpacesAndSymbols(result);
+    result = _compressDuplicates(result);
+    return result;
+  }
+
+  String _normalizeFullWidthAscii(String text) {
+    final StringBuffer sb = StringBuffer();
+    for (final int cp in text.runes) {
+      if (cp == 0x3000) {
+        sb.write(' ');
+      } else if (cp >= 0xFF10 && cp <= 0xFF19) {
+        sb.writeCharCode(cp - 0xFEE0);
+      } else if (cp >= 0xFF21 && cp <= 0xFF3A) {
+        sb.writeCharCode(cp - 0xFEE0);
+      } else if (cp >= 0xFF41 && cp <= 0xFF5A) {
+        sb.writeCharCode(cp - 0xFEE0);
+      } else {
+        sb.writeCharCode(cp);
+      }
+    }
+    return sb.toString();
+  }
+
+  String _normalizeHalfWidthKatakana(String text) {
+    if (text.isEmpty) {
+      return text;
+    }
+    const Map<String, String> map = <String, String>{
+      'ｱ': 'ア',
+      'ｲ': 'イ',
+      'ｳ': 'ウ',
+      'ｴ': 'エ',
+      'ｵ': 'オ',
+      'ｶ': 'カ',
+      'ｷ': 'キ',
+      'ｸ': 'ク',
+      'ｹ': 'ケ',
+      'ｺ': 'コ',
+      'ｻ': 'サ',
+      'ｼ': 'シ',
+      'ｽ': 'ス',
+      'ｾ': 'セ',
+      'ｿ': 'ソ',
+      'ﾀ': 'タ',
+      'ﾁ': 'チ',
+      'ﾂ': 'ツ',
+      'ﾃ': 'テ',
+      'ﾄ': 'ト',
+      'ﾅ': 'ナ',
+      'ﾆ': 'ニ',
+      'ﾇ': 'ヌ',
+      'ﾈ': 'ネ',
+      'ﾉ': 'ノ',
+      'ﾊ': 'ハ',
+      'ﾋ': 'ヒ',
+      'ﾌ': 'フ',
+      'ﾍ': 'ヘ',
+      'ﾎ': 'ホ',
+      'ﾏ': 'マ',
+      'ﾐ': 'ミ',
+      'ﾑ': 'ム',
+      'ﾒ': 'メ',
+      'ﾓ': 'モ',
+      'ﾔ': 'ヤ',
+      'ﾕ': 'ユ',
+      'ﾖ': 'ヨ',
+      'ﾗ': 'ラ',
+      'ﾘ': 'リ',
+      'ﾙ': 'ル',
+      'ﾚ': 'レ',
+      'ﾛ': 'ロ',
+      'ﾜ': 'ワ',
+      'ｦ': 'ヲ',
+      'ﾝ': 'ン',
+      'ｧ': 'ァ',
+      'ｨ': 'ィ',
+      'ｩ': 'ゥ',
+      'ｪ': 'ェ',
+      'ｫ': 'ォ',
+      'ｯ': 'ッ',
+      'ｬ': 'ャ',
+      'ｭ': 'ュ',
+      'ｮ': 'ョ',
+      'ｰ': 'ー',
+    };
+    const Map<String, String> voiced = <String, String>{
+      'ｳ': 'ヴ',
+      'ｶ': 'ガ',
+      'ｷ': 'ギ',
+      'ｸ': 'グ',
+      'ｹ': 'ゲ',
+      'ｺ': 'ゴ',
+      'ｻ': 'ザ',
+      'ｼ': 'ジ',
+      'ｽ': 'ズ',
+      'ｾ': 'ゼ',
+      'ｿ': 'ゾ',
+      'ﾀ': 'ダ',
+      'ﾁ': 'ヂ',
+      'ﾂ': 'ヅ',
+      'ﾃ': 'デ',
+      'ﾄ': 'ド',
+      'ﾊ': 'バ',
+      'ﾋ': 'ビ',
+      'ﾌ': 'ブ',
+      'ﾍ': 'ベ',
+      'ﾎ': 'ボ',
+      'ﾜ': 'ヷ',
+      'ｦ': 'ヺ',
+    };
+    const Map<String, String> semiVoiced = <String, String>{
+      'ﾊ': 'パ',
+      'ﾋ': 'ピ',
+      'ﾌ': 'プ',
+      'ﾍ': 'ペ',
+      'ﾎ': 'ポ',
+    };
+    final List<String> chars = text.split('');
+    final StringBuffer sb = StringBuffer();
+    int i = 0;
+    while (i < chars.length) {
+      final String ch = chars[i];
+      final String? next = i + 1 < chars.length ? chars[i + 1] : null;
+      if (next == 'ﾞ') {
+        final String? combined = voiced[ch];
+        if (combined != null) {
+          sb.write(combined);
+          i += 2;
+          continue;
+        }
+      } else if (next == 'ﾟ') {
+        final String? combined = semiVoiced[ch];
+        if (combined != null) {
+          sb.write(combined);
+          i += 2;
+          continue;
+        }
+      }
+      sb.write(map[ch] ?? ch);
+      i++;
+    }
+    return sb.toString();
+  }
+
+  String _removeControlAndInvisible(String text) {
+    final StringBuffer sb = StringBuffer();
+    for (final int cp in text.runes) {
+      final bool invisible = cp == 0x200B ||
+          cp == 0x200C ||
+          cp == 0x200D ||
+          cp == 0xFEFF ||
+          cp == 0x00AD ||
+          (cp >= 0xFE00 && cp <= 0xFE0F) ||
+          (cp >= 0xE0100 && cp <= 0xE01EF) ||
+          ((cp >= 0x0000 && cp <= 0x001F) && cp != 0x0020) ||
+          (cp >= 0x007F && cp <= 0x009F);
+      if (!invisible) {
+        sb.writeCharCode(cp);
+      }
+    }
+    return sb.toString();
+  }
+
+  String _applyLookAlikeTable(String text) {
+    const Map<String, String> lookAlike = <String, String>{
+      '工': 'エ',
+      '口': 'ロ',
+      '冂': 'ロ',
+      '力': 'カ',
+      '夕': 'タ',
+      '二': 'ニ',
+      '卜': 'ト',
+      '八': 'ハ',
+      '千': 'チ',
+      '十': 'ジ',
+      '人': 'ヒ',
+      '入': 'イ',
+      '匕': 'ヒ',
+      '乃': 'ノ',
+      '又': 'マ',
+      '丁': 'テ',
+      '己': 'コ',
+      '匚': 'コ',
+      '巳': 'ミ',
+      '也': 'ヤ',
+      '刀': 'カ',
+    };
+    return text.split('').map((String ch) => lookAlike[ch] ?? ch).join();
+  }
+
+  String _katakanaToHiragana(String text) {
+    final StringBuffer sb = StringBuffer();
+    for (final int cp in text.runes) {
+      if (cp >= 0x30A1 && cp <= 0x30F6) {
+        sb.writeCharCode(cp - 0x60);
+      } else if (cp == 0x30F7) {
+        sb.write('わ');
+      } else if (cp == 0x30F8) {
+        sb.write('ゐ');
+      } else if (cp == 0x30F9) {
+        sb.write('ゑ');
+      } else if (cp == 0x30FA) {
+        sb.write('を');
+      } else {
+        sb.writeCharCode(cp);
+      }
+    }
+    return sb.toString();
+  }
+
+  String _removeSpacesAndSymbols(String text) {
+    final StringBuffer sb = StringBuffer();
+    for (final int cp in text.runes) {
+      if (_isLetterOrDigitCodePoint(cp)) {
+        sb.writeCharCode(cp);
+      }
+    }
+    return sb.toString();
+  }
+
+  bool _isLetterOrDigitCodePoint(int cp) {
+    final bool asciiAlphaNum = (cp >= 0x30 && cp <= 0x39) ||
+        (cp >= 0x41 && cp <= 0x5A) ||
+        (cp >= 0x61 && cp <= 0x7A);
+    if (asciiAlphaNum) {
+      return true;
+    }
+    final bool fullWidthAlphaNum = (cp >= 0xFF10 && cp <= 0xFF19) ||
+        (cp >= 0xFF21 && cp <= 0xFF3A) ||
+        (cp >= 0xFF41 && cp <= 0xFF5A);
+    if (fullWidthAlphaNum) {
+      return true;
+    }
+    final bool jpLetters = (cp >= 0x3040 && cp <= 0x30FF);
+    if (jpLetters) {
+      return true;
+    }
+    final bool cjk = (cp >= 0x3400 && cp <= 0x9FFF);
+    return cjk;
+  }
+
+  String _compressDuplicates(String text) {
+    if (text.length < 3) {
+      return text;
+    }
+    final List<int> codePoints = text.runes.toList(growable: false);
+    if (codePoints.length < 3) {
+      return text;
+    }
+    final StringBuffer sb = StringBuffer();
+    int i = 0;
+    while (i < codePoints.length) {
+      final int cp = codePoints[i];
+      int count = 1;
+      int j = i + 1;
+      while (j < codePoints.length && codePoints[j] == cp) {
+        count++;
+        j++;
+      }
+      final int output = count > 2 ? 2 : count;
+      for (int k = 0; k < output; k++) {
+        sb.writeCharCode(cp);
+      }
+      i = j;
+    }
+    return sb.toString();
+  }
+
   bool _isAutoSaveTrigger(ConnectionStatus status) {
     if (_lastStatus == status) {
       return false;
@@ -1408,14 +1884,56 @@ class _CommentScreenState extends State<CommentScreen> {
     }
   }
 
+  void _syncWakelockForStatus(ConnectionStatus status) {
+    switch (status) {
+      case ConnectionStatus.connectingSessionWs:
+      case ConnectionStatus.resolvingEndpoints:
+      case ConnectionStatus.streamingNdgr:
+      case ConnectionStatus.streamingLegacy:
+      case ConnectionStatus.reconnecting:
+        _stopWakelockReleaseTimer();
+        unawaited(WakelockPlus.enable());
+        break;
+      case ConnectionStatus.ended:
+        _scheduleWakelockRelease();
+        break;
+      case ConnectionStatus.idle:
+      case ConnectionStatus.stopped:
+      case ConnectionStatus.failed:
+        _stopWakelockReleaseTimer();
+        break;
+    }
+  }
+
+  void _scheduleWakelockRelease() {
+    if (_wakelockReleaseTimer?.isActive ?? false) {
+      return;
+    }
+
+    _wakelockReleaseTimer = Timer(_wakelockReleaseDelay, () {
+      _wakelockReleaseTimer = null;
+      if (!mounted ||
+          widget.connectionSupervisor.status != ConnectionStatus.ended) {
+        return;
+      }
+      unawaited(WakelockPlus.disable());
+    });
+  }
+
+  void _stopWakelockReleaseTimer() {
+    _wakelockReleaseTimer?.cancel();
+    _wakelockReleaseTimer = null;
+  }
+
   void _showStatsSheet() {
-    final bool hasMessages = widget.messages.any(_shouldDisplayMessage);
+    final List<AppMessage> messagesForStatsAndLogs = _messagesForStatsAndLogs();
+    final bool hasMessages = messagesForStatsAndLogs.isNotEmpty;
     if (!hasMessages) {
       return;
     }
 
     final CommentLogStats stats = CommentLogStats.fromMessages(
-      widget.messages,
+      messagesForStatsAndLogs,
       ngUserIds: widget.ngUserIds,
     );
 
@@ -1433,7 +1951,7 @@ class _CommentScreenState extends State<CommentScreen> {
             programTitle: widget.programTitle,
             lv: widget.lv,
             highlightPickupEnabled: widget.highlightPickupEnabled,
-            messages: widget.messages,
+            messages: messagesForStatsAndLogs,
             ngUserIds: widget.ngUserIds,
             onBarTapped: (int minuteOffset) {
               Navigator.of(sheetContext).pop();
@@ -1492,7 +2010,8 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   Future<void> _saveLogManual() async {
-    final bool hasMessages = widget.messages.any(_shouldDisplayMessage);
+    final List<AppMessage> messagesForStatsAndLogs = _messagesForStatsAndLogs();
+    final bool hasMessages = messagesForStatsAndLogs.isNotEmpty;
     if (!hasMessages) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -1514,10 +2033,10 @@ class _CommentScreenState extends State<CommentScreen> {
     });
 
     try {
-      final List<AppMessage> messages =
-          widget.messages.where(_shouldDisplayMessage).toList(growable: false);
-      final String? tempPath =
-          await writer.writeToTempFile(lv: widget.lv, messages: messages);
+      final String? tempPath = await writer.writeToTempFile(
+        lv: widget.lv,
+        messages: messagesForStatsAndLogs,
+      );
       if (tempPath == null) {
         if (mounted) {
           ScaffoldMessenger.of(context)
@@ -1553,8 +2072,7 @@ class _CommentScreenState extends State<CommentScreen> {
       return;
     }
 
-    final List<AppMessage> messages =
-        widget.messages.where(_shouldDisplayMessage).toList(growable: false);
+    final List<AppMessage> messagesForStatsAndLogs = _messagesForStatsAndLogs();
 
     final Directory? customDir = widget.autoSaveCommentLogPath.isNotEmpty
         ? Directory(widget.autoSaveCommentLogPath)
@@ -1564,7 +2082,7 @@ class _CommentScreenState extends State<CommentScreen> {
     try {
       savedPath = await writer.save(
         lv: widget.lv,
-        messages: messages,
+        messages: messagesForStatsAndLogs,
         customDirectory: customDir,
       );
     } on Object {
@@ -1581,13 +2099,30 @@ class _CommentScreenState extends State<CommentScreen> {
         ..showSnackBar(
           SnackBar(content: Text('コメントログを保存しました: $savedPath')),
         );
-    } else if (messages.isNotEmpty) {
+    } else if (messagesForStatsAndLogs.isNotEmpty) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
         ..showSnackBar(
           const SnackBar(content: Text('コメントログの自動保存に失敗しました')),
         );
     }
+  }
+
+  bool _isSystemBroadcastEndedMessage(AppMessage message) {
+    return message.id.startsWith(kSystemBroadcastEndedMessageIdPrefix);
+  }
+
+  List<AppMessage> _messagesForStatsAndLogs() {
+    return widget.messages
+        .where(_shouldIncludeInStatsAndLogs)
+        .toList(growable: false);
+  }
+
+  bool _shouldIncludeInStatsAndLogs(AppMessage message) {
+    if (_isSystemBroadcastEndedMessage(message)) {
+      return false;
+    }
+    return _shouldDisplayMessage(message);
   }
 
   void _scrollToEdge({bool animated = true}) {
@@ -2238,7 +2773,7 @@ class _CommentRowState extends State<_CommentRow> {
   }
 
   bool _isBroadcastEndedMessage(AppMessage message) {
-    return message.id.startsWith('system:broadcast_ended:');
+    return message.id.startsWith(kSystemBroadcastEndedMessageIdPrefix);
   }
 }
 

@@ -1,4 +1,5 @@
 export 'src/comment_speech_platform.dart';
+export 'src/engine_readiness.dart';
 export 'src/method_channel_comment_speech.dart';
 export 'src/models/raw_comment.dart';
 export 'src/models/replace_rule.dart';

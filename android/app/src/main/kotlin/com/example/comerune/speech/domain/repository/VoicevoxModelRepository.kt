@@ -12,7 +12,7 @@ interface VoicevoxModelRepository {
     fun isModelDownloaded(modelId: String): Boolean
     fun getModelFile(modelId: String): java.io.File?
 
-    /** Ensure a bundled model is copied from assets to the file system. */
+    /** Ensure a bundled model is copied from assets to the file system (if any). */
     fun ensureBundledModel(modelInfo: VoicevoxModelInfo)
 
     fun cancelDownload(modelId: String)

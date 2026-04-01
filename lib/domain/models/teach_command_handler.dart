@@ -1,4 +1,5 @@
 import '../../comment_speech/src/models/replace_rule.dart';
+import 'app_settings.dart';
 import 'teach_command.dart';
 
 /// teach/unteach コマンドの実行結果。
@@ -23,6 +24,16 @@ class TeachCommandResult {
 class TeachCommandHandler {
   static const int _maxPatternLength = 100;
   static const int _maxReplacementLength = 200;
+
+  static bool _hasProtectedDictionaryRuleWithPattern(
+    List<ReplaceRule> rules,
+    String pattern,
+  ) {
+    return rules.any(
+      (ReplaceRule rule) =>
+          rule.pattern == pattern && isDefaultNicoDictionaryRule(rule),
+    );
+  }
 
   /// `/teach` コマンドを実行する。
   ///
@@ -86,6 +97,16 @@ class TeachCommandHandler {
       replacement: command.replacement,
     );
 
+    if (_hasProtectedDictionaryRuleWithPattern(
+      updatedRules,
+      escapedPattern,
+    )) {
+      return const TeachCommandResult(
+        success: false,
+        message: '既定の辞書ルールは編集できません。設定画面で無効化してください',
+      );
+    }
+
     if (existingIndex >= 0) {
       updatedRules[existingIndex] = newRule;
       return TeachCommandResult(
@@ -125,6 +146,16 @@ class TeachCommandHandler {
     final int existingIndex = updatedRules.indexWhere(
       (ReplaceRule rule) => rule.pattern == escapedPattern,
     );
+
+    if (_hasProtectedDictionaryRuleWithPattern(
+      updatedRules,
+      escapedPattern,
+    )) {
+      return const TeachCommandResult(
+        success: false,
+        message: '既定の辞書ルールは削除できません。設定画面で無効化してください',
+      );
+    }
 
     if (existingIndex < 0) {
       return TeachCommandResult(

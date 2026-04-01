@@ -30,6 +30,7 @@ import 'domain/connection/ndgr_client.dart' as ndgr_impl;
 import 'domain/connection/session_ws_client.dart' as session_impl;
 import 'domain/models/app_message.dart';
 import 'domain/models/app_settings.dart';
+import 'domain/models/user_name_resolution.dart';
 import 'presentation/screens/onboarding_screen.dart';
 import 'presentation/select/select_screen.dart';
 import 'presentation/theme/app_theme.dart';
@@ -129,6 +130,8 @@ class _ComeruneAppState extends State<ComeruneApp> {
   int _ndgrHistoryCount = 100;
   final ValueNotifier<String?> _programTitleNotifier =
       ValueNotifier<String?>(null);
+  final ValueNotifier<String?> _broadcasterNameNotifier =
+      ValueNotifier<String?>(null);
   final ValueNotifier<String?> _supplierUserIdNotifier =
       ValueNotifier<String?>(null);
   final ValueNotifier<DateTime?> _beginAtNotifier =
@@ -175,8 +178,11 @@ class _ComeruneAppState extends State<ComeruneApp> {
         _supplierUserIdNotifier.value = userId;
         _userNameResolver.requestResolve(userId);
       },
-      onBroadcasterNameResolved: (String userId, String name) {
-        _userNameResolver.seedCache(userId, name);
+      onBroadcasterNameResolved: (String? userId, String name) {
+        _broadcasterNameNotifier.value = name;
+        if (userId != null) {
+          _userNameResolver.seedCache(userId, name);
+        }
       },
       onBeginAtResolved: (DateTime beginAt) {
         _beginAtNotifier.value = beginAt;
@@ -237,6 +243,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _followProgramRepository.dispose();
     _myProgramRepository.dispose();
     _programTitleNotifier.dispose();
+    _broadcasterNameNotifier.dispose();
     _supplierUserIdNotifier.dispose();
     _beginAtNotifier.dispose();
     _themeModeNotifier
@@ -252,6 +259,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
   Future<void> _prepareConnection(String lv, AppSettings settings) async {
     _currentLv = lv;
     _programTitleNotifier.value = null;
+    _broadcasterNameNotifier.value = null;
     _supplierUserIdNotifier.value = null;
     _beginAtNotifier.value = null;
     _ndgrHistoryCount = settings.pastCommentFetchCount.historyCount;
@@ -282,9 +290,12 @@ class _ComeruneAppState extends State<ComeruneApp> {
           onPrepareConnection: _prepareConnection,
           userSessionStore: widget.userSessionStore,
           programTitleNotifier: _programTitleNotifier,
-          resolveUserName: _userNameResolver.getCachedName,
-          requestUserNameResolve: _userNameResolver.requestResolve,
-          userNameListenable: _userNameResolver,
+          userNameResolution: UserNameResolution(
+            resolve: _userNameResolver.getCachedName,
+            requestResolve: _userNameResolver.requestResolve,
+            listenable: _userNameResolver,
+          ),
+          broadcasterNameNotifier: _broadcasterNameNotifier,
           supplierUserIdNotifier: _supplierUserIdNotifier,
           beginAtNotifier: _beginAtNotifier,
           commentLogWriter: widget.commentLogWriter,
@@ -305,7 +316,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     required ProgramInfoResolver programInfoResolver,
     void Function(String title)? onProgramTitleResolved,
     void Function(String userId)? onSupplierUserIdResolved,
-    void Function(String userId, String name)? onBroadcasterNameResolved,
+    void Function(String? userId, String name)? onBroadcasterNameResolved,
     void Function(DateTime beginAt)? onBeginAtResolved,
   })  : _lvProvider = lvProvider,
         _userSessionProvider = userSessionProvider,
@@ -320,7 +331,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
   final ProgramInfoResolver _programInfoResolver;
   final void Function(String title)? _onProgramTitleResolved;
   final void Function(String userId)? _onSupplierUserIdResolved;
-  final void Function(String userId, String name)? _onBroadcasterNameResolved;
+  final void Function(String? userId, String name)? _onBroadcasterNameResolved;
   final void Function(DateTime beginAt)? _onBeginAtResolved;
   final StreamController<reconnect.SessionWsEvent> _eventsController =
       StreamController<reconnect.SessionWsEvent>.broadcast();
@@ -357,8 +368,9 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       //   1. title — no dependencies, shown first in the UI header.
       //   2. beginAt — no dependencies, enables elapsed-time display
       //      as soon as comments start arriving.
-      //   3. broadcasterName — seeds the name cache so that the
-      //      subsequent supplierUserId callback can skip a redundant
+      //   3. broadcasterName — emitted even when supplierUserId is absent.
+      //      If supplierUserId exists, this also seeds the name cache so
+      //      the subsequent supplierUserId callback can skip a redundant
       //      HTTP resolve.
       //   4. supplierUserId — triggers name resolution; the cache is
       //      already warm if broadcasterName was available.
@@ -368,13 +380,13 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       if (programInfo.beginAt != null) {
         _onBeginAtResolved?.call(programInfo.beginAt!);
       }
+      if (programInfo.broadcasterName != null) {
+        _onBroadcasterNameResolved?.call(
+          programInfo.supplierUserId,
+          programInfo.broadcasterName!,
+        );
+      }
       if (programInfo.supplierUserId != null) {
-        if (programInfo.broadcasterName != null) {
-          _onBroadcasterNameResolved?.call(
-            programInfo.supplierUserId!,
-            programInfo.broadcasterName!,
-          );
-        }
         _onSupplierUserIdResolved?.call(programInfo.supplierUserId!);
       }
       log(

@@ -3,6 +3,8 @@ package com.example.comerune.speech.domain.model
 enum class TtsEngineState {
     UNINITIALIZED,
     INITIALIZING,
+    DOWNLOADING,
+    EXTRACTING,
     READY,
     SYNTHESIZING,
     ERROR

@@ -90,7 +90,8 @@ void main() {
       resolver.dispose();
     });
 
-    test('falls back to supplier when broadcaster is absent', () async {
+    test('falls back to supplier name and ID when broadcaster is absent',
+        () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
@@ -120,7 +121,7 @@ void main() {
 
       expect(result.title, 'Supplier Fallback');
       expect(result.supplierUserId, '12345');
-      expect(result.broadcasterName, isNull);
+      expect(result.broadcasterName, 'テスト配信者');
 
       resolver.dispose();
     });
@@ -194,7 +195,7 @@ void main() {
 
       expect(result.title, 'No IDs');
       expect(result.supplierUserId, isNull);
-      expect(result.broadcasterName, isNull);
+      expect(result.broadcasterName, 'テスト配信者');
 
       resolver.dispose();
     });

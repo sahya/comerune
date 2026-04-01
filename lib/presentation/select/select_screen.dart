@@ -1,9 +1,10 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../app_logging.dart';
 import '../../application/settings/settings_store.dart';
 import '../../application/statistics/statistics_store.dart';
 import '../../application/timeline/timeline_store.dart';
@@ -18,12 +19,30 @@ import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
+import '../../domain/models/user_name_resolution.dart';
 import '../../domain/utils/lv_parser.dart';
 import '../../comment_speech/comment_speech.dart'
     show MethodChannelCommentSpeech, SpeechSettings;
 import '../screens/comment_screen.dart';
 import '../screens/settings_screen.dart';
 import '../theme/app_theme.dart';
+
+void _debugLog(String message) {
+  if (kDebugMode) {
+    debugPrint(message);
+  }
+}
+
+void _errorLog(
+  String message, {
+  Object? error,
+}) {
+  appErrorLog(
+    name: 'SelectScreen',
+    message: message,
+    error: error,
+  );
+}
 
 /// Builds a niconico user icon URL from a numeric user ID.
 ///
@@ -50,9 +69,8 @@ class SelectScreen extends StatefulWidget {
     this.onPrepareConnection,
     this.userSessionStore,
     this.programTitleNotifier,
-    this.resolveUserName,
-    this.requestUserNameResolve,
-    this.userNameListenable,
+    this.userNameResolution,
+    this.broadcasterNameNotifier,
     this.supplierUserIdNotifier,
     this.beginAtNotifier,
     this.commentLogWriter,
@@ -73,9 +91,8 @@ class SelectScreen extends StatefulWidget {
   final Future<void> Function(String lv, AppSettings settings)?
       onPrepareConnection;
   final ValueNotifier<String?>? programTitleNotifier;
-  final String? Function(String userId)? resolveUserName;
-  final void Function(String userId)? requestUserNameResolve;
-  final Listenable? userNameListenable;
+  final UserNameResolution? userNameResolution;
+  final ValueNotifier<String?>? broadcasterNameNotifier;
   final ValueNotifier<String?>? supplierUserIdNotifier;
   final ValueNotifier<DateTime?>? beginAtNotifier;
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
@@ -113,6 +130,7 @@ class _SelectScreenState extends State<SelectScreen> {
   String? _currentBroadcasterId;
   final MethodChannelCommentSpeech _speechPlatform =
       MethodChannelCommentSpeech();
+  int _broadcastEndedNotificationSequence = 0;
 
   static const Duration _followRefreshInterval = Duration(seconds: 60);
   static const Duration _favoriteRefreshInterval = Duration(seconds: 30);
@@ -233,7 +251,10 @@ class _SelectScreenState extends State<SelectScreen> {
     final DateTime now = DateTime.now();
     store.add(
       AppMessage(
-        id: 'system:broadcast_ended:${now.millisecondsSinceEpoch}',
+        id: buildBroadcastEndedNotificationId(
+          epochMilliseconds: now.millisecondsSinceEpoch,
+          sequence: _broadcastEndedNotificationSequence++,
+        ),
         timestamp: now,
         content: '放送が終了しました',
         type: AppMessageType.notification,
@@ -388,8 +409,7 @@ class _SelectScreenState extends State<SelectScreen> {
               enabled: !_isConnectionInProgress,
               onTap: _connectToFavoriteUser,
               onRefresh: _fetchFavoriteUserStatus,
-              resolveUserName: widget.resolveUserName,
-              userNameListenable: widget.userNameListenable,
+              userNameResolution: widget.userNameResolution,
             ),
         ],
       ),
@@ -404,7 +424,10 @@ class _SelectScreenState extends State<SelectScreen> {
       if (widget.timelineStore != null) widget.timelineStore!,
       if (widget.statisticsStore != null) widget.statisticsStore!,
       if (widget.programTitleNotifier != null) widget.programTitleNotifier!,
-      if (widget.userNameListenable != null) widget.userNameListenable!,
+      if (widget.userNameResolution?.listenable != null)
+        widget.userNameResolution!.listenable,
+      if (widget.broadcasterNameNotifier != null)
+        widget.broadcasterNameNotifier!,
       if (widget.supplierUserIdNotifier != null) widget.supplierUserIdNotifier!,
       if (widget.beginAtNotifier != null) widget.beginAtNotifier!,
     ];
@@ -422,10 +445,11 @@ class _SelectScreenState extends State<SelectScreen> {
         // displayed when available (seeded by programinfo API via
         // seedCache).
         final String? cachedBroadcasterName = supplierUserId != null
-            ? widget.resolveUserName?.call(supplierUserId)
+            ? widget.userNameResolution?.resolve(supplierUserId)
             : null;
-        final String? broadcasterName =
-            cachedBroadcasterName ?? _followBroadcasterName;
+        final String? broadcasterName = cachedBroadcasterName ??
+            widget.broadcasterNameNotifier?.value ??
+            _followBroadcasterName;
         final String? broadcasterIconUrl = _followBroadcasterIconUrl ??
             _buildIconUrlFromUserId(supplierUserId);
 
@@ -451,9 +475,10 @@ class _SelectScreenState extends State<SelectScreen> {
           showUserName: _settingsNotifier.value.showUserName,
           commentFontSize: _settingsNotifier.value.commentFontSize,
           resolveUserName:
-              nameResolutionEnabled ? widget.resolveUserName : null,
-          requestUserNameResolve:
-              nameResolutionEnabled ? widget.requestUserNameResolve : null,
+              nameResolutionEnabled ? widget.userNameResolution?.resolve : null,
+          requestUserNameResolve: nameResolutionEnabled
+              ? widget.userNameResolution?.requestResolve
+              : null,
           commentLogWriter: widget.commentLogWriter,
           autoSaveCommentLog: _settingsNotifier.value.autoSaveCommentLog,
           autoSaveCommentLogPath:
@@ -498,8 +523,9 @@ class _SelectScreenState extends State<SelectScreen> {
 
   SpeechSettings _buildSpeechSettings() {
     final AppSettings s = _settingsNotifier.value;
-    debugPrint(
-        '[SelectScreen] buildSpeechSettings: engine=${s.speechEngine}, speaker=${s.voicevoxSpeaker}, speed=${s.voicevoxSpeed}');
+    _debugLog(
+      '[SelectScreen] buildSpeechSettings: engine=${s.speechEngine}, speaker=${s.voicevoxSpeaker}, speed=${s.voicevoxSpeed}',
+    );
     return s.toSpeechSettings();
   }
 
@@ -547,7 +573,8 @@ class _SelectScreenState extends State<SelectScreen> {
   }
 
   void _requestFavoriteUserNameResolution() {
-    final void Function(String)? request = widget.requestUserNameResolve;
+    final void Function(String)? request =
+        widget.userNameResolution?.requestResolve;
     if (request == null) {
       return;
     }
@@ -672,9 +699,7 @@ class _SelectScreenState extends State<SelectScreen> {
           themeModeNotifier: widget.themeModeNotifier,
           userAttributeStore: widget.userAttributeStore,
           broadcasterIdNotifier: widget.supplierUserIdNotifier,
-          resolveUserName: widget.resolveUserName,
-          requestUserNameResolve: widget.requestUserNameResolve,
-          userNameListenable: widget.userNameListenable,
+          userNameResolution: widget.userNameResolution,
           speechPlatform: MethodChannelCommentSpeech(),
         ),
       ),
@@ -756,10 +781,7 @@ class _SelectScreenState extends State<SelectScreen> {
         _fetchFollowPrograms(userSession),
       ]);
     } on Object catch (e) {
-      log(
-        'Unexpected error during program fetch: $e',
-        name: 'SelectScreen',
-      );
+      _errorLog('Unexpected error during program fetch', error: e);
     }
 
     if (!mounted) {
@@ -838,10 +860,7 @@ class _SelectScreenState extends State<SelectScreen> {
       // Catch Object (not just Exception) to match the safety net in
       // _fetchAllPrograms and ensure Error types are also logged here
       // rather than only at the Future.wait level.
-      log(
-        'Error in _fetchMyProgram: $e',
-        name: 'SelectScreen',
-      );
+      _errorLog('Error in _fetchMyProgram', error: e);
     }
   }
 
@@ -918,7 +937,7 @@ class _SelectScreenState extends State<SelectScreen> {
   }
 
   void _connectToFavoriteUser(String userId, String programId) {
-    _followBroadcasterName = widget.resolveUserName?.call(userId);
+    _followBroadcasterName = widget.userNameResolution?.resolve(userId);
     _followBroadcasterIconUrl = buildNicoIconUrl(userId);
     _followBeginAt = null;
     _controller.text = programId;
@@ -1430,8 +1449,7 @@ class _FavoriteUserSection extends StatefulWidget {
     required this.enabled,
     required this.onTap,
     this.onRefresh,
-    this.resolveUserName,
-    this.userNameListenable,
+    this.userNameResolution,
   });
 
   /// Map of userId to programId (lv number) for users currently on air.
@@ -1439,8 +1457,7 @@ class _FavoriteUserSection extends StatefulWidget {
   final bool enabled;
   final void Function(String userId, String programId) onTap;
   final VoidCallback? onRefresh;
-  final String? Function(String userId)? resolveUserName;
-  final Listenable? userNameListenable;
+  final UserNameResolution? userNameResolution;
 
   @override
   State<_FavoriteUserSection> createState() => _FavoriteUserSectionState();
@@ -1450,21 +1467,23 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
   @override
   void initState() {
     super.initState();
-    widget.userNameListenable?.addListener(_onUserNameChanged);
+    widget.userNameResolution?.listenable.addListener(_onUserNameChanged);
   }
 
   @override
   void didUpdateWidget(covariant _FavoriteUserSection oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.userNameListenable != widget.userNameListenable) {
-      oldWidget.userNameListenable?.removeListener(_onUserNameChanged);
-      widget.userNameListenable?.addListener(_onUserNameChanged);
+    if (oldWidget.userNameResolution?.listenable !=
+        widget.userNameResolution?.listenable) {
+      oldWidget.userNameResolution?.listenable
+          .removeListener(_onUserNameChanged);
+      widget.userNameResolution?.listenable.addListener(_onUserNameChanged);
     }
   }
 
   @override
   void dispose() {
-    widget.userNameListenable?.removeListener(_onUserNameChanged);
+    widget.userNameResolution?.listenable.removeListener(_onUserNameChanged);
     super.dispose();
   }
 
@@ -1517,7 +1536,7 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
           final String userId = entry.key;
           final String programId = entry.value;
           final String? iconUrl = buildNicoIconUrl(userId);
-          final String? nickname = widget.resolveUserName?.call(userId);
+          final String? nickname = widget.userNameResolution?.resolve(userId);
           final String displayName = nickname ?? userId;
           return Semantics(
             button: true,

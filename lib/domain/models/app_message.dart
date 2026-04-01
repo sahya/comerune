@@ -1,3 +1,16 @@
+const String kSystemBroadcastEndedMessageIdPrefix = 'system:broadcast_ended:';
+
+/// Builds a unique system notification ID for broadcast-ended events.
+///
+/// `sequence` is appended to avoid ID collisions when multiple notifications
+/// are created in the same millisecond.
+String buildBroadcastEndedNotificationId({
+  required int epochMilliseconds,
+  required int sequence,
+}) {
+  return '$kSystemBroadcastEndedMessageIdPrefix$epochMilliseconds:$sequence';
+}
+
 enum AppMessageType {
   chat,
   operator,

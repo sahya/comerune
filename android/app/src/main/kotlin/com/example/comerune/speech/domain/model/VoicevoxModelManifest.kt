@@ -14,7 +14,8 @@ object VoicevoxModelManifest {
             vvmFileName = "0.vvm",
             downloadUrl = "${VVM_BASE_URL}0.vvm",
             fileSizeBytes = 52_000_000L,
-            isBundled = true
+            // APK同梱せず、初回起動時にダウンロードする。
+            isBundled = false
         ),
         VoicevoxModelInfo(
             modelId = "1",

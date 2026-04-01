@@ -3,6 +3,9 @@
 VOICEVOX 用の 音声モデル（VVM ファイル）です。  
 [VOICEVOX CORE](https://github.com/VOICEVOX/voicevox_core)を用いることで、プログラム上で VOICEVOX 音声を生成できます。
 
+このアプリでは APK サイズ削減のため、音声モデルは APK に同梱せず、
+初回利用時にダウンロードしてアプリ内部ストレージへ保存します。
+
 ご利用の際は **VOICEVOX 音声モデル 利用規約** をご確認ください。
 
 ## ダウンロード

@@ -52,6 +52,17 @@ Widget _buildScreen(
   );
 }
 
+Future<void> _agreeVoicevoxTermsDialog(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump();
+
+  final dialog = find.byType(AlertDialog);
+  expect(dialog, findsOneWidget);
+  final context = tester.element(dialog);
+  Navigator.of(context).pop(true);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   late FakeCommentSpeechPlatform fakePlatform;
 
@@ -142,6 +153,85 @@ void main() {
     expect(find.text('50%'), findsOneWidget);
   });
 
+  testWidgets('download initializes engine before loading model',
+      (tester) async {
+    final prefs = InMemorySharedPreferences();
+    final settingsStore = SharedPreferencesSettingsStore(prefs: prefs);
+    await settingsStore
+        .save(AppSettings.defaults.copyWith(voicevoxTermsAccepted: true));
+    fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+      enabled: false,
+      engineState: 'UNINITIALIZED',
+      playerState: 'UNKNOWN',
+      queueSize: 0,
+      currentSpeakerId: 0,
+    );
+
+    await tester.pumpWidget(_buildScreen(
+      fakePlatform,
+      settingsStore: settingsStore,
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('download-btn-1')));
+    await _agreeVoicevoxTermsDialog(tester);
+
+    expect(fakePlatform.initializeCalled, isTrue);
+    expect(fakePlatform.loadedModelIds, contains('1'));
+  });
+
+  testWidgets('download skips initialize when engine is READY', (tester) async {
+    final prefs = InMemorySharedPreferences();
+    final settingsStore = SharedPreferencesSettingsStore(prefs: prefs);
+    await settingsStore
+        .save(AppSettings.defaults.copyWith(voicevoxTermsAccepted: true));
+    fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+      enabled: true,
+      engineState: 'READY',
+      playerState: 'IDLE',
+      queueSize: 0,
+      currentSpeakerId: 0,
+    );
+
+    await tester.pumpWidget(_buildScreen(
+      fakePlatform,
+      settingsStore: settingsStore,
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('download-btn-1')));
+    await _agreeVoicevoxTermsDialog(tester);
+
+    expect(fakePlatform.initializeCalled, isFalse);
+    expect(fakePlatform.loadedModelIds, contains('1'));
+  });
+
+  testWidgets('shows model-load error message when load fails', (tester) async {
+    final prefs = InMemorySharedPreferences();
+    final settingsStore = SharedPreferencesSettingsStore(prefs: prefs);
+    await settingsStore
+        .save(AppSettings.defaults.copyWith(voicevoxTermsAccepted: true));
+    fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+      enabled: true,
+      engineState: 'READY',
+      playerState: 'IDLE',
+      queueSize: 0,
+      currentSpeakerId: 0,
+    );
+    fakePlatform.loadModelError = Exception('load failed');
+
+    await tester.pumpWidget(_buildScreen(
+      fakePlatform,
+      settingsStore: settingsStore,
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('download-btn-1')));
+    await _agreeVoicevoxTermsDialog(tester);
+
+    expect(find.textContaining('モデルの読み込みに失敗しました'), findsOneWidget);
+  });
+
   group('VOICEVOX terms dialog', () {
     testWidgets('shows terms dialog when terms not accepted', (tester) async {
       final prefs = InMemorySharedPreferences();
@@ -196,7 +286,8 @@ void main() {
       expect(loaded.voicevoxTermsAccepted, isFalse);
     });
 
-    testWidgets('skips dialog when terms already accepted', (tester) async {
+    testWidgets('shows dialog even when terms already accepted',
+        (tester) async {
       final prefs = InMemorySharedPreferences();
       final settingsStore = SharedPreferencesSettingsStore(prefs: prefs);
       // Pre-accept terms.
@@ -213,8 +304,8 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      // Dialog should NOT appear — download proceeds directly.
-      expect(find.text('VOICEVOX 利用規約'), findsNothing);
+      // Dialog should appear on every download.
+      expect(find.text('VOICEVOX 利用規約'), findsOneWidget);
     });
   });
 }
