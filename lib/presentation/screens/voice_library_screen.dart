@@ -105,29 +105,54 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
   }
 
   Future<void> _onDownload(VoicevoxModelInfo model) async {
-    // Check terms acceptance before downloading.
+    // Show terms dialog before every download.
     final AppSettings settings = await widget.settingsStore.load();
+    if (!mounted) return;
+    final accepted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const _VoicevoxTermsDialog(),
+    );
+    if (accepted != true) return;
+    // Persist acceptance for compatibility with existing settings schema.
     if (!settings.voicevoxTermsAccepted) {
-      if (!mounted) return;
-      final accepted = await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const _VoicevoxTermsDialog(),
-      );
-      if (accepted != true) return;
-      // Persist acceptance.
       final updated = settings.copyWith(voicevoxTermsAccepted: true);
       await widget.settingsStore.save(updated);
     }
-    if (!mounted) return;
     try {
+      debugPrint(
+        '[VoiceLibrary] download start: modelId=${model.modelId}, name=${model.displayName}',
+      );
       await _manager.downloadModel(model.modelId);
-      // Automatically load the model into the engine after download.
-      await _manager.loadModel(model.modelId);
+      debugPrint('[VoiceLibrary] download completed: modelId=${model.modelId}');
     } on Object catch (e) {
+      debugPrint(
+          '[VoiceLibrary] download FAILED: modelId=${model.modelId} error=$e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('ダウンロードに失敗しました: $e')),
+      );
+      return;
+    }
+
+    try {
+      await ensureEngineReadyForModelLoad(
+        widget.platform,
+        logTag: '[VoiceLibrary]',
+        pollInterval: voicevoxReadyPollInterval,
+        maxPollAttempts: voicevoxReadyMaxPollAttempts,
+      );
+      // Automatically load the model into the engine after download.
+      await _manager.loadModel(model.modelId);
+      debugPrint(
+        '[VoiceLibrary] loadModel success after download: modelId=${model.modelId}',
+      );
+    } on Object catch (e) {
+      debugPrint(
+          '[VoiceLibrary] initialize/load FAILED: modelId=${model.modelId} error=$e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('モデルの読み込みに失敗しました: $e')),
       );
     }
   }
@@ -200,6 +225,8 @@ class _VoiceModelCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
+                  // モデル管理画面は、規約同意時の認識と実務上の識別を優先し、
+                  // 省略せず正式な displayName（例: VOICEVOX Nemo）を表示する。
                   child: Text(
                     model.displayName,
                     style: Theme.of(context).textTheme.titleMedium,
@@ -239,15 +266,15 @@ class _VoiceModelCard extends StatelessWidget {
 
   Widget _buildStatusBadge(BuildContext context) {
     if (model.isBundled) {
-      return _Badge(label: '内蔵', color: Colors.green);
+      return const _Badge(label: '内蔵', color: Colors.green);
     }
     switch (model.downloadState) {
       case ModelDownloadState.downloaded:
-        return _Badge(label: 'ダウンロード済', color: Colors.blue);
+        return const _Badge(label: 'ダウンロード済', color: Colors.blue);
       case ModelDownloadState.downloading:
-        return _Badge(label: 'ダウンロード中', color: Colors.orange);
+        return const _Badge(label: 'ダウンロード中', color: Colors.orange);
       case ModelDownloadState.error:
-        return _Badge(label: 'エラー', color: Colors.red);
+        return const _Badge(label: 'エラー', color: Colors.red);
       case ModelDownloadState.notDownloaded:
         return Text(
           model.fileSizeDisplay,

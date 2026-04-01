@@ -200,8 +200,8 @@ void main() {
       await openSheet(tester);
 
       // Tap the first color in the palette.
-      final int firstColorValue = _kFirstColorValue;
-      await tester.tap(find.byKey(Key('user-color-$firstColorValue')));
+      const int firstColorValue = _kFirstColorValue;
+      await tester.tap(find.byKey(const Key('user-color-$firstColorValue')));
       await tester.pumpAndSettle();
 
       expect(selectedColor, firstColorValue);

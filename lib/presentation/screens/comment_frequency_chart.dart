@@ -51,7 +51,7 @@ class CommentFrequencyChart extends StatelessWidget {
         commentsPerMinute.keys.fold<int>(0, (int a, int b) => a > b ? a : b);
 
     return Semantics(
-      label: 'コメント頻度グラフ: ${totalMinutes + 1}分間、最大${maxCount}コメント/分',
+      label: 'コメント頻度グラフ: ${totalMinutes + 1}分間、最大$maxCountコメント/分',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[

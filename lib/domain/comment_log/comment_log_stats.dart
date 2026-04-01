@@ -267,13 +267,13 @@ class CommentLogStats {
 
   static String _formatPeakLabel(int minuteOffset) {
     if (minuteOffset < 60) {
-      return '開始${minuteOffset}分';
+      return '開始$minuteOffset分';
     }
     final int hours = minuteOffset ~/ 60;
     final int minutes = minuteOffset % 60;
     if (minutes == 0) {
-      return '開始${hours}時間';
+      return '開始$hours時間';
     }
-    return '開始${hours}時間${minutes}分';
+    return '開始$hours時間$minutes分';
   }
 }
