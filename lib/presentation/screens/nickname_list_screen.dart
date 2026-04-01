@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/user/user_attribute_store.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/empty_state_message.dart';
+import '../widgets/text_input_dialog.dart';
 
 class NicknameListScreen extends StatefulWidget {
   const NicknameListScreen({
@@ -41,45 +42,21 @@ class _NicknameListScreenState extends State<NicknameListScreen> {
   }
 
   Future<void> _editNickname(String userId, String currentNickname) async {
-    final TextEditingController controller =
-        TextEditingController(text: currentNickname);
-
-    final String? result = await showDialog<String>(
+    final String? result = await showTextInputDialog(
       context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text('コテハン編集'),
-          content: TextField(
-            key: const Key('nickname-edit-field'),
-            controller: controller,
-            autofocus: true,
-            decoration: InputDecoration(
-              labelText: 'コテハン',
-              hintText: 'ニックネームを入力',
-              border: const OutlineInputBorder(),
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.clear),
-                onPressed: () => controller.clear(),
-              ),
-            ),
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('キャンセル'),
-            ),
-            TextButton(
-              key: const Key('nickname-edit-save-button'),
-              onPressed: () =>
-                  Navigator.of(dialogContext).pop(controller.text.trim()),
-              child: const Text('保存'),
-            ),
-          ],
-        );
-      },
+      title: 'コテハン編集',
+      initialValue: currentNickname,
+      clearButtonLabel: 'クリア',
+      confirmLabel: '保存',
+      textFieldKey: const Key('nickname-edit-field'),
+      clearButtonKey: const Key('nickname-edit-clear-button'),
+      confirmButtonKey: const Key('nickname-edit-save-button'),
+      decoration: const InputDecoration(
+        labelText: 'コテハン',
+        hintText: 'ニックネームを入力',
+        border: OutlineInputBorder(),
+      ),
     );
-
-    controller.dispose();
 
     if (result == null || !mounted) {
       return;
@@ -126,20 +103,17 @@ class _NicknameListScreenState extends State<NicknameListScreen> {
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text('$userId のコテハンを削除しました')),
-      );
+      ..showSnackBar(SnackBar(content: Text('$userId のコテハンを削除しました')));
   }
 
   @override
   Widget build(BuildContext context) {
-    final List<MapEntry<String, String>> entries =
-        _nicknames.entries.toList(growable: false);
+    final List<MapEntry<String, String>> entries = _nicknames.entries.toList(
+      growable: false,
+    );
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('コテハン管理'),
-      ),
+      appBar: AppBar(title: const Text('コテハン管理')),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : entries.isEmpty

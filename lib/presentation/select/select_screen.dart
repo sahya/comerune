@@ -474,11 +474,8 @@ class _SelectScreenState extends State<SelectScreen> {
           beginAt: _followBeginAt ?? widget.beginAtNotifier?.value,
           showUserName: _settingsNotifier.value.showUserName,
           commentFontSize: _settingsNotifier.value.commentFontSize,
-          resolveUserName:
-              nameResolutionEnabled ? widget.userNameResolution?.resolve : null,
-          requestUserNameResolve: nameResolutionEnabled
-              ? widget.userNameResolution?.requestResolve
-              : null,
+          userNameResolution:
+              nameResolutionEnabled ? widget.userNameResolution : null,
           commentLogWriter: widget.commentLogWriter,
           autoSaveCommentLog: _settingsNotifier.value.autoSaveCommentLog,
           autoSaveCommentLogPath:
@@ -590,8 +587,9 @@ class _SelectScreenState extends State<SelectScreen> {
       return;
     }
     _currentBroadcasterId = broadcasterId;
-    final Map<String, int> colors =
-        await widget.userAttributeStore!.loadColors(broadcasterId);
+    final Map<String, int> colors = await widget.userAttributeStore!.loadColors(
+      broadcasterId,
+    );
     final Map<String, String> nicknames =
         await widget.userAttributeStore!.loadNicknames(broadcasterId);
     if (!mounted || _currentBroadcasterId != broadcasterId) {
@@ -609,11 +607,13 @@ class _SelectScreenState extends State<SelectScreen> {
     );
     final String? broadcasterId = _currentBroadcasterId;
     if (broadcasterId != null && widget.userAttributeStore != null) {
-      unawaited(widget.userAttributeStore!.setColor(
-        broadcasterId: broadcasterId,
-        userId: userId,
-        colorValue: colorValue,
-      ));
+      unawaited(
+        widget.userAttributeStore!.setColor(
+          broadcasterId: broadcasterId,
+          userId: userId,
+          colorValue: colorValue,
+        ),
+      );
     }
   }
 
@@ -626,10 +626,12 @@ class _SelectScreenState extends State<SelectScreen> {
     );
     final String? broadcasterId = _currentBroadcasterId;
     if (broadcasterId != null && widget.userAttributeStore != null) {
-      unawaited(widget.userAttributeStore!.removeColor(
-        broadcasterId: broadcasterId,
-        userId: userId,
-      ));
+      unawaited(
+        widget.userAttributeStore!.removeColor(
+          broadcasterId: broadcasterId,
+          userId: userId,
+        ),
+      );
     }
   }
 
@@ -642,11 +644,13 @@ class _SelectScreenState extends State<SelectScreen> {
     );
     final String? broadcasterId = _currentBroadcasterId;
     if (broadcasterId != null && widget.userAttributeStore != null) {
-      unawaited(widget.userAttributeStore!.setNickname(
-        broadcasterId: broadcasterId,
-        userId: userId,
-        nickname: nickname,
-      ));
+      unawaited(
+        widget.userAttributeStore!.setNickname(
+          broadcasterId: broadcasterId,
+          userId: userId,
+          nickname: nickname,
+        ),
+      );
     }
   }
 
@@ -659,10 +663,12 @@ class _SelectScreenState extends State<SelectScreen> {
     );
     final String? broadcasterId = _currentBroadcasterId;
     if (broadcasterId != null && widget.userAttributeStore != null) {
-      unawaited(widget.userAttributeStore!.removeNickname(
-        broadcasterId: broadcasterId,
-        userId: userId,
-      ));
+      unawaited(
+        widget.userAttributeStore!.removeNickname(
+          broadcasterId: broadcasterId,
+          userId: userId,
+        ),
+      );
     }
   }
 
@@ -808,15 +814,12 @@ class _SelectScreenState extends State<SelectScreen> {
   /// [_favoriteRefreshInterval].
   void _scheduleFavoriteRefresh() {
     _favoriteRefreshTimer?.cancel();
-    _favoriteRefreshTimer = Timer(
-      _favoriteRefreshInterval,
-      () async {
-        await _fetchFavoriteUserStatus();
-        if (mounted) {
-          _scheduleFavoriteRefresh();
-        }
-      },
-    );
+    _favoriteRefreshTimer = Timer(_favoriteRefreshInterval, () async {
+      await _fetchFavoriteUserStatus();
+      if (mounted) {
+        _scheduleFavoriteRefresh();
+      }
+    });
   }
 
   Future<void> _fetchMyProgram(String userSession) async {
@@ -1014,8 +1017,11 @@ class _LoginStatusBanner extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             children: <Widget>[
-              Icon(Icons.check_circle,
-                  color: colors.loginBannerOkIcon, size: 18),
+              Icon(
+                Icons.check_circle,
+                color: colors.loginBannerOkIcon,
+                size: 18,
+              ),
               const SizedBox(width: 8),
               Text(
                 'ニコニコ ログイン済み',
@@ -1040,14 +1046,18 @@ class _LoginStatusBanner extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
               children: <Widget>[
-                Icon(Icons.warning_amber_rounded,
-                    color: colors.loginBannerWarningIcon, size: 18),
+                Icon(
+                  Icons.warning_amber_rounded,
+                  color: colors.loginBannerWarningIcon,
+                  size: 18,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'ログインが必要です。タップして設定を開く',
-                    style:
-                        TextStyle(color: colors.loginBannerWarningForeground),
+                    style: TextStyle(
+                      color: colors.loginBannerWarningForeground,
+                    ),
                   ),
                 ),
                 Icon(Icons.chevron_right, color: colors.loginBannerWarningIcon),
@@ -1088,10 +1098,7 @@ class _FollowProgramList extends StatelessWidget {
             children: <Widget>[
               const Icon(Icons.sensors, size: 16, color: Colors.red),
               const SizedBox(width: 6),
-              Text(
-                'フォロー中の放送',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
+              Text('フォロー中の放送', style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(width: 8),
               Text(
                 '${programs.length}件',
@@ -1190,8 +1197,11 @@ class _FollowProgramTile extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               if (elapsed != null) ...<Widget>[
-                Icon(Icons.access_time,
-                    size: 11, color: theme.colorScheme.outline),
+                Icon(
+                  Icons.access_time,
+                  size: 11,
+                  color: theme.colorScheme.outline,
+                ),
                 const SizedBox(width: 3),
                 Text(
                   elapsed,
@@ -1314,10 +1324,7 @@ class _MyBroadcastSection extends StatelessWidget {
             children: <Widget>[
               const Icon(Icons.videocam, size: 16, color: Colors.orange),
               const SizedBox(width: 6),
-              Text(
-                'あなたの放送',
-                style: theme.textTheme.titleSmall,
-              ),
+              Text('あなたの放送', style: theme.textTheme.titleSmall),
             ],
           ),
         ),
@@ -1358,8 +1365,11 @@ class _MyBroadcastSection extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   if (elapsed != null) ...<Widget>[
-                    Icon(Icons.access_time,
-                        size: 11, color: theme.colorScheme.outline),
+                    Icon(
+                      Icons.access_time,
+                      size: 11,
+                      color: theme.colorScheme.outline,
+                    ),
                     const SizedBox(width: 3),
                     Text(
                       elapsed,
@@ -1475,8 +1485,9 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.userNameResolution?.listenable !=
         widget.userNameResolution?.listenable) {
-      oldWidget.userNameResolution?.listenable
-          .removeListener(_onUserNameChanged);
+      oldWidget.userNameResolution?.listenable.removeListener(
+        _onUserNameChanged,
+      );
       widget.userNameResolution?.listenable.addListener(_onUserNameChanged);
     }
   }
@@ -1505,10 +1516,7 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
             children: <Widget>[
               const Icon(Icons.sensors, size: 16, color: Colors.red),
               const SizedBox(width: 6),
-              Text(
-                'お気に入りユーザー',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
+              Text('お気に入りユーザー', style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(width: 8),
               Text(
                 '${entries.length}件',

@@ -7,6 +7,7 @@ import 'package:comerune/comment_speech/comment_speech.dart';
 import 'package:comerune/domain/connection/connection_supervisor.dart';
 import 'package:comerune/domain/models/app_message.dart';
 import 'package:comerune/domain/models/app_settings.dart';
+import 'package:comerune/domain/models/user_name_resolution.dart';
 import 'package:comerune/presentation/screens/comment_screen.dart';
 
 import '../../comment_speech/fake_comment_speech_platform.dart';
@@ -91,8 +92,9 @@ void main() {
       await tester.pumpAndSettle();
 
       // Add a new message.
-      final _SpeechTestHostState host =
-          tester.state(find.byType(_SpeechTestHost));
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
       host.addMessage(_chatMessage(id: 'msg-2', content: '新しいコメント'));
       await tester.pumpAndSettle();
 
@@ -116,14 +118,17 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final _SpeechTestHostState host =
-          tester.state(find.byType(_SpeechTestHost));
-      host.addMessage(AppMessage(
-        id: 'op-1',
-        timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 1)),
-        content: '運営メッセージ',
-        type: AppMessageType.operator,
-      ));
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
+      host.addMessage(
+        AppMessage(
+          id: 'op-1',
+          timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 1)),
+          content: '運営メッセージ',
+          type: AppMessageType.operator,
+        ),
+      );
       await tester.pumpAndSettle();
 
       expect(fakePlatform.submittedComments, isEmpty);
@@ -146,15 +151,18 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final _SpeechTestHostState host =
-          tester.state(find.byType(_SpeechTestHost));
-      host.addMessage(AppMessage(
-        id: 'msg-2',
-        timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 1)),
-        userId: 'blocked-user',
-        content: 'ブロックされたユーザー',
-        type: AppMessageType.chat,
-      ));
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
+      host.addMessage(
+        AppMessage(
+          id: 'msg-2',
+          timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 1)),
+          userId: 'blocked-user',
+          content: 'ブロックされたユーザー',
+          type: AppMessageType.chat,
+        ),
+      );
       await tester.pumpAndSettle();
 
       expect(fakePlatform.submittedComments, isEmpty);
@@ -176,17 +184,20 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final _SpeechTestHostState host =
-          tester.state(find.byType(_SpeechTestHost));
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
 
       // First message from the user is submitted.
-      host.addMessage(AppMessage(
-        id: 'msg-2',
-        timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 1)),
-        userId: 'user-a',
-        content: '普通のコメント',
-        type: AppMessageType.chat,
-      ));
+      host.addMessage(
+        AppMessage(
+          id: 'msg-2',
+          timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 1)),
+          userId: 'user-a',
+          content: '普通のコメント',
+          type: AppMessageType.chat,
+        ),
+      );
       await tester.pumpAndSettle();
       expect(fakePlatform.submittedComments, hasLength(1));
 
@@ -195,13 +206,15 @@ void main() {
       await tester.pumpAndSettle();
 
       // Subsequent message from user-a should be skipped.
-      host.addMessage(AppMessage(
-        id: 'msg-3',
-        timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 2)),
-        userId: 'user-a',
-        content: 'ブロック後のコメント',
-        type: AppMessageType.chat,
-      ));
+      host.addMessage(
+        AppMessage(
+          id: 'msg-3',
+          timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 2)),
+          userId: 'user-a',
+          content: 'ブロック後のコメント',
+          type: AppMessageType.chat,
+        ),
+      );
       await tester.pumpAndSettle();
       expect(fakePlatform.submittedComments, hasLength(1));
     });
@@ -223,17 +236,20 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final _SpeechTestHostState host =
-          tester.state(find.byType(_SpeechTestHost));
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
 
       // Message from NG user is skipped.
-      host.addMessage(AppMessage(
-        id: 'msg-2',
-        timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 1)),
-        userId: 'user-b',
-        content: 'NGユーザーのコメント',
-        type: AppMessageType.chat,
-      ));
+      host.addMessage(
+        AppMessage(
+          id: 'msg-2',
+          timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 1)),
+          userId: 'user-b',
+          content: 'NGユーザーのコメント',
+          type: AppMessageType.chat,
+        ),
+      );
       await tester.pumpAndSettle();
       expect(fakePlatform.submittedComments, isEmpty);
 
@@ -242,13 +258,15 @@ void main() {
       await tester.pumpAndSettle();
 
       // New message from user-b should now be submitted.
-      host.addMessage(AppMessage(
-        id: 'msg-3',
-        timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 2)),
-        userId: 'user-b',
-        content: 'NG解除後のコメント',
-        type: AppMessageType.chat,
-      ));
+      host.addMessage(
+        AppMessage(
+          id: 'msg-3',
+          timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 2)),
+          userId: 'user-b',
+          content: 'NG解除後のコメント',
+          type: AppMessageType.chat,
+        ),
+      );
       await tester.pumpAndSettle();
       expect(fakePlatform.submittedComments, hasLength(1));
       expect(fakePlatform.submittedComments.first.text, 'NG解除後のコメント');
@@ -271,11 +289,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final _SpeechTestHostState host =
-          tester.state(find.byType(_SpeechTestHost));
-      host.addMessage(
-        _chatMessage(id: 'msg-2', content: '☆秘密のコメント'),
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
       );
+      host.addMessage(_chatMessage(id: 'msg-2', content: '☆秘密のコメント'));
       await tester.pumpAndSettle();
 
       expect(fakePlatform.submittedComments, isEmpty);
@@ -298,11 +315,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final _SpeechTestHostState host =
-          tester.state(find.byType(_SpeechTestHost));
-      host.addMessage(
-        _chatMessage(id: 'msg-2', content: '☆普通に読み上げ'),
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
       );
+      host.addMessage(_chatMessage(id: 'msg-2', content: '☆普通に読み上げ'));
       await tester.pumpAndSettle();
 
       expect(fakePlatform.submittedComments, hasLength(1));
@@ -325,8 +341,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final _SpeechTestHostState host =
-          tester.state(find.byType(_SpeechTestHost));
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
       host.addMessage(
         _chatMessage(id: 'msg-2', content: 'this is spam content'),
       );
@@ -352,11 +369,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final _SpeechTestHostState host =
-          tester.state(find.byType(_SpeechTestHost));
-      host.addMessage(
-        _chatMessage(id: 'msg-2', content: 'SPAM MESSAGE'),
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
       );
+      host.addMessage(_chatMessage(id: 'msg-2', content: 'SPAM MESSAGE'));
       await tester.pumpAndSettle();
 
       expect(fakePlatform.submittedComments, isEmpty);
@@ -379,11 +395,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final _SpeechTestHostState host =
-          tester.state(find.byType(_SpeechTestHost));
-      host.addMessage(
-        _chatMessage(id: 'msg-2', content: 'hello world'),
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
       );
+      host.addMessage(_chatMessage(id: 'msg-2', content: 'hello world'));
       await tester.pumpAndSettle();
 
       expect(fakePlatform.submittedComments, hasLength(1));
@@ -408,8 +423,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final _SpeechTestHostState host =
-          tester.state(find.byType(_SpeechTestHost));
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
       host.addMessage(
         _chatMessage(id: 'msg-2', content: 'こんにちは', userId: 'user-1'),
       );
@@ -494,8 +510,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final _SpeechTestHostState host =
-          tester.state(find.byType(_SpeechTestHost));
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
       host.addMessage(
         _chatMessage(
           id: 'msg-2',
@@ -562,8 +579,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final _SpeechTestHostState host =
-          tester.state(find.byType(_SpeechTestHost));
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
       host.addMessage(
         _chatMessage(id: 'msg-2', content: 'こんにちは', userId: 'user-1'),
       );
@@ -595,8 +613,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final _SpeechTestHostState host =
-          tester.state(find.byType(_SpeechTestHost));
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
       host.addMessage(
         _chatMessage(
           id: 'msg-2',
@@ -701,8 +720,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final _SpeechTestHostState host =
-          tester.state(find.byType(_SpeechTestHost));
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
       host.addMessage(
         _chatMessage(id: 'msg-2', content: 'こんにちは', userId: 'user-1'),
       );
@@ -725,8 +745,9 @@ void main() {
       expect(fakePlatform.startCalled, isTrue);
 
       // Disable speech.
-      final _SpeechTestHostState host =
-          tester.state(find.byType(_SpeechTestHost));
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
       host.updateSpeechSettings(const SpeechSettings(enabled: false));
       await tester.pumpAndSettle();
 
@@ -744,8 +765,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final _SpeechTestHostState host =
-          tester.state(find.byType(_SpeechTestHost));
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
       host.updateSpeechSettings(
         const SpeechSettings(enabled: true, speakerId: 3),
       );
@@ -779,15 +801,18 @@ void main() {
 
       // Add another message with a past timestamp (simulating a backlog
       // message that arrives after speech initialization).
-      final _SpeechTestHostState host =
-          tester.state(find.byType(_SpeechTestHost));
-      host.addMessage(AppMessage(
-        id: 'old-2',
-        timestamp: DateTime(2020, 1, 2),
-        userId: 'user-1',
-        content: '過去のバックログ',
-        type: AppMessageType.chat,
-      ));
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
+      host.addMessage(
+        AppMessage(
+          id: 'old-2',
+          timestamp: DateTime(2020, 1, 2),
+          userId: 'user-1',
+          content: '過去のバックログ',
+          type: AppMessageType.chat,
+        ),
+      );
       await tester.pumpAndSettle();
 
       // Past-timestamp messages must be skipped.
@@ -818,8 +843,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final _SpeechTestHostState host =
-          tester.state(find.byType(_SpeechTestHost));
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
       host.addMessage(_chatMessage(id: 'msg-2', content: 'エラーテスト'));
       await tester.pumpAndSettle();
 
@@ -859,41 +885,42 @@ void main() {
     });
 
     testWidgets(
-        'speech startup aborts if the broadcast ends while start is pending',
-        (WidgetTester tester) async {
-      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-      final Completer<void> startCompleter = Completer<void>();
-      fakePlatform.startCompleter = startCompleter;
+      'speech startup aborts if the broadcast ends while start is pending',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final Completer<void> startCompleter = Completer<void>();
+        fakePlatform.startCompleter = startCompleter;
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: CommentScreen(
-            lv: 'lv123456789',
-            connectionSupervisor: supervisor,
-            messages: const <AppMessage>[],
-            onStopAllConnections: () async {},
-            onReconnectSameLv: () async {},
-            onDifferentLvConnected: (_, __) async {},
-            themeMode: AppThemeMode.light,
-            speechPlatform: fakePlatform,
-            speechSettings: const SpeechSettings(enabled: true),
+        await tester.pumpWidget(
+          MaterialApp(
+            home: CommentScreen(
+              lv: 'lv123456789',
+              connectionSupervisor: supervisor,
+              messages: const <AppMessage>[],
+              onStopAllConnections: () async {},
+              onReconnectSameLv: () async {},
+              onDifferentLvConnected: (_, __) async {},
+              themeMode: AppThemeMode.light,
+              speechPlatform: fakePlatform,
+              speechSettings: const SpeechSettings(enabled: true),
+            ),
           ),
-        ),
-      );
-      await tester.pump();
+        );
+        await tester.pump();
 
-      expect(fakePlatform.startCalled, isTrue);
-      expect(fakePlatform.stopCalled, isFalse);
+        expect(fakePlatform.startCalled, isTrue);
+        expect(fakePlatform.stopCalled, isFalse);
 
-      expect(supervisor.endBroadcast(), isTrue);
-      await tester.pump();
-      expect(fakePlatform.stopCalled, isFalse);
+        expect(supervisor.endBroadcast(), isTrue);
+        await tester.pump();
+        expect(fakePlatform.stopCalled, isFalse);
 
-      startCompleter.complete();
-      await tester.pumpAndSettle();
+        startCompleter.complete();
+        await tester.pumpAndSettle();
 
-      expect(fakePlatform.stopCalled, isTrue);
-    });
+        expect(fakePlatform.stopCalled, isTrue);
+      },
+    );
 
     testWidgets('broadcast end does not crash when speech is disabled', (
       WidgetTester tester,
@@ -997,6 +1024,17 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
 
   @override
   Widget build(BuildContext context) {
+    final bool hasUserNameResolutionCallbacks =
+        widget.resolveUserName != null || widget.requestUserNameResolve != null;
+    final UserNameResolution? userNameResolution =
+        hasUserNameResolutionCallbacks
+            ? UserNameResolution(
+                resolve: widget.resolveUserName ?? (_) => null,
+                requestResolve: widget.requestUserNameResolve ?? (_) {},
+                listenable: _NoopListenable.instance,
+              )
+            : null;
+
     return CommentScreen(
       lv: 'lv123456789',
       connectionSupervisor: _buildStreamingSupervisor(),
@@ -1013,8 +1051,7 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
       showUserName: widget.showUserName,
       readUserName: widget.readUserName,
       userNicknameMap: widget.userNicknameMap,
-      resolveUserName: widget.resolveUserName,
-      requestUserNameResolve: widget.requestUserNameResolve,
+      userNameResolution: userNameResolution,
     );
   }
 }
@@ -1055,6 +1092,18 @@ ConnectionSupervisor _buildStreamingSupervisor() {
   expect(supervisor.onSessionWsConnected(), isTrue);
   expect(supervisor.onNdgrEndpointResolved(), isTrue);
   return supervisor;
+}
+
+class _NoopListenable implements Listenable {
+  const _NoopListenable._();
+
+  static const _NoopListenable instance = _NoopListenable._();
+
+  @override
+  void addListener(VoidCallback listener) {}
+
+  @override
+  void removeListener(VoidCallback listener) {}
 }
 
 AppMessage _chatMessage({
