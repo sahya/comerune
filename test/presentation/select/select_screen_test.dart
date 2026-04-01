@@ -322,10 +322,10 @@ void main() {
     );
     expect(commentScreen.showUserName, isFalse);
     expect(commentScreen.readUserName, isTrue);
-    expect(commentScreen.resolveUserName, isNotNull);
-    expect(commentScreen.requestUserNameResolve, isNotNull);
+    expect(commentScreen.userNameResolution?.resolve, isNotNull);
+    expect(commentScreen.userNameResolution?.requestResolve, isNotNull);
 
-    commentScreen.requestUserNameResolve?.call('12345');
+    commentScreen.userNameResolution?.requestResolve('12345');
     expect(requestedUserIds, <String>['12345']);
   });
 
