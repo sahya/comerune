@@ -25,6 +25,16 @@ class TeachCommandHandler {
   static const int _maxPatternLength = 100;
   static const int _maxReplacementLength = 200;
 
+  static bool _hasProtectedDictionaryRuleWithPattern(
+    List<ReplaceRule> rules,
+    String pattern,
+  ) {
+    return rules.any(
+      (ReplaceRule rule) =>
+          rule.pattern == pattern && isDefaultNicoDictionaryRule(rule),
+    );
+  }
+
   /// `/teach` コマンドを実行する。
   ///
   /// - [command] 解析済みの teach コマンド
@@ -87,13 +97,17 @@ class TeachCommandHandler {
       replacement: command.replacement,
     );
 
+    if (_hasProtectedDictionaryRuleWithPattern(
+      updatedRules,
+      escapedPattern,
+    )) {
+      return const TeachCommandResult(
+        success: false,
+        message: '既定の辞書ルールは編集できません。設定画面で無効化してください',
+      );
+    }
+
     if (existingIndex >= 0) {
-      if (isDefaultNicoDictionaryRule(updatedRules[existingIndex])) {
-        return const TeachCommandResult(
-          success: false,
-          message: '既定の辞書ルールは編集できません。無効化してください',
-        );
-      }
       updatedRules[existingIndex] = newRule;
       return TeachCommandResult(
         success: true,
@@ -133,11 +147,13 @@ class TeachCommandHandler {
       (ReplaceRule rule) => rule.pattern == escapedPattern,
     );
 
-    if (existingIndex >= 0 &&
-        isDefaultNicoDictionaryRule(updatedRules[existingIndex])) {
+    if (_hasProtectedDictionaryRuleWithPattern(
+      updatedRules,
+      escapedPattern,
+    )) {
       return const TeachCommandResult(
         success: false,
-        message: '既定の辞書ルールは削除できません。無効化してください',
+        message: '既定の辞書ルールは削除できません。設定画面で無効化してください',
       );
     }
 

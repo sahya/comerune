@@ -202,8 +202,9 @@ class _DictionaryRulesScreenState extends State<DictionaryRulesScreen> {
                               ? Icons.lock_outline
                               : Icons.delete_outline,
                         ),
-                        tooltip:
-                            isProtected ? '既定の辞書ルールは削除できません。無効化してください' : '削除',
+                        tooltip: isProtected
+                            ? '既定の辞書ルールは削除できません。設定画面で無効化してください'
+                            : '削除',
                         onPressed:
                             isProtected ? null : () => _deleteRule(index),
                       ),
