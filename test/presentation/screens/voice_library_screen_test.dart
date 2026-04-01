@@ -169,6 +169,58 @@ void main() {
     expect(fakePlatform.loadedModelIds, contains('1'));
   });
 
+  testWidgets('download skips initialize when engine is READY', (tester) async {
+    final prefs = InMemorySharedPreferences();
+    final settingsStore = SharedPreferencesSettingsStore(prefs: prefs);
+    await settingsStore
+        .save(AppSettings.defaults.copyWith(voicevoxTermsAccepted: true));
+    fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+      enabled: true,
+      engineState: 'READY',
+      playerState: 'IDLE',
+      queueSize: 0,
+      currentSpeakerId: 0,
+    );
+
+    await tester.pumpWidget(_buildScreen(
+      fakePlatform,
+      settingsStore: settingsStore,
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('download-btn-1')));
+    await tester.pumpAndSettle();
+
+    expect(fakePlatform.initializeCalled, isFalse);
+    expect(fakePlatform.loadedModelIds, contains('1'));
+  });
+
+  testWidgets('shows model-load error message when load fails', (tester) async {
+    final prefs = InMemorySharedPreferences();
+    final settingsStore = SharedPreferencesSettingsStore(prefs: prefs);
+    await settingsStore
+        .save(AppSettings.defaults.copyWith(voicevoxTermsAccepted: true));
+    fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+      enabled: true,
+      engineState: 'READY',
+      playerState: 'IDLE',
+      queueSize: 0,
+      currentSpeakerId: 0,
+    );
+    fakePlatform.loadModelError = Exception('load failed');
+
+    await tester.pumpWidget(_buildScreen(
+      fakePlatform,
+      settingsStore: settingsStore,
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('download-btn-1')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('モデルの読み込みに失敗しました'), findsOneWidget);
+  });
+
   group('VOICEVOX terms dialog', () {
     testWidgets('shows terms dialog when terms not accepted', (tester) async {
       final prefs = InMemorySharedPreferences();

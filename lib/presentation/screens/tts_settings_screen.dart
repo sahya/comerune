@@ -149,7 +149,10 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     try {
       debugPrint(
           '[TtsSettings] loadModel begin: speaker=$speakerId modelId=${model.modelId}');
-      await _ensureEngineReadyForModelLoad(platform);
+      await ensureEngineReadyForModelLoad(
+        platform,
+        logTag: '[TtsSettings]',
+      );
       await platform.loadModel(model.modelId);
       debugPrint(
           '[TtsSettings] loadModel success: speaker=$speakerId modelId=${model.modelId}');
@@ -159,21 +162,6 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
           '[TtsSettings] loadModel FAILED: speaker=$speakerId modelId=${model.modelId} error=$e');
       return false;
     }
-  }
-
-  Future<void> _ensureEngineReadyForModelLoad(
-    CommentSpeechPlatform platform,
-  ) async {
-    final SpeechRuntimeStatus status = await platform.getStatus();
-    debugPrint(
-        '[TtsSettings] ensureEngineReady: currentState=${status.engineState}');
-    if (status.engineState == 'READY') {
-      debugPrint('[TtsSettings] ensureEngineReady: already READY');
-      return;
-    }
-    debugPrint('[TtsSettings] ensureEngineReady: calling initialize()');
-    await platform.initialize();
-    debugPrint('[TtsSettings] ensureEngineReady: initialize() completed');
   }
 
   /// Handle speaker change: save immediately, load the model, then push

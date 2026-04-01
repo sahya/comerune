@@ -564,6 +564,38 @@ void main() {
         expect(platform.loadedModelIds, contains('model-b'));
       });
 
+      testWidgets('speaker change skips initialize when engine is READY', (
+        WidgetTester tester,
+      ) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final FakeCommentSpeechPlatform platform = _createPlatformWithModels();
+        platform.statusToReturn = const SpeechRuntimeStatus(
+          enabled: true,
+          engineState: 'READY',
+          playerState: 'IDLE',
+          queueSize: 0,
+          currentSpeakerId: 0,
+        );
+
+        await tester
+            .pumpWidget(_buildScreenWithPlatform(settingsStore, platform));
+        await tester.pumpAndSettle();
+
+        await scrollToKeyInList(
+            tester, _listKey, const Key('voicevox-speaker-dropdown'));
+        final DropdownButtonFormField<int> dropdown =
+            tester.widget<DropdownButtonFormField<int>>(
+          find.byKey(const Key('voicevox-speaker-dropdown'),
+              skipOffstage: false),
+        );
+        dropdown.onChanged!(1);
+        await tester.pumpAndSettle();
+
+        expect(platform.initializeCalled, isFalse);
+        expect(platform.loadedModelIds, contains('model-b'));
+      });
+
       testWidgets('failed model load reverts speaker and shows error snackbar',
           (
         WidgetTester tester,

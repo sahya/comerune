@@ -1,0 +1,93 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+
+import 'comment_speech_platform.dart';
+import 'models/speech_runtime_status.dart';
+
+const String _readyState = 'READY';
+const Set<String> _transitionalStates = <String>{
+  'INITIALIZING',
+  'SYNTHESIZING',
+};
+const Set<String> _initializableStates = <String>{
+  'UNINITIALIZED',
+  'ERROR',
+  'UNKNOWN',
+};
+
+Future<void> ensureEngineReadyForModelLoad(
+  CommentSpeechPlatform platform, {
+  String logTag = '[SpeechEngine]',
+  Duration pollInterval = const Duration(milliseconds: 150),
+  int maxPollAttempts = 20,
+}) async {
+  SpeechRuntimeStatus status = await platform.getStatus();
+  debugPrint('$logTag ensureEngineReady: currentState=${status.engineState}');
+
+  if (_isReady(status.engineState)) {
+    debugPrint('$logTag ensureEngineReady: already READY');
+    return;
+  }
+
+  if (_isTransitional(status.engineState)) {
+    status = await _waitForStableState(
+      platform,
+      initialStatus: status,
+      logTag: logTag,
+      pollInterval: pollInterval,
+      maxPollAttempts: maxPollAttempts,
+    );
+    if (_isReady(status.engineState)) {
+      debugPrint('$logTag ensureEngineReady: READY after waiting');
+      return;
+    }
+  }
+
+  if (_canInitialize(status.engineState)) {
+    debugPrint(
+      '$logTag ensureEngineReady: calling initialize() from state=${status.engineState}',
+    );
+    await platform.initialize();
+    debugPrint('$logTag ensureEngineReady: initialize() completed');
+    return;
+  }
+
+  throw StateError(
+    'Cannot prepare engine for model load from state: ${status.engineState}',
+  );
+}
+
+Future<SpeechRuntimeStatus> _waitForStableState(
+  CommentSpeechPlatform platform, {
+  required SpeechRuntimeStatus initialStatus,
+  required String logTag,
+  required Duration pollInterval,
+  required int maxPollAttempts,
+}) async {
+  SpeechRuntimeStatus latest = initialStatus;
+  for (int i = 1; i <= maxPollAttempts; i++) {
+    await Future<void>.delayed(pollInterval);
+    latest = await platform.getStatus();
+    debugPrint(
+      '$logTag ensureEngineReady: waiting state=${latest.engineState} '
+      '(attempt=$i/$maxPollAttempts)',
+    );
+    if (!_isTransitional(latest.engineState)) {
+      return latest;
+    }
+  }
+  throw TimeoutException(
+    'Engine state did not settle from ${initialStatus.engineState}',
+  );
+}
+
+bool _isReady(String state) => _normalizedState(state) == _readyState;
+
+bool _isTransitional(String state) =>
+    _transitionalStates.contains(_normalizedState(state));
+
+bool _canInitialize(String state) =>
+    _initializableStates.contains(_normalizedState(state));
+
+String _normalizedState(String state) => state.trim().toUpperCase();

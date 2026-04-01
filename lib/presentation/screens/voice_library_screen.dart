@@ -126,7 +126,21 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
       );
       await _manager.downloadModel(model.modelId);
       debugPrint('[VoiceLibrary] download completed: modelId=${model.modelId}');
-      await _ensureEngineReadyForModelLoad();
+    } on Object catch (e) {
+      debugPrint(
+          '[VoiceLibrary] download FAILED: modelId=${model.modelId} error=$e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('ダウンロードに失敗しました: $e')),
+      );
+      return;
+    }
+
+    try {
+      await ensureEngineReadyForModelLoad(
+        widget.platform,
+        logTag: '[VoiceLibrary]',
+      );
       // Automatically load the model into the engine after download.
       await _manager.loadModel(model.modelId);
       debugPrint(
@@ -134,25 +148,12 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
       );
     } on Object catch (e) {
       debugPrint(
-          '[VoiceLibrary] download/load FAILED: modelId=${model.modelId} error=$e');
+          '[VoiceLibrary] initialize/load FAILED: modelId=${model.modelId} error=$e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('ダウンロードに失敗しました: $e')),
+        SnackBar(content: Text('モデルの読み込みに失敗しました: $e')),
       );
     }
-  }
-
-  Future<void> _ensureEngineReadyForModelLoad() async {
-    final SpeechRuntimeStatus status = await widget.platform.getStatus();
-    debugPrint(
-        '[VoiceLibrary] ensureEngineReady: currentState=${status.engineState}');
-    if (status.engineState == 'READY') {
-      debugPrint('[VoiceLibrary] ensureEngineReady: already READY');
-      return;
-    }
-    debugPrint('[VoiceLibrary] ensureEngineReady: calling initialize()');
-    await widget.platform.initialize();
-    debugPrint('[VoiceLibrary] ensureEngineReady: initialize() completed');
   }
 
   Future<void> _onDelete(VoicevoxModelInfo model) async {
