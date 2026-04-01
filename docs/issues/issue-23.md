@@ -64,6 +64,7 @@ Epic: #1
 - [ ] 同一ユーザーに既に敬称付き名が保存されている場合、敬称を重複付与しない（例: `テストさんさん` を避ける）
 - [ ] 読み上げ用の名前解決優先順位が `コテハン → message.userName → resolveUserName` で統一される
 - [ ] `message.userName` が存在する場合は userId が非数値でも読み上げ名として利用される
+- [ ] `resolveUserName=false` の場合でも `コテハン` と `message.userName` は読み上げ候補として利用される（`resolveUserName` は最終フォールバックのみ制御）
 - [ ] `CommentDisplaySettingsScreen` で `showUserName=false` でも `resolveUserName` を独立してON/OFFできる
 - [ ] `showUserName=false` かつ `readUserName=true` かつ `resolveUserName=true` のとき、読み上げ名解決が有効に動作する
 - [ ] `showUserName=false` でも `resolveUserName=true` の間は、読み上げ用途の名前解決リクエスト（`requestUserNameResolve`）が継続される
@@ -73,9 +74,10 @@ Epic: #1
 
 | showUserName | resolveUserName | readUserName | 期待動作 |
 |---|---|---|---|
-| OFF | OFF | ON | 本文のみ読み上げ（名前解決しない） |
+| OFF | OFF | ON | `コテハン` / `message.userName` があれば「本文→名前さん」、なければ本文のみ |
 | OFF | ON | OFF | 画面表示はID非表示のまま、読み上げは本文のみ |
 | OFF | ON | ON | 画面表示はID非表示のまま、「本文→名前さん」で読み上げ |
+| ON | OFF | ON | `コテハン` / `message.userName` を使って「本文→名前さん」で読み上げ（`resolveUserName` は使わない） |
 | ON | ON | ON | 既存表示要件を維持しつつ、「本文→名前さん」で読み上げ |
 
 ## Validation / Error Handling
