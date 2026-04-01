@@ -1732,6 +1732,7 @@ class _CommentScreenState extends State<CommentScreen> {
     const Map<String, String> lookAlike = <String, String>{
       '工': 'エ',
       '口': 'ロ',
+      '冂': 'ロ',
       '力': 'カ',
       '夕': 'タ',
       '二': 'ニ',
@@ -1746,6 +1747,7 @@ class _CommentScreenState extends State<CommentScreen> {
       '又': 'マ',
       '丁': 'テ',
       '己': 'コ',
+      '匚': 'コ',
       '巳': 'ミ',
       '也': 'ヤ',
       '刀': 'カ',
