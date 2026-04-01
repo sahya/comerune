@@ -10,7 +10,7 @@ ENV := $(MISE_ACTIVATE) && \
        export ANDROID_HOME=$(ANDROID_HOME) && \
        export PATH=$(FLUTTER_BIN):$(ANDROID_HOME)/cmdline-tools/latest/bin:$(ANDROID_HOME)/platform-tools:$$PATH
 
-.PHONY: help doctor clean build build-release build-clean test pub-get analyze format check
+.PHONY: help doctor clean build build-release build-clean test pub-get analyze format format-all check
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -38,7 +38,10 @@ pub-get: ## Resolve dependencies
 analyze: ## Run static analysis
 	$(ENV) && flutter analyze
 
-format: ## Run code formatter
+format: ## Run code formatter and restore out-of-scope tracked changes
+	$(ENV) && bash scripts/format-safely.sh
+
+format-all: ## Run code formatter for the whole repository (use in dedicated PRs)
 	$(ENV) && dart format .
 
 check: analyze format test ## Run all checks (analyze → format → test)
