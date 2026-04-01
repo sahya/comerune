@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../app_logging.dart';
 import '../../application/settings/settings_store.dart';
 import '../../application/statistics/statistics_store.dart';
 import '../../application/timeline/timeline_store.dart';
@@ -30,6 +31,17 @@ void _debugLog(String message) {
   if (kDebugMode) {
     debugPrint(message);
   }
+}
+
+void _errorLog(
+  String message, {
+  Object? error,
+}) {
+  appErrorLog(
+    name: 'SelectScreen',
+    message: message,
+    error: error,
+  );
 }
 
 /// Builds a niconico user icon URL from a numeric user ID.
@@ -765,7 +777,7 @@ class _SelectScreenState extends State<SelectScreen> {
         _fetchFollowPrograms(userSession),
       ]);
     } on Object catch (e) {
-      _debugLog('Unexpected error during program fetch: $e');
+      _errorLog('Unexpected error during program fetch', error: e);
     }
 
     if (!mounted) {
@@ -844,7 +856,7 @@ class _SelectScreenState extends State<SelectScreen> {
       // Catch Object (not just Exception) to match the safety net in
       // _fetchAllPrograms and ensure Error types are also logged here
       // rather than only at the Future.wait level.
-      _debugLog('Error in _fetchMyProgram: $e');
+      _errorLog('Error in _fetchMyProgram', error: e);
     }
   }
 
