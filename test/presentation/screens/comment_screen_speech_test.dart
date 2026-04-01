@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -417,6 +419,39 @@ void main() {
       expect(fakePlatform.submittedComments.first.text, 'テスト太郎、こんにちは');
     });
 
+    testWidgets('readUserName ON uses message.userName for numeric IDs', (
+      WidgetTester tester,
+    ) async {
+      final List<AppMessage> messages = <AppMessage>[
+        _chatMessage(id: 'msg-1', content: '最初'),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          messages: messages,
+          readUserName: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final _SpeechTestHostState host =
+          tester.state(find.byType(_SpeechTestHost));
+      host.addMessage(
+        _chatMessage(
+          id: 'msg-2',
+          content: 'こんにちは',
+          userId: '12345',
+          userName: 'テスト太郎',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.submittedComments, hasLength(1));
+      expect(fakePlatform.submittedComments.first.text, 'テスト太郎、こんにちは');
+    });
+
     testWidgets('readUserName ON falls back to content only when no name', (
       WidgetTester tester,
     ) async {
@@ -439,6 +474,42 @@ void main() {
           tester.state(find.byType(_SpeechTestHost));
       host.addMessage(
         _chatMessage(id: 'msg-2', content: 'こんにちは', userId: 'user-1'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.submittedComments, hasLength(1));
+      expect(fakePlatform.submittedComments.first.text, 'こんにちは');
+    });
+
+    testWidgets('readUserName ON does not read names for non-numeric IDs', (
+      WidgetTester tester,
+    ) async {
+      final List<AppMessage> messages = <AppMessage>[
+        _chatMessage(id: 'msg-1', content: '最初'),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          messages: messages,
+          readUserName: true,
+          resolveUserName: (String userId) {
+            return 'should-not-use';
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final _SpeechTestHostState host =
+          tester.state(find.byType(_SpeechTestHost));
+      host.addMessage(
+        _chatMessage(
+          id: 'msg-2',
+          content: 'こんにちは',
+          userId: 'a123',
+          userName: '匿名',
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -621,6 +692,43 @@ void main() {
       expect(fakePlatform.stopCalled, isTrue);
     });
 
+    testWidgets(
+        'speech startup aborts if the broadcast ends while start is pending',
+        (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final Completer<void> startCompleter = Completer<void>();
+      fakePlatform.startCompleter = startCompleter;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CommentScreen(
+            lv: 'lv123456789',
+            connectionSupervisor: supervisor,
+            messages: const <AppMessage>[],
+            onStopAllConnections: () async {},
+            onReconnectSameLv: () async {},
+            onDifferentLvConnected: (_, __) async {},
+            themeMode: AppThemeMode.light,
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(fakePlatform.startCalled, isTrue);
+      expect(fakePlatform.stopCalled, isFalse);
+
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pump();
+      expect(fakePlatform.stopCalled, isFalse);
+
+      startCompleter.complete();
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.stopCalled, isTrue);
+    });
+
     testWidgets('broadcast end does not crash when speech is disabled', (
       WidgetTester tester,
     ) async {
@@ -669,6 +777,7 @@ class _SpeechTestHost extends StatefulWidget {
     this.starPrefixHidingEnabled = false,
     this.readUserName = false,
     this.userNicknameMap = const <String, String>{},
+    this.resolveUserName,
   });
 
   final List<AppMessage> initialMessages;
@@ -679,6 +788,7 @@ class _SpeechTestHost extends StatefulWidget {
   final bool starPrefixHidingEnabled;
   final bool readUserName;
   final Map<String, String> userNicknameMap;
+  final String? Function(String userId)? resolveUserName;
 
   @override
   State<_SpeechTestHost> createState() => _SpeechTestHostState();
@@ -732,6 +842,7 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
       starPrefixHidingEnabled: widget.starPrefixHidingEnabled,
       readUserName: widget.readUserName,
       userNicknameMap: widget.userNicknameMap,
+      resolveUserName: widget.resolveUserName,
     );
   }
 }
@@ -745,6 +856,7 @@ Widget _buildScreen({
   bool starPrefixHidingEnabled = false,
   bool readUserName = false,
   Map<String, String> userNicknameMap = const <String, String>{},
+  String? Function(String userId)? resolveUserName,
 }) {
   return MaterialApp(
     home: _SpeechTestHost(
@@ -756,6 +868,7 @@ Widget _buildScreen({
       starPrefixHidingEnabled: starPrefixHidingEnabled,
       readUserName: readUserName,
       userNicknameMap: userNicknameMap,
+      resolveUserName: resolveUserName,
     ),
   );
 }
@@ -772,11 +885,13 @@ AppMessage _chatMessage({
   required String id,
   required String content,
   String? userId,
+  String? userName,
 }) {
   return AppMessage(
     id: id,
     timestamp: DateTime.now().add(const Duration(hours: 1)),
     userId: userId ?? 'user-1',
+    userName: userName,
     content: content,
     type: AppMessageType.chat,
   );
