@@ -114,8 +114,12 @@ Makefileも用意しています。
 make build           # デバッグAPK
 make build-release   # リリースAPK
 make test            # テスト実行
+make format-changed  # 変更された Dart ファイルだけを整形（推奨）
 make check           # 静的解析 + フォーマット + テスト（まとめて）
 ```
+
+日常の開発では、意図しない大量差分を防ぐために `make format-changed` の利用を推奨します。
+必要に応じて `BASE_REF=origin/main make format-changed` のように比較基準ブランチを指定できます。
 
 開発には Flutter SDK 3.3.0 以上と Android SDK が必要です。
 
