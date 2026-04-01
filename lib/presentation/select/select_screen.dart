@@ -1,9 +1,10 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../app_logging.dart';
 import '../../application/settings/settings_store.dart';
 import '../../application/statistics/statistics_store.dart';
 import '../../application/timeline/timeline_store.dart';
@@ -25,6 +26,23 @@ import '../../comment_speech/comment_speech.dart'
 import '../screens/comment_screen.dart';
 import '../screens/settings_screen.dart';
 import '../theme/app_theme.dart';
+
+void _debugLog(String message) {
+  if (kDebugMode) {
+    debugPrint(message);
+  }
+}
+
+void _errorLog(
+  String message, {
+  Object? error,
+}) {
+  appErrorLog(
+    name: 'SelectScreen',
+    message: message,
+    error: error,
+  );
+}
 
 /// Builds a niconico user icon URL from a numeric user ID.
 ///
@@ -112,6 +130,7 @@ class _SelectScreenState extends State<SelectScreen> {
   String? _currentBroadcasterId;
   final MethodChannelCommentSpeech _speechPlatform =
       MethodChannelCommentSpeech();
+  int _broadcastEndedNotificationSequence = 0;
 
   static const Duration _followRefreshInterval = Duration(seconds: 60);
   static const Duration _favoriteRefreshInterval = Duration(seconds: 30);
@@ -232,7 +251,10 @@ class _SelectScreenState extends State<SelectScreen> {
     final DateTime now = DateTime.now();
     store.add(
       AppMessage(
-        id: '$kSystemBroadcastEndedMessageIdPrefix${now.millisecondsSinceEpoch}',
+        id: buildBroadcastEndedNotificationId(
+          epochMilliseconds: now.millisecondsSinceEpoch,
+          sequence: _broadcastEndedNotificationSequence++,
+        ),
         timestamp: now,
         content: '放送が終了しました',
         type: AppMessageType.notification,
@@ -501,8 +523,9 @@ class _SelectScreenState extends State<SelectScreen> {
 
   SpeechSettings _buildSpeechSettings() {
     final AppSettings s = _settingsNotifier.value;
-    debugPrint(
-        '[SelectScreen] buildSpeechSettings: engine=${s.speechEngine}, speaker=${s.voicevoxSpeaker}, speed=${s.voicevoxSpeed}');
+    _debugLog(
+      '[SelectScreen] buildSpeechSettings: engine=${s.speechEngine}, speaker=${s.voicevoxSpeaker}, speed=${s.voicevoxSpeed}',
+    );
     return s.toSpeechSettings();
   }
 
@@ -758,10 +781,7 @@ class _SelectScreenState extends State<SelectScreen> {
         _fetchFollowPrograms(userSession),
       ]);
     } on Object catch (e) {
-      log(
-        'Unexpected error during program fetch: $e',
-        name: 'SelectScreen',
-      );
+      _errorLog('Unexpected error during program fetch', error: e);
     }
 
     if (!mounted) {
@@ -840,10 +860,7 @@ class _SelectScreenState extends State<SelectScreen> {
       // Catch Object (not just Exception) to match the safety net in
       // _fetchAllPrograms and ensure Error types are also logged here
       // rather than only at the Future.wait level.
-      log(
-        'Error in _fetchMyProgram: $e',
-        name: 'SelectScreen',
-      );
+      _errorLog('Error in _fetchMyProgram', error: e);
     }
   }
 
