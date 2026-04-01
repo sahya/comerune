@@ -530,6 +530,35 @@ void main() {
         expect(loaded.voicevoxSpeaker, 1);
       });
 
+      testWidgets('speaker unchanged is treated as no-op', (
+        WidgetTester tester,
+      ) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final FakeCommentSpeechPlatform platform = _createPlatformWithModels();
+
+        await tester
+            .pumpWidget(_buildScreenWithPlatform(settingsStore, platform));
+        await tester.pumpAndSettle();
+
+        platform.loadedModelIds.clear();
+        platform.lastUpdatedSettings = null;
+
+        await scrollToKeyInList(
+            tester, _listKey, const Key('voicevox-speaker-dropdown'));
+        final DropdownButtonFormField<int> dropdown =
+            tester.widget<DropdownButtonFormField<int>>(
+          find.byKey(const Key('voicevox-speaker-dropdown'),
+              skipOffstage: false),
+        );
+        // Initial speaker is 0 in this test setup.
+        dropdown.onChanged!(0);
+        await tester.pumpAndSettle();
+
+        expect(platform.loadedModelIds, isEmpty);
+        expect(platform.lastUpdatedSettings, isNull);
+      });
+
       testWidgets(
           'speaker change initializes engine before model loading when needed',
           (
