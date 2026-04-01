@@ -9,7 +9,7 @@ import 'package:comerune/comment_speech/src/models/speech_event.dart';
 void main() {
   group('RawComment', () {
     test('toMap includes all fields', () {
-      final comment = RawComment(
+      const comment = RawComment(
         id: 'c1',
         text: 'hello',
         userId: 'u1',
@@ -27,7 +27,7 @@ void main() {
     });
 
     test('toMap handles null optional fields', () {
-      final comment = RawComment(
+      const comment = RawComment(
         id: 'c2',
         text: 'test',
         postedAtEpochMs: 0,
@@ -111,11 +111,11 @@ void main() {
     });
 
     test('toMap serializes dictionary rules', () {
-      final settings = SpeechSettings(
-        dictionaryRules: [
+      const settings = SpeechSettings(
+        dictionaryRules: <ReplaceRule>[
           ReplaceRule(pattern: 'w{2,}', replacement: 'わら'),
         ],
-        ngWords: ['badword'],
+        ngWords: <String>['badword'],
       );
       final map = settings.toMap();
       final rules = map['dictionaryRules'] as List;

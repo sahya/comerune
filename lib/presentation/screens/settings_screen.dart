@@ -175,7 +175,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   children: <Widget>[
                     DropdownButtonFormField<AppThemeMode>(
                       key: const Key('theme-mode-dropdown'),
-                      value: settings.themeMode,
+                      initialValue: settings.themeMode,
                       decoration: const InputDecoration(
                         labelText: '配色テーマ',
                         border: OutlineInputBorder(),

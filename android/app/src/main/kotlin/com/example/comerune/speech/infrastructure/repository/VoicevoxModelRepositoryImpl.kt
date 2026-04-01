@@ -17,8 +17,8 @@ import java.io.OutputStream
 /**
  * File-system backed implementation of [VoicevoxModelRepository].
  *
- * Bundled models are copied from Android assets on first use.
- * Non-bundled models are downloaded from GitHub releases.
+ * Models are stored under app-internal files and downloaded from GitHub releases.
+ * (If a model is marked bundled in the manifest, it is copied from assets.)
  */
 class VoicevoxModelRepositoryImpl(private val context: Context) : VoicevoxModelRepository {
 
