@@ -7,8 +7,10 @@ Widget _buildHarness({
   required String title,
   String? hintText,
   String? initialValue,
+  String? clearButtonLabel,
   String? confirmLabel,
   Key? textFieldKey,
+  Key? clearButtonKey,
   Key? confirmButtonKey,
   TextInputType? keyboardType,
   required void Function(String?) onResult,
@@ -25,8 +27,10 @@ Widget _buildHarness({
                 title: title,
                 hintText: hintText,
                 initialValue: initialValue,
+                clearButtonLabel: clearButtonLabel,
                 confirmLabel: confirmLabel ?? 'OK',
                 textFieldKey: textFieldKey,
+                clearButtonKey: clearButtonKey,
                 confirmButtonKey: confirmButtonKey,
                 keyboardType: keyboardType,
               );
@@ -113,6 +117,28 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(captured, '初期値');
+    });
+
+    testWidgets('returns empty string on clear', (WidgetTester tester) async {
+      String? captured;
+
+      await tester.pumpWidget(
+        _buildHarness(
+          title: '入力',
+          initialValue: '初期値',
+          clearButtonLabel: 'クリア',
+          clearButtonKey: const Key('nickname-edit-clear-button'),
+          onResult: (String? result) => captured = result,
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('open-dialog')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('nickname-edit-clear-button')));
+      await tester.pumpAndSettle();
+
+      expect(captured, '');
     });
 
     testWidgets('passes keyboardType to text field', (

@@ -10,8 +10,10 @@ Future<String?> showTextInputDialog({
   String? hintText,
   String? initialValue,
   String cancelLabel = 'キャンセル',
+  String? clearButtonLabel,
   String confirmLabel = 'OK',
   Key? textFieldKey,
+  Key? clearButtonKey,
   Key? confirmButtonKey,
   TextInputType? keyboardType,
   InputDecoration? decoration,
@@ -25,8 +27,10 @@ Future<String?> showTextInputDialog({
         hintText: hintText,
         initialValue: initialValue,
         cancelLabel: cancelLabel,
+        clearButtonLabel: clearButtonLabel,
         confirmLabel: confirmLabel,
         textFieldKey: textFieldKey,
+        clearButtonKey: clearButtonKey,
         confirmButtonKey: confirmButtonKey,
         keyboardType: keyboardType,
         decoration: decoration,
@@ -40,10 +44,12 @@ class _TextInputDialog extends StatefulWidget {
     required this.title,
     required this.cancelLabel,
     required this.confirmLabel,
+    this.clearButtonLabel,
     this.labelText,
     this.hintText,
     this.initialValue,
     this.textFieldKey,
+    this.clearButtonKey,
     this.confirmButtonKey,
     this.keyboardType,
     this.decoration,
@@ -54,8 +60,10 @@ class _TextInputDialog extends StatefulWidget {
   final String? hintText;
   final String? initialValue;
   final String cancelLabel;
+  final String? clearButtonLabel;
   final String confirmLabel;
   final Key? textFieldKey;
+  final Key? clearButtonKey;
   final Key? confirmButtonKey;
   final TextInputType? keyboardType;
   final InputDecoration? decoration;
@@ -101,6 +109,12 @@ class _TextInputDialogState extends State<_TextInputDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: Text(widget.cancelLabel),
         ),
+        if (widget.clearButtonLabel != null)
+          TextButton(
+            key: widget.clearButtonKey,
+            onPressed: () => Navigator.of(context).pop(''),
+            child: Text(widget.clearButtonLabel!),
+          ),
         TextButton(
           key: widget.confirmButtonKey,
           onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
