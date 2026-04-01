@@ -207,7 +207,7 @@ class _DictionaryRulesScreenState extends State<DictionaryRulesScreen> {
                         onPressed:
                             isProtected ? null : () => _deleteRule(index),
                       ),
-                      onTap: () => _editRule(index),
+                      onTap: isProtected ? null : () => _editRule(index),
                     );
                   },
                 ),

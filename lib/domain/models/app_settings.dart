@@ -203,12 +203,18 @@ const List<ReplaceRule> defaultNicoDictionaryRules = <ReplaceRule>[
 ///
 /// The [enabled] flag is ignored so that a disabled built-in rule is still
 /// recognized as protected.
-bool isDefaultNicoDictionaryRule(ReplaceRule rule) {
+bool isDefaultNicoDictionaryPattern(String pattern) {
   return defaultNicoDictionaryRules.any(
-    (ReplaceRule defaultRule) =>
-        defaultRule.pattern == rule.pattern &&
-        defaultRule.replacement == rule.replacement,
+    (ReplaceRule defaultRule) => defaultRule.pattern == pattern,
   );
+}
+
+/// Returns `true` when [rule] is one of the built-in dictionary rules.
+///
+/// Protection is pattern-based so that even if replacement text was changed by
+/// older versions, the same built-in pattern remains protected.
+bool isDefaultNicoDictionaryRule(ReplaceRule rule) {
+  return isDefaultNicoDictionaryPattern(rule.pattern);
 }
 
 class AppSettings {

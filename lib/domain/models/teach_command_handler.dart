@@ -88,6 +88,12 @@ class TeachCommandHandler {
     );
 
     if (existingIndex >= 0) {
+      if (isDefaultNicoDictionaryRule(updatedRules[existingIndex])) {
+        return const TeachCommandResult(
+          success: false,
+          message: '既定の辞書ルールは編集できません。無効化してください',
+        );
+      }
       updatedRules[existingIndex] = newRule;
       return TeachCommandResult(
         success: true,

@@ -255,6 +255,15 @@ void main() {
       );
       expect(
         isDefaultNicoDictionaryRule(
+          const ReplaceRule(
+            pattern: '初見',
+            replacement: 'しょけん(変更済み)',
+          ),
+        ),
+        isTrue,
+      );
+      expect(
+        isDefaultNicoDictionaryRule(
           const ReplaceRule(pattern: 'custom', replacement: 'カスタム'),
         ),
         isFalse,

@@ -109,8 +109,17 @@ void main() {
       expect(deleteButton.onPressed, isNull);
       expect(find.byIcon(Icons.lock_outline), findsOneWidget);
 
+      final ListTile tile = tester.widget(
+        find.byKey(const Key('dictionary-rule-tile-0')),
+      );
+      expect(tile.onTap, isNull);
+
       await tester.tap(find.byKey(const Key('dictionary-rule-toggle-0')));
       await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('dictionary-rule-tile-0')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('rule-form-body')), findsNothing);
 
       final AppSettings loaded = await store.load();
       expect(loaded.dictionaryRules, hasLength(1));

@@ -59,6 +59,24 @@ void main() {
       expect(result.message, contains('更新しました'));
     });
 
+    test('rejects editing built-in rule', () {
+      final ReplaceRule builtInRule = defaultNicoDictionaryRules.firstWhere(
+        (ReplaceRule rule) => rule.pattern == '初見',
+      );
+      final List<ReplaceRule> existing = <ReplaceRule>[builtInRule];
+
+      final TeachCommandResult result = TeachCommandHandler.executeTeach(
+        command: const TeachCommand(pattern: '初見', replacement: '変更読み'),
+        currentRules: existing,
+        containsNgWord: neverNg,
+      );
+
+      expect(result.success, isFalse);
+      expect(result.updatedRules, isNull);
+      expect(result.message, contains('編集できません'));
+      expect(existing.single, builtInRule);
+    });
+
     test('rejects pattern containing NG word', () {
       bool containsNg(String text) => text.contains('NG');
 
