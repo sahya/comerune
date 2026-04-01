@@ -29,6 +29,14 @@ const SpeechRuntimeStatus _downloadingStatus = SpeechRuntimeStatus(
   currentSpeakerId: 0,
 );
 
+const SpeechRuntimeStatus _extractingStatus = SpeechRuntimeStatus(
+  enabled: true,
+  engineState: 'EXTRACTING',
+  playerState: 'IDLE',
+  queueSize: 0,
+  currentSpeakerId: 0,
+);
+
 const SpeechRuntimeStatus _uninitializedStatus = SpeechRuntimeStatus(
   enabled: false,
   engineState: 'UNINITIALIZED',
@@ -100,6 +108,28 @@ void main() {
 
         expect(platform.initializeCalled, isFalse);
         expect(platform.getStatusCallCount, 3);
+      },
+    );
+
+    test(
+      'extends wait budget when asset preparation starts during wait',
+      () async {
+        final platform = FakeCommentSpeechPlatform()
+          ..statusSequenceToReturn = <SpeechRuntimeStatus>[
+            _initializingStatus,
+            _downloadingStatus,
+            _extractingStatus,
+            _readyStatus,
+          ];
+
+        await ensureEngineReadyForModelLoad(
+          platform,
+          pollInterval: Duration.zero,
+          maxPollAttempts: 1,
+        );
+
+        expect(platform.initializeCalled, isFalse);
+        expect(platform.getStatusCallCount, 4);
       },
     );
 

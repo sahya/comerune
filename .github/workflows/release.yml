@@ -77,10 +77,13 @@ jobs:
       - name: Run tests
         run: flutter test
 
+      - name: Verify Java runtime
+        run: java -version
+
       - name: Build release APK for size check
         run: flutter build apk --release --target-platform android-arm64
 
-      - name: Report APK size regression warning
+      - name: Report APK size threshold warning
         env:
           APK_PATH: build/app/outputs/flutter-apk/app-release.apk
           APK_WARN_MB: 100
