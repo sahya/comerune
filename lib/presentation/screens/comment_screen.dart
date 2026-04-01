@@ -240,6 +240,7 @@ class CommentScreen extends StatefulWidget {
 
 class _CommentScreenState extends State<CommentScreen> {
   static const double _autoScrollResumeThreshold = 50;
+  static const Duration _wakelockReleaseDelay = Duration(seconds: 45);
 
   late final ScrollController _scrollController;
   late ConnectionStatus _lastStatus;
@@ -253,6 +254,8 @@ class _CommentScreenState extends State<CommentScreen> {
   bool _speechInitialized = false;
   bool _speechStarted = false;
   String _speechEngineState = '';
+
+  Timer? _wakelockReleaseTimer;
 
   /// Periodic timer that ensures new comments are submitted for speech
   /// even when the widget tree is not rebuilt (e.g. while the app is
@@ -280,6 +283,7 @@ class _CommentScreenState extends State<CommentScreen> {
 
     // Keep screen on while viewing comments.
     unawaited(WakelockPlus.enable());
+    _syncWakelockForStatus(_lastStatus);
 
     _requestUserNameResolution(widget.messages);
 
@@ -368,6 +372,7 @@ class _CommentScreenState extends State<CommentScreen> {
 
   @override
   void dispose() {
+    _stopWakelockReleaseTimer();
     unawaited(WakelockPlus.disable());
     _debugLogLazy(
         () => '[CommentScreen] dispose: speechStarted=$_speechStarted');
@@ -518,6 +523,25 @@ class _CommentScreenState extends State<CommentScreen> {
       _debugLog('[CommentScreen] initSpeech: updateSettings → start()...');
       await platform.updateSettings(widget.speechSettings);
       await platform.start();
+
+      final ConnectionStatus currentStatus = widget.connectionSupervisor.status;
+      if (!mounted ||
+          !widget.speechSettings.enabled ||
+          currentStatus == ConnectionStatus.ended ||
+          currentStatus == ConnectionStatus.failed ||
+          currentStatus == ConnectionStatus.stopped) {
+        _speechEventSub?.cancel();
+        _speechEventSub = null;
+        _speechBaselineTimestamp = null;
+        _speechStarted = false;
+        _speechEngineState = '';
+        try {
+          await platform.stop(clearQueue: true);
+        } catch (e) {
+          debugPrint('[CommentScreen] initSpeech: abort stop FAILED: $e');
+        }
+        return;
+      }
 
       if (mounted) {
         setState(() {
@@ -698,10 +722,8 @@ class _CommentScreenState extends State<CommentScreen> {
       }
 
       String speechText = message.content;
-      if (widget.readUserName && userId != null && userId.isNotEmpty) {
-        // Prefer nickname (kotehan), then resolved API name.
-        final String? displayName = widget.userNicknameMap[userId] ??
-            widget.resolveUserName?.call(userId);
+      if (widget.readUserName) {
+        final String? displayName = _resolveSpeechDisplayName(message);
         if (displayName != null && displayName.isNotEmpty) {
           speechText = '$displayName、$speechText';
         }
@@ -869,8 +891,8 @@ class _CommentScreenState extends State<CommentScreen> {
                 if (widget.commentLogWriter != null)
                   IconButton(
                     key: const Key('save-comment-log-button'),
-                    icon: const Icon(Icons.ios_share),
-                    tooltip: 'コメントログを共有',
+                    icon: const Icon(Icons.save_outlined),
+                    tooltip: 'コメントログを保存',
                     onPressed:
                         _isSavingLog ? null : () => unawaited(_saveLogManual()),
                   ),
@@ -1111,6 +1133,38 @@ class _CommentScreenState extends State<CommentScreen> {
     return widget.resolveUserName?.call(userId);
   }
 
+  String? _resolveSpeechDisplayName(AppMessage message) {
+    final String? userId = message.userId;
+    if (userId == null || userId.isEmpty) {
+      return null;
+    }
+
+    final String? nickname = widget.userNicknameMap[userId];
+    if (nickname != null && nickname.isNotEmpty) {
+      return nickname;
+    }
+
+    if (!_isNumericUserId(userId)) {
+      return null;
+    }
+
+    final String? userName = message.userName;
+    if (userName != null && userName.isNotEmpty) {
+      return userName;
+    }
+
+    final String? resolvedName = widget.resolveUserName?.call(userId);
+    if (resolvedName != null && resolvedName.isNotEmpty) {
+      return resolvedName;
+    }
+
+    return null;
+  }
+
+  bool _isNumericUserId(String userId) {
+    return int.tryParse(userId) != null;
+  }
+
   void _toggleSortOrder() {
     setState(() {
       _sortOrder = _sortOrder == CommentSortOrder.ascending
@@ -1223,6 +1277,7 @@ class _CommentScreenState extends State<CommentScreen> {
 
   void _handleConnectionChanged() {
     final ConnectionStatus currentStatus = widget.connectionSupervisor.status;
+    _syncWakelockForStatus(currentStatus);
 
     if (widget.autoSaveCommentLog && _isAutoSaveTrigger(currentStatus)) {
       unawaited(_saveLogAuto());
@@ -1357,6 +1412,10 @@ class _CommentScreenState extends State<CommentScreen> {
         return false;
     }
 
+    if (_isSystemBroadcastEndedMessage(message)) {
+      return true;
+    }
+
     final String? userId = message.userId;
     if (userId != null && widget.ngUserIds.contains(userId)) {
       return false;
@@ -1449,14 +1508,56 @@ class _CommentScreenState extends State<CommentScreen> {
     }
   }
 
+  void _syncWakelockForStatus(ConnectionStatus status) {
+    switch (status) {
+      case ConnectionStatus.connectingSessionWs:
+      case ConnectionStatus.resolvingEndpoints:
+      case ConnectionStatus.streamingNdgr:
+      case ConnectionStatus.streamingLegacy:
+      case ConnectionStatus.reconnecting:
+        _stopWakelockReleaseTimer();
+        unawaited(WakelockPlus.enable());
+        break;
+      case ConnectionStatus.ended:
+        _scheduleWakelockRelease();
+        break;
+      case ConnectionStatus.idle:
+      case ConnectionStatus.stopped:
+      case ConnectionStatus.failed:
+        _stopWakelockReleaseTimer();
+        break;
+    }
+  }
+
+  void _scheduleWakelockRelease() {
+    if (_wakelockReleaseTimer?.isActive ?? false) {
+      return;
+    }
+
+    _wakelockReleaseTimer = Timer(_wakelockReleaseDelay, () {
+      _wakelockReleaseTimer = null;
+      if (!mounted ||
+          widget.connectionSupervisor.status != ConnectionStatus.ended) {
+        return;
+      }
+      unawaited(WakelockPlus.disable());
+    });
+  }
+
+  void _stopWakelockReleaseTimer() {
+    _wakelockReleaseTimer?.cancel();
+    _wakelockReleaseTimer = null;
+  }
+
   void _showStatsSheet() {
-    final bool hasMessages = widget.messages.any(_shouldDisplayMessage);
+    final List<AppMessage> messagesForStatsAndLogs = _messagesForStatsAndLogs();
+    final bool hasMessages = messagesForStatsAndLogs.isNotEmpty;
     if (!hasMessages) {
       return;
     }
 
     final CommentLogStats stats = CommentLogStats.fromMessages(
-      widget.messages,
+      messagesForStatsAndLogs,
       ngUserIds: widget.ngUserIds,
     );
 
@@ -1474,7 +1575,7 @@ class _CommentScreenState extends State<CommentScreen> {
             programTitle: widget.programTitle,
             lv: widget.lv,
             highlightPickupEnabled: widget.highlightPickupEnabled,
-            messages: widget.messages,
+            messages: messagesForStatsAndLogs,
             ngUserIds: widget.ngUserIds,
             onBarTapped: (int minuteOffset) {
               Navigator.of(sheetContext).pop();
@@ -1533,7 +1634,8 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   Future<void> _saveLogManual() async {
-    final bool hasMessages = widget.messages.any(_shouldDisplayMessage);
+    final List<AppMessage> messagesForStatsAndLogs = _messagesForStatsAndLogs();
+    final bool hasMessages = messagesForStatsAndLogs.isNotEmpty;
     if (!hasMessages) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -1555,10 +1657,10 @@ class _CommentScreenState extends State<CommentScreen> {
     });
 
     try {
-      final List<AppMessage> messages =
-          widget.messages.where(_shouldDisplayMessage).toList(growable: false);
-      final String? tempPath =
-          await writer.writeToTempFile(lv: widget.lv, messages: messages);
+      final String? tempPath = await writer.writeToTempFile(
+        lv: widget.lv,
+        messages: messagesForStatsAndLogs,
+      );
       if (tempPath == null) {
         if (mounted) {
           ScaffoldMessenger.of(context)
@@ -1594,8 +1696,7 @@ class _CommentScreenState extends State<CommentScreen> {
       return;
     }
 
-    final List<AppMessage> messages =
-        widget.messages.where(_shouldDisplayMessage).toList(growable: false);
+    final List<AppMessage> messagesForStatsAndLogs = _messagesForStatsAndLogs();
 
     final Directory? customDir = widget.autoSaveCommentLogPath.isNotEmpty
         ? Directory(widget.autoSaveCommentLogPath)
@@ -1605,7 +1706,7 @@ class _CommentScreenState extends State<CommentScreen> {
     try {
       savedPath = await writer.save(
         lv: widget.lv,
-        messages: messages,
+        messages: messagesForStatsAndLogs,
         customDirectory: customDir,
       );
     } on Object {
@@ -1622,13 +1723,30 @@ class _CommentScreenState extends State<CommentScreen> {
         ..showSnackBar(
           SnackBar(content: Text('コメントログを保存しました: $savedPath')),
         );
-    } else if (messages.isNotEmpty) {
+    } else if (messagesForStatsAndLogs.isNotEmpty) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
         ..showSnackBar(
           const SnackBar(content: Text('コメントログの自動保存に失敗しました')),
         );
     }
+  }
+
+  bool _isSystemBroadcastEndedMessage(AppMessage message) {
+    return message.id.startsWith(kSystemBroadcastEndedMessageIdPrefix);
+  }
+
+  List<AppMessage> _messagesForStatsAndLogs() {
+    return widget.messages
+        .where(_shouldIncludeInStatsAndLogs)
+        .toList(growable: false);
+  }
+
+  bool _shouldIncludeInStatsAndLogs(AppMessage message) {
+    if (_isSystemBroadcastEndedMessage(message)) {
+      return false;
+    }
+    return _shouldDisplayMessage(message);
   }
 
   void _scrollToEdge({bool animated = true}) {
@@ -2279,7 +2397,7 @@ class _CommentRowState extends State<_CommentRow> {
   }
 
   bool _isBroadcastEndedMessage(AppMessage message) {
-    return message.id.startsWith('system:broadcast_ended:');
+    return message.id.startsWith(kSystemBroadcastEndedMessageIdPrefix);
   }
 }
 

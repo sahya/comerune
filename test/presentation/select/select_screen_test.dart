@@ -302,7 +302,7 @@ void main() {
       (AppMessage m) => m.type == AppMessageType.notification,
     );
     expect(notification.content, '放送が終了しました');
-    expect(notification.id, startsWith('system:broadcast_ended:'));
+    expect(notification.id, startsWith(kSystemBroadcastEndedMessageIdPrefix));
 
     // Verify the notification is visible in the comment screen.
     expect(find.textContaining('放送が終了しました'), findsOneWidget);

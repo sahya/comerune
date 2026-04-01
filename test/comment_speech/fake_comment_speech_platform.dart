@@ -55,6 +55,10 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
   /// Useful for testing loading indicators and race conditions.
   Completer<void>? loadModelCompleter;
 
+  /// If non-null, [start] will wait for this completer before returning.
+  /// Useful for testing initialization races.
+  Completer<void>? startCompleter;
+
   /// If non-null, [downloadModel] will throw this.
   Object? downloadModelError;
 
@@ -77,6 +81,9 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
   @override
   Future<void> start() async {
     startCalled = true;
+    if (startCompleter != null) {
+      await startCompleter!.future;
+    }
   }
 
   @override
