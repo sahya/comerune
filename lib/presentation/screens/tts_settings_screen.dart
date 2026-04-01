@@ -35,6 +35,18 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   static const int _queueLimitMax = 100;
   static const int _maxDelayMin = 1;
   static const int _maxDelayMax = 60;
+  static const double _energeticPresetSpeed = 1.3;
+  static const double _energeticPresetPitch = 0.08;
+  static const double _energeticPresetIntonation = 1.3;
+  static const double _energeticPresetVolume = 1.0;
+  static const double _calmPresetSpeed = 1.0;
+  static const double _calmPresetPitch = -0.02;
+  static const double _calmPresetIntonation = 0.9;
+  static const double _calmPresetVolume = 1.0;
+  static const double _standardPresetSpeed = 1.0;
+  static const double _standardPresetPitch = 0.0;
+  static const double _standardPresetIntonation = 1.0;
+  static const double _standardPresetVolume = 1.0;
 
   late final TextEditingController _queueLimitController;
   late final TextEditingController _maxDelayController;
@@ -51,6 +63,18 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   String? _queueLimitError;
   String? _maxDelayError;
   bool _isLoadingModel = false;
+
+  static const Map<int, String> _nemoSpeakerNames = <int, String>{
+    10000: '男声2',
+    10001: '男声1',
+    10002: '男声3',
+    10003: '女声4',
+    10004: '女声3',
+    10005: '女声1',
+    10006: '女声6',
+    10007: '女声2',
+    10008: '女声5',
+  };
 
   /// Generation counter to discard stale model-load results when the user
   /// changes the speaker multiple times in quick succession.
@@ -155,6 +179,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
       await ensureEngineReadyForModelLoad(
         platform,
         logTag: '[TtsSettings]',
+        pollInterval: voicevoxReadyPollInterval,
+        maxPollAttempts: voicevoxReadyMaxPollAttempts,
       );
       int? currentSpeakerId;
       try {
@@ -365,6 +391,23 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     );
   }
 
+  void _applyVoicevoxPreset(
+    AppSettings current, {
+    required double speed,
+    required double pitch,
+    required double intonation,
+    required double volume,
+  }) {
+    updateAndSave(
+      current.copyWith(
+        voicevoxSpeed: speed,
+        voicevoxPitch: pitch,
+        voicevoxIntonation: intonation,
+        voicevoxVolume: volume,
+      ),
+    );
+  }
+
   void _saveNgWords() {
     final AppSettings? current = settings;
     if (current == null) {
@@ -473,6 +516,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
 
   Widget _buildVoicevoxSpeakerDropdown(AppSettings settings) {
     final List<VoicevoxModelInfo>? models = _voicevoxModels;
+    const int fallbackSpeakerId = 10000;
 
     // When models are available, build items from downloaded/bundled models.
     if (models != null && models.isNotEmpty) {
@@ -482,11 +526,12 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
             !model.isBundled) {
           continue;
         }
-        for (final speakerId in model.speakerIds) {
+        final List<int> orderedSpeakerIds = _orderedSpeakerIds(model);
+        for (final speakerId in orderedSpeakerIds) {
           items.add(
             DropdownMenuItem<int>(
               value: speakerId,
-              child: Text('${model.displayName} (ID:$speakerId)'),
+              child: Text(_speakerMenuLabel(model, speakerId)),
             ),
           );
         }
@@ -509,8 +554,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
       if (items.isEmpty) {
         items.add(
           const DropdownMenuItem<int>(
-            value: 10000,
-            child: Text('VOICEVOX Nemo・男声2 (ID:10000)'),
+            value: fallbackSpeakerId,
+            child: Text('Nemo | 男声2 (ID:10000)'),
           ),
         );
       }
@@ -521,7 +566,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         children: [
           DropdownButtonFormField<int>(
             key: const Key('voicevox-speaker-dropdown'),
-            value: currentInList ? settings.voicevoxSpeaker : items.first.value,
+            initialValue:
+                currentInList ? settings.voicevoxSpeaker : items.first.value,
             decoration: const InputDecoration(
               labelText: '話者',
               border: OutlineInputBorder(),
@@ -549,17 +595,28 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     }
 
     // Fallback: static dropdown when platform is not available.
+    final bool fallbackCurrentInList =
+        settings.voicevoxSpeaker == fallbackSpeakerId;
+    if (!fallbackCurrentInList) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          updateAndSave(settings.copyWith(voicevoxSpeaker: fallbackSpeakerId));
+        }
+      });
+    }
+
     return DropdownButtonFormField<int>(
       key: const Key('voicevox-speaker-dropdown'),
-      value: settings.voicevoxSpeaker,
+      initialValue:
+          fallbackCurrentInList ? settings.voicevoxSpeaker : fallbackSpeakerId,
       decoration: const InputDecoration(
         labelText: '話者',
         border: OutlineInputBorder(),
       ),
       items: const <DropdownMenuItem<int>>[
         DropdownMenuItem<int>(
-          value: 10000,
-          child: Text('VOICEVOX Nemo・男声2 (ID:10000)'),
+          value: fallbackSpeakerId,
+          child: Text('Nemo | 男声2 (ID:10000)'),
         ),
       ],
       onChanged: (int? value) {
@@ -567,6 +624,55 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         updateAndSave(settings.copyWith(voicevoxSpeaker: value));
       },
     );
+  }
+
+  String _speakerMenuLabel(VoicevoxModelInfo model, int speakerId) {
+    if (model.modelId == 'n0') {
+      // TTS設定のプルダウンは横幅が限られるため、接頭辞を短くして
+      // 話者名/ID（後半）が見切れにくい表示を優先する。
+      // なお、規約同意と紐づく正式名は Credit や VoiceLibrary 側で保持する。
+      final String? speakerName = _nemoSpeakerNames[speakerId];
+      if (speakerName != null) {
+        return 'Nemo | $speakerName (ID:$speakerId)';
+      }
+      return 'Nemo | Unknown (ID:$speakerId)';
+    }
+    return '${model.displayName} (ID:$speakerId)';
+  }
+
+  List<int> _orderedSpeakerIds(VoicevoxModelInfo model) {
+    if (model.modelId != 'n0') {
+      return model.speakerIds;
+    }
+    final List<int> ordered = List<int>.from(model.speakerIds);
+    ordered.sort(_compareNemoSpeakerOrder);
+    return ordered;
+  }
+
+  int _compareNemoSpeakerOrder(int a, int b) {
+    final RegExp pattern = RegExp(r'^(男声|女声)(\d+)$');
+
+    final Match? aMatch = pattern.firstMatch(_nemoSpeakerNames[a] ?? '');
+    final Match? bMatch = pattern.firstMatch(_nemoSpeakerNames[b] ?? '');
+    if (aMatch == null || bMatch == null) {
+      return a.compareTo(b);
+    }
+
+    final String aType = aMatch.group(1)!;
+    final String bType = bMatch.group(1)!;
+    final int aTypeRank = aType == '女声' ? 0 : 1;
+    final int bTypeRank = bType == '女声' ? 0 : 1;
+
+    if (aTypeRank != bTypeRank) {
+      return aTypeRank.compareTo(bTypeRank);
+    }
+
+    final int aIndex = int.parse(aMatch.group(2)!);
+    final int bIndex = int.parse(bMatch.group(2)!);
+    if (aIndex != bIndex) {
+      return aIndex.compareTo(bIndex);
+    }
+    return a.compareTo(b);
   }
 
   @override
@@ -636,6 +742,58 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                         ),
                       ),
                     ],
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: <Widget>[
+                        OutlinedButton(
+                          key: const Key('voicevox-preset-energetic-btn'),
+                          onPressed: _isLoadingModel
+                              ? null
+                              : () {
+                                  _applyVoicevoxPreset(
+                                    settings,
+                                    speed: _energeticPresetSpeed,
+                                    pitch: _energeticPresetPitch,
+                                    intonation: _energeticPresetIntonation,
+                                    volume: _energeticPresetVolume,
+                                  );
+                                },
+                          child: const Text('元気寄り'),
+                        ),
+                        OutlinedButton(
+                          key: const Key('voicevox-preset-calm-btn'),
+                          onPressed: _isLoadingModel
+                              ? null
+                              : () {
+                                  _applyVoicevoxPreset(
+                                    settings,
+                                    speed: _calmPresetSpeed,
+                                    pitch: _calmPresetPitch,
+                                    intonation: _calmPresetIntonation,
+                                    volume: _calmPresetVolume,
+                                  );
+                                },
+                          child: const Text('落ち着き寄り'),
+                        ),
+                        OutlinedButton(
+                          key: const Key('voicevox-preset-standard-btn'),
+                          onPressed: _isLoadingModel
+                              ? null
+                              : () {
+                                  _applyVoicevoxPreset(
+                                    settings,
+                                    speed: _standardPresetSpeed,
+                                    pitch: _standardPresetPitch,
+                                    intonation: _standardPresetIntonation,
+                                    volume: _standardPresetVolume,
+                                  );
+                                },
+                          child: const Text('標準に戻す'),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 12),
                     SettingsDoubleSliderField(
                       key: const Key('voicevox-speed-slider'),

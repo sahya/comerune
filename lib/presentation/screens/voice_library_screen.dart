@@ -139,6 +139,8 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
       await ensureEngineReadyForModelLoad(
         widget.platform,
         logTag: '[VoiceLibrary]',
+        pollInterval: voicevoxReadyPollInterval,
+        maxPollAttempts: voicevoxReadyMaxPollAttempts,
       );
       // Automatically load the model into the engine after download.
       await _manager.loadModel(model.modelId);
@@ -223,6 +225,8 @@ class _VoiceModelCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
+                  // モデル管理画面は、規約同意時の認識と実務上の識別を優先し、
+                  // 省略せず正式な displayName（例: VOICEVOX Nemo）を表示する。
                   child: Text(
                     model.displayName,
                     style: Theme.of(context).textTheme.titleMedium,
@@ -262,15 +266,15 @@ class _VoiceModelCard extends StatelessWidget {
 
   Widget _buildStatusBadge(BuildContext context) {
     if (model.isBundled) {
-      return _Badge(label: '内蔵', color: Colors.green);
+      return const _Badge(label: '内蔵', color: Colors.green);
     }
     switch (model.downloadState) {
       case ModelDownloadState.downloaded:
-        return _Badge(label: 'ダウンロード済', color: Colors.blue);
+        return const _Badge(label: 'ダウンロード済', color: Colors.blue);
       case ModelDownloadState.downloading:
-        return _Badge(label: 'ダウンロード中', color: Colors.orange);
+        return const _Badge(label: 'ダウンロード中', color: Colors.orange);
       case ModelDownloadState.error:
-        return _Badge(label: 'エラー', color: Colors.red);
+        return const _Badge(label: 'エラー', color: Colors.red);
       case ModelDownloadState.notDownloaded:
         return Text(
           model.fileSizeDisplay,

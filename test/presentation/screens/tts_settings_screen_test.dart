@@ -371,6 +371,110 @@ void main() {
       expect(loaded.voicevoxVolume, 0.8);
     });
 
+    testWidgets('VOICEVOX energetic preset button persists values', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('voicevox-preset-energetic-btn'),
+      );
+      await tester.tap(
+        find.byKey(
+          const Key('voicevox-preset-energetic-btn'),
+          skipOffstage: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.voicevoxSpeed, closeTo(1.3, 0.0001));
+      expect(loaded.voicevoxPitch, closeTo(0.08, 0.0001));
+      expect(loaded.voicevoxIntonation, closeTo(1.3, 0.0001));
+      expect(loaded.voicevoxVolume, closeTo(1.0, 0.0001));
+    });
+
+    testWidgets('VOICEVOX calm preset button pushes settings to platform', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeCommentSpeechPlatform fakePlatform =
+          FakeCommentSpeechPlatform();
+
+      await tester
+          .pumpWidget(_buildScreenWithPlatform(settingsStore, fakePlatform));
+      await tester.pumpAndSettle();
+
+      fakePlatform.lastUpdatedSettings = null;
+
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('voicevox-preset-calm-btn'),
+      );
+      await tester.tap(
+        find.byKey(
+          const Key('voicevox-preset-calm-btn'),
+          skipOffstage: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.lastUpdatedSettings, isNotNull);
+      expect(
+          fakePlatform.lastUpdatedSettings!.speedScale, closeTo(1.0, 0.0001));
+      expect(
+          fakePlatform.lastUpdatedSettings!.pitchScale, closeTo(-0.02, 0.0001));
+      expect(fakePlatform.lastUpdatedSettings!.intonationScale,
+          closeTo(0.9, 0.0001));
+      expect(
+          fakePlatform.lastUpdatedSettings!.volumeScale, closeTo(1.0, 0.0001));
+    });
+
+    testWidgets('VOICEVOX standard preset button resets values to defaults', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      await settingsStore.save(
+        AppSettings.defaults.copyWith(
+          voicevoxSpeed: 1.4,
+          voicevoxPitch: 0.08,
+          voicevoxIntonation: 1.4,
+          voicevoxVolume: 1.2,
+        ),
+      );
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('voicevox-preset-standard-btn'),
+      );
+      await tester.tap(
+        find.byKey(
+          const Key('voicevox-preset-standard-btn'),
+          skipOffstage: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.voicevoxSpeed, closeTo(1.0, 0.0001));
+      expect(loaded.voicevoxPitch, closeTo(0.0, 0.0001));
+      expect(loaded.voicevoxIntonation, closeTo(1.0, 0.0001));
+      expect(loaded.voicevoxVolume, closeTo(1.0, 0.0001));
+    });
+
     testWidgets(
         'slider change pushes updated SpeechSettings to platform engine', (
       WidgetTester tester,
@@ -479,9 +583,119 @@ void main() {
       expect(loaded.voicevoxSpeed, 1.5);
     });
 
+    testWidgets('platform null fallback normalizes unavailable speaker ID', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      await settingsStore.save(
+        AppSettings.defaults.copyWith(
+          voicevoxSpeaker: 10005,
+        ),
+      );
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.voicevoxSpeaker, 10000);
+      expect(
+        find.text('Nemo | 男声2 (ID:10000)', skipOffstage: false),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('shows Nemo speaker name with speaker ID in menu label', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeCommentSpeechPlatform platform = FakeCommentSpeechPlatform();
+      platform.availableModelsToReturn = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'modelId': 'n0',
+          'displayName': 'VOICEVOX Nemo',
+          'speakerIds': <int>[
+            10000,
+            10001,
+            10002,
+            10003,
+            10004,
+            10005,
+            10006,
+            10007,
+            10008,
+          ],
+          'vvmFileName': 'n0.vvm',
+          'fileSizeBytes': 100,
+          'isBundled': false,
+          'downloadState': 'DOWNLOADED',
+        },
+      ];
+
+      await tester
+          .pumpWidget(_buildScreenWithPlatform(settingsStore, platform));
+      await tester.pumpAndSettle();
+
+      await scrollToKeyInList(
+          tester, _listKey, const Key('voicevox-speaker-dropdown'));
+
+      expect(
+        find.text('Nemo | 男声2 (ID:10000)', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('ID:10000', skipOffstage: false),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('orders Nemo speakers by number and picks 女声1 as first option',
+        (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      await settingsStore.save(
+        AppSettings.defaults.copyWith(
+          voicevoxSpeaker: 99999,
+        ),
+      );
+
+      final FakeCommentSpeechPlatform platform = FakeCommentSpeechPlatform();
+      platform.availableModelsToReturn = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'modelId': 'n0',
+          'displayName': 'VOICEVOX Nemo',
+          'speakerIds': <int>[
+            10000,
+            10001,
+            10002,
+            10003,
+            10004,
+            10005,
+            10006,
+            10007,
+            10008,
+          ],
+          'vvmFileName': 'n0.vvm',
+          'fileSizeBytes': 100,
+          'isBundled': false,
+          'downloadState': 'DOWNLOADED',
+        },
+      ];
+
+      await tester
+          .pumpWidget(_buildScreenWithPlatform(settingsStore, platform));
+      await tester.pumpAndSettle();
+
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.voicevoxSpeaker, 10005);
+    });
+
     group('speaker change', () {
       /// Helper to create a fake platform pre-configured with two models.
-      FakeCommentSpeechPlatform _createPlatformWithModels() {
+      FakeCommentSpeechPlatform createPlatformWithModels() {
         final FakeCommentSpeechPlatform platform = FakeCommentSpeechPlatform();
         platform.availableModelsToReturn = <Map<String, dynamic>>[
           <String, dynamic>{
@@ -512,7 +726,7 @@ void main() {
       ) async {
         final SharedPreferencesSettingsStore settingsStore =
             SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-        final FakeCommentSpeechPlatform platform = _createPlatformWithModels();
+        final FakeCommentSpeechPlatform platform = createPlatformWithModels();
 
         await tester
             .pumpWidget(_buildScreenWithPlatform(settingsStore, platform));
@@ -551,7 +765,7 @@ void main() {
       ) async {
         final SharedPreferencesSettingsStore settingsStore =
             SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-        final FakeCommentSpeechPlatform platform = _createPlatformWithModels();
+        final FakeCommentSpeechPlatform platform = createPlatformWithModels();
 
         await tester
             .pumpWidget(_buildScreenWithPlatform(settingsStore, platform));
@@ -590,7 +804,7 @@ void main() {
       ) async {
         final SharedPreferencesSettingsStore settingsStore =
             SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-        final FakeCommentSpeechPlatform platform = _createPlatformWithModels();
+        final FakeCommentSpeechPlatform platform = createPlatformWithModels();
         platform.statusToReturn = const SpeechRuntimeStatus(
           enabled: false,
           engineState: 'UNINITIALIZED',
@@ -622,7 +836,7 @@ void main() {
       ) async {
         final SharedPreferencesSettingsStore settingsStore =
             SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-        final FakeCommentSpeechPlatform platform = _createPlatformWithModels();
+        final FakeCommentSpeechPlatform platform = createPlatformWithModels();
         platform.statusToReturn = const SpeechRuntimeStatus(
           enabled: true,
           engineState: 'READY',
@@ -654,7 +868,7 @@ void main() {
       ) async {
         final SharedPreferencesSettingsStore settingsStore =
             SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-        final FakeCommentSpeechPlatform platform = _createPlatformWithModels();
+        final FakeCommentSpeechPlatform platform = createPlatformWithModels();
         // Put speaker 2 in the same model as speaker 1.
         platform.availableModelsToReturn[1]['speakerIds'] = <int>[1, 2];
         platform.statusToReturn = const SpeechRuntimeStatus(
@@ -693,7 +907,7 @@ void main() {
       ) async {
         final SharedPreferencesSettingsStore settingsStore =
             SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-        final FakeCommentSpeechPlatform platform = _createPlatformWithModels();
+        final FakeCommentSpeechPlatform platform = createPlatformWithModels();
         platform.statusToReturn = const SpeechRuntimeStatus(
           enabled: true,
           engineState: 'READY',
@@ -737,7 +951,7 @@ void main() {
           voicevoxSpeaker: 1,
         ));
 
-        final FakeCommentSpeechPlatform platform = _createPlatformWithModels();
+        final FakeCommentSpeechPlatform platform = createPlatformWithModels();
         // Put speaker 2 in the same model as speaker 1.
         platform.availableModelsToReturn[1]['speakerIds'] = <int>[1, 2];
         platform.statusToReturn = const SpeechRuntimeStatus(
@@ -778,7 +992,7 @@ void main() {
       ) async {
         final SharedPreferencesSettingsStore settingsStore =
             SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-        final FakeCommentSpeechPlatform platform = _createPlatformWithModels();
+        final FakeCommentSpeechPlatform platform = createPlatformWithModels();
         platform.statusToReturn = const SpeechRuntimeStatus(
           enabled: true,
           engineState: 'READY',
@@ -815,7 +1029,7 @@ void main() {
       ) async {
         final SharedPreferencesSettingsStore settingsStore =
             SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-        final FakeCommentSpeechPlatform platform = _createPlatformWithModels();
+        final FakeCommentSpeechPlatform platform = createPlatformWithModels();
         platform.loadModelError = Exception('disk full');
 
         await tester
@@ -855,7 +1069,7 @@ void main() {
       ) async {
         final SharedPreferencesSettingsStore settingsStore =
             SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-        final FakeCommentSpeechPlatform platform = _createPlatformWithModels();
+        final FakeCommentSpeechPlatform platform = createPlatformWithModels();
         final Completer<void> loadCompleter = Completer<void>();
         platform.loadModelCompleter = loadCompleter;
 
@@ -905,7 +1119,7 @@ void main() {
       ) async {
         final SharedPreferencesSettingsStore settingsStore =
             SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-        final FakeCommentSpeechPlatform platform = _createPlatformWithModels();
+        final FakeCommentSpeechPlatform platform = createPlatformWithModels();
 
         // Add a third model for the second change target.
         platform.availableModelsToReturn.add(<String, dynamic>{
@@ -973,7 +1187,7 @@ void main() {
       ) async {
         final SharedPreferencesSettingsStore settingsStore =
             SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-        final FakeCommentSpeechPlatform platform = _createPlatformWithModels();
+        final FakeCommentSpeechPlatform platform = createPlatformWithModels();
         final Completer<void> loadCompleter = Completer<void>();
         platform.loadModelCompleter = loadCompleter;
 

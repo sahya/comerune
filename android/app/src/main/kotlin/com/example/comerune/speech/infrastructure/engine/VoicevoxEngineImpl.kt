@@ -407,16 +407,16 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
 
         val hasDict = dictDir.exists() && (dictDir.listFiles()?.isNotEmpty() == true)
         val hasAnyVvm = modelDir.exists() && (modelDir.listFiles()?.any { it.extension == "vvm" } == true)
-        val hasBundledVvm = File(modelDir, "0.vvm").exists()
+        val hasBaseVvm = File(modelDir, "0.vvm").exists()
 
         Log.i(
             TAG,
             "Asset readiness: versionMatches=$versionMatches " +
                 "currentVersion=${currentVersion ?: "none"} expectedVersion=$effectiveVersion " +
-                "hasDict=$hasDict hasBundledVvm=$hasBundledVvm hasAnyVvm=$hasAnyVvm"
+                "hasDict=$hasDict hasBaseVvm=$hasBaseVvm hasAnyVvm=$hasAnyVvm"
         )
 
-        if (versionMatches && hasDict && hasBundledVvm) {
+        if (versionMatches && hasDict && hasBaseVvm) {
             Log.i(TAG, "Assets already downloaded (version $effectiveVersion)")
             return
         }
@@ -429,7 +429,7 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             Log.i(
                 TAG,
                 "Asset version mismatch: current=${currentVersion ?: "none"} expected=$effectiveVersion. " +
-                    "Refreshing bundled assets only and preserving downloaded models."
+                    "Refreshing required assets and preserving downloaded models."
             )
         }
 
@@ -454,17 +454,17 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             throw IOException("Failed to create directory: ${modelDir.absolutePath}")
         }
 
-        val bundledModelFile = File(modelDir, "0.vvm")
-        val shouldRefreshBundledModel = !hasBundledVvm || !versionMatches
-        if (shouldRefreshBundledModel) {
+        val baseModelFile = File(modelDir, "0.vvm")
+        val shouldRefreshBaseModel = !hasBaseVvm || !versionMatches
+        if (shouldRefreshBaseModel) {
             emitDownloadEvent("download_started", "0.vvm")
             downloadFile(
                 url = VVM_DOWNLOAD_URL,
-                targetFile = bundledModelFile,
+                targetFile = baseModelFile,
                 displayName = "0.vvm"
             )
         } else {
-            Log.i(TAG, "Reusing bundled model: ${bundledModelFile.absolutePath}")
+            Log.i(TAG, "Reusing base model: ${baseModelFile.absolutePath}")
         }
 
         val preservedModels = modelDir.listFiles { file ->

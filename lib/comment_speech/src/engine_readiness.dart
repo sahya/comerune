@@ -16,6 +16,10 @@ const Set<String> _initializableStates = <String>{
   'UNKNOWN',
 };
 
+/// Poll settings for long-running VOICEVOX initialization on slower devices.
+const Duration voicevoxReadyPollInterval = Duration(milliseconds: 500);
+const int voicevoxReadyMaxPollAttempts = 600;
+
 Future<void> ensureEngineReadyForModelLoad(
   CommentSpeechPlatform platform, {
   String logTag = '[SpeechEngine]',
@@ -80,8 +84,11 @@ Future<SpeechRuntimeStatus> _waitForStableState(
       return latest;
     }
   }
+  final int pollIntervalMs = pollInterval.inMilliseconds;
   throw TimeoutException(
-    'Engine state did not settle from ${initialStatus.engineState}',
+    'Engine state did not settle from ${initialStatus.engineState} '
+    '(attempts=$maxPollAttempts, pollIntervalMs=$pollIntervalMs, '
+    'lastState=${latest.engineState})',
   );
 }
 

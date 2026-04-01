@@ -126,7 +126,7 @@ class CommentSpeechPlugin :
                 handleAsync(result) {
                     val initResult = ctrl.initialize()
                     if (initResult.isSuccess) {
-                        // Ensure bundled models are available and load them
+                        // If manifest has bundled models, ensure they are available and loaded.
                         val repo = modelRepository
                         val eng = engine
                         if (repo != null && eng != null) {
