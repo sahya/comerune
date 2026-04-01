@@ -398,46 +398,79 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
     private fun ensureAssetsAvailable(baseDir: File, dictDir: File, modelDir: File) {
         val effectiveVersion = getEffectiveAssetVersion()
         val versionFile = File(baseDir, VERSION_FILE)
-        val versionMatches = versionFile.exists() &&
-            versionFile.readText().trim() == effectiveVersion
+        val currentVersion = if (versionFile.exists()) {
+            versionFile.readText().trim()
+        } else {
+            null
+        }
+        val versionMatches = currentVersion == effectiveVersion
 
-        if (versionMatches &&
-            dictDir.exists() && (dictDir.listFiles()?.isNotEmpty() == true) &&
-            modelDir.exists() && (modelDir.listFiles()?.any { it.extension == "vvm" } == true)
-        ) {
+        val hasDict = dictDir.exists() && (dictDir.listFiles()?.isNotEmpty() == true)
+        val hasAnyVvm = modelDir.exists() && (modelDir.listFiles()?.any { it.extension == "vvm" } == true)
+        val hasBundledVvm = File(modelDir, "0.vvm").exists()
+
+        Log.i(
+            TAG,
+            "Asset readiness: versionMatches=$versionMatches " +
+                "currentVersion=${currentVersion ?: "none"} expectedVersion=$effectiveVersion " +
+                "hasDict=$hasDict hasBundledVvm=$hasBundledVvm hasAnyVvm=$hasAnyVvm"
+        )
+
+        if (versionMatches && hasDict && hasBundledVvm) {
             Log.i(TAG, "Assets already downloaded (version $effectiveVersion)")
             return
         }
 
-        // Version mismatch or first download — clear stale files
-        if (baseDir.exists()) {
-            baseDir.deleteRecursively()
-            Log.i(TAG, "Cleared stale assets at ${baseDir.absolutePath}")
-        }
-
-        if (!baseDir.mkdirs() && !baseDir.exists()) {
+        if (!baseDir.exists() && !baseDir.mkdirs()) {
             throw IOException("Failed to create directory: ${baseDir.absolutePath}")
         }
 
-        // Download OpenJTalk dictionary (tar.gz archive)
-        emitDownloadEvent("download_started", OPEN_JTALK_DICT_DIR_NAME)
-        downloadAndExtractTarGz(
-            url = OPEN_JTALK_DICT_URL,
-            targetDir = dictDir,
-            stripPrefix = OPEN_JTALK_DICT_DIR_NAME,
-            displayName = OPEN_JTALK_DICT_DIR_NAME
-        )
+        if (!versionMatches) {
+            Log.i(
+                TAG,
+                "Asset version mismatch: current=${currentVersion ?: "none"} expected=$effectiveVersion. " +
+                    "Refreshing bundled assets only and preserving downloaded models."
+            )
+        }
 
-        // Download VVM model
-        emitDownloadEvent("download_started", "0.vvm")
+        // Refresh OpenJTalk dictionary when missing or asset version changed.
+        if (!hasDict || !versionMatches) {
+            if (dictDir.exists()) {
+                dictDir.deleteRecursively()
+                Log.i(TAG, "Cleared stale dictionary directory: ${dictDir.absolutePath}")
+            }
+            emitDownloadEvent("download_started", OPEN_JTALK_DICT_DIR_NAME)
+            downloadAndExtractTarGz(
+                url = OPEN_JTALK_DICT_URL,
+                targetDir = dictDir,
+                stripPrefix = OPEN_JTALK_DICT_DIR_NAME,
+                displayName = OPEN_JTALK_DICT_DIR_NAME
+            )
+        } else {
+            Log.i(TAG, "Reusing existing dictionary: ${dictDir.absolutePath}")
+        }
+
         if (!modelDir.mkdirs() && !modelDir.exists()) {
             throw IOException("Failed to create directory: ${modelDir.absolutePath}")
         }
-        downloadFile(
-            url = VVM_DOWNLOAD_URL,
-            targetFile = File(modelDir, "0.vvm"),
-            displayName = "0.vvm"
-        )
+
+        val bundledModelFile = File(modelDir, "0.vvm")
+        val shouldRefreshBundledModel = !hasBundledVvm || !versionMatches
+        if (shouldRefreshBundledModel) {
+            emitDownloadEvent("download_started", "0.vvm")
+            downloadFile(
+                url = VVM_DOWNLOAD_URL,
+                targetFile = bundledModelFile,
+                displayName = "0.vvm"
+            )
+        } else {
+            Log.i(TAG, "Reusing bundled model: ${bundledModelFile.absolutePath}")
+        }
+
+        val preservedModels = modelDir.listFiles { file ->
+            file.extension == "vvm" && file.name != "0.vvm"
+        }?.map { it.name } ?: emptyList()
+        Log.i(TAG, "Preserved downloaded models: $preservedModels")
 
         // Write version marker so subsequent launches skip download
         versionFile.writeText(effectiveVersion)
