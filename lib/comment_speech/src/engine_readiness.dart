@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import '../../app_logging.dart';
 
 import 'comment_speech_platform.dart';
 import 'models/speech_runtime_status.dart';
@@ -21,10 +21,7 @@ const Duration voicevoxReadyPollInterval = Duration(milliseconds: 500);
 const int voicevoxReadyMaxPollAttempts = 600;
 
 void _debugLog(String Function() messageBuilder) {
-  if (!kDebugMode) {
-    return;
-  }
-  debugPrint(messageBuilder());
+  appDebugLogLazy(messageBuilder);
 }
 
 Future<void> ensureEngineReadyForModelLoad(

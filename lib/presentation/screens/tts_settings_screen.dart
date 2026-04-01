@@ -1,9 +1,8 @@
 import 'dart:async';
-import 'dart:developer' as developer;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../app_logging.dart';
 import '../../application/settings/settings_store.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../domain/models/app_settings.dart';
@@ -16,11 +15,8 @@ import 'voice_library_screen.dart';
 
 enum _NemoStylePreset { standard, energetic, calm }
 
-void _debugLog(String message) {
-  if (!kDebugMode) {
-    return;
-  }
-  debugPrint(message);
+void _debugLogLazy(String Function() messageBuilder) {
+  appDebugLogLazy(messageBuilder);
 }
 
 void _errorLog(
@@ -28,20 +24,11 @@ void _errorLog(
   Object? error,
   StackTrace? stackTrace,
 }) {
-  if (kDebugMode) {
-    final String suffix = error != null ? ': $error' : '';
-    debugPrint('$message$suffix');
-    if (stackTrace != null) {
-      debugPrint('$stackTrace');
-    }
-    return;
-  }
-  developer.log(
-    message,
+  appErrorLog(
     name: 'TtsSettings',
+    message: message,
     error: error,
     stackTrace: stackTrace,
-    level: 900,
   );
 }
 
@@ -213,10 +200,13 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
       }
     }
     if (model == null) return false;
+    final VoicevoxModelInfo selectedModel = model;
 
     try {
-      _debugLog(
-          '[TtsSettings] loadModel begin: speaker=$speakerId modelId=${model.modelId}');
+      _debugLogLazy(
+        () =>
+            '[TtsSettings] loadModel begin: speaker=$speakerId modelId=${selectedModel.modelId}',
+      );
       await ensureEngineReadyForModelLoad(
         platform,
         logTag: '[TtsSettings]',
@@ -227,24 +217,26 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
       try {
         final SpeechRuntimeStatus status = await platform.getStatus();
         currentSpeakerId = status.currentSpeakerId;
-        _debugLog(
-          '[TtsSettings] status-check(skip-guard): currentSpeaker=$currentSpeakerId '
-          'targetSpeaker=$speakerId modelId=${model.modelId}',
+        _debugLogLazy(
+          () =>
+              '[TtsSettings] status-check(skip-guard): currentSpeaker=$currentSpeakerId '
+              'targetSpeaker=$speakerId modelId=${selectedModel.modelId}',
         );
       } on Object catch (e) {
         // Fallback to loading the model when status refresh fails.
         _errorLog(
           '[TtsSettings] loadModel decision=load_model '
           'reason=status_refresh_failed '
-          'speaker=$speakerId modelId=${model.modelId}',
+          'speaker=$speakerId modelId=${selectedModel.modelId}',
           error: e,
         );
       }
       if (currentSpeakerId == null && fallbackCurrentSpeakerId != null) {
         currentSpeakerId = fallbackCurrentSpeakerId;
-        _debugLog(
-          '[TtsSettings] status-check(skip-guard): using settings fallback '
-          'currentSpeaker=$currentSpeakerId targetSpeaker=$speakerId',
+        _debugLogLazy(
+          () =>
+              '[TtsSettings] status-check(skip-guard): using settings fallback '
+              'currentSpeaker=$currentSpeakerId targetSpeaker=$speakerId',
         );
       }
       if (currentSpeakerId != null &&
@@ -253,24 +245,26 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
             speakerId,
             models,
           )) {
-        _debugLog(
-          '[TtsSettings] loadModel decision=skip_same_model '
-          'currentSpeaker=$currentSpeakerId '
-          'and targetSpeaker=$speakerId are in same modelId=${model.modelId}',
+        _debugLogLazy(
+          () => '[TtsSettings] loadModel decision=skip_same_model '
+              'currentSpeaker=$currentSpeakerId '
+              'and targetSpeaker=$speakerId are in same modelId=${selectedModel.modelId}',
         );
         return true;
       }
-      _debugLog(
-        '[TtsSettings] loadModel decision=load_model '
-        'speaker=$speakerId modelId=${model.modelId}',
+      _debugLogLazy(
+        () => '[TtsSettings] loadModel decision=load_model '
+            'speaker=$speakerId modelId=${selectedModel.modelId}',
       );
-      await platform.loadModel(model.modelId);
-      _debugLog(
-          '[TtsSettings] loadModel success: speaker=$speakerId modelId=${model.modelId}');
+      await platform.loadModel(selectedModel.modelId);
+      _debugLogLazy(
+        () =>
+            '[TtsSettings] loadModel success: speaker=$speakerId modelId=${selectedModel.modelId}',
+      );
       return true;
     } on Object catch (e) {
       _errorLog(
-        '[TtsSettings] loadModel FAILED: speaker=$speakerId modelId=${model.modelId}',
+        '[TtsSettings] loadModel FAILED: speaker=$speakerId modelId=${selectedModel.modelId}',
         error: e,
       );
       return false;
@@ -306,19 +300,19 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   /// settings to the engine only after the model is ready.
   Future<void> _onSpeakerChanged(AppSettings current, int newSpeaker) async {
     if (newSpeaker == current.voicevoxSpeaker) {
-      _debugLog(
-        '[TtsSettings] speaker change decision=no_op_same_speaker '
-        'fromSpeaker=${current.voicevoxSpeaker} toSpeaker=$newSpeaker',
+      _debugLogLazy(
+        () => '[TtsSettings] speaker change decision=no_op_same_speaker '
+            'fromSpeaker=${current.voicevoxSpeaker} toSpeaker=$newSpeaker',
       );
       return;
     }
 
     final int previousSpeaker = current.voicevoxSpeaker;
     final int generation = ++_speakerChangeGeneration;
-    _debugLog(
-      '[TtsSettings] speaker change requested: '
-      'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker '
-      'generation=$generation',
+    _debugLogLazy(
+      () => '[TtsSettings] speaker change requested: '
+          'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker '
+          'generation=$generation',
     );
 
     // Optimistically update the UI and persist the new speaker.
@@ -337,20 +331,20 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     // If another speaker change happened while we were loading, discard this
     // result -- the newer change takes precedence.
     if (generation != _speakerChangeGeneration) {
-      _debugLog(
-        '[TtsSettings] speaker change discarded stale result: '
-        'reason=stale_generation '
-        'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker '
-        'generation=$generation latestGeneration=$_speakerChangeGeneration',
+      _debugLogLazy(
+        () => '[TtsSettings] speaker change discarded stale result: '
+            'reason=stale_generation '
+            'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker '
+            'generation=$generation latestGeneration=$_speakerChangeGeneration',
       );
       return;
     }
     if (!mounted) {
-      _debugLog(
-        '[TtsSettings] speaker change discarded result: '
-        'reason=widget_unmounted '
-        'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker '
-        'generation=$generation latestGeneration=$_speakerChangeGeneration',
+      _debugLogLazy(
+        () => '[TtsSettings] speaker change discarded result: '
+            'reason=widget_unmounted '
+            'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker '
+            'generation=$generation latestGeneration=$_speakerChangeGeneration',
       );
       return;
     }
@@ -359,9 +353,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
       setState(() {
         _isLoadingModel = false;
       });
-      _debugLog(
-        '[TtsSettings] speaker change applied: '
-        'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker',
+      _debugLogLazy(
+        () => '[TtsSettings] speaker change applied: '
+            'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker',
       );
       _pushSettingsToEngine(next);
     } else {
@@ -373,10 +367,10 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         _isLoadingModel = false;
       });
       unawaited(saveSettings(reverted));
-      _debugLog(
-        '[TtsSettings] speaker change reverted: '
-        'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker '
-        'revertedToSpeaker=$previousSpeaker',
+      _debugLogLazy(
+        () => '[TtsSettings] speaker change reverted: '
+            'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker '
+            'revertedToSpeaker=$previousSpeaker',
       );
 
       if (mounted) {
@@ -413,8 +407,11 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
 
   @override
   void updateAndSave(AppSettings next) {
-    _debugLog(
-        '[TtsSettings] save: autoRead=${next.autoReadEnabled}, engine=${next.speechEngine}, speaker=${next.voicevoxSpeaker}, speed=${next.voicevoxSpeed}');
+    _debugLogLazy(
+      () => '[TtsSettings] save: autoRead=${next.autoReadEnabled}, '
+          'engine=${next.speechEngine}, speaker=${next.voicevoxSpeaker}, '
+          'speed=${next.voicevoxSpeed}',
+    );
     super.updateAndSave(next);
     _pushSettingsToEngine(next);
   }

@@ -1,20 +1,16 @@
 import 'dart:async';
-import 'dart:developer' as developer;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
+import '../../app_logging.dart';
 import '../../application/settings/settings_store.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/voicevox_model_info.dart';
 
-void _debugLog(String message) {
-  if (!kDebugMode) {
-    return;
-  }
-  debugPrint(message);
+void _debugLogLazy(String Function() messageBuilder) {
+  appDebugLogLazy(messageBuilder);
 }
 
 void _errorLog(
@@ -22,20 +18,11 @@ void _errorLog(
   Object? error,
   StackTrace? stackTrace,
 }) {
-  if (kDebugMode) {
-    final String suffix = error != null ? ': $error' : '';
-    debugPrint('$message$suffix');
-    if (stackTrace != null) {
-      debugPrint('$stackTrace');
-    }
-    return;
-  }
-  developer.log(
-    message,
+  appErrorLog(
     name: 'VoiceLibrary',
+    message: message,
     error: error,
     stackTrace: stackTrace,
-    level: 900,
   );
 }
 
@@ -150,11 +137,14 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
       await widget.settingsStore.save(updated);
     }
     try {
-      _debugLog(
-        '[VoiceLibrary] download start: modelId=${model.modelId}, name=${model.displayName}',
+      _debugLogLazy(
+        () => '[VoiceLibrary] download start: modelId=${model.modelId}, '
+            'name=${model.displayName}',
       );
       await _manager.downloadModel(model.modelId);
-      _debugLog('[VoiceLibrary] download completed: modelId=${model.modelId}');
+      _debugLogLazy(
+        () => '[VoiceLibrary] download completed: modelId=${model.modelId}',
+      );
     } on Object catch (e) {
       _errorLog(
         '[VoiceLibrary] download FAILED: modelId=${model.modelId}',
@@ -176,8 +166,9 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
       );
       // Automatically load the model into the engine after download.
       await _manager.loadModel(model.modelId);
-      _debugLog(
-        '[VoiceLibrary] loadModel success after download: modelId=${model.modelId}',
+      _debugLogLazy(
+        () => '[VoiceLibrary] loadModel success after download: '
+            'modelId=${model.modelId}',
       );
     } on Object catch (e) {
       _errorLog(
@@ -393,10 +384,12 @@ class _VoicevoxTermsDialogState extends State<_VoicevoxTermsDialog> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _checkScrollNeeded();
       });
-    } on Object catch (e) {
-      developer.log(
-        'Failed to load TERMS.txt: $e',
+    } on Object catch (e, stackTrace) {
+      appErrorLog(
         name: 'VoicevoxTermsDialog',
+        message: 'Failed to load TERMS.txt',
+        error: e,
+        stackTrace: stackTrace,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
