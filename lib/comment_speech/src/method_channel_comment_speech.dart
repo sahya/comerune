@@ -11,39 +11,53 @@ import 'models/submit_result.dart';
 /// [CommentSpeechPlatform] implementation backed by MethodChannel and
 /// EventChannel that delegates to the Android Kotlin plugin.
 class MethodChannelCommentSpeech implements CommentSpeechPlatform {
-  static const _methodChannel =
-      MethodChannel('com.example.comerune.speech/methods');
-  static const _eventChannel =
-      EventChannel('com.example.comerune.speech/events');
+  static const _methodChannel = MethodChannel(
+    'com.example.comerune.speech/methods',
+  );
+  static const _eventChannel = EventChannel(
+    'com.example.comerune.speech/events',
+  );
+  // Progress events are emitted very frequently during downloads and can
+  // flood logs. Keep lifecycle/state events visible, but suppress these.
+  static const Set<String> _noisyEventTypes = <String>{
+    SpeechEventType.downloadProgress,
+    SpeechEventType.modelDownloadProgress,
+  };
+
+  static void _debugLog(String message) {
+    if (kDebugMode) {
+      debugPrint(message);
+    }
+  }
 
   late final Stream<SpeechEvent> _events =
-      _eventChannel.receiveBroadcastStream().map(
-    (event) {
-      final parsed = SpeechEvent.fromMap(Map<dynamic, dynamic>.from(event));
-      debugPrint('[MethodChannel] event: ${parsed.type}');
-      return parsed;
-    },
-  );
+      _eventChannel.receiveBroadcastStream().map((event) {
+    final parsed = SpeechEvent.fromMap(Map<dynamic, dynamic>.from(event));
+    if (!_noisyEventTypes.contains(parsed.type)) {
+      _debugLog('[MethodChannel] event: ${parsed.type}');
+    }
+    return parsed;
+  });
 
   @override
   Future<void> initialize() async {
-    debugPrint('[MethodChannel] → initialize()');
+    _debugLog('[MethodChannel] → initialize()');
     await _methodChannel.invokeMethod<void>('initialize');
-    debugPrint('[MethodChannel] ← initialize() done');
+    _debugLog('[MethodChannel] ← initialize() done');
   }
 
   @override
   Future<void> start() async {
-    debugPrint('[MethodChannel] → start()');
+    _debugLog('[MethodChannel] → start()');
     await _methodChannel.invokeMethod<void>('start');
-    debugPrint('[MethodChannel] ← start() done');
+    _debugLog('[MethodChannel] ← start() done');
   }
 
   @override
   Future<void> stop({bool clearQueue = false}) async {
-    debugPrint('[MethodChannel] → stop(clearQueue=$clearQueue)');
+    _debugLog('[MethodChannel] → stop(clearQueue=$clearQueue)');
     await _methodChannel.invokeMethod<void>('stop', {'clearQueue': clearQueue});
-    debugPrint('[MethodChannel] ← stop() done');
+    _debugLog('[MethodChannel] ← stop() done');
   }
 
   @override
@@ -73,19 +87,16 @@ class MethodChannelCommentSpeech implements CommentSpeechPlatform {
 
   @override
   Future<void> updateSettings(SpeechSettings settings) async {
-    debugPrint(
+    _debugLog(
       '[MethodChannel] → updateSettings(enabled=${settings.enabled}, speaker=${settings.speakerId}, speed=${settings.speedScale})',
     );
-    await _methodChannel.invokeMethod<void>(
-      'updateSettings',
-      settings.toMap(),
-    );
-    debugPrint('[MethodChannel] ← updateSettings() done');
+    await _methodChannel.invokeMethod<void>('updateSettings', settings.toMap());
+    _debugLog('[MethodChannel] ← updateSettings() done');
   }
 
   @override
   Future<SpeechRuntimeStatus> getStatus() async {
-    debugPrint('[MethodChannel] → getStatus()');
+    _debugLog('[MethodChannel] → getStatus()');
     final result = await _methodChannel.invokeMapMethod<String, dynamic>(
       'getStatus',
     );
@@ -96,7 +107,7 @@ class MethodChannelCommentSpeech implements CommentSpeechPlatform {
       );
     }
     final parsed = SpeechRuntimeStatus.fromMap(result);
-    debugPrint(
+    _debugLog(
       '[MethodChannel] ← getStatus: engine=${parsed.engineState}, player=${parsed.playerState}, queue=${parsed.queueSize}',
     );
     return parsed;
@@ -104,7 +115,7 @@ class MethodChannelCommentSpeech implements CommentSpeechPlatform {
 
   @override
   Future<void> release() async {
-    debugPrint('[MethodChannel] → release()');
+    _debugLog('[MethodChannel] → release()');
     await _methodChannel.invokeMethod<void>('release');
   }
 
@@ -113,55 +124,60 @@ class MethodChannelCommentSpeech implements CommentSpeechPlatform {
 
   @override
   Future<List<Map<String, dynamic>>> getAvailableModels() async {
-    debugPrint('[MethodChannel] → getAvailableModels()');
+    _debugLog('[MethodChannel] → getAvailableModels()');
     final result = await _methodChannel.invokeListMethod<Map<dynamic, dynamic>>(
       'getAvailableModels',
     );
     if (result == null) {
-      debugPrint('[MethodChannel] ← getAvailableModels(): 0 models (null)');
+      _debugLog('[MethodChannel] ← getAvailableModels(): 0 models (null)');
       return [];
     }
     final models = result.map((m) => Map<String, dynamic>.from(m)).toList();
-    debugPrint(
-        '[MethodChannel] ← getAvailableModels(): ${models.length} models');
+    _debugLog(
+      '[MethodChannel] ← getAvailableModels(): ${models.length} models',
+    );
     return models;
   }
 
   @override
   Future<void> downloadModel(String modelId) async {
-    debugPrint('[MethodChannel] → downloadModel(modelId=$modelId)');
-    await _methodChannel
-        .invokeMethod<void>('downloadModel', {'modelId': modelId});
-    debugPrint('[MethodChannel] ← downloadModel() done modelId=$modelId');
+    _debugLog('[MethodChannel] → downloadModel(modelId=$modelId)');
+    await _methodChannel.invokeMethod<void>('downloadModel', {
+      'modelId': modelId,
+    });
+    _debugLog('[MethodChannel] ← downloadModel() done modelId=$modelId');
   }
 
   @override
   Future<void> deleteModel(String modelId) async {
-    debugPrint('[MethodChannel] → deleteModel(modelId=$modelId)');
-    await _methodChannel
-        .invokeMethod<void>('deleteModel', {'modelId': modelId});
-    debugPrint('[MethodChannel] ← deleteModel() done modelId=$modelId');
+    _debugLog('[MethodChannel] → deleteModel(modelId=$modelId)');
+    await _methodChannel.invokeMethod<void>('deleteModel', {
+      'modelId': modelId,
+    });
+    _debugLog('[MethodChannel] ← deleteModel() done modelId=$modelId');
   }
 
   @override
   Future<List<String>> getDownloadedModels() async {
-    final result =
-        await _methodChannel.invokeListMethod<String>('getDownloadedModels');
+    final result = await _methodChannel.invokeListMethod<String>(
+      'getDownloadedModels',
+    );
     return result ?? [];
   }
 
   @override
   Future<void> loadModel(String modelId) async {
-    debugPrint('[MethodChannel] → loadModel(modelId=$modelId)');
+    _debugLog('[MethodChannel] → loadModel(modelId=$modelId)');
     await _methodChannel.invokeMethod<void>('loadModel', {'modelId': modelId});
-    debugPrint('[MethodChannel] ← loadModel() done modelId=$modelId');
+    _debugLog('[MethodChannel] ← loadModel() done modelId=$modelId');
   }
 
   @override
   Future<void> cancelDownload(String modelId) async {
-    debugPrint('[MethodChannel] → cancelDownload(modelId=$modelId)');
-    await _methodChannel
-        .invokeMethod<void>('cancelDownload', {'modelId': modelId});
-    debugPrint('[MethodChannel] ← cancelDownload() done modelId=$modelId');
+    _debugLog('[MethodChannel] → cancelDownload(modelId=$modelId)');
+    await _methodChannel.invokeMethod<void>('cancelDownload', {
+      'modelId': modelId,
+    });
+    _debugLog('[MethodChannel] ← cancelDownload() done modelId=$modelId');
   }
 }
