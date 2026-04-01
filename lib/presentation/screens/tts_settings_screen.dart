@@ -569,7 +569,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
             initialValue:
                 currentInList ? settings.voicevoxSpeaker : items.first.value,
             decoration: const InputDecoration(
-              labelText: '話者',
+              labelText: 'スタイル（話者）',
               border: OutlineInputBorder(),
             ),
             items: items,
@@ -610,7 +610,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
       initialValue:
           fallbackCurrentInList ? settings.voicevoxSpeaker : fallbackSpeakerId,
       decoration: const InputDecoration(
-        labelText: '話者',
+        labelText: 'スタイル（話者）',
         border: OutlineInputBorder(),
       ),
       items: const <DropdownMenuItem<int>>[
@@ -673,6 +673,23 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
       return aIndex.compareTo(bIndex);
     }
     return a.compareTo(b);
+  }
+
+  bool _isNemoPresetVisible(AppSettings settings) {
+    final int speakerId = settings.voicevoxSpeaker;
+    if (_nemoSpeakerNames.containsKey(speakerId)) {
+      return true;
+    }
+    final List<VoicevoxModelInfo>? models = _voicevoxModels;
+    if (models == null) {
+      return false;
+    }
+    for (final VoicevoxModelInfo model in models) {
+      if (model.modelId == 'n0' && model.speakerIds.contains(speakerId)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   @override
@@ -742,58 +759,60 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                         ),
                       ),
                     ],
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: <Widget>[
-                        OutlinedButton(
-                          key: const Key('voicevox-preset-energetic-btn'),
-                          onPressed: _isLoadingModel
-                              ? null
-                              : () {
-                                  _applyVoicevoxPreset(
-                                    settings,
-                                    speed: _energeticPresetSpeed,
-                                    pitch: _energeticPresetPitch,
-                                    intonation: _energeticPresetIntonation,
-                                    volume: _energeticPresetVolume,
-                                  );
-                                },
-                          child: const Text('元気寄り'),
-                        ),
-                        OutlinedButton(
-                          key: const Key('voicevox-preset-calm-btn'),
-                          onPressed: _isLoadingModel
-                              ? null
-                              : () {
-                                  _applyVoicevoxPreset(
-                                    settings,
-                                    speed: _calmPresetSpeed,
-                                    pitch: _calmPresetPitch,
-                                    intonation: _calmPresetIntonation,
-                                    volume: _calmPresetVolume,
-                                  );
-                                },
-                          child: const Text('落ち着き寄り'),
-                        ),
-                        OutlinedButton(
-                          key: const Key('voicevox-preset-standard-btn'),
-                          onPressed: _isLoadingModel
-                              ? null
-                              : () {
-                                  _applyVoicevoxPreset(
-                                    settings,
-                                    speed: _standardPresetSpeed,
-                                    pitch: _standardPresetPitch,
-                                    intonation: _standardPresetIntonation,
-                                    volume: _standardPresetVolume,
-                                  );
-                                },
-                          child: const Text('標準に戻す'),
-                        ),
-                      ],
-                    ),
+                    if (_isNemoPresetVisible(settings)) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: <Widget>[
+                          OutlinedButton(
+                            key: const Key('voicevox-preset-energetic-btn'),
+                            onPressed: _isLoadingModel
+                                ? null
+                                : () {
+                                    _applyVoicevoxPreset(
+                                      settings,
+                                      speed: _energeticPresetSpeed,
+                                      pitch: _energeticPresetPitch,
+                                      intonation: _energeticPresetIntonation,
+                                      volume: _energeticPresetVolume,
+                                    );
+                                  },
+                            child: const Text('元気寄り'),
+                          ),
+                          OutlinedButton(
+                            key: const Key('voicevox-preset-calm-btn'),
+                            onPressed: _isLoadingModel
+                                ? null
+                                : () {
+                                    _applyVoicevoxPreset(
+                                      settings,
+                                      speed: _calmPresetSpeed,
+                                      pitch: _calmPresetPitch,
+                                      intonation: _calmPresetIntonation,
+                                      volume: _calmPresetVolume,
+                                    );
+                                  },
+                            child: const Text('落ち着き寄り'),
+                          ),
+                          OutlinedButton(
+                            key: const Key('voicevox-preset-standard-btn'),
+                            onPressed: _isLoadingModel
+                                ? null
+                                : () {
+                                    _applyVoicevoxPreset(
+                                      settings,
+                                      speed: _standardPresetSpeed,
+                                      pitch: _standardPresetPitch,
+                                      intonation: _standardPresetIntonation,
+                                      volume: _standardPresetVolume,
+                                    );
+                                  },
+                            child: const Text('標準'),
+                          ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     SettingsDoubleSliderField(
                       key: const Key('voicevox-speed-slider'),

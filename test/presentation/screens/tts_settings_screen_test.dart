@@ -475,6 +475,49 @@ void main() {
       expect(loaded.voicevoxVolume, closeTo(1.0, 0.0001));
     });
 
+    testWidgets('hides preset buttons when selected speaker is non-Nemo', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      await settingsStore.save(
+        AppSettings.defaults.copyWith(
+          voicevoxSpeaker: 0,
+        ),
+      );
+      final FakeCommentSpeechPlatform platform = FakeCommentSpeechPlatform();
+      platform.availableModelsToReturn = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'modelId': '0',
+          'displayName': 'VOICEVOX 四国めたん・ずんだもん',
+          'speakerIds': <int>[0, 2, 3],
+          'vvmFileName': '0.vvm',
+          'fileSizeBytes': 100,
+          'isBundled': true,
+          'downloadState': 'DOWNLOADED',
+        },
+      ];
+
+      await tester
+          .pumpWidget(_buildScreenWithPlatform(settingsStore, platform));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('voicevox-preset-energetic-btn'),
+            skipOffstage: false),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('voicevox-preset-calm-btn'), skipOffstage: false),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('voicevox-preset-standard-btn'),
+            skipOffstage: false),
+        findsNothing,
+      );
+    });
+
     testWidgets(
         'slider change pushes updated SpeechSettings to platform engine', (
       WidgetTester tester,
