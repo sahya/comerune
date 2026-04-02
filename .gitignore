@@ -48,3 +48,7 @@ android/app/src/main/assets/open_jtalk_dic_utf_8-1.11/
 
 # Claude Code
 .claude/
+
+# OpenAI Codex local project settings
+.codex
+.codex.project.toml
