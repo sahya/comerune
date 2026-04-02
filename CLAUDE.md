@@ -133,6 +133,11 @@ PR を作成する際、対応する Issue 番号がある場合は必ず PR の
 - Only the human owner may close an issue, after confirming that acceptance criteria are met.
 - When review or analysis is complete, indicate that the issue is ready for human decision and closure.
 
+## Issue Source Rules
+- GitHub Issue is the primary source of truth for scope and acceptance criteria.
+- Local issue files (for example `docs/issues/issue-xx.md`) are optional support materials.
+- If GitHub Issue and local issue files conflict, follow the GitHub Issue and report the mismatch.
+
 ## Special Instructions
 - Do not assume the human owner understands Flutter architecture deeply.
 - Therefore, explain architecture concerns in plain and concrete terms.

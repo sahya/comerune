@@ -734,6 +734,7 @@ void main() {
     Future<void> pumpWithFollowPrograms(
       WidgetTester tester, {
       required List<FollowProgram> programs,
+      ValueNotifier<DateTime?>? beginAtNotifier,
     }) async {
       final ConnectionSupervisor supervisor = ConnectionSupervisor();
       final SettingsStore settingsStore = SharedPreferencesSettingsStore(
@@ -753,6 +754,7 @@ void main() {
             settingsStore: settingsStore,
             userSessionStore: userSessionStore,
             followProgramRepository: repository,
+            beginAtNotifier: beginAtNotifier,
           ),
         ),
       );
@@ -863,6 +865,39 @@ void main() {
 
       expect(find.byType(CommentScreen), findsOneWidget);
     });
+
+    testWidgets(
+      'falls back to beginAtNotifier when follow beginAt is in the future',
+      (WidgetTester tester) async {
+        final DateTime notifierBeginAt = DateTime.now().subtract(
+          const Duration(minutes: 10),
+        );
+        final ValueNotifier<DateTime?> beginAtNotifier =
+            ValueNotifier<DateTime?>(notifierBeginAt);
+        addTearDown(beginAtNotifier.dispose);
+
+        await pumpWithFollowPrograms(
+          tester,
+          programs: <FollowProgram>[
+            FollowProgram(
+              programId: 'lv777888999',
+              title: 'future beginAt fallback test',
+              providerName: 'tester',
+              beginAt: DateTime.now().add(const Duration(hours: 2)),
+            ),
+          ],
+          beginAtNotifier: beginAtNotifier,
+        );
+
+        await tester.tap(find.text('future beginAt fallback test'));
+        await tester.pumpAndSettle();
+
+        final CommentScreen commentScreen = tester.widget<CommentScreen>(
+          find.byType(CommentScreen),
+        );
+        expect(commentScreen.beginAt, notifierBeginAt);
+      },
+    );
 
     testWidgets('hides list when programs are empty', (
       WidgetTester tester,
