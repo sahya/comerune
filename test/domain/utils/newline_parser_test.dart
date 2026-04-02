@@ -17,31 +17,19 @@ void main() {
     });
 
     test('parses multiple values', () {
-      expect(
-        parseNewlineSeparatedSet('111\n222\n333'),
-        {'111', '222', '333'},
-      );
+      expect(parseNewlineSeparatedSet('111\n222\n333'), {'111', '222', '333'});
     });
 
     test('trims whitespace from values', () {
-      expect(
-        parseNewlineSeparatedSet('  111  \n  222  '),
-        {'111', '222'},
-      );
+      expect(parseNewlineSeparatedSet('  111  \n  222  '), {'111', '222'});
     });
 
     test('ignores blank lines', () {
-      expect(
-        parseNewlineSeparatedSet('111\n\n222\n\n'),
-        {'111', '222'},
-      );
+      expect(parseNewlineSeparatedSet('111\n\n222\n\n'), {'111', '222'});
     });
 
     test('deduplicates values', () {
-      expect(
-        parseNewlineSeparatedSet('111\n111\n222'),
-        {'111', '222'},
-      );
+      expect(parseNewlineSeparatedSet('111\n111\n222'), {'111', '222'});
     });
   });
 
@@ -55,17 +43,18 @@ void main() {
     });
 
     test('lowercases values', () {
-      expect(
-        parseNewlineSeparatedLowerList('ABC\nDef\nghi'),
-        ['abc', 'def', 'ghi'],
-      );
+      expect(parseNewlineSeparatedLowerList('ABC\nDef\nghi'), [
+        'abc',
+        'def',
+        'ghi',
+      ]);
     });
 
     test('trims and filters blank lines', () {
-      expect(
-        parseNewlineSeparatedLowerList('  Hello \n\n  World  \n'),
-        ['hello', 'world'],
-      );
+      expect(parseNewlineSeparatedLowerList('  Hello \n\n  World  \n'), [
+        'hello',
+        'world',
+      ]);
     });
   });
 }

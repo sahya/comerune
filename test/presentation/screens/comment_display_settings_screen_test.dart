@@ -26,31 +26,53 @@ void main() {
       expect(loaded.showUserName, isTrue);
 
       await toggleSwitchByKey(
-          tester, _listKey, const Key('show-user-name-switch'));
+        tester,
+        _listKey,
+        const Key('show-user-name-switch'),
+      );
 
       loaded = await settingsStore.load();
       expect(loaded.showUserName, isFalse);
     });
 
-    testWidgets('disables resolveUserName switch when showUserName is off', (
-      WidgetTester tester,
-    ) async {
-      final SharedPreferencesSettingsStore settingsStore =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+    testWidgets(
+      'keeps resolveUserName switch enabled when showUserName is off',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
-      await tester.pumpWidget(_buildScreen(settingsStore));
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
 
-      // Turn off showUserName
-      await toggleSwitchByKey(
-          tester, _listKey, const Key('show-user-name-switch'));
+        // Turn off showUserName
+        await toggleSwitchByKey(
+          tester,
+          _listKey,
+          const Key('show-user-name-switch'),
+        );
 
-      // resolveUserName switch should now be disabled
-      final SwitchListTile resolveTile = tester.widget(
-        find.byKey(const Key('resolve-user-name-switch'), skipOffstage: false),
-      );
-      expect(resolveTile.onChanged, isNull);
-    });
+        // resolveUserName switch should remain enabled and be toggleable.
+        final SwitchListTile resolveTile = tester.widget(
+          find.byKey(
+            const Key('resolve-user-name-switch'),
+            skipOffstage: false,
+          ),
+        );
+        expect(resolveTile.onChanged, isNotNull);
+
+        AppSettings loaded = await settingsStore.load();
+        expect(loaded.resolveUserName, isTrue);
+
+        await toggleSwitchByKey(
+          tester,
+          _listKey,
+          const Key('resolve-user-name-switch'),
+        );
+        loaded = await settingsStore.load();
+        expect(loaded.resolveUserName, isFalse);
+        expect(loaded.showUserName, isFalse);
+      },
+    );
 
     testWidgets('auto-save comment log toggle persists value when turned off', (
       WidgetTester tester,
@@ -71,7 +93,10 @@ void main() {
 
       // Toggle OFF
       await toggleSwitchByKey(
-          tester, _listKey, const Key('auto-save-comment-log-switch'));
+        tester,
+        _listKey,
+        const Key('auto-save-comment-log-switch'),
+      );
 
       loaded = await settingsStore.load();
       expect(loaded.autoSaveCommentLog, isFalse);
@@ -88,7 +113,10 @@ void main() {
 
       // Parent is off by default; child toggles should be disabled.
       await scrollToKeyInList(
-          tester, _listKey, const Key('statistics-viewer-comment-switch'));
+        tester,
+        _listKey,
+        const Key('statistics-viewer-comment-switch'),
+      );
       SwitchListTile viewerTile = tester.widget(
         find.byKey(
           const Key('statistics-viewer-comment-switch'),
@@ -98,7 +126,10 @@ void main() {
       expect(viewerTile.onChanged, isNull);
 
       await scrollToKeyInList(
-          tester, _listKey, const Key('statistics-active-user-switch'));
+        tester,
+        _listKey,
+        const Key('statistics-active-user-switch'),
+      );
       SwitchListTile activeTile = tester.widget(
         find.byKey(
           const Key('statistics-active-user-switch'),
@@ -109,11 +140,17 @@ void main() {
 
       // Turn on parent.
       await toggleSwitchByKey(
-          tester, _listKey, const Key('statistics-enabled-switch'));
+        tester,
+        _listKey,
+        const Key('statistics-enabled-switch'),
+      );
 
       // Child toggles should now be enabled.
       await scrollToKeyInList(
-          tester, _listKey, const Key('statistics-viewer-comment-switch'));
+        tester,
+        _listKey,
+        const Key('statistics-viewer-comment-switch'),
+      );
       viewerTile = tester.widget(
         find.byKey(
           const Key('statistics-viewer-comment-switch'),
@@ -123,7 +160,10 @@ void main() {
       expect(viewerTile.onChanged, isNotNull);
 
       await scrollToKeyInList(
-          tester, _listKey, const Key('statistics-active-user-switch'));
+        tester,
+        _listKey,
+        const Key('statistics-active-user-switch'),
+      );
       activeTile = tester.widget(
         find.byKey(
           const Key('statistics-active-user-switch'),
@@ -137,8 +177,6 @@ void main() {
 
 Widget _buildScreen(SettingsStore settingsStore) {
   return MaterialApp(
-    home: CommentDisplaySettingsScreen(
-      settingsStore: settingsStore,
-    ),
+    home: CommentDisplaySettingsScreen(settingsStore: settingsStore),
   );
 }

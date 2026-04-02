@@ -20,6 +20,7 @@ import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
+import '../../domain/models/user_name_resolution.dart';
 import '../theme/app_theme.dart';
 import 'comment_log_stats_sheet.dart';
 import 'user_detail_sheet.dart';
@@ -57,11 +58,7 @@ void _debugLogLazy(String Function() messageBuilder) {
   appDebugLogLazy(messageBuilder);
 }
 
-void _errorLog(
-  String message, {
-  Object? error,
-  StackTrace? stackTrace,
-}) {
+void _errorLog(String message, {Object? error, StackTrace? stackTrace}) {
   appErrorLog(
     name: 'CommentScreen',
     message: message,
@@ -117,8 +114,7 @@ class CommentScreen extends StatefulWidget {
     this.beginAt,
     this.showUserName = true,
     this.commentFontSize = commentFontSizeDefault,
-    this.resolveUserName,
-    this.requestUserNameResolve,
+    this.userNameResolution,
     this.commentLogWriter,
     this.autoSaveCommentLog = false,
     this.autoSaveCommentLogPath = '',
@@ -167,11 +163,8 @@ class CommentScreen extends StatefulWidget {
   final bool showUserName;
   final double commentFontSize;
 
-  /// Returns the cached resolved name for a user ID, or null.
-  final String? Function(String userId)? resolveUserName;
-
-  /// Requests asynchronous resolution of a user ID.
-  final void Function(String userId)? requestUserNameResolve;
+  /// Bundles user-name resolution callbacks and listenable updates.
+  final UserNameResolution? userNameResolution;
 
   final CommentLogWriter? commentLogWriter;
   final bool autoSaveCommentLog;
@@ -382,8 +375,10 @@ class _CommentScreenState extends State<CommentScreen> {
       _submitNewCommentsForSpeech(widget.messages);
     }
 
-    final bool hasNewMessages =
-        _hasNewMessages(oldWidget.messages, widget.messages);
+    final bool hasNewMessages = _hasNewMessages(
+      oldWidget.messages,
+      widget.messages,
+    );
     if (hasNewMessages) {
       // Log new comment texts for debugging.
       _logNewComments(oldWidget.messages, widget.messages);
@@ -405,7 +400,8 @@ class _CommentScreenState extends State<CommentScreen> {
     _stopWakelockReleaseTimer();
     unawaited(WakelockPlus.disable());
     _debugLogLazy(
-        () => '[CommentScreen] dispose: speechStarted=$_speechStarted');
+      () => '[CommentScreen] dispose: speechStarted=$_speechStarted',
+    );
     _stopSpeechPollTimer();
     _speechEventSub?.cancel();
     if (_speechStarted) {
@@ -419,15 +415,15 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   void _requestUserNameResolution(List<AppMessage> messages) {
-    final void Function(String)? request = widget.requestUserNameResolve;
-    if (request == null) {
+    final UserNameResolution? resolution = widget.userNameResolution;
+    if (resolution == null) {
       return;
     }
 
     for (final AppMessage message in messages) {
       final String? userId = message.userId;
       if (userId != null && userId.isNotEmpty) {
-        request(userId);
+        resolution.requestResolve(userId);
       }
     }
   }
@@ -436,8 +432,8 @@ class _CommentScreenState extends State<CommentScreen> {
     List<AppMessage> oldMessages,
     List<AppMessage> newMessages,
   ) {
-    final void Function(String)? request = widget.requestUserNameResolve;
-    if (request == null) {
+    final UserNameResolution? resolution = widget.userNameResolution;
+    if (resolution == null) {
       return;
     }
 
@@ -458,7 +454,7 @@ class _CommentScreenState extends State<CommentScreen> {
     for (int i = start; i < newMessages.length; i++) {
       final String? userId = newMessages[i].userId;
       if (userId != null && userId.isNotEmpty) {
-        request(userId);
+        resolution.requestResolve(userId);
       }
     }
   }
@@ -480,7 +476,10 @@ class _CommentScreenState extends State<CommentScreen> {
     for (int i = start; i < newMessages.length; i++) {
       final AppMessage m = newMessages[i];
       if (m.type == AppMessageType.chat) {
-        _debugLogLazy(() => '[CommentScreen] newComment: ${m.content}');
+        _debugLogLazy(
+          () =>
+              '[CommentScreen] newComment: id=${m.id}, user=${m.userId ?? "unknown"}, chars=${m.content.length}',
+        );
       }
     }
   }
@@ -568,7 +567,7 @@ class _CommentScreenState extends State<CommentScreen> {
         try {
           await platform.stop(clearQueue: true);
         } catch (e) {
-          debugPrint('[CommentScreen] initSpeech: abort stop FAILED: $e');
+          _errorLog('[CommentScreen] initSpeech: abort stop FAILED', error: e);
         }
         return;
       }
@@ -600,9 +599,7 @@ class _CommentScreenState extends State<CommentScreen> {
     }
   }
 
-  Future<void> _handleSpeechSettingsChanged(
-    SpeechSettings oldSettings,
-  ) async {
+  Future<void> _handleSpeechSettingsChanged(SpeechSettings oldSettings) async {
     _debugLogLazy(
       () => '[CommentScreen] settingsChanged: enabled ${oldSettings.enabled}→'
           '${widget.speechSettings.enabled}, started=$_speechStarted',
@@ -663,21 +660,18 @@ class _CommentScreenState extends State<CommentScreen> {
 
   void _startSpeechPollTimer() {
     _stopSpeechPollTimer();
-    _speechPollTimer = Timer.periodic(
-      const Duration(seconds: 2),
-      (_) {
-        if (!mounted) return;
-        // Only poll when the app is not in a resumed (foreground) state.
-        // When resumed, didUpdateWidget already submits new comments.
-        final AppLifecycleState? lifecycleState =
-            WidgetsBinding.instance.lifecycleState;
-        if (lifecycleState == AppLifecycleState.resumed) return;
+    _speechPollTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!mounted) return;
+      // Only poll when the app is not in a resumed (foreground) state.
+      // When resumed, didUpdateWidget already submits new comments.
+      final AppLifecycleState? lifecycleState =
+          WidgetsBinding.instance.lifecycleState;
+      if (lifecycleState == AppLifecycleState.resumed) return;
 
-        if (_speechStarted && widget.speechSettings.enabled) {
-          _submitNewCommentsForSpeech(widget.messages);
-        }
-      },
-    );
+      if (_speechStarted && widget.speechSettings.enabled) {
+        _submitNewCommentsForSpeech(widget.messages);
+      }
+    });
   }
 
   void _stopSpeechPollTimer() {
@@ -755,7 +749,10 @@ class _CommentScreenState extends State<CommentScreen> {
       if (widget.readUserName) {
         final String? displayName = _resolveSpeechDisplayName(message);
         if (displayName != null && displayName.isNotEmpty) {
-          speechText = '$displayName、$speechText';
+          final String nameWithHonorific = _appendSan(displayName);
+          if (nameWithHonorific.isNotEmpty) {
+            speechText = '$speechText、$nameWithHonorific';
+          }
         }
       }
 
@@ -793,8 +790,9 @@ class _CommentScreenState extends State<CommentScreen> {
       final AppSettings settings = await store.load();
 
       TeachCommandResult result;
-      final TeachCommand? teach =
-          TeachCommandParser.parseTeach(message.content);
+      final TeachCommand? teach = TeachCommandParser.parseTeach(
+        message.content,
+      );
       if (teach != null) {
         result = TeachCommandHandler.executeTeach(
           command: teach,
@@ -802,8 +800,9 @@ class _CommentScreenState extends State<CommentScreen> {
           containsNgWord: settings.containsNgWord,
         );
       } else {
-        final UnteachCommand? unteach =
-            TeachCommandParser.parseUnteach(message.content);
+        final UnteachCommand? unteach = TeachCommandParser.parseUnteach(
+          message.content,
+        );
         if (unteach == null) {
           return;
         }
@@ -814,8 +813,9 @@ class _CommentScreenState extends State<CommentScreen> {
       }
 
       if (result.success && result.updatedRules != null) {
-        final AppSettings updated =
-            settings.copyWith(dictionaryRules: result.updatedRules);
+        final AppSettings updated = settings.copyWith(
+          dictionaryRules: result.updatedRules,
+        );
         await store.save(updated);
         widget.onDictionaryRulesChanged?.call(updated);
       }
@@ -887,8 +887,9 @@ class _CommentScreenState extends State<CommentScreen> {
               .where(_shouldDisplayMessage)
               .toList(growable: false);
 
-          final List<AppMessage> sortedMessages =
-              _applySortOrder(visibleMessages);
+          final List<AppMessage> sortedMessages = _applySortOrder(
+            visibleMessages,
+          );
           final AppThemeMode effectiveMode = AppTheme.resolveEffectiveMode(
             widget.themeMode,
             MediaQuery.platformBrightnessOf(context),
@@ -1086,9 +1087,11 @@ class _CommentScreenState extends State<CommentScreen> {
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               ListTile(
-                key: Key(isPinned
-                    ? 'action-unpin-${message.id}'
-                    : 'action-pin-${message.id}'),
+                key: Key(
+                  isPinned
+                      ? 'action-unpin-${message.id}'
+                      : 'action-pin-${message.id}',
+                ),
                 leading: Icon(
                   isPinned ? Icons.push_pin : Icons.push_pin_outlined,
                 ),
@@ -1155,22 +1158,16 @@ class _CommentScreenState extends State<CommentScreen> {
     if (userId == null) {
       return null;
     }
-    return widget.resolveUserName?.call(userId);
+    return widget.userNameResolution?.resolve(userId);
   }
 
   String? _resolveSpeechDisplayName(AppMessage message) {
     final String? userId = message.userId;
-    if (userId == null || userId.isEmpty) {
-      return null;
-    }
-
-    final String? nickname = widget.userNicknameMap[userId];
-    if (nickname != null && nickname.isNotEmpty) {
-      return nickname;
-    }
-
-    if (!_isNumericUserId(userId)) {
-      return null;
+    if (userId != null && userId.isNotEmpty) {
+      final String? nickname = widget.userNicknameMap[userId];
+      if (nickname != null && nickname.isNotEmpty) {
+        return nickname;
+      }
     }
 
     final String? userName = message.userName;
@@ -1178,7 +1175,11 @@ class _CommentScreenState extends State<CommentScreen> {
       return userName;
     }
 
-    final String? resolvedName = widget.resolveUserName?.call(userId);
+    if (userId == null || userId.isEmpty) {
+      return null;
+    }
+
+    final String? resolvedName = widget.userNameResolution?.resolve(userId);
     if (resolvedName != null && resolvedName.isNotEmpty) {
       return resolvedName;
     }
@@ -1186,8 +1187,14 @@ class _CommentScreenState extends State<CommentScreen> {
     return null;
   }
 
-  bool _isNumericUserId(String userId) {
-    return int.tryParse(userId) != null;
+  String _appendSan(String displayName) {
+    final String trimmedName = displayName.trim();
+    if (trimmedName.isEmpty ||
+        trimmedName.endsWith('さん') ||
+        trimmedName.endsWith('ちゃん')) {
+      return trimmedName;
+    }
+    return '$trimmedNameさん';
   }
 
   void _toggleSortOrder() {
@@ -1453,10 +1460,7 @@ class _CommentScreenState extends State<CommentScreen> {
     return true;
   }
 
-  bool _hasNewMessages(
-    List<AppMessage> previous,
-    List<AppMessage> current,
-  ) {
+  bool _hasNewMessages(List<AppMessage> previous, List<AppMessage> current) {
     if (identical(previous, current)) {
       return false;
     }
@@ -1732,6 +1736,7 @@ class _CommentScreenState extends State<CommentScreen> {
     const Map<String, String> lookAlike = <String, String>{
       '工': 'エ',
       '口': 'ロ',
+      '冂': 'ロ',
       '力': 'カ',
       '夕': 'タ',
       '二': 'ニ',
@@ -1746,6 +1751,7 @@ class _CommentScreenState extends State<CommentScreen> {
       '又': 'マ',
       '丁': 'テ',
       '己': 'コ',
+      '匚': 'コ',
       '巳': 'ミ',
       '也': 'ヤ',
       '刀': 'カ',
@@ -2001,9 +2007,7 @@ class _CommentScreenState extends State<CommentScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context)
           ..clearSnackBars()
-          ..showSnackBar(
-            const SnackBar(content: Text('保存するコメントがありません')),
-          );
+          ..showSnackBar(const SnackBar(content: Text('保存するコメントがありません')));
       }
       return;
     }
@@ -2026,9 +2030,7 @@ class _CommentScreenState extends State<CommentScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context)
             ..clearSnackBars()
-            ..showSnackBar(
-              const SnackBar(content: Text('コメントログの保存に失敗しました')),
-            );
+            ..showSnackBar(const SnackBar(content: Text('コメントログの保存に失敗しました')));
         }
         return;
       }
@@ -2037,9 +2039,7 @@ class _CommentScreenState extends State<CommentScreen> {
         final String fileName = tempPath.split('/').last;
         ScaffoldMessenger.of(context)
           ..clearSnackBars()
-          ..showSnackBar(
-            SnackBar(content: Text('コメントログを保存しました: $fileName')),
-          );
+          ..showSnackBar(SnackBar(content: Text('コメントログを保存しました: $fileName')));
       }
       await Share.shareXFiles(<XFile>[XFile(tempPath)]);
     } finally {
@@ -2081,15 +2081,11 @@ class _CommentScreenState extends State<CommentScreen> {
     if (savedPath != null) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(content: Text('コメントログを保存しました: $savedPath')),
-        );
+        ..showSnackBar(SnackBar(content: Text('コメントログを保存しました: $savedPath')));
     } else if (messagesForStatsAndLogs.isNotEmpty) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
-        ..showSnackBar(
-          const SnackBar(content: Text('コメントログの自動保存に失敗しました')),
-        );
+        ..showSnackBar(const SnackBar(content: Text('コメントログの自動保存に失敗しました')));
     }
   }
 
@@ -2154,10 +2150,7 @@ class _ProgramTitleBar extends StatelessWidget {
         children: <Widget>[
           if (broadcasterIconUrl != null &&
               broadcasterIconUrl!.isNotEmpty) ...<Widget>[
-            _BroadcasterIcon(
-              url: broadcasterIconUrl,
-              size: 20,
-            ),
+            _BroadcasterIcon(url: broadcasterIconUrl, size: 20),
             const SizedBox(width: 8),
           ],
           Expanded(
@@ -2470,10 +2463,7 @@ class _StatusBarState extends State<_StatusBar> {
 }
 
 class _BroadcasterIcon extends StatelessWidget {
-  const _BroadcasterIcon({
-    required this.url,
-    required this.size,
-  });
+  const _BroadcasterIcon({required this.url, required this.size});
 
   final String? url;
   final double size;
@@ -2492,15 +2482,9 @@ class _BroadcasterIcon extends StatelessWidget {
                 fit: BoxFit.cover,
                 cacheWidth: (size * 2).round(),
                 cacheHeight: (size * 2).round(),
-                errorBuilder: (_, __, ___) => Icon(
-                  Icons.person,
-                  size: size,
-                ),
+                errorBuilder: (_, __, ___) => Icon(Icons.person, size: size),
               )
-            : Icon(
-                Icons.person,
-                size: size,
-              ),
+            : Icon(Icons.person, size: size),
       ),
     );
   }
@@ -2626,10 +2610,7 @@ class _PinnedCommentRow extends StatelessWidget {
                 resolvedUserName: resolvedUserName,
                 beginAt: beginAt,
               ),
-              style: TextStyle(
-                fontSize: fontSize,
-                color: userColor,
-              ),
+              style: TextStyle(fontSize: fontSize, color: userColor),
             ),
           ),
           SizedBox(
@@ -2640,10 +2621,7 @@ class _PinnedCommentRow extends StatelessWidget {
               onPressed: onUnpin,
               padding: EdgeInsets.zero,
               iconSize: 16,
-              icon: Icon(
-                Icons.close,
-                color: themeColors.subtleTextColor,
-              ),
+              icon: Icon(Icons.close, color: themeColors.subtleTextColor),
             ),
           ),
         ],

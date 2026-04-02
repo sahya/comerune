@@ -24,6 +24,14 @@ class StubVoicevoxEngine : VoicevoxEngine {
         )
     }
 
+    override suspend fun prepareForModelDownload(): Result<Unit> {
+        return Result.failure(
+            UnsupportedOperationException(
+                "VoicevoxEngine JNI not yet available. See issue #42."
+            )
+        )
+    }
+
     override suspend fun synthesize(request: SpeechRequest): Result<WavSynthesisResult> {
         return Result.failure(
             UnsupportedOperationException(

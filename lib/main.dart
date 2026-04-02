@@ -43,8 +43,9 @@ Future<void> main() async {
     prefs: SharedPreferencesAdapter(prefs),
   );
   final AppSettings initialSettings = await settingsStore.load();
-  final UserSessionStore userSessionStore =
-      SecureUserSessionStore(prefs: prefs);
+  final UserSessionStore userSessionStore = SecureUserSessionStore(
+    prefs: prefs,
+  );
 
   final Directory appDocDir = await getApplicationDocumentsDirectory();
   final Directory tempDir = await getTemporaryDirectory();
@@ -54,8 +55,8 @@ Future<void> main() async {
   );
   final UserAttributeStore userAttributeStore =
       SharedPreferencesUserAttributeStore(
-    prefs: SharedPreferencesAdapter(prefs),
-  );
+        prefs: SharedPreferencesAdapter(prefs),
+      );
   // Run one-time migration tasks when the app version changes.
   // Awaited so that migrations complete before the app reads settings or
   // user data that a migration might alter.
@@ -128,14 +129,17 @@ class _ComeruneAppState extends State<ComeruneApp> {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   String _currentLv = '';
   int _ndgrHistoryCount = 100;
-  final ValueNotifier<String?> _programTitleNotifier =
-      ValueNotifier<String?>(null);
+  final ValueNotifier<String?> _programTitleNotifier = ValueNotifier<String?>(
+    null,
+  );
   final ValueNotifier<String?> _broadcasterNameNotifier =
       ValueNotifier<String?>(null);
-  final ValueNotifier<String?> _supplierUserIdNotifier =
-      ValueNotifier<String?>(null);
-  final ValueNotifier<DateTime?> _beginAtNotifier =
-      ValueNotifier<DateTime?>(null);
+  final ValueNotifier<String?> _supplierUserIdNotifier = ValueNotifier<String?>(
+    null,
+  );
+  final ValueNotifier<DateTime?> _beginAtNotifier = ValueNotifier<DateTime?>(
+    null,
+  );
   late final ValueNotifier<AppThemeMode> _themeModeNotifier;
   late final UserNameResolver _userNameResolver;
   late final FollowProgramRepository _followProgramRepository;
@@ -158,9 +162,9 @@ class _ComeruneAppState extends State<ComeruneApp> {
     }
     _ndgrHistoryCount =
         widget.initialSettings.pastCommentFetchCount.historyCount;
-    _themeModeNotifier =
-        ValueNotifier<AppThemeMode>(widget.initialSettings.themeMode)
-          ..addListener(_onThemeModeChanged);
+    _themeModeNotifier = ValueNotifier<AppThemeMode>(
+      widget.initialSettings.themeMode,
+    )..addListener(_onThemeModeChanged);
 
     _userNameResolver = UserNameResolver();
     _followProgramRepository = FollowProgramRepository();
@@ -212,13 +216,15 @@ class _ComeruneAppState extends State<ComeruneApp> {
       );
     }
 
-    _ndgrMessageSubscription =
-        _ndgrClient.messages.listen((AppMessage message) {
+    _ndgrMessageSubscription = _ndgrClient.messages.listen((
+      AppMessage message,
+    ) {
       _timelineStore.add(message);
       _statisticsStore.recordComment(message);
     });
-    _legacyMessageSubscription =
-        _legacyCommentClient.messages.listen((AppMessage message) {
+    _legacyMessageSubscription = _legacyCommentClient.messages.listen((
+      AppMessage message,
+    ) {
       _timelineStore.add(message);
       _statisticsStore.recordComment(message);
     });
@@ -318,13 +324,13 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     void Function(String userId)? onSupplierUserIdResolved,
     void Function(String? userId, String name)? onBroadcasterNameResolved,
     void Function(DateTime beginAt)? onBeginAtResolved,
-  })  : _lvProvider = lvProvider,
-        _userSessionProvider = userSessionProvider,
-        _programInfoResolver = programInfoResolver,
-        _onProgramTitleResolved = onProgramTitleResolved,
-        _onSupplierUserIdResolved = onSupplierUserIdResolved,
-        _onBroadcasterNameResolved = onBroadcasterNameResolved,
-        _onBeginAtResolved = onBeginAtResolved;
+  }) : _lvProvider = lvProvider,
+       _userSessionProvider = userSessionProvider,
+       _programInfoResolver = programInfoResolver,
+       _onProgramTitleResolved = onProgramTitleResolved,
+       _onSupplierUserIdResolved = onSupplierUserIdResolved,
+       _onBroadcasterNameResolved = onBroadcasterNameResolved,
+       _onBeginAtResolved = onBeginAtResolved;
 
   final String Function() _lvProvider;
   final Future<String> Function() _userSessionProvider;
@@ -393,9 +399,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
         'Resolved NDGR endpoint via programinfo API',
         name: 'SessionWsClientAdapter',
       );
-      return reconnect.SessionEndpoints(
-        ndgrViewApiUri: programInfo.viewUri,
-      );
+      return reconnect.SessionEndpoints(ndgrViewApiUri: programInfo.viewUri);
     } on ProgramInfoResolveException catch (error) {
       if (error.title != null) {
         _onProgramTitleResolved?.call(error.title!);
@@ -429,15 +433,11 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       onError: (Object error, StackTrace stackTrace) {
         final reconnect.SessionWsConnectException failure =
             reconnect.SessionWsConnectException(
-          reconnect.SessionWsConnectFailureKind.connectFailed,
-          cause: error,
-        );
+              reconnect.SessionWsConnectFailureKind.connectFailed,
+              cause: error,
+            );
         _recordSessionFailure(failure);
-        _completeEndpointError(
-          completer,
-          failure,
-          stackTrace: stackTrace,
-        );
+        _completeEndpointError(completer, failure, stackTrace: stackTrace);
       },
     );
 
@@ -493,17 +493,14 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       case session_impl.SessionWsEventType.ndgrEndpointResolved:
         final Uri? uri = Uri.tryParse(event.ndgrViewUri ?? '');
         if (uri == null) {
-          final reconnect.SessionWsConnectException failure =
-              reconnect.SessionWsConnectException(
+          final reconnect.SessionWsConnectException
+          failure = reconnect.SessionWsConnectException(
             reconnect.SessionWsConnectFailureKind.endpointParseFailed,
             cause:
                 'Invalid NDGR endpoint URI: ${event.ndgrViewUri ?? '(empty)'}',
           );
           _recordSessionFailure(failure);
-          _completeEndpointError(
-            completer,
-            failure,
-          );
+          _completeEndpointError(completer, failure);
           break;
         }
         if (!completer.isCompleted) {
@@ -513,17 +510,14 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       case session_impl.SessionWsEventType.legacyEndpointResolved:
         final Uri? uri = Uri.tryParse(event.legacyWebSocketUrl ?? '');
         if (uri == null) {
-          final reconnect.SessionWsConnectException failure =
-              reconnect.SessionWsConnectException(
+          final reconnect.SessionWsConnectException
+          failure = reconnect.SessionWsConnectException(
             reconnect.SessionWsConnectFailureKind.endpointParseFailed,
             cause:
                 'Invalid legacy endpoint URI: ${event.legacyWebSocketUrl ?? '(empty)'}',
           );
           _recordSessionFailure(failure);
-          _completeEndpointError(
-            completer,
-            failure,
-          );
+          _completeEndpointError(completer, failure);
           break;
         }
         if (!completer.isCompleted) {
@@ -536,10 +530,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
           fallbackKind: reconnect.SessionWsConnectFailureKind.connectFailed,
         );
         _recordSessionFailure(failure);
-        _completeEndpointError(
-          completer,
-          failure,
-        );
+        _completeEndpointError(completer, failure);
         _emitSessionEvent(
           const reconnect.SessionWsEvent(
             reconnect.SessionWsEventType.disconnected,
@@ -552,10 +543,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
           fallbackKind: reconnect.SessionWsConnectFailureKind.broadcastEnded,
         );
         _recordSessionFailure(failure);
-        _completeEndpointError(
-          completer,
-          failure,
-        );
+        _completeEndpointError(completer, failure);
         _emitSessionEvent(
           const reconnect.SessionWsEvent(
             reconnect.SessionWsEventType.broadcastEnded,
@@ -576,8 +564,11 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
             ),
           );
         } else {
-          _completeEndpointError(completer, failure,
-              stackTrace: event.stackTrace);
+          _completeEndpointError(
+            completer,
+            failure,
+            stackTrace: event.stackTrace,
+          );
         }
         break;
     }
@@ -633,7 +624,8 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       case session_impl.SessionWsErrorCode.endpointResolveFailed:
         return reconnect.SessionWsConnectException(
           reconnect.SessionWsConnectFailureKind.endpointResolveTimeout,
-          cause: cause ??
+          cause:
+              cause ??
               _defaultCauseForKind(
                 reconnect.SessionWsConnectFailureKind.endpointResolveTimeout,
               ),
@@ -642,7 +634,8 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       case session_impl.SessionWsErrorCode.keepaliveResponseFailed:
         return reconnect.SessionWsConnectException(
           reconnect.SessionWsConnectFailureKind.connectFailed,
-          cause: cause ??
+          cause:
+              cause ??
               _defaultCauseForKind(
                 reconnect.SessionWsConnectFailureKind.connectFailed,
               ),
@@ -650,7 +643,8 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       case session_impl.SessionWsErrorCode.unknownBroadcastEndEvent:
         return reconnect.SessionWsConnectException(
           reconnect.SessionWsConnectFailureKind.broadcastEnded,
-          cause: cause ??
+          cause:
+              cause ??
               _defaultCauseForKind(
                 reconnect.SessionWsConnectFailureKind.broadcastEnded,
               ),
@@ -681,8 +675,8 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
   _NdgrClientAdapter({
     required ndgr_impl.NdgrClient client,
     required int Function() historyCountProvider,
-  })  : _client = client,
-        _historyCountProvider = historyCountProvider {
+  }) : _client = client,
+       _historyCountProvider = historyCountProvider {
     _clientEventsSubscription = _client.events.listen(
       _handleClientEvent,
       onError: (_, __) {
@@ -700,7 +694,7 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
   final StreamController<int?> _viewerCountController =
       StreamController<int?>.broadcast();
   late final StreamSubscription<ndgr_impl.NdgrClientEvent>
-      _clientEventsSubscription;
+  _clientEventsSubscription;
 
   Future<void>? _activeConnectFuture;
   Completer<void>? _pendingStartupCompleter;
@@ -857,7 +851,7 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
 
 class _LegacyCommentClientAdapter implements reconnect.LegacyCommentClient {
   _LegacyCommentClientAdapter({required legacy_impl.LegacyCommentClient client})
-      : _client = client {
+    : _client = client {
     _messageSubscription = _client.messages.listen((AppMessage message) {
       if (_messagesController.isClosed) {
         return;
@@ -884,7 +878,7 @@ class _LegacyCommentClientAdapter implements reconnect.LegacyCommentClient {
       StreamController<AppMessage>.broadcast();
   late final StreamSubscription<AppMessage> _messageSubscription;
   late final StreamSubscription<legacy_impl.LegacyCommentClientError>
-      _errorSubscription;
+  _errorSubscription;
 
   bool _isDisconnecting = false;
 

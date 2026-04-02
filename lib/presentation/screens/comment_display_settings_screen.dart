@@ -7,10 +7,7 @@ import '../mixins/settings_screen_mixin.dart';
 import '../widgets/settings_widgets.dart';
 
 class CommentDisplaySettingsScreen extends StatefulWidget {
-  const CommentDisplaySettingsScreen({
-    super.key,
-    required this.settingsStore,
-  });
+  const CommentDisplaySettingsScreen({super.key, required this.settingsStore});
 
   final SettingsStore settingsStore;
 
@@ -20,7 +17,8 @@ class CommentDisplaySettingsScreen extends StatefulWidget {
 }
 
 class _CommentDisplaySettingsScreenState
-    extends State<CommentDisplaySettingsScreen> with SettingsScreenMixin {
+    extends State<CommentDisplaySettingsScreen>
+    with SettingsScreenMixin {
   @override
   SettingsStore get settingsStore => widget.settingsStore;
 
@@ -35,9 +33,7 @@ class _CommentDisplaySettingsScreenState
     final AppSettings? settings = this.settings;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('コメント表示設定'),
-      ),
+      appBar: AppBar(title: const Text('コメント表示設定')),
       body: settings == null
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -63,12 +59,11 @@ class _CommentDisplaySettingsScreenState
                       subtitle: const Text('数値IDをニックネームに変換'),
                       contentPadding: EdgeInsets.zero,
                       value: settings.resolveUserName,
-                      onChanged: settings.showUserName
-                          ? (bool value) {
-                              updateAndSave(
-                                  settings.copyWith(resolveUserName: value));
-                            }
-                          : null,
+                      onChanged: (bool value) {
+                        updateAndSave(
+                          settings.copyWith(resolveUserName: value),
+                        );
+                      },
                     ),
                     SwitchListTile(
                       key: const Key('auto-save-comment-log-switch'),
@@ -78,15 +73,17 @@ class _CommentDisplaySettingsScreenState
                       value: settings.autoSaveCommentLog,
                       onChanged: (bool value) async {
                         if (value) {
-                          final String? directory =
-                              await FilePicker.platform.getDirectoryPath();
+                          final String? directory = await FilePicker.platform
+                              .getDirectoryPath();
                           if (directory == null) {
                             return;
                           }
-                          updateAndSave(settings.copyWith(
-                            autoSaveCommentLog: true,
-                            autoSaveCommentLogPath: directory,
-                          ));
+                          updateAndSave(
+                            settings.copyWith(
+                              autoSaveCommentLog: true,
+                              autoSaveCommentLogPath: directory,
+                            ),
+                          );
                         } else {
                           updateAndSave(
                             settings.copyWith(autoSaveCommentLog: false),
@@ -111,8 +108,8 @@ class _CommentDisplaySettingsScreenState
                       value: settings.commentFontSize.round(),
                       min: commentFontSizeMin.round(),
                       max: commentFontSizeMax.round(),
-                      divisions:
-                          (commentFontSizeMax - commentFontSizeMin).round(),
+                      divisions: (commentFontSizeMax - commentFontSizeMin)
+                          .round(),
                       suffix: 'px',
                       sweetSpotMin: 12,
                       sweetSpotMax: 18,
@@ -135,9 +132,9 @@ class _CommentDisplaySettingsScreenState
                           .map(
                             (PastCommentFetchCount value) =>
                                 DropdownMenuItem<PastCommentFetchCount>(
-                              value: value,
-                              child: Text(value.label),
-                            ),
+                                  value: value,
+                                  child: Text(value.label),
+                                ),
                           )
                           .toList(),
                       onChanged: (PastCommentFetchCount? value) {

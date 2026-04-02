@@ -93,8 +93,11 @@ void main() {
       for (final String invalid in <String>['abc', '', 'unknown']) {
         await prefs.setString('settings.comment.fontSize', invalid);
         final AppSettings loaded = await store.load();
-        expect(loaded.commentFontSize, commentFontSizeDefault,
-            reason: '"$invalid" should fall back to default');
+        expect(
+          loaded.commentFontSize,
+          commentFontSizeDefault,
+          reason: '"$invalid" should fall back to default',
+        );
       }
     });
 
@@ -131,15 +134,17 @@ void main() {
       expect(loaded.autoSaveCommentLog, isTrue);
     });
 
-    test('autoSaveCommentLogPath defaults to empty string when not stored',
-        () async {
-      final SharedPreferencesSettingsStore store =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+    test(
+      'autoSaveCommentLogPath defaults to empty string when not stored',
+      () async {
+        final SharedPreferencesSettingsStore store =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
-      final AppSettings loaded = await store.load();
+        final AppSettings loaded = await store.load();
 
-      expect(loaded.autoSaveCommentLogPath, isEmpty);
-    });
+        expect(loaded.autoSaveCommentLogPath, isEmpty);
+      },
+    );
 
     test('round-trips autoSaveCommentLogPath value', () async {
       final SharedPreferencesSettingsStore store =
@@ -238,8 +243,9 @@ void main() {
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
       for (final AppThemeMode mode in AppThemeMode.values) {
-        final AppSettings original =
-            AppSettings.defaults.copyWith(themeMode: mode);
+        final AppSettings original = AppSettings.defaults.copyWith(
+          themeMode: mode,
+        );
         await store.save(original);
 
         final AppSettings loaded = await store.load();
@@ -256,25 +262,29 @@ void main() {
       expect(loaded.statisticsEnabled, isFalse);
     });
 
-    test('statisticsViewerCommentEnabled defaults to true when not stored',
-        () async {
-      final SharedPreferencesSettingsStore store =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+    test(
+      'statisticsViewerCommentEnabled defaults to true when not stored',
+      () async {
+        final SharedPreferencesSettingsStore store =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
-      final AppSettings loaded = await store.load();
+        final AppSettings loaded = await store.load();
 
-      expect(loaded.statisticsViewerCommentEnabled, isTrue);
-    });
+        expect(loaded.statisticsViewerCommentEnabled, isTrue);
+      },
+    );
 
-    test('statisticsActiveUserEnabled defaults to true when not stored',
-        () async {
-      final SharedPreferencesSettingsStore store =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+    test(
+      'statisticsActiveUserEnabled defaults to true when not stored',
+      () async {
+        final SharedPreferencesSettingsStore store =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
-      final AppSettings loaded = await store.load();
+        final AppSettings loaded = await store.load();
 
-      expect(loaded.statisticsActiveUserEnabled, isTrue);
-    });
+        expect(loaded.statisticsActiveUserEnabled, isTrue);
+      },
+    );
 
     test('round-trips statistics settings', () async {
       final SharedPreferencesSettingsStore store =
@@ -295,15 +305,16 @@ void main() {
     });
 
     test(
-        'dictionaryRules defaults to defaultNicoDictionaryRules when not stored',
-        () async {
-      final SharedPreferencesSettingsStore store =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      'dictionaryRules defaults to defaultNicoDictionaryRules when not stored',
+      () async {
+        final SharedPreferencesSettingsStore store =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
-      final AppSettings loaded = await store.load();
+        final AppSettings loaded = await store.load();
 
-      expect(loaded.dictionaryRules, defaultNicoDictionaryRules);
-    });
+        expect(loaded.dictionaryRules, defaultNicoDictionaryRules);
+      },
+    );
 
     test('round-trips dictionaryRules', () async {
       final SharedPreferencesSettingsStore store =
@@ -313,8 +324,9 @@ void main() {
         ReplaceRule(pattern: r'w+', replacement: 'わら'),
         ReplaceRule(pattern: '初見', replacement: 'しょけん', enabled: false),
       ];
-      final AppSettings original =
-          AppSettings.defaults.copyWith(dictionaryRules: rules);
+      final AppSettings original = AppSettings.defaults.copyWith(
+        dictionaryRules: rules,
+      );
       await store.save(original);
 
       final AppSettings loaded = await store.load();
@@ -332,8 +344,9 @@ void main() {
       final SharedPreferencesSettingsStore store =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
-      final AppSettings original =
-          AppSettings.defaults.copyWith(dictionaryRules: const <ReplaceRule>[]);
+      final AppSettings original = AppSettings.defaults.copyWith(
+        dictionaryRules: const <ReplaceRule>[],
+      );
       await store.save(original);
 
       final AppSettings loaded = await store.load();
@@ -399,20 +412,22 @@ void main() {
       expect(loaded.voicevoxTermsAccepted, isTrue);
     });
 
-    test('falls back to defaults for malformed dictionaryRules array',
-        () async {
-      final InMemorySharedPreferences prefs = InMemorySharedPreferences();
-      final SharedPreferencesSettingsStore store =
-          SharedPreferencesSettingsStore(prefs: prefs);
+    test(
+      'falls back to defaults for malformed dictionaryRules array',
+      () async {
+        final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+        final SharedPreferencesSettingsStore store =
+            SharedPreferencesSettingsStore(prefs: prefs);
 
-      await prefs.setString(
-        'settings.speech.dictionaryRules',
-        '[{"pattern": 123}]',
-      );
+        await prefs.setString(
+          'settings.speech.dictionaryRules',
+          '[{"pattern": 123}]',
+        );
 
-      final AppSettings loaded = await store.load();
+        final AppSettings loaded = await store.load();
 
-      expect(loaded.dictionaryRules, defaultNicoDictionaryRules);
-    });
+        expect(loaded.dictionaryRules, defaultNicoDictionaryRules);
+      },
+    );
   });
 }

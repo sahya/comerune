@@ -40,10 +40,7 @@ class SettingsSection extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text(
-              title,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
+            Text(title, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             ...children,
           ],
@@ -111,8 +108,9 @@ class SettingsIntSliderField extends StatelessWidget {
             max: max.toDouble(),
             divisions: divisions,
             value: value.toDouble(),
-            semanticFormatterCallback:
-                suffix.isNotEmpty ? (double v) => '${v.round()}$suffix' : null,
+            semanticFormatterCallback: suffix.isNotEmpty
+                ? (double v) => '${v.round()}$suffix'
+                : null,
             onChanged: (double next) {
               onChanged(next.round());
             },
@@ -167,10 +165,9 @@ class _SweetSpotSlider extends StatelessWidget {
               height: 20,
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .primary
-                      .withValues(alpha: 0.1),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),

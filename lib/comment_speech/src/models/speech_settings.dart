@@ -43,24 +43,24 @@ class SpeechSettings {
   });
 
   Map<String, dynamic> toMap() => {
-        'enabled': enabled,
-        'speakerId': speakerId,
-        'speedScale': speedScale,
-        'pitchScale': pitchScale,
-        'intonationScale': intonationScale,
-        'volumeScale': volumeScale,
-        'prePhonemeLength': prePhonemeLength,
-        'postPhonemeLength': postPhonemeLength,
-        'maxTextLength': maxTextLength,
-        'maxQueueSize': maxQueueSize,
-        'duplicateWindowMs': duplicateWindowMs,
-        'skipEmojiOnly': skipEmojiOnly,
-        'skipUrlOnly': skipUrlOnly,
-        'replaceUrlWith': replaceUrlWith,
-        'trimLongTextSuffix': trimLongTextSuffix,
-        'dictionaryRules': dictionaryRules.map((r) => r.toMap()).toList(),
-        'ngWords': ngWords,
-      };
+    'enabled': enabled,
+    'speakerId': speakerId,
+    'speedScale': speedScale,
+    'pitchScale': pitchScale,
+    'intonationScale': intonationScale,
+    'volumeScale': volumeScale,
+    'prePhonemeLength': prePhonemeLength,
+    'postPhonemeLength': postPhonemeLength,
+    'maxTextLength': maxTextLength,
+    'maxQueueSize': maxQueueSize,
+    'duplicateWindowMs': duplicateWindowMs,
+    'skipEmojiOnly': skipEmojiOnly,
+    'skipUrlOnly': skipUrlOnly,
+    'replaceUrlWith': replaceUrlWith,
+    'trimLongTextSuffix': trimLongTextSuffix,
+    'dictionaryRules': dictionaryRules.map((r) => r.toMap()).toList(),
+    'ngWords': ngWords,
+  };
 
   @override
   bool operator ==(Object other) =>
@@ -86,22 +86,22 @@ class SpeechSettings {
 
   @override
   int get hashCode => Object.hash(
-        enabled,
-        speakerId,
-        speedScale,
-        pitchScale,
-        intonationScale,
-        volumeScale,
-        prePhonemeLength,
-        postPhonemeLength,
-        maxTextLength,
-        maxQueueSize,
-        duplicateWindowMs,
-        skipEmojiOnly,
-        skipUrlOnly,
-        replaceUrlWith,
-        trimLongTextSuffix,
-        Object.hashAll(dictionaryRules),
-        Object.hashAll(ngWords),
-      );
+    enabled,
+    speakerId,
+    speedScale,
+    pitchScale,
+    intonationScale,
+    volumeScale,
+    prePhonemeLength,
+    postPhonemeLength,
+    maxTextLength,
+    maxQueueSize,
+    duplicateWindowMs,
+    skipEmojiOnly,
+    skipUrlOnly,
+    replaceUrlWith,
+    trimLongTextSuffix,
+    Object.hashAll(dictionaryRules),
+    Object.hashAll(ngWords),
+  );
 }

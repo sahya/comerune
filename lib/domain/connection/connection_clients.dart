@@ -1,7 +1,4 @@
-enum SessionWsEventType {
-  disconnected,
-  broadcastEnded,
-}
+enum SessionWsEventType { disconnected, broadcastEnded }
 
 class SessionWsEvent {
   const SessionWsEvent(this.type);
@@ -17,10 +14,7 @@ enum SessionWsConnectFailureKind {
 }
 
 class SessionWsConnectException implements Exception {
-  const SessionWsConnectException(
-    this.kind, {
-    this.cause,
-  });
+  const SessionWsConnectException(this.kind, {this.cause});
 
   final SessionWsConnectFailureKind kind;
   final Object? cause;
@@ -34,26 +28,17 @@ abstract class SessionWsClient {
   Future<void> disconnect();
 }
 
-enum NdgrEventType {
-  disconnected,
-  stalled,
-}
+enum NdgrEventType { disconnected, stalled }
 
 class NdgrResumeCursor {
-  const NdgrResumeCursor({
-    this.at,
-    this.next,
-  });
+  const NdgrResumeCursor({this.at, this.next});
 
   final String? at;
   final String? next;
 }
 
 class NdgrEvent {
-  const NdgrEvent(
-    this.type, {
-    this.resumeCursor,
-  });
+  const NdgrEvent(this.type, {this.resumeCursor});
 
   final NdgrEventType type;
   final NdgrResumeCursor? resumeCursor;
@@ -62,17 +47,12 @@ class NdgrEvent {
 abstract class NdgrClient {
   Stream<NdgrEvent> get events;
 
-  Future<void> connect(
-    Uri viewApiUri, {
-    NdgrResumeCursor? resumeCursor,
-  });
+  Future<void> connect(Uri viewApiUri, {NdgrResumeCursor? resumeCursor});
 
   Future<void> disconnect();
 }
 
-enum LegacyCommentEventType {
-  disconnected,
-}
+enum LegacyCommentEventType { disconnected }
 
 class LegacyCommentEvent {
   const LegacyCommentEvent(this.type);
@@ -89,10 +69,7 @@ abstract class LegacyCommentClient {
 }
 
 class SessionEndpoints {
-  const SessionEndpoints({
-    this.ndgrViewApiUri,
-    this.legacyWsUrl,
-  });
+  const SessionEndpoints({this.ndgrViewApiUri, this.legacyWsUrl});
 
   final Uri? ndgrViewApiUri;
   final Uri? legacyWsUrl;

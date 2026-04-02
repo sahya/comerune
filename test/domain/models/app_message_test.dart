@@ -63,15 +63,12 @@ void main() {
   // equality の positive / negative 両方向を検証する。
 
   test('AppMessageType has expected values', () {
-    expect(
-      AppMessageType.values,
-      <AppMessageType>[
-        AppMessageType.chat,
-        AppMessageType.operator,
-        AppMessageType.notification,
-        AppMessageType.gift,
-        AppMessageType.nicoad,
-      ],
-    );
+    expect(AppMessageType.values, <AppMessageType>[
+      AppMessageType.chat,
+      AppMessageType.operator,
+      AppMessageType.notification,
+      AppMessageType.gift,
+      AppMessageType.nicoad,
+    ]);
   });
 }

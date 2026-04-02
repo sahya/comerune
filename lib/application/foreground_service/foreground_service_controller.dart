@@ -16,9 +16,9 @@ class ForegroundServiceController {
     required ForegroundServiceManager foregroundServiceManager,
     required ConnectionSupervisor connectionSupervisor,
     required ValueNotifier<String?> programTitleNotifier,
-  })  : _manager = foregroundServiceManager,
-        _connectionSupervisor = connectionSupervisor,
-        _programTitleNotifier = programTitleNotifier {
+  }) : _manager = foregroundServiceManager,
+       _connectionSupervisor = connectionSupervisor,
+       _programTitleNotifier = programTitleNotifier {
     _connectionSupervisor.addListener(_onConnectionStatusChanged);
     _programTitleNotifier.addListener(_onProgramTitleChanged);
   }

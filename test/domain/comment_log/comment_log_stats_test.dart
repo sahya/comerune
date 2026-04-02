@@ -22,8 +22,9 @@ AppMessage _msg({
 void main() {
   group('CommentLogStats.fromMessages', () {
     test('returns zero stats for empty list', () {
-      final CommentLogStats stats =
-          CommentLogStats.fromMessages(const <AppMessage>[]);
+      final CommentLogStats stats = CommentLogStats.fromMessages(
+        const <AppMessage>[],
+      );
 
       expect(stats.totalComments, 0);
       expect(stats.uniqueUserCount, 0);
@@ -38,12 +39,7 @@ void main() {
       final List<AppMessage> messages = <AppMessage>[
         _msg(id: '1', timestamp: base, userId: 'u1'),
         _msg(id: '2', timestamp: base, userId: 'u2'),
-        _msg(
-          id: '3',
-          timestamp: base,
-          userId: 'u3',
-          type: AppMessageType.gift,
-        ),
+        _msg(id: '3', timestamp: base, userId: 'u3', type: AppMessageType.gift),
         _msg(
           id: '4',
           timestamp: base,
@@ -195,12 +191,16 @@ void main() {
   group('CommentLogStats.formatDuration', () {
     test('formats less than 1 minute', () {
       expect(
-          CommentLogStats.formatDuration(const Duration(seconds: 30)), '1分未満');
+        CommentLogStats.formatDuration(const Duration(seconds: 30)),
+        '1分未満',
+      );
     });
 
     test('formats minutes only', () {
       expect(
-          CommentLogStats.formatDuration(const Duration(minutes: 45)), '45分');
+        CommentLogStats.formatDuration(const Duration(minutes: 45)),
+        '45分',
+      );
     });
 
     test('formats hours only', () {
@@ -323,11 +323,13 @@ void main() {
         final int count = (minute % 6 == 0) ? 20 : 1;
         cpm[minute] = count;
         for (int c = 0; c < count; c++) {
-          messages.add(_msg(
-            id: 'm${minute}_$c',
-            timestamp: base.add(Duration(minutes: minute, seconds: c)),
-            userId: 'u$c',
-          ));
+          messages.add(
+            _msg(
+              id: 'm${minute}_$c',
+              timestamp: base.add(Duration(minutes: minute, seconds: c)),
+              userId: 'u$c',
+            ),
+          );
         }
       }
 

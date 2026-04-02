@@ -7,6 +7,7 @@ import com.example.comerune.speech.domain.model.SpeechRequest
 import com.example.comerune.speech.domain.model.TtsEngineState
 import com.example.comerune.speech.domain.model.VoicevoxModelManifest
 import com.example.comerune.speech.domain.model.WavSynthesisResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -21,10 +22,8 @@ import java.util.zip.GZIPInputStream
 /**
  * Real implementation of [VoicevoxEngine] backed by VOICEVOX Core 0.16.2 via JNI.
  *
- * On [initialize], this class downloads OpenJTalk dictionary and VVM model files
- * from GitHub releases on first use (one-time operation), then initializes the
- * native synthesizer. Subsequent launches skip the download if assets are already
- * present and the version marker matches.
+ * [initialize] only uses local assets and never performs network downloads.
+ * Asset downloads are user-triggered via [prepareForModelDownload].
  *
  * @param context Android application context used for file storage.
  *                Must be an application context to avoid activity lifecycle leaks.
@@ -67,6 +66,49 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         private fun sanitize(value: Float, fallback: Float): Float =
             if (value.isNaN() || value.isInfinite()) fallback else value
 
+        internal fun buildMissingAssetsMessage(hasDict: Boolean, hasAnyVvm: Boolean): String? {
+            if (hasDict && hasAnyVvm) {
+                return null
+            }
+            val missing = mutableListOf<String>()
+            if (!hasDict) {
+                missing += "open_jtalk 辞書"
+            }
+            if (!hasAnyVvm) {
+                missing += "音声モデル"
+            }
+            return "VOICEVOXの初期化に必要なデータが未準備です（不足: ${missing.joinToString("・")}）。" +
+                "話者ライブラリでモデルをダウンロードしてください。"
+        }
+
+        internal fun buildPrepareForModelDownloadFailure(exception: Exception): RuntimeException {
+            val message = when (exception) {
+                is IOException ->
+                    "VOICEVOX辞書のダウンロードに失敗しました。ネットワーク接続を確認してください。"
+                else ->
+                    exception.message ?: "Unknown dictionary download error"
+            }
+            return RuntimeException(message, exception)
+        }
+
+        internal suspend fun runPrepareForModelDownload(
+            previousState: TtsEngineState,
+            updateEngineState: (TtsEngineState, String) -> Unit,
+            prepareAction: suspend () -> Unit
+        ): Result<Unit> {
+            return try {
+                prepareAction()
+                updateEngineState(previousState, "prepare_download_completed")
+                Result.success(Unit)
+            } catch (e: CancellationException) {
+                updateEngineState(previousState, "prepare_download_cancelled_restore")
+                throw e
+            } catch (e: Exception) {
+                updateEngineState(previousState, "prepare_download_failed_restore")
+                Result.failure(buildPrepareForModelDownloadFailure(e))
+            }
+        }
+
         /**
          * Increment this when remote assets change to force re-download.
          * The effective version used for comparison also includes the app's
@@ -78,9 +120,6 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
 
         private const val OPEN_JTALK_DICT_URL =
             "https://github.com/r9y9/open_jtalk/releases/download/v1.11.1/open_jtalk_dic_utf_8-1.11.tar.gz"
-        private const val VVM_DOWNLOAD_URL =
-            "https://github.com/VOICEVOX/voicevox_vvm/releases/download/0.16.2/0.vvm"
-
         private const val CONNECT_TIMEOUT_MS = 30_000
         private const val READ_TIMEOUT_MS = 120_000
         private const val PROGRESS_REPORT_INTERVAL_BYTES = 1_048_576L // 1 MB
@@ -95,6 +134,8 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
     private val mutex = Mutex()
     private val loadedModelPaths: MutableSet<String> = ConcurrentHashMap.newKeySet()
     private val loadedModelIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
+    private class MissingAssetsException(message: String) : IllegalStateException(message)
 
     /**
      * Optional callback invoked during asset download to report progress.
@@ -118,7 +159,7 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                 )
             }
 
-            state = TtsEngineState.INITIALIZING
+            updateEngineState(TtsEngineState.INITIALIZING, "initialize_started")
             loadedModelPaths.clear()
             loadedModelIds.clear()
 
@@ -128,7 +169,8 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                     val dictDir = File(baseDir, OPEN_JTALK_DICT_DIR_NAME)
                     val modelDir = File(baseDir, VVM_DIR_NAME)
 
-                    ensureAssetsAvailable(baseDir, dictDir, modelDir)
+                    ensureLocalAssetsAvailable(dictDir, modelDir)
+                    updateEngineState(TtsEngineState.INITIALIZING, "assets_ready")
 
                     Log.i(TAG, "Calling NativeVoicevoxBridge.nativeInitialize(${dictDir.absolutePath})")
                     val initialized = NativeVoicevoxBridge.nativeInitialize(
@@ -167,23 +209,40 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                     }
                 }
 
-                state = TtsEngineState.READY
+                updateEngineState(TtsEngineState.READY, "initialize_completed")
                 Log.i(TAG, "VOICEVOX engine initialized successfully")
                 Result.success(Unit)
             } catch (e: Throwable) {
-                state = TtsEngineState.ERROR
+                updateEngineState(TtsEngineState.ERROR, "initialize_failed")
                 loadedModelPaths.clear()
                 loadedModelIds.clear()
                 Log.e(TAG, "Initialization failed", e)
                 val message = when (e) {
+                    is MissingAssetsException ->
+                        e.message ?: "VOICEVOXの必須データが未準備です。"
                     is IOException ->
-                        "VOICEVOXモデルのダウンロードに失敗しました。ネットワーク接続を確認してください。"
+                        "VOICEVOX初期化に必要なローカルデータへアクセスできませんでした。"
                     is UnsatisfiedLinkError ->
                         "VOICEVOXネイティブライブラリの読み込みに失敗しました。このデバイスのアーキテクチャはサポートされていない可能性があります。"
                     else ->
                         e.message ?: "Unknown initialization error"
                 }
                 Result.failure(RuntimeException(message, e))
+            }
+        }
+
+    override suspend fun prepareForModelDownload(): Result<Unit> =
+        mutex.withLock {
+            val previousState = state
+            runPrepareForModelDownload(
+                previousState = previousState,
+                updateEngineState = ::updateEngineState
+            ) {
+                withContext(Dispatchers.IO) {
+                    val baseDir = File(context.filesDir, VOICEVOX_DIR)
+                    val dictDir = File(baseDir, OPEN_JTALK_DICT_DIR_NAME)
+                    ensureDictionaryAvailableForDownload(baseDir, dictDir)
+                }
             }
         }
 
@@ -390,12 +449,35 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
     }
 
     /**
-     * Ensure that the OpenJTalk dictionary and VVM model are present on disk.
-     * Downloads them from GitHub releases if missing or if the version marker
-     * does not match the effective asset version (which includes the app's
-     * versionCode).
+     * Ensure required local assets exist for initialization.
+     *
+     * This method does not perform network downloads; missing assets should be
+     * prepared via [prepareForModelDownload].
      */
-    private fun ensureAssetsAvailable(baseDir: File, dictDir: File, modelDir: File) {
+    private fun ensureLocalAssetsAvailable(dictDir: File, modelDir: File) {
+        val hasDict = dictDir.exists() && (dictDir.listFiles()?.isNotEmpty() == true)
+        val hasAnyVvm = modelDir.exists() && (modelDir.listFiles()?.any { it.extension == "vvm" } == true)
+
+        Log.i(
+            TAG,
+            "Local asset readiness: hasDict=$hasDict hasAnyVvm=$hasAnyVvm"
+        )
+
+        if (hasDict && hasAnyVvm) {
+            return
+        }
+
+        val message = buildMissingAssetsMessage(hasDict = hasDict, hasAnyVvm = hasAnyVvm)
+            ?: "VOICEVOXの初期化に必要なデータが未準備です。"
+        throw MissingAssetsException(message)
+    }
+
+    /**
+     * Ensure the OpenJTalk dictionary is present for model download flows.
+     * Dictionary download is user-triggered and happens only from explicit
+     * model download actions.
+     */
+    private fun ensureDictionaryAvailableForDownload(baseDir: File, dictDir: File) {
         val effectiveVersion = getEffectiveAssetVersion()
         val versionFile = File(baseDir, VERSION_FILE)
         val currentVersion = if (versionFile.exists()) {
@@ -403,21 +485,11 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         } else {
             null
         }
+        val hasDict = dictDir.exists() && (dictDir.listFiles()?.isNotEmpty() == true)
         val versionMatches = currentVersion == effectiveVersion
 
-        val hasDict = dictDir.exists() && (dictDir.listFiles()?.isNotEmpty() == true)
-        val hasAnyVvm = modelDir.exists() && (modelDir.listFiles()?.any { it.extension == "vvm" } == true)
-        val hasBaseVvm = File(modelDir, "0.vvm").exists()
-
-        Log.i(
-            TAG,
-            "Asset readiness: versionMatches=$versionMatches " +
-                "currentVersion=${currentVersion ?: "none"} expectedVersion=$effectiveVersion " +
-                "hasDict=$hasDict hasBaseVvm=$hasBaseVvm hasAnyVvm=$hasAnyVvm"
-        )
-
-        if (versionMatches && hasDict && hasBaseVvm) {
-            Log.i(TAG, "Assets already downloaded (version $effectiveVersion)")
+        if (hasDict && versionMatches) {
+            Log.i(TAG, "Dictionary already prepared (version $effectiveVersion)")
             return
         }
 
@@ -425,57 +497,26 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             throw IOException("Failed to create directory: ${baseDir.absolutePath}")
         }
 
-        if (!versionMatches) {
-            Log.i(
-                TAG,
-                "Asset version mismatch: current=${currentVersion ?: "none"} expected=$effectiveVersion. " +
-                    "Refreshing required assets and preserving downloaded models."
-            )
+        if (dictDir.exists()) {
+            dictDir.deleteRecursively()
+            Log.i(TAG, "Cleared stale dictionary directory: ${dictDir.absolutePath}")
         }
 
-        // Refresh OpenJTalk dictionary when missing or asset version changed.
-        if (!hasDict || !versionMatches) {
-            if (dictDir.exists()) {
-                dictDir.deleteRecursively()
-                Log.i(TAG, "Cleared stale dictionary directory: ${dictDir.absolutePath}")
-            }
-            emitDownloadEvent("download_started", OPEN_JTALK_DICT_DIR_NAME)
-            downloadAndExtractTarGz(
-                url = OPEN_JTALK_DICT_URL,
-                targetDir = dictDir,
-                stripPrefix = OPEN_JTALK_DICT_DIR_NAME,
-                displayName = OPEN_JTALK_DICT_DIR_NAME
-            )
-        } else {
-            Log.i(TAG, "Reusing existing dictionary: ${dictDir.absolutePath}")
-        }
+        updateEngineState(
+            TtsEngineState.DOWNLOADING,
+            "download_dict:$OPEN_JTALK_DICT_DIR_NAME"
+        )
+        emitDownloadEvent("download_started", OPEN_JTALK_DICT_DIR_NAME)
+        downloadAndExtractTarGz(
+            url = OPEN_JTALK_DICT_URL,
+            targetDir = dictDir,
+            stripPrefix = OPEN_JTALK_DICT_DIR_NAME,
+            displayName = OPEN_JTALK_DICT_DIR_NAME
+        )
 
-        if (!modelDir.mkdirs() && !modelDir.exists()) {
-            throw IOException("Failed to create directory: ${modelDir.absolutePath}")
-        }
-
-        val baseModelFile = File(modelDir, "0.vvm")
-        val shouldRefreshBaseModel = !hasBaseVvm || !versionMatches
-        if (shouldRefreshBaseModel) {
-            emitDownloadEvent("download_started", "0.vvm")
-            downloadFile(
-                url = VVM_DOWNLOAD_URL,
-                targetFile = baseModelFile,
-                displayName = "0.vvm"
-            )
-        } else {
-            Log.i(TAG, "Reusing base model: ${baseModelFile.absolutePath}")
-        }
-
-        val preservedModels = modelDir.listFiles { file ->
-            file.extension == "vvm" && file.name != "0.vvm"
-        }?.map { it.name } ?: emptyList()
-        Log.i(TAG, "Preserved downloaded models: $preservedModels")
-
-        // Write version marker so subsequent launches skip download
         versionFile.writeText(effectiveVersion)
         emitDownloadEvent("download_completed", "")
-        Log.i(TAG, "All assets downloaded (version $effectiveVersion)")
+        Log.i(TAG, "Dictionary prepared (version $effectiveVersion)")
     }
 
     private fun normalizeModelPath(path: String): String = try {
@@ -526,25 +567,6 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
     }
 
     /**
-     * Download a single file from [url] to [targetFile], following HTTP redirects.
-     */
-    private fun downloadFile(url: String, targetFile: File, displayName: String) {
-        targetFile.parentFile?.mkdirs()
-        val connection = openConnection(url)
-        try {
-            val totalBytes = connection.contentLengthLong
-            connection.inputStream.use { input ->
-                targetFile.outputStream().use { output ->
-                    copyWithProgress(input, output, totalBytes, displayName)
-                }
-            }
-            Log.i(TAG, "Downloaded $displayName (${targetFile.length()} bytes)")
-        } finally {
-            connection.disconnect()
-        }
-    }
-
-    /**
      * Download a tar.gz archive from [url], extract it to [targetDir],
      * stripping the leading [stripPrefix] directory from entry paths.
      */
@@ -572,6 +594,10 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             }
 
             // Extract tar.gz
+            updateEngineState(
+                TtsEngineState.EXTRACTING,
+                "extract:$displayName"
+            )
             GZIPInputStream(tempFile.inputStream()).use { gzip ->
                 extractTar(gzip, targetDir, stripPrefix)
             }
@@ -760,6 +786,13 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         onDownloadEvent?.invoke(
             mapOf("type" to type, "payload" to mapOf("fileName" to fileName))
         )
+    }
+
+    private fun updateEngineState(next: TtsEngineState, reason: String) {
+        val current = state
+        if (current == next) return
+        state = next
+        Log.i(TAG, "Engine state changed: $current -> $next ($reason)")
     }
 
     /**

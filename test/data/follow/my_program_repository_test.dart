@@ -30,8 +30,9 @@ void main() {
         httpClient: httpClient,
       );
 
-      final result =
-          await repository.fetchOwnProgram(userSession: 'test_session');
+      final result = await repository.fetchOwnProgram(
+        userSession: 'test_session',
+      );
 
       expect(result, isNotNull);
       expect(result!.programId, 'lv345678901');
@@ -55,17 +56,16 @@ void main() {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'meta': <String, Object?>{'status': 200},
-        'data': <String, Object?>{
-          'programs': <Object?>[],
-        },
+        'data': <String, Object?>{'programs': <Object?>[]},
       });
 
       final MyProgramRepository repository = MyProgramRepository(
         httpClient: httpClient,
       );
 
-      final result =
-          await repository.fetchOwnProgram(userSession: 'test_session');
+      final result = await repository.fetchOwnProgram(
+        userSession: 'test_session',
+      );
 
       expect(result, isNull);
 
@@ -96,8 +96,9 @@ void main() {
         httpClient: httpClient,
       );
 
-      final result =
-          await repository.fetchOwnProgram(userSession: 'test_session');
+      final result = await repository.fetchOwnProgram(
+        userSession: 'test_session',
+      );
 
       expect(result, isNull);
 
@@ -114,8 +115,9 @@ void main() {
         httpClient: httpClient,
       );
 
-      final result =
-          await repository.fetchOwnProgram(userSession: 'test_session');
+      final result = await repository.fetchOwnProgram(
+        userSession: 'test_session',
+      );
 
       expect(result, isNull);
 
@@ -146,8 +148,9 @@ void main() {
         httpClient: httpClient,
       );
 
-      final result =
-          await repository.fetchOwnProgram(userSession: 'test_session');
+      final result = await repository.fetchOwnProgram(
+        userSession: 'test_session',
+      );
 
       expect(result, isNotNull);
       expect(result!.providerName, 'SupplierUser');
@@ -164,8 +167,9 @@ void main() {
         httpClient: httpClient,
       );
 
-      final result =
-          await repository.fetchOwnProgram(userSession: 'test_session');
+      final result = await repository.fetchOwnProgram(
+        userSession: 'test_session',
+      );
 
       expect(result, isNull);
 
@@ -180,8 +184,9 @@ void main() {
         httpClient: httpClient,
       );
 
-      final result =
-          await repository.fetchOwnProgram(userSession: 'test_session');
+      final result = await repository.fetchOwnProgram(
+        userSession: 'test_session',
+      );
 
       expect(result, isNull);
 
@@ -200,8 +205,9 @@ void main() {
         httpClient: httpClient,
       );
 
-      final result =
-          await repository.fetchOwnProgram(userSession: 'test_session');
+      final result = await repository.fetchOwnProgram(
+        userSession: 'test_session',
+      );
 
       expect(result, isNull);
 
@@ -223,33 +229,33 @@ void main() {
       repository.dispose();
     });
 
-    test('returns program with empty provider name when name is missing',
-        () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
-      httpClient.responseBody = jsonEncode(<String, Object?>{
-        'meta': <String, Object?>{'status': 200},
-        'data': <String, Object?>{
-          'programs': <Object?>[
-            <String, Object?>{
-              'id': 'lv345678901',
-              'title': 'My Broadcast',
-            },
-          ],
-        },
-      });
+    test(
+      'returns program with empty provider name when name is missing',
+      () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseBody = jsonEncode(<String, Object?>{
+          'meta': <String, Object?>{'status': 200},
+          'data': <String, Object?>{
+            'programs': <Object?>[
+              <String, Object?>{'id': 'lv345678901', 'title': 'My Broadcast'},
+            ],
+          },
+        });
 
-      final MyProgramRepository repository = MyProgramRepository(
-        httpClient: httpClient,
-      );
+        final MyProgramRepository repository = MyProgramRepository(
+          httpClient: httpClient,
+        );
 
-      final result =
-          await repository.fetchOwnProgram(userSession: 'test_session');
+        final result = await repository.fetchOwnProgram(
+          userSession: 'test_session',
+        );
 
-      expect(result, isNotNull);
-      expect(result!.providerName, '');
+        expect(result, isNotNull);
+        expect(result!.providerName, '');
 
-      repository.dispose();
-    });
+        repository.dispose();
+      },
+    );
   });
 }
 
@@ -271,10 +277,7 @@ class _FakeHttpClient implements HttpClient {
     if (shouldThrowOnRequest) {
       throw const SocketException('Simulated network error');
     }
-    return _FakeHttpClientRequest(
-      uri: url,
-      client: this,
-    );
+    return _FakeHttpClientRequest(uri: url, client: this);
   }
 
   @override
@@ -309,9 +312,7 @@ class _FakeHttpClientRequest implements HttpClientRequest {
       }
     });
 
-    client.requests.add(
-      _CapturedRequest(uri: uri, headers: headerMap),
-    );
+    client.requests.add(_CapturedRequest(uri: uri, headers: headerMap));
 
     return _FakeHttpClientResponse(
       statusCode: client.responseStatusCode,
@@ -352,7 +353,7 @@ class _FakeHttpHeaders implements HttpHeaders {
 class _FakeHttpClientResponse extends Stream<List<int>>
     implements HttpClientResponse {
   _FakeHttpClientResponse({required this.statusCode, required String body})
-      : _body = body;
+    : _body = body;
 
   @override
   final int statusCode;

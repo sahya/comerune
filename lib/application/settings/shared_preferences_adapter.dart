@@ -40,7 +40,5 @@ class SharedPreferencesAdapter implements SharedPreferencesLike {
 
 Future<SettingsStore> createSharedPreferencesSettingsStore() async {
   final SharedPreferences prefs = await SharedPreferences.getInstance();
-  return SharedPreferencesSettingsStore(
-    prefs: SharedPreferencesAdapter(prefs),
-  );
+  return SharedPreferencesSettingsStore(prefs: SharedPreferencesAdapter(prefs));
 }
