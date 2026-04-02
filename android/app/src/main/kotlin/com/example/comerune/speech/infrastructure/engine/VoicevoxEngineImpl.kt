@@ -7,6 +7,7 @@ import com.example.comerune.speech.domain.model.SpeechRequest
 import com.example.comerune.speech.domain.model.TtsEngineState
 import com.example.comerune.speech.domain.model.VoicevoxModelManifest
 import com.example.comerune.speech.domain.model.WavSynthesisResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -78,6 +79,16 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             }
             return "VOICEVOXの初期化に必要なデータが未準備です（不足: ${missing.joinToString("・")}）。" +
                 "話者ライブラリでモデルをダウンロードしてください。"
+        }
+
+        internal fun buildPrepareForModelDownloadFailure(exception: Exception): RuntimeException {
+            val message = when (exception) {
+                is IOException ->
+                    "VOICEVOX辞書のダウンロードに失敗しました。ネットワーク接続を確認してください。"
+                else ->
+                    exception.message ?: "Unknown dictionary download error"
+            }
+            return RuntimeException(message, exception)
         }
 
         /**
@@ -213,15 +224,12 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                 }
                 updateEngineState(previousState, "prepare_download_completed")
                 Result.success(Unit)
-            } catch (e: Throwable) {
+            } catch (e: CancellationException) {
+                updateEngineState(previousState, "prepare_download_cancelled_restore")
+                throw e
+            } catch (e: Exception) {
                 updateEngineState(previousState, "prepare_download_failed_restore")
-                val message = when (e) {
-                    is IOException ->
-                        "VOICEVOX辞書のダウンロードに失敗しました。ネットワーク接続を確認してください。"
-                    else ->
-                        e.message ?: "Unknown dictionary download error"
-                }
-                Result.failure(RuntimeException(message, e))
+                Result.failure(buildPrepareForModelDownloadFailure(e))
             }
         }
 
