@@ -91,6 +91,24 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             return RuntimeException(message, exception)
         }
 
+        internal suspend fun runPrepareForModelDownload(
+            previousState: TtsEngineState,
+            updateEngineState: (TtsEngineState, String) -> Unit,
+            prepareAction: suspend () -> Unit
+        ): Result<Unit> {
+            return try {
+                prepareAction()
+                updateEngineState(previousState, "prepare_download_completed")
+                Result.success(Unit)
+            } catch (e: CancellationException) {
+                updateEngineState(previousState, "prepare_download_cancelled_restore")
+                throw e
+            } catch (e: Exception) {
+                updateEngineState(previousState, "prepare_download_failed_restore")
+                Result.failure(buildPrepareForModelDownloadFailure(e))
+            }
+        }
+
         /**
          * Increment this when remote assets change to force re-download.
          * The effective version used for comparison also includes the app's
@@ -216,20 +234,15 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
     override suspend fun prepareForModelDownload(): Result<Unit> =
         mutex.withLock {
             val previousState = state
-            try {
+            runPrepareForModelDownload(
+                previousState = previousState,
+                updateEngineState = ::updateEngineState
+            ) {
                 withContext(Dispatchers.IO) {
                     val baseDir = File(context.filesDir, VOICEVOX_DIR)
                     val dictDir = File(baseDir, OPEN_JTALK_DICT_DIR_NAME)
                     ensureDictionaryAvailableForDownload(baseDir, dictDir)
                 }
-                updateEngineState(previousState, "prepare_download_completed")
-                Result.success(Unit)
-            } catch (e: CancellationException) {
-                updateEngineState(previousState, "prepare_download_cancelled_restore")
-                throw e
-            } catch (e: Exception) {
-                updateEngineState(previousState, "prepare_download_failed_restore")
-                Result.failure(buildPrepareForModelDownloadFailure(e))
             }
         }
 
