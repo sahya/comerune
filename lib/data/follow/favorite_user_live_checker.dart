@@ -1,5 +1,6 @@
-import 'dart:developer';
 import 'dart:io';
+
+import '../../app_logging.dart';
 
 /// Checks whether favorite users are currently broadcasting on niconico.
 ///
@@ -11,13 +12,17 @@ import 'dart:io';
 /// A 200 response or any error means the user is not broadcasting.
 class FavoriteUserLiveChecker {
   FavoriteUserLiveChecker({HttpClient? httpClient})
-    : _httpClient = httpClient ?? HttpClient() {
+      : _httpClient = httpClient ?? HttpClient() {
     _httpClient.connectionTimeout = const Duration(seconds: 10);
   }
 
   static const String _baseUrl = 'https://live.nicovideo.jp/watch/user/';
 
   static const Duration _responseTimeout = Duration(seconds: 10);
+  static final RegExp _lvProgramIdPattern = RegExp(
+    r'^lv\d{1,18}$',
+    caseSensitive: false,
+  );
 
   final HttpClient _httpClient;
 
@@ -31,9 +36,11 @@ class FavoriteUserLiveChecker {
       return const <String, String>{};
     }
 
-    final List<Future<MapEntry<String, String>?>> futures = userIds
-        .map(_checkSingleUser)
-        .toList();
+    appDebugLog(
+      '[FavoriteUserLiveChecker] checking favorite users: count=${userIds.length}',
+    );
+    final List<Future<MapEntry<String, String>?>> futures =
+        userIds.map(_checkSingleUser).toList();
     final List<MapEntry<String, String>?> results = await Future.wait(futures);
 
     final Map<String, String> onAirMap = <String, String>{};
@@ -42,36 +49,55 @@ class FavoriteUserLiveChecker {
         onAirMap[entry.key] = entry.value;
       }
     }
+    appDebugLog(
+      '[FavoriteUserLiveChecker] on-air favorites resolved: count=${onAirMap.length}',
+    );
     return onAirMap;
   }
 
   Future<MapEntry<String, String>?> _checkSingleUser(String userId) async {
+    final String maskedUserId = _maskUserIdForLog(userId);
     try {
       final Uri uri = Uri.parse('$_baseUrl$userId');
       final HttpClientRequest request = await _httpClient.getUrl(uri);
       request.followRedirects = false;
 
       final HttpClientResponse response = await request.close().timeout(
-        _responseTimeout,
-      );
+            _responseTimeout,
+          );
       try {
         final int statusCode = response.statusCode;
+        appDebugLog(
+          '[FavoriteUserLiveChecker] user=$maskedUserId status=$statusCode',
+        );
         if (_isRedirect(statusCode)) {
           final String? location = response.headers.value('location');
           if (location != null) {
             final String? programId = _extractProgramId(location);
             if (programId != null) {
+              appDebugLog(
+                '[FavoriteUserLiveChecker] user=$maskedUserId on-air program=$programId',
+              );
               return MapEntry<String, String>(userId, programId);
             }
+            appDebugLog(
+              '[FavoriteUserLiveChecker] user=$maskedUserId redirect had no lv program id',
+            );
+          } else {
+            appDebugLog(
+              '[FavoriteUserLiveChecker] user=$maskedUserId redirect had no location header',
+            );
           }
         }
       } finally {
         await response.drain<void>();
       }
     } on Exception catch (e) {
-      log(
-        'Error checking broadcast status for user $userId: ${e.runtimeType}',
+      appErrorLog(
         name: 'FavoriteUserLiveChecker',
+        message:
+            'Error checking broadcast status for favorite user $maskedUserId',
+        error: e,
       );
     }
     return null;
@@ -92,16 +118,24 @@ class FavoriteUserLiveChecker {
     try {
       final Uri uri = Uri.parse(location);
       final List<String> segments = uri.pathSegments;
-      if (segments.isNotEmpty) {
-        final String last = segments.last;
-        if (last.startsWith('lv')) {
-          return last;
+      for (final String segment in segments.reversed) {
+        if (_lvProgramIdPattern.hasMatch(segment)) {
+          return segment.toLowerCase();
         }
       }
     } on FormatException {
       // Malformed Location header; ignore.
     }
     return null;
+  }
+
+  String _maskUserIdForLog(String userId) {
+    if (userId.length <= 2) {
+      return '**';
+    }
+    final String first = userId.substring(0, 1);
+    final String last = userId.substring(userId.length - 1);
+    return '$first***$last';
   }
 
   void dispose() {
