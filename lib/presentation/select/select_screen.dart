@@ -448,6 +448,7 @@ class _SelectScreenState extends State<SelectScreen> {
         final String? broadcasterIconUrl =
             _followBroadcasterIconUrl ??
             _buildIconUrlFromUserId(supplierUserId);
+        final DateTime? beginAt = _resolveCommentBeginAt();
 
         return CommentScreen(
           lv: lv,
@@ -465,9 +466,7 @@ class _SelectScreenState extends State<SelectScreen> {
           broadcasterName: broadcasterName,
           broadcasterUserId: supplierUserId,
           broadcasterIconUrl: broadcasterIconUrl,
-          // Prefer the follow-list beginAt (available immediately) and
-          // fall back to the programinfo API value (resolved async).
-          beginAt: _followBeginAt ?? widget.beginAtNotifier?.value,
+          beginAt: beginAt,
           showUserName: _settingsNotifier.value.showUserName,
           commentFontSize: _settingsNotifier.value.commentFontSize,
           userNameResolution: nameResolutionEnabled
@@ -908,6 +907,29 @@ class _SelectScreenState extends State<SelectScreen> {
 
   static String? _buildIconUrlFromUserId(String? userId) {
     return buildNicoIconUrl(userId);
+  }
+
+  DateTime? _resolveCommentBeginAt() {
+    final DateTime? followBeginAt = _followBeginAt;
+    final DateTime? resolvedBeginAt = widget.beginAtNotifier?.value;
+    if (resolvedBeginAt == null) {
+      return followBeginAt;
+    }
+    if (followBeginAt == null) {
+      return resolvedBeginAt;
+    }
+
+    // Follow-list beginAt arrives immediately, but API responses can
+    // occasionally provide an invalid future epoch. In that case, prefer the
+    // programinfo beginAt so comment rows keep elapsed-time rendering.
+    if (_isFutureBeginAt(followBeginAt) && !_isFutureBeginAt(resolvedBeginAt)) {
+      return resolvedBeginAt;
+    }
+    return followBeginAt;
+  }
+
+  bool _isFutureBeginAt(DateTime value) {
+    return value.isAfter(DateTime.now());
   }
 
   void _connectToProgram(FollowProgram program) {

@@ -38,6 +38,17 @@ void main() {
       expect(result.millisecondsSinceEpoch, 1719835200 * 1000);
     });
 
+    test('parses integer value as milliseconds-since-epoch', () {
+      // 1719835200000 = 2024-07-01T12:00:00Z
+      final DateTime? result = parseBeginAt(<String, dynamic>{
+        'beginAt': 1719835200000,
+      });
+
+      expect(result, isNotNull);
+      expect(result!.isUtc, isTrue);
+      expect(result.millisecondsSinceEpoch, 1719835200000);
+    });
+
     test('returns null when beginAt is missing', () {
       final DateTime? result = parseBeginAt(<String, dynamic>{});
 
