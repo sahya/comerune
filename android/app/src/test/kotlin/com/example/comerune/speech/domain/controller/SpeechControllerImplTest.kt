@@ -48,6 +48,8 @@ class SpeechControllerImplTest {
 
         override suspend fun initialize(): Result<Unit> = Result.success(Unit)
 
+        override suspend fun prepareForModelDownload(): Result<Unit> = Result.success(Unit)
+
         override suspend fun synthesize(request: SpeechRequest): Result<WavSynthesisResult> {
             if (throwOnSynthesize) {
                 throwOnSynthesize = false
@@ -61,6 +63,8 @@ class SpeechControllerImplTest {
                 )
             )
         }
+
+        override suspend fun loadModel(modelPath: String): Result<Unit> = Result.success(Unit)
 
         override fun isReady(): Boolean = true
         override fun currentState(): TtsEngineState = TtsEngineState.READY
