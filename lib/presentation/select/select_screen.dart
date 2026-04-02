@@ -925,6 +925,9 @@ class _SelectScreenState extends State<SelectScreen> {
     if (_isFutureBeginAt(followBeginAt) && !_isFutureBeginAt(resolvedBeginAt)) {
       return resolvedBeginAt;
     }
+    // When both values are still in the future, keep the follow-list value.
+    // This preserves the immediate tap-path source of truth and avoids
+    // switching timestamps repeatedly until a valid non-future beginAt arrives.
     return followBeginAt;
   }
 
