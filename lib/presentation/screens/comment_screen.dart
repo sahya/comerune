@@ -924,7 +924,7 @@ class _CommentScreenState extends State<CommentScreen> {
                 if (widget.commentLogWriter != null)
                   IconButton(
                     key: const Key('save-comment-log-button'),
-                    icon: const Icon(Icons.save_outlined),
+                    icon: const Icon(Icons.archive_outlined),
                     tooltip: 'コメントログを保存',
                     onPressed: _isSavingLog
                         ? null
