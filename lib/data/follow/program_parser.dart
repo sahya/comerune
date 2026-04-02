@@ -1,4 +1,5 @@
 import '../utils/begin_at_parser.dart';
+import '../../domain/utils/nico_icon_url.dart';
 import 'follow_program.dart';
 
 /// Shared parsing helpers for niconico program API responses.
@@ -33,10 +34,10 @@ String? extractProviderName(Map<String, dynamic> item) {
 
 /// Extracts the broadcaster icon URL from a program JSON item.
 ///
-/// Checks `programProvider.iconSmall` / `programProvider.icon` first,
-/// then falls back to `supplier.icons.uri50x50` / `supplier.icons.uri150x150`.
-/// If icon URLs are unavailable, tries `programProviderId`-style numeric IDs
-/// and builds a niconico user icon URL as a final fallback.
+/// Priority:
+/// 1) provider/supplier explicit icon fields
+/// 2) direct icon fields (`iconUrl` / `providerIconUrl`)
+/// 3) numeric provider IDs -> generated niconico user icon URL fallback
 /// Only returns HTTPS URLs.
 String? extractProviderIconUrl(Map<String, dynamic> item) {
   final Object? provider = item['programProvider'];
@@ -77,14 +78,16 @@ String? extractProviderIconUrl(Map<String, dynamic> item) {
     }
   }
 
+  // Keep direct icon fields ahead of ID-based generation.
   final String? iconUrl = _extractDirectIconUrl(item);
   if (iconUrl != null) {
     return iconUrl;
   }
 
+  // Final fallback: synthesize niconico usericon URL from numeric provider IDs.
   final String? providerUserId = _extractProviderUserId(item);
   if (providerUserId != null) {
-    return _buildNicoIconUrlFromUserId(providerUserId);
+    return buildNicoIconUrl(providerUserId);
   }
 
   return null;
@@ -181,15 +184,6 @@ String? _asNumericUserId(Object? value) {
     }
   }
   return null;
-}
-
-String? _buildNicoIconUrlFromUserId(String userId) {
-  final int? numericId = int.tryParse(userId);
-  if (numericId == null || numericId <= 0) {
-    return null;
-  }
-  final int prefix = numericId ~/ 10000;
-  return 'https://secure-dcdn.cdn.nimg.jp/nicoaccount/usericon/$prefix/$numericId.jpg';
 }
 
 /// Parses a single program JSON item into a [FollowProgram].
