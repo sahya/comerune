@@ -190,6 +190,44 @@ void main() {
       },
     );
 
+    test(
+      'extracts icon from front endpoint using provider ID fallback',
+      () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseBody = jsonEncode(<String, Object?>{
+          'meta': <String, Object?>{'status': 200},
+          'data': <String, Object?>{
+            'programs': <Object?>[
+              <String, Object?>{
+                'id': 'lv123450001',
+                'title': 'Front Fallback Icon',
+                'supplier': <String, Object?>{
+                  'name': 'Fallback Supplier',
+                  'programProviderId': 18897569,
+                },
+              },
+            ],
+          },
+        });
+
+        final MyProgramRepository repository = MyProgramRepository(
+          httpClient: httpClient,
+        );
+
+        final result = await repository.fetchOwnProgram(
+          userSession: 'test_session',
+        );
+
+        expect(result, isNotNull);
+        expect(
+          result!.providerIconUrl,
+          'https://secure-dcdn.cdn.nimg.jp/nicoaccount/usericon/1889/18897569.jpg',
+        );
+
+        repository.dispose();
+      },
+    );
+
     test('returns null when tool endpoint has no on-air programs', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.queuedResponses.addAll(<_FakeResponseConfig>[
@@ -218,6 +256,45 @@ void main() {
 
       expect(result, isNull);
       expect(httpClient.requests, hasLength(2));
+
+      repository.dispose();
+    });
+
+    test('extracts icon from tool endpoint using provider ID fallback', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.queuedResponses.addAll(<_FakeResponseConfig>[
+        _FakeResponseConfig(statusCode: 404, body: ''),
+        _FakeResponseConfig(
+          statusCode: 200,
+          body: jsonEncode(<String, Object?>{
+            'data': <Object?>[
+              <String, Object?>{
+                'nicoliveProgramId': 'lv777000222',
+                'title': 'Tool Fallback Icon',
+                'status': 'onAir',
+                'supplier': <String, Object?>{
+                  'name': 'Tool Supplier',
+                  'programProviderId': 18897569,
+                },
+              },
+            ],
+          }),
+        ),
+      ]);
+
+      final MyProgramRepository repository = MyProgramRepository(
+        httpClient: httpClient,
+      );
+
+      final result = await repository.fetchOwnProgram(
+        userSession: 'test_session',
+      );
+
+      expect(result, isNotNull);
+      expect(
+        result!.providerIconUrl,
+        'https://secure-dcdn.cdn.nimg.jp/nicoaccount/usericon/1889/18897569.jpg',
+      );
 
       repository.dispose();
     });

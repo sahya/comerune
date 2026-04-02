@@ -88,6 +88,47 @@ void main() {
       };
       expect(extractProviderIconUrl(item), 'https://example.com/150.jpg');
     });
+
+    test('falls back to programProvider icons.uri50x50', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'programProvider': <String, dynamic>{
+          'icons': <String, dynamic>{
+            'uri50x50': 'https://example.com/provider-50.jpg',
+          },
+        },
+      };
+      expect(
+        extractProviderIconUrl(item),
+        'https://example.com/provider-50.jpg',
+      );
+    });
+
+    test('falls back to top-level iconUrl', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'iconUrl': 'https://example.com/direct-icon.jpg',
+      };
+      expect(
+        extractProviderIconUrl(item),
+        'https://example.com/direct-icon.jpg',
+      );
+    });
+
+    test('falls back to generated nico icon URL from supplier ID', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'supplier': <String, dynamic>{'programProviderId': 18897569},
+      };
+      expect(
+        extractProviderIconUrl(item),
+        'https://secure-dcdn.cdn.nimg.jp/nicoaccount/usericon/1889/18897569.jpg',
+      );
+    });
+
+    test('returns null when only non-numeric provider ID is available', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'supplier': <String, dynamic>{'programProviderId': 'ch2648853'},
+      };
+      expect(extractProviderIconUrl(item), isNull);
+    });
   });
 
   group('extractCommunityName', () {

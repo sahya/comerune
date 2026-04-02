@@ -20,6 +20,7 @@ import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/user_name_resolution.dart';
 import '../../domain/utils/lv_parser.dart';
+import '../../domain/utils/nico_icon_url.dart';
 import '../../comment_speech/comment_speech.dart'
     show MethodChannelCommentSpeech, SpeechSettings;
 import '../screens/comment_screen.dart';
@@ -32,21 +33,6 @@ void _debugLogLazy(String Function() messageBuilder) {
 
 void _errorLog(String message, {Object? error}) {
   appErrorLog(name: 'SelectScreen', message: message, error: error);
-}
-
-/// Builds a niconico user icon URL from a numeric user ID.
-///
-/// Returns `null` for non-numeric IDs (e.g. anonymous `a:xxx` format).
-String? buildNicoIconUrl(String? userId) {
-  if (userId == null || userId.isEmpty) {
-    return null;
-  }
-  final int? numericId = int.tryParse(userId);
-  if (numericId == null) {
-    return null;
-  }
-  final int prefix = numericId ~/ 10000;
-  return 'https://secure-dcdn.cdn.nimg.jp/nicoaccount/usericon/$prefix/$numericId.jpg';
 }
 
 class SelectScreen extends StatefulWidget {
