@@ -105,6 +105,123 @@ void main() {
       repository.dispose();
     });
 
+    test('falls back to tool endpoint when front endpoint fails', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.queuedResponses.addAll(<_FakeResponseConfig>[
+        _FakeResponseConfig(statusCode: 404, body: ''),
+        _FakeResponseConfig(
+          statusCode: 200,
+          body: jsonEncode(<String, Object?>{
+            'data': <Object?>[
+              <String, Object?>{
+                'nicoliveProgramId': 'lv777000111',
+                'title': 'Tool Fallback Broadcast',
+                'status': 'onAir',
+                'onAirBeginAt': 1713000000,
+              },
+            ],
+          }),
+        ),
+      ]);
+
+      final MyProgramRepository repository = MyProgramRepository(
+        httpClient: httpClient,
+      );
+
+      final result = await repository.fetchOwnProgram(
+        userSession: 'test_session',
+      );
+
+      expect(result, isNotNull);
+      expect(result!.programId, 'lv777000111');
+      expect(result.title, 'Tool Fallback Broadcast');
+      expect(httpClient.requests, hasLength(2));
+      expect(
+        httpClient.requests[0].uri.toString(),
+        'https://live.nicovideo.jp/front/api/pages/my/v1/programs?status=onair',
+      );
+      expect(
+        httpClient.requests[1].uri.toString(),
+        'https://live2.nicovideo.jp/unama/tool/v1/program_schedules',
+      );
+
+      repository.dispose();
+    });
+
+    test(
+      'uses tool endpoint when front endpoint returns empty programs',
+      () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.queuedResponses.addAll(<_FakeResponseConfig>[
+          _FakeResponseConfig(
+            statusCode: 200,
+            body: jsonEncode(<String, Object?>{
+              'data': <String, Object?>{'programs': <Object?>[]},
+            }),
+          ),
+          _FakeResponseConfig(
+            statusCode: 200,
+            body: jsonEncode(<String, Object?>{
+              'data': <Object?>[
+                <String, Object?>{
+                  'nicoliveProgramId': 'lv888000111',
+                  'title': 'Recovered From Tool',
+                  'status': 'onAir',
+                },
+              ],
+            }),
+          ),
+        ]);
+
+        final MyProgramRepository repository = MyProgramRepository(
+          httpClient: httpClient,
+        );
+
+        final result = await repository.fetchOwnProgram(
+          userSession: 'test_session',
+        );
+
+        expect(result, isNotNull);
+        expect(result!.programId, 'lv888000111');
+        expect(result.title, 'Recovered From Tool');
+        expect(httpClient.requests, hasLength(2));
+
+        repository.dispose();
+      },
+    );
+
+    test('returns null when tool endpoint has no on-air programs', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.queuedResponses.addAll(<_FakeResponseConfig>[
+        _FakeResponseConfig(statusCode: 500, body: ''),
+        _FakeResponseConfig(
+          statusCode: 200,
+          body: jsonEncode(<String, Object?>{
+            'data': <Object?>[
+              <String, Object?>{
+                'nicoliveProgramId': 'lv999000111',
+                'title': 'Not On Air',
+                'status': 'ended',
+              },
+            ],
+          }),
+        ),
+      ]);
+
+      final MyProgramRepository repository = MyProgramRepository(
+        httpClient: httpClient,
+      );
+
+      final result = await repository.fetchOwnProgram(
+        userSession: 'test_session',
+      );
+
+      expect(result, isNull);
+      expect(httpClient.requests, hasLength(2));
+
+      repository.dispose();
+    });
+
     test('returns null when response has no data field', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
@@ -259,6 +376,13 @@ void main() {
   });
 }
 
+class _FakeResponseConfig {
+  _FakeResponseConfig({required this.statusCode, required this.body});
+
+  final int statusCode;
+  final String body;
+}
+
 class _CapturedRequest {
   _CapturedRequest({required this.uri, required this.headers});
 
@@ -270,6 +394,7 @@ class _FakeHttpClient implements HttpClient {
   String responseBody = '';
   int responseStatusCode = 200;
   bool shouldThrowOnRequest = false;
+  final List<_FakeResponseConfig> queuedResponses = <_FakeResponseConfig>[];
   final List<_CapturedRequest> requests = <_CapturedRequest>[];
 
   @override
@@ -314,9 +439,16 @@ class _FakeHttpClientRequest implements HttpClientRequest {
 
     client.requests.add(_CapturedRequest(uri: uri, headers: headerMap));
 
+    final _FakeResponseConfig config = client.queuedResponses.isNotEmpty
+        ? client.queuedResponses.removeAt(0)
+        : _FakeResponseConfig(
+            statusCode: client.responseStatusCode,
+            body: client.responseBody,
+          );
+
     return _FakeHttpClientResponse(
-      statusCode: client.responseStatusCode,
-      body: client.responseBody,
+      statusCode: config.statusCode,
+      body: config.body,
     );
   }
 
