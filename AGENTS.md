@@ -22,13 +22,18 @@ If instructions conflict, prefer the more restrictive rule unless explicitly ove
 
 ## Default Workflow
 For every issue, follow this order:
-1. Read the issue document
+1. Read the GitHub Issue first (URL or issue number)
 2. Summarize the goal, scope, non-scope, and acceptance criteria
 3. Inspect related files before editing
 4. Propose implementation approach briefly
 5. Implement only the approved scope
 6. Run formatting, static analysis, and tests
 7. Summarize changed files, behavior, and any remaining risks
+
+## Issue Source Rules
+- GitHub Issue is the primary source of truth for scope and acceptance criteria.
+- Local issue files (for example `docs/issues/issue-xx.md`) are optional support materials.
+- If GitHub Issue and local issue files conflict, follow the GitHub Issue and report the mismatch.
 
 ## Architecture Rules
 - Respect the existing directory structure and layering.
