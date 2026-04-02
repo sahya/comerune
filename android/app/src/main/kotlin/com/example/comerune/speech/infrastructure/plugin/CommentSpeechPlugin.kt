@@ -211,12 +211,28 @@ class CommentSpeechPlugin :
                 }
                 val repo = modelRepository
                 val emitter = eventEmitter
-                if (repo == null) {
-                    result.error("NOT_INITIALIZED", "Model repository not available", null)
+                val eng = engine
+                if (repo == null || eng == null) {
+                    result.error("NOT_INITIALIZED", "Plugin not fully initialized", null)
                     return
                 }
                 val modelInfo = VoicevoxModelManifest.findByModelId(modelId)
                 handleAsync(result) {
+                    val prepareResult = eng.prepareForModelDownload()
+                    if (prepareResult.isFailure) {
+                        val error = prepareResult.exceptionOrNull() ?: RuntimeException("Unknown error")
+                        emitter?.emit(
+                            mapOf(
+                                "type" to "model_download_failed",
+                                "payload" to mapOf(
+                                    "modelId" to modelId,
+                                    "error" to (error.message ?: "Unknown error")
+                                )
+                            )
+                        )
+                        return@handleAsync Result.failure(error)
+                    }
+
                     emitter?.emit(
                         mapOf(
                             "type" to "model_download_started",
