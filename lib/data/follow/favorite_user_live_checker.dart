@@ -36,8 +36,9 @@ class FavoriteUserLiveChecker {
       return const <String, String>{};
     }
 
-    appDebugLog(
-      '[FavoriteUserLiveChecker] checking favorite users: count=${userIds.length}',
+    appDebugLogLazy(
+      () =>
+          '[FavoriteUserLiveChecker] checking favorite users: count=${userIds.length}',
     );
     final List<Future<MapEntry<String, String>?>> futures =
         userIds.map(_checkSingleUser).toList();
@@ -49,8 +50,9 @@ class FavoriteUserLiveChecker {
         onAirMap[entry.key] = entry.value;
       }
     }
-    appDebugLog(
-      '[FavoriteUserLiveChecker] on-air favorites resolved: count=${onAirMap.length}',
+    appDebugLogLazy(
+      () =>
+          '[FavoriteUserLiveChecker] on-air favorites resolved: count=${onAirMap.length}',
     );
     return onAirMap;
   }
@@ -67,25 +69,29 @@ class FavoriteUserLiveChecker {
           );
       try {
         final int statusCode = response.statusCode;
-        appDebugLog(
-          '[FavoriteUserLiveChecker] user=$maskedUserId status=$statusCode',
+        appDebugLogLazy(
+          () =>
+              '[FavoriteUserLiveChecker] user=$maskedUserId status=$statusCode',
         );
         if (_isRedirect(statusCode)) {
           final String? location = response.headers.value('location');
           if (location != null) {
             final String? programId = _extractProgramId(location);
             if (programId != null) {
-              appDebugLog(
-                '[FavoriteUserLiveChecker] user=$maskedUserId on-air program=$programId',
+              appDebugLogLazy(
+                () =>
+                    '[FavoriteUserLiveChecker] user=$maskedUserId on-air program=$programId',
               );
               return MapEntry<String, String>(userId, programId);
             }
-            appDebugLog(
-              '[FavoriteUserLiveChecker] user=$maskedUserId redirect had no lv program id',
+            appDebugLogLazy(
+              () =>
+                  '[FavoriteUserLiveChecker] user=$maskedUserId redirect had no lv program id',
             );
           } else {
-            appDebugLog(
-              '[FavoriteUserLiveChecker] user=$maskedUserId redirect had no location header',
+            appDebugLogLazy(
+              () =>
+                  '[FavoriteUserLiveChecker] user=$maskedUserId redirect had no location header',
             );
           }
         }

@@ -49,8 +49,9 @@ class MyProgramRepository {
       userSession: userSession,
     );
     if (fromFront != null) {
-      appDebugLog(
-        '[MyProgramRepository] Resolved own program from front-api endpoint: ${fromFront.programId}',
+      appDebugLogLazy(
+        () =>
+            '[MyProgramRepository] Resolved own program from front-api endpoint: ${fromFront.programId}',
       );
       return fromFront;
     }
@@ -62,8 +63,9 @@ class MyProgramRepository {
       userSession: userSession,
     );
     if (fromTool != null) {
-      appDebugLog(
-        '[MyProgramRepository] Resolved own program from tool endpoint: ${fromTool.programId}',
+      appDebugLogLazy(
+        () =>
+            '[MyProgramRepository] Resolved own program from tool endpoint: ${fromTool.programId}',
       );
     }
     return fromTool;
@@ -78,14 +80,16 @@ class MyProgramRepository {
         uri: uri,
         userSession: userSession,
       );
-      appDebugLog(
-        '[MyProgramRepository] front-api response status: ${response.statusCode}',
+      appDebugLogLazy(
+        () =>
+            '[MyProgramRepository] front-api response status: ${response.statusCode}',
       );
 
       if (response.statusCode != 200) {
         await response.drain<void>();
-        appDebugLog(
-          '[MyProgramRepository] front-api returned non-200: ${response.statusCode}',
+        appDebugLogLazy(
+          () =>
+              '[MyProgramRepository] front-api returned non-200: ${response.statusCode}',
         );
         return null;
       }
@@ -111,14 +115,16 @@ class MyProgramRepository {
         uri: uri,
         userSession: userSession,
       );
-      appDebugLog(
-        '[MyProgramRepository] tool endpoint response status: ${response.statusCode}',
+      appDebugLogLazy(
+        () =>
+            '[MyProgramRepository] tool endpoint response status: ${response.statusCode}',
       );
 
       if (response.statusCode != 200) {
         await response.drain<void>();
-        appDebugLog(
-          '[MyProgramRepository] tool endpoint returned non-200: ${response.statusCode}',
+        appDebugLogLazy(
+          () =>
+              '[MyProgramRepository] tool endpoint returned non-200: ${response.statusCode}',
         );
         return null;
       }
@@ -149,8 +155,9 @@ class MyProgramRepository {
   FollowProgram? _parseFrontApiResponse(String body) {
     final Object? decoded = jsonDecode(body);
     if (decoded is! Map<String, dynamic>) {
-      appDebugLog(
-        '[MyProgramRepository] front-api response root is not object: ${decoded.runtimeType}',
+      appDebugLogLazy(
+        () =>
+            '[MyProgramRepository] front-api response root is not object: ${decoded.runtimeType}',
       );
       return null;
     }
@@ -172,8 +179,9 @@ class MyProgramRepository {
     // The user can only have one on-air program at a time.
     final Object? item = programs.first;
     if (item is! Map<String, dynamic>) {
-      appDebugLog(
-        '[MyProgramRepository] front-api first program has invalid type: ${item.runtimeType}',
+      appDebugLogLazy(
+        () =>
+            '[MyProgramRepository] front-api first program has invalid type: ${item.runtimeType}',
       );
       return null;
     }
@@ -194,8 +202,9 @@ class MyProgramRepository {
   FollowProgram? _parseToolApiResponse(String body) {
     final Object? decoded = jsonDecode(body);
     if (decoded is! Map<String, dynamic>) {
-      appDebugLog(
-        '[MyProgramRepository] tool response root is not object: ${decoded.runtimeType}',
+      appDebugLogLazy(
+        () =>
+            '[MyProgramRepository] tool response root is not object: ${decoded.runtimeType}',
       );
       return null;
     }
