@@ -26,8 +26,8 @@ import '../screens/comment_screen.dart';
 import '../screens/settings_screen.dart';
 import '../theme/app_theme.dart';
 
-void _debugLog(String message) {
-  appDebugLog(message);
+void _debugLogLazy(String Function() messageBuilder) {
+  appDebugLogLazy(messageBuilder);
 }
 
 void _errorLog(String message, {Object? error}) {
@@ -289,13 +289,16 @@ class _SelectScreenState extends State<SelectScreen> {
   Future<void> _connect({required String connectSource}) async {
     final String rawInput = _controller.text;
     if (rawInput.trim().isEmpty) {
-      _debugLog('[SelectScreen] connect skipped(source=$connectSource): empty');
+      _debugLogLazy(
+        () => '[SelectScreen] connect skipped(source=$connectSource): empty',
+      );
       return;
     }
 
     if (!widget.connectionSupervisor.canStartConnection) {
-      _debugLog(
-        '[SelectScreen] connect skipped(source=$connectSource): status=${widget.connectionSupervisor.status.code}',
+      _debugLogLazy(
+        () =>
+            '[SelectScreen] connect skipped(source=$connectSource): status=${widget.connectionSupervisor.status.code}',
       );
       if (mounted) {
         final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
@@ -312,8 +315,9 @@ class _SelectScreenState extends State<SelectScreen> {
 
     final String? lv = LvParser.extract(rawInput);
     if (lv == null) {
-      _debugLog(
-        '[SelectScreen] connect skipped(source=$connectSource): lv parse failed from "$rawInput"',
+      _debugLogLazy(
+        () =>
+            '[SelectScreen] connect skipped(source=$connectSource): lv parse failed from "$rawInput"',
       );
       final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
       messenger
@@ -332,8 +336,9 @@ class _SelectScreenState extends State<SelectScreen> {
     await widget.onPrepareConnection?.call(lv, settings);
 
     final bool started = widget.connectionSupervisor.startConnection();
-    _debugLog(
-      '[SelectScreen] startConnection(source=$connectSource, lv=$lv) => $started',
+    _debugLogLazy(
+      () =>
+          '[SelectScreen] startConnection(source=$connectSource, lv=$lv) => $started',
     );
 
     if (!started || !mounted) {
@@ -555,8 +560,9 @@ class _SelectScreenState extends State<SelectScreen> {
 
   SpeechSettings _buildSpeechSettings() {
     final AppSettings s = _settingsNotifier.value;
-    _debugLog(
-      '[SelectScreen] buildSpeechSettings: engine=${s.speechEngine}, speaker=${s.voicevoxSpeaker}, speed=${s.voicevoxSpeed}',
+    _debugLogLazy(
+      () =>
+          '[SelectScreen] buildSpeechSettings: engine=${s.speechEngine}, speaker=${s.voicevoxSpeaker}, speed=${s.voicevoxSpeed}',
     );
     return s.toSpeechSettings();
   }
@@ -975,8 +981,9 @@ class _SelectScreenState extends State<SelectScreen> {
     _followBroadcasterIconUrl = program.providerIconUrl;
     _followBeginAt = program.beginAt;
     _controller.text = program.programId;
-    _debugLog(
-      '[SelectScreen] follow program tapped: programId=${program.programId}',
+    _debugLogLazy(
+      () =>
+          '[SelectScreen] follow program tapped: programId=${program.programId}',
     );
     unawaited(_connect(connectSource: 'follow-program'));
   }
@@ -992,8 +999,9 @@ class _SelectScreenState extends State<SelectScreen> {
       return;
     }
 
-    _debugLog(
-      '[SelectScreen] favorite status refresh start: users=${favoriteIds.length}',
+    _debugLogLazy(
+      () =>
+          '[SelectScreen] favorite status refresh start: users=${favoriteIds.length}',
     );
     final Map<String, String> result =
         await _favoriteUserLiveChecker.checkBroadcastStatus(favoriteIds);
@@ -1004,8 +1012,9 @@ class _SelectScreenState extends State<SelectScreen> {
     setState(() {
       _favoriteOnAirMap = result;
     });
-    _debugLog(
-      '[SelectScreen] favorite status refresh done: onAir=${result.length}',
+    _debugLogLazy(
+      () =>
+          '[SelectScreen] favorite status refresh done: onAir=${result.length}',
     );
   }
 
@@ -1013,8 +1022,9 @@ class _SelectScreenState extends State<SelectScreen> {
     final String maskedUserId = _maskUserIdForLog(userId);
     final String? lv = LvParser.extract(programId);
     if (lv == null) {
-      _debugLog(
-        '[SelectScreen] favorite tap ignored: invalid programId userId=$maskedUserId raw="$programId"',
+      _debugLogLazy(
+        () =>
+            '[SelectScreen] favorite tap ignored: invalid programId userId=$maskedUserId raw="$programId"',
       );
       final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
       messenger
@@ -1023,8 +1033,9 @@ class _SelectScreenState extends State<SelectScreen> {
       return;
     }
 
-    _debugLog(
-      '[SelectScreen] favorite user tapped: userId=$maskedUserId programId=$lv',
+    _debugLogLazy(
+      () =>
+          '[SelectScreen] favorite user tapped: userId=$maskedUserId programId=$lv',
     );
     _followBroadcasterName = widget.userNameResolution?.resolve(userId);
     _followBroadcasterIconUrl = buildNicoIconUrl(userId);
