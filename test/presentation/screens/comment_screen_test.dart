@@ -351,7 +351,7 @@ void main() {
       expect(stopButton.onPressed, isNull);
     });
 
-    testWidgets('save button uses a save icon and label', (
+    testWidgets('save button uses an archive icon and label', (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
@@ -374,7 +374,7 @@ void main() {
         find.byKey(const Key('save-comment-log-button')),
       );
       final Icon icon = button.icon as Icon;
-      expect(icon.icon, Icons.save_outlined);
+      expect(icon.icon, Icons.archive_outlined);
       expect(button.tooltip, 'コメントログを保存');
     });
 
