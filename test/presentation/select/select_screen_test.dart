@@ -1181,6 +1181,42 @@ void main() {
       expect(find.text('自分のテスト放送'), findsOneWidget);
     });
 
+    testWidgets('shows own broadcast thumbnail when providerIconUrl exists', (
+      WidgetTester tester,
+    ) async {
+      await pumpWithMyProgram(
+        tester,
+        myProgram: FollowProgram(
+          programId: 'lv101',
+          title: 'サムネイル付き放送',
+          providerName: '自分',
+          providerIconUrl: 'https://example.com/my-broadcast-icon.jpg',
+          isOwnBroadcast: true,
+        ),
+      );
+
+      await tester.pump(const Duration(seconds: 4));
+
+      final Finder iconFinder = find.byWidgetPredicate((Widget widget) {
+        if (widget is! Image) {
+          return false;
+        }
+        final ImageProvider imageProvider = widget.image;
+        if (imageProvider is NetworkImage) {
+          return imageProvider.url ==
+              'https://example.com/my-broadcast-icon.jpg';
+        }
+        if (imageProvider is ResizeImage) {
+          final ImageProvider<Object> base = imageProvider.imageProvider;
+          return base is NetworkImage &&
+              base.url == 'https://example.com/my-broadcast-icon.jpg';
+        }
+        return false;
+      });
+
+      expect(iconFinder, findsOneWidget);
+    });
+
     testWidgets('hides own broadcast section when not broadcasting', (
       WidgetTester tester,
     ) async {
