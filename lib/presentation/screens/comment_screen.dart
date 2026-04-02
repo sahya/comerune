@@ -87,8 +87,9 @@ String _commentLineText({
     return '$timestamp  $content';
   }
 
-  final String displayName =
-      resolvedUserName != null ? '$resolvedUserName ($userId)' : userId;
+  final String displayName = resolvedUserName != null
+      ? '$resolvedUserName ($userId)'
+      : userId;
 
   return '$timestamp  $displayName  $content';
 }
@@ -151,7 +152,7 @@ class CommentScreen extends StatefulWidget {
   final Future<void> Function() onStopAllConnections;
   final Future<void> Function() onReconnectSameLv;
   final Future<void> Function(String previousLv, String nextLv)
-      onDifferentLvConnected;
+  onDifferentLvConnected;
   final Future<void> Function()? onOpenSettings;
   final bool debugMode;
   final ConnectionMethod? connectionMethod;
@@ -352,8 +353,9 @@ class _CommentScreenState extends State<CommentScreen> {
       _cleanUpStalePinnedIds();
     }
 
-    final String lastId =
-        widget.messages.isNotEmpty ? widget.messages.last.id : 'empty';
+    final String lastId = widget.messages.isNotEmpty
+        ? widget.messages.last.id
+        : 'empty';
     _debugLogLazy(
       () =>
           '[CommentScreen] didUpdate: msgs ${oldWidget.messages.length}→${widget.messages.length}, '
@@ -362,7 +364,8 @@ class _CommentScreenState extends State<CommentScreen> {
 
     if (oldWidget.speechSettings != widget.speechSettings) {
       _debugLogLazy(
-        () => '[CommentScreen] didUpdate: speechSettings changed: '
+        () =>
+            '[CommentScreen] didUpdate: speechSettings changed: '
             'enabled ${oldWidget.speechSettings.enabled}→${widget.speechSettings.enabled}',
       );
       unawaited(_handleSpeechSettingsChanged(oldWidget.speechSettings));
@@ -490,7 +493,8 @@ class _CommentScreenState extends State<CommentScreen> {
 
   Future<void> _initializeAndStartSpeech() async {
     _debugLogLazy(
-      () => '[CommentScreen] initSpeech: enter '
+      () =>
+          '[CommentScreen] initSpeech: enter '
           '(initializing=$_speechInitializing, initialized=$_speechInitialized)',
     );
     if (_speechInitializing) return;
@@ -507,7 +511,8 @@ class _CommentScreenState extends State<CommentScreen> {
       try {
         final SpeechRuntimeStatus status = await platform.getStatus();
         _debugLogLazy(
-          () => '[CommentScreen] initSpeech: engine=${status.engineState}, '
+          () =>
+              '[CommentScreen] initSpeech: engine=${status.engineState}, '
               'player=${status.playerState}, queue=${status.queueSize}',
         );
         if (status.engineState == 'READY') {
@@ -580,7 +585,8 @@ class _CommentScreenState extends State<CommentScreen> {
       }
       _startSpeechPollTimer();
       _debugLogLazy(
-        () => '[CommentScreen] Speech started. baseline=$_lastSpeechMessageId, '
+        () =>
+            '[CommentScreen] Speech started. baseline=$_lastSpeechMessageId, '
             'msgCount=${widget.messages.length}',
       );
     } catch (e, stackTrace) {
@@ -601,7 +607,8 @@ class _CommentScreenState extends State<CommentScreen> {
 
   Future<void> _handleSpeechSettingsChanged(SpeechSettings oldSettings) async {
     _debugLogLazy(
-      () => '[CommentScreen] settingsChanged: enabled ${oldSettings.enabled}→'
+      () =>
+          '[CommentScreen] settingsChanged: enabled ${oldSettings.enabled}→'
           '${widget.speechSettings.enabled}, started=$_speechStarted',
     );
     if (!oldSettings.enabled && widget.speechSettings.enabled) {
@@ -919,8 +926,9 @@ class _CommentScreenState extends State<CommentScreen> {
                     key: const Key('save-comment-log-button'),
                     icon: const Icon(Icons.save_outlined),
                     tooltip: 'コメントログを保存',
-                    onPressed:
-                        _isSavingLog ? null : () => unawaited(_saveLogManual()),
+                    onPressed: _isSavingLog
+                        ? null
+                        : () => unawaited(_saveLogManual()),
                   ),
                 IconButton(
                   key: const Key('sort-toggle-button'),
@@ -1135,8 +1143,9 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   void _cleanUpStalePinnedIds() {
-    final Set<String> currentIds =
-        widget.messages.map((AppMessage m) => m.id).toSet();
+    final Set<String> currentIds = widget.messages
+        .map((AppMessage m) => m.id)
+        .toSet();
     _pinnedMessageIds.removeWhere((String id) => !currentIds.contains(id));
   }
 
@@ -1351,16 +1360,18 @@ class _CommentScreenState extends State<CommentScreen> {
         widget.connectionSupervisor.lastError;
     final String base = _failedMessage(errorCode);
     final String detail = widget.connectionSupervisor.lastErrorDetail ?? '';
-    final String compactDetail =
-        detail.isEmpty ? '-' : _compactSingleLine(detail);
+    final String compactDetail = detail.isEmpty
+        ? '-'
+        : _compactSingleLine(detail);
 
     if (widget.debugMode) {
       final String code = errorCode?.code ?? 'UNKNOWN_ERROR';
       return '$base [code: $code] 原因: $compactDetail 再接続ボタンで再試行できます。';
     }
 
-    final String detailSuffix =
-        detail.isEmpty ? '' : ' 原因: ${_compactSingleLine(detail)}';
+    final String detailSuffix = detail.isEmpty
+        ? ''
+        : ' 原因: ${_compactSingleLine(detail)}';
     return '$base$detailSuffix 再接続ボタンで再試行できます。';
   }
 
@@ -1481,7 +1492,8 @@ class _CommentScreenState extends State<CommentScreen> {
       return true;
     }
 
-    final double distanceToBottom = _scrollController.position.maxScrollExtent -
+    final double distanceToBottom =
+        _scrollController.position.maxScrollExtent -
         _scrollController.position.pixels;
     return distanceToBottom <= _autoScrollResumeThreshold;
   }
@@ -1496,8 +1508,9 @@ class _CommentScreenState extends State<CommentScreen> {
 
   Future<void> _loadPresetNgWordsFromAsset() async {
     try {
-      final String jsonText = await rootBundle
-          .loadString('android/app/src/main/assets/preset_ng_words.json');
+      final String jsonText = await rootBundle.loadString(
+        'android/app/src/main/assets/preset_ng_words.json',
+      );
       final Object decoded = jsonDecode(jsonText);
       if (decoded is! Map<String, dynamic>) {
         return;
@@ -1716,7 +1729,8 @@ class _CommentScreenState extends State<CommentScreen> {
   String _removeControlAndInvisible(String text) {
     final StringBuffer sb = StringBuffer();
     for (final int cp in text.runes) {
-      final bool invisible = cp == 0x200B ||
+      final bool invisible =
+          cp == 0x200B ||
           cp == 0x200C ||
           cp == 0x200D ||
           cp == 0xFEFF ||
@@ -1790,13 +1804,15 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   bool _isLetterOrDigitCodePoint(int cp) {
-    final bool asciiAlphaNum = (cp >= 0x30 && cp <= 0x39) ||
+    final bool asciiAlphaNum =
+        (cp >= 0x30 && cp <= 0x39) ||
         (cp >= 0x41 && cp <= 0x5A) ||
         (cp >= 0x61 && cp <= 0x7A);
     if (asciiAlphaNum) {
       return true;
     }
-    final bool fullWidthAlphaNum = (cp >= 0xFF10 && cp <= 0xFF19) ||
+    final bool fullWidthAlphaNum =
+        (cp >= 0xFF10 && cp <= 0xFF19) ||
         (cp >= 0xFF21 && cp <= 0xFF3A) ||
         (cp >= 0xFF41 && cp <= 0xFF5A);
     if (fullWidthAlphaNum) {
@@ -1959,8 +1975,9 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   void _scrollToMinuteOffset(int minuteOffset) {
-    final List<AppMessage> visibleMessages =
-        widget.messages.where(_shouldDisplayMessage).toList(growable: false);
+    final List<AppMessage> visibleMessages = widget.messages
+        .where(_shouldDisplayMessage)
+        .toList(growable: false);
     final List<AppMessage> sorted = _applySortOrder(visibleMessages);
     if (sorted.isEmpty) {
       return;
@@ -2266,8 +2283,8 @@ class _StatusBarState extends State<_StatusBar> {
   Widget build(BuildContext context) {
     final Color wifiColor =
         widget.supervisor.wifiIndicatorColor == WifiIndicatorColor.green
-            ? widget.themeColors.statusConnected
-            : widget.themeColors.statusDisconnected;
+        ? widget.themeColors.statusConnected
+        : widget.themeColors.statusDisconnected;
 
     return Semantics(
       button: true,
@@ -2561,7 +2578,8 @@ class _PinnedCommentsSection extends StatelessWidget {
               resolvedUserName: resolveDisplayName(message),
               showUserName: showUserName,
               fontSize: fontSize,
-              userColor: message.userId != null &&
+              userColor:
+                  message.userId != null &&
                       userColorMap.containsKey(message.userId!)
                   ? colorFromARGB32(userColorMap[message.userId!]!)
                   : null,
