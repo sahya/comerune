@@ -3,16 +3,17 @@ import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 
 const int kAppErrorLogLevel = 900;
+const bool kAppDebugLogEnabled = kDebugMode;
 
 void appDebugLog(String message) {
-  if (!kDebugMode) {
+  if (!kAppDebugLogEnabled) {
     return;
   }
   debugPrint(message);
 }
 
 void appDebugLogLazy(String Function() messageBuilder) {
-  if (!kDebugMode) {
+  if (!kAppDebugLogEnabled) {
     return;
   }
   debugPrint(messageBuilder());
@@ -33,7 +34,7 @@ void appErrorLog({
     return;
   }
 
-  final Object? safeError = error == null ? null : error.runtimeType;
+  final Object? safeError = error?.runtimeType;
   developer.log(
     message,
     name: name,
