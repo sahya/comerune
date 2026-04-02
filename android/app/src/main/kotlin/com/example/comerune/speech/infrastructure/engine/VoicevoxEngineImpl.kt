@@ -65,6 +65,21 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         private fun sanitize(value: Float, fallback: Float): Float =
             if (value.isNaN() || value.isInfinite()) fallback else value
 
+        internal fun buildMissingAssetsMessage(hasDict: Boolean, hasAnyVvm: Boolean): String? {
+            if (hasDict && hasAnyVvm) {
+                return null
+            }
+            val missing = mutableListOf<String>()
+            if (!hasDict) {
+                missing += "open_jtalk 辞書"
+            }
+            if (!hasAnyVvm) {
+                missing += "音声モデル"
+            }
+            return "VOICEVOXの初期化に必要なデータが未準備です（不足: ${missing.joinToString("・")}）。" +
+                "話者ライブラリでモデルをダウンロードしてください。"
+        }
+
         /**
          * Increment this when remote assets change to force re-download.
          * The effective version used for comparison also includes the app's
@@ -431,17 +446,9 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             return
         }
 
-        val missing = mutableListOf<String>()
-        if (!hasDict) {
-            missing += "open_jtalk 辞書"
-        }
-        if (!hasAnyVvm) {
-            missing += "音声モデル"
-        }
-        throw MissingAssetsException(
-            "VOICEVOXの初期化に必要なデータが未準備です（不足: ${missing.joinToString("・")}）。" +
-                "話者ライブラリでモデルをダウンロードしてください。"
-        )
+        val message = buildMissingAssetsMessage(hasDict = hasDict, hasAnyVvm = hasAnyVvm)
+            ?: "VOICEVOXの初期化に必要なデータが未準備です。"
+        throw MissingAssetsException(message)
     }
 
     /**
