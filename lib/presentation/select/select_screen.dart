@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../app_logging.dart';
@@ -28,9 +27,7 @@ import '../screens/settings_screen.dart';
 import '../theme/app_theme.dart';
 
 void _debugLog(String message) {
-  if (kDebugMode) {
-    debugPrint(message);
-  }
+  appDebugLog(message);
 }
 
 void _errorLog(String message, {Object? error}) {
@@ -70,6 +67,7 @@ class SelectScreen extends StatefulWidget {
     this.themeModeNotifier,
     this.followProgramRepository,
     this.myProgramRepository,
+    this.favoriteUserLiveChecker,
     this.userAttributeStore,
     super.key,
   });
@@ -82,7 +80,7 @@ class SelectScreen extends StatefulWidget {
   final UserSessionStore? userSessionStore;
   final CommentLogWriter? commentLogWriter;
   final Future<void> Function(String lv, AppSettings settings)?
-  onPrepareConnection;
+      onPrepareConnection;
   final ValueNotifier<String?>? programTitleNotifier;
   final UserNameResolution? userNameResolution;
   final ValueNotifier<String?>? broadcasterNameNotifier;
@@ -91,6 +89,7 @@ class SelectScreen extends StatefulWidget {
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
   final FollowProgramRepository? followProgramRepository;
   final MyProgramRepository? myProgramRepository;
+  final FavoriteUserLiveChecker? favoriteUserLiveChecker;
   final UserAttributeStore? userAttributeStore;
 
   @override
@@ -110,17 +109,16 @@ class _SelectScreenState extends State<SelectScreen> {
   List<FollowProgram> _followPrograms = const <FollowProgram>[];
   FollowProgram? _myProgram;
   Timer? _followRefreshTimer;
-  final FavoriteUserLiveChecker _favoriteUserLiveChecker =
-      FavoriteUserLiveChecker();
+  late FavoriteUserLiveChecker _favoriteUserLiveChecker;
+  bool _ownsFavoriteUserLiveChecker = false;
   Map<String, String> _favoriteOnAirMap = const <String, String>{};
   Timer? _favoriteRefreshTimer;
   final ValueNotifier<
-    ({Map<String, int> colors, Map<String, String> nicknames})
-  >
-  _userAttrNotifier =
+          ({Map<String, int> colors, Map<String, String> nicknames})>
+      _userAttrNotifier =
       ValueNotifier<({Map<String, int> colors, Map<String, String> nicknames})>(
-        (colors: const <String, int>{}, nicknames: const <String, String>{}),
-      );
+    (colors: const <String, int>{}, nicknames: const <String, String>{}),
+  );
   String? _currentBroadcasterId;
   final MethodChannelCommentSpeech _speechPlatform =
       MethodChannelCommentSpeech();
@@ -132,6 +130,7 @@ class _SelectScreenState extends State<SelectScreen> {
   @override
   void initState() {
     super.initState();
+    _setFavoriteUserLiveChecker(widget.favoriteUserLiveChecker);
     _controller = TextEditingController();
     _settingsNotifier = ValueNotifier<AppSettings>(widget.initialSettings);
     _previousStatus = widget.connectionSupervisor.status;
@@ -170,6 +169,10 @@ class _SelectScreenState extends State<SelectScreen> {
       widget.supplierUserIdNotifier?.addListener(_onSupplierUserIdChanged);
     }
 
+    if (oldWidget.favoriteUserLiveChecker != widget.favoriteUserLiveChecker) {
+      _setFavoriteUserLiveChecker(widget.favoriteUserLiveChecker);
+    }
+
     if (oldWidget.initialSettings != widget.initialSettings &&
         _settingsNotifier.value == oldWidget.initialSettings) {
       _settingsNotifier.value = widget.initialSettings;
@@ -185,7 +188,9 @@ class _SelectScreenState extends State<SelectScreen> {
   void dispose() {
     _followRefreshTimer?.cancel();
     _favoriteRefreshTimer?.cancel();
-    _favoriteUserLiveChecker.dispose();
+    if (_ownsFavoriteUserLiveChecker) {
+      _favoriteUserLiveChecker.dispose();
+    }
     widget.connectionSupervisor.removeListener(_onSupervisorChanged);
     widget.supplierUserIdNotifier?.removeListener(_onSupplierUserIdChanged);
     _loginStateNotifier.dispose();
@@ -195,6 +200,14 @@ class _SelectScreenState extends State<SelectScreen> {
       ..removeListener(_onInputChanged)
       ..dispose();
     super.dispose();
+  }
+
+  void _setFavoriteUserLiveChecker(FavoriteUserLiveChecker? checker) {
+    if (_ownsFavoriteUserLiveChecker) {
+      _favoriteUserLiveChecker.dispose();
+    }
+    _ownsFavoriteUserLiveChecker = checker == null;
+    _favoriteUserLiveChecker = checker ?? FavoriteUserLiveChecker();
   }
 
   // TODO(PR#18-optional): setState rebuilds the entire widget on every
@@ -270,18 +283,38 @@ class _SelectScreenState extends State<SelectScreen> {
     _followBroadcasterName = null;
     _followBroadcasterIconUrl = null;
     _followBeginAt = null;
-    unawaited(_connect());
+    unawaited(_connect(connectSource: 'submit'));
   }
 
-  Future<void> _connect() async {
-    if (!_canAttemptConnection) {
+  Future<void> _connect({required String connectSource}) async {
+    final String rawInput = _controller.text;
+    if (rawInput.trim().isEmpty) {
+      _debugLog('[SelectScreen] connect skipped(source=$connectSource): empty');
+      return;
+    }
+
+    if (!widget.connectionSupervisor.canStartConnection) {
+      _debugLog(
+        '[SelectScreen] connect skipped(source=$connectSource): status=${widget.connectionSupervisor.status.code}',
+      );
+      if (mounted) {
+        final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(content: Text('現在接続中です。停止してから再試行してください')),
+          );
+      }
       return;
     }
 
     FocusScope.of(context).unfocus();
 
-    final String? lv = LvParser.extract(_controller.text);
+    final String? lv = LvParser.extract(rawInput);
     if (lv == null) {
+      _debugLog(
+        '[SelectScreen] connect skipped(source=$connectSource): lv parse failed from "$rawInput"',
+      );
       final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
       messenger
         ..hideCurrentSnackBar()
@@ -299,8 +332,17 @@ class _SelectScreenState extends State<SelectScreen> {
     await widget.onPrepareConnection?.call(lv, settings);
 
     final bool started = widget.connectionSupervisor.startConnection();
+    _debugLog(
+      '[SelectScreen] startConnection(source=$connectSource, lv=$lv) => $started',
+    );
 
     if (!started || !mounted) {
+      if (!started && mounted) {
+        final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text('接続状態が変化したため再試行してください')));
+      }
       return;
     }
 
@@ -374,7 +416,7 @@ class _SelectScreenState extends State<SelectScreen> {
                             _followBroadcasterName = null;
                             _followBroadcasterIconUrl = null;
                             _followBeginAt = null;
-                            unawaited(_connect());
+                            unawaited(_connect(connectSource: 'manual-button'));
                           }
                         : null,
                     child: const Text('接続開始'),
@@ -441,12 +483,10 @@ class _SelectScreenState extends State<SelectScreen> {
         final String? cachedBroadcasterName = supplierUserId != null
             ? widget.userNameResolution?.resolve(supplierUserId)
             : null;
-        final String? broadcasterName =
-            cachedBroadcasterName ??
+        final String? broadcasterName = cachedBroadcasterName ??
             widget.broadcasterNameNotifier?.value ??
             _followBroadcasterName;
-        final String? broadcasterIconUrl =
-            _followBroadcasterIconUrl ??
+        final String? broadcasterIconUrl = _followBroadcasterIconUrl ??
             _buildIconUrlFromUserId(supplierUserId);
         final DateTime? beginAt = _resolveCommentBeginAt();
 
@@ -469,9 +509,8 @@ class _SelectScreenState extends State<SelectScreen> {
           beginAt: beginAt,
           showUserName: _settingsNotifier.value.showUserName,
           commentFontSize: _settingsNotifier.value.commentFontSize,
-          userNameResolution: nameResolutionEnabled
-              ? widget.userNameResolution
-              : null,
+          userNameResolution:
+              nameResolutionEnabled ? widget.userNameResolution : null,
           commentLogWriter: widget.commentLogWriter,
           autoSaveCommentLog: _settingsNotifier.value.autoSaveCommentLog,
           autoSaveCommentLogPath:
@@ -482,19 +521,15 @@ class _SelectScreenState extends State<SelectScreen> {
           starPrefixHidingEnabled:
               _settingsNotifier.value.starPrefixHidingEnabled,
           userColorMap: _userAttrNotifier.value.colors,
-          onUserColorChanged: widget.userAttributeStore != null
-              ? _onUserColorChanged
-              : null,
-          onUserColorRemoved: widget.userAttributeStore != null
-              ? _onUserColorRemoved
-              : null,
+          onUserColorChanged:
+              widget.userAttributeStore != null ? _onUserColorChanged : null,
+          onUserColorRemoved:
+              widget.userAttributeStore != null ? _onUserColorRemoved : null,
           userNicknameMap: _userAttrNotifier.value.nicknames,
-          onNicknameChanged: widget.userAttributeStore != null
-              ? _onNicknameChanged
-              : null,
-          onNicknameRemoved: widget.userAttributeStore != null
-              ? _onNicknameRemoved
-              : null,
+          onNicknameChanged:
+              widget.userAttributeStore != null ? _onNicknameChanged : null,
+          onNicknameRemoved:
+              widget.userAttributeStore != null ? _onNicknameRemoved : null,
           autoNicknameRegistration:
               _settingsNotifier.value.autoNicknameRegistration,
           themeMode: _settingsNotifier.value.themeMode,
@@ -542,8 +577,8 @@ class _SelectScreenState extends State<SelectScreen> {
     );
     await widget.onPrepareConnection?.call(lv, settings);
 
-    final bool retried = widget.connectionSupervisor
-        .retryConnectionFromTerminal();
+    final bool retried =
+        widget.connectionSupervisor.retryConnectionFromTerminal();
     if (!retried && widget.connectionSupervisor.canStartConnection) {
       widget.connectionSupervisor.startConnection();
     }
@@ -590,8 +625,8 @@ class _SelectScreenState extends State<SelectScreen> {
     final Map<String, int> colors = await widget.userAttributeStore!.loadColors(
       broadcasterId,
     );
-    final Map<String, String> nicknames = await widget.userAttributeStore!
-        .loadNicknames(broadcasterId);
+    final Map<String, String> nicknames =
+        await widget.userAttributeStore!.loadNicknames(broadcasterId);
     if (!mounted || _currentBroadcasterId != broadcasterId) {
       return;
     }
@@ -940,7 +975,10 @@ class _SelectScreenState extends State<SelectScreen> {
     _followBroadcasterIconUrl = program.providerIconUrl;
     _followBeginAt = program.beginAt;
     _controller.text = program.programId;
-    unawaited(_connect());
+    _debugLog(
+      '[SelectScreen] follow program tapped: programId=${program.programId}',
+    );
+    unawaited(_connect(connectSource: 'follow-program'));
   }
 
   Future<void> _fetchFavoriteUserStatus() async {
@@ -954,8 +992,11 @@ class _SelectScreenState extends State<SelectScreen> {
       return;
     }
 
-    final Map<String, String> result = await _favoriteUserLiveChecker
-        .checkBroadcastStatus(favoriteIds);
+    _debugLog(
+      '[SelectScreen] favorite status refresh start: users=${favoriteIds.length}',
+    );
+    final Map<String, String> result =
+        await _favoriteUserLiveChecker.checkBroadcastStatus(favoriteIds);
     if (!mounted) {
       return;
     }
@@ -963,14 +1004,42 @@ class _SelectScreenState extends State<SelectScreen> {
     setState(() {
       _favoriteOnAirMap = result;
     });
+    _debugLog(
+      '[SelectScreen] favorite status refresh done: onAir=${result.length}',
+    );
   }
 
   void _connectToFavoriteUser(String userId, String programId) {
+    final String maskedUserId = _maskUserIdForLog(userId);
+    final String? lv = LvParser.extract(programId);
+    if (lv == null) {
+      _debugLog(
+        '[SelectScreen] favorite tap ignored: invalid programId userId=$maskedUserId raw="$programId"',
+      );
+      final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('放送IDが見つかりません')));
+      return;
+    }
+
+    _debugLog(
+      '[SelectScreen] favorite user tapped: userId=$maskedUserId programId=$lv',
+    );
     _followBroadcasterName = widget.userNameResolution?.resolve(userId);
     _followBroadcasterIconUrl = buildNicoIconUrl(userId);
     _followBeginAt = null;
-    _controller.text = programId;
-    unawaited(_connect());
+    _controller.text = lv;
+    unawaited(_connect(connectSource: 'favorite-user'));
+  }
+
+  String _maskUserIdForLog(String userId) {
+    if (userId.length <= 2) {
+      return '**';
+    }
+    final String first = userId.substring(0, 1);
+    final String last = userId.substring(userId.length - 1);
+    return '$first***$last';
   }
 
   Future<void> _reloadSettingsFromStore() async {
@@ -1129,8 +1198,8 @@ class _FollowProgramList extends StatelessWidget {
               Text(
                 '${programs.length}件',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: Theme.of(context).colorScheme.outline,
-                ),
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
               ),
               const Spacer(),
               SizedBox(
@@ -1240,9 +1309,8 @@ class _FollowProgramTile extends StatelessWidget {
               Icon(
                 Icons.play_circle_outline,
                 size: 20,
-                color: enabled
-                    ? theme.colorScheme.primary
-                    : theme.disabledColor,
+                color:
+                    enabled ? theme.colorScheme.primary : theme.disabledColor,
               ),
             ],
           ),
@@ -1531,10 +1599,8 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
 
   @override
   Widget build(BuildContext context) {
-    final List<MapEntry<String, String>> entries = widget
-        .onAirUserPrograms
-        .entries
-        .toList();
+    final List<MapEntry<String, String>> entries =
+        widget.onAirUserPrograms.entries.toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -1550,8 +1616,8 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
               Text(
                 '${entries.length}件',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: Theme.of(context).colorScheme.outline,
-                ),
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
               ),
               const Spacer(),
               if (widget.onRefresh != null)
@@ -1581,9 +1647,8 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
             child: ListTile(
               dense: true,
               enabled: widget.enabled,
-              onTap: widget.enabled
-                  ? () => widget.onTap(userId, programId)
-                  : null,
+              onTap:
+                  widget.enabled ? () => widget.onTap(userId, programId) : null,
               leading: ClipOval(
                 child: SizedBox(
                   width: 32,

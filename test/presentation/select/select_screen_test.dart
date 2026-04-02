@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:comerune/application/settings/settings_store.dart';
 import 'package:comerune/application/timeline/timeline_store.dart';
+import 'package:comerune/data/follow/favorite_user_live_checker.dart';
 import 'package:comerune/data/follow/follow_program.dart';
 import 'package:comerune/data/follow/follow_program_repository.dart';
 import 'package:comerune/data/follow/my_program_repository.dart';
 import 'package:comerune/data/user/user_attribute_store.dart';
 import 'package:comerune/domain/connection/connection_supervisor.dart';
 import 'package:comerune/domain/models/app_message.dart';
+import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/domain/models/user_name_resolution.dart';
 import 'package:comerune/presentation/select/select_screen.dart';
 import 'package:comerune/presentation/screens/comment_screen.dart';
@@ -1063,6 +1065,68 @@ void main() {
     );
   });
 
+  group('favorite user section', () {
+    testWidgets('tapping favorite user tile starts connection', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+      final _FakeFavoriteUserLiveChecker checker = _FakeFavoriteUserLiveChecker(
+        resultMap: <String, String>{'12345': 'lv777888999'},
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: supervisor,
+            initialSettings: AppSettings.defaults.copyWith(
+              favoriteUserIds: '12345',
+            ),
+            favoriteUserLiveChecker: checker,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('お気に入りユーザー'), findsOneWidget);
+      expect(find.text('12345'), findsOneWidget);
+
+      await tester.tap(find.text('12345'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CommentScreen), findsOneWidget);
+      expect(find.text('lv777888999'), findsOneWidget);
+      expect(checker.lastRequestedUserIds, <String>{'12345'});
+    });
+
+    testWidgets('shows snackbar when favorite tile has invalid program id', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+      final _FakeFavoriteUserLiveChecker checker = _FakeFavoriteUserLiveChecker(
+        resultMap: <String, String>{'12345': 'not-a-lv'},
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: supervisor,
+            initialSettings: AppSettings.defaults.copyWith(
+              favoriteUserIds: '12345',
+            ),
+            favoriteUserLiveChecker: checker,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('12345'));
+      await tester.pump();
+
+      expect(find.byType(CommentScreen), findsNothing);
+      expect(find.text('放送IDが見つかりません'), findsOneWidget);
+    });
+  });
+
   group('my broadcast section', () {
     Future<void> pumpWithMyProgram(
       WidgetTester tester, {
@@ -1305,12 +1369,12 @@ void main() {
 
       final _FakeFollowProgramRepository followRepository =
           _FakeFollowProgramRepository(<FollowProgram>[
-            FollowProgram(
-              programId: 'lv200',
-              title: 'フォロー放送',
-              providerName: 'フォロー放送者',
-            ),
-          ]);
+        FollowProgram(
+          programId: 'lv200',
+          title: 'フォロー放送',
+          providerName: 'フォロー放送者',
+        ),
+      ]);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -1363,6 +1427,29 @@ class _FakeMyProgramRepository extends MyProgramRepository {
   }
 }
 
+class _FakeFavoriteUserLiveChecker extends FavoriteUserLiveChecker {
+  _FakeFavoriteUserLiveChecker({required this.resultMap});
+
+  final Map<String, String> resultMap;
+  Set<String> lastRequestedUserIds = const <String>{};
+
+  @override
+  Future<Map<String, String>> checkBroadcastStatus(Set<String> userIds) async {
+    lastRequestedUserIds = Set<String>.from(userIds);
+    final Map<String, String> filtered = <String, String>{};
+    for (final String userId in userIds) {
+      final String? programId = resultMap[userId];
+      if (programId != null) {
+        filtered[userId] = programId;
+      }
+    }
+    return filtered;
+  }
+
+  @override
+  void dispose() {}
+}
+
 class _FakeFollowProgramRepository extends FollowProgramRepository {
   _FakeFollowProgramRepository(this._programs);
 
@@ -1388,20 +1475,20 @@ class _FakeUserAttributeStore implements UserAttributeStore {
         const <String, Map<String, int>>{},
     Map<String, Map<String, String>> nicknamesByBroadcaster =
         const <String, Map<String, String>>{},
-  }) : _colorsByBroadcaster = colorsByBroadcaster.map(
-         (String broadcasterId, Map<String, int> colors) =>
-             MapEntry<String, Map<String, int>>(
-               broadcasterId,
-               Map<String, int>.from(colors),
-             ),
-       ),
-       _nicknamesByBroadcaster = nicknamesByBroadcaster.map(
-         (String broadcasterId, Map<String, String> nicknames) =>
-             MapEntry<String, Map<String, String>>(
-               broadcasterId,
-               Map<String, String>.from(nicknames),
-             ),
-       );
+  })  : _colorsByBroadcaster = colorsByBroadcaster.map(
+          (String broadcasterId, Map<String, int> colors) =>
+              MapEntry<String, Map<String, int>>(
+            broadcasterId,
+            Map<String, int>.from(colors),
+          ),
+        ),
+        _nicknamesByBroadcaster = nicknamesByBroadcaster.map(
+          (String broadcasterId, Map<String, String> nicknames) =>
+              MapEntry<String, Map<String, String>>(
+            broadcasterId,
+            Map<String, String>.from(nicknames),
+          ),
+        );
 
   final Map<String, Map<String, int>> _colorsByBroadcaster;
   final Map<String, Map<String, String>> _nicknamesByBroadcaster;
