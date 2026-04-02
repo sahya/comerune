@@ -6,6 +6,7 @@ import com.example.comerune.speech.domain.model.WavSynthesisResult
 
 interface VoicevoxEngine {
     suspend fun initialize(): Result<Unit>
+    suspend fun prepareForModelDownload(): Result<Unit>
     suspend fun synthesize(request: SpeechRequest): Result<WavSynthesisResult>
     fun isReady(): Boolean
 
