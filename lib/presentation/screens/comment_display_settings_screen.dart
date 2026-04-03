@@ -17,8 +17,7 @@ class CommentDisplaySettingsScreen extends StatefulWidget {
 }
 
 class _CommentDisplaySettingsScreenState
-    extends State<CommentDisplaySettingsScreen>
-    with SettingsScreenMixin {
+    extends State<CommentDisplaySettingsScreen> with SettingsScreenMixin {
   @override
   SettingsStore get settingsStore => widget.settingsStore;
 
@@ -73,8 +72,8 @@ class _CommentDisplaySettingsScreenState
                       value: settings.autoSaveCommentLog,
                       onChanged: (bool value) async {
                         if (value) {
-                          final String? directory = await FilePicker.platform
-                              .getDirectoryPath();
+                          final String? directory =
+                              await FilePicker.platform.getDirectoryPath();
                           if (directory == null) {
                             return;
                           }
@@ -108,8 +107,8 @@ class _CommentDisplaySettingsScreenState
                       value: settings.commentFontSize.round(),
                       min: commentFontSizeMin.round(),
                       max: commentFontSizeMax.round(),
-                      divisions: (commentFontSizeMax - commentFontSizeMin)
-                          .round(),
+                      divisions:
+                          (commentFontSizeMax - commentFontSizeMin).round(),
                       suffix: 'px',
                       sweetSpotMin: 12,
                       sweetSpotMax: 18,
@@ -123,7 +122,7 @@ class _CommentDisplaySettingsScreenState
                     const SizedBox(height: 8),
                     DropdownButtonFormField<PastCommentFetchCount>(
                       key: const Key('past-comment-count-dropdown'),
-                      initialValue: settings.pastCommentFetchCount,
+                      value: settings.pastCommentFetchCount,
                       decoration: const InputDecoration(
                         labelText: '過去コメント取得件数',
                         border: OutlineInputBorder(),
@@ -132,9 +131,9 @@ class _CommentDisplaySettingsScreenState
                           .map(
                             (PastCommentFetchCount value) =>
                                 DropdownMenuItem<PastCommentFetchCount>(
-                                  value: value,
-                                  child: Text(value.label),
-                                ),
+                              value: value,
+                              child: Text(value.label),
+                            ),
                           )
                           .toList(),
                       onChanged: (PastCommentFetchCount? value) {

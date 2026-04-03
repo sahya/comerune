@@ -102,6 +102,39 @@ void main() {
       expect(loaded.autoSaveCommentLog, isFalse);
     });
 
+    testWidgets('past comment count dropdown persists selected value', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      // Default should be count100
+      AppSettings loaded = await settingsStore.load();
+      expect(loaded.pastCommentFetchCount, PastCommentFetchCount.count100);
+
+      // Scroll to and open the dropdown
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('past-comment-count-dropdown'),
+      );
+      await tester.tap(
+        find.byKey(const Key('past-comment-count-dropdown')),
+        warnIfMissed: false,
+      );
+      await tester.pumpAndSettle();
+
+      // Select '500' option in the dropdown overlay
+      await tester.tap(find.text('500').last);
+      await tester.pumpAndSettle();
+
+      loaded = await settingsStore.load();
+      expect(loaded.pastCommentFetchCount, PastCommentFetchCount.count500);
+    });
+
     testWidgets('disables statistics child toggles when parent toggle is off', (
       WidgetTester tester,
     ) async {
