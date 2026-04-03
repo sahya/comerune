@@ -15,17 +15,21 @@ import com.example.comerune.speech.domain.normalizer.DuplicateDetector
 import com.example.comerune.speech.domain.player.WavPlayer
 import com.example.comerune.speech.domain.queue.SpeechQueueManager
 import com.example.comerune.speech.domain.settings.SettingsRepository
+import com.example.comerune.speech.domain.model.WavSynthesisResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.newSingleThreadContext
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 class SpeechControllerImpl(
     private val normalizer: CommentNormalizer,
@@ -35,13 +39,28 @@ class SpeechControllerImpl(
     private val settingsRepository: SettingsRepository,
     private val eventEmitter: SpeechEventEmitter,
     dispatcher: CoroutineDispatcher = Dispatchers.Default,
+    synthesisDispatcher: CoroutineDispatcher? = null,
     private val timeProvider: () -> Long = System::currentTimeMillis,
     private val duplicateDetector: DuplicateDetector? = null
 ) : SpeechController {
 
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
+    private val synthDispatcher: CoroutineDispatcher = synthesisDispatcher
+        ?: newSingleThreadContext("voicevox-synth")
+    private val ownsSynthDispatcher = synthesisDispatcher == null
     private val processingMutex = Mutex()
     private val workerMutex = Mutex()
+
+    private data class PrefetchState(
+        val commentId: String,
+        val wavResult: WavSynthesisResult
+    )
+
+    @Volatile
+    private var prefetched: PrefetchState? = null
+
+    @Volatile
+    private var activePrefetchJob: Job? = null
 
     @Volatile
     private var started = false
@@ -89,6 +108,9 @@ class SpeechControllerImpl(
         }
         started = false
         player.stop()
+        activePrefetchJob?.cancel()
+        activePrefetchJob = null
+        prefetched = null
         if (clearQueue) {
             queueManager.clear()
             eventEmitter.emit(SpeechEvents.queueUpdated(0))
@@ -100,6 +122,9 @@ class SpeechControllerImpl(
         if (released) {
             return Result.failure(IllegalStateException("Controller has been released"))
         }
+        activePrefetchJob?.cancel()
+        activePrefetchJob = null
+        prefetched = null
         player.stop()
         return Result.success(Unit)
     }
@@ -239,6 +264,9 @@ class SpeechControllerImpl(
             if (released) return
             released = true
             started = false
+            activePrefetchJob?.cancel()
+            activePrefetchJob = null
+            prefetched = null
             workerJob?.cancel()
             workerJob = null
         }
@@ -257,6 +285,9 @@ class SpeechControllerImpl(
             player.release()
         } catch (_: Exception) {
             // Best-effort: failure during cleanup is expected (player may already be released)
+        }
+        if (ownsSynthDispatcher) {
+            (synthDispatcher as? java.io.Closeable)?.close()
         }
         scope.cancel()
     }
@@ -340,44 +371,81 @@ class SpeechControllerImpl(
         eventEmitter.emit(SpeechEvents.speechStarted(item.commentId, item.text))
 
         val settings = settingsRepository.get()
-        val request = SpeechRequest(
-            text = item.text,
-            speakerId = settings.speakerId,
-            speedScale = settings.speedScale,
-            pitchScale = settings.pitchScale,
-            intonationScale = settings.intonationScale,
-            volumeScale = settings.volumeScale,
-            prePhonemeLength = settings.prePhonemeLength,
-            postPhonemeLength = settings.postPhonemeLength
-        )
 
-        val synthesisResult = try {
-            engine.synthesize(request)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Result.failure(e)
+        // Use prefetched result if available for this item
+        val wavResult: WavSynthesisResult
+        val cached = prefetched
+        if (cached != null && cached.commentId == item.commentId) {
+            wavResult = cached.wavResult
+            prefetched = null
+        } else {
+            // Clear stale prefetch (different item)
+            prefetched = null
+
+            val request = buildSpeechRequest(item.text, settings)
+            val synthesisResult = try {
+                withContext(synthDispatcher) { engine.synthesize(request) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+
+            if (synthesisResult.isFailure) {
+                val errorMessage =
+                    synthesisResult.exceptionOrNull()?.message ?: "synthesis_failed"
+                eventEmitter.emit(
+                    SpeechEvents.speechFailed(item.commentId, errorMessage)
+                )
+                currentCommentId = null
+                currentText = null
+                return
+            }
+            wavResult = synthesisResult.getOrThrow()
         }
 
-        if (synthesisResult.isFailure) {
-            val errorMessage =
-                synthesisResult.exceptionOrNull()?.message ?: "synthesis_failed"
-            eventEmitter.emit(
-                SpeechEvents.speechFailed(item.commentId, errorMessage)
-            )
-            currentCommentId = null
-            currentText = null
-            return
-        }
+        // Start prefetching next item while playing current one
+        val nextItem = queueManager.peek()
+        activePrefetchJob = if (nextItem != null) {
+            scope.async(synthDispatcher) {
+                try {
+                    val nextSettings = settingsRepository.get()
+                    val nextRequest = buildSpeechRequest(nextItem.text, nextSettings)
+                    engine.synthesize(nextRequest)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        } else null
 
-        val wavResult = synthesisResult.getOrThrow()
-
+        // Play current item
         val playResult = try {
             player.play(wavResult.wavBytes)
         } catch (e: CancellationException) {
+            activePrefetchJob?.cancel()
+            activePrefetchJob = null
             throw e
         } catch (e: Exception) {
             Result.failure(e)
+        }
+
+        // Collect prefetch result
+        val currentPrefetchJob = activePrefetchJob
+        if (currentPrefetchJob != null) {
+            try {
+                val result = currentPrefetchJob.await()
+                if (result != null && result.isSuccess) {
+                    prefetched = PrefetchState(
+                        commentId = nextItem!!.commentId,
+                        wavResult = result.getOrThrow()
+                    )
+                }
+            } catch (_: Exception) {
+                // Prefetch failed, no problem - will synthesize normally
+            }
+            activePrefetchJob = null
         }
 
         if (playResult.isFailure) {
@@ -392,5 +460,18 @@ class SpeechControllerImpl(
 
         currentCommentId = null
         currentText = null
+    }
+
+    private fun buildSpeechRequest(text: String, settings: SpeechSettings): SpeechRequest {
+        return SpeechRequest(
+            text = text,
+            speakerId = settings.speakerId,
+            speedScale = settings.speedScale,
+            pitchScale = settings.pitchScale,
+            intonationScale = settings.intonationScale,
+            volumeScale = settings.volumeScale,
+            prePhonemeLength = settings.prePhonemeLength,
+            postPhonemeLength = settings.postPhonemeLength
+        )
     }
 }
