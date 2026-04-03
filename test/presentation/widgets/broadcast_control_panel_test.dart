@@ -35,7 +35,7 @@ void main() {
       expect(find.text('スライドして放送を終了'), findsNothing);
     });
 
-    testWidgets('shows start button for reserved program', (
+    testWidgets('start button is hidden for reserved program (pending API verification)', (
       WidgetTester tester,
     ) async {
       final FollowProgram program = FollowProgram(
@@ -57,7 +57,8 @@ void main() {
         ),
       );
 
-      expect(find.text('放送を開始'), findsOneWidget);
+      // 放送開始ボタンはAPI実機検証完了まで非表示。
+      expect(find.text('放送を開始'), findsNothing);
       expect(find.text('スライドして放送を終了'), findsNothing);
     });
 
@@ -115,6 +116,8 @@ void main() {
       expect(find.textContaining('残り'), findsOneWidget);
     });
 
+    // 以下の開始ボタン関連テストは、UIで非表示にしている間はスキップ。
+    // 有効化時にskipを外すこと。
     testWidgets('start button shows countdown dialog on tap', (
       WidgetTester tester,
     ) async {
@@ -144,7 +147,7 @@ void main() {
       expect(find.text('放送を開始します'), findsOneWidget);
       expect(find.text('3'), findsOneWidget);
       expect(find.text('キャンセル'), findsOneWidget);
-    });
+    }, skip: '放送開始ボタンはAPI実機検証完了まで非表示');
 
     testWidgets('countdown dialog can be cancelled', (
       WidgetTester tester,
@@ -183,7 +186,7 @@ void main() {
       expect(startCalled, isFalse);
       // Dialog should be dismissed.
       expect(find.text('放送を開始します'), findsNothing);
-    });
+    }, skip: '放送開始ボタンはAPI実機検証完了まで非表示');
 
     testWidgets('countdown completes and calls onStart', (
       WidgetTester tester,
@@ -228,7 +231,7 @@ void main() {
 
       // Success snackbar.
       expect(find.text('放送を開始しました'), findsOneWidget);
-    });
+    }, skip: '放送開始ボタンはAPI実機検証完了まで非表示');
 
     testWidgets('shows login-required message for INVALID_PARAMS error', (
       WidgetTester tester,
@@ -264,7 +267,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('ログインが必要です'), findsOneWidget);
-    });
+    }, skip: '放送開始ボタンはAPI実機検証完了まで非表示');
 
     testWidgets('disabled state prevents interaction', (
       WidgetTester tester,
@@ -301,7 +304,7 @@ void main() {
       expect(startCalled, isFalse);
       // No dialog should appear.
       expect(find.text('放送を開始します'), findsNothing);
-    });
+    }, skip: '放送開始ボタンはAPI実機検証完了まで非表示');
 
     testWidgets('shows ended program with no controls', (
       WidgetTester tester,

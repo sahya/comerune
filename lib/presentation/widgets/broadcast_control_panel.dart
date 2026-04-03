@@ -45,11 +45,13 @@ class BroadcastControlPanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          if (program.canStart)
-            _StartBroadcastButton(
-              enabled: enabled,
-              onStart: onStart,
-            ),
+          // 放送開始ボタンは実装済みだが、API の実機検証が完了するまで非表示。
+          // 有効化するには以下のコメントを外す:
+          // if (program.canStart)
+          //   _StartBroadcastButton(
+          //     enabled: enabled,
+          //     onStart: onStart,
+          //   ),
           if (program.canEnd)
             _SlideToEndBroadcast(
               enabled: enabled,
