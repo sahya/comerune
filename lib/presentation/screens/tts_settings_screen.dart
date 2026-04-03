@@ -611,7 +611,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         children: [
           DropdownButtonFormField<int>(
             key: const Key('voicevox-speaker-dropdown'),
-            initialValue: currentInList
+            value: currentInList
                 ? settings.voicevoxSpeaker
                 : items.first.value,
             decoration: const InputDecoration(
@@ -653,7 +653,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
 
     return DropdownButtonFormField<int>(
       key: const Key('voicevox-speaker-dropdown'),
-      initialValue: fallbackCurrentInList
+      value: fallbackCurrentInList
           ? settings.voicevoxSpeaker
           : fallbackSpeakerId,
       decoration: const InputDecoration(
@@ -801,7 +801,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   Widget _buildNemoStyleDropdown(AppSettings settings) {
     return DropdownButtonFormField<_NemoStylePreset>(
       key: const Key('voicevox-style-dropdown'),
-      initialValue: _currentNemoStyleValue(settings),
+      value: _currentNemoStyleValue(settings),
       decoration: const InputDecoration(
         labelText: 'スタイル',
         border: OutlineInputBorder(),

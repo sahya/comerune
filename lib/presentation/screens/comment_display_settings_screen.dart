@@ -123,7 +123,7 @@ class _CommentDisplaySettingsScreenState
                     const SizedBox(height: 8),
                     DropdownButtonFormField<PastCommentFetchCount>(
                       key: const Key('past-comment-count-dropdown'),
-                      initialValue: settings.pastCommentFetchCount,
+                      value: settings.pastCommentFetchCount,
                       decoration: const InputDecoration(
                         labelText: '過去コメント取得件数',
                         border: OutlineInputBorder(),
