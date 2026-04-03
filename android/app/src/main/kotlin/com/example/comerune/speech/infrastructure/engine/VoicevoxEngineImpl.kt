@@ -17,6 +17,7 @@ import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.GZIPInputStream
 
 /**
@@ -131,7 +132,17 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
     /** Lock for state transitions in non-suspend functions (e.g. release). */
     private val stateLock = Any()
 
+    /** Mutex for lifecycle operations (initialize, loadModel, prepareForModelDownload). */
     private val mutex = Mutex()
+
+    /**
+     * Number of synthesis calls currently in flight.
+     * Used to derive [TtsEngineState.SYNTHESIZING] without blocking
+     * concurrent synthesis — the native VOICEVOX Core synthesizer is
+     * internally thread-safe for `const` operations.
+     */
+    private val activeSynthesisCount = AtomicInteger(0)
+
     private val loadedModelPaths: MutableSet<String> = ConcurrentHashMap.newKeySet()
     private val loadedModelIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
@@ -246,44 +257,50 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             }
         }
 
-    override suspend fun synthesize(request: SpeechRequest): Result<WavSynthesisResult> =
-        mutex.withLock {
-            if (state != TtsEngineState.READY) {
-                return@withLock Result.failure(
-                    IllegalStateException(
-                        "Engine is not ready. Current state: $state"
-                    )
+    override suspend fun synthesize(request: SpeechRequest): Result<WavSynthesisResult> {
+        // Guard: reject if the engine is not in a usable state.
+        // No lifecycle mutex needed — concurrent synthesis is safe because
+        // VOICEVOX Core's synthesizer accepts `const` pointers and is
+        // internally thread-safe. The C++ shared_mutex allows parallel reads.
+        val currentState = state
+        if (currentState != TtsEngineState.READY &&
+            currentState != TtsEngineState.SYNTHESIZING
+        ) {
+            return Result.failure(
+                IllegalStateException(
+                    "Engine is not ready. Current state: $currentState"
                 )
+            )
+        }
+
+        activeSynthesisCount.incrementAndGet()
+        state = TtsEngineState.SYNTHESIZING
+
+        return try {
+            val wavBytes = withContext(Dispatchers.IO) {
+                synthesizeViaAudioQuery(request)
             }
 
-            state = TtsEngineState.SYNTHESIZING
-
-            try {
-                val wavBytes = withContext(Dispatchers.IO) {
-                    synthesizeViaAudioQuery(request)
-                }
-
-                // Only restore READY if release() hasn't been called
-                if (state == TtsEngineState.SYNTHESIZING) {
-                    state = TtsEngineState.READY
-                }
-                Result.success(
-                    WavSynthesisResult(
-                        wavBytes = wavBytes,
-                        text = request.text,
-                        durationEstimateMs = estimateDurationFromWav(wavBytes)
-                    )
+            Result.success(
+                WavSynthesisResult(
+                    wavBytes = wavBytes,
+                    text = request.text,
+                    durationEstimateMs = estimateDurationFromWav(wavBytes)
                 )
-            } catch (e: Exception) {
-                // Only restore READY if release() hasn't been called concurrently.
-                // If state is UNINITIALIZED, release() ran during synthesis — don't overwrite.
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Synthesis failed", e)
+            Result.failure(e)
+        } finally {
+            if (activeSynthesisCount.decrementAndGet() == 0) {
+                // Restore READY only when no synthesis is in flight
+                // and release() hasn't been called concurrently.
                 if (state == TtsEngineState.SYNTHESIZING) {
                     state = TtsEngineState.READY
                 }
-                Log.e(TAG, "Synthesis failed", e)
-                Result.failure(e)
             }
         }
+    }
 
     /**
      * Synthesize WAV via the AudioQuery path, which allows applying
@@ -393,19 +410,23 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             }
         }
 
-    override fun isReady(): Boolean = state == TtsEngineState.READY
+    override fun isReady(): Boolean =
+        state == TtsEngineState.READY || state == TtsEngineState.SYNTHESIZING
 
     override fun currentState(): TtsEngineState = state
 
     override fun release() {
-        // Use the same Mutex strategy as synthesize() to prevent state races.
         // Since release() is non-suspend, we use a @Volatile flag + native-level
-        // g_mutex for thread safety instead of the coroutine Mutex.
+        // g_mutex (exclusive lock) for thread safety instead of the coroutine Mutex.
+        // Any in-flight synthesis calls will see state == UNINITIALIZED in their
+        // finally block and skip the READY restore. The native nativeRelease()
+        // acquires an exclusive lock, so it waits for in-flight synthesis to finish.
         val alreadyReleased = synchronized(stateLock) {
             if (state == TtsEngineState.UNINITIALIZED) {
                 true
             } else {
                 state = TtsEngineState.UNINITIALIZED
+                activeSynthesisCount.set(0)
                 loadedModelPaths.clear()
                 loadedModelIds.clear()
                 false
