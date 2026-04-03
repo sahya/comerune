@@ -288,6 +288,8 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                     durationEstimateMs = estimateDurationFromWav(wavBytes)
                 )
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Synthesis failed", e)
             Result.failure(e)

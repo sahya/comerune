@@ -19,6 +19,7 @@ import com.example.comerune.speech.domain.model.WavSynthesisResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -61,7 +62,7 @@ class SpeechControllerImpl(
     private var prefetched: PrefetchState? = null
 
     @Volatile
-    private var activePrefetchJob: Job? = null
+    private var activePrefetchJob: Deferred<Result<WavSynthesisResult>?>? = null
 
     @Volatile
     private var started = false
@@ -443,6 +444,8 @@ class SpeechControllerImpl(
                         wavResult = result.getOrThrow()
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // Prefetch failed, no problem - will synthesize normally
             }
