@@ -1,6 +1,7 @@
 import 'dart:convert';
-import 'dart:developer';
 import 'dart:io';
+
+import '../../app_logging.dart';
 
 /// Result of a broadcast control operation (start, stop, or extend).
 class BroadcastControlResult {
@@ -114,9 +115,10 @@ class BroadcastControlRepository {
       final HttpClientResponse response = await request.close();
       return _parseResponse(response, 'extendBroadcast');
     } on Exception catch (e) {
-      log(
-        'Error in extendBroadcast: ${e.runtimeType}',
+      appErrorLog(
         name: 'BroadcastControlRepository',
+        message: 'Error in extendBroadcast',
+        error: e,
       );
       return BroadcastControlResult(
         success: false,
@@ -149,9 +151,10 @@ class BroadcastControlRepository {
       final HttpClientResponse response = await request.close();
       return _parseResponse(response, operationName);
     } on Exception catch (e) {
-      log(
-        'Error in $operationName: ${e.runtimeType}',
+      appErrorLog(
         name: 'BroadcastControlRepository',
+        message: 'Error in $operationName',
+        error: e,
       );
       return BroadcastControlResult(
         success: false,
@@ -190,9 +193,9 @@ class BroadcastControlRepository {
   BroadcastControlResult _parseSuccessBody(String body, String operationName) {
     final Object? decoded = jsonDecode(body);
     if (decoded is! Map<String, dynamic>) {
-      log(
-        '$operationName: unexpected response type: ${decoded.runtimeType}',
-        name: 'BroadcastControlRepository',
+      appDebugLogLazy(
+        () =>
+            '[BroadcastControlRepository] $operationName: unexpected response type: ${decoded.runtimeType}',
       );
       return const BroadcastControlResult(success: true);
     }
@@ -214,9 +217,9 @@ class BroadcastControlRepository {
     int statusCode,
     String operationName,
   ) {
-    log(
-      '$operationName failed: HTTP $statusCode',
-      name: 'BroadcastControlRepository',
+    appDebugLogLazy(
+      () =>
+          '[BroadcastControlRepository] $operationName failed: HTTP $statusCode',
     );
 
     String? errorCode;
