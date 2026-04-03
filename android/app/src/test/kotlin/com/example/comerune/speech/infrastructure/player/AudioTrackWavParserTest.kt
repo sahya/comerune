@@ -326,4 +326,59 @@ class AudioTrackWavParserTest {
         val expectedOffset = 12 + 24 + 8 + listPayload.size + 8 + factPayload.size + 8
         assertEquals(expectedOffset, info.dataOffset)
     }
+
+    @Test
+    fun `parse WAV with zero data bytes`() {
+        val wav = buildStandardWav(dataBytes = 0)
+        val info = AudioTrackWavPlayer.parseWavHeader(wav)
+
+        assertEquals(44100, info.sampleRate)
+        assertEquals(1, info.channels)
+        assertEquals(16, info.bitsPerSample)
+        assertEquals(44, info.dataOffset)
+        assertEquals(0, info.dataSize)
+    }
+
+    @Test
+    fun `parse WAV with extended fmt chunk (cbSize field)`() {
+        // Extended fmt chunk: 16 standard bytes + 2 extra bytes (cbSize = 0)
+        val sampleRate = 44100
+        val channels = 1
+        val bitsPerSample = 16
+        val blockAlign = channels * (bitsPerSample / 8)
+        val byteRate = sampleRate * blockAlign
+        val fmtChunkSize = 18 // 16 standard + 2 extra (cbSize)
+        val dataBytes = 100
+        val fileSize = 4 + (8 + fmtChunkSize) + (8 + dataBytes)
+
+        val totalSize = 12 + (8 + fmtChunkSize) + (8 + dataBytes)
+        val buf = ByteBuffer.allocate(totalSize).order(ByteOrder.LITTLE_ENDIAN)
+        buf.put("RIFF".toByteArray(Charsets.US_ASCII))
+        buf.putInt(fileSize)
+        buf.put("WAVE".toByteArray(Charsets.US_ASCII))
+        // fmt chunk with extended size
+        buf.put("fmt ".toByteArray(Charsets.US_ASCII))
+        buf.putInt(fmtChunkSize)
+        buf.putShort(1) // PCM
+        buf.putShort(channels.toShort())
+        buf.putInt(sampleRate)
+        buf.putInt(byteRate)
+        buf.putShort(blockAlign.toShort())
+        buf.putShort(bitsPerSample.toShort())
+        buf.putShort(0) // cbSize = 0 (extra bytes in extended fmt)
+        // data chunk
+        buf.put("data".toByteArray(Charsets.US_ASCII))
+        buf.putInt(dataBytes)
+        buf.put(ByteArray(dataBytes))
+
+        val wav = buf.array()
+        val info = AudioTrackWavPlayer.parseWavHeader(wav)
+
+        assertEquals(44100, info.sampleRate)
+        assertEquals(1, info.channels)
+        assertEquals(16, info.bitsPerSample)
+        assertEquals(100, info.dataSize)
+        // dataOffset = 12 (RIFF header) + 8 (fmt id+size) + 18 (fmt body) + 8 (data id+size)
+        assertEquals(12 + 8 + fmtChunkSize + 8, info.dataOffset)
+    }
 }

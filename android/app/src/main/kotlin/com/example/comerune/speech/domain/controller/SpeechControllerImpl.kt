@@ -25,6 +25,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CloseableCoroutineDispatcher
 import kotlinx.coroutines.newSingleThreadContext
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
@@ -287,7 +288,7 @@ class SpeechControllerImpl(
             // Best-effort: failure during cleanup is expected (player may already be released)
         }
         if (ownsSynthDispatcher) {
-            (synthDispatcher as? java.io.Closeable)?.close()
+            (synthDispatcher as? CloseableCoroutineDispatcher)?.close()
         }
         scope.cancel()
     }
