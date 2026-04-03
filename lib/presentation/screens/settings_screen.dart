@@ -180,9 +180,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                           .map(
                             (AppThemeMode mode) =>
                                 DropdownMenuItem<AppThemeMode>(
-                                  value: mode,
-                                  child: Text(mode.label),
-                                ),
+                              value: mode,
+                              child: Text(mode.label),
+                            ),
                           )
                           .toList(),
                       onChanged: (AppThemeMode? value) {
