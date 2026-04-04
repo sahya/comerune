@@ -129,7 +129,7 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
     @Volatile
     private var state: TtsEngineState = TtsEngineState.UNINITIALIZED
 
-    /** Lock for state transitions in non-suspend functions (e.g. release). */
+    /** Lock for state transitions and synthesis count updates (release, synthesize). */
     private val stateLock = Any()
 
     /** Mutex for lifecycle operations (initialize, loadModel, prepareForModelDownload). */
