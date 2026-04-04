@@ -372,41 +372,77 @@ class SpeechControllerImpl(
 
         eventEmitter.emit(SpeechEvents.speechStarted(item.commentId, item.text))
 
-        val settings = settingsRepository.get()
+        val wavResult = synthesizeOrUsePrefetch(item) ?: return
 
-        // Use prefetched result if available for this item
-        val wavResult: WavSynthesisResult
-        val cached = prefetched
-        if (cached != null && cached.commentId == item.commentId) {
-            wavResult = cached.wavResult
-            prefetched = null
-        } else {
-            // Clear stale prefetch (different item)
-            prefetched = null
+        val nextItem = startPrefetch()
 
-            val request = buildSpeechRequest(item.text, settings)
-            val synthesisResult = try {
-                withContext(synthDispatcher) { engine.synthesize(request) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Result.failure(e)
-            }
-
-            if (synthesisResult.isFailure) {
-                val errorMessage =
-                    synthesisResult.exceptionOrNull()?.message ?: "synthesis_failed"
-                eventEmitter.emit(
-                    SpeechEvents.speechFailed(item.commentId, errorMessage)
-                )
-                currentCommentId = null
-                currentText = null
-                return
-            }
-            wavResult = synthesisResult.getOrThrow()
+        val playResult = try {
+            player.play(wavResult.wavBytes)
+        } catch (e: CancellationException) {
+            activePrefetchJob?.cancel()
+            activePrefetchJob = null
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
         }
 
-        // Start prefetching next item while playing current one
+        collectPrefetch(nextItem)
+
+        if (playResult.isFailure) {
+            val errorMessage =
+                playResult.exceptionOrNull()?.message ?: "playback_failed"
+            eventEmitter.emit(
+                SpeechEvents.speechFailed(item.commentId, errorMessage)
+            )
+        } else {
+            eventEmitter.emit(SpeechEvents.speechCompleted(item.commentId))
+        }
+
+        currentCommentId = null
+        currentText = null
+    }
+
+    /**
+     * Returns synthesized WAV for the given item, using the prefetch cache
+     * if available. Returns null and emits a failure event if synthesis fails.
+     */
+    private suspend fun synthesizeOrUsePrefetch(item: SpeechQueueItem): WavSynthesisResult? {
+        val cached = prefetched
+        if (cached != null && cached.commentId == item.commentId) {
+            prefetched = null
+            return cached.wavResult
+        }
+
+        prefetched = null
+
+        val settings = settingsRepository.get()
+        val request = buildSpeechRequest(item.text, settings)
+        val synthesisResult = try {
+            withContext(synthDispatcher) { engine.synthesize(request) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+
+        if (synthesisResult.isFailure) {
+            val errorMessage =
+                synthesisResult.exceptionOrNull()?.message ?: "synthesis_failed"
+            eventEmitter.emit(
+                SpeechEvents.speechFailed(item.commentId, errorMessage)
+            )
+            currentCommentId = null
+            currentText = null
+            return null
+        }
+        return synthesisResult.getOrThrow()
+    }
+
+    /**
+     * Kicks off background synthesis for the next queued item.
+     * Returns the peeked item (or null if the queue is empty).
+     */
+    private fun startPrefetch(): SpeechQueueItem? {
         val nextItem = queueManager.peek()
         activePrefetchJob = if (nextItem != null) {
             scope.async(synthDispatcher) {
@@ -421,49 +457,30 @@ class SpeechControllerImpl(
                 }
             }
         } else null
+        return nextItem
+    }
 
-        // Play current item
-        val playResult = try {
-            player.play(wavResult.wavBytes)
-        } catch (e: CancellationException) {
-            activePrefetchJob?.cancel()
-            activePrefetchJob = null
-            throw e
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-
-        // Collect prefetch result
-        val currentPrefetchJob = activePrefetchJob
-        if (currentPrefetchJob != null) {
-            try {
-                val result = currentPrefetchJob.await()
-                if (result != null && result.isSuccess) {
-                    prefetched = PrefetchState(
-                        commentId = nextItem!!.commentId,
-                        wavResult = result.getOrThrow()
-                    )
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                // Prefetch failed, no problem - will synthesize normally
+    /**
+     * Awaits the in-flight prefetch job and stores the result for the next
+     * [processItem] call. Failures are silently ignored — the next item
+     * will fall back to normal synthesis.
+     */
+    private suspend fun collectPrefetch(nextItem: SpeechQueueItem?) {
+        val currentPrefetchJob = activePrefetchJob ?: return
+        try {
+            val result = currentPrefetchJob.await()
+            if (result != null && result.isSuccess) {
+                prefetched = PrefetchState(
+                    commentId = nextItem!!.commentId,
+                    wavResult = result.getOrThrow()
+                )
             }
-            activePrefetchJob = null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Prefetch failed, no problem - will synthesize normally
         }
-
-        if (playResult.isFailure) {
-            val errorMessage =
-                playResult.exceptionOrNull()?.message ?: "playback_failed"
-            eventEmitter.emit(
-                SpeechEvents.speechFailed(item.commentId, errorMessage)
-            )
-        } else {
-            eventEmitter.emit(SpeechEvents.speechCompleted(item.commentId))
-        }
-
-        currentCommentId = null
-        currentText = null
+        activePrefetchJob = null
     }
 
     private fun buildSpeechRequest(text: String, settings: SpeechSettings): SpeechRequest {
