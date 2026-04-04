@@ -372,9 +372,10 @@ class SpeechControllerImpl(
 
         eventEmitter.emit(SpeechEvents.speechStarted(item.commentId, item.text))
 
-        val wavResult = synthesizeOrUsePrefetch(item) ?: return
+        val settings = settingsRepository.get()
+        val wavResult = synthesizeOrUsePrefetch(item, settings) ?: return
 
-        val nextItem = startPrefetch()
+        val nextItem = startPrefetch(settings)
 
         val playResult = try {
             player.play(wavResult.wavBytes)
@@ -386,7 +387,9 @@ class SpeechControllerImpl(
             Result.failure(e)
         }
 
-        collectPrefetch(nextItem)
+        if (nextItem != null) {
+            collectPrefetch(nextItem)
+        }
 
         if (playResult.isFailure) {
             val errorMessage =
@@ -406,7 +409,10 @@ class SpeechControllerImpl(
      * Returns synthesized WAV for the given item, using the prefetch cache
      * if available. Returns null and emits a failure event if synthesis fails.
      */
-    private suspend fun synthesizeOrUsePrefetch(item: SpeechQueueItem): WavSynthesisResult? {
+    private suspend fun synthesizeOrUsePrefetch(
+        item: SpeechQueueItem,
+        settings: SpeechSettings
+    ): WavSynthesisResult? {
         val cached = prefetched
         if (cached != null && cached.commentId == item.commentId) {
             prefetched = null
@@ -415,7 +421,6 @@ class SpeechControllerImpl(
 
         prefetched = null
 
-        val settings = settingsRepository.get()
         val request = buildSpeechRequest(item.text, settings)
         val synthesisResult = try {
             withContext(synthDispatcher) { engine.synthesize(request) }
@@ -442,13 +447,12 @@ class SpeechControllerImpl(
      * Kicks off background synthesis for the next queued item.
      * Returns the peeked item (or null if the queue is empty).
      */
-    private fun startPrefetch(): SpeechQueueItem? {
+    private fun startPrefetch(settings: SpeechSettings): SpeechQueueItem? {
         val nextItem = queueManager.peek()
         activePrefetchJob = if (nextItem != null) {
             scope.async(synthDispatcher) {
                 try {
-                    val nextSettings = settingsRepository.get()
-                    val nextRequest = buildSpeechRequest(nextItem.text, nextSettings)
+                    val nextRequest = buildSpeechRequest(nextItem.text, settings)
                     engine.synthesize(nextRequest)
                 } catch (e: CancellationException) {
                     throw e
@@ -465,13 +469,13 @@ class SpeechControllerImpl(
      * [processItem] call. Failures are silently ignored — the next item
      * will fall back to normal synthesis.
      */
-    private suspend fun collectPrefetch(nextItem: SpeechQueueItem?) {
+    private suspend fun collectPrefetch(nextItem: SpeechQueueItem) {
         val currentPrefetchJob = activePrefetchJob ?: return
         try {
             val result = currentPrefetchJob.await()
             if (result != null && result.isSuccess) {
                 prefetched = PrefetchState(
-                    commentId = nextItem!!.commentId,
+                    commentId = nextItem.commentId,
                     wavResult = result.getOrThrow()
                 )
             }
