@@ -258,23 +258,24 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         }
 
     override suspend fun synthesize(request: SpeechRequest): Result<WavSynthesisResult> {
-        // Guard: reject if the engine is not in a usable state.
+        // Guard + count increment must be atomic to prevent race with release().
         // No lifecycle mutex needed — concurrent synthesis is safe because
         // VOICEVOX Core's synthesizer accepts `const` pointers and is
         // internally thread-safe. The C++ shared_mutex allows parallel reads.
-        val currentState = state
-        if (currentState != TtsEngineState.READY &&
-            currentState != TtsEngineState.SYNTHESIZING
-        ) {
-            return Result.failure(
-                IllegalStateException(
-                    "Engine is not ready. Current state: $currentState"
+        synchronized(stateLock) {
+            val currentState = state
+            if (currentState != TtsEngineState.READY &&
+                currentState != TtsEngineState.SYNTHESIZING
+            ) {
+                return Result.failure(
+                    IllegalStateException(
+                        "Engine is not ready. Current state: $currentState"
+                    )
                 )
-            )
+            }
+            activeSynthesisCount.incrementAndGet()
+            state = TtsEngineState.SYNTHESIZING
         }
-
-        activeSynthesisCount.incrementAndGet()
-        state = TtsEngineState.SYNTHESIZING
 
         return try {
             val wavBytes = withContext(Dispatchers.IO) {
@@ -294,11 +295,13 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             Log.e(TAG, "Synthesis failed", e)
             Result.failure(e)
         } finally {
-            if (activeSynthesisCount.decrementAndGet() == 0) {
-                // Restore READY only when no synthesis is in flight
-                // and release() hasn't been called concurrently.
-                if (state == TtsEngineState.SYNTHESIZING) {
-                    state = TtsEngineState.READY
+            synchronized(stateLock) {
+                if (activeSynthesisCount.decrementAndGet() == 0) {
+                    // Restore READY only when no synthesis is in flight
+                    // and release() hasn't been called concurrently.
+                    if (state == TtsEngineState.SYNTHESIZING) {
+                        state = TtsEngineState.READY
+                    }
                 }
             }
         }

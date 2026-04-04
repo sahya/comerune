@@ -10,13 +10,14 @@ import com.example.comerune.speech.domain.model.SpeechRuntimeStatus
 import com.example.comerune.speech.domain.model.SpeechSettings
 import com.example.comerune.speech.domain.model.SubmitResult
 import com.example.comerune.speech.domain.model.TtsEngineState
+import com.example.comerune.speech.domain.model.WavSynthesisResult
 import com.example.comerune.speech.domain.normalizer.CommentNormalizer
 import com.example.comerune.speech.domain.normalizer.DuplicateDetector
 import com.example.comerune.speech.domain.player.WavPlayer
 import com.example.comerune.speech.domain.queue.SpeechQueueManager
 import com.example.comerune.speech.domain.settings.SettingsRepository
-import com.example.comerune.speech.domain.model.WavSynthesisResult
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CloseableCoroutineDispatcher
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -26,7 +27,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.CloseableCoroutineDispatcher
 import kotlinx.coroutines.newSingleThreadContext
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
