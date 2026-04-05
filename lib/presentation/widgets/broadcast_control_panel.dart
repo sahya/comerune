@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:meta/meta.dart';
 
 import '../../data/broadcast/broadcast_control_repository.dart';
 import '../../data/follow/follow_program.dart';
@@ -106,7 +107,7 @@ class _StartBroadcastButtonState extends State<_StartBroadcastButton> {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(SnackBar(
-            content: Text(_userFacingError('開始', result)),
+            content: Text(userFacingBroadcastError('開始', result)),
           ));
       }
     } finally {
@@ -310,7 +311,7 @@ class _SlideToEndBroadcastState extends State<_SlideToEndBroadcast> {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(SnackBar(
-            content: Text(_userFacingError('終了', result)),
+            content: Text(userFacingBroadcastError('終了', result)),
           ));
       }
     } finally {
@@ -327,6 +328,7 @@ class _SlideToEndBroadcastState extends State<_SlideToEndBroadcast> {
 
     return Semantics(
       label: _isLoading ? '放送を終了しています' : 'スライドして放送を終了',
+      value: _isLoading ? null : '${(_progress * 100).round()}%',
       excludeSemantics: true,
       child: Container(
         height: 56,
@@ -423,7 +425,9 @@ class _SlideToEndBroadcastState extends State<_SlideToEndBroadcast> {
 // ---------------------------------------------------------------------------
 
 /// Maps a [BroadcastControlResult] error to a user-friendly message.
-String _userFacingError(String operation, BroadcastControlResult result) {
+@visibleForTesting
+String userFacingBroadcastError(
+    String operation, BroadcastControlResult result) {
   switch (result.errorCode) {
     case 'INVALID_PARAMS':
     case 'UNAUTHORIZED':

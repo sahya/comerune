@@ -35,7 +35,9 @@ void main() {
       expect(find.text('スライドして放送を終了'), findsNothing);
     });
 
-    testWidgets('start button is hidden for reserved program (pending API verification)', (
+    testWidgets(
+        'start button is hidden for reserved program (pending API verification)',
+        (
       WidgetTester tester,
     ) async {
       final FollowProgram program = FollowProgram(
@@ -147,7 +149,7 @@ void main() {
       expect(find.text('放送を開始します'), findsOneWidget);
       expect(find.text('3'), findsOneWidget);
       expect(find.text('キャンセル'), findsOneWidget);
-    }, skip: '放送開始ボタンはAPI実機検証完了まで非表示');
+    }, skip: true); // 放送開始ボタンはAPI実機検証完了まで非表示
 
     testWidgets('countdown dialog can be cancelled', (
       WidgetTester tester,
@@ -186,7 +188,7 @@ void main() {
       expect(startCalled, isFalse);
       // Dialog should be dismissed.
       expect(find.text('放送を開始します'), findsNothing);
-    }, skip: '放送開始ボタンはAPI実機検証完了まで非表示');
+    }, skip: true); // 放送開始ボタンはAPI実機検証完了まで非表示
 
     testWidgets('countdown completes and calls onStart', (
       WidgetTester tester,
@@ -231,7 +233,7 @@ void main() {
 
       // Success snackbar.
       expect(find.text('放送を開始しました'), findsOneWidget);
-    }, skip: '放送開始ボタンはAPI実機検証完了まで非表示');
+    }, skip: true); // 放送開始ボタンはAPI実機検証完了まで非表示
 
     testWidgets('shows login-required message for INVALID_PARAMS error', (
       WidgetTester tester,
@@ -267,7 +269,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('ログインが必要です'), findsOneWidget);
-    }, skip: '放送開始ボタンはAPI実機検証完了まで非表示');
+    }, skip: true); // 放送開始ボタンはAPI実機検証完了まで非表示
 
     testWidgets('disabled state prevents interaction', (
       WidgetTester tester,
@@ -304,7 +306,7 @@ void main() {
       expect(startCalled, isFalse);
       // No dialog should appear.
       expect(find.text('放送を開始します'), findsNothing);
-    }, skip: '放送開始ボタンはAPI実機検証完了まで非表示');
+    }, skip: true); // 放送開始ボタンはAPI実機検証完了まで非表示
 
     testWidgets('shows ended program with no controls', (
       WidgetTester tester,
@@ -330,6 +332,105 @@ void main() {
 
       expect(find.text('放送を開始'), findsNothing);
       expect(find.text('スライドして放送を終了'), findsNothing);
+    });
+  });
+
+  group('userFacingBroadcastError', () {
+    test('returns login message for INVALID_PARAMS', () {
+      expect(
+        userFacingBroadcastError(
+          '開始',
+          const BroadcastControlResult(
+            success: false,
+            errorCode: 'INVALID_PARAMS',
+          ),
+        ),
+        'ログインが必要です',
+      );
+    });
+
+    test('returns login message for UNAUTHORIZED', () {
+      expect(
+        userFacingBroadcastError(
+          '終了',
+          const BroadcastControlResult(
+            success: false,
+            errorCode: 'UNAUTHORIZED',
+          ),
+        ),
+        'ログインが必要です',
+      );
+    });
+
+    test('returns permission message for FORBIDDEN', () {
+      expect(
+        userFacingBroadcastError(
+          '開始',
+          const BroadcastControlResult(
+            success: false,
+            errorCode: 'FORBIDDEN',
+          ),
+        ),
+        '放送の開始権限がありません',
+      );
+    });
+
+    test('returns not-found message for NOT_FOUND', () {
+      expect(
+        userFacingBroadcastError(
+          '終了',
+          const BroadcastControlResult(
+            success: false,
+            errorCode: 'NOT_FOUND',
+          ),
+        ),
+        '番組が見つかりません',
+      );
+    });
+
+    test('returns network message for NETWORK_ERROR', () {
+      expect(
+        userFacingBroadcastError(
+          '開始',
+          const BroadcastControlResult(
+            success: false,
+            errorCode: 'NETWORK_ERROR',
+          ),
+        ),
+        'ネットワークエラーが発生しました',
+      );
+    });
+
+    test('returns generic message for unknown error code', () {
+      expect(
+        userFacingBroadcastError(
+          '終了',
+          const BroadcastControlResult(
+            success: false,
+            errorCode: 'HTTP_500',
+          ),
+        ),
+        '放送の終了に失敗しました',
+      );
+    });
+
+    test('uses operation name in FORBIDDEN and default messages', () {
+      final String startForbidden = userFacingBroadcastError(
+        '開始',
+        const BroadcastControlResult(
+          success: false,
+          errorCode: 'FORBIDDEN',
+        ),
+      );
+      final String endForbidden = userFacingBroadcastError(
+        '終了',
+        const BroadcastControlResult(
+          success: false,
+          errorCode: 'FORBIDDEN',
+        ),
+      );
+      expect(startForbidden, contains('開始'));
+      expect(endForbidden, contains('終了'));
     });
   });
 }
