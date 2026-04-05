@@ -4,6 +4,10 @@ import 'dart:io';
 import '../../app_logging.dart';
 import '../../domain/models/broadcast_control_result.dart';
 
+/// Re-exports [BroadcastControlResult] from the domain layer.
+///
+/// Prefer importing `package:comerune/domain/models/broadcast_control_result.dart`
+/// directly in new code.
 export '../../domain/models/broadcast_control_result.dart';
 
 /// Controls niconico live broadcast lifecycle (start / stop / extend).
