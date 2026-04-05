@@ -23,7 +23,8 @@ data class SpeechSettings(
     val replaceUrlWith: String = "URL省略",
     val trimLongTextSuffix: String = "、以下省略",
     val dictionaryRules: List<ReplaceRule> = emptyList(),
-    val ngWords: List<String> = emptyList()
+    val ngWords: List<String> = emptyList(),
+    val playerType: String = "audio_track"
 )
 
 data class ReplaceRule(

@@ -21,6 +21,7 @@ class SpeechSettings {
   final String trimLongTextSuffix;
   final List<ReplaceRule> dictionaryRules;
   final List<String> ngWords;
+  final String playerType;
 
   const SpeechSettings({
     this.enabled = true,
@@ -40,6 +41,7 @@ class SpeechSettings {
     this.trimLongTextSuffix = '、以下省略',
     this.dictionaryRules = const [],
     this.ngWords = const [],
+    this.playerType = 'audio_track',
   });
 
   Map<String, dynamic> toMap() => {
@@ -60,6 +62,7 @@ class SpeechSettings {
     'trimLongTextSuffix': trimLongTextSuffix,
     'dictionaryRules': dictionaryRules.map((r) => r.toMap()).toList(),
     'ngWords': ngWords,
+    'playerType': playerType,
   };
 
   @override
@@ -82,7 +85,8 @@ class SpeechSettings {
           replaceUrlWith == other.replaceUrlWith &&
           trimLongTextSuffix == other.trimLongTextSuffix &&
           listEquals(dictionaryRules, other.dictionaryRules) &&
-          listEquals(ngWords, other.ngWords);
+          listEquals(ngWords, other.ngWords) &&
+          playerType == other.playerType;
 
   @override
   int get hashCode => Object.hash(
@@ -103,5 +107,6 @@ class SpeechSettings {
     trimLongTextSuffix,
     Object.hashAll(dictionaryRules),
     Object.hashAll(ngWords),
+    playerType,
   );
 }

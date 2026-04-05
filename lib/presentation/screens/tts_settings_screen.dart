@@ -944,6 +944,47 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                 ),
                 const SizedBox(height: 12),
                 SettingsSection(
+                  title: '再生方式',
+                  children: <Widget>[
+                    DropdownButtonFormField<VoicevoxPlayerType>(
+                      key: const Key('player-type-dropdown'),
+                      value: settings.voicevoxPlayerType,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        labelText: '音声再生方式',
+                      ),
+                      items: const <DropdownMenuItem<VoicevoxPlayerType>>[
+                        DropdownMenuItem<VoicevoxPlayerType>(
+                          value: VoicevoxPlayerType.audioTrack,
+                          child: Text('AudioTrack'),
+                        ),
+                        DropdownMenuItem<VoicevoxPlayerType>(
+                          value: VoicevoxPlayerType.mediaPlayer,
+                          child: Text('MediaPlayer'),
+                        ),
+                      ],
+                      onChanged: (VoicevoxPlayerType? value) {
+                        if (value != null) {
+                          updateAndSave(
+                            settings.copyWith(voicevoxPlayerType: value),
+                          );
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      settings.voicevoxPlayerType ==
+                              VoicevoxPlayerType.audioTrack
+                          ? '応答時間: 小 / ファイルI/Oなし'
+                          : '応答時間: 大 / ファイルI/Oあり',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.outline,
+                          ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SettingsSection(
                   title: '読み上げキュー',
                   children: <Widget>[
                     TextFormField(
