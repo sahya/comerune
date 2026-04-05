@@ -44,10 +44,25 @@ class JapaneseTextSplitter(
          * Ordering matters: longer alternatives must precede shorter ones
          * (e.g. けれども before けれど before けど).
          */
-        private val PARTICLE_PATTERN = Regex(
+        /**
+         * Main pattern for multi-character particles.
+         */
+        private val MULTI_CHAR_PATTERN = Regex(
             "(?<=[\\p{InHiragana}\\p{InKatakana}\\p{InCJKUnifiedIdeographs}ー])" +
-                "(けれども|けれど|だけど|だから|けど|ので|のに|たら|ても|でも|って|から|し)" +
+                "(けれども|けれど|だけど|だから|けど|ので|のに|たら|ても|でも|って|から)" +
                 "(?=.)"
+        )
+
+        /**
+         * Pattern for the single-character particle 「し」.
+         *
+         * To avoid false matches on い-adjective stems (楽しい, 美しい, 嬉しい),
+         * 「し」 is only matched when preceded by characters that typically
+         * end a clause before the conjunctive し (e.g. いし, だし, でし, たし,
+         * もし) and NOT followed by い-adjective inflections (い, く, さ, か, っ).
+         */
+        private val SHI_PARTICLE_PATTERN = Regex(
+            "(?<=[いだでもた])し(?![いくさかっ])(?=.)"
         )
     }
 
@@ -60,7 +75,7 @@ class JapaneseTextSplitter(
      * @param text Normalized comment text to split.
      * @return List of text chunks (never empty).
      */
-    fun split(text: String): List<String> {
+    override fun split(text: String): List<String> {
         if (text.codePointCount(0, text.length) <= minTextLength) {
             return listOf(text)
         }
@@ -81,13 +96,14 @@ class JapaneseTextSplitter(
      * Each index points to the character immediately after the particle.
      */
     internal fun findSplitPoints(text: String): List<Int> {
-        val points = mutableListOf<Int>()
-        val matches = PARTICLE_PATTERN.findAll(text)
-        for (match in matches) {
-            // Split point is after the particle
+        val points = mutableSetOf<Int>()
+        for (match in MULTI_CHAR_PATTERN.findAll(text)) {
             points.add(match.range.last + 1)
         }
-        return points
+        for (match in SHI_PARTICLE_PATTERN.findAll(text)) {
+            points.add(match.range.last + 1)
+        }
+        return points.sorted()
     }
 
     private fun splitAtPoints(text: String, points: List<Int>): List<String> {

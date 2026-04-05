@@ -153,6 +153,27 @@ class JapaneseTextSplitterTest {
         }
     }
 
+    @Test
+    fun `shi in i-adjective tanoshii does not split`() {
+        // "楽しい" contains "し" but it's part of an い-adjective, not a conjunctive particle
+        val text = "今日のイベントは本当に楽しいからまた来たいね"
+        val result = splitter.split(text)
+        // Should split at "から" but NOT at "し" in "楽しい"
+        assertEquals(2, result.size)
+        assertEquals("今日のイベントは本当に楽しいから", result[0])
+        assertEquals("また来たいね", result[1])
+    }
+
+    @Test
+    fun `shi in i-adjective ureshii does not split`() {
+        val text = "合格できて嬉しいけどまだまだ頑張らないとね"
+        val result = splitter.split(text)
+        // Should split at "けど" but NOT at "し" in "嬉しい"
+        assertEquals(2, result.size)
+        assertEquals("合格できて嬉しいけど", result[0])
+        assertEquals("まだまだ頑張らないとね", result[1])
+    }
+
     // --- Case/adverbial particles should NOT split ---
 
     @Test

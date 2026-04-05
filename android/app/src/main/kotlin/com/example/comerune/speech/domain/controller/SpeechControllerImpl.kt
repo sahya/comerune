@@ -23,6 +23,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -365,7 +366,7 @@ class SpeechControllerImpl(
         text: String,
         settings: SpeechSettings
     ) {
-        val request = buildSpeechRequest(text, settings)
+        val request = buildChunkRequest(text, settings, isFirst = true, isLast = true)
 
         val synthesisResult = synthesizeSafe(request)
         if (synthesisResult.isFailure) {
@@ -398,7 +399,7 @@ class SpeechControllerImpl(
         chunks: List<String>,
         settings: SpeechSettings
     ) {
-        var nextSynthesisDeferred: kotlinx.coroutines.Deferred<Result<WavSynthesisResult>>? = null
+        var nextSynthesisDeferred: Deferred<Result<WavSynthesisResult>>? = null
 
         for (i in chunks.indices) {
             val isFirst = i == 0
@@ -450,21 +451,11 @@ class SpeechControllerImpl(
         eventEmitter.emit(SpeechEvents.speechCompleted(commentId))
     }
 
-    private fun buildSpeechRequest(text: String, settings: SpeechSettings): SpeechRequest =
-        SpeechRequest(
-            text = text,
-            speakerId = settings.speakerId,
-            speedScale = settings.speedScale,
-            pitchScale = settings.pitchScale,
-            intonationScale = settings.intonationScale,
-            volumeScale = settings.volumeScale,
-            prePhonemeLength = settings.prePhonemeLength,
-            postPhonemeLength = settings.postPhonemeLength
-        )
-
     /**
      * Build a [SpeechRequest] for a chunk with adjusted phoneme lengths.
-     * Intermediate boundaries use zero silence for seamless playback.
+     * For the first chunk, [settings.prePhonemeLength] is used; for intermediate
+     * chunks, zero silence is used. Similarly for the last chunk and postPhonemeLength.
+     * When both [isFirst] and [isLast] are true (single chunk), original settings apply.
      */
     private fun buildChunkRequest(
         text: String,
