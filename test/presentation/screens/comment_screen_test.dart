@@ -994,6 +994,43 @@ void main() {
       expect(contentSpan.style?.fontSize, 14);
     });
 
+    testWidgets('clamps timestamp and user ID font size at minimum', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'small-font-msg',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'u1',
+          content: 'small font test',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          commentFontSize: 10,
+        ),
+      );
+
+      final Text textWidget = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('comment-row-small-font-msg')),
+          matching: find.byType(Text),
+        ),
+      );
+      final TextSpan root = textWidget.textSpan! as TextSpan;
+      // Timestamp span (first child): 10 * 0.85 = 8.5 → clamped to 9.0
+      final TextSpan timestampSpan = root.children!.first as TextSpan;
+      expect(timestampSpan.style?.fontSize, 9.0);
+      // Content span (last child): not clamped, stays at 10
+      final TextSpan contentSpan = root.children!.last as TextSpan;
+      expect(contentSpan.style?.fontSize, 10);
+    });
+
     testWidgets('applies custom user color to comment text', (
       WidgetTester tester,
     ) async {
