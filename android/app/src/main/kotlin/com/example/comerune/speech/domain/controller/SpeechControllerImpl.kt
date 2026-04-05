@@ -16,7 +16,7 @@ import com.example.comerune.speech.domain.normalizer.DuplicateDetector
 import com.example.comerune.speech.domain.player.WavPlayer
 import com.example.comerune.speech.domain.queue.SpeechQueueManager
 import com.example.comerune.speech.domain.settings.SettingsRepository
-import com.example.comerune.speech.domain.splitter.NoOpTextSplitter
+import com.example.comerune.speech.domain.splitter.JapaneseTextSplitter
 import com.example.comerune.speech.domain.splitter.TextSplitter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CloseableCoroutineDispatcher
@@ -46,7 +46,7 @@ class SpeechControllerImpl(
     synthesisDispatcher: CoroutineDispatcher? = null,
     private val timeProvider: () -> Long = System::currentTimeMillis,
     private val duplicateDetector: DuplicateDetector? = null,
-    private val textSplitter: TextSplitter = NoOpTextSplitter()
+    private val textSplitter: TextSplitter = JapaneseTextSplitter()
 ) : SpeechController {
 
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
@@ -262,9 +262,8 @@ class SpeechControllerImpl(
 
     override fun release() {
         // Uses synchronized (not workerMutex) because release() is a non-suspend
-        // function.  Safety: setting released=true here ensures that processQueue()'s
-        // workerMutex.withLock block will see `!released` as false and will NOT
-        // relaunch, even if it runs concurrently.
+        // function.  Setting released=true ensures processQueue()'s workerMutex.withLock
+        // block will see released as true and will NOT relaunch.
         synchronized(this) {
             if (released) return
             released = true
@@ -275,21 +274,20 @@ class SpeechControllerImpl(
             workerJob?.cancel()
             workerJob = null
         }
-        // Stop player before cancelling scope to avoid in-flight playback
         try {
             runBlocking { player.stop() }
         } catch (_: Exception) {
-            // Best-effort: failure during cleanup is expected (player may already be stopped)
+            // Best-effort
         }
         try {
             engine.release()
         } catch (_: Exception) {
-            // Best-effort: failure during cleanup is expected (engine may already be released)
+            // Best-effort
         }
         try {
             player.release()
         } catch (_: Exception) {
-            // Best-effort: failure during cleanup is expected (player may already be released)
+            // Best-effort
         }
         if (ownsSynthDispatcher) {
             (synthDispatcher as? CloseableCoroutineDispatcher)?.close()
@@ -309,9 +307,6 @@ class SpeechControllerImpl(
     }
 
     private suspend fun processQueue() {
-        // Outer loop ensures we don't miss items added between poll()→null and worker exit.
-        // The workerMutex lock at exit guarantees that no submitComment can observe
-        // isActive==true for a job that is about to finish without re-checking the queue.
         do {
             while (started && !released) {
                 val item = queueManager.poll() ?: break
@@ -323,8 +318,6 @@ class SpeechControllerImpl(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    // Unexpected exceptions must not kill the worker.
-                    // The item is skipped and processing continues with the next one.
                     try {
                         eventEmitter.emit(
                             SpeechEvents.speechFailed(
@@ -333,8 +326,7 @@ class SpeechControllerImpl(
                             )
                         )
                     } catch (_: Exception) {
-                        // Best-effort: emit itself may fail if the event sink
-                        // is disconnected.  State cleanup below must still run.
+                        // Best-effort
                     }
                     currentCommentId = null
                     currentText = null
@@ -342,16 +334,8 @@ class SpeechControllerImpl(
             }
         } while (started && !released && !queueManager.isEmpty())
 
-        // Atomically mark the worker as done and re-check the queue.
-        // This closes the race window where submitComment calls startWorkerIfNeeded()
-        // while the worker is between the loop exit and Job completion.
-        //
-        // When relaunching, the new coroutine (via scope.launch) runs on its own
-        // stack frame — this is NOT recursive in the traditional sense and cannot
-        // cause stack overflow.
         val relaunched = workerMutex.withLock {
             if (started && !released && !queueManager.isEmpty()) {
-                // Items arrived after our last check — relaunch immediately.
                 workerJob = scope.launch {
                     processQueue()
                 }
@@ -362,8 +346,6 @@ class SpeechControllerImpl(
             }
         }
 
-        // Only emit the queue-empty event when we are truly done.
-        // If we relaunched, the new worker will emit the event when it finishes.
         if (!relaunched && !released) {
             eventEmitter.emit(SpeechEvents.queueUpdated(queueManager.size()))
         }
@@ -376,6 +358,26 @@ class SpeechControllerImpl(
         eventEmitter.emit(SpeechEvents.speechStarted(item.commentId, item.text))
 
         val settings = settingsRepository.get()
+        val chunks = textSplitter.split(item.text)
+
+        if (chunks.size == 1) {
+            processSingleChunk(item, settings)
+        } else {
+            processChunkedPipeline(item.commentId, chunks, settings)
+        }
+
+        currentCommentId = null
+        currentText = null
+    }
+
+    /**
+     * Process a single chunk (no intra-comment splitting).
+     * Uses the inter-comment prefetch pipeline from PR #348.
+     */
+    private suspend fun processSingleChunk(
+        item: SpeechQueueItem,
+        settings: SpeechSettings
+    ) {
         val wavResult = synthesizeOrUsePrefetch(item, settings) ?: return
 
         val nextItem = startPrefetch(settings)
@@ -397,15 +399,95 @@ class SpeechControllerImpl(
         if (playResult.isFailure) {
             val errorMessage =
                 playResult.exceptionOrNull()?.message ?: "playback_failed"
-            eventEmitter.emit(
-                SpeechEvents.speechFailed(item.commentId, errorMessage)
-            )
+            eventEmitter.emit(SpeechEvents.speechFailed(item.commentId, errorMessage))
         } else {
             eventEmitter.emit(SpeechEvents.speechCompleted(item.commentId))
         }
+    }
 
-        currentCommentId = null
-        currentText = null
+    /**
+     * Process multiple chunks with pipelined synthesis and playback.
+     *
+     * For each chunk after the first, synthesis is started before the
+     * previous chunk finishes playing. Intermediate chunks use zero
+     * pre/post phoneme lengths to minimize silence between chunks.
+     *
+     * After the last chunk plays, inter-comment prefetch is started
+     * for the next queued comment.
+     */
+    private suspend fun processChunkedPipeline(
+        commentId: String,
+        chunks: List<String>,
+        settings: SpeechSettings
+    ) {
+        // Invalidate inter-comment prefetch since we're doing intra-comment pipelining
+        prefetched = null
+
+        var nextChunkDeferred: Deferred<Result<WavSynthesisResult>>? = null
+
+        for (i in chunks.indices) {
+            val isFirst = i == 0
+            val isLast = i == chunks.lastIndex
+            val request = buildChunkRequest(chunks[i], settings, isFirst, isLast)
+
+            val synthesisResult = if (nextChunkDeferred != null) {
+                val deferred = nextChunkDeferred
+                nextChunkDeferred = null
+                try {
+                    deferred.await()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
+            } else {
+                synthesizeSafe(request)
+            }
+
+            if (synthesisResult.isFailure) {
+                activePrefetchJob?.cancel()
+                activePrefetchJob = null
+                val errorMessage =
+                    synthesisResult.exceptionOrNull()?.message ?: "synthesis_failed"
+                eventEmitter.emit(SpeechEvents.speechFailed(commentId, errorMessage))
+                return
+            }
+
+            val wavBytes = synthesisResult.getOrThrow().wavBytes
+
+            // Start synthesizing the next chunk while playing the current one
+            if (!isLast) {
+                val nextIsLast = i + 1 == chunks.lastIndex
+                val nextRequest = buildChunkRequest(
+                    chunks[i + 1], settings, isFirst = false, isLast = nextIsLast
+                )
+                nextChunkDeferred = scope.async(synthDispatcher) { synthesizeSafe(nextRequest) }
+            }
+
+            // On the last chunk, start inter-comment prefetch
+            if (isLast) {
+                startPrefetch(settings)
+            }
+
+            val playResult = playSafe(wavBytes)
+            if (playResult.isFailure) {
+                nextChunkDeferred?.cancel()
+                activePrefetchJob?.cancel()
+                activePrefetchJob = null
+                val errorMessage =
+                    playResult.exceptionOrNull()?.message ?: "playback_failed"
+                eventEmitter.emit(SpeechEvents.speechFailed(commentId, errorMessage))
+                return
+            }
+        }
+
+        // Collect inter-comment prefetch
+        val nextItem = queueManager.peek()
+        if (nextItem != null) {
+            collectPrefetch(nextItem)
+        }
+
+        eventEmitter.emit(SpeechEvents.speechCompleted(commentId))
     }
 
     /**
@@ -469,8 +551,7 @@ class SpeechControllerImpl(
 
     /**
      * Awaits the in-flight prefetch job and stores the result for the next
-     * [processItem] call. Failures are silently ignored — the next item
-     * will fall back to normal synthesis.
+     * [processItem] call.
      */
     private suspend fun collectPrefetch(nextItem: SpeechQueueItem) {
         val currentPrefetchJob = activePrefetchJob ?: return
@@ -485,7 +566,7 @@ class SpeechControllerImpl(
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
-            // Prefetch failed, no problem - will synthesize normally
+            // Prefetch failed — will synthesize normally
         }
         activePrefetchJob = null
     }
@@ -503,4 +584,45 @@ class SpeechControllerImpl(
             postPhonemeLength = settings.postPhonemeLength
         )
     }
+
+    /**
+     * Build a [SpeechRequest] for a chunk with adjusted phoneme lengths.
+     * Intermediate boundaries use zero silence for seamless playback.
+     */
+    private fun buildChunkRequest(
+        text: String,
+        settings: SpeechSettings,
+        isFirst: Boolean,
+        isLast: Boolean
+    ): SpeechRequest {
+        return SpeechRequest(
+            text = text,
+            speakerId = settings.speakerId,
+            synthesisMode = settings.synthesisMode,
+            speedScale = settings.speedScale,
+            pitchScale = settings.pitchScale,
+            intonationScale = settings.intonationScale,
+            volumeScale = settings.volumeScale,
+            prePhonemeLength = if (isFirst) settings.prePhonemeLength else 0f,
+            postPhonemeLength = if (isLast) settings.postPhonemeLength else 0f
+        )
+    }
+
+    private suspend fun synthesizeSafe(request: SpeechRequest): Result<WavSynthesisResult> =
+        try {
+            engine.synthesize(request)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+
+    private suspend fun playSafe(wavBytes: ByteArray): Result<Unit> =
+        try {
+            player.play(wavBytes)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
 }

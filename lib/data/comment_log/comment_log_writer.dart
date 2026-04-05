@@ -33,8 +33,8 @@ class FileCommentLogWriter implements CommentLogWriter {
   const FileCommentLogWriter({
     required Directory directory,
     required Directory tempDirectory,
-  }) : _directory = directory,
-       _tempDirectory = tempDirectory;
+  })  : _directory = directory,
+        _tempDirectory = tempDirectory;
 
   final Directory _directory;
   final Directory _tempDirectory;
@@ -84,9 +84,8 @@ class FileCommentLogWriter implements CommentLogWriter {
       for (final AppMessage message in messages) {
         final String time = _formatHms(message.timestamp);
         final String user = message.userId ?? '';
-        final String escapedContent = message.content
-            .replaceAll('\t', ' ')
-            .replaceAll('\n', ' ');
+        final String escapedContent =
+            message.content.replaceAll('\t', ' ').replaceAll('\n', ' ');
         buffer.writeln('$time\t$user\t$escapedContent');
       }
 
