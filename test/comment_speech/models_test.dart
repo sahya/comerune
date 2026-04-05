@@ -117,6 +117,7 @@ void main() {
       expect(map['speedScale'], 1.15);
       expect(map['dictionaryRules'], isEmpty);
       expect(map['ngWords'], isEmpty);
+      expect(map['playerType'], 'audio_track');
     });
 
     test('toMap serializes dictionary rules', () {

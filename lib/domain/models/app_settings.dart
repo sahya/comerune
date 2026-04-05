@@ -73,6 +73,15 @@ extension AppThemeModeValue on AppThemeMode {
 // 後方互換のため残している。
 enum SpeechEngine { bouyomi, voicevox }
 
+/// 音声再生方式。
+enum VoicevoxPlayerType {
+  /// AudioTrack（メモリ直接再生）— 応答時間: 小 / ファイルI/Oなし
+  audioTrack,
+
+  /// MediaPlayer（一時ファイル経由）— 応答時間: 大 / ファイルI/Oあり
+  mediaPlayer,
+}
+
 /// コメント文字サイズの最小値 (px)。
 const double commentFontSizeMin = 10;
 
@@ -241,6 +250,7 @@ class AppSettings {
     required this.starPrefixHidingEnabled,
     required this.slashPrefixSkipEnabled,
     required this.readUserName,
+    required this.voicevoxPlayerType,
     required this.voicevoxTermsAccepted,
     required this.dictionaryRules,
     required this.debugMode,
@@ -287,6 +297,7 @@ class AppSettings {
     starPrefixHidingEnabled: false,
     slashPrefixSkipEnabled: true,
     readUserName: false,
+    voicevoxPlayerType: VoicevoxPlayerType.audioTrack,
     voicevoxTermsAccepted: false,
     dictionaryRules: defaultNicoDictionaryRules,
     debugMode: false,
@@ -346,6 +357,9 @@ class AppSettings {
   /// When true, the user name is prepended to the comment text for TTS
   /// in the format `{userName}、{comment}`.
   final bool readUserName;
+
+  /// VOICEVOX の音声再生方式。
+  final VoicevoxPlayerType voicevoxPlayerType;
 
   /// VOICEVOX 音声モデルの利用規約に同意済みかどうか。
   final bool voicevoxTermsAccepted;
@@ -463,6 +477,7 @@ class AppSettings {
     bool? starPrefixHidingEnabled,
     bool? slashPrefixSkipEnabled,
     bool? readUserName,
+    VoicevoxPlayerType? voicevoxPlayerType,
     bool? voicevoxTermsAccepted,
     List<ReplaceRule>? dictionaryRules,
     bool? debugMode,
@@ -512,6 +527,7 @@ class AppSettings {
       slashPrefixSkipEnabled:
           slashPrefixSkipEnabled ?? this.slashPrefixSkipEnabled,
       readUserName: readUserName ?? this.readUserName,
+      voicevoxPlayerType: voicevoxPlayerType ?? this.voicevoxPlayerType,
       voicevoxTermsAccepted:
           voicevoxTermsAccepted ?? this.voicevoxTermsAccepted,
       dictionaryRules: dictionaryRules ?? this.dictionaryRules,
@@ -531,5 +547,8 @@ class AppSettings {
     maxQueueSize: queueLimit,
     ngWords: ngWordList,
     dictionaryRules: dictionaryRules,
+    playerType: voicevoxPlayerType == VoicevoxPlayerType.mediaPlayer
+        ? 'media_player'
+        : 'audio_track',
   );
 }
