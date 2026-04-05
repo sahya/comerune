@@ -15,12 +15,15 @@ import com.example.comerune.speech.domain.normalizer.DuplicateDetector
 import com.example.comerune.speech.domain.player.WavPlayer
 import com.example.comerune.speech.domain.queue.SpeechQueueManager
 import com.example.comerune.speech.domain.settings.SettingsRepository
+import com.example.comerune.speech.domain.splitter.JapaneseTextSplitter
+import com.example.comerune.speech.domain.splitter.TextSplitter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -36,7 +39,8 @@ class SpeechControllerImpl(
     private val eventEmitter: SpeechEventEmitter,
     dispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val timeProvider: () -> Long = System::currentTimeMillis,
-    private val duplicateDetector: DuplicateDetector? = null
+    private val duplicateDetector: DuplicateDetector? = null,
+    private val textSplitter: TextSplitter = JapaneseTextSplitter()
 ) : SpeechController {
 
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
@@ -340,8 +344,115 @@ class SpeechControllerImpl(
         eventEmitter.emit(SpeechEvents.speechStarted(item.commentId, item.text))
 
         val settings = settingsRepository.get()
-        val request = SpeechRequest(
-            text = item.text,
+        val chunks = textSplitter.split(item.text)
+
+        if (chunks.size == 1) {
+            // Single chunk — use the original non-pipeline path
+            processSingleChunk(item.commentId, item.text, settings)
+        } else {
+            processChunkedPipeline(item.commentId, chunks, settings)
+        }
+
+        currentCommentId = null
+        currentText = null
+    }
+
+    /**
+     * Process a single text chunk (original behavior for short comments).
+     */
+    private suspend fun processSingleChunk(
+        commentId: String,
+        text: String,
+        settings: SpeechSettings
+    ) {
+        val request = buildSpeechRequest(text, settings)
+
+        val synthesisResult = synthesizeSafe(request)
+        if (synthesisResult.isFailure) {
+            emitSynthesisFailure(commentId, synthesisResult)
+            return
+        }
+
+        val playResult = playSafe(synthesisResult.getOrThrow().wavBytes)
+        if (playResult.isFailure) {
+            val errorMessage =
+                playResult.exceptionOrNull()?.message ?: "playback_failed"
+            eventEmitter.emit(SpeechEvents.speechFailed(commentId, errorMessage))
+        } else {
+            eventEmitter.emit(SpeechEvents.speechCompleted(commentId))
+        }
+    }
+
+    /**
+     * Process multiple chunks with pipelined synthesis and playback.
+     *
+     * For each chunk after the first, synthesis is started before the
+     * previous chunk finishes playing, so the next audio is ready (or
+     * nearly ready) when playback of the current chunk completes.
+     *
+     * Intermediate chunks use zero pre/post phoneme lengths to minimize
+     * silence between chunks.
+     */
+    private suspend fun processChunkedPipeline(
+        commentId: String,
+        chunks: List<String>,
+        settings: SpeechSettings
+    ) {
+        var nextSynthesisDeferred: kotlinx.coroutines.Deferred<Result<WavSynthesisResult>>? = null
+
+        for (i in chunks.indices) {
+            val isFirst = i == 0
+            val isLast = i == chunks.lastIndex
+            val request = buildChunkRequest(chunks[i], settings, isFirst, isLast)
+
+            // Use pre-fetched synthesis result or synthesize now
+            val synthesisResult = if (nextSynthesisDeferred != null) {
+                val deferred = nextSynthesisDeferred
+                nextSynthesisDeferred = null
+                try {
+                    deferred.await()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
+            } else {
+                synthesizeSafe(request)
+            }
+
+            if (synthesisResult.isFailure) {
+                emitSynthesisFailure(commentId, synthesisResult)
+                return
+            }
+
+            val wavBytes = synthesisResult.getOrThrow().wavBytes
+
+            // Start synthesizing the next chunk while playing the current one
+            if (!isLast) {
+                val nextIsLast = i + 1 == chunks.lastIndex
+                val nextRequest = buildChunkRequest(
+                    chunks[i + 1], settings, isFirst = false, isLast = nextIsLast
+                )
+                nextSynthesisDeferred = scope.async { synthesizeSafe(nextRequest) }
+            }
+
+            val playResult = playSafe(wavBytes)
+            if (playResult.isFailure) {
+                // Cancel pending synthesis on playback failure
+                nextSynthesisDeferred?.cancel()
+                val errorMessage =
+                    playResult.exceptionOrNull()?.message ?: "playback_failed"
+                eventEmitter.emit(SpeechEvents.speechFailed(commentId, errorMessage))
+                return
+            }
+        }
+
+        eventEmitter.emit(SpeechEvents.speechCompleted(commentId))
+    }
+
+    private fun buildSpeechRequest(text: String, settings: SpeechSettings): SpeechRequest =
+        SpeechRequest(
+            text = text,
             speakerId = settings.speakerId,
             speedScale = settings.speedScale,
             pitchScale = settings.pitchScale,
@@ -351,7 +462,29 @@ class SpeechControllerImpl(
             postPhonemeLength = settings.postPhonemeLength
         )
 
-        val synthesisResult = try {
+    /**
+     * Build a [SpeechRequest] for a chunk with adjusted phoneme lengths.
+     * Intermediate boundaries use zero silence for seamless playback.
+     */
+    private fun buildChunkRequest(
+        text: String,
+        settings: SpeechSettings,
+        isFirst: Boolean,
+        isLast: Boolean
+    ): SpeechRequest =
+        SpeechRequest(
+            text = text,
+            speakerId = settings.speakerId,
+            speedScale = settings.speedScale,
+            pitchScale = settings.pitchScale,
+            intonationScale = settings.intonationScale,
+            volumeScale = settings.volumeScale,
+            prePhonemeLength = if (isFirst) settings.prePhonemeLength else 0f,
+            postPhonemeLength = if (isLast) settings.postPhonemeLength else 0f
+        )
+
+    private suspend fun synthesizeSafe(request: SpeechRequest): Result<WavSynthesisResult> =
+        try {
             engine.synthesize(request)
         } catch (e: CancellationException) {
             throw e
@@ -359,38 +492,17 @@ class SpeechControllerImpl(
             Result.failure(e)
         }
 
-        if (synthesisResult.isFailure) {
-            val errorMessage =
-                synthesisResult.exceptionOrNull()?.message ?: "synthesis_failed"
-            eventEmitter.emit(
-                SpeechEvents.speechFailed(item.commentId, errorMessage)
-            )
-            currentCommentId = null
-            currentText = null
-            return
-        }
-
-        val wavResult = synthesisResult.getOrThrow()
-
-        val playResult = try {
-            player.play(wavResult.wavBytes)
+    private suspend fun playSafe(wavBytes: ByteArray): Result<Unit> =
+        try {
+            player.play(wavBytes)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
 
-        if (playResult.isFailure) {
-            val errorMessage =
-                playResult.exceptionOrNull()?.message ?: "playback_failed"
-            eventEmitter.emit(
-                SpeechEvents.speechFailed(item.commentId, errorMessage)
-            )
-        } else {
-            eventEmitter.emit(SpeechEvents.speechCompleted(item.commentId))
-        }
-
-        currentCommentId = null
-        currentText = null
+    private fun emitSynthesisFailure(commentId: String, result: Result<*>) {
+        val errorMessage = result.exceptionOrNull()?.message ?: "synthesis_failed"
+        eventEmitter.emit(SpeechEvents.speechFailed(commentId, errorMessage))
     }
 }

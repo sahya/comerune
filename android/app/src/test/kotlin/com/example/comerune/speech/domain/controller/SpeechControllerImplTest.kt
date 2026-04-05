@@ -13,6 +13,7 @@ import com.example.comerune.speech.domain.normalizer.CommentNormalizer
 import com.example.comerune.speech.domain.player.WavPlayer
 import com.example.comerune.speech.domain.queue.InMemorySpeechQueueManager
 import com.example.comerune.speech.domain.settings.SettingsRepository
+import com.example.comerune.speech.domain.splitter.JapaneseTextSplitter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -45,16 +46,25 @@ class SpeechControllerImplTest {
     private class FakeEngine : VoicevoxEngine {
         private val wavHeader = "RIFF".toByteArray(Charsets.US_ASCII) + ByteArray(40)
         var throwOnSynthesize = false
+        /** When set to N > 0, the N-th call to synthesize() will throw. */
+        var failOnNthSynthesize = 0
+        private var synthesizeCallCount = 0
+        val synthesizedTexts = CopyOnWriteArrayList<String>()
 
         override suspend fun initialize(): Result<Unit> = Result.success(Unit)
 
         override suspend fun prepareForModelDownload(): Result<Unit> = Result.success(Unit)
 
         override suspend fun synthesize(request: SpeechRequest): Result<WavSynthesisResult> {
+            synthesizeCallCount++
             if (throwOnSynthesize) {
                 throwOnSynthesize = false
                 throw RuntimeException("Unexpected engine error")
             }
+            if (failOnNthSynthesize > 0 && synthesizeCallCount == failOnNthSynthesize) {
+                throw RuntimeException("Synthesis failed on call #$synthesizeCallCount")
+            }
+            synthesizedTexts.add(request.text)
             return Result.success(
                 WavSynthesisResult(
                     wavBytes = wavHeader,
@@ -287,5 +297,115 @@ class SpeechControllerImplTest {
         // Second item should still be processed successfully despite first throwing
         val completedEvents = emitter.eventsOfType("speech_completed")
         assertEquals(1, completedEvents.size)
+    }
+
+    // --- Chunked pipeline tests ---
+
+    @Test
+    fun `long text with particle is split and synthesized as multiple chunks`() = runBlocking {
+        controller.initialize()
+        controller.start()
+
+        // This text contains "から" — should be split into 2 chunks
+        val text = "でも岩国は今豪雨らしいからこれぐらいの雨でまだよかったよ"
+        controller.submitComment(rawComment("1", text))
+
+        delay(500)
+
+        // Should have synthesized 2 chunks separately
+        assertEquals(2, engine.synthesizedTexts.size)
+        assertEquals("でも岩国は今豪雨らしいから", engine.synthesizedTexts[0])
+        assertEquals("これぐらいの雨でまだよかったよ", engine.synthesizedTexts[1])
+
+        // But only one speech_completed event for the whole comment
+        val completedEvents = emitter.eventsOfType("speech_completed")
+        assertEquals(1, completedEvents.size)
+    }
+
+    @Test
+    fun `short text is not split`() = runBlocking {
+        controller.initialize()
+        controller.start()
+
+        val text = "こんにちは"
+        controller.submitComment(rawComment("1", text))
+
+        delay(500)
+
+        // Single synthesis call
+        assertEquals(1, engine.synthesizedTexts.size)
+        assertEquals(text, engine.synthesizedTexts[0])
+    }
+
+    @Test
+    fun `chunked pipeline emits single speech_started event`() = runBlocking {
+        controller.initialize()
+        controller.start()
+
+        val text = "でも岩国は今豪雨らしいからこれぐらいの雨でまだよかったよ"
+        controller.submitComment(rawComment("1", text))
+
+        delay(500)
+
+        val startedEvents = emitter.eventsOfType("speech_started")
+        assertEquals(1, startedEvents.size)
+    }
+
+    @Test
+    fun `chunked pipeline with playback failure on first chunk emits speech_failed`() = runBlocking {
+        controller.initialize()
+        controller.start()
+
+        player.failOnPlay = true
+
+        val text = "でも岩国は今豪雨らしいからこれぐらいの雨でまだよかったよ"
+        controller.submitComment(rawComment("1", text))
+
+        delay(500)
+
+        val failedEvents = emitter.eventsOfType("speech_failed")
+        assertEquals(1, failedEvents.size)
+
+        // No completed event should be emitted
+        val completedEvents = emitter.eventsOfType("speech_completed")
+        assertEquals(0, completedEvents.size)
+    }
+
+    @Test
+    fun `chunked pipeline with synthesis failure on second chunk emits speech_failed`() = runBlocking {
+        controller.initialize()
+        controller.start()
+
+        // Fail on the 2nd synthesize call (= second chunk)
+        engine.failOnNthSynthesize = 2
+
+        val text = "でも岩国は今豪雨らしいからこれぐらいの雨でまだよかったよ"
+        controller.submitComment(rawComment("1", text))
+
+        delay(500)
+
+        val failedEvents = emitter.eventsOfType("speech_failed")
+        assertEquals(1, failedEvents.size)
+
+        val completedEvents = emitter.eventsOfType("speech_completed")
+        assertEquals(0, completedEvents.size)
+    }
+
+    @Test
+    fun `chunked pipeline continues to next comment after completion`() = runBlocking {
+        controller.initialize()
+        controller.start()
+
+        // First comment — chunked
+        controller.submitComment(
+            rawComment("1", "でも岩国は今豪雨らしいからこれぐらいの雨でまだよかったよ")
+        )
+        // Second comment — short (no split)
+        controller.submitComment(rawComment("2", "そうだね"))
+
+        delay(800)
+
+        val completedEvents = emitter.eventsOfType("speech_completed")
+        assertEquals(2, completedEvents.size)
     }
 }
