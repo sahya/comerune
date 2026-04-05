@@ -171,7 +171,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   children: <Widget>[
                     DropdownButtonFormField<AppThemeMode>(
                       key: const Key('theme-mode-dropdown'),
-                      initialValue: settings.themeMode,
+                      value: settings.themeMode,
                       decoration: const InputDecoration(
                         labelText: '配色テーマ',
                         border: OutlineInputBorder(),
@@ -180,9 +180,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                           .map(
                             (AppThemeMode mode) =>
                                 DropdownMenuItem<AppThemeMode>(
-                                  value: mode,
-                                  child: Text(mode.label),
-                                ),
+                              value: mode,
+                              child: Text(mode.label),
+                            ),
                           )
                           .toList(),
                       onChanged: (AppThemeMode? value) {
