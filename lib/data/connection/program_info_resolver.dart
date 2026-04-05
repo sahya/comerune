@@ -158,7 +158,7 @@ class ProgramInfoResolver {
     return ProgramInfo(
       viewUri: parsed,
       title: title,
-      supplierUserId: broadcasterInfo.userId,
+      broadcasterUserId: broadcasterInfo.userId,
       broadcasterName: broadcasterInfo.name,
       beginAt: beginAt,
     );
@@ -245,7 +245,7 @@ class ProgramInfo {
   const ProgramInfo({
     required this.viewUri,
     this.title,
-    this.supplierUserId,
+    this.broadcasterUserId,
     this.broadcasterName,
     this.beginAt,
   });
@@ -258,7 +258,7 @@ class ProgramInfo {
 
   /// The broadcaster's user ID, extracted from `data.broadcaster[0].id`
   /// or `data.supplier.programProviderId`.
-  final String? supplierUserId;
+  final String? broadcasterUserId;
 
   /// The broadcaster's display name, extracted from `data.broadcaster[0].name`.
   /// Available immediately without an additional HTTP request.

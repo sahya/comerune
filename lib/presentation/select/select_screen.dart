@@ -49,7 +49,7 @@ class SelectScreen extends StatefulWidget {
     this.programTitleNotifier,
     this.userNameResolution,
     this.broadcasterNameNotifier,
-    this.supplierUserIdNotifier,
+    this.broadcasterUserIdNotifier,
     this.beginAtNotifier,
     this.commentLogWriter,
     this.themeModeNotifier,
@@ -73,7 +73,7 @@ class SelectScreen extends StatefulWidget {
   final ValueNotifier<String?>? programTitleNotifier;
   final UserNameResolution? userNameResolution;
   final ValueNotifier<String?>? broadcasterNameNotifier;
-  final ValueNotifier<String?>? supplierUserIdNotifier;
+  final ValueNotifier<String?>? broadcasterUserIdNotifier;
   final ValueNotifier<DateTime?>? beginAtNotifier;
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
   final FollowProgramRepository? followProgramRepository;
@@ -126,13 +126,14 @@ class _SelectScreenState extends State<SelectScreen> {
     _previousStatus = widget.connectionSupervisor.status;
     _controller.addListener(_onInputChanged);
     widget.connectionSupervisor.addListener(_onSupervisorChanged);
-    widget.supplierUserIdNotifier?.addListener(_onSupplierUserIdChanged);
-    // If the supplier user ID is already known (e.g. widget rebuilt while
+    widget.broadcasterUserIdNotifier?.addListener(_onBroadcasterUserIdChanged);
+    // If the broadcaster user ID is already known (e.g. widget rebuilt while
     // connected), load user attributes immediately so that
     // _currentBroadcasterId is set before the user can open settings.
-    final String? initialSupplierId = widget.supplierUserIdNotifier?.value;
-    if (initialSupplierId != null) {
-      unawaited(_loadUserAttributes(initialSupplierId));
+    final String? initialBroadcasterId =
+        widget.broadcasterUserIdNotifier?.value;
+    if (initialBroadcasterId != null) {
+      unawaited(_loadUserAttributes(initialBroadcasterId));
     }
     if (widget.settingsStore != null) {
       unawaited(_reloadSettingsFromStore());
@@ -152,11 +153,13 @@ class _SelectScreenState extends State<SelectScreen> {
       _previousStatus = widget.connectionSupervisor.status;
     }
 
-    if (oldWidget.supplierUserIdNotifier != widget.supplierUserIdNotifier) {
-      oldWidget.supplierUserIdNotifier?.removeListener(
-        _onSupplierUserIdChanged,
+    if (oldWidget.broadcasterUserIdNotifier !=
+        widget.broadcasterUserIdNotifier) {
+      oldWidget.broadcasterUserIdNotifier?.removeListener(
+        _onBroadcasterUserIdChanged,
       );
-      widget.supplierUserIdNotifier?.addListener(_onSupplierUserIdChanged);
+      widget.broadcasterUserIdNotifier
+          ?.addListener(_onBroadcasterUserIdChanged);
     }
 
     if (oldWidget.favoriteUserLiveChecker != widget.favoriteUserLiveChecker) {
@@ -182,7 +185,8 @@ class _SelectScreenState extends State<SelectScreen> {
       _favoriteUserLiveChecker.dispose();
     }
     widget.connectionSupervisor.removeListener(_onSupervisorChanged);
-    widget.supplierUserIdNotifier?.removeListener(_onSupplierUserIdChanged);
+    widget.broadcasterUserIdNotifier
+        ?.removeListener(_onBroadcasterUserIdChanged);
     _loginStateNotifier.dispose();
     _userAttrNotifier.dispose();
     _settingsNotifier.dispose();
@@ -467,7 +471,8 @@ class _SelectScreenState extends State<SelectScreen> {
         widget.userNameResolution!.listenable,
       if (widget.broadcasterNameNotifier != null)
         widget.broadcasterNameNotifier!,
-      if (widget.supplierUserIdNotifier != null) widget.supplierUserIdNotifier!,
+      if (widget.broadcasterUserIdNotifier != null)
+        widget.broadcasterUserIdNotifier!,
       if (widget.beginAtNotifier != null) widget.beginAtNotifier!,
     ];
 
@@ -478,19 +483,20 @@ class _SelectScreenState extends State<SelectScreen> {
             widget.timelineStore?.messages ?? const <AppMessage>[];
         final bool nameResolutionEnabled =
             _settingsNotifier.value.resolveUserName;
-        final String? supplierUserId = widget.supplierUserIdNotifier?.value;
+        final String? broadcasterUserId =
+            widget.broadcasterUserIdNotifier?.value;
         // Resolve broadcaster name from cache regardless of the per-comment
         // name resolution setting, so the broadcaster name is always
         // displayed when available (seeded by programinfo API via
         // seedCache).
-        final String? cachedBroadcasterName = supplierUserId != null
-            ? widget.userNameResolution?.resolve(supplierUserId)
+        final String? cachedBroadcasterName = broadcasterUserId != null
+            ? widget.userNameResolution?.resolve(broadcasterUserId)
             : null;
         final String? broadcasterName = cachedBroadcasterName ??
             widget.broadcasterNameNotifier?.value ??
             _followBroadcasterName;
         final String? broadcasterIconUrl = _followBroadcasterIconUrl ??
-            _buildIconUrlFromUserId(supplierUserId);
+            _buildIconUrlFromUserId(broadcasterUserId);
         final DateTime? beginAt = _resolveCommentBeginAt();
 
         return CommentScreen(
@@ -507,7 +513,7 @@ class _SelectScreenState extends State<SelectScreen> {
           connectionMethod: _connectionMethod,
           programTitle: widget.programTitleNotifier?.value,
           broadcasterName: broadcasterName,
-          broadcasterUserId: supplierUserId,
+          broadcasterUserId: broadcasterUserId,
           broadcasterIconUrl: broadcasterIconUrl,
           beginAt: beginAt,
           showUserName: _settingsNotifier.value.showUserName,
@@ -601,10 +607,11 @@ class _SelectScreenState extends State<SelectScreen> {
     return Future<void>.value();
   }
 
-  void _onSupplierUserIdChanged() {
-    final String? supplierUserId = widget.supplierUserIdNotifier?.value;
-    if (supplierUserId != null && supplierUserId != _currentBroadcasterId) {
-      unawaited(_loadUserAttributes(supplierUserId));
+  void _onBroadcasterUserIdChanged() {
+    final String? broadcasterUserId = widget.broadcasterUserIdNotifier?.value;
+    if (broadcasterUserId != null &&
+        broadcasterUserId != _currentBroadcasterId) {
+      unawaited(_loadUserAttributes(broadcasterUserId));
     }
   }
 
@@ -743,7 +750,7 @@ class _SelectScreenState extends State<SelectScreen> {
           userSessionStore: userSessionStore,
           themeModeNotifier: widget.themeModeNotifier,
           userAttributeStore: widget.userAttributeStore,
-          broadcasterIdNotifier: widget.supplierUserIdNotifier,
+          broadcasterIdNotifier: widget.broadcasterUserIdNotifier,
           userNameResolution: widget.userNameResolution,
           speechPlatform: MethodChannelCommentSpeech(),
         ),
@@ -757,7 +764,7 @@ class _SelectScreenState extends State<SelectScreen> {
     // Use the notifier value as fallback in the same way as the broadcasterId
     // passed to SettingsScreen above.
     final String? activeBroadcasterId =
-        _currentBroadcasterId ?? widget.supplierUserIdNotifier?.value;
+        _currentBroadcasterId ?? widget.broadcasterUserIdNotifier?.value;
     if (activeBroadcasterId != null) {
       _currentBroadcasterId = null;
       await _loadUserAttributes(activeBroadcasterId);

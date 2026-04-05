@@ -135,7 +135,8 @@ class _ComeruneAppState extends State<ComeruneApp> {
   );
   final ValueNotifier<String?> _broadcasterNameNotifier =
       ValueNotifier<String?>(null);
-  final ValueNotifier<String?> _supplierUserIdNotifier = ValueNotifier<String?>(
+  final ValueNotifier<String?> _broadcasterUserIdNotifier =
+      ValueNotifier<String?>(
     null,
   );
   final ValueNotifier<DateTime?> _beginAtNotifier = ValueNotifier<DateTime?>(
@@ -181,8 +182,8 @@ class _ComeruneAppState extends State<ComeruneApp> {
       onProgramTitleResolved: (String title) {
         _programTitleNotifier.value = title;
       },
-      onSupplierUserIdResolved: (String userId) {
-        _supplierUserIdNotifier.value = userId;
+      onBroadcasterUserIdResolved: (String userId) {
+        _broadcasterUserIdNotifier.value = userId;
         _userNameResolver.requestResolve(userId);
       },
       onBroadcasterNameResolved: (String? userId, String name) {
@@ -254,7 +255,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _broadcastControlRepository.dispose();
     _programTitleNotifier.dispose();
     _broadcasterNameNotifier.dispose();
-    _supplierUserIdNotifier.dispose();
+    _broadcasterUserIdNotifier.dispose();
     _beginAtNotifier.dispose();
     _themeModeNotifier
       ..removeListener(_onThemeModeChanged)
@@ -270,7 +271,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _currentLv = lv;
     _programTitleNotifier.value = null;
     _broadcasterNameNotifier.value = null;
-    _supplierUserIdNotifier.value = null;
+    _broadcasterUserIdNotifier.value = null;
     _beginAtNotifier.value = null;
     _ndgrHistoryCount = settings.pastCommentFetchCount.historyCount;
     _timelineStore.setCapacity(_ndgrHistoryCount);
@@ -306,7 +307,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
             listenable: _userNameResolver,
           ),
           broadcasterNameNotifier: _broadcasterNameNotifier,
-          supplierUserIdNotifier: _supplierUserIdNotifier,
+          broadcasterUserIdNotifier: _broadcasterUserIdNotifier,
           beginAtNotifier: _beginAtNotifier,
           commentLogWriter: widget.commentLogWriter,
           themeModeNotifier: _themeModeNotifier,
@@ -326,14 +327,14 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     required Future<String> Function() userSessionProvider,
     required ProgramInfoResolver programInfoResolver,
     void Function(String title)? onProgramTitleResolved,
-    void Function(String userId)? onSupplierUserIdResolved,
+    void Function(String userId)? onBroadcasterUserIdResolved,
     void Function(String? userId, String name)? onBroadcasterNameResolved,
     void Function(DateTime beginAt)? onBeginAtResolved,
   })  : _lvProvider = lvProvider,
         _userSessionProvider = userSessionProvider,
         _programInfoResolver = programInfoResolver,
         _onProgramTitleResolved = onProgramTitleResolved,
-        _onSupplierUserIdResolved = onSupplierUserIdResolved,
+        _onBroadcasterUserIdResolved = onBroadcasterUserIdResolved,
         _onBroadcasterNameResolved = onBroadcasterNameResolved,
         _onBeginAtResolved = onBeginAtResolved;
 
@@ -341,7 +342,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
   final Future<String> Function() _userSessionProvider;
   final ProgramInfoResolver _programInfoResolver;
   final void Function(String title)? _onProgramTitleResolved;
-  final void Function(String userId)? _onSupplierUserIdResolved;
+  final void Function(String userId)? _onBroadcasterUserIdResolved;
   final void Function(String? userId, String name)? _onBroadcasterNameResolved;
   final void Function(DateTime beginAt)? _onBeginAtResolved;
   final StreamController<reconnect.SessionWsEvent> _eventsController =
@@ -379,11 +380,11 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       //   1. title — no dependencies, shown first in the UI header.
       //   2. beginAt — no dependencies, enables elapsed-time display
       //      as soon as comments start arriving.
-      //   3. broadcasterName — emitted even when supplierUserId is absent.
-      //      If supplierUserId exists, this also seeds the name cache so
-      //      the subsequent supplierUserId callback can skip a redundant
+      //   3. broadcasterName — emitted even when broadcasterUserId is absent.
+      //      If broadcasterUserId exists, this also seeds the name cache so
+      //      the subsequent broadcasterUserId callback can skip a redundant
       //      HTTP resolve.
-      //   4. supplierUserId — triggers name resolution; the cache is
+      //   4. broadcasterUserId — triggers name resolution; the cache is
       //      already warm if broadcasterName was available.
       if (programInfo.title != null) {
         _onProgramTitleResolved?.call(programInfo.title!);
@@ -393,12 +394,12 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       }
       if (programInfo.broadcasterName != null) {
         _onBroadcasterNameResolved?.call(
-          programInfo.supplierUserId,
+          programInfo.broadcasterUserId,
           programInfo.broadcasterName!,
         );
       }
-      if (programInfo.supplierUserId != null) {
-        _onSupplierUserIdResolved?.call(programInfo.supplierUserId!);
+      if (programInfo.broadcasterUserId != null) {
+        _onBroadcasterUserIdResolved?.call(programInfo.broadcasterUserId!);
       }
       log(
         'Resolved NDGR endpoint via programinfo API',

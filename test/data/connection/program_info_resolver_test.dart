@@ -37,7 +37,7 @@ void main() {
         'https://mpn.live.nicovideo.jp/api/view/v4/BBzh6D87sTyy',
       );
       expect(result.title, 'Test Program');
-      expect(result.supplierUserId, isNull);
+      expect(result.broadcasterUserId, isNull);
       expect(result.broadcasterName, isNull);
       expect(result.beginAt, isNull);
 
@@ -81,7 +81,7 @@ void main() {
       );
 
       expect(result.title, 'Broadcaster Program');
-      expect(result.supplierUserId, '67890');
+      expect(result.broadcasterUserId, '67890');
       expect(result.broadcasterName, '配信者A');
 
       resolver.dispose();
@@ -118,7 +118,7 @@ void main() {
         );
 
         expect(result.title, 'Supplier Fallback');
-        expect(result.supplierUserId, '12345');
+        expect(result.broadcasterUserId, '12345');
         expect(result.broadcasterName, 'テスト配信者');
 
         resolver.dispose();
@@ -153,14 +153,14 @@ void main() {
         userSession: 'session',
       );
 
-      expect(result.supplierUserId, '11111');
+      expect(result.broadcasterUserId, '11111');
       expect(result.broadcasterName, '配信者B');
 
       resolver.dispose();
     });
 
     test(
-      'returns null supplierUserId when neither broadcaster nor supplier has ID',
+      'returns null broadcasterUserId when neither broadcaster nor supplier has ID',
       () async {
         final _FakeHttpClient httpClient = _FakeHttpClient();
         httpClient.responseBody = jsonEncode(<String, Object?>{
@@ -189,7 +189,7 @@ void main() {
         );
 
         expect(result.title, 'No IDs');
-        expect(result.supplierUserId, isNull);
+        expect(result.broadcasterUserId, isNull);
         expect(result.broadcasterName, 'テスト配信者');
 
         resolver.dispose();

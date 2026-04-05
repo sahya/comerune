@@ -553,7 +553,7 @@ void main() {
     (WidgetTester tester) async {
       final ConnectionSupervisor supervisor = ConnectionSupervisor();
       final TimelineStore timelineStore = TimelineStore();
-      final ValueNotifier<String?> supplierUserIdNotifier =
+      final ValueNotifier<String?> broadcasterUserIdNotifier =
           ValueNotifier<String?>(null);
       final _FakeUserAttributeStore userAttributeStore =
           _FakeUserAttributeStore();
@@ -573,7 +573,7 @@ void main() {
           home: SelectScreen(
             connectionSupervisor: supervisor,
             timelineStore: timelineStore,
-            supplierUserIdNotifier: supplierUserIdNotifier,
+            broadcasterUserIdNotifier: broadcasterUserIdNotifier,
             userAttributeStore: userAttributeStore,
           ),
         ),
@@ -585,7 +585,7 @@ void main() {
       await tester.tap(connectButton());
       await tester.pumpAndSettle();
 
-      supplierUserIdNotifier.value = 'broadcaster-1';
+      broadcasterUserIdNotifier.value = 'broadcaster-1';
       await tester.pumpAndSettle();
 
       CommentScreen commentScreen = tester.widget<CommentScreen>(
@@ -615,7 +615,7 @@ void main() {
   ) async {
     final ConnectionSupervisor supervisor = ConnectionSupervisor();
     final TimelineStore timelineStore = TimelineStore();
-    final ValueNotifier<String?> supplierUserIdNotifier =
+    final ValueNotifier<String?> broadcasterUserIdNotifier =
         ValueNotifier<String?>(null);
     final _FakeUserAttributeStore userAttributeStore = _FakeUserAttributeStore(
       colorsByBroadcaster: <String, Map<String, int>>{
@@ -641,7 +641,7 @@ void main() {
         home: SelectScreen(
           connectionSupervisor: supervisor,
           timelineStore: timelineStore,
-          supplierUserIdNotifier: supplierUserIdNotifier,
+          broadcasterUserIdNotifier: broadcasterUserIdNotifier,
           userAttributeStore: userAttributeStore,
         ),
       ),
@@ -653,7 +653,7 @@ void main() {
     await tester.tap(connectButton());
     await tester.pumpAndSettle();
 
-    supplierUserIdNotifier.value = 'broadcaster-1';
+    broadcasterUserIdNotifier.value = 'broadcaster-1';
     await tester.pumpAndSettle();
 
     expect(find.textContaining('初期コテハン (user-1)'), findsOneWidget);
@@ -683,11 +683,11 @@ void main() {
   });
 
   testWidgets(
-    'shows broadcasterName from notifier when supplierUserId is null',
+    'shows broadcasterName from notifier when broadcasterUserId is null',
     (WidgetTester tester) async {
       final ConnectionSupervisor supervisor = ConnectionSupervisor();
       final TimelineStore timelineStore = TimelineStore();
-      final ValueNotifier<String?> supplierUserIdNotifier =
+      final ValueNotifier<String?> broadcasterUserIdNotifier =
           ValueNotifier<String?>(null);
       final ValueNotifier<String?> broadcasterNameNotifier =
           ValueNotifier<String?>(null);
@@ -707,7 +707,7 @@ void main() {
           home: SelectScreen(
             connectionSupervisor: supervisor,
             timelineStore: timelineStore,
-            supplierUserIdNotifier: supplierUserIdNotifier,
+            broadcasterUserIdNotifier: broadcasterUserIdNotifier,
             broadcasterNameNotifier: broadcasterNameNotifier,
           ),
         ),
@@ -916,17 +916,17 @@ void main() {
     late ConnectionSupervisor supervisor;
     late TimelineStore timelineStore;
     late InMemoryUserAttributeStore userAttributeStore;
-    late ValueNotifier<String?> supplierUserIdNotifier;
+    late ValueNotifier<String?> broadcasterUserIdNotifier;
 
     setUp(() {
       supervisor = ConnectionSupervisor();
       timelineStore = TimelineStore();
       userAttributeStore = InMemoryUserAttributeStore();
-      supplierUserIdNotifier = ValueNotifier<String?>(null);
+      broadcasterUserIdNotifier = ValueNotifier<String?>(null);
     });
 
     tearDown(() {
-      supplierUserIdNotifier.dispose();
+      broadcasterUserIdNotifier.dispose();
     });
 
     Future<void> pumpAndNavigate(WidgetTester tester) async {
@@ -946,7 +946,7 @@ void main() {
             connectionSupervisor: supervisor,
             timelineStore: timelineStore,
             userAttributeStore: userAttributeStore,
-            supplierUserIdNotifier: supplierUserIdNotifier,
+            broadcasterUserIdNotifier: broadcasterUserIdNotifier,
           ),
         ),
       );
@@ -961,7 +961,7 @@ void main() {
     }
 
     testWidgets(
-      'color loaded via supplierUserIdNotifier is reflected in comment row',
+      'color loaded via broadcasterUserIdNotifier is reflected in comment row',
       (WidgetTester tester) async {
         // Pre-seed color data for broadcaster
         await userAttributeStore.setColor(
@@ -982,7 +982,7 @@ void main() {
         expect(text.style?.color, isNull);
 
         // Trigger attribute load by resolving supplier user ID
-        supplierUserIdNotifier.value = 'broadcaster-1';
+        broadcasterUserIdNotifier.value = 'broadcaster-1';
         await tester.pumpAndSettle();
 
         // Verify color is now reflected
@@ -997,7 +997,7 @@ void main() {
     );
 
     testWidgets(
-      'nickname loaded via supplierUserIdNotifier is reflected in comment row',
+      'nickname loaded via broadcasterUserIdNotifier is reflected in comment row',
       (WidgetTester tester) async {
         // Pre-seed nickname data for broadcaster
         await userAttributeStore.setNickname(
@@ -1018,7 +1018,7 @@ void main() {
         expect(text.data, isNot(contains('テストニックネーム')));
 
         // Trigger attribute load
-        supplierUserIdNotifier.value = 'broadcaster-1';
+        broadcasterUserIdNotifier.value = 'broadcaster-1';
         await tester.pumpAndSettle();
 
         // Verify nickname is now reflected
@@ -1038,7 +1038,7 @@ void main() {
         await pumpAndNavigate(tester);
 
         // Set broadcaster ID so callbacks work
-        supplierUserIdNotifier.value = 'broadcaster-1';
+        broadcasterUserIdNotifier.value = 'broadcaster-1';
         await tester.pumpAndSettle();
 
         // Long press → comment actions sheet
