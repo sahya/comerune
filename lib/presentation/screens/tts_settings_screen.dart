@@ -576,47 +576,25 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     return 'Credit: VOICEVOX';
   }
 
-  String _buildPerformanceHint(AppSettings settings) {
-    final bool isAudioQuery =
-        settings.voicevoxSynthesisMode == SynthesisMode.audioQuery;
-    final bool isAudioTrack =
-        settings.voicevoxPlayerType == VoicevoxPlayerType.audioTrack;
-
-    if (isAudioQuery && isAudioTrack) {
-      return '応答が速く、声の調整も可能な構成です（推奨）';
-    } else if (!isAudioQuery && isAudioTrack) {
-      return '最速ですが、話速・音高などの調整はできません';
-    } else if (isAudioQuery && !isAudioTrack) {
-      return '声の調整ができますが、応答はやや遅くなります';
-    } else {
-      return '調整なしで互換再生です。特殊な端末向けです';
-    }
-  }
-
-  Widget _buildPerformanceSection(AppSettings settings) {
+  Widget _buildSynthesisModeSelector(AppSettings settings) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
-          '音声処理',
-          style: Theme.of(context).textTheme.titleSmall,
-        ),
-        const SizedBox(height: 8),
-        Text(
-          '音声合成',
+          '合成モード',
           style: Theme.of(context).textTheme.bodyMedium,
         ),
         const SizedBox(height: 4),
         SegmentedButton<SynthesisMode>(
           key: const Key('synthesis-mode-selector'),
-          segments: const <ButtonSegment<SynthesisMode>>[
+          segments: <ButtonSegment<SynthesisMode>>[
             ButtonSegment<SynthesisMode>(
               value: SynthesisMode.audioQuery,
-              label: Text('高品質（調整あり）'),
+              label: Text(SynthesisMode.audioQuery.label),
             ),
             ButtonSegment<SynthesisMode>(
               value: SynthesisMode.oneShot,
-              label: Text('低遅延（調整なし）'),
+              label: Text(SynthesisMode.oneShot.label),
             ),
           ],
           selected: <SynthesisMode>{settings.voicevoxSynthesisMode},
@@ -626,35 +604,11 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
             );
           },
         ),
-        const SizedBox(height: 12),
-        DropdownButtonFormField<VoicevoxPlayerType>(
-          key: const Key('player-type-dropdown'),
-          value: settings.voicevoxPlayerType,
-          decoration: const InputDecoration(
-            border: OutlineInputBorder(),
-            labelText: '再生方式',
-          ),
-          items: const <DropdownMenuItem<VoicevoxPlayerType>>[
-            DropdownMenuItem<VoicevoxPlayerType>(
-              value: VoicevoxPlayerType.audioTrack,
-              child: Text('低遅延モード（推奨）'),
-            ),
-            DropdownMenuItem<VoicevoxPlayerType>(
-              value: VoicevoxPlayerType.mediaPlayer,
-              child: Text('互換モード'),
-            ),
-          ],
-          onChanged: (VoicevoxPlayerType? value) {
-            if (value != null) {
-              updateAndSave(
-                settings.copyWith(voicevoxPlayerType: value),
-              );
-            }
-          },
-        ),
         const SizedBox(height: 4),
         Text(
-          _buildPerformanceHint(settings),
+          settings.voicevoxSynthesisMode == SynthesisMode.audioQuery
+              ? '話速・音高・抑揚・音量の調整が可能です'
+              : '速度優先。話速・音高・抑揚・音量は反映されません',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.outline,
               ),
@@ -974,6 +928,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                   key: const Key('voicevox-section'),
                   title: 'VOICEVOX',
                   children: <Widget>[
+                    _buildSynthesisModeSelector(settings),
+                    const SizedBox(height: 12),
                     _buildVoicevoxSpeakerDropdown(settings),
                     if (widget.platform != null) ...[
                       const SizedBox(height: 8),
@@ -1001,16 +957,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                       const SizedBox(height: 8),
                       _buildNemoStyleDropdown(settings),
                     ],
-                    const SizedBox(height: 16),
-                    _buildPerformanceSection(settings),
                     if (settings.voicevoxSynthesisMode ==
                         SynthesisMode.audioQuery) ...[
-                      const SizedBox(height: 16),
-                      Text(
-                        '声の調整',
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 12),
                       SettingsDoubleSliderField(
                         key: const Key('voicevox-speed-slider'),
                         label: '話速',
@@ -1070,6 +1019,42 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: Theme.of(context).colorScheme.outline,
                           ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SettingsSection(
+                  title: '再生方式',
+                  children: <Widget>[
+                    DropdownButtonFormField<VoicevoxPlayerType>(
+                      key: const Key('player-type-dropdown'),
+                      value: settings.voicevoxPlayerType,
+                      decoration: InputDecoration(
+                        border: const OutlineInputBorder(),
+                        labelText: '再生方式',
+                        helperText: settings.voicevoxPlayerType ==
+                                VoicevoxPlayerType.audioTrack
+                            ? '素早く再生を開始します'
+                            : '幅広い端末で安定して再生します',
+                        helperMaxLines: 2,
+                      ),
+                      items: const <DropdownMenuItem<VoicevoxPlayerType>>[
+                        DropdownMenuItem<VoicevoxPlayerType>(
+                          value: VoicevoxPlayerType.audioTrack,
+                          child: Text('低遅延モード（推奨）'),
+                        ),
+                        DropdownMenuItem<VoicevoxPlayerType>(
+                          value: VoicevoxPlayerType.mediaPlayer,
+                          child: Text('互換モード'),
+                        ),
+                      ],
+                      onChanged: (VoicevoxPlayerType? value) {
+                        if (value != null) {
+                          updateAndSave(
+                            settings.copyWith(voicevoxPlayerType: value),
+                          );
+                        }
+                      },
                     ),
                   ],
                 ),
