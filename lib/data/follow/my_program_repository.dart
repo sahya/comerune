@@ -33,6 +33,13 @@ class MyProgramRepository {
   final HttpClient _httpClient;
   final String _userAgent;
 
+  /// Duration to cache a "no program found" result from the tool API
+  /// fallback. Prevents redundant tool API requests on every poll cycle
+  /// when the front API consistently returns no on-air program.
+  static const Duration _toolFallbackCacheDuration = Duration(seconds: 60);
+
+  DateTime? _toolFallbackNullAt;
+
   /// Fetches the user's own on-air program, if any.
   ///
   /// Requires a valid [userSession] for authentication.
@@ -49,11 +56,21 @@ class MyProgramRepository {
       userSession: userSession,
     );
     if (fromFront != null) {
+      _toolFallbackNullAt = null;
       appDebugLogLazy(
         () =>
             '[MyProgramRepository] Resolved own program from front-api endpoint: ${fromFront.programId}',
       );
       return fromFront;
+    }
+
+    final DateTime? cachedAt = _toolFallbackNullAt;
+    if (cachedAt != null &&
+        DateTime.now().difference(cachedAt) < _toolFallbackCacheDuration) {
+      appDebugLog(
+        '[MyProgramRepository] Front-api own program not found; tool fallback skipped (cached)',
+      );
+      return null;
     }
 
     appDebugLog(
@@ -63,10 +80,13 @@ class MyProgramRepository {
       userSession: userSession,
     );
     if (fromTool != null) {
+      _toolFallbackNullAt = null;
       appDebugLogLazy(
         () =>
             '[MyProgramRepository] Resolved own program from tool endpoint: ${fromTool.programId}',
       );
+    } else {
+      _toolFallbackNullAt = DateTime.now();
     }
     return fromTool;
   }
