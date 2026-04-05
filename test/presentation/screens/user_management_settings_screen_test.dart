@@ -19,7 +19,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('favorite-user-list-tile')), findsOneWidget);
-      expect(find.text('未登録'), findsOneWidget);
+      expect(find.byKey(const Key('ng-user-list-tile')), findsOneWidget);
+      // Both favorite and NG user sections show '未登録' when empty.
+      expect(find.text('未登録'), findsNWidgets(2));
     });
 
     testWidgets('shows disabled nickname tile when broadcasterId is null', (
