@@ -88,6 +88,36 @@ void main() {
     expect(find.byKey(const Key('voice-model-card-2')), findsOneWidget);
   });
 
+  testWidgets('filters out unsupported models', (tester) async {
+    final unsupportedModel = <String, dynamic>{
+      'modelId': '99',
+      'displayName': 'Unsupported Model',
+      'speakerIds': [9999],
+      'vvmFileName': '99.vvm',
+      'fileSizeBytes': 10000000,
+      'isBundled': false,
+      'downloadState': 'NOT_DOWNLOADED',
+    };
+    fakePlatform.availableModelsToReturn = [
+      _bundledModel,
+      _notDownloadedModel,
+      unsupportedModel,
+    ];
+
+    await tester.pumpWidget(_buildScreen(fakePlatform));
+    await tester.pumpAndSettle();
+
+    // Supported models are shown.
+    expect(find.text('VOICEVOX Nemo'), findsOneWidget);
+    expect(find.text('春日部つむぎ'), findsOneWidget);
+    // Unsupported model is filtered out.
+    expect(find.text('Unsupported Model'), findsNothing);
+    // Only 2 cards (not 3).
+    expect(find.byKey(const Key('voice-model-card-0')), findsOneWidget);
+    expect(find.byKey(const Key('voice-model-card-1')), findsOneWidget);
+    expect(find.byKey(const Key('voice-model-card-2')), findsNothing);
+  });
+
   testWidgets('shows bundled badge for bundled model', (tester) async {
     await tester.pumpWidget(_buildScreen(fakePlatform));
     await tester.pumpAndSettle();
