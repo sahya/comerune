@@ -402,7 +402,9 @@ class _CommentScreenState extends State<CommentScreen> {
               ? _isNearBottom()
               : _isNearTop();
           if (atEdge) {
-            _autoScrollEnabled = true;
+            setState(() {
+              _autoScrollEnabled = true;
+            });
             _scrollToEdge();
           }
         });
@@ -2772,12 +2774,17 @@ class _CommentRowState extends State<_CommentRow> {
     final double fontSize = widget.fontSize;
     final Color timestampColor = widget.themeColors.subtleTextColor;
     final Color idColor = widget.themeColors.subtleTextColor;
+    const double minSubFontSize = 9.0;
+    final double timestampFontSize =
+        hidden ? fontSize : (fontSize * 0.85).clamp(minSubFontSize, fontSize);
+    final double idFontSize =
+        hidden ? fontSize : (fontSize * 0.9).clamp(minSubFontSize, fontSize);
 
     final List<InlineSpan> spans = <InlineSpan>[
       TextSpan(
         text: timestamp,
         style: TextStyle(
-          fontSize: hidden ? fontSize : fontSize * 0.85,
+          fontSize: timestampFontSize,
           color: hidden ? Colors.grey : timestampColor,
           fontStyle: hidden ? FontStyle.italic : null,
         ),
@@ -2795,7 +2802,7 @@ class _CommentRowState extends State<_CommentRow> {
           TextSpan(
             text: displayName,
             style: TextStyle(
-              fontSize: hidden ? fontSize : fontSize * 0.9,
+              fontSize: idFontSize,
               color: hidden ? Colors.grey : (widget.userColor ?? idColor),
               fontWeight: hidden ? null : FontWeight.w500,
               fontStyle: hidden ? FontStyle.italic : null,
