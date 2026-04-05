@@ -4,7 +4,10 @@ package com.example.comerune.speech.infrastructure.engine
  * JNI bridge to the VOICEVOX Core native library.
  *
  * All methods delegate to C++ functions in voicevox_jni.cpp via JNI.
- * Thread safety is handled on the native side with a mutex.
+ * Thread safety is handled on the native side with a shared_mutex:
+ * lifecycle operations (init/release/loadModel) acquire an exclusive lock,
+ * while synthesis operations (audioQuery/synthesis/tts) acquire a shared lock
+ * to allow concurrent execution.
  *
  * **Naming note:** The `speakerId` parameter used throughout this codebase
  * corresponds to VOICEVOX's `VoicevoxStyleId`. VOICEVOX identifies voice
