@@ -36,11 +36,9 @@ class AppMigrationRunner {
       name: 'AppMigrationRunner',
     );
 
-    for (
-      int version = storedVersion + 1;
-      version <= currentMigrationVersion;
-      version++
-    ) {
+    for (int version = storedVersion + 1;
+        version <= currentMigrationVersion;
+        version++) {
       await _runMigration(version);
       // Persist progress after each successful migration so that a failure
       // in a later migration does not re-run already completed ones.

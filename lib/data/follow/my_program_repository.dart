@@ -16,8 +16,8 @@ class MyProgramRepository {
   MyProgramRepository({
     HttpClient? httpClient,
     String userAgent = _defaultUserAgent,
-  }) : _httpClient = httpClient ?? HttpClient(),
-       _userAgent = userAgent {
+  })  : _httpClient = httpClient ?? HttpClient(),
+        _userAgent = userAgent {
     _httpClient.connectionTimeout = const Duration(seconds: 10);
   }
 

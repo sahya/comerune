@@ -242,11 +242,11 @@ class AppSettings {
     required this.dictionaryRules,
     required this.debugMode,
   }) : assert(
-         commentFontSize >= commentFontSizeMin &&
-             commentFontSize <= commentFontSizeMax,
-         'commentFontSize must be between $commentFontSizeMin and $commentFontSizeMax, '
-         'but was $commentFontSize',
-       );
+          commentFontSize >= commentFontSizeMin &&
+              commentFontSize <= commentFontSizeMax,
+          'commentFontSize must be between $commentFontSizeMin and $commentFontSizeMax, '
+          'but was $commentFontSize',
+        );
 
   static const AppSettings defaults = AppSettings(
     themeMode: AppThemeMode.light,
@@ -513,14 +513,14 @@ class AppSettings {
 
   /// Convert to [SpeechSettings] for the platform speech engine.
   SpeechSettings toSpeechSettings() => SpeechSettings(
-    enabled: autoReadEnabled && speechEngine == SpeechEngine.voicevox,
-    speakerId: voicevoxSpeaker,
-    speedScale: voicevoxSpeed,
-    pitchScale: voicevoxPitch,
-    intonationScale: voicevoxIntonation,
-    volumeScale: voicevoxVolume,
-    maxQueueSize: queueLimit,
-    ngWords: ngWordList,
-    dictionaryRules: dictionaryRules,
-  );
+        enabled: autoReadEnabled && speechEngine == SpeechEngine.voicevox,
+        speakerId: voicevoxSpeaker,
+        speedScale: voicevoxSpeed,
+        pitchScale: voicevoxPitch,
+        intonationScale: voicevoxIntonation,
+        volumeScale: voicevoxVolume,
+        maxQueueSize: queueLimit,
+        ngWords: ngWordList,
+        dictionaryRules: dictionaryRules,
+      );
 }

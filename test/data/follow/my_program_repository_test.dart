@@ -260,7 +260,8 @@ void main() {
       repository.dispose();
     });
 
-    test('extracts icon from tool endpoint using provider ID fallback', () async {
+    test('extracts icon from tool endpoint using provider ID fallback',
+        () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.queuedResponses.addAll(<_FakeResponseConfig>[
         _FakeResponseConfig(statusCode: 404, body: ''),
@@ -562,7 +563,7 @@ class _FakeHttpHeaders implements HttpHeaders {
 class _FakeHttpClientResponse extends Stream<List<int>>
     implements HttpClientResponse {
   _FakeHttpClientResponse({required this.statusCode, required String body})
-    : _body = body;
+      : _body = body;
 
   @override
   final int statusCode;

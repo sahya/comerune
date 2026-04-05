@@ -1029,12 +1029,12 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
         widget.resolveUserName != null || widget.requestUserNameResolve != null;
     final UserNameResolution? userNameResolution =
         hasUserNameResolutionCallbacks
-        ? UserNameResolution(
-            resolve: widget.resolveUserName ?? (_) => null,
-            requestResolve: widget.requestUserNameResolve ?? (_) {},
-            listenable: _NoopListenable.instance,
-          )
-        : null;
+            ? UserNameResolution(
+                resolve: widget.resolveUserName ?? (_) => null,
+                requestResolve: widget.requestUserNameResolve ?? (_) {},
+                listenable: _NoopListenable.instance,
+              )
+            : null;
 
     return CommentScreen(
       lv: 'lv123456789',

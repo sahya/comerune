@@ -55,8 +55,8 @@ Future<void> main() async {
   );
   final UserAttributeStore userAttributeStore =
       SharedPreferencesUserAttributeStore(
-        prefs: SharedPreferencesAdapter(prefs),
-      );
+    prefs: SharedPreferencesAdapter(prefs),
+  );
   // Run one-time migration tasks when the app version changes.
   // Awaited so that migrations complete before the app reads settings or
   // user data that a migration might alter.
@@ -324,13 +324,13 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     void Function(String userId)? onSupplierUserIdResolved,
     void Function(String? userId, String name)? onBroadcasterNameResolved,
     void Function(DateTime beginAt)? onBeginAtResolved,
-  }) : _lvProvider = lvProvider,
-       _userSessionProvider = userSessionProvider,
-       _programInfoResolver = programInfoResolver,
-       _onProgramTitleResolved = onProgramTitleResolved,
-       _onSupplierUserIdResolved = onSupplierUserIdResolved,
-       _onBroadcasterNameResolved = onBroadcasterNameResolved,
-       _onBeginAtResolved = onBeginAtResolved;
+  })  : _lvProvider = lvProvider,
+        _userSessionProvider = userSessionProvider,
+        _programInfoResolver = programInfoResolver,
+        _onProgramTitleResolved = onProgramTitleResolved,
+        _onSupplierUserIdResolved = onSupplierUserIdResolved,
+        _onBroadcasterNameResolved = onBroadcasterNameResolved,
+        _onBeginAtResolved = onBeginAtResolved;
 
   final String Function() _lvProvider;
   final Future<String> Function() _userSessionProvider;
@@ -433,9 +433,9 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       onError: (Object error, StackTrace stackTrace) {
         final reconnect.SessionWsConnectException failure =
             reconnect.SessionWsConnectException(
-              reconnect.SessionWsConnectFailureKind.connectFailed,
-              cause: error,
-            );
+          reconnect.SessionWsConnectFailureKind.connectFailed,
+          cause: error,
+        );
         _recordSessionFailure(failure);
         _completeEndpointError(completer, failure, stackTrace: stackTrace);
       },
@@ -493,8 +493,8 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       case session_impl.SessionWsEventType.ndgrEndpointResolved:
         final Uri? uri = Uri.tryParse(event.ndgrViewUri ?? '');
         if (uri == null) {
-          final reconnect.SessionWsConnectException
-          failure = reconnect.SessionWsConnectException(
+          final reconnect.SessionWsConnectException failure =
+              reconnect.SessionWsConnectException(
             reconnect.SessionWsConnectFailureKind.endpointParseFailed,
             cause:
                 'Invalid NDGR endpoint URI: ${event.ndgrViewUri ?? '(empty)'}',
@@ -510,8 +510,8 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       case session_impl.SessionWsEventType.legacyEndpointResolved:
         final Uri? uri = Uri.tryParse(event.legacyWebSocketUrl ?? '');
         if (uri == null) {
-          final reconnect.SessionWsConnectException
-          failure = reconnect.SessionWsConnectException(
+          final reconnect.SessionWsConnectException failure =
+              reconnect.SessionWsConnectException(
             reconnect.SessionWsConnectFailureKind.endpointParseFailed,
             cause:
                 'Invalid legacy endpoint URI: ${event.legacyWebSocketUrl ?? '(empty)'}',
@@ -624,8 +624,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       case session_impl.SessionWsErrorCode.endpointResolveFailed:
         return reconnect.SessionWsConnectException(
           reconnect.SessionWsConnectFailureKind.endpointResolveTimeout,
-          cause:
-              cause ??
+          cause: cause ??
               _defaultCauseForKind(
                 reconnect.SessionWsConnectFailureKind.endpointResolveTimeout,
               ),
@@ -634,8 +633,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       case session_impl.SessionWsErrorCode.keepaliveResponseFailed:
         return reconnect.SessionWsConnectException(
           reconnect.SessionWsConnectFailureKind.connectFailed,
-          cause:
-              cause ??
+          cause: cause ??
               _defaultCauseForKind(
                 reconnect.SessionWsConnectFailureKind.connectFailed,
               ),
@@ -643,8 +641,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       case session_impl.SessionWsErrorCode.unknownBroadcastEndEvent:
         return reconnect.SessionWsConnectException(
           reconnect.SessionWsConnectFailureKind.broadcastEnded,
-          cause:
-              cause ??
+          cause: cause ??
               _defaultCauseForKind(
                 reconnect.SessionWsConnectFailureKind.broadcastEnded,
               ),
@@ -675,8 +672,8 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
   _NdgrClientAdapter({
     required ndgr_impl.NdgrClient client,
     required int Function() historyCountProvider,
-  }) : _client = client,
-       _historyCountProvider = historyCountProvider {
+  })  : _client = client,
+        _historyCountProvider = historyCountProvider {
     _clientEventsSubscription = _client.events.listen(
       _handleClientEvent,
       onError: (_, __) {
@@ -694,7 +691,7 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
   final StreamController<int?> _viewerCountController =
       StreamController<int?>.broadcast();
   late final StreamSubscription<ndgr_impl.NdgrClientEvent>
-  _clientEventsSubscription;
+      _clientEventsSubscription;
 
   Future<void>? _activeConnectFuture;
   Completer<void>? _pendingStartupCompleter;
@@ -851,7 +848,7 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
 
 class _LegacyCommentClientAdapter implements reconnect.LegacyCommentClient {
   _LegacyCommentClientAdapter({required legacy_impl.LegacyCommentClient client})
-    : _client = client {
+      : _client = client {
     _messageSubscription = _client.messages.listen((AppMessage message) {
       if (_messagesController.isClosed) {
         return;
@@ -878,7 +875,7 @@ class _LegacyCommentClientAdapter implements reconnect.LegacyCommentClient {
       StreamController<AppMessage>.broadcast();
   late final StreamSubscription<AppMessage> _messageSubscription;
   late final StreamSubscription<legacy_impl.LegacyCommentClientError>
-  _errorSubscription;
+      _errorSubscription;
 
   bool _isDisconnecting = false;
 

@@ -163,41 +163,40 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _favoriteUserIds.isEmpty
-          ? const EmptyStateMessage(
-              key: Key('favorite-user-list-empty'),
-              message:
-                  'お気に入りユーザーIDは登録されていません\n'
-                  '右下のボタンからユーザーIDを追加すると\n'
-                  '接続画面に放送中の番組が表示されます',
-            )
-          : ListView.separated(
-              key: const Key('favorite-user-id-list'),
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: _favoriteUserIds.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (BuildContext context, int index) {
-                final String userId = _favoriteUserIds[index];
-                final String? nickname = widget.userNameResolution?.resolve(
-                  userId,
-                );
-                return ListTile(
-                  key: Key('favorite-user-tile-$index'),
-                  leading: const Icon(Icons.person, size: 20),
-                  title: Text(
-                    nickname != null ? '$nickname ($userId)' : userId,
-                    style: const TextStyle(fontSize: 14),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
-                  trailing: IconButton(
-                    key: Key('favorite-user-remove-$index'),
-                    icon: const Icon(Icons.delete_outline),
-                    tooltip: '削除',
-                    onPressed: () => _removeFavoriteUserId(userId),
-                  ),
-                );
-              },
-            ),
+              ? const EmptyStateMessage(
+                  key: Key('favorite-user-list-empty'),
+                  message: 'お気に入りユーザーIDは登録されていません\n'
+                      '右下のボタンからユーザーIDを追加すると\n'
+                      '接続画面に放送中の番組が表示されます',
+                )
+              : ListView.separated(
+                  key: const Key('favorite-user-id-list'),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: _favoriteUserIds.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (BuildContext context, int index) {
+                    final String userId = _favoriteUserIds[index];
+                    final String? nickname = widget.userNameResolution?.resolve(
+                      userId,
+                    );
+                    return ListTile(
+                      key: Key('favorite-user-tile-$index'),
+                      leading: const Icon(Icons.person, size: 20),
+                      title: Text(
+                        nickname != null ? '$nickname ($userId)' : userId,
+                        style: const TextStyle(fontSize: 14),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                      trailing: IconButton(
+                        key: Key('favorite-user-remove-$index'),
+                        icon: const Icon(Icons.delete_outline),
+                        tooltip: '削除',
+                        onPressed: () => _removeFavoriteUserId(userId),
+                      ),
+                    );
+                  },
+                ),
     );
   }
 }
