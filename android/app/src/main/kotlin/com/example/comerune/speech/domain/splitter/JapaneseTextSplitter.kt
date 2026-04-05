@@ -27,7 +27,7 @@ class JapaneseTextSplitter(
         const val MIN_TEXT_LENGTH_DEFAULT = 15
 
         /** Maximum number of chunks produced from a single text. */
-        const val MAX_CHUNKS_DEFAULT = 3
+        const val MAX_CHUNKS_DEFAULT = 5
 
         /**
          * Regex matching conjunctive particles at clause boundaries.

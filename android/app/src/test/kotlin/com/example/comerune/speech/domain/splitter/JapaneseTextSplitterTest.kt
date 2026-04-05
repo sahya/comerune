@@ -271,8 +271,17 @@ class JapaneseTextSplitterTest {
     // --- Max chunks limit ---
 
     @Test
-    fun `limits to max 3 chunks`() {
-        // Text with 4 conjunctive particles
+    fun `limits to max 5 chunks by default`() {
+        // Text with 6+ conjunctive particles — exceeds default maxChunks=5
+        val text = "雨だからバスに乗ったけど混んでてもなんとかなったのでよかったし帰れたから安心したって言ってた"
+        val result = splitter.split(text)
+        assert(result.size <= 5) { "Expected at most 5 chunks but got ${result.size}" }
+        assertEquals(text, result.joinToString(""))
+    }
+
+    @Test
+    fun `custom maxChunks=3 limits output`() {
+        val splitter = JapaneseTextSplitter(maxChunks = 3, minTextLength = 5)
         val text = "雨が降ってるからバスで行ったけどすごい混んでてもなんとか座れたので良かった"
         val result = splitter.split(text)
         assert(result.size <= 3) { "Expected at most 3 chunks but got ${result.size}" }
@@ -452,7 +461,8 @@ class JapaneseTextSplitterTest {
 
     @Test
     fun `multiple particles exceeding maxChunks merges trailing into last chunk`() {
-        // 5 potential split points — all should merge into at most 3 chunks
+        // Use maxChunks=3 to force merging with 5 potential split points
+        val splitter = JapaneseTextSplitter(maxChunks = 3, minTextLength = 5)
         val text = "雨だからバスに乗ったけど混んでてもなんとかなったので帰れたし良かった"
         val result = splitter.split(text)
         assert(result.size <= 3) { "Expected at most 3 chunks but got ${result.size}" }
