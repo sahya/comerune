@@ -84,6 +84,9 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   static const String _kSlashPrefixSkipEnabled =
       'settings.filter.slashPrefixSkip';
   static const String _kReadUserName = 'settings.tts.readUserName';
+  static const String _kVoicevoxSynthesisMode =
+      'settings.voicevox.synthesisMode';
+  static const String _kVoicevoxPlayerType = 'settings.voicevox.playerType';
   static const String _kVoicevoxTermsAccepted =
       'settings.voicevox.termsAccepted';
   static const String _kDictionaryRules = 'settings.speech.dictionaryRules';
@@ -164,6 +167,11 @@ class SharedPreferencesSettingsStore implements SettingsStore {
           _prefs.getBool(_kSlashPrefixSkipEnabled) ??
           defaults.slashPrefixSkipEnabled,
       readUserName: _prefs.getBool(_kReadUserName) ?? defaults.readUserName,
+      voicevoxSynthesisMode: SynthesisMode.fromStorageValue(
+          _prefs.getString(_kVoicevoxSynthesisMode)),
+      voicevoxPlayerType: _prefs.getString(_kVoicevoxPlayerType) == 'media_player'
+          ? VoicevoxPlayerType.mediaPlayer
+          : VoicevoxPlayerType.audioTrack,
       voicevoxTermsAccepted:
           _prefs.getBool(_kVoicevoxTermsAccepted) ??
           defaults.voicevoxTermsAccepted,
@@ -238,6 +246,14 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       settings.slashPrefixSkipEnabled,
     );
     await _prefs.setBool(_kReadUserName, settings.readUserName);
+    await _prefs.setString(
+        _kVoicevoxSynthesisMode, settings.voicevoxSynthesisMode.storageValue);
+    await _prefs.setString(
+      _kVoicevoxPlayerType,
+      settings.voicevoxPlayerType == VoicevoxPlayerType.mediaPlayer
+          ? 'media_player'
+          : 'audio_track',
+    );
     await _prefs.setBool(
       _kVoicevoxTermsAccepted,
       settings.voicevoxTermsAccepted,

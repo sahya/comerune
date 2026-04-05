@@ -96,14 +96,28 @@ void main() {
       expect(settings.ngWords, isEmpty);
     });
 
+    test('SynthesisMode round-trip via storageValue', () {
+      for (final mode in SynthesisMode.values) {
+        expect(SynthesisMode.fromStorageValue(mode.storageValue), mode);
+      }
+    });
+
+    test('SynthesisMode fromStorageValue defaults to audioQuery', () {
+      expect(SynthesisMode.fromStorageValue(null), SynthesisMode.audioQuery);
+      expect(
+          SynthesisMode.fromStorageValue('UNKNOWN'), SynthesisMode.audioQuery);
+    });
+
     test('toMap includes all fields with defaults', () {
       const settings = SpeechSettings();
       final map = settings.toMap();
-      expect(map.length, 17);
+      expect(map.length, 19);
       expect(map['enabled'], true);
+      expect(map['synthesisMode'], 'AUDIO_QUERY');
       expect(map['speedScale'], 1.15);
       expect(map['dictionaryRules'], isEmpty);
       expect(map['ngWords'], isEmpty);
+      expect(map['playerType'], 'audio_track');
     });
 
     test('toMap serializes dictionary rules', () {
