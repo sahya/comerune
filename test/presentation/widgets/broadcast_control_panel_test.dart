@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:comerune/data/broadcast/broadcast_control_repository.dart';
-import 'package:comerune/data/follow/follow_program.dart';
+import 'package:comerune/domain/models/broadcast_control_result.dart';
+import 'package:comerune/domain/models/follow_program.dart';
 import 'package:comerune/presentation/widgets/broadcast_control_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

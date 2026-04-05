@@ -10,6 +10,7 @@ import 'package:comerune/domain/models/app_message.dart';
 import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/domain/models/user_name_resolution.dart';
 import 'package:comerune/presentation/screens/comment_screen.dart';
+import 'package:comerune/presentation/screens/comment_screen_config.dart';
 import 'package:comerune/presentation/theme/app_theme.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 // ignore: depend_on_referenced_packages
@@ -655,7 +656,9 @@ void main() {
                       Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) => CommentScreen(
-                            lv: 'lv999',
+                            programInfo: const CommentProgramInfo(
+                              lv: 'lv999',
+                            ),
                             connectionSupervisor: supervisor,
                             messages: const <AppMessage>[],
                             onStopAllConnections: () async {
@@ -2464,7 +2467,7 @@ class _NicknameCommentScreenHostState
   Widget build(BuildContext context) {
     return MaterialApp(
       home: CommentScreen(
-        lv: 'lv123',
+        programInfo: const CommentProgramInfo(lv: 'lv123'),
         connectionSupervisor: widget.supervisor,
         messages: _messages,
         onStopAllConnections: () async {},
@@ -2540,7 +2543,7 @@ class _CommentScreenHostState extends State<_CommentScreenHost> {
   Widget build(BuildContext context) {
     return MaterialApp(
       home: CommentScreen(
-        lv: _lv,
+        programInfo: CommentProgramInfo(lv: _lv),
         connectionSupervisor: widget.supervisor,
         messages: _messages,
         onStopAllConnections: () async {},
@@ -2598,7 +2601,14 @@ Widget _buildScreen({
 
   return MaterialApp(
     home: CommentScreen(
-      lv: lv,
+      programInfo: CommentProgramInfo(
+        lv: lv,
+        programTitle: programTitle,
+        broadcasterName: broadcasterName,
+        broadcasterUserId: broadcasterUserId,
+        beginAt: beginAt,
+        connectionMethod: connectionMethod,
+      ),
       connectionSupervisor: supervisor,
       messages: messages,
       onStopAllConnections: onStopAllConnections ?? () async {},
@@ -2606,13 +2616,8 @@ Widget _buildScreen({
       onDifferentLvConnected: (_, __) async {},
       onOpenSettings: onOpenSettings,
       debugMode: debugMode,
-      connectionMethod: connectionMethod,
-      programTitle: programTitle,
-      broadcasterName: broadcasterName,
-      broadcasterUserId: broadcasterUserId,
       userNameResolution: userNameResolution,
       commentFontSize: commentFontSize,
-      beginAt: beginAt,
       ngUserIds: ngUserIds,
       ngWords: ngWords,
       presetNgWords: presetNgWords,
@@ -2620,12 +2625,14 @@ Widget _buildScreen({
       userNicknameMap: userNicknameMap,
       starPrefixHidingEnabled: starPrefixHidingEnabled,
       themeMode: AppThemeMode.light,
-      statisticsEnabled: statisticsEnabled,
-      statisticsViewerCommentEnabled: statisticsViewerCommentEnabled,
-      statisticsActiveUserEnabled: statisticsActiveUserEnabled,
-      viewerCount: viewerCount,
-      totalCommentCount: totalCommentCount,
-      activeUserCount: activeUserCount,
+      statistics: CommentStatisticsConfig(
+        enabled: statisticsEnabled,
+        viewerCommentEnabled: statisticsViewerCommentEnabled,
+        activeUserEnabled: statisticsActiveUserEnabled,
+        viewerCount: viewerCount,
+        totalCommentCount: totalCommentCount,
+        activeUserCount: activeUserCount,
+      ),
       commentLogWriter: commentLogWriter,
       autoSaveCommentLog: autoSaveCommentLog,
       autoSaveCommentLogPath: autoSaveCommentLogPath,
