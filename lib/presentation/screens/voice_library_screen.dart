@@ -37,8 +37,9 @@ class VoiceLibraryScreen extends StatefulWidget {
 }
 
 class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
-  /// Only VOICEVOX Nemo is supported in the voice library.
-  static const String _nemoModelId = 'n0';
+  /// Model IDs to show in the voice library.
+  /// Includes VOICEVOX Nemo, 春日部つむぎ, and 波音リツ.
+  static const Set<String> _supportedModelIds = <String>{'n0', '2', '3'};
 
   late final VoicevoxModelManager _manager;
   bool _loadError = false;
@@ -73,9 +74,9 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
       body: ValueListenableBuilder<List<VoicevoxModelInfo>>(
         valueListenable: _manager.models,
         builder: (context, allModels, _) {
-          // Only show VOICEVOX Nemo models in the library UI.
+          // Only show supported models in the library UI.
           final List<VoicevoxModelInfo> models = allModels
-              .where((m) => m.modelId == _nemoModelId)
+              .where((m) => _supportedModelIds.contains(m.modelId))
               .toList(growable: false);
           if (_loadError) {
             return Center(
