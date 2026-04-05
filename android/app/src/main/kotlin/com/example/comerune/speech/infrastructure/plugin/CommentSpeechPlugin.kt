@@ -29,7 +29,7 @@ import com.example.comerune.speech.domain.repository.VoicevoxModelRepository
 import com.example.comerune.speech.domain.settings.InMemorySettingsRepository
 import com.example.comerune.speech.infrastructure.engine.VoicevoxEngineImpl
 import com.example.comerune.speech.infrastructure.event.FlutterSpeechEventEmitter
-import com.example.comerune.speech.infrastructure.player.AudioTrackWavPlayer
+import com.example.comerune.speech.infrastructure.player.MediaPlayerWavPlayer
 import com.example.comerune.speech.infrastructure.repository.VoicevoxModelRepositoryImpl
 
 class CommentSpeechPlugin :
@@ -70,7 +70,7 @@ class CommentSpeechPlugin :
         val emitter = FlutterSpeechEventEmitter()
         val voicevoxEngine = VoicevoxEngineImpl(context)
         voicevoxEngine.onDownloadEvent = { event -> emitter.emit(event) }
-        val player = AudioTrackWavPlayer(context)
+        val player = MediaPlayerWavPlayer(context)
 
         eventEmitter = emitter
         engine = voicevoxEngine
