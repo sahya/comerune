@@ -36,7 +36,7 @@ abstract class SharedPreferencesLike {
 
 class SharedPreferencesSettingsStore implements SettingsStore {
   const SharedPreferencesSettingsStore({required SharedPreferencesLike prefs})
-      : _prefs = prefs;
+    : _prefs = prefs;
 
   final SharedPreferencesLike _prefs;
 
@@ -84,6 +84,9 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   static const String _kSlashPrefixSkipEnabled =
       'settings.filter.slashPrefixSkip';
   static const String _kReadUserName = 'settings.tts.readUserName';
+  static const String _kVoicevoxSynthesisMode =
+      'settings.voicevox.synthesisMode';
+  static const String _kVoicevoxPlayerType = 'settings.voicevox.playerType';
   static const String _kVoicevoxTermsAccepted =
       'settings.voicevox.termsAccepted';
   static const String _kDictionaryRules = 'settings.speech.dictionaryRules';
@@ -93,8 +96,9 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   Future<AppSettings> load() async {
     const AppSettings defaults = AppSettings.defaults;
     final String? engineValue = _prefs.getString(_kSpeechEngine);
-    final SpeechEngine speechEngine =
-        engineValue == 'bouyomi' ? SpeechEngine.bouyomi : SpeechEngine.voicevox;
+    final SpeechEngine speechEngine = engineValue == 'bouyomi'
+        ? SpeechEngine.bouyomi
+        : SpeechEngine.voicevox;
 
     return AppSettings(
       themeMode: AppThemeModeValue.fromStorageValue(
@@ -137,28 +141,39 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       commentFontSize: commentFontSizeFromStorageValue(
         _prefs.getString(_kCommentFontSize),
       ),
-      autoNicknameRegistration: _prefs.getBool(_kAutoNicknameRegistration) ??
+      autoNicknameRegistration:
+          _prefs.getBool(_kAutoNicknameRegistration) ??
           defaults.autoNicknameRegistration,
       autoSaveCommentLog:
           _prefs.getBool(_kAutoSaveCommentLog) ?? defaults.autoSaveCommentLog,
-      autoSaveCommentLogPath: _prefs.getString(_kAutoSaveCommentLogPath) ??
+      autoSaveCommentLogPath:
+          _prefs.getString(_kAutoSaveCommentLogPath) ??
           defaults.autoSaveCommentLogPath,
       statisticsEnabled:
           _prefs.getBool(_kStatisticsEnabled) ?? defaults.statisticsEnabled,
       statisticsViewerCommentEnabled:
           _prefs.getBool(_kStatisticsViewerCommentEnabled) ??
-              defaults.statisticsViewerCommentEnabled,
+          defaults.statisticsViewerCommentEnabled,
       statisticsActiveUserEnabled:
           _prefs.getBool(_kStatisticsActiveUserEnabled) ??
-              defaults.statisticsActiveUserEnabled,
-      highlightPickupEnabled: _prefs.getBool(_kHighlightPickupEnabled) ??
+          defaults.statisticsActiveUserEnabled,
+      highlightPickupEnabled:
+          _prefs.getBool(_kHighlightPickupEnabled) ??
           defaults.highlightPickupEnabled,
-      starPrefixHidingEnabled: _prefs.getBool(_kStarPrefixHidingEnabled) ??
+      starPrefixHidingEnabled:
+          _prefs.getBool(_kStarPrefixHidingEnabled) ??
           defaults.starPrefixHidingEnabled,
-      slashPrefixSkipEnabled: _prefs.getBool(_kSlashPrefixSkipEnabled) ??
+      slashPrefixSkipEnabled:
+          _prefs.getBool(_kSlashPrefixSkipEnabled) ??
           defaults.slashPrefixSkipEnabled,
       readUserName: _prefs.getBool(_kReadUserName) ?? defaults.readUserName,
-      voicevoxTermsAccepted: _prefs.getBool(_kVoicevoxTermsAccepted) ??
+      voicevoxSynthesisMode: SynthesisMode.fromStorageValue(
+          _prefs.getString(_kVoicevoxSynthesisMode)),
+      voicevoxPlayerType: _prefs.getString(_kVoicevoxPlayerType) == 'media_player'
+          ? VoicevoxPlayerType.mediaPlayer
+          : VoicevoxPlayerType.audioTrack,
+      voicevoxTermsAccepted:
+          _prefs.getBool(_kVoicevoxTermsAccepted) ??
           defaults.voicevoxTermsAccepted,
       dictionaryRules: _loadDictionaryRules(),
       debugMode: _prefs.getBool(_kDebugMode) ?? defaults.debugMode,
@@ -231,6 +246,14 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       settings.slashPrefixSkipEnabled,
     );
     await _prefs.setBool(_kReadUserName, settings.readUserName);
+    await _prefs.setString(
+        _kVoicevoxSynthesisMode, settings.voicevoxSynthesisMode.storageValue);
+    await _prefs.setString(
+      _kVoicevoxPlayerType,
+      settings.voicevoxPlayerType == VoicevoxPlayerType.mediaPlayer
+          ? 'media_player'
+          : 'audio_track',
+    );
     await _prefs.setBool(
       _kVoicevoxTermsAccepted,
       settings.voicevoxTermsAccepted,

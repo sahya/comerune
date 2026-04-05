@@ -1,13 +1,37 @@
 package com.example.comerune.speech.domain.model
 
 /**
+ * VOICEVOX synthesis mode.
+ *
+ * - [AUDIO_QUERY]: Two-step AudioQuery → Synthesis path. Supports speed/pitch/
+ *   intonation/volume parameters. Higher quality but slower.
+ * - [ONE_SHOT]: Single-step TTS path. Faster but ignores all audio parameters
+ *   (speed/pitch/intonation/volume are fixed at engine defaults).
+ */
+enum class SynthesisMode {
+    AUDIO_QUERY,
+    ONE_SHOT;
+
+    companion object {
+        fun fromString(value: String?): SynthesisMode =
+            when (value?.uppercase()) {
+                "ONE_SHOT" -> ONE_SHOT
+                else -> AUDIO_QUERY
+            }
+    }
+}
+
+/**
  * User-configurable speech settings.
  *
- * These parameters are applied to the VOICEVOX AudioQuery before synthesis,
- * controlling volume, speed, pitch, and intonation at the engine level.
+ * In [SynthesisMode.AUDIO_QUERY] mode, the audio parameters (speed, pitch,
+ * intonation, volume) are applied to the AudioQuery before synthesis.
+ * In [SynthesisMode.ONE_SHOT] mode, these parameters are ignored by the
+ * engine and the built-in defaults are used instead.
  */
 data class SpeechSettings(
     val enabled: Boolean = true,
+    val synthesisMode: SynthesisMode = SynthesisMode.AUDIO_QUERY,
     val speakerId: Int = 10000, // VOICEVOX Nemo・男声2（AppSettings.voicevoxSpeaker と同期）
     val speedScale: Float = 1.15f,
     val pitchScale: Float = 0.0f,
@@ -23,7 +47,8 @@ data class SpeechSettings(
     val replaceUrlWith: String = "URL省略",
     val trimLongTextSuffix: String = "、以下省略",
     val dictionaryRules: List<ReplaceRule> = emptyList(),
-    val ngWords: List<String> = emptyList()
+    val ngWords: List<String> = emptyList(),
+    val playerType: String = "audio_track"
 )
 
 data class ReplaceRule(

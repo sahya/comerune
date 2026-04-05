@@ -4,6 +4,9 @@ import '../../comment_speech/src/models/replace_rule.dart';
 import '../../comment_speech/src/models/speech_settings.dart';
 import '../utils/newline_parser.dart';
 
+export '../../comment_speech/src/models/speech_settings.dart'
+    show SynthesisMode;
+
 enum AppThemeMode { system, light, dark, protanopia, deuteranopia, tritanopia }
 
 extension AppThemeModeValue on AppThemeMode {
@@ -70,6 +73,15 @@ extension AppThemeModeValue on AppThemeMode {
 // 今後削除するか再実装するかは未定。bouyomi の enum 値・設定フィールドは
 // 後方互換のため残している。
 enum SpeechEngine { bouyomi, voicevox }
+
+/// 音声再生方式。
+enum VoicevoxPlayerType {
+  /// AudioTrack（メモリ直接再生）— 応答時間: 小 / ファイルI/Oなし
+  audioTrack,
+
+  /// MediaPlayer（一時ファイル経由）— 応答時間: 大 / ファイルI/Oあり
+  mediaPlayer,
+}
 
 /// コメント文字サイズの最小値 (px)。
 const double commentFontSizeMin = 10;
@@ -238,15 +250,17 @@ class AppSettings {
     required this.starPrefixHidingEnabled,
     required this.slashPrefixSkipEnabled,
     required this.readUserName,
+    required this.voicevoxSynthesisMode,
+    required this.voicevoxPlayerType,
     required this.voicevoxTermsAccepted,
     required this.dictionaryRules,
     required this.debugMode,
   }) : assert(
-          commentFontSize >= commentFontSizeMin &&
-              commentFontSize <= commentFontSizeMax,
-          'commentFontSize must be between $commentFontSizeMin and $commentFontSizeMax, '
-          'but was $commentFontSize',
-        );
+         commentFontSize >= commentFontSizeMin &&
+             commentFontSize <= commentFontSizeMax,
+         'commentFontSize must be between $commentFontSizeMin and $commentFontSizeMax, '
+         'but was $commentFontSize',
+       );
 
   static const AppSettings defaults = AppSettings(
     themeMode: AppThemeMode.light,
@@ -283,6 +297,8 @@ class AppSettings {
     starPrefixHidingEnabled: false,
     slashPrefixSkipEnabled: true,
     readUserName: false,
+    voicevoxSynthesisMode: SynthesisMode.audioQuery,
+    voicevoxPlayerType: VoicevoxPlayerType.audioTrack,
     voicevoxTermsAccepted: false,
     dictionaryRules: defaultNicoDictionaryRules,
     debugMode: false,
@@ -341,6 +357,11 @@ class AppSettings {
   /// When true, the user name is prepended to the comment text for TTS
   /// in the format `{userName}、{comment}`.
   final bool readUserName;
+
+  final SynthesisMode voicevoxSynthesisMode;
+
+  /// VOICEVOX の音声再生方式。
+  final VoicevoxPlayerType voicevoxPlayerType;
 
   /// VOICEVOX 音声モデルの利用規約に同意済みかどうか。
   final bool voicevoxTermsAccepted;
@@ -457,6 +478,8 @@ class AppSettings {
     bool? starPrefixHidingEnabled,
     bool? slashPrefixSkipEnabled,
     bool? readUserName,
+    SynthesisMode? voicevoxSynthesisMode,
+    VoicevoxPlayerType? voicevoxPlayerType,
     bool? voicevoxTermsAccepted,
     List<ReplaceRule>? dictionaryRules,
     bool? debugMode,
@@ -504,6 +527,9 @@ class AppSettings {
       slashPrefixSkipEnabled:
           slashPrefixSkipEnabled ?? this.slashPrefixSkipEnabled,
       readUserName: readUserName ?? this.readUserName,
+      voicevoxSynthesisMode:
+          voicevoxSynthesisMode ?? this.voicevoxSynthesisMode,
+      voicevoxPlayerType: voicevoxPlayerType ?? this.voicevoxPlayerType,
       voicevoxTermsAccepted:
           voicevoxTermsAccepted ?? this.voicevoxTermsAccepted,
       dictionaryRules: dictionaryRules ?? this.dictionaryRules,
@@ -513,14 +539,18 @@ class AppSettings {
 
   /// Convert to [SpeechSettings] for the platform speech engine.
   SpeechSettings toSpeechSettings() => SpeechSettings(
-        enabled: autoReadEnabled && speechEngine == SpeechEngine.voicevox,
-        speakerId: voicevoxSpeaker,
-        speedScale: voicevoxSpeed,
-        pitchScale: voicevoxPitch,
-        intonationScale: voicevoxIntonation,
-        volumeScale: voicevoxVolume,
-        maxQueueSize: queueLimit,
-        ngWords: ngWordList,
-        dictionaryRules: dictionaryRules,
-      );
+    enabled: autoReadEnabled && speechEngine == SpeechEngine.voicevox,
+    synthesisMode: voicevoxSynthesisMode,
+    speakerId: voicevoxSpeaker,
+    speedScale: voicevoxSpeed,
+    pitchScale: voicevoxPitch,
+    intonationScale: voicevoxIntonation,
+    volumeScale: voicevoxVolume,
+    maxQueueSize: queueLimit,
+    ngWords: ngWordList,
+    dictionaryRules: dictionaryRules,
+    playerType: voicevoxPlayerType == VoicevoxPlayerType.mediaPlayer
+        ? 'media_player'
+        : 'audio_track',
+  );
 }

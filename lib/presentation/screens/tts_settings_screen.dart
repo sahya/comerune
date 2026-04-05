@@ -548,6 +548,47 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     return 'Credit: VOICEVOX';
   }
 
+  Widget _buildSynthesisModeSelector(AppSettings settings) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          '合成モード',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+        const SizedBox(height: 4),
+        SegmentedButton<SynthesisMode>(
+          key: const Key('synthesis-mode-selector'),
+          segments: <ButtonSegment<SynthesisMode>>[
+            ButtonSegment<SynthesisMode>(
+              value: SynthesisMode.audioQuery,
+              label: Text(SynthesisMode.audioQuery.label),
+            ),
+            ButtonSegment<SynthesisMode>(
+              value: SynthesisMode.oneShot,
+              label: Text(SynthesisMode.oneShot.label),
+            ),
+          ],
+          selected: <SynthesisMode>{settings.voicevoxSynthesisMode},
+          onSelectionChanged: (Set<SynthesisMode> selected) {
+            updateAndSave(
+              settings.copyWith(voicevoxSynthesisMode: selected.first),
+            );
+          },
+        ),
+        const SizedBox(height: 4),
+        Text(
+          settings.voicevoxSynthesisMode == SynthesisMode.audioQuery
+              ? '話速・音高・抑揚・音量の調整が可能です'
+              : '速度優先。話速・音高・抑揚・音量は反映されません',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.outline,
+              ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildVoicevoxSpeakerDropdown(AppSettings settings) {
     final List<VoicevoxModelInfo>? models = _voicevoxModels;
     const int fallbackSpeakerId = 10000;
@@ -859,6 +900,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                   key: const Key('voicevox-section'),
                   title: 'VOICEVOX',
                   children: <Widget>[
+                    _buildSynthesisModeSelector(settings),
+                    const SizedBox(height: 12),
                     _buildVoicevoxSpeakerDropdown(settings),
                     if (widget.platform != null) ...[
                       const SizedBox(height: 8),
@@ -886,59 +929,105 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                       const SizedBox(height: 8),
                       _buildNemoStyleDropdown(settings),
                     ],
-                    const SizedBox(height: 12),
-                    SettingsDoubleSliderField(
-                      key: const Key('voicevox-speed-slider'),
-                      label: '話速',
-                      min: 0.5,
-                      max: 2.0,
-                      divisions: 15,
-                      value: settings.voicevoxSpeed,
-                      onChanged: (double value) {
-                        updateAndSave(settings.copyWith(voicevoxSpeed: value));
-                      },
-                    ),
-                    SettingsDoubleSliderField(
-                      key: const Key('voicevox-pitch-slider'),
-                      label: '音高',
-                      min: -0.15,
-                      max: 0.15,
-                      divisions: 30,
-                      value: settings.voicevoxPitch,
-                      onChanged: (double value) {
-                        updateAndSave(settings.copyWith(voicevoxPitch: value));
-                      },
-                    ),
-                    SettingsDoubleSliderField(
-                      key: const Key('voicevox-intonation-slider'),
-                      label: '抑揚',
-                      min: 0.0,
-                      max: 2.0,
-                      divisions: 20,
-                      value: settings.voicevoxIntonation,
-                      onChanged: (double value) {
-                        updateAndSave(
-                          settings.copyWith(voicevoxIntonation: value),
-                        );
-                      },
-                    ),
-                    SettingsDoubleSliderField(
-                      key: const Key('voicevox-volume-slider'),
-                      label: '音量',
-                      min: 0.0,
-                      max: 2.0,
-                      divisions: 20,
-                      value: settings.voicevoxVolume,
-                      onChanged: (double value) {
-                        updateAndSave(settings.copyWith(voicevoxVolume: value));
-                      },
-                    ),
+                    if (settings.voicevoxSynthesisMode ==
+                        SynthesisMode.audioQuery) ...[
+                      const SizedBox(height: 12),
+                      SettingsDoubleSliderField(
+                        key: const Key('voicevox-speed-slider'),
+                        label: '話速',
+                        min: 0.5,
+                        max: 2.0,
+                        divisions: 15,
+                        value: settings.voicevoxSpeed,
+                        onChanged: (double value) {
+                          updateAndSave(
+                            settings.copyWith(voicevoxSpeed: value),
+                          );
+                        },
+                      ),
+                      SettingsDoubleSliderField(
+                        key: const Key('voicevox-pitch-slider'),
+                        label: '音高',
+                        min: -0.15,
+                        max: 0.15,
+                        divisions: 30,
+                        value: settings.voicevoxPitch,
+                        onChanged: (double value) {
+                          updateAndSave(
+                            settings.copyWith(voicevoxPitch: value),
+                          );
+                        },
+                      ),
+                      SettingsDoubleSliderField(
+                        key: const Key('voicevox-intonation-slider'),
+                        label: '抑揚',
+                        min: 0.0,
+                        max: 2.0,
+                        divisions: 20,
+                        value: settings.voicevoxIntonation,
+                        onChanged: (double value) {
+                          updateAndSave(
+                            settings.copyWith(voicevoxIntonation: value),
+                          );
+                        },
+                      ),
+                      SettingsDoubleSliderField(
+                        key: const Key('voicevox-volume-slider'),
+                        label: '音量',
+                        min: 0.0,
+                        max: 2.0,
+                        divisions: 20,
+                        value: settings.voicevoxVolume,
+                        onChanged: (double value) {
+                          updateAndSave(
+                            settings.copyWith(voicevoxVolume: value),
+                          );
+                        },
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     Text(
                       _buildCreditText(settings.voicevoxSpeaker),
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: Theme.of(context).colorScheme.outline,
                           ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SettingsSection(
+                  title: '再生方式',
+                  children: <Widget>[
+                    DropdownButtonFormField<VoicevoxPlayerType>(
+                      key: const Key('player-type-dropdown'),
+                      value: settings.voicevoxPlayerType,
+                      decoration: InputDecoration(
+                        border: const OutlineInputBorder(),
+                        labelText: '再生方式',
+                        helperText:
+                            settings.voicevoxPlayerType ==
+                                    VoicevoxPlayerType.audioTrack
+                                ? '素早く再生を開始します'
+                                : '幅広い端末で安定して再生します',
+                        helperMaxLines: 2,
+                      ),
+                      items: const <DropdownMenuItem<VoicevoxPlayerType>>[
+                        DropdownMenuItem<VoicevoxPlayerType>(
+                          value: VoicevoxPlayerType.audioTrack,
+                          child: Text('低遅延モード（推奨）'),
+                        ),
+                        DropdownMenuItem<VoicevoxPlayerType>(
+                          value: VoicevoxPlayerType.mediaPlayer,
+                          child: Text('互換モード'),
+                        ),
+                      ],
+                      onChanged: (VoicevoxPlayerType? value) {
+                        if (value != null) {
+                          updateAndSave(
+                            settings.copyWith(voicevoxPlayerType: value),
+                          );
+                        }
+                      },
                     ),
                   ],
                 ),

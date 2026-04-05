@@ -71,11 +71,48 @@ class MyProgramRepository {
     return fromTool;
   }
 
-  Future<FollowProgram?> _fetchFromFrontApi({
+  /// Fetches the user's own program in any controllable state
+  /// (reserved, test, or on-air).
+  ///
+  /// Tries on-air first (via [fetchOwnProgram] which includes tool fallback),
+  /// then checks reserved/test via front-api.
+  Future<FollowProgram?> fetchControllableProgram({
     required String userSession,
   }) async {
+    if (userSession.trim().isEmpty) {
+      appDebugLog(
+        '[MyProgramRepository] Skip controllable-program fetch because session is empty',
+      );
+      return null;
+    }
+
+    // On-air programs take priority (includes tool API fallback).
+    final FollowProgram? onAir = await fetchOwnProgram(
+      userSession: userSession,
+    );
+    if (onAir != null) {
+      return onAir;
+    }
+
+    // Check for reserved programs (not yet started).
+    final FollowProgram? reserved = await _fetchFromFrontApi(
+      userSession: userSession,
+      status: 'reserved',
+    );
+    if (reserved != null) {
+      return reserved;
+    }
+
+    // Check for test programs.
+    return _fetchFromFrontApi(userSession: userSession, status: 'test');
+  }
+
+  Future<FollowProgram?> _fetchFromFrontApi({
+    required String userSession,
+    String status = 'onair',
+  }) async {
     try {
-      final Uri uri = Uri.parse('$_frontApiBaseUrl?status=onair');
+      final Uri uri = Uri.parse('$_frontApiBaseUrl?status=$status');
       final HttpClientResponse response = await _sendGet(
         uri: uri,
         userSession: userSession,
