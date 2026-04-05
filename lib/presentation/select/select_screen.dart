@@ -9,6 +9,7 @@ import '../../application/statistics/statistics_store.dart';
 import '../../application/timeline/timeline_store.dart';
 import '../../data/auth/user_session_store.dart';
 import '../../data/comment_log/comment_log_writer.dart';
+import '../../data/broadcast/broadcast_control_repository.dart';
 import '../../data/follow/favorite_user_live_checker.dart';
 import '../../data/follow/follow_program.dart';
 import '../../data/follow/follow_program_repository.dart';
@@ -26,6 +27,7 @@ import '../../comment_speech/comment_speech.dart'
 import '../screens/comment_screen.dart';
 import '../screens/settings_screen.dart';
 import '../theme/app_theme.dart';
+import '../widgets/broadcast_control_panel.dart';
 
 void _debugLogLazy(String Function() messageBuilder) {
   appDebugLogLazy(messageBuilder);
@@ -53,6 +55,7 @@ class SelectScreen extends StatefulWidget {
     this.themeModeNotifier,
     this.followProgramRepository,
     this.myProgramRepository,
+    this.broadcastControlRepository,
     this.favoriteUserLiveChecker,
     this.userAttributeStore,
     super.key,
@@ -75,6 +78,7 @@ class SelectScreen extends StatefulWidget {
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
   final FollowProgramRepository? followProgramRepository;
   final MyProgramRepository? myProgramRepository;
+  final BroadcastControlRepository? broadcastControlRepository;
   final FavoriteUserLiveChecker? favoriteUserLiveChecker;
   final UserAttributeStore? userAttributeStore;
 
@@ -416,12 +420,20 @@ class _SelectScreenState extends State<SelectScreen> {
               ],
             ),
           ),
-          if (_myProgram != null)
+          if (_myProgram != null) ...<Widget>[
             _MyBroadcastSection(
               program: _myProgram!,
               enabled: !_isConnectionInProgress,
               onTap: () => _connectToProgram(_myProgram!),
             ),
+            if (widget.broadcastControlRepository != null)
+              BroadcastControlPanel(
+                program: _myProgram!,
+                enabled: !_isConnectionInProgress,
+                onStart: () => _startBroadcast(_myProgram!),
+                onEnd: () => _endBroadcast(_myProgram!),
+              ),
+          ],
           Expanded(
             child: _FollowProgramList(
               programs: _followPrograms,
@@ -862,7 +874,11 @@ class _SelectScreenState extends State<SelectScreen> {
       FollowProgram? program;
       const int maxAttempts = 3;
       for (int attempt = 0; attempt < maxAttempts; attempt++) {
-        program = await repository.fetchOwnProgram(userSession: userSession);
+        program = widget.broadcastControlRepository != null
+            ? await repository.fetchControllableProgram(
+                userSession: userSession,
+              )
+            : await repository.fetchOwnProgram(userSession: userSession);
         if (!mounted) {
           return;
         }
@@ -960,6 +976,61 @@ class _SelectScreenState extends State<SelectScreen> {
 
   bool _isFutureBeginAt(DateTime value) {
     return value.isAfter(DateTime.now());
+  }
+
+  Future<BroadcastControlResult> _startBroadcast(FollowProgram program) async {
+    final BroadcastControlRepository? repo = widget.broadcastControlRepository;
+    if (repo == null) {
+      return const BroadcastControlResult(
+        success: false,
+        errorCode: 'NO_REPOSITORY',
+      );
+    }
+
+    final String userSession = await _loadUserSession();
+    final BroadcastControlResult result = await repo.startBroadcast(
+      programId: program.programId,
+      userSession: userSession,
+    );
+    if (result.success && mounted) {
+      final DateTime? endAt = result.endTime != null
+          ? DateTime.fromMillisecondsSinceEpoch(
+              result.endTime! * 1000,
+              isUtc: true,
+            )
+          : null;
+      setState(() {
+        _myProgram = program.copyWith(
+          status: ProgramStatus.onAir,
+          endAt: endAt,
+        );
+      });
+      unawaited(_fetchAllPrograms());
+    }
+    return result;
+  }
+
+  Future<BroadcastControlResult> _endBroadcast(FollowProgram program) async {
+    final BroadcastControlRepository? repo = widget.broadcastControlRepository;
+    if (repo == null) {
+      return const BroadcastControlResult(
+        success: false,
+        errorCode: 'NO_REPOSITORY',
+      );
+    }
+
+    final String userSession = await _loadUserSession();
+    final BroadcastControlResult result = await repo.endBroadcast(
+      programId: program.programId,
+      userSession: userSession,
+    );
+    if ((result.success || result.isAlreadyEnded) && mounted) {
+      setState(() {
+        _myProgram = null;
+      });
+      unawaited(_fetchAllPrograms());
+    }
+    return result;
   }
 
   void _connectToProgram(FollowProgram program) {
