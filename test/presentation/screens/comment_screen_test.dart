@@ -953,13 +953,16 @@ void main() {
         ),
       );
 
+      // Text.rich is used; check the content span (last child) for font size.
       final Text textWidget = tester.widget(
         find.descendant(
           of: find.byKey(const Key('comment-row-font-msg')),
           matching: find.byType(Text),
         ),
       );
-      expect(textWidget.style?.fontSize, 18);
+      final TextSpan root = textWidget.textSpan! as TextSpan;
+      final TextSpan contentSpan = root.children!.last as TextSpan;
+      expect(contentSpan.style?.fontSize, 18);
     });
 
     testWidgets('default font size is medium (14px)', (
@@ -986,7 +989,9 @@ void main() {
           matching: find.byType(Text),
         ),
       );
-      expect(textWidget.style?.fontSize, 14);
+      final TextSpan root = textWidget.textSpan! as TextSpan;
+      final TextSpan contentSpan = root.children!.last as TextSpan;
+      expect(contentSpan.style?.fontSize, 14);
     });
 
     testWidgets('applies custom user color to comment text', (
@@ -1018,13 +1023,17 @@ void main() {
         ),
       );
 
+      // Text.rich is used; check the content span (last child) for color.
       final Text coloredText = tester.widget(
         find.descendant(
           of: find.byKey(const Key('comment-row-color-msg')),
           matching: find.byType(Text),
         ),
       );
-      expect(coloredText.style?.color, colorFromARGB32(0xFFE53935));
+      final TextSpan coloredRoot = coloredText.textSpan! as TextSpan;
+      final TextSpan coloredContentSpan =
+          coloredRoot.children!.last as TextSpan;
+      expect(coloredContentSpan.style?.color, colorFromARGB32(0xFFE53935));
 
       final Text defaultText = tester.widget(
         find.descendant(
@@ -1032,7 +1041,10 @@ void main() {
           matching: find.byType(Text),
         ),
       );
-      expect(defaultText.style?.color, isNull);
+      final TextSpan defaultRoot = defaultText.textSpan! as TextSpan;
+      final TextSpan defaultContentSpan =
+          defaultRoot.children!.last as TextSpan;
+      expect(defaultContentSpan.style?.color, isNull);
     });
 
     testWidgets('hides NG user comments from display', (
@@ -1852,14 +1864,17 @@ void main() {
         ),
       );
 
+      // Text.rich is used for hidden comments; check content span style.
       final Text textWidget = tester.widget(
         find.descendant(
           of: find.byKey(const Key('comment-row-star-style')),
           matching: find.byType(Text),
         ),
       );
-      expect(textWidget.style?.fontStyle, FontStyle.italic);
-      expect(textWidget.style?.color, Colors.grey);
+      final TextSpan hiddenRoot = textWidget.textSpan! as TextSpan;
+      final TextSpan hiddenContentSpan = hiddenRoot.children!.last as TextSpan;
+      expect(hiddenContentSpan.style?.fontStyle, FontStyle.italic);
+      expect(hiddenContentSpan.style?.color, Colors.grey);
 
       // Tap to reveal
       await tester.tap(find.byKey(const Key('comment-row-star-style')));
@@ -1872,8 +1887,11 @@ void main() {
           matching: find.byType(Text),
         ),
       );
-      expect(revealedText.style?.fontStyle, isNull);
-      expect(revealedText.style?.color, isNull);
+      final TextSpan revealedRoot = revealedText.textSpan! as TextSpan;
+      final TextSpan revealedContentSpan =
+          revealedRoot.children!.last as TextSpan;
+      expect(revealedContentSpan.style?.fontStyle, isNull);
+      expect(revealedContentSpan.style?.color, isNull);
     });
 
     testWidgets('star prefix revealed state resets when message ID changes', (

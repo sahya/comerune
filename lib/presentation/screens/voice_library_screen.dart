@@ -69,7 +69,10 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
       appBar: AppBar(title: const Text('話者ライブラリ')),
       body: ValueListenableBuilder<List<VoicevoxModelInfo>>(
         valueListenable: _manager.models,
-        builder: (context, models, _) {
+        builder: (context, allModels, _) {
+          // Only show VOICEVOX Nemo models in the library UI.
+          final List<VoicevoxModelInfo> models =
+              allModels.where((m) => m.modelId == 'n0').toList(growable: false);
           if (_loadError) {
             return Center(
               child: Column(
@@ -85,8 +88,13 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
               ),
             );
           }
-          if (models.isEmpty) {
+          if (allModels.isEmpty) {
             return const Center(child: CircularProgressIndicator());
+          }
+          if (models.isEmpty) {
+            return const Center(
+              child: Text('利用可能な話者がありません'),
+            );
           }
           return ValueListenableBuilder<Map<String, double>>(
             valueListenable: _manager.downloadProgress,
@@ -99,7 +107,7 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
                   final model = models[index];
                   final modelProgress = progress[model.modelId];
                   return _VoiceModelCard(
-                    key: Key('voice-model-card-${model.modelId}'),
+                    key: Key('voice-model-card-$index'),
                     model: model,
                     progress: modelProgress,
                     onDownload: () => _onDownload(model),
