@@ -1003,14 +1003,14 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                     ],
                     const SizedBox(height: 16),
                     _buildPerformanceSection(settings),
+                    const SizedBox(height: 16),
+                    Text(
+                      '声の調整',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 8),
                     if (settings.voicevoxSynthesisMode ==
                         SynthesisMode.audioQuery) ...[
-                      const SizedBox(height: 16),
-                      Text(
-                        '声の調整',
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                      const SizedBox(height: 8),
                       SettingsDoubleSliderField(
                         key: const Key('voicevox-speed-slider'),
                         label: '話速',
@@ -1050,20 +1050,20 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                           );
                         },
                       ),
-                      SettingsDoubleSliderField(
-                        key: const Key('voicevox-volume-slider'),
-                        label: '音量',
-                        min: 0.0,
-                        max: 2.0,
-                        divisions: 20,
-                        value: settings.voicevoxVolume,
-                        onChanged: (double value) {
-                          updateAndSave(
-                            settings.copyWith(voicevoxVolume: value),
-                          );
-                        },
-                      ),
                     ],
+                    SettingsDoubleSliderField(
+                      key: const Key('voicevox-volume-slider'),
+                      label: '音量',
+                      min: 0.0,
+                      max: 2.0,
+                      divisions: 20,
+                      value: settings.voicevoxVolume,
+                      onChanged: (double value) {
+                        updateAndSave(
+                          settings.copyWith(voicevoxVolume: value),
+                        );
+                      },
+                    ),
                     const SizedBox(height: 12),
                     Text(
                       _buildCreditText(settings.voicevoxSpeaker),
