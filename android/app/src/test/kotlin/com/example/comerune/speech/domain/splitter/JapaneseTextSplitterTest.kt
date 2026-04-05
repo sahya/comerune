@@ -258,6 +258,48 @@ class JapaneseTextSplitterTest {
     }
 
     @Test
+    fun `single character text returns single chunk`() {
+        assertEquals(listOf("あ"), splitter.split("あ"))
+    }
+
+    @Test
+    fun `consecutive particles in text`() {
+        // Multiple particles back-to-back
+        val text = "今日は忙しかったからでもなんとか終わったので帰れるよ"
+        val result = splitter.split(text)
+        assertEquals(text, result.joinToString(""))
+        // Each chunk should be at least minChunkLength
+        for (chunk in result) {
+            assert(chunk.codePointCount(0, chunk.length) >= JapaneseTextSplitter.MIN_CHUNK_LENGTH_DEFAULT) {
+                "Chunk '$chunk' is shorter than minChunkLength"
+            }
+        }
+    }
+
+    @Test
+    fun `shi in i-adjective utsukushii does not split`() {
+        val text = "この景色は本当に美しいからまた見に来たいね"
+        val result = splitter.split(text)
+        // Should split at "から" but NOT at "し" in "美しい"
+        assertEquals(2, result.size)
+        assertEquals("この景色は本当に美しいから", result[0])
+        assertEquals("また見に来たいね", result[1])
+    }
+
+    @Test
+    fun `tte in motteku does not cause harmful split`() {
+        // "持ってく" contains "って" but it's part of a verb
+        val text = "明日は弁当を持って行くから楽しみにしてるよ"
+        val result = splitter.split(text)
+        assertEquals(text, result.joinToString(""))
+        for (chunk in result) {
+            assert(chunk.codePointCount(0, chunk.length) >= JapaneseTextSplitter.MIN_CHUNK_LENGTH_DEFAULT) {
+                "Chunk '$chunk' is shorter than minChunkLength"
+            }
+        }
+    }
+
+    @Test
     fun `particle at end of text does not produce empty trailing chunk`() {
         // "から" at end — lookahead `(?=.)` prevents matching at text end
         val text = "これは長い文章のテストだから"

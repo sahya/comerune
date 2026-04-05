@@ -10,6 +10,7 @@ import com.example.comerune.speech.domain.model.SpeechRuntimeStatus
 import com.example.comerune.speech.domain.model.SpeechSettings
 import com.example.comerune.speech.domain.model.SubmitResult
 import com.example.comerune.speech.domain.model.TtsEngineState
+import com.example.comerune.speech.domain.model.WavSynthesisResult
 import com.example.comerune.speech.domain.normalizer.CommentNormalizer
 import com.example.comerune.speech.domain.normalizer.DuplicateDetector
 import com.example.comerune.speech.domain.player.WavPlayer

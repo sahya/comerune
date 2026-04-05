@@ -392,6 +392,80 @@ class SpeechControllerImplTest {
     }
 
     @Test
+    fun `chunked pipeline with synthesis failure on first chunk emits speech_failed`() = runBlocking {
+        controller.initialize()
+        controller.start()
+
+        // Fail on the 1st synthesize call (= first chunk)
+        engine.failOnNthSynthesize = 1
+
+        val text = "でも岩国は今豪雨らしいからこれぐらいの雨でまだよかったよ"
+        controller.submitComment(rawComment("1", text))
+
+        delay(500)
+
+        val failedEvents = emitter.eventsOfType("speech_failed")
+        assertEquals(1, failedEvents.size)
+
+        val completedEvents = emitter.eventsOfType("speech_completed")
+        assertEquals(0, completedEvents.size)
+    }
+
+    @Test
+    fun `chunked pipeline playback failure on second chunk emits speech_failed`() = runBlocking {
+        controller.initialize()
+        controller.start()
+
+        // Let the first chunk play normally, then fail on the second play.
+        // Submit text, then toggle failOnPlay after first play completes.
+
+        val text = "でも岩国は今豪雨らしいからこれぐらいの雨でまだよかったよ"
+        controller.submitComment(rawComment("1", text))
+
+        // Give time for first chunk to synthesize and start playing
+        delay(50)
+        // Set failOnPlay so next play call fails (second chunk)
+        player.failOnPlay = true
+
+        delay(500)
+
+        val failedEvents = emitter.eventsOfType("speech_failed")
+        assertEquals(1, failedEvents.size)
+
+        val completedEvents = emitter.eventsOfType("speech_completed")
+        assertEquals(0, completedEvents.size)
+    }
+
+    @Test
+    fun `skip during chunked playback allows next comment to be processed`() = runBlocking {
+        controller.initialize()
+        controller.start()
+
+        // Use a latch to hold playback of the first chunk
+        val latch = CountDownLatch(1)
+        player.playLatch = latch
+
+        // Submit a long (chunked) comment and a short one
+        val text = "でも岩国は今豪雨らしいからこれぐらいの雨でまだよかったよ"
+        controller.submitComment(rawComment("1", text))
+        controller.submitComment(rawComment("2", "次のコメント"))
+
+        // Give the worker time to start processing the first chunk
+        delay(100)
+
+        // Skip current playback
+        controller.skip()
+        latch.countDown()
+        player.playLatch = null
+
+        delay(800)
+
+        // The second comment should have been processed
+        val startedEvents = emitter.eventsOfType("speech_started")
+        assertTrue("Expected at least 2 speech_started events", startedEvents.size >= 2)
+    }
+
+    @Test
     fun `chunked pipeline continues to next comment after completion`() = runBlocking {
         controller.initialize()
         controller.start()
