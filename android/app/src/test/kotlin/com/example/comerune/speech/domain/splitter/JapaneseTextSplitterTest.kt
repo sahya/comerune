@@ -279,6 +279,46 @@ class JapaneseTextSplitterTest {
         assertEquals(text, result.joinToString(""))
     }
 
+    // --- Punctuation priority ---
+
+    @Test
+    fun `punctuation-backed splits are preferred over particle-only when exceeding maxChunks`() {
+        // maxChunks=2 → only 1 split point allowed
+        // 4 candidates: から (no punct), けど、(punct), ても (no punct), ので (no punct)
+        // → けど、should be selected because it has punctuation
+        val splitter = JapaneseTextSplitter(maxChunks = 2, minTextLength = 5)
+        val text = "雨が降ってるからバスで行ったけど、すごい混んでてもなんとか座れたので良かった"
+        val result = splitter.split(text)
+        assertEquals(2, result.size)
+        // The split should happen at けど、(punctuation-backed) not at から (particle-only)
+        assertEquals("雨が降ってるからバスで行ったけど、", result[0])
+        assertEquals("すごい混んでてもなんとか座れたので良かった", result[1])
+    }
+
+    @Test
+    fun `multiple punctuation-backed splits are preferred in order`() {
+        // maxChunks=3 → 2 split points allowed
+        // candidates: から、(punct), けど (no punct), ので、(punct), ても (no punct)
+        // → から、and ので、should be selected
+        val splitter = JapaneseTextSplitter(maxChunks = 3, minTextLength = 5)
+        val text = "雨だから、バスに乗ったけどすごい混んでたので、なんとか帰れたけど大変だった"
+        val result = splitter.split(text)
+        assertEquals(3, result.size)
+        assertEquals("雨だから、", result[0])
+        assertEquals("バスに乗ったけどすごい混んでたので、", result[1])
+        assertEquals("なんとか帰れたけど大変だった", result[2])
+    }
+
+    @Test
+    fun `all candidates without punctuation still works when exceeding maxChunks`() {
+        // No punctuation at all — falls back to positional selection
+        val splitter = JapaneseTextSplitter(maxChunks = 2, minTextLength = 5)
+        val text = "雨が降ってるからバスで行ったけどすごい混んでてもなんとか座れた"
+        val result = splitter.split(text)
+        assertEquals(2, result.size)
+        assertEquals(text, result.joinToString(""))
+    }
+
     // --- Short chunk merging ---
 
     @Test

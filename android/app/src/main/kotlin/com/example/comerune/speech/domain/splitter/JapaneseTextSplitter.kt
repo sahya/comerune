@@ -7,6 +7,11 @@ package com.example.comerune.speech.domain.splitter
  * Only conjunctive particles that mark clause boundaries are used as
  * split points. Case particles and adverbial particles are excluded
  * to avoid over-fragmentation.
+ *
+ * When a particle is followed by punctuation (「、」「。」), the split
+ * point is treated as high-priority. When the number of split points
+ * exceeds [maxChunks], high-priority (punctuation-backed) points are
+ * preferred over particle-only points.
  */
 class JapaneseTextSplitter(
     private val minChunkLength: Int = MIN_CHUNK_LENGTH_DEFAULT,
@@ -71,7 +76,18 @@ class JapaneseTextSplitter(
         private val SHI_PARTICLE_PATTERN = Regex(
             "(?<=[いだでもた])し(?![いくさかっ])[、。]?(?=.)"
         )
+
+        private const val PUNCTUATION_CHARS = "、。"
     }
+
+    /**
+     * A candidate split point with its character index and whether
+     * it was confirmed by trailing punctuation.
+     */
+    internal data class SplitCandidate(
+        val index: Int,
+        val hasPunctuation: Boolean
+    )
 
     /**
      * Split [text] at conjunctive particle boundaries.
@@ -87,12 +103,13 @@ class JapaneseTextSplitter(
             return listOf(text)
         }
 
-        val candidates = findSplitPoints(text)
+        val candidates = findSplitCandidates(text)
         if (candidates.isEmpty()) {
             return listOf(text)
         }
 
-        val chunks = splitAtPoints(text, candidates)
+        val selected = selectSplitPoints(candidates)
+        val chunks = splitAtPoints(text, selected)
         val merged = mergeShortChunks(chunks)
 
         return limitChunks(merged)
@@ -100,17 +117,64 @@ class JapaneseTextSplitter(
 
     /**
      * Find character indices where the text can be split.
-     * Each index points to the character immediately after the particle.
+     * Each index points to the character immediately after the particle
+     * (and its optional trailing punctuation).
      */
-    internal fun findSplitPoints(text: String): List<Int> {
-        val points = mutableSetOf<Int>()
+    internal fun findSplitCandidates(text: String): List<SplitCandidate> {
+        val candidateMap = mutableMapOf<Int, Boolean>()
+
         for (match in MULTI_CHAR_PATTERN.findAll(text)) {
-            points.add(match.range.last + 1)
+            val index = match.range.last + 1
+            val matchedText = match.value
+            val hasPunct = matchedText.last() in PUNCTUATION_CHARS
+            // If same index already exists, keep the one with punctuation
+            candidateMap[index] = candidateMap.getOrDefault(index, false) || hasPunct
         }
         for (match in SHI_PARTICLE_PATTERN.findAll(text)) {
-            points.add(match.range.last + 1)
+            val index = match.range.last + 1
+            val matchedText = match.value
+            val hasPunct = matchedText.last() in PUNCTUATION_CHARS
+            candidateMap[index] = candidateMap.getOrDefault(index, false) || hasPunct
         }
-        return points.sorted()
+
+        return candidateMap.entries
+            .map { SplitCandidate(it.key, it.value) }
+            .sortedBy { it.index }
+    }
+
+    /**
+     * Backward-compatible alias for tests that only need indices.
+     */
+    internal fun findSplitPoints(text: String): List<Int> =
+        findSplitCandidates(text).map { it.index }
+
+    /**
+     * Select which split points to use. When there are more candidates
+     * than [maxChunks] - 1 allows, prefer punctuation-backed candidates.
+     */
+    private fun selectSplitPoints(candidates: List<SplitCandidate>): List<Int> {
+        val maxSplits = maxChunks - 1
+        if (candidates.size <= maxSplits) {
+            return candidates.map { it.index }
+        }
+
+        // Separate into high-priority (punctuation) and low-priority (particle only)
+        val withPunct = candidates.filter { it.hasPunctuation }
+        val withoutPunct = candidates.filter { !it.hasPunctuation }
+
+        val selected = mutableListOf<SplitCandidate>()
+
+        // Take punctuation-backed candidates first
+        selected.addAll(withPunct.take(maxSplits))
+
+        // Fill remaining slots with particle-only candidates
+        val remaining = maxSplits - selected.size
+        if (remaining > 0) {
+            selected.addAll(withoutPunct.take(remaining))
+        }
+
+        // Return sorted by position to maintain text order
+        return selected.sortedBy { it.index }.map { it.index }
     }
 
     private fun splitAtPoints(text: String, points: List<Int>): List<String> {
