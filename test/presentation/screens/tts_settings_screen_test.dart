@@ -220,18 +220,31 @@ void main() {
       await tester.pumpWidget(_buildScreen(settingsStore));
       await tester.pumpAndSettle();
 
+      // Enter invalid regex pattern.
       await enterTextByKey(
         tester,
         _listKey,
         const Key('ng-words-field'),
         '[invalid',
       );
-      // Move focus away to trigger save/validation.
-      await focusFieldByKey(tester, _listKey, const Key('queue-limit-field'));
+
+      // Unfocus explicitly by tapping outside the text field.
+      // FocusManager ensures _onNgWordsFocusChanged fires.
+      FocusManager.instance.primaryFocus?.unfocus();
       await tester.pumpAndSettle();
 
+      // Scroll to the ng-words field to make error text visible.
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('ng-words-field'),
+      );
+
       // Error message should be visible.
-      expect(find.textContaining('無効な正規表現'), findsOneWidget);
+      expect(
+        find.textContaining('無効な正規表現', skipOffstage: false),
+        findsOneWidget,
+      );
 
       // Value should NOT be persisted.
       final AppSettings loaded = await settingsStore.load();
