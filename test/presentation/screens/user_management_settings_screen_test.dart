@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/application/settings/settings_store.dart';
-import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/presentation/screens/user_management_settings_screen.dart';
 
 import '../../helpers/in_memory_shared_preferences.dart';
