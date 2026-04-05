@@ -949,9 +949,14 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                     DropdownButtonFormField<VoicevoxPlayerType>(
                       key: const Key('player-type-dropdown'),
                       value: settings.voicevoxPlayerType,
-                      decoration: const InputDecoration(
-                        border: OutlineInputBorder(),
+                      decoration: InputDecoration(
+                        border: const OutlineInputBorder(),
                         labelText: '音声再生方式',
+                        helperText:
+                            settings.voicevoxPlayerType ==
+                                    VoicevoxPlayerType.audioTrack
+                                ? '応答時間: 小 / ファイルI/Oなし'
+                                : '応答時間: 大 / ファイルI/Oあり',
                       ),
                       items: const <DropdownMenuItem<VoicevoxPlayerType>>[
                         DropdownMenuItem<VoicevoxPlayerType>(
@@ -970,16 +975,6 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                           );
                         }
                       },
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      settings.voicevoxPlayerType ==
-                              VoicevoxPlayerType.audioTrack
-                          ? '応答時間: 小 / ファイルI/Oなし'
-                          : '応答時間: 大 / ファイルI/Oあり',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.outline,
-                          ),
                     ),
                   ],
                 ),
