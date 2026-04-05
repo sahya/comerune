@@ -10,7 +10,6 @@ import '../../domain/models/voicevox_model_info.dart';
 import '../mixins/settings_screen_mixin.dart';
 import '../widgets/settings_widgets.dart';
 import 'dictionary_rules_screen.dart';
-import 'ng_user_list_screen.dart';
 import 'voice_library_screen.dart';
 
 enum _NemoStylePreset { standard, energetic, calm }
@@ -1167,31 +1166,6 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                         await Navigator.of(context).push(
                           MaterialPageRoute<void>(
                             builder: (_) => DictionaryRulesScreen(
-                              settingsStore: widget.settingsStore,
-                            ),
-                          ),
-                        );
-                        await loadSettings();
-                        if (this.settings != null) {
-                          _pushSettingsToEngine(this.settings!);
-                        }
-                      },
-                    ),
-                    ListTile(
-                      key: const Key('ng-user-list-tile'),
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.person_off),
-                      title: const Text('NGユーザーID管理'),
-                      subtitle: Text(
-                        settings.ngUserIdSet.isEmpty
-                            ? '未登録'
-                            : '${settings.ngUserIdSet.length}件登録中',
-                      ),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () async {
-                        await Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => NgUserListScreen(
                               settingsStore: widget.settingsStore,
                             ),
                           ),
