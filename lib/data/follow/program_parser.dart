@@ -210,6 +210,8 @@ FollowProgram? parseProgramItem(
   final String? providerIconUrl = extractProviderIconUrl(item);
   final String? communityName = extractCommunityName(item);
   final DateTime? beginAt = parseBeginAt(item);
+  final DateTime? endAt = parseEndAt(item);
+  final ProgramStatus? status = parseProgramStatus(item['status'] as String?);
 
   return FollowProgram(
     programId: programId,
@@ -218,6 +220,22 @@ FollowProgram? parseProgramItem(
     providerIconUrl: providerIconUrl,
     communityName: communityName,
     beginAt: beginAt,
+    endAt: endAt,
     isOwnBroadcast: isOwnBroadcast,
+    status: status,
   );
+}
+
+/// Parses the `endAt` field from a JSON map into a [DateTime].
+///
+/// Mirrors [parseBeginAt] but for the broadcast end time.
+DateTime? parseEndAt(Map<String, dynamic> data) {
+  final Object? raw = data['endAt'];
+  if (raw is String && raw.isNotEmpty) {
+    return DateTime.tryParse(raw);
+  }
+  if (raw is int) {
+    return DateTime.fromMillisecondsSinceEpoch(raw * 1000, isUtc: true);
+  }
+  return null;
 }
