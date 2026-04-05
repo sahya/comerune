@@ -19,7 +19,18 @@ class JapaneseTextSplitterTest {
     fun `text at minTextLength boundary is not split`() {
         // Exactly 15 code points
         val text = "あいうえおかきくけこさしすせそ"
+        assertEquals(15, text.codePointCount(0, text.length))
         assertEquals(listOf(text), splitter.split(text))
+    }
+
+    @Test
+    fun `text just above minTextLength boundary is split when particle present`() {
+        // 16 code points with a "から" particle
+        val text = "あいうえおかきくからけこさしすせそ"
+        assertEquals(16, text.codePointCount(0, text.length))
+        val result = splitter.split(text)
+        assertEquals(2, result.size)
+        assertEquals(text, result.joinToString(""))
     }
 
     // --- Conjunctive particle splitting ---
@@ -277,6 +288,16 @@ class JapaneseTextSplitterTest {
     }
 
     @Test
+    fun `shi as conjunctive dashi splits correctly`() {
+        // "だし" is a valid conjunctive particle usage (reason/cause)
+        val text = "値段も安いんだし味もいいんだから行こうよ"
+        val result = splitter.split(text)
+        assertEquals(text, result.joinToString(""))
+        // Should split at だし and/or だから — verify at least 2 chunks
+        assert(result.size >= 2) { "Expected at least 2 chunks but got ${result.size}" }
+    }
+
+    @Test
     fun `shi in i-adjective utsukushii does not split`() {
         val text = "この景色は本当に美しいからまた見に来たいね"
         val result = splitter.split(text)
@@ -311,6 +332,24 @@ class JapaneseTextSplitterTest {
     }
 
     // --- Custom configuration ---
+
+    @Test
+    fun `multiple particles exceeding maxChunks merges trailing into last chunk`() {
+        // 5 potential split points — all should merge into at most 3 chunks
+        val text = "雨だからバスに乗ったけど混んでてもなんとかなったので帰れたし良かった"
+        val result = splitter.split(text)
+        assert(result.size <= 3) { "Expected at most 3 chunks but got ${result.size}" }
+        assertEquals(text, result.joinToString(""))
+        // Verify trailing chunks are merged, not discarded
+        assert(result.last().isNotEmpty()) { "Last chunk should not be empty" }
+    }
+
+    @Test
+    fun `particle only text with no surrounding content returns single chunk`() {
+        // "から" alone is 2 chars — well below minTextLength
+        val text = "から"
+        assertEquals(listOf(text), splitter.split(text))
+    }
 
     @Test
     fun `custom minTextLength controls split threshold`() {
