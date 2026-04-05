@@ -46,10 +46,15 @@ class JapaneseTextSplitter(
          */
         /**
          * Main pattern for multi-character particles.
+         *
+         * Optionally followed by a punctuation mark (、。) which is
+         * included in the match so the split point falls after the
+         * punctuation — keeping "から、" together in the first chunk.
          */
         private val MULTI_CHAR_PATTERN = Regex(
             "(?<=[\\p{InHiragana}\\p{InKatakana}\\p{InCJKUnifiedIdeographs}ー])" +
                 "(けれども|けれど|だけど|だから|けど|ので|のに|たら|ても|でも|って|から)" +
+                "[、。]?" +
                 "(?=.)"
         )
 
@@ -60,9 +65,11 @@ class JapaneseTextSplitter(
          * 「し」 is only matched when preceded by characters that typically
          * end a clause before the conjunctive し (e.g. いし, だし, でし, たし,
          * もし) and NOT followed by い-adjective inflections (い, く, さ, か, っ).
+         *
+         * Optionally followed by punctuation (、。).
          */
         private val SHI_PARTICLE_PATTERN = Regex(
-            "(?<=[いだでもた])し(?![いくさかっ])(?=.)"
+            "(?<=[いだでもた])し(?![いくさかっ])[、。]?(?=.)"
         )
     }
 

@@ -185,6 +185,69 @@ class JapaneseTextSplitterTest {
         assertEquals("まだまだ頑張らないとね", result[1])
     }
 
+    // --- Punctuation after particle ---
+
+    @Test
+    fun `splits at particle followed by comma`() {
+        val text = "今日は天気よかったけど、ちょっと寒かったね"
+        val result = splitter.split(text)
+        assertEquals(2, result.size)
+        assertEquals("今日は天気よかったけど、", result[0])
+        assertEquals("ちょっと寒かったね", result[1])
+    }
+
+    @Test
+    fun `splits at kara followed by comma`() {
+        val text = "でも岩国は今豪雨らしいから、これぐらいの雨でまだよかったよ"
+        val result = splitter.split(text)
+        assertEquals(2, result.size)
+        assertEquals("でも岩国は今豪雨らしいから、", result[0])
+        assertEquals("これぐらいの雨でまだよかったよ", result[1])
+    }
+
+    @Test
+    fun `splits at node followed by period`() {
+        val text = "明日は雨が降りそうなので。傘を持って行った方がいいよ"
+        val result = splitter.split(text)
+        assertEquals(2, result.size)
+        assertEquals("明日は雨が降りそうなので。", result[0])
+        assertEquals("傘を持って行った方がいいよ", result[1])
+    }
+
+    @Test
+    fun `splits at shi followed by comma`() {
+        val text = "天気もいいし、景色もきれいだし最高だね"
+        val result = splitter.split(text)
+        assertEquals(2, result.size)
+        assertEquals("天気もいいし、", result[0])
+        assertEquals("景色もきれいだし最高だね", result[1])
+    }
+
+    @Test
+    fun `comma without particle does not split`() {
+        // 「、」alone (after a non-particle character) should not trigger a split
+        val text = "今日は暑いですね、みなさん水分補給してください"
+        val result = splitter.split(text)
+        assertEquals(1, result.size)
+    }
+
+    @Test
+    fun `punctuation after particle preserves concatenation invariant`() {
+        val texts = listOf(
+            "今日は天気よかったけど、ちょっと寒かったね",
+            "でも岩国は今豪雨らしいから、これぐらいの雨でまだよかったよ",
+            "天気もいいし、景色もきれいだし最高だね",
+            "明日は雨が降りそうなので。傘を持って行った方がいいよ"
+        )
+        for (text in texts) {
+            val chunks = splitter.split(text)
+            assertEquals(
+                "Chunks must concatenate to original: $text",
+                text, chunks.joinToString("")
+            )
+        }
+    }
+
     // --- Case/adverbial particles should NOT split ---
 
     @Test
