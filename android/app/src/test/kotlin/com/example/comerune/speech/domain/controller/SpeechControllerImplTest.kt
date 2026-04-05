@@ -412,6 +412,43 @@ class SpeechControllerImplTest {
     }
 
     @Test
+    fun `three chunk text synthesizes all chunks in order`() = runBlocking {
+        controller.initialize()
+        controller.start()
+
+        val text = "今日は忙しかったからでもなんとか終わったので帰れるよ"
+        controller.submitComment(rawComment("1", text))
+
+        delay(800)
+
+        assertEquals(3, engine.synthesizedTexts.size)
+        assertEquals(text, engine.synthesizedTexts.joinToString(""))
+        assertTrue(text.startsWith(engine.synthesizedTexts[0]))
+
+        val completedEvents = emitter.eventsOfType("speech_completed")
+        assertEquals(1, completedEvents.size)
+    }
+
+    @Test
+    fun `three chunk pipeline with middle chunk synthesis failure emits speech_failed`() = runBlocking {
+        controller.initialize()
+        controller.start()
+
+        engine.failOnNthSynthesize = 2
+
+        val text = "今日は忙しかったからでもなんとか終わったので帰れるよ"
+        controller.submitComment(rawComment("1", text))
+
+        delay(800)
+
+        val failedEvents = emitter.eventsOfType("speech_failed")
+        assertEquals(1, failedEvents.size)
+
+        val completedEvents = emitter.eventsOfType("speech_completed")
+        assertEquals(0, completedEvents.size)
+    }
+
+    @Test
     fun `chunked pipeline playback failure on second chunk emits speech_failed`() = runBlocking {
         controller.initialize()
         controller.start()

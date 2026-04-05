@@ -111,6 +111,15 @@ class JapaneseTextSplitterTest {
     }
 
     @Test
+    fun `splits at keredo particle`() {
+        val text = "確かにそうかもしれないけれどやっぱり心配だよ"
+        val result = splitter.split(text)
+        assertEquals(2, result.size)
+        assertEquals("確かにそうかもしれないけれど", result[0])
+        assertEquals("やっぱり心配だよ", result[1])
+    }
+
+    @Test
     fun `splits at keredomo particle`() {
         val text = "確かにそうかもしれないけれどもやっぱり心配だよ"
         val result = splitter.split(text)
@@ -343,6 +352,41 @@ class JapaneseTextSplitterTest {
     // --- Short chunk merging ---
 
     @Test
+    fun `mergeShortChunks merges first short chunk into second`() {
+        val splitter = JapaneseTextSplitter(minChunkLength = 8, minTextLength = 5)
+        val text = "雨だからバスに乗ったけど混んでてもなんとかなった"
+        val result = splitter.split(text)
+        assertEquals(text, result.joinToString(""))
+        for (chunk in result) {
+            assert(chunk.codePointCount(0, chunk.length) >= 8) {
+                "Chunk '$chunk' is shorter than minChunkLength 8"
+            }
+        }
+    }
+
+    @Test
+    fun `mergeShortChunks with all short chunks produces single chunk`() {
+        val splitter = JapaneseTextSplitter(minChunkLength = 20, minTextLength = 5)
+        val text = "雨だからバスに乗ったけど混んでた"
+        val result = splitter.split(text)
+        assertEquals(1, result.size)
+        assertEquals(text, result[0])
+    }
+
+    @Test
+    fun `mergeShortChunks with last chunk short merges into previous`() {
+        val splitter = JapaneseTextSplitter(minChunkLength = 5, minTextLength = 5)
+        val text = "天気もいいし景色もきれいだし最高だね"
+        val result = splitter.split(text)
+        assertEquals(text, result.joinToString(""))
+        for (chunk in result) {
+            assert(chunk.codePointCount(0, chunk.length) >= 5) {
+                "Chunk '$chunk' is shorter than minChunkLength"
+            }
+        }
+    }
+
+    @Test
     fun `merges short chunks with adjacent chunks`() {
         val splitter = JapaneseTextSplitter(minChunkLength = 5, minTextLength = 10)
         // "あいうから" (5) + "かき" (2 — too short) → merge
@@ -429,6 +473,28 @@ class JapaneseTextSplitterTest {
         assertEquals(2, result.size)
         assertEquals("この景色は本当に美しいから", result[0])
         assertEquals("また見に来たいね", result[1])
+    }
+
+    // --- findSplitCandidates hasPunctuation flag ---
+
+    @Test
+    fun `findSplitCandidates marks punctuation-backed candidates correctly`() {
+        val text = "雨だから、バスで行ったけどすごい混んでた"
+        val candidates = splitter.findSplitCandidates(text)
+        assertEquals(2, candidates.size)
+        val karaCandidate = candidates[0]
+        val kedoCandidate = candidates[1]
+        assertEquals(true, karaCandidate.hasPunctuation)
+        assertEquals(false, kedoCandidate.hasPunctuation)
+    }
+
+    @Test
+    fun `findSplitCandidates without any punctuation marks all as false`() {
+        val text = "雨だからバスで行ったけどすごい混んでた"
+        val candidates = splitter.findSplitCandidates(text)
+        for (candidate in candidates) {
+            assertEquals(false, candidate.hasPunctuation)
+        }
     }
 
     @Test
