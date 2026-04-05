@@ -4,6 +4,9 @@ import '../../comment_speech/src/models/replace_rule.dart';
 import '../../comment_speech/src/models/speech_settings.dart';
 import '../utils/newline_parser.dart';
 
+export '../../comment_speech/src/models/speech_settings.dart'
+    show SynthesisMode;
+
 enum AppThemeMode { system, light, dark, protanopia, deuteranopia, tritanopia }
 
 extension AppThemeModeValue on AppThemeMode {
@@ -247,6 +250,7 @@ class AppSettings {
     required this.starPrefixHidingEnabled,
     required this.slashPrefixSkipEnabled,
     required this.readUserName,
+    required this.voicevoxSynthesisMode,
     required this.voicevoxPlayerType,
     required this.voicevoxTermsAccepted,
     required this.dictionaryRules,
@@ -293,6 +297,7 @@ class AppSettings {
     starPrefixHidingEnabled: false,
     slashPrefixSkipEnabled: true,
     readUserName: false,
+    voicevoxSynthesisMode: SynthesisMode.audioQuery,
     voicevoxPlayerType: VoicevoxPlayerType.audioTrack,
     voicevoxTermsAccepted: false,
     dictionaryRules: defaultNicoDictionaryRules,
@@ -352,6 +357,8 @@ class AppSettings {
   /// When true, the user name is prepended to the comment text for TTS
   /// in the format `{userName}、{comment}`.
   final bool readUserName;
+
+  final SynthesisMode voicevoxSynthesisMode;
 
   /// VOICEVOX の音声再生方式。
   final VoicevoxPlayerType voicevoxPlayerType;
@@ -471,6 +478,7 @@ class AppSettings {
     bool? starPrefixHidingEnabled,
     bool? slashPrefixSkipEnabled,
     bool? readUserName,
+    SynthesisMode? voicevoxSynthesisMode,
     VoicevoxPlayerType? voicevoxPlayerType,
     bool? voicevoxTermsAccepted,
     List<ReplaceRule>? dictionaryRules,
@@ -519,6 +527,8 @@ class AppSettings {
       slashPrefixSkipEnabled:
           slashPrefixSkipEnabled ?? this.slashPrefixSkipEnabled,
       readUserName: readUserName ?? this.readUserName,
+      voicevoxSynthesisMode:
+          voicevoxSynthesisMode ?? this.voicevoxSynthesisMode,
       voicevoxPlayerType: voicevoxPlayerType ?? this.voicevoxPlayerType,
       voicevoxTermsAccepted:
           voicevoxTermsAccepted ?? this.voicevoxTermsAccepted,
@@ -530,6 +540,7 @@ class AppSettings {
   /// Convert to [SpeechSettings] for the platform speech engine.
   SpeechSettings toSpeechSettings() => SpeechSettings(
     enabled: autoReadEnabled && speechEngine == SpeechEngine.voicevox,
+    synthesisMode: voicevoxSynthesisMode,
     speakerId: voicevoxSpeaker,
     speedScale: voicevoxSpeed,
     pitchScale: voicevoxPitch,

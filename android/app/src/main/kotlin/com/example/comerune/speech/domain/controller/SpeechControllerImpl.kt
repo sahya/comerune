@@ -491,6 +491,7 @@ class SpeechControllerImpl(
         return SpeechRequest(
             text = text,
             speakerId = settings.speakerId,
+            synthesisMode = settings.synthesisMode,
             speedScale = settings.speedScale,
             pitchScale = settings.pitchScale,
             intonationScale = settings.intonationScale,
