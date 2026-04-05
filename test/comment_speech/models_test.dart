@@ -96,6 +96,18 @@ void main() {
       expect(settings.ngWords, isEmpty);
     });
 
+    test('SynthesisMode round-trip via storageValue', () {
+      for (final mode in SynthesisMode.values) {
+        expect(SynthesisMode.fromStorageValue(mode.storageValue), mode);
+      }
+    });
+
+    test('SynthesisMode fromStorageValue defaults to audioQuery', () {
+      expect(SynthesisMode.fromStorageValue(null), SynthesisMode.audioQuery);
+      expect(
+          SynthesisMode.fromStorageValue('UNKNOWN'), SynthesisMode.audioQuery);
+    });
+
     test('toMap includes all fields with defaults', () {
       const settings = SpeechSettings();
       final map = settings.toMap();

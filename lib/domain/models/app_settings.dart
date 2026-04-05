@@ -2,8 +2,9 @@ import 'dart:developer' as developer;
 
 import '../../comment_speech/src/models/replace_rule.dart';
 import '../../comment_speech/src/models/speech_settings.dart';
-export '../../comment_speech/src/models/speech_settings.dart' show SynthesisMode;
 import '../utils/newline_parser.dart';
+
+export '../../comment_speech/src/models/speech_settings.dart' show SynthesisMode;
 
 enum AppThemeMode { system, light, dark, protanopia, deuteranopia, tritanopia }
 

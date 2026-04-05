@@ -24,8 +24,10 @@ enum class SynthesisMode {
 /**
  * User-configurable speech settings.
  *
- * These parameters are applied to the VOICEVOX AudioQuery before synthesis,
- * controlling volume, speed, pitch, and intonation at the engine level.
+ * In [SynthesisMode.AUDIO_QUERY] mode, the audio parameters (speed, pitch,
+ * intonation, volume) are applied to the AudioQuery before synthesis.
+ * In [SynthesisMode.ONE_SHOT] mode, these parameters are ignored by the
+ * engine and the built-in defaults are used instead.
  */
 data class SpeechSettings(
     val enabled: Boolean = true,
