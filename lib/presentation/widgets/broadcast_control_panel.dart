@@ -2,10 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:meta/meta.dart';
 
-import '../../data/broadcast/broadcast_control_repository.dart';
-import '../../data/follow/follow_program.dart';
+import '../../domain/models/broadcast_control_result.dart';
+import '../../domain/models/follow_program.dart';
 
 /// Callback for broadcast control operations.
 ///

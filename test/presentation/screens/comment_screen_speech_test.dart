@@ -9,6 +9,7 @@ import 'package:comerune/domain/models/app_message.dart';
 import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/domain/models/user_name_resolution.dart';
 import 'package:comerune/presentation/screens/comment_screen.dart';
+import 'package:comerune/presentation/screens/comment_screen_config.dart';
 
 import '../../comment_speech/fake_comment_speech_platform.dart';
 
@@ -862,7 +863,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: CommentScreen(
-            lv: 'lv123456789',
+            programInfo: const CommentProgramInfo(lv: 'lv123456789'),
             connectionSupervisor: supervisor,
             messages: const <AppMessage>[],
             onStopAllConnections: () async {},
@@ -895,7 +896,7 @@ void main() {
         await tester.pumpWidget(
           MaterialApp(
             home: CommentScreen(
-              lv: 'lv123456789',
+              programInfo: const CommentProgramInfo(lv: 'lv123456789'),
               connectionSupervisor: supervisor,
               messages: const <AppMessage>[],
               onStopAllConnections: () async {},
@@ -931,7 +932,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: CommentScreen(
-            lv: 'lv123456789',
+            programInfo: const CommentProgramInfo(lv: 'lv123456789'),
             connectionSupervisor: supervisor,
             messages: const <AppMessage>[],
             onStopAllConnections: () async {},
@@ -1037,7 +1038,7 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
             : null;
 
     return CommentScreen(
-      lv: 'lv123456789',
+      programInfo: const CommentProgramInfo(lv: 'lv123456789'),
       connectionSupervisor: _buildStreamingSupervisor(),
       messages: _messages,
       onStopAllConnections: () async {},

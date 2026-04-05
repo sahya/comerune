@@ -11,7 +11,7 @@ import '../../data/auth/user_session_store.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../data/broadcast/broadcast_control_repository.dart';
 import '../../data/follow/favorite_user_live_checker.dart';
-import '../../data/follow/follow_program.dart';
+import '../../domain/models/follow_program.dart';
 import '../../data/follow/follow_program_repository.dart';
 import '../../data/follow/my_program_repository.dart';
 import '../../data/user/user_attribute_store.dart';
@@ -25,6 +25,7 @@ import '../../domain/utils/nico_icon_url.dart';
 import '../../comment_speech/comment_speech.dart'
     show MethodChannelCommentSpeech, SpeechSettings;
 import '../screens/comment_screen.dart';
+import '../screens/comment_screen_config.dart';
 import '../screens/settings_screen.dart';
 import '../theme/app_theme.dart';
 import '../widgets/broadcast_control_panel.dart';
@@ -490,7 +491,15 @@ class _SelectScreenState extends State<SelectScreen> {
         final DateTime? beginAt = _resolveCommentBeginAt();
 
         return CommentScreen(
-          lv: lv,
+          programInfo: CommentProgramInfo(
+            lv: lv,
+            programTitle: widget.programTitleNotifier?.value,
+            broadcasterName: broadcasterName,
+            broadcasterUserId: supplierUserId,
+            broadcasterIconUrl: broadcasterIconUrl,
+            beginAt: beginAt,
+            connectionMethod: _connectionMethod,
+          ),
           connectionSupervisor: widget.connectionSupervisor,
           messages: messages,
           onStopAllConnections: _stopAllConnections,
@@ -500,12 +509,6 @@ class _SelectScreenState extends State<SelectScreen> {
               ? null
               : () => _openSettings(routeContext, widget.userSessionStore),
           debugMode: _settingsNotifier.value.debugMode,
-          connectionMethod: _connectionMethod,
-          programTitle: widget.programTitleNotifier?.value,
-          broadcasterName: broadcasterName,
-          broadcasterUserId: supplierUserId,
-          broadcasterIconUrl: broadcasterIconUrl,
-          beginAt: beginAt,
           showUserName: _settingsNotifier.value.showUserName,
           commentFontSize: _settingsNotifier.value.commentFontSize,
           userNameResolution:
@@ -532,16 +535,18 @@ class _SelectScreenState extends State<SelectScreen> {
           autoNicknameRegistration:
               _settingsNotifier.value.autoNicknameRegistration,
           themeMode: _settingsNotifier.value.themeMode,
-          statisticsEnabled: _settingsNotifier.value.statisticsEnabled,
-          statisticsViewerCommentEnabled:
-              _settingsNotifier.value.statisticsViewerCommentEnabled,
-          statisticsActiveUserEnabled:
-              _settingsNotifier.value.statisticsActiveUserEnabled,
-          highlightPickupEnabled:
-              _settingsNotifier.value.highlightPickupEnabled,
-          viewerCount: widget.statisticsStore?.viewerCount,
-          totalCommentCount: widget.statisticsStore?.totalCommentCount ?? 0,
-          activeUserCount: widget.statisticsStore?.activeUserCount ?? 0,
+          statistics: CommentStatisticsConfig(
+            enabled: _settingsNotifier.value.statisticsEnabled,
+            viewerCommentEnabled:
+                _settingsNotifier.value.statisticsViewerCommentEnabled,
+            activeUserEnabled:
+                _settingsNotifier.value.statisticsActiveUserEnabled,
+            highlightPickupEnabled:
+                _settingsNotifier.value.highlightPickupEnabled,
+            viewerCount: widget.statisticsStore?.viewerCount,
+            totalCommentCount: widget.statisticsStore?.totalCommentCount ?? 0,
+            activeUserCount: widget.statisticsStore?.activeUserCount ?? 0,
+          ),
           speechPlatform: _speechPlatform,
           speechSettings: _buildSpeechSettings(),
           readUserName: _settingsNotifier.value.readUserName,

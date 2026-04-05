@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:comerune/application/settings/settings_store.dart';
 import 'package:comerune/application/timeline/timeline_store.dart';
 import 'package:comerune/data/follow/favorite_user_live_checker.dart';
-import 'package:comerune/data/follow/follow_program.dart';
+import 'package:comerune/domain/models/follow_program.dart';
 import 'package:comerune/data/follow/follow_program_repository.dart';
 import 'package:comerune/data/follow/my_program_repository.dart';
 import 'package:comerune/data/user/user_attribute_store.dart';
@@ -730,8 +730,8 @@ void main() {
       final CommentScreen commentScreen = tester.widget<CommentScreen>(
         find.byType(CommentScreen),
       );
-      expect(commentScreen.broadcasterName, 'URL入力フォールバック名');
-      expect(commentScreen.broadcasterUserId, isNull);
+      expect(commentScreen.programInfo.broadcasterName, 'URL入力フォールバック名');
+      expect(commentScreen.programInfo.broadcasterUserId, isNull);
     },
   );
 
@@ -900,7 +900,7 @@ void main() {
         final CommentScreen commentScreen = tester.widget<CommentScreen>(
           find.byType(CommentScreen),
         );
-        expect(commentScreen.beginAt, notifierBeginAt);
+        expect(commentScreen.programInfo.beginAt, notifierBeginAt);
       },
     );
 
