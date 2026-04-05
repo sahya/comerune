@@ -260,6 +260,112 @@ void main() {
       repository.dispose();
     });
 
+    test('skips tool fallback on second call within cache duration', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      // First call: front → empty, tool → empty (both queried).
+      httpClient.queuedResponses.addAll(<_FakeResponseConfig>[
+        _FakeResponseConfig(
+          statusCode: 200,
+          body: jsonEncode(<String, Object?>{
+            'data': <String, Object?>{'programs': <Object?>[]},
+          }),
+        ),
+        _FakeResponseConfig(
+          statusCode: 200,
+          body: jsonEncode(<String, Object?>{'data': <Object?>[]}),
+        ),
+        // Second call: front → empty (tool is skipped due to cache).
+        _FakeResponseConfig(
+          statusCode: 200,
+          body: jsonEncode(<String, Object?>{
+            'data': <String, Object?>{'programs': <Object?>[]},
+          }),
+        ),
+      ]);
+
+      final MyProgramRepository repository = MyProgramRepository(
+        httpClient: httpClient,
+      );
+
+      final result1 = await repository.fetchOwnProgram(
+        userSession: 'test_session',
+      );
+      expect(result1, isNull);
+      expect(httpClient.requests, hasLength(2));
+
+      final result2 = await repository.fetchOwnProgram(
+        userSession: 'test_session',
+      );
+      expect(result2, isNull);
+      // Only front-api was called, tool was skipped (cache hit).
+      expect(httpClient.requests, hasLength(3));
+
+      repository.dispose();
+    });
+
+    test('clears tool fallback cache when front-api finds a program', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.queuedResponses.addAll(<_FakeResponseConfig>[
+        // First call: front → empty, tool → empty.
+        _FakeResponseConfig(
+          statusCode: 200,
+          body: jsonEncode(<String, Object?>{
+            'data': <String, Object?>{'programs': <Object?>[]},
+          }),
+        ),
+        _FakeResponseConfig(
+          statusCode: 200,
+          body: jsonEncode(<String, Object?>{'data': <Object?>[]}),
+        ),
+        // Second call: front → found (cache cleared).
+        _FakeResponseConfig(
+          statusCode: 200,
+          body: jsonEncode(<String, Object?>{
+            'data': <String, Object?>{
+              'programs': <Object?>[
+                <String, Object?>{
+                  'id': 'lv999',
+                  'title': 'Found',
+                  'programProvider': <String, Object?>{'name': 'User'},
+                },
+              ],
+            },
+          }),
+        ),
+        // Third call: front → empty, tool should be queried (cache cleared).
+        _FakeResponseConfig(
+          statusCode: 200,
+          body: jsonEncode(<String, Object?>{
+            'data': <String, Object?>{'programs': <Object?>[]},
+          }),
+        ),
+        _FakeResponseConfig(
+          statusCode: 200,
+          body: jsonEncode(<String, Object?>{'data': <Object?>[]}),
+        ),
+      ]);
+
+      final MyProgramRepository repository = MyProgramRepository(
+        httpClient: httpClient,
+      );
+
+      await repository.fetchOwnProgram(userSession: 'test_session');
+      expect(httpClient.requests, hasLength(2));
+
+      final result2 = await repository.fetchOwnProgram(
+        userSession: 'test_session',
+      );
+      expect(result2, isNotNull);
+      expect(result2!.programId, 'lv999');
+      expect(httpClient.requests, hasLength(3));
+
+      // After finding a program, cache is cleared, so tool should be tried.
+      await repository.fetchOwnProgram(userSession: 'test_session');
+      expect(httpClient.requests, hasLength(5));
+
+      repository.dispose();
+    });
+
     test('extracts icon from tool endpoint using provider ID fallback',
         () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();

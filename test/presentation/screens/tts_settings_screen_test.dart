@@ -211,6 +211,33 @@ void main() {
       expect(ngWordsField.controller?.text, '^8+\$');
     });
 
+    testWidgets('rejects invalid regex in NG words and shows error', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      await enterTextByKey(
+        tester,
+        _listKey,
+        const Key('ng-words-field'),
+        '[invalid',
+      );
+      // Move focus away to trigger save/validation.
+      await focusFieldByKey(tester, _listKey, const Key('queue-limit-field'));
+      await tester.pumpAndSettle();
+
+      // Error message should be visible.
+      expect(find.textContaining('無効な正規表現'), findsOneWidget);
+
+      // Value should NOT be persisted.
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.ngWords, isEmpty);
+    });
+
     testWidgets('auto-read toggle persists value', (WidgetTester tester) async {
       final SharedPreferencesSettingsStore settingsStore =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
