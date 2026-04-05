@@ -11,7 +11,7 @@ import '../../helpers/in_memory_shared_preferences.dart';
 
 final _bundledModel = <String, dynamic>{
   'modelId': 'n0',
-  'displayName': 'VOICEVOX Nemo (内蔵)',
+  'displayName': 'VOICEVOX Nemo',
   'speakerIds': [10000, 10001, 10002],
   'vvmFileName': 'n0.vvm',
   'fileSizeBytes': 52000000,
@@ -20,20 +20,20 @@ final _bundledModel = <String, dynamic>{
 };
 
 final _notDownloadedModel = <String, dynamic>{
-  'modelId': 'n0',
-  'displayName': 'VOICEVOX Nemo',
-  'speakerIds': [10003, 10004, 10005],
-  'vvmFileName': 'n0.vvm',
+  'modelId': '2',
+  'displayName': '春日部つむぎ',
+  'speakerIds': [4, 5, 6, 7],
+  'vvmFileName': '2.vvm',
   'fileSizeBytes': 52000000,
   'isBundled': false,
   'downloadState': 'NOT_DOWNLOADED',
 };
 
 final _downloadedModel = <String, dynamic>{
-  'modelId': 'n0',
-  'displayName': 'VOICEVOX Nemo (追加)',
-  'speakerIds': [10006],
-  'vvmFileName': 'n0.vvm',
+  'modelId': '3',
+  'displayName': '波音リツ',
+  'speakerIds': [8],
+  'vvmFileName': '3.vvm',
   'fileSizeBytes': 52000000,
   'isBundled': false,
   'downloadState': 'DOWNLOADED',
@@ -88,6 +88,36 @@ void main() {
     expect(find.byKey(const Key('voice-model-card-2')), findsOneWidget);
   });
 
+  testWidgets('filters out unsupported models', (tester) async {
+    final unsupportedModel = <String, dynamic>{
+      'modelId': '99',
+      'displayName': 'Unsupported Model',
+      'speakerIds': [9999],
+      'vvmFileName': '99.vvm',
+      'fileSizeBytes': 10000000,
+      'isBundled': false,
+      'downloadState': 'NOT_DOWNLOADED',
+    };
+    fakePlatform.availableModelsToReturn = [
+      _bundledModel,
+      _notDownloadedModel,
+      unsupportedModel,
+    ];
+
+    await tester.pumpWidget(_buildScreen(fakePlatform));
+    await tester.pumpAndSettle();
+
+    // Supported models are shown.
+    expect(find.text('VOICEVOX Nemo'), findsOneWidget);
+    expect(find.text('春日部つむぎ'), findsOneWidget);
+    // Unsupported model is filtered out.
+    expect(find.text('Unsupported Model'), findsNothing);
+    // Only 2 cards (not 3).
+    expect(find.byKey(const Key('voice-model-card-0')), findsOneWidget);
+    expect(find.byKey(const Key('voice-model-card-1')), findsOneWidget);
+    expect(find.byKey(const Key('voice-model-card-2')), findsNothing);
+  });
+
   testWidgets('shows bundled badge for bundled model', (tester) async {
     await tester.pumpWidget(_buildScreen(fakePlatform));
     await tester.pumpAndSettle();
@@ -99,7 +129,7 @@ void main() {
     await tester.pumpWidget(_buildScreen(fakePlatform));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('download-btn-n0')), findsOneWidget);
+    expect(find.byKey(const Key('download-btn-2')), findsOneWidget);
   });
 
   testWidgets('shows delete button for downloaded non-bundled model', (
@@ -108,7 +138,7 @@ void main() {
     await tester.pumpWidget(_buildScreen(fakePlatform));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('delete-btn-n0')), findsOneWidget);
+    expect(find.byKey(const Key('delete-btn-3')), findsOneWidget);
   });
 
   testWidgets('does not show delete button for bundled model', (tester) async {
@@ -117,17 +147,17 @@ void main() {
     await tester.pumpWidget(_buildScreen(fakePlatform));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('delete-btn-n0')), findsNothing);
+    expect(find.byKey(const Key('delete-btn-3')), findsNothing);
   });
 
   testWidgets('shows delete confirmation dialog', (tester) async {
     await tester.pumpWidget(_buildScreen(fakePlatform));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('delete-btn-n0')));
+    await tester.tap(find.byKey(const Key('delete-btn-3')));
     await tester.pumpAndSettle();
 
-    expect(find.text('VOICEVOX Nemo (追加) を削除しますか？'), findsOneWidget);
+    expect(find.text('波音リツ を削除しますか？'), findsOneWidget);
   });
 
   testWidgets('shows progress bar during download', (tester) async {
@@ -140,7 +170,7 @@ void main() {
     fakePlatform.emitEvent(
       const SpeechEvent(
         type: SpeechEventType.modelDownloadStarted,
-        payload: {'modelId': 'n0'},
+        payload: {'modelId': '2'},
       ),
     );
     await tester.pump();
@@ -150,7 +180,7 @@ void main() {
       const SpeechEvent(
         type: SpeechEventType.modelDownloadProgress,
         payload: {
-          'modelId': 'n0',
+          'modelId': '2',
           'bytesDownloaded': 26000000,
           'totalBytes': 52000000,
         },
@@ -185,11 +215,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('download-btn-n0')));
+    await tester.tap(find.byKey(const Key('download-btn-2')));
     await _agreeVoicevoxTermsDialog(tester);
 
     expect(fakePlatform.initializeCalled, isTrue);
-    expect(fakePlatform.loadedModelIds, contains('n0'));
+    expect(fakePlatform.loadedModelIds, contains('2'));
   });
 
   testWidgets('download skips initialize when engine is READY', (tester) async {
@@ -213,11 +243,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('download-btn-n0')));
+    await tester.tap(find.byKey(const Key('download-btn-2')));
     await _agreeVoicevoxTermsDialog(tester);
 
     expect(fakePlatform.initializeCalled, isFalse);
-    expect(fakePlatform.loadedModelIds, contains('n0'));
+    expect(fakePlatform.loadedModelIds, contains('2'));
   });
 
   testWidgets('shows model-load error message when load fails', (tester) async {
@@ -240,7 +270,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('download-btn-n0')));
+    await tester.tap(find.byKey(const Key('download-btn-2')));
     await _agreeVoicevoxTermsDialog(tester);
 
     expect(find.textContaining('モデルの読み込みに失敗しました'), findsOneWidget);
@@ -257,7 +287,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Tap download button for not-downloaded model.
-      await tester.tap(find.byKey(const Key('download-btn-n0')));
+      await tester.tap(find.byKey(const Key('download-btn-2')));
       // Pump once to allow settingsStore.load() and showDialog to execute,
       // but don't settle (asset loading and cooldown timer are pending).
       await tester.pump();
@@ -280,7 +310,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('download-btn-n0')));
+      await tester.tap(find.byKey(const Key('download-btn-2')));
       await tester.pump();
       await tester.pump();
 
@@ -313,7 +343,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('download-btn-n0')));
+      await tester.tap(find.byKey(const Key('download-btn-2')));
       await tester.pump();
       await tester.pump();
 
