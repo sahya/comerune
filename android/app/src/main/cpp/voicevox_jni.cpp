@@ -1,6 +1,6 @@
 #include <jni.h>
 #include <string>
-#include <mutex>
+#include <shared_mutex>
 #include <android/log.h>
 #include "voicevox_core.h"
 
@@ -8,7 +8,11 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
-static std::mutex g_mutex;
+// Read-write lock: exclusive for lifecycle ops (init/release/loadModel),
+// shared for synthesis ops (audioQuery/synthesis/tts/isReady).
+// VOICEVOX Core's VoicevoxSynthesizer is internally thread-safe for
+// concurrent read operations (all take `const VoicevoxSynthesizer*`).
+static std::shared_mutex g_mutex;
 static const VoicevoxOnnxruntime* g_onnxruntime = nullptr;
 static OpenJtalkRc* g_open_jtalk = nullptr;
 static VoicevoxSynthesizer* g_synthesizer = nullptr;
@@ -35,7 +39,7 @@ extern "C" {
 JNIEXPORT jboolean JNICALL
 Java_com_example_comerune_speech_infrastructure_engine_NativeVoicevoxBridge_nativeInitialize(
         JNIEnv* env, jobject /* thiz */, jstring openJtalkDictDir) {
-    std::lock_guard<std::mutex> lock(g_mutex);
+    std::unique_lock<std::shared_mutex> lock(g_mutex);
 
     if (g_synthesizer != nullptr) {
         LOGI("Synthesizer already initialized, skipping");
@@ -91,7 +95,7 @@ Java_com_example_comerune_speech_infrastructure_engine_NativeVoicevoxBridge_nati
 JNIEXPORT jboolean JNICALL
 Java_com_example_comerune_speech_infrastructure_engine_NativeVoicevoxBridge_nativeLoadModel(
         JNIEnv* env, jobject /* thiz */, jstring vvmPath) {
-    std::lock_guard<std::mutex> lock(g_mutex);
+    std::unique_lock<std::shared_mutex> lock(g_mutex);
 
     if (g_synthesizer == nullptr) {
         LOGE("nativeLoadModel: synthesizer not initialized");
@@ -129,7 +133,7 @@ Java_com_example_comerune_speech_infrastructure_engine_NativeVoicevoxBridge_nati
 JNIEXPORT jboolean JNICALL
 Java_com_example_comerune_speech_infrastructure_engine_NativeVoicevoxBridge_nativeIsSynthesizerReady(
         JNIEnv* /* env */, jobject /* thiz */, jint /* speakerId */) {
-    std::lock_guard<std::mutex> lock(g_mutex);
+    std::shared_lock<std::shared_mutex> lock(g_mutex);
 
     // Checks whether the native synthesizer has been initialized (non-null).
     // The speakerId parameter is accepted for future API compatibility but is
@@ -145,7 +149,7 @@ Java_com_example_comerune_speech_infrastructure_engine_NativeVoicevoxBridge_nati
         jfloat /* speedScale */, jfloat /* pitchScale */,
         jfloat /* intonationScale */, jfloat /* volumeScale */,
         jfloat /* prePhonemeLength */, jfloat /* postPhonemeLength */) {
-    std::lock_guard<std::mutex> lock(g_mutex);
+    std::shared_lock<std::shared_mutex> lock(g_mutex);
 
     if (g_synthesizer == nullptr) {
         LOGE("nativeTts: synthesizer not initialized");
@@ -206,7 +210,7 @@ JNIEXPORT jstring JNICALL
 Java_com_example_comerune_speech_infrastructure_engine_NativeVoicevoxBridge_nativeCreateAudioQuery(
         JNIEnv* env, jobject /* thiz */,
         jstring text, jint speakerId) {
-    std::lock_guard<std::mutex> lock(g_mutex);
+    std::shared_lock<std::shared_mutex> lock(g_mutex);
 
     if (g_synthesizer == nullptr) {
         LOGE("nativeCreateAudioQuery: synthesizer not initialized");
@@ -245,7 +249,7 @@ JNIEXPORT jbyteArray JNICALL
 Java_com_example_comerune_speech_infrastructure_engine_NativeVoicevoxBridge_nativeSynthesis(
         JNIEnv* env, jobject /* thiz */,
         jstring audioQueryJson, jint speakerId) {
-    std::lock_guard<std::mutex> lock(g_mutex);
+    std::shared_lock<std::shared_mutex> lock(g_mutex);
 
     if (g_synthesizer == nullptr) {
         LOGE("nativeSynthesis: synthesizer not initialized");
@@ -300,7 +304,7 @@ Java_com_example_comerune_speech_infrastructure_engine_NativeVoicevoxBridge_nati
 JNIEXPORT void JNICALL
 Java_com_example_comerune_speech_infrastructure_engine_NativeVoicevoxBridge_nativeRelease(
         JNIEnv* /* env */, jobject /* thiz */) {
-    std::lock_guard<std::mutex> lock(g_mutex);
+    std::unique_lock<std::shared_mutex> lock(g_mutex);
 
     if (g_synthesizer != nullptr) {
         voicevox_synthesizer_delete(g_synthesizer);

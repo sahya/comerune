@@ -3,6 +3,7 @@ package com.example.comerune.speech.domain.model
 data class SpeechRequest(
     val text: String,
     val speakerId: Int,
+    val synthesisMode: SynthesisMode = SynthesisMode.AUDIO_QUERY,
     val speedScale: Float,
     val pitchScale: Float,
     val intonationScale: Float,

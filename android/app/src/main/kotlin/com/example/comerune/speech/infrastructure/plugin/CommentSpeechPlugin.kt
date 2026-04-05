@@ -21,6 +21,7 @@ import com.example.comerune.speech.domain.model.ReplaceRule
 import com.example.comerune.speech.domain.model.SpeechRuntimeStatus
 import com.example.comerune.speech.domain.model.SpeechSettings
 import com.example.comerune.speech.domain.model.SubmitResult
+import com.example.comerune.speech.domain.model.SynthesisMode
 import com.example.comerune.speech.domain.model.VoicevoxModelManifest
 import com.example.comerune.speech.domain.normalizer.DefaultCommentNormalizer
 import com.example.comerune.speech.domain.normalizer.InMemoryDuplicateDetector
@@ -29,7 +30,7 @@ import com.example.comerune.speech.domain.repository.VoicevoxModelRepository
 import com.example.comerune.speech.domain.settings.InMemorySettingsRepository
 import com.example.comerune.speech.infrastructure.engine.VoicevoxEngineImpl
 import com.example.comerune.speech.infrastructure.event.FlutterSpeechEventEmitter
-import com.example.comerune.speech.infrastructure.player.MediaPlayerWavPlayer
+import com.example.comerune.speech.infrastructure.player.SwitchableWavPlayer
 import com.example.comerune.speech.infrastructure.repository.VoicevoxModelRepositoryImpl
 
 class CommentSpeechPlugin :
@@ -50,6 +51,7 @@ class CommentSpeechPlugin :
     private var pluginScope: CoroutineScope? = null
     private var modelRepository: VoicevoxModelRepository? = null
     private var engine: VoicevoxEngine? = null
+    private var switchablePlayer: SwitchableWavPlayer? = null
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         val messenger = binding.binaryMessenger
@@ -70,7 +72,8 @@ class CommentSpeechPlugin :
         val emitter = FlutterSpeechEventEmitter()
         val voicevoxEngine = VoicevoxEngineImpl(context)
         voicevoxEngine.onDownloadEvent = { event -> emitter.emit(event) }
-        val player = MediaPlayerWavPlayer(context)
+        val player = SwitchableWavPlayer(context)
+        switchablePlayer = player
 
         eventEmitter = emitter
         engine = voicevoxEngine
@@ -109,6 +112,7 @@ class CommentSpeechPlugin :
 
         modelRepository = null
         engine = null
+        switchablePlayer = null
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -170,7 +174,8 @@ class CommentSpeechPlugin :
             }
             "updateSettings" -> {
                 val settings = parseSpeechSettings(call)
-                Log.d(TAG, "[onMethodCall] → updateSettings enabled=${settings.enabled}, speaker=${settings.speakerId}, speed=${settings.speedScale}")
+                Log.d(TAG, "[onMethodCall] → updateSettings enabled=${settings.enabled}, speaker=${settings.speakerId}, speed=${settings.speedScale}, playerType=${settings.playerType}")
+                switchablePlayer?.switchPlayerType(settings.playerType)
                 handleAsync(result) { ctrl.updateSettings(settings) }
             }
             "getStatus" -> {
@@ -450,6 +455,7 @@ class CommentSpeechPlugin :
 
         return SpeechSettings(
             enabled = call.argument<Boolean>("enabled") ?: true,
+            synthesisMode = SynthesisMode.fromString(call.argument<String>("synthesisMode")),
             speakerId = call.argument<Number>("speakerId")?.toInt() ?: 10000,
             speedScale = call.argument<Number>("speedScale")?.toFloat() ?: 1.15f,
             pitchScale = call.argument<Number>("pitchScale")?.toFloat() ?: 0.0f,
@@ -465,7 +471,8 @@ class CommentSpeechPlugin :
             replaceUrlWith = call.argument<String>("replaceUrlWith") ?: "URL省略",
             trimLongTextSuffix = call.argument<String>("trimLongTextSuffix") ?: "、以下省略",
             dictionaryRules = dictionaryRules,
-            ngWords = ngWords
+            ngWords = ngWords,
+            playerType = call.argument<String>("playerType") ?: "audio_track"
         )
     }
 
