@@ -16,6 +16,8 @@ import com.example.comerune.speech.domain.normalizer.DuplicateDetector
 import com.example.comerune.speech.domain.player.WavPlayer
 import com.example.comerune.speech.domain.queue.SpeechQueueManager
 import com.example.comerune.speech.domain.settings.SettingsRepository
+import com.example.comerune.speech.domain.splitter.NoOpTextSplitter
+import com.example.comerune.speech.domain.splitter.TextSplitter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CloseableCoroutineDispatcher
 import kotlinx.coroutines.CoroutineDispatcher
@@ -43,7 +45,8 @@ class SpeechControllerImpl(
     dispatcher: CoroutineDispatcher = Dispatchers.Default,
     synthesisDispatcher: CoroutineDispatcher? = null,
     private val timeProvider: () -> Long = System::currentTimeMillis,
-    private val duplicateDetector: DuplicateDetector? = null
+    private val duplicateDetector: DuplicateDetector? = null,
+    private val textSplitter: TextSplitter = NoOpTextSplitter()
 ) : SpeechController {
 
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
