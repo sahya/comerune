@@ -231,6 +231,7 @@ class _CommentScreenState extends State<CommentScreen> {
   bool _isSavingLog = false;
   CommentSortOrder _sortOrder = CommentSortOrder.ascending;
   final Set<String> _pinnedMessageIds = <String>{};
+  bool _touchActive = false;
 
   bool _speechInitializing = false;
   bool _speechInitialized = false;
@@ -369,9 +370,25 @@ class _CommentScreenState extends State<CommentScreen> {
         widget.messages,
       );
       _processNicknameComments(oldWidget.messages, widget.messages);
-      if (_autoScrollEnabled) {
+      if (_autoScrollEnabled && !_touchActive) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _scrollToEdge();
+        });
+      } else if (!_touchActive && !_autoScrollEnabled) {
+        // Re-check whether the user has scrolled back to the edge.
+        // The scroll listener may not fire when maxScrollExtent changes
+        // due to new messages, so we check here to resume auto-scroll.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _autoScrollEnabled) return;
+          final bool atEdge = _sortOrder == CommentSortOrder.ascending
+              ? _isNearBottom()
+              : _isNearTop();
+          if (atEdge) {
+            setState(() {
+              _autoScrollEnabled = true;
+            });
+            _scrollToEdge();
+          }
         });
       }
     }
@@ -969,29 +986,62 @@ class _CommentScreenState extends State<CommentScreen> {
                     beginAt: widget.programInfo.beginAt,
                   ),
                 Expanded(
-                  child: ListView.builder(
-                    key: const Key('comment-list'),
-                    controller: _scrollController,
-                    itemCount: sortedMessages.length,
-                    itemBuilder: (BuildContext context, int index) {
-                      final AppMessage message = sortedMessages[index];
-                      final int? userColor = message.userId != null
-                          ? widget.userColorMap[message.userId!]
-                          : null;
-                      return _CommentRow(
-                        message: message,
-                        themeColors: themeColors,
-                        resolvedUserName: _resolveDisplayName(message),
-                        showUserName: widget.showUserName,
-                        fontSize: widget.commentFontSize,
-                        starPrefixHidingEnabled: widget.starPrefixHidingEnabled,
-                        userColor: userColor != null
-                            ? colorFromARGB32(userColor)
-                            : null,
-                        onLongPress: () => _showCommentActions(message),
-                        beginAt: widget.programInfo.beginAt,
-                      );
-                    },
+                  child: Stack(
+                    children: <Widget>[
+                      Listener(
+                        onPointerDown: (_) {
+                          _touchActive = true;
+                        },
+                        onPointerUp: (_) {
+                          _touchActive = false;
+                          _checkAutoScrollResume();
+                        },
+                        onPointerCancel: (_) {
+                          _touchActive = false;
+                          _checkAutoScrollResume();
+                        },
+                        child: ListView.builder(
+                          key: const Key('comment-list'),
+                          controller: _scrollController,
+                          itemCount: sortedMessages.length,
+                          itemBuilder: (BuildContext context, int index) {
+                            final AppMessage message = sortedMessages[index];
+                            final int? userColor = message.userId != null
+                                ? widget.userColorMap[message.userId!]
+                                : null;
+                            return _CommentRow(
+                              message: message,
+                              themeColors: themeColors,
+                              resolvedUserName: _resolveDisplayName(message),
+                              showUserName: widget.showUserName,
+                              fontSize: widget.commentFontSize,
+                              starPrefixHidingEnabled:
+                                  widget.starPrefixHidingEnabled,
+                              userColor: userColor != null
+                                  ? colorFromARGB32(userColor)
+                                  : null,
+                              onLongPress: () => _showCommentActions(message),
+                              beginAt: widget.programInfo.beginAt,
+                            );
+                          },
+                        ),
+                      ),
+                      if (!_autoScrollEnabled)
+                        Positioned(
+                          right: 12,
+                          bottom: 12,
+                          child: FloatingActionButton.small(
+                            key: const Key('scroll-to-latest-button'),
+                            onPressed: _scrollToLatest,
+                            tooltip: '最新までスクロール',
+                            child: Icon(
+                              _sortOrder == CommentSortOrder.ascending
+                                  ? Icons.arrow_downward
+                                  : Icons.arrow_upward,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
                 _buildBottomAction(status),
@@ -1387,8 +1437,10 @@ class _CommentScreenState extends State<CommentScreen> {
 
   void _handleScrollAscending() {
     final bool nearBottom = _isNearBottom();
-    if (nearBottom && !_autoScrollEnabled) {
-      _autoScrollEnabled = true;
+    if (nearBottom && !_autoScrollEnabled && !_touchActive) {
+      setState(() {
+        _autoScrollEnabled = true;
+      });
       return;
     }
 
@@ -1396,14 +1448,18 @@ class _CommentScreenState extends State<CommentScreen> {
         !nearBottom &&
         _scrollController.position.userScrollDirection ==
             ScrollDirection.forward) {
-      _autoScrollEnabled = false;
+      setState(() {
+        _autoScrollEnabled = false;
+      });
     }
   }
 
   void _handleScrollDescending() {
     final bool nearTop = _isNearTop();
-    if (nearTop && !_autoScrollEnabled) {
-      _autoScrollEnabled = true;
+    if (nearTop && !_autoScrollEnabled && !_touchActive) {
+      setState(() {
+        _autoScrollEnabled = true;
+      });
       return;
     }
 
@@ -1411,7 +1467,9 @@ class _CommentScreenState extends State<CommentScreen> {
         !nearTop &&
         _scrollController.position.userScrollDirection ==
             ScrollDirection.reverse) {
-      _autoScrollEnabled = false;
+      setState(() {
+        _autoScrollEnabled = false;
+      });
     }
   }
 
@@ -2109,6 +2167,25 @@ class _CommentScreenState extends State<CommentScreen> {
       curve: Curves.easeOut,
     );
   }
+
+  void _scrollToLatest() {
+    setState(() {
+      _autoScrollEnabled = true;
+    });
+    _scrollToEdge();
+  }
+
+  void _checkAutoScrollResume() {
+    if (_autoScrollEnabled) return;
+    final bool atEdge = _sortOrder == CommentSortOrder.ascending
+        ? _isNearBottom()
+        : _isNearTop();
+    if (atEdge) {
+      setState(() {
+        _autoScrollEnabled = true;
+      });
+    }
+  }
 }
 
 class _ProgramTitleBar extends StatelessWidget {
@@ -2666,21 +2743,71 @@ class _CommentRowState extends State<_CommentRow> {
       child: Container(
         color: _backgroundColor(widget.message),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-        child: Text(
-          _commentLineText(
-            message: widget.message,
-            showUserName: widget.showUserName,
-            resolvedUserName: widget.resolvedUserName,
-            contentOverride: hidden ? 'ネタバレ防止: タップで表示' : null,
-            beginAt: widget.beginAt,
-          ),
-          style: TextStyle(
-            fontSize: widget.fontSize,
-            color: hidden ? Colors.grey : widget.userColor,
-            fontStyle: hidden ? FontStyle.italic : null,
-          ),
+        child: _buildRichCommentLine(context, hidden),
+      ),
+    );
+  }
+
+  Widget _buildRichCommentLine(BuildContext context, bool hidden) {
+    final AppMessage message = widget.message;
+    final String timestamp =
+        _formatHms(message.timestamp, beginAt: widget.beginAt);
+    final String content = hidden ? 'ネタバレ防止: タップで表示' : message.content;
+    final double fontSize = widget.fontSize;
+    final Color timestampColor = widget.themeColors.subtleTextColor;
+    final Color idColor = widget.themeColors.subtleTextColor;
+    const double minSubFontSize = 9.0;
+    final double timestampFontSize =
+        hidden ? fontSize : (fontSize * 0.85).clamp(minSubFontSize, fontSize);
+    final double idFontSize =
+        hidden ? fontSize : (fontSize * 0.9).clamp(minSubFontSize, fontSize);
+
+    final List<InlineSpan> spans = <InlineSpan>[
+      TextSpan(
+        text: timestamp,
+        style: TextStyle(
+          fontSize: timestampFontSize,
+          color: hidden ? Colors.grey : timestampColor,
+          fontStyle: hidden ? FontStyle.italic : null,
         ),
       ),
+    ];
+
+    if (widget.showUserName) {
+      final String? userId = message.userId;
+      if (userId != null && userId.isNotEmpty) {
+        final String displayName = widget.resolvedUserName != null
+            ? '${widget.resolvedUserName} ($userId)'
+            : userId;
+        spans.add(const TextSpan(text: '  '));
+        spans.add(
+          TextSpan(
+            text: displayName,
+            style: TextStyle(
+              fontSize: idFontSize,
+              color: hidden ? Colors.grey : (widget.userColor ?? idColor),
+              fontWeight: hidden ? null : FontWeight.w500,
+              fontStyle: hidden ? FontStyle.italic : null,
+            ),
+          ),
+        );
+      }
+    }
+
+    spans.add(const TextSpan(text: '  '));
+    spans.add(
+      TextSpan(
+        text: content,
+        style: TextStyle(
+          fontSize: fontSize,
+          color: hidden ? Colors.grey : widget.userColor,
+          fontStyle: hidden ? FontStyle.italic : null,
+        ),
+      ),
+    );
+
+    return Text.rich(
+      TextSpan(children: spans),
     );
   }
 

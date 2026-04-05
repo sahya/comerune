@@ -7,7 +7,7 @@ import '../../domain/models/user_name_resolution.dart';
 import '../mixins/settings_screen_mixin.dart';
 import '../widgets/settings_widgets.dart';
 import 'favorite_user_list_screen.dart';
-import 'nickname_list_screen.dart';
+import 'ng_user_list_screen.dart';
 
 class UserManagementSettingsScreen extends StatefulWidget {
   const UserManagementSettingsScreen({
@@ -123,54 +123,30 @@ class _UserManagementSettingsScreenState
                       ),
                       const SizedBox(height: 12),
                       SettingsSection(
-                        title: 'コテハン',
+                        title: 'NGユーザー',
                         children: <Widget>[
-                          SwitchListTile(
-                            key: const Key('auto-nickname-registration-switch'),
-                            title: const Text('コテハン自動登録'),
-                            subtitle: const Text('@名前 コメントで自動登録'),
+                          ListTile(
+                            key: const Key('ng-user-list-tile'),
                             contentPadding: EdgeInsets.zero,
-                            value: settings.autoNicknameRegistration,
-                            onChanged: (bool value) {
-                              updateAndSave(
-                                settings.copyWith(
-                                    autoNicknameRegistration: value),
+                            leading: const Icon(Icons.person_off),
+                            title: const Text('NGユーザーID管理'),
+                            subtitle: Text(
+                              settings.ngUserIdSet.isEmpty
+                                  ? '未登録'
+                                  : '${settings.ngUserIdSet.length}件登録中',
+                            ),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () async {
+                              await Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => NgUserListScreen(
+                                    settingsStore: widget.settingsStore,
+                                  ),
+                                ),
                               );
+                              await loadSettings();
                             },
                           ),
-                          if (widget.userAttributeStore != null)
-                            Builder(
-                              builder: (BuildContext context) {
-                                final String? broadcasterId =
-                                    widget.broadcasterIdNotifier?.value;
-                                final bool enabled = broadcasterId != null;
-                                return ListTile(
-                                  key: const Key('nickname-list-tile'),
-                                  contentPadding: EdgeInsets.zero,
-                                  leading: const Icon(Icons.badge),
-                                  title: const Text('コテハン管理'),
-                                  subtitle: enabled
-                                      ? null
-                                      : const Text('放送に接続すると利用できます'),
-                                  trailing: const Icon(Icons.chevron_right),
-                                  enabled: enabled,
-                                  onTap: enabled
-                                      ? () async {
-                                          await Navigator.of(context).push(
-                                            MaterialPageRoute<void>(
-                                              builder: (_) =>
-                                                  NicknameListScreen(
-                                                userAttributeStore:
-                                                    widget.userAttributeStore!,
-                                                broadcasterId: broadcasterId,
-                                              ),
-                                            ),
-                                          );
-                                        }
-                                      : null,
-                                );
-                              },
-                            ),
                         ],
                       ),
                     ],

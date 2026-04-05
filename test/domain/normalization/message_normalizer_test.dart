@@ -93,6 +93,25 @@ void main() {
       },
     );
 
+    test('unsupported message payload is sanitized', () {
+      final MessageNormalizer normalizer = MessageNormalizer(
+        idGenerator: _sequentialIdGenerator(),
+      );
+
+      final String rawJson =
+          '{"ping":"pong","token":"secret-value","safe":"ok"}';
+      final AppMessage? message = normalizer.normalizeLegacyJson(rawJson);
+
+      expect(message, isNotNull);
+      expect(isLegacyUnsupportedFormatMessage(message!), isTrue);
+
+      final Map<dynamic, dynamic> raw = message.raw! as Map<dynamic, dynamic>;
+      final String payload = raw['payload'] as String;
+      expect(payload, isNot(contains('secret-value')));
+      expect(payload, contains('"token":"***"'));
+      expect(payload, contains('"safe":"ok"'));
+    });
+
     test('returns null when JSON parse fails', () {
       final MessageNormalizer normalizer = MessageNormalizer(
         idGenerator: _sequentialIdGenerator(),

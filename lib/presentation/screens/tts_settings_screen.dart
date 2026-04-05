@@ -10,7 +10,6 @@ import '../../domain/models/voicevox_model_info.dart';
 import '../mixins/settings_screen_mixin.dart';
 import '../widgets/settings_widgets.dart';
 import 'dictionary_rules_screen.dart';
-import 'ng_user_list_screen.dart';
 import 'voice_library_screen.dart';
 
 enum _NemoStylePreset { standard, energetic, calm }
@@ -86,6 +85,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   Set<int> _nemoSpeakerIds = <int>{};
   String? _queueLimitError;
   String? _maxDelayError;
+  String? _ngWordsError;
   bool _isLoadingModel = false;
 
   static const Map<int, String> _nemoSpeakerNames = <int, String>{
@@ -484,8 +484,20 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
       return;
     }
 
-    // TODO(issue-12-followup): NGワードは正規表現入力のため、保存前に
-    // RegExp.tryParse 相当で妥当性を検証し、無効パターンは保存を抑止する。
+    final String? invalidPattern = _findInvalidRegExpPattern(ngWords);
+    if (invalidPattern != null) {
+      setState(() {
+        final String display = invalidPattern.length > 30
+            ? '${invalidPattern.substring(0, 30)}...'
+            : invalidPattern;
+        _ngWordsError = '無効な正規表現: $display';
+      });
+      return;
+    }
+
+    setState(() {
+      _ngWordsError = null;
+    });
     updateAndSave(current.copyWith(ngWords: ngWords));
   }
 
@@ -561,6 +573,22 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     }
 
     updateAndSave(current.copyWith(maxDelaySeconds: parsed));
+  }
+
+  static String? _findInvalidRegExpPattern(String ngWords) {
+    final List<String> lines = ngWords.split('\n');
+    for (final String line in lines) {
+      final String trimmed = line.trim();
+      if (trimmed.isEmpty) {
+        continue;
+      }
+      try {
+        RegExp(trimmed);
+      } on FormatException {
+        return trimmed;
+      }
+    }
+    return null;
   }
 
   String _buildCreditText(int speakerId) {
@@ -1161,10 +1189,11 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                             focusNode: _ngWordsFocusNode,
                             minLines: 3,
                             maxLines: 6,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: 'NGワード（正規表現）',
                               hintText: '例: ^8+\$',
-                              border: OutlineInputBorder(),
+                              border: const OutlineInputBorder(),
+                              errorText: _ngWordsError,
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -1183,31 +1212,6 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                               await Navigator.of(context).push(
                                 MaterialPageRoute<void>(
                                   builder: (_) => DictionaryRulesScreen(
-                                    settingsStore: widget.settingsStore,
-                                  ),
-                                ),
-                              );
-                              await loadSettings();
-                              if (this.settings != null) {
-                                _pushSettingsToEngine(this.settings!);
-                              }
-                            },
-                          ),
-                          ListTile(
-                            key: const Key('ng-user-list-tile'),
-                            contentPadding: EdgeInsets.zero,
-                            leading: const Icon(Icons.person_off),
-                            title: const Text('NGユーザーID管理'),
-                            subtitle: Text(
-                              settings.ngUserIdSet.isEmpty
-                                  ? '未登録'
-                                  : '${settings.ngUserIdSet.length}件登録中',
-                            ),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () async {
-                              await Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => NgUserListScreen(
                                     settingsStore: widget.settingsStore,
                                   ),
                                 ),

@@ -125,7 +125,6 @@ class _SelectScreenState extends State<SelectScreen> {
     _controller = TextEditingController();
     _settingsNotifier = ValueNotifier<AppSettings>(widget.initialSettings);
     _previousStatus = widget.connectionSupervisor.status;
-    _controller.addListener(_onInputChanged);
     widget.connectionSupervisor.addListener(_onSupervisorChanged);
     widget.supplierUserIdNotifier?.addListener(_onSupplierUserIdChanged);
     // If the supplier user ID is already known (e.g. widget rebuilt while
@@ -187,9 +186,7 @@ class _SelectScreenState extends State<SelectScreen> {
     _loginStateNotifier.dispose();
     _userAttrNotifier.dispose();
     _settingsNotifier.dispose();
-    _controller
-      ..removeListener(_onInputChanged)
-      ..dispose();
+    _controller.dispose();
     super.dispose();
   }
 
@@ -199,13 +196,6 @@ class _SelectScreenState extends State<SelectScreen> {
     }
     _ownsFavoriteUserLiveChecker = checker == null;
     _favoriteUserLiveChecker = checker ?? FavoriteUserLiveChecker();
-  }
-
-  // TODO(PR#18-optional): setState rebuilds the entire widget on every
-  //  keystroke. Consider using ValueListenableBuilder to limit rebuilds to
-  //  the connect button's enabled/disabled state only.
-  void _onInputChanged() {
-    setState(() {});
   }
 
   void _onSupervisorChanged() {
@@ -262,13 +252,6 @@ class _SelectScreenState extends State<SelectScreen> {
 
   bool get _isConnectionInProgress =>
       !widget.connectionSupervisor.canStartConnection;
-
-  bool get _canAttemptConnection {
-    if (_controller.text.trim().isEmpty) {
-      return false;
-    }
-    return widget.connectionSupervisor.canStartConnection;
-  }
 
   void _onSubmit(String _) {
     _followBroadcasterName = null;
@@ -405,17 +388,30 @@ class _SelectScreenState extends State<SelectScreen> {
                 const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerRight,
-                  child: ElevatedButton(
-                    key: const Key('select_screen_connect_button'),
-                    onPressed: _canAttemptConnection
-                        ? () {
-                            _followBroadcasterName = null;
-                            _followBroadcasterIconUrl = null;
-                            _followBeginAt = null;
-                            unawaited(_connect(connectSource: 'manual-button'));
-                          }
-                        : null,
-                    child: const Text('接続開始'),
+                  child: ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _controller,
+                    builder: (
+                      BuildContext context,
+                      TextEditingValue value,
+                      Widget? _,
+                    ) {
+                      final bool canConnect = value.text.trim().isNotEmpty &&
+                          widget.connectionSupervisor.canStartConnection;
+                      return ElevatedButton(
+                        key: const Key('select_screen_connect_button'),
+                        onPressed: canConnect
+                            ? () {
+                                _followBroadcasterName = null;
+                                _followBroadcasterIconUrl = null;
+                                _followBeginAt = null;
+                                unawaited(
+                                  _connect(connectSource: 'manual-button'),
+                                );
+                              }
+                            : null,
+                        child: const Text('接続開始'),
+                      );
+                    },
                   ),
                 ),
               ],
