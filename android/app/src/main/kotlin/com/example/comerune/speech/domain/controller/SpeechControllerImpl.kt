@@ -261,6 +261,9 @@ class SpeechControllerImpl(
     }
 
     override fun release() {
+        // Uses synchronized (not workerMutex) because release() is a non-suspend
+        // function.  Setting released=true ensures processQueue()'s workerMutex.withLock
+        // block will see released as true and will NOT relaunch.
         synchronized(this) {
             if (released) return
             released = true
@@ -442,6 +445,8 @@ class SpeechControllerImpl(
             }
 
             if (synthesisResult.isFailure) {
+                activePrefetchJob?.cancel()
+                activePrefetchJob = null
                 val errorMessage =
                     synthesisResult.exceptionOrNull()?.message ?: "synthesis_failed"
                 eventEmitter.emit(SpeechEvents.speechFailed(commentId, errorMessage))
@@ -467,6 +472,8 @@ class SpeechControllerImpl(
             val playResult = playSafe(wavBytes)
             if (playResult.isFailure) {
                 nextChunkDeferred?.cancel()
+                activePrefetchJob?.cancel()
+                activePrefetchJob = null
                 val errorMessage =
                     playResult.exceptionOrNull()?.message ?: "playback_failed"
                 eventEmitter.emit(SpeechEvents.speechFailed(commentId, errorMessage))

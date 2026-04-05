@@ -282,7 +282,7 @@ class SpeechControllerImplTest {
     }
 
     @Test
-    fun `chunked pipeline continues to next comment after completion`() = runBlocking {
+    fun `chunked pipeline triggers inter-comment prefetch for next comment`() = runBlocking {
         controller.initialize()
         controller.start()
 
@@ -295,6 +295,13 @@ class SpeechControllerImplTest {
 
         val completedEvents = emitter.eventsOfType("speech_completed")
         assertEquals(2, completedEvents.size)
+
+        // Prefetch should have triggered additional synthesize calls:
+        // 2 chunks for comment 1 + prefetch for comment 2 + possibly normal for comment 2
+        assertTrue(
+            "Expected prefetch to trigger additional synthesize calls",
+            engine.synthesizeCount.get() >= 3
+        )
     }
 
     @Test
