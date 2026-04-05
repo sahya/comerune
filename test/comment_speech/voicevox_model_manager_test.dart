@@ -46,7 +46,8 @@ void main() {
       expect(model.downloadState, ModelDownloadState.notDownloaded);
     });
 
-    test('model_download_started updates model state to downloading '
+    test(
+        'model_download_started updates model state to downloading '
         'and sets progress to 0.0', () async {
       fakePlatform.availableModelsToReturn = [sampleModelMap];
       await manager.refreshModels();
@@ -95,7 +96,8 @@ void main() {
       expect(manager.downloadProgress.value['1'], 0.5);
     });
 
-    test('model_download_completed updates model state to downloaded '
+    test(
+        'model_download_completed updates model state to downloaded '
         'and removes progress', () async {
       fakePlatform.availableModelsToReturn = [sampleModelMap];
       await manager.refreshModels();
@@ -126,7 +128,8 @@ void main() {
       expect(manager.downloadProgress.value.containsKey('1'), false);
     });
 
-    test('model_download_failed updates model state to error '
+    test(
+        'model_download_failed updates model state to error '
         'and removes progress', () async {
       fakePlatform.availableModelsToReturn = [sampleModelMap];
       await manager.refreshModels();

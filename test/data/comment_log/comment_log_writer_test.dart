@@ -234,10 +234,8 @@ void main() {
       final String? path = await writer.save(lv: 'lv200', messages: messages);
 
       final String content = await File(path!).readAsString();
-      final List<String> lines = content
-          .split('\n')
-          .where((String l) => l.isNotEmpty)
-          .toList();
+      final List<String> lines =
+          content.split('\n').where((String l) => l.isNotEmpty).toList();
       expect(lines.length, 1);
     });
   });

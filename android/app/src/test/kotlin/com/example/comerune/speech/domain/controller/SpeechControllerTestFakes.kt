@@ -36,8 +36,11 @@ open class FakeNormalizer : CommentNormalizer {
 open class FakeEngine : VoicevoxEngine {
     val wavHeader: ByteArray = "RIFF".toByteArray(Charsets.US_ASCII) + ByteArray(40)
     val synthesizeCount = AtomicInteger(0)
+    val synthesizedTexts = CopyOnWriteArrayList<String>()
     var throwOnSynthesize = false
     var failOnEvenCalls = false
+    /** When set to N > 0, the N-th call to synthesize() will throw. */
+    var failOnNthSynthesize = 0
 
     override suspend fun initialize(): Result<Unit> = Result.success(Unit)
 
@@ -49,9 +52,13 @@ open class FakeEngine : VoicevoxEngine {
             throwOnSynthesize = false
             throw RuntimeException("Unexpected engine error")
         }
+        if (failOnNthSynthesize > 0 && callNumber == failOnNthSynthesize) {
+            throw RuntimeException("Synthesis failed on call #$callNumber")
+        }
         if (failOnEvenCalls && callNumber % 2 == 0) {
             throw RuntimeException("Simulated synthesis failure on call #$callNumber")
         }
+        synthesizedTexts.add(request.text)
         return Result.success(
             WavSynthesisResult(
                 wavBytes = wavHeader,

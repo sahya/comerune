@@ -72,30 +72,30 @@ class _NgUserListScreenState extends State<NgUserListScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _ngUserIds.isEmpty
-          ? const EmptyStateMessage(
-              key: Key('ng-user-list-empty'),
-              message: 'NGユーザーIDは登録されていません',
-            )
-          : ListView.separated(
-              key: const Key('ng-user-id-list'),
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: _ngUserIds.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (BuildContext context, int index) {
-                final String userId = _ngUserIds[index];
-                return ListTile(
-                  key: Key('ng-user-tile-$index'),
-                  leading: const Icon(Icons.person_off, size: 20),
-                  title: Text(userId, style: const TextStyle(fontSize: 14)),
-                  trailing: IconButton(
-                    key: Key('ng-user-remove-$index'),
-                    icon: const Icon(Icons.delete_outline),
-                    tooltip: 'NG解除',
-                    onPressed: () => _removeNgUserId(userId),
-                  ),
-                );
-              },
-            ),
+              ? const EmptyStateMessage(
+                  key: Key('ng-user-list-empty'),
+                  message: 'NGユーザーIDは登録されていません',
+                )
+              : ListView.separated(
+                  key: const Key('ng-user-id-list'),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: _ngUserIds.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (BuildContext context, int index) {
+                    final String userId = _ngUserIds[index];
+                    return ListTile(
+                      key: Key('ng-user-tile-$index'),
+                      leading: const Icon(Icons.person_off, size: 20),
+                      title: Text(userId, style: const TextStyle(fontSize: 14)),
+                      trailing: IconButton(
+                        key: Key('ng-user-remove-$index'),
+                        icon: const Icon(Icons.delete_outline),
+                        tooltip: 'NG解除',
+                        onPressed: () => _removeNgUserId(userId),
+                      ),
+                    );
+                  },
+                ),
     );
   }
 }
