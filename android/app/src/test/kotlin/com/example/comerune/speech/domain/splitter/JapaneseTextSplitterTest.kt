@@ -331,6 +331,20 @@ class JapaneseTextSplitterTest {
         }
     }
 
+    @Test
+    fun `moshi does not cause harmful split due to minChunkLength`() {
+        // "もし" matches SHI_PARTICLE_PATTERN, but "もし" is only 2 chars
+        // and will be merged by minChunkLength (5) guard
+        val text = "もし明日天気がよかったらみんなで出かけようよ"
+        val result = splitter.split(text)
+        assertEquals(text, result.joinToString(""))
+        for (chunk in result) {
+            assert(chunk.codePointCount(0, chunk.length) >= JapaneseTextSplitter.MIN_CHUNK_LENGTH_DEFAULT) {
+                "Chunk '$chunk' is shorter than minChunkLength"
+            }
+        }
+    }
+
     // --- Custom configuration ---
 
     @Test
