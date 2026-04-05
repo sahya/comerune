@@ -606,7 +606,10 @@ void main() {
           matching: find.byType(Text),
         ),
       );
-      expect(textWidget.style?.color, colorFromARGB32(0xFFE53935));
+      // Text.rich is used; check the content span (last child) for color.
+      final TextSpan root = textWidget.textSpan! as TextSpan;
+      final TextSpan contentSpan = root.children!.last as TextSpan;
+      expect(contentSpan.style?.color, colorFromARGB32(0xFFE53935));
     },
   );
 
@@ -664,7 +667,9 @@ void main() {
         matching: find.byType(Text),
       ),
     );
-    expect(coloredText.style?.color, colorFromARGB32(0xFFE53935));
+    final TextSpan coloredRoot = coloredText.textSpan! as TextSpan;
+    final TextSpan coloredContentSpan = coloredRoot.children!.last as TextSpan;
+    expect(coloredContentSpan.style?.color, colorFromARGB32(0xFFE53935));
 
     final CommentScreen commentScreen = tester.widget<CommentScreen>(
       find.byType(CommentScreen),
@@ -979,7 +984,10 @@ void main() {
             matching: find.byType(Text),
           ),
         );
-        expect(text.style?.color, isNull);
+        // Text.rich is used; check the content span (last child) for color.
+        TextSpan root = text.textSpan! as TextSpan;
+        TextSpan contentSpan = root.children!.last as TextSpan;
+        expect(contentSpan.style?.color, isNull);
 
         // Trigger attribute load by resolving supplier user ID
         supplierUserIdNotifier.value = 'broadcaster-1';
@@ -992,7 +1000,9 @@ void main() {
             matching: find.byType(Text),
           ),
         );
-        expect(text.style?.color, isNotNull);
+        root = text.textSpan! as TextSpan;
+        contentSpan = root.children!.last as TextSpan;
+        expect(contentSpan.style?.color, isNotNull);
       },
     );
 
@@ -1009,26 +1019,26 @@ void main() {
         await pumpAndNavigate(tester);
 
         // Initially no nickname
-        Text text = tester.widget(
+        expect(
           find.descendant(
             of: find.byKey(const Key('comment-row-msg-1')),
-            matching: find.byType(Text),
+            matching: find.textContaining('テストニックネーム'),
           ),
+          findsNothing,
         );
-        expect(text.data, isNot(contains('テストニックネーム')));
 
         // Trigger attribute load
         supplierUserIdNotifier.value = 'broadcaster-1';
         await tester.pumpAndSettle();
 
         // Verify nickname is now reflected
-        text = tester.widget(
+        expect(
           find.descendant(
             of: find.byKey(const Key('comment-row-msg-1')),
-            matching: find.byType(Text),
+            matching: find.textContaining('テストニックネーム'),
           ),
+          findsOneWidget,
         );
-        expect(text.data, contains('テストニックネーム'));
       },
     );
 
@@ -1060,7 +1070,9 @@ void main() {
             matching: find.byType(Text),
           ),
         );
-        expect(coloredText.style?.color, isNotNull);
+        final TextSpan cRoot = coloredText.textSpan! as TextSpan;
+        final TextSpan cContent = cRoot.children!.last as TextSpan;
+        expect(cContent.style?.color, isNotNull);
       },
     );
   });
