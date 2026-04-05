@@ -99,8 +99,9 @@ void main() {
     test('toMap includes all fields with defaults', () {
       const settings = SpeechSettings();
       final map = settings.toMap();
-      expect(map.length, 17);
+      expect(map.length, 18);
       expect(map['enabled'], true);
+      expect(map['synthesisMode'], 'AUDIO_QUERY');
       expect(map['speedScale'], 1.15);
       expect(map['dictionaryRules'], isEmpty);
       expect(map['ngWords'], isEmpty);

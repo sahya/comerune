@@ -21,6 +21,7 @@ import com.example.comerune.speech.domain.model.ReplaceRule
 import com.example.comerune.speech.domain.model.SpeechRuntimeStatus
 import com.example.comerune.speech.domain.model.SpeechSettings
 import com.example.comerune.speech.domain.model.SubmitResult
+import com.example.comerune.speech.domain.model.SynthesisMode
 import com.example.comerune.speech.domain.model.VoicevoxModelManifest
 import com.example.comerune.speech.domain.normalizer.DefaultCommentNormalizer
 import com.example.comerune.speech.domain.normalizer.InMemoryDuplicateDetector
@@ -450,6 +451,7 @@ class CommentSpeechPlugin :
 
         return SpeechSettings(
             enabled = call.argument<Boolean>("enabled") ?: true,
+            synthesisMode = SynthesisMode.fromString(call.argument<String>("synthesisMode")),
             speakerId = call.argument<Number>("speakerId")?.toInt() ?: 10000,
             speedScale = call.argument<Number>("speedScale")?.toFloat() ?: 1.15f,
             pitchScale = call.argument<Number>("pitchScale")?.toFloat() ?: 0.0f,

@@ -2,9 +2,48 @@ import 'package:flutter/foundation.dart';
 
 import 'replace_rule.dart';
 
+/// VOICEVOX synthesis mode.
+///
+/// - [audioQuery]: Two-step AudioQuery → Synthesis path. Supports speed/pitch/
+///   intonation/volume parameters. Higher quality but slower.
+/// - [oneShot]: Single-step TTS path. Faster but ignores all audio parameters.
+enum SynthesisMode {
+  audioQuery,
+  oneShot;
+
+  String get storageValue {
+    switch (this) {
+      case SynthesisMode.audioQuery:
+        return 'AUDIO_QUERY';
+      case SynthesisMode.oneShot:
+        return 'ONE_SHOT';
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case SynthesisMode.audioQuery:
+        return '高品質（AudioQuery）';
+      case SynthesisMode.oneShot:
+        return '低遅延（ワンショット）';
+    }
+  }
+
+  static SynthesisMode fromStorageValue(String? raw) {
+    switch (raw) {
+      case 'ONE_SHOT':
+        return SynthesisMode.oneShot;
+      case 'AUDIO_QUERY':
+      default:
+        return SynthesisMode.audioQuery;
+    }
+  }
+}
+
 /// Configuration for the speech engine. Defaults match the Kotlin side.
 class SpeechSettings {
   final bool enabled;
+  final SynthesisMode synthesisMode;
   final int speakerId;
   final double speedScale;
   final double pitchScale;
@@ -24,6 +63,7 @@ class SpeechSettings {
 
   const SpeechSettings({
     this.enabled = true,
+    this.synthesisMode = SynthesisMode.audioQuery,
     this.speakerId = 10000, // VOICEVOX Nemo・男声2（UI の voicevoxSpeaker と同期）
     this.speedScale = 1.15,
     this.pitchScale = 0.0,
@@ -44,6 +84,7 @@ class SpeechSettings {
 
   Map<String, dynamic> toMap() => {
     'enabled': enabled,
+    'synthesisMode': synthesisMode.storageValue,
     'speakerId': speakerId,
     'speedScale': speedScale,
     'pitchScale': pitchScale,
@@ -67,6 +108,7 @@ class SpeechSettings {
       identical(this, other) ||
       other is SpeechSettings &&
           enabled == other.enabled &&
+          synthesisMode == other.synthesisMode &&
           speakerId == other.speakerId &&
           speedScale == other.speedScale &&
           pitchScale == other.pitchScale &&
@@ -87,6 +129,7 @@ class SpeechSettings {
   @override
   int get hashCode => Object.hash(
     enabled,
+    synthesisMode,
     speakerId,
     speedScale,
     pitchScale,

@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.example.comerune.speech.domain.engine.VoicevoxEngine
 import com.example.comerune.speech.domain.model.SpeechRequest
+import com.example.comerune.speech.domain.model.SynthesisMode
 import com.example.comerune.speech.domain.model.TtsEngineState
 import com.example.comerune.speech.domain.model.VoicevoxModelManifest
 import com.example.comerune.speech.domain.model.WavSynthesisResult
@@ -279,7 +280,10 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
 
         return try {
             val wavBytes = withContext(Dispatchers.IO) {
-                synthesizeViaAudioQuery(request)
+                when (request.synthesisMode) {
+                    SynthesisMode.AUDIO_QUERY -> synthesizeViaAudioQuery(request)
+                    SynthesisMode.ONE_SHOT -> synthesizeViaOneShot(request)
+                }
             }
 
             Result.success(
@@ -335,6 +339,30 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             speakerId = request.speakerId
         ) ?: throw RuntimeException(
             "Synthesis from AudioQuery returned null (text length=${request.text.length})"
+        )
+    }
+
+    /**
+     * Synthesize WAV via the TTS one-shot API.
+     *
+     * This is faster than the AudioQuery path but does **not** support
+     * speed/pitch/intonation/volume parameters — those are fixed at the
+     * engine's built-in defaults.
+     *
+     * @throws RuntimeException if TTS synthesis fails
+     */
+    private fun synthesizeViaOneShot(request: SpeechRequest): ByteArray {
+        return NativeVoicevoxBridge.nativeTts(
+            text = request.text,
+            speakerId = request.speakerId,
+            speedScale = request.speedScale,
+            pitchScale = request.pitchScale,
+            intonationScale = request.intonationScale,
+            volumeScale = request.volumeScale,
+            prePhonemeLength = request.prePhonemeLength,
+            postPhonemeLength = request.postPhonemeLength
+        ) ?: throw RuntimeException(
+            "TTS one-shot returned null (text length=${request.text.length})"
         )
     }
 

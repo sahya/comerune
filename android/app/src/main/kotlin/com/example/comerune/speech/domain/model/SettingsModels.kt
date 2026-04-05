@@ -1,6 +1,27 @@
 package com.example.comerune.speech.domain.model
 
 /**
+ * VOICEVOX synthesis mode.
+ *
+ * - [AUDIO_QUERY]: Two-step AudioQuery → Synthesis path. Supports speed/pitch/
+ *   intonation/volume parameters. Higher quality but slower.
+ * - [ONE_SHOT]: Single-step TTS path. Faster but ignores all audio parameters
+ *   (speed/pitch/intonation/volume are fixed at engine defaults).
+ */
+enum class SynthesisMode {
+    AUDIO_QUERY,
+    ONE_SHOT;
+
+    companion object {
+        fun fromString(value: String?): SynthesisMode =
+            when (value?.uppercase()) {
+                "ONE_SHOT" -> ONE_SHOT
+                else -> AUDIO_QUERY
+            }
+    }
+}
+
+/**
  * User-configurable speech settings.
  *
  * These parameters are applied to the VOICEVOX AudioQuery before synthesis,
@@ -8,6 +29,7 @@ package com.example.comerune.speech.domain.model
  */
 data class SpeechSettings(
     val enabled: Boolean = true,
+    val synthesisMode: SynthesisMode = SynthesisMode.AUDIO_QUERY,
     val speakerId: Int = 10000, // VOICEVOX Nemo・男声2（AppSettings.voicevoxSpeaker と同期）
     val speedScale: Float = 1.15f,
     val pitchScale: Float = 0.0f,

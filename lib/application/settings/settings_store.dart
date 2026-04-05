@@ -48,6 +48,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   static const String _kBouyomiTone = 'settings.bouyomi.tone';
   static const String _kBouyomiVolume = 'settings.bouyomi.volume';
   static const String _kBouyomiVoice = 'settings.bouyomi.voice';
+  static const String _kVoicevoxSynthesisMode =
+      'settings.voicevox.synthesisMode';
   static const String _kVoicevoxSpeaker = 'settings.voicevox.speaker';
   static const String _kVoicevoxSpeed = 'settings.voicevox.speedScale';
   static const String _kVoicevoxPitch = 'settings.voicevox.pitchScale';
@@ -109,6 +111,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       bouyomiTone: _prefs.getInt(_kBouyomiTone) ?? defaults.bouyomiTone,
       bouyomiVolume: _prefs.getInt(_kBouyomiVolume) ?? defaults.bouyomiVolume,
       bouyomiVoice: _prefs.getInt(_kBouyomiVoice) ?? defaults.bouyomiVoice,
+      voicevoxSynthesisMode: SynthesisMode.fromStorageValue(
+          _prefs.getString(_kVoicevoxSynthesisMode)),
       voicevoxSpeaker:
           _prefs.getInt(_kVoicevoxSpeaker) ?? defaults.voicevoxSpeaker,
       voicevoxSpeed:
@@ -185,6 +189,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
     await _prefs.setInt(_kBouyomiTone, settings.bouyomiTone);
     await _prefs.setInt(_kBouyomiVolume, settings.bouyomiVolume);
     await _prefs.setInt(_kBouyomiVoice, settings.bouyomiVoice);
+    await _prefs.setString(
+        _kVoicevoxSynthesisMode, settings.voicevoxSynthesisMode.storageValue);
     await _prefs.setInt(_kVoicevoxSpeaker, settings.voicevoxSpeaker);
     await _prefs.setDouble(_kVoicevoxSpeed, settings.voicevoxSpeed);
     await _prefs.setDouble(_kVoicevoxPitch, settings.voicevoxPitch);

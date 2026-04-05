@@ -548,6 +548,47 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     return 'Credit: VOICEVOX';
   }
 
+  Widget _buildSynthesisModeSelector(AppSettings settings) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          '合成モード',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+        const SizedBox(height: 4),
+        SegmentedButton<SynthesisMode>(
+          key: const Key('synthesis-mode-selector'),
+          segments: <ButtonSegment<SynthesisMode>>[
+            ButtonSegment<SynthesisMode>(
+              value: SynthesisMode.audioQuery,
+              label: Text(SynthesisMode.audioQuery.label),
+            ),
+            ButtonSegment<SynthesisMode>(
+              value: SynthesisMode.oneShot,
+              label: Text(SynthesisMode.oneShot.label),
+            ),
+          ],
+          selected: <SynthesisMode>{settings.voicevoxSynthesisMode},
+          onSelectionChanged: (Set<SynthesisMode> selected) {
+            updateAndSave(
+              settings.copyWith(voicevoxSynthesisMode: selected.first),
+            );
+          },
+        ),
+        const SizedBox(height: 4),
+        Text(
+          settings.voicevoxSynthesisMode == SynthesisMode.audioQuery
+              ? '話速・音高・抑揚・音量の調整が可能です'
+              : '速度優先。話速・音高・抑揚・音量は反映されません',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.outline,
+              ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildVoicevoxSpeakerDropdown(AppSettings settings) {
     final List<VoicevoxModelInfo>? models = _voicevoxModels;
     const int fallbackSpeakerId = 10000;
@@ -859,6 +900,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                   key: const Key('voicevox-section'),
                   title: 'VOICEVOX',
                   children: <Widget>[
+                    _buildSynthesisModeSelector(settings),
+                    const SizedBox(height: 12),
                     _buildVoicevoxSpeakerDropdown(settings),
                     if (widget.platform != null) ...[
                       const SizedBox(height: 8),

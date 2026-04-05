@@ -2,6 +2,7 @@ import 'dart:developer' as developer;
 
 import '../../comment_speech/src/models/replace_rule.dart';
 import '../../comment_speech/src/models/speech_settings.dart';
+export '../../comment_speech/src/models/speech_settings.dart' show SynthesisMode;
 import '../utils/newline_parser.dart';
 
 enum AppThemeMode { system, light, dark, protanopia, deuteranopia, tritanopia }
@@ -212,6 +213,7 @@ class AppSettings {
     required this.bouyomiTone,
     required this.bouyomiVolume,
     required this.bouyomiVoice,
+    required this.voicevoxSynthesisMode,
     required this.voicevoxSpeaker,
     required this.voicevoxSpeed,
     required this.voicevoxPitch,
@@ -257,6 +259,7 @@ class AppSettings {
     bouyomiTone: -1,
     bouyomiVolume: -1,
     bouyomiVoice: 0,
+    voicevoxSynthesisMode: SynthesisMode.audioQuery,
     voicevoxSpeaker: 10000,
     voicevoxSpeed: 1.0,
     voicevoxPitch: 0.0,
@@ -296,6 +299,7 @@ class AppSettings {
   final int bouyomiTone;
   final int bouyomiVolume;
   final int bouyomiVoice;
+  final SynthesisMode voicevoxSynthesisMode;
   final int voicevoxSpeaker;
   final double voicevoxSpeed;
   final double voicevoxPitch;
@@ -431,6 +435,7 @@ class AppSettings {
     int? bouyomiTone,
     int? bouyomiVolume,
     int? bouyomiVoice,
+    SynthesisMode? voicevoxSynthesisMode,
     int? voicevoxSpeaker,
     double? voicevoxSpeed,
     double? voicevoxPitch,
@@ -470,6 +475,8 @@ class AppSettings {
       bouyomiTone: bouyomiTone ?? this.bouyomiTone,
       bouyomiVolume: bouyomiVolume ?? this.bouyomiVolume,
       bouyomiVoice: bouyomiVoice ?? this.bouyomiVoice,
+      voicevoxSynthesisMode:
+          voicevoxSynthesisMode ?? this.voicevoxSynthesisMode,
       voicevoxSpeaker: voicevoxSpeaker ?? this.voicevoxSpeaker,
       voicevoxSpeed: voicevoxSpeed ?? this.voicevoxSpeed,
       voicevoxPitch: voicevoxPitch ?? this.voicevoxPitch,
@@ -514,6 +521,7 @@ class AppSettings {
   /// Convert to [SpeechSettings] for the platform speech engine.
   SpeechSettings toSpeechSettings() => SpeechSettings(
     enabled: autoReadEnabled && speechEngine == SpeechEngine.voicevox,
+    synthesisMode: voicevoxSynthesisMode,
     speakerId: voicevoxSpeaker,
     speedScale: voicevoxSpeed,
     pitchScale: voicevoxPitch,
