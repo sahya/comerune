@@ -68,6 +68,51 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         private fun sanitize(value: Float, fallback: Float): Float =
             if (value.isNaN() || value.isInfinite()) fallback else value
 
+        /**
+         * Apply [volumeScale] to the PCM samples in a 16-bit WAV byte array.
+         *
+         * Scans for the "data" chunk, then multiplies each 16-bit little-endian
+         * sample by [volumeScale], clamping to [-32768, 32767].
+         *
+         * Returns the original [wavBytes] unmodified if volumeScale is
+         * effectively 1.0, or if the WAV format cannot be parsed.
+         */
+        internal fun applyVolumeToWav(wavBytes: ByteArray, volumeScale: Float): ByteArray {
+            if (wavBytes.size < 44) return wavBytes
+            val clamped = volumeScale.coerceIn(0f, 2f)
+            if ((clamped - 1.0f).let { it > -0.001f && it < 0.001f }) return wavBytes
+
+            val dataOffset = findDataChunkOffset(wavBytes) ?: return wavBytes
+            val result = wavBytes.copyOf()
+
+            var i = dataOffset
+            while (i + 1 < result.size) {
+                val lo = result[i].toInt() and 0xFF
+                val hi = result[i + 1].toInt()
+                val sample = (hi shl 8) or lo
+                val scaled = (sample * clamped).toInt().coerceIn(-32768, 32767)
+                result[i] = (scaled and 0xFF).toByte()
+                result[i + 1] = ((scaled shr 8) and 0xFF).toByte()
+                i += 2
+            }
+            return result
+        }
+
+        private fun findDataChunkOffset(wavBytes: ByteArray): Int? {
+            var pos = 12
+            while (pos + 8 <= wavBytes.size) {
+                val id = String(wavBytes, pos, 4, Charsets.US_ASCII)
+                val size = ((wavBytes[pos + 4].toInt() and 0xFF)) or
+                        ((wavBytes[pos + 5].toInt() and 0xFF) shl 8) or
+                        ((wavBytes[pos + 6].toInt() and 0xFF) shl 16) or
+                        ((wavBytes[pos + 7].toInt() and 0xFF) shl 24)
+                if (id == "data") return pos + 8
+                if (size < 0) return null
+                pos += 8 + size
+            }
+            return null
+        }
+
         internal fun buildMissingAssetsMessage(hasDict: Boolean, hasAnyVvm: Boolean): String? {
             if (hasDict && hasAnyVvm) {
                 return null
@@ -372,50 +417,10 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
     /**
      * Apply [volumeScale] to the PCM samples in a 16-bit WAV byte array.
      *
-     * Scans for the "data" chunk, then multiplies each 16-bit little-endian
-     * sample by [volumeScale], clamping to [-32768, 32767].
-     *
-     * Returns the original [wavBytes] unmodified if volumeScale is
-     * effectively 1.0, or if the WAV format cannot be parsed.
+     * Visible as a companion function for testability.
      */
-    internal fun applyVolumeToWav(wavBytes: ByteArray, volumeScale: Float): ByteArray {
-        if (wavBytes.size < 44) return wavBytes
-        // Skip if volumeScale is effectively 1.0
-        if ((volumeScale - 1.0f).let { it > -0.001f && it < 0.001f }) return wavBytes
-
-        // Find "data" chunk offset
-        val dataOffset = findDataChunkOffset(wavBytes) ?: return wavBytes
-        val result = wavBytes.copyOf()
-
-        // Process 16-bit PCM samples (2 bytes per sample, little-endian)
-        var i = dataOffset
-        while (i + 1 < result.size) {
-            val lo = result[i].toInt() and 0xFF
-            val hi = result[i + 1].toInt()
-            val sample = (hi shl 8) or lo // signed 16-bit
-            val scaled = (sample * volumeScale).toInt().coerceIn(-32768, 32767)
-            result[i] = (scaled and 0xFF).toByte()
-            result[i + 1] = ((scaled shr 8) and 0xFF).toByte()
-            i += 2
-        }
-        return result
-    }
-
-    private fun findDataChunkOffset(wavBytes: ByteArray): Int? {
-        // Skip RIFF header (12 bytes), then scan chunks
-        var pos = 12
-        while (pos + 8 <= wavBytes.size) {
-            val id = String(wavBytes, pos, 4, Charsets.US_ASCII)
-            val size = ((wavBytes[pos + 4].toInt() and 0xFF)) or
-                    ((wavBytes[pos + 5].toInt() and 0xFF) shl 8) or
-                    ((wavBytes[pos + 6].toInt() and 0xFF) shl 16) or
-                    ((wavBytes[pos + 7].toInt() and 0xFF) shl 24)
-            if (id == "data") return pos + 8
-            pos += 8 + size
-            if (size < 0) return null
-        }
-        return null
-    }
+    private fun applyVolumeToWav(wavBytes: ByteArray, volumeScale: Float): ByteArray =
+        Companion.applyVolumeToWav(wavBytes, volumeScale)
 
     /**
      * Apply speech parameters to an AudioQuery JSON object.
