@@ -35,7 +35,29 @@ void main() {
     expect(message.raw, isNull);
   });
 
-  test('AppMessage equality and hashCode are value-based for core fields', () {
+  test('AppMessage equality is based on id only', () {
+    final AppMessage left = AppMessage(
+      id: 'message-003',
+      timestamp: DateTime.parse('2026-03-22T00:00:02Z'),
+      userId: 'user-1',
+      content: 'same',
+      type: AppMessageType.chat,
+      raw: <String, Object?>{'source': 'ndgr'},
+    );
+    final AppMessage right = AppMessage(
+      id: 'message-003',
+      timestamp: DateTime.parse('2026-03-22T00:00:05Z'),
+      userId: 'user-2',
+      content: 'different',
+      type: AppMessageType.notification,
+      raw: <String, Object?>{'source': 'legacy'},
+    );
+
+    expect(left, equals(right));
+    expect(left.hashCode, right.hashCode);
+  });
+
+  test('AppMessage with different id is not equal', () {
     final DateTime timestamp = DateTime.parse('2026-03-22T00:00:02Z');
 
     final AppMessage left = AppMessage(
@@ -44,23 +66,18 @@ void main() {
       userId: 'user-1',
       content: 'same',
       type: AppMessageType.chat,
-      raw: <String, Object?>{'source': 'ndgr'},
     );
     final AppMessage right = AppMessage(
-      id: 'message-003',
+      id: 'message-004',
       timestamp: timestamp,
       userId: 'user-1',
       content: 'same',
       type: AppMessageType.chat,
-      raw: <String, Object?>{'source': 'legacy'},
     );
 
-    expect(left, equals(right));
-    expect(left.hashCode, right.hashCode);
+    expect(left, isNot(equals(right)));
+    expect(left.hashCode, isNot(equals(right.hashCode)));
   });
-
-  // TODO(issue-2/O1): 不等価テスト（異なる id → not equal）を追加して
-  // equality の positive / negative 両方向を検証する。
 
   test('AppMessageType has expected values', () {
     expect(AppMessageType.values, <AppMessageType>[
