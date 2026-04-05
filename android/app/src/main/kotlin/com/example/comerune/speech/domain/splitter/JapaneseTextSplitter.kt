@@ -30,11 +30,11 @@ class JapaneseTextSplitter(
         const val MAX_CHUNKS_DEFAULT = 5
 
         /**
-         * Regex matching conjunctive particles at clause boundaries.
+         * Main pattern for multi-character conjunctive particles.
          *
          * Target particles (接続助詞):
          *   けれども、けれど、けど、だけど、だから、から、ので、のに、
-         *   たら、ても、でも、って、し
+         *   たら、ても、でも、って
          *
          * Excluded: 「が」 — listed in the Issue as both a conjunctive
          * particle (接続) and a case particle (主格). Disambiguating
@@ -45,12 +45,8 @@ class JapaneseTextSplitter(
          *
          * The pattern matches these particles when they appear after
          * hiragana/katakana/kanji characters (to reduce false positives).
-         *
          * Ordering matters: longer alternatives must precede shorter ones
          * (e.g. けれども before けれど before けど).
-         */
-        /**
-         * Main pattern for multi-character particles.
          *
          * Optionally followed by a punctuation mark (、。) which is
          * included in the match so the split point falls after the
@@ -223,6 +219,10 @@ class JapaneseTextSplitter(
     /**
      * If there are more chunks than [maxChunks], merge trailing chunks
      * into the last allowed chunk.
+     *
+     * Note: [selectSplitPoints] already limits split points to maxChunks - 1,
+     * so this method is defensive — it guards against future changes to the
+     * pipeline that might produce more chunks than expected.
      */
     private fun limitChunks(chunks: List<String>): List<String> {
         if (chunks.size <= maxChunks) return chunks

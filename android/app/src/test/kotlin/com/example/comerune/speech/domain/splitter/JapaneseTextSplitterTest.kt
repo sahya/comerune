@@ -319,6 +319,18 @@ class JapaneseTextSplitterTest {
     }
 
     @Test
+    fun `excess punctuation candidates are trimmed to maxSplits`() {
+        // maxChunks=2 → only 1 split allowed, but 3 punctuation-backed candidates exist
+        val splitter = JapaneseTextSplitter(maxChunks = 2, minTextLength = 5)
+        val text = "雨だから、バスに乗ったけど、混んでたので、大変だった"
+        val result = splitter.split(text)
+        assertEquals(2, result.size)
+        // First punctuation-backed candidate (から、) should be selected
+        assertEquals("雨だから、", result[0])
+        assertEquals("バスに乗ったけど、混んでたので、大変だった", result[1])
+    }
+
+    @Test
     fun `all candidates without punctuation still works when exceeding maxChunks`() {
         // No punctuation at all — falls back to positional selection
         val splitter = JapaneseTextSplitter(maxChunks = 2, minTextLength = 5)
