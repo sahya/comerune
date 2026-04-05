@@ -23,6 +23,7 @@ import '../../domain/models/app_settings.dart';
 import '../../domain/models/user_name_resolution.dart';
 import '../theme/app_theme.dart';
 import 'comment_log_stats_sheet.dart';
+import 'comment_screen_config.dart';
 import 'user_detail_sheet.dart';
 
 const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
@@ -98,7 +99,7 @@ enum CommentSortOrder { ascending, descending }
 class CommentScreen extends StatefulWidget {
   const CommentScreen({
     super.key,
-    required this.lv,
+    required this.programInfo,
     required this.connectionSupervisor,
     required this.messages,
     required this.onStopAllConnections,
@@ -106,12 +107,6 @@ class CommentScreen extends StatefulWidget {
     required this.onDifferentLvConnected,
     this.onOpenSettings,
     this.debugMode = false,
-    this.connectionMethod,
-    this.programTitle,
-    this.broadcasterName,
-    this.broadcasterUserId,
-    this.broadcasterIconUrl,
-    this.beginAt,
     this.showUserName = true,
     this.commentFontSize = commentFontSizeDefault,
     this.userNameResolution,
@@ -131,13 +126,7 @@ class CommentScreen extends StatefulWidget {
     this.onNicknameRemoved,
     this.autoNicknameRegistration = true,
     required this.themeMode,
-    this.statisticsEnabled = false,
-    this.statisticsViewerCommentEnabled = true,
-    this.statisticsActiveUserEnabled = true,
-    this.highlightPickupEnabled = false,
-    this.viewerCount,
-    this.totalCommentCount = 0,
-    this.activeUserCount = 0,
+    this.statistics = const CommentStatisticsConfig(),
     this.speechPlatform,
     this.speechSettings = const SpeechSettings(enabled: false),
     this.readUserName = false,
@@ -145,7 +134,9 @@ class CommentScreen extends StatefulWidget {
     this.onDictionaryRulesChanged,
   });
 
-  final String lv;
+  /// Program-level metadata (lv, title, broadcaster info, etc.).
+  final CommentProgramInfo programInfo;
+
   final ConnectionSupervisor connectionSupervisor;
   final List<AppMessage> messages;
   final Future<void> Function() onStopAllConnections;
@@ -154,12 +145,6 @@ class CommentScreen extends StatefulWidget {
       onDifferentLvConnected;
   final Future<void> Function()? onOpenSettings;
   final bool debugMode;
-  final ConnectionMethod? connectionMethod;
-  final String? programTitle;
-  final String? broadcasterName;
-  final String? broadcasterUserId;
-  final String? broadcasterIconUrl;
-  final DateTime? beginAt;
   final bool showUserName;
   final double commentFontSize;
 
@@ -210,13 +195,9 @@ class CommentScreen extends StatefulWidget {
   final bool autoNicknameRegistration;
 
   final AppThemeMode themeMode;
-  final bool statisticsEnabled;
-  final bool statisticsViewerCommentEnabled;
-  final bool statisticsActiveUserEnabled;
-  final bool highlightPickupEnabled;
-  final int? viewerCount;
-  final int totalCommentCount;
-  final int activeUserCount;
+
+  /// Statistics display configuration and live data.
+  final CommentStatisticsConfig statistics;
 
   /// The platform channel bridge for VoiceVox speech synthesis.
   /// Null when the speech plugin is not available.
@@ -339,10 +320,11 @@ class _CommentScreenState extends State<CommentScreen> {
       }
     }
 
-    if (oldWidget.lv != widget.lv) {
+    if (oldWidget.programInfo.lv != widget.programInfo.lv) {
       _autoScrollEnabled = true;
       _pinnedMessageIds.clear();
-      unawaited(widget.onDifferentLvConnected(oldWidget.lv, widget.lv));
+      unawaited(widget.onDifferentLvConnected(
+          oldWidget.programInfo.lv, widget.programInfo.lv));
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToEdge(animated: false);
       });
@@ -739,7 +721,7 @@ class _CommentScreenState extends State<CommentScreen> {
 
       // Handle teach/unteach commands (owner only, never spoken).
       if (TeachCommandParser.isTeachCommand(message.content)) {
-        if (message.userId == widget.broadcasterUserId) {
+        if (message.userId == widget.programInfo.broadcasterUserId) {
           unawaited(_handleTeachCommand(message));
         }
         continue;
@@ -900,7 +882,7 @@ class _CommentScreenState extends State<CommentScreen> {
             appBar: AppBar(
               toolbarHeight: 44,
               title: Text(
-                widget.broadcasterName ?? widget.lv,
+                widget.programInfo.broadcasterName ?? widget.programInfo.lv,
                 key: const Key('appbar-title-text'),
                 style: const TextStyle(fontSize: 15),
                 overflow: TextOverflow.ellipsis,
@@ -947,32 +929,32 @@ class _CommentScreenState extends State<CommentScreen> {
             ),
             body: Column(
               children: <Widget>[
-                if (widget.programTitle != null)
+                if (widget.programInfo.programTitle != null)
                   _ProgramTitleBar(
                     key: const Key('program-title-bar'),
-                    title: widget.programTitle!,
-                    broadcasterIconUrl: widget.broadcasterIconUrl,
+                    title: widget.programInfo.programTitle!,
+                    broadcasterIconUrl: widget.programInfo.broadcasterIconUrl,
                     themeColors: themeColors,
                   ),
                 _StatusBar(
                   key: const Key('status-bar'),
-                  lv: widget.lv,
+                  lv: widget.programInfo.lv,
                   supervisor: widget.connectionSupervisor,
                   debugMode: widget.debugMode,
-                  connectionMethod: widget.connectionMethod,
-                  broadcasterName: widget.broadcasterName,
-                  broadcasterUserId: widget.broadcasterUserId,
-                  broadcasterIconUrl: widget.broadcasterIconUrl,
-                  beginAt: widget.beginAt,
+                  connectionMethod: widget.programInfo.connectionMethod,
+                  broadcasterName: widget.programInfo.broadcasterName,
+                  broadcasterUserId: widget.programInfo.broadcasterUserId,
+                  broadcasterIconUrl: widget.programInfo.broadcasterIconUrl,
+                  beginAt: widget.programInfo.beginAt,
                   themeColors: themeColors,
-                  statisticsEnabled: widget.statisticsEnabled,
+                  statisticsEnabled: widget.statistics.enabled,
                   statisticsViewerCommentEnabled:
-                      widget.statisticsViewerCommentEnabled,
+                      widget.statistics.viewerCommentEnabled,
                   statisticsActiveUserEnabled:
-                      widget.statisticsActiveUserEnabled,
-                  viewerCount: widget.viewerCount,
-                  totalCommentCount: widget.totalCommentCount,
-                  activeUserCount: widget.activeUserCount,
+                      widget.statistics.activeUserEnabled,
+                  viewerCount: widget.statistics.viewerCount,
+                  totalCommentCount: widget.statistics.totalCommentCount,
+                  activeUserCount: widget.statistics.activeUserCount,
                 ),
                 if (_pinnedMessageIds.isNotEmpty)
                   _PinnedCommentsSection(
@@ -984,7 +966,7 @@ class _CommentScreenState extends State<CommentScreen> {
                     resolveDisplayName: _resolveDisplayName,
                     userColorMap: widget.userColorMap,
                     onUnpin: _unpinMessage,
-                    beginAt: widget.beginAt,
+                    beginAt: widget.programInfo.beginAt,
                   ),
                 Expanded(
                   child: ListView.builder(
@@ -1007,7 +989,7 @@ class _CommentScreenState extends State<CommentScreen> {
                             ? colorFromARGB32(userColor)
                             : null,
                         onLongPress: () => _showCommentActions(message),
-                        beginAt: widget.beginAt,
+                        beginAt: widget.programInfo.beginAt,
                       );
                     },
                   ),
@@ -1038,7 +1020,7 @@ class _CommentScreenState extends State<CommentScreen> {
           allMessages: widget.messages,
           isNgUser: isNg,
           themeMode: widget.themeMode,
-          beginAt: widget.beginAt,
+          beginAt: widget.programInfo.beginAt,
           currentColorValue: widget.userColorMap[userId],
           onColorChanged: widget.onUserColorChanged != null
               ? (int colorValue) {
@@ -1940,9 +1922,9 @@ class _CommentScreenState extends State<CommentScreen> {
           return CommentLogStatsSheet(
             stats: stats,
             themeMode: widget.themeMode,
-            programTitle: widget.programTitle,
-            lv: widget.lv,
-            highlightPickupEnabled: widget.highlightPickupEnabled,
+            programTitle: widget.programInfo.programTitle,
+            lv: widget.programInfo.lv,
+            highlightPickupEnabled: widget.statistics.highlightPickupEnabled,
             messages: messagesForStatsAndLogs,
             ngUserIds: widget.ngUserIds,
             onBarTapped: (int minuteOffset) {
@@ -2024,7 +2006,7 @@ class _CommentScreenState extends State<CommentScreen> {
 
     try {
       final String? tempPath = await writer.writeToTempFile(
-        lv: widget.lv,
+        lv: widget.programInfo.lv,
         messages: messagesForStatsAndLogs,
       );
       if (tempPath == null) {
@@ -2067,7 +2049,7 @@ class _CommentScreenState extends State<CommentScreen> {
     String? savedPath;
     try {
       savedPath = await writer.save(
-        lv: widget.lv,
+        lv: widget.programInfo.lv,
         messages: messagesForStatsAndLogs,
         customDirectory: customDir,
       );

@@ -17,20 +17,68 @@ mixin SettingsScreenMixin<T extends StatefulWidget> on State<T> {
   /// The currently loaded settings, or null if not yet loaded.
   AppSettings? settings;
 
+  /// Whether any settings have been changed since the screen was opened.
+  ///
+  /// Set to `true` automatically when [updateAndSave] is called.
+  /// Child screens can use this to report whether the parent needs to reload.
+  bool get hasChanges => _hasChanges;
+  bool _hasChanges = false;
+
+  /// Error message when settings failed to load, or null if no error.
+  String? settingsError;
+
   /// Loads settings from [settingsStore] and calls [setState].
   ///
   /// Subclasses can override this method to perform additional actions
   /// (e.g. loading models). If overriding completely, call [onSettingsLoaded]
   /// and set [settings] manually.
   Future<void> loadSettings() async {
-    final AppSettings loaded = await settingsStore.load();
-    if (!mounted) {
-      return;
+    try {
+      final AppSettings loaded = await settingsStore.load();
+      if (!mounted) {
+        return;
+      }
+      onSettingsLoaded(loaded);
+      setState(() {
+        settingsError = null;
+        settings = loaded;
+      });
+    } on Exception catch (e) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        settingsError = e.toString();
+      });
     }
-    onSettingsLoaded(loaded);
-    setState(() {
-      settings = loaded;
-    });
+  }
+
+  /// Builds an error UI with a retry button for when settings fail to load.
+  Widget buildSettingsError(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(
+            Icons.error_outline,
+            size: 48,
+            color: Theme.of(context).colorScheme.error,
+          ),
+          const SizedBox(height: 16),
+          const Text('設定の読み込みに失敗しました'),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                settingsError = null;
+              });
+              loadSettings();
+            },
+            child: const Text('再試行'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Called after settings are loaded but before [setState].
@@ -39,8 +87,20 @@ mixin SettingsScreenMixin<T extends StatefulWidget> on State<T> {
   /// The default implementation does nothing.
   void onSettingsLoaded(AppSettings loaded) {}
 
+  /// Marks that settings have been modified.
+  ///
+  /// Called automatically by [updateAndSave]. Subclasses that perform custom
+  /// save logic without [updateAndSave] should call this explicitly.
+  @protected
+  void markChanged() {
+    _hasChanges = true;
+  }
+
   /// Updates [settings] in state and saves asynchronously.
+  ///
+  /// Also sets [hasChanges] to `true` so callers can detect modifications.
   void updateAndSave(AppSettings next) {
+    markChanged();
     setState(() {
       settings = next;
     });

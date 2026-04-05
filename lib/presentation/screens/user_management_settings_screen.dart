@@ -16,12 +16,19 @@ class UserManagementSettingsScreen extends StatefulWidget {
     this.userAttributeStore,
     this.broadcasterIdNotifier,
     this.userNameResolution,
+    this.initialSettings,
   });
 
   final SettingsStore settingsStore;
   final UserAttributeStore? userAttributeStore;
   final ValueNotifier<String?>? broadcasterIdNotifier;
   final UserNameResolution? userNameResolution;
+
+  /// Pre-loaded settings from the parent screen.
+  ///
+  /// When provided, the screen uses these settings directly instead of
+  /// loading from the store, avoiding a redundant read.
+  final AppSettings? initialSettings;
 
   @override
   State<UserManagementSettingsScreen> createState() =>
@@ -36,7 +43,12 @@ class _UserManagementSettingsScreenState
   @override
   void initState() {
     super.initState();
-    loadSettings();
+    if (widget.initialSettings != null) {
+      onSettingsLoaded(widget.initialSettings!);
+      settings = widget.initialSettings;
+    } else {
+      loadSettings();
+    }
     widget.broadcasterIdNotifier?.addListener(_onBroadcasterIdChanged);
   }
 
@@ -63,93 +75,107 @@ class _UserManagementSettingsScreenState
   Widget build(BuildContext context) {
     final AppSettings? settings = this.settings;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('ユーザー管理')),
-      body: settings == null
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              key: const Key('user-management-settings-list'),
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
-              children: <Widget>[
-                SettingsSection(
-                  title: 'お気に入りユーザー',
-                  children: <Widget>[
-                    ListTile(
-                      key: const Key('favorite-user-list-tile'),
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.person_add),
-                      title: const Text('お気に入りユーザーID管理'),
-                      subtitle: Text(
-                        settings.favoriteUserIdSet.isEmpty
-                            ? '未登録'
-                            : '${settings.favoriteUserIdSet.length}件登録中',
-                      ),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () async {
-                        await Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => FavoriteUserListScreen(
-                              settingsStore: widget.settingsStore,
-                              userNameResolution: widget.userNameResolution,
-                            ),
-                          ),
-                        );
-                        await loadSettings();
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                SettingsSection(
-                  title: 'コテハン',
-                  children: <Widget>[
-                    SwitchListTile(
-                      key: const Key('auto-nickname-registration-switch'),
-                      title: const Text('コテハン自動登録'),
-                      subtitle: const Text('@名前 コメントで自動登録'),
-                      contentPadding: EdgeInsets.zero,
-                      value: settings.autoNicknameRegistration,
-                      onChanged: (bool value) {
-                        updateAndSave(
-                          settings.copyWith(autoNicknameRegistration: value),
-                        );
-                      },
-                    ),
-                    if (widget.userAttributeStore != null)
-                      Builder(
-                        builder: (BuildContext context) {
-                          final String? broadcasterId =
-                              widget.broadcasterIdNotifier?.value;
-                          final bool enabled = broadcasterId != null;
-                          return ListTile(
-                            key: const Key('nickname-list-tile'),
+    return PopScope<bool>(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, bool? result) {
+        if (!didPop) {
+          Navigator.of(context).pop(hasChanges);
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(title: const Text('ユーザー管理')),
+        body: settingsError != null
+            ? buildSettingsError(context)
+            : settings == null
+                ? const Center(child: CircularProgressIndicator())
+                : ListView(
+                    key: const Key('user-management-settings-list'),
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+                    children: <Widget>[
+                      SettingsSection(
+                        title: 'お気に入りユーザー',
+                        children: <Widget>[
+                          ListTile(
+                            key: const Key('favorite-user-list-tile'),
                             contentPadding: EdgeInsets.zero,
-                            leading: const Icon(Icons.badge),
-                            title: const Text('コテハン管理'),
-                            subtitle:
-                                enabled ? null : const Text('放送に接続すると利用できます'),
+                            leading: const Icon(Icons.person_add),
+                            title: const Text('お気に入りユーザーID管理'),
+                            subtitle: Text(
+                              settings.favoriteUserIdSet.isEmpty
+                                  ? '未登録'
+                                  : '${settings.favoriteUserIdSet.length}件登録中',
+                            ),
                             trailing: const Icon(Icons.chevron_right),
-                            enabled: enabled,
-                            onTap: enabled
-                                ? () async {
-                                    await Navigator.of(context).push(
-                                      MaterialPageRoute<void>(
-                                        builder: (_) => NicknameListScreen(
-                                          userAttributeStore:
-                                              widget.userAttributeStore!,
-                                          broadcasterId: broadcasterId,
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                : null,
-                          );
-                        },
+                            onTap: () async {
+                              await Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => FavoriteUserListScreen(
+                                    settingsStore: widget.settingsStore,
+                                    userNameResolution:
+                                        widget.userNameResolution,
+                                  ),
+                                ),
+                              );
+                              await loadSettings();
+                            },
+                          ),
+                        ],
                       ),
-                  ],
-                ),
-              ],
-            ),
+                      const SizedBox(height: 12),
+                      SettingsSection(
+                        title: 'コテハン',
+                        children: <Widget>[
+                          SwitchListTile(
+                            key: const Key('auto-nickname-registration-switch'),
+                            title: const Text('コテハン自動登録'),
+                            subtitle: const Text('@名前 コメントで自動登録'),
+                            contentPadding: EdgeInsets.zero,
+                            value: settings.autoNicknameRegistration,
+                            onChanged: (bool value) {
+                              updateAndSave(
+                                settings.copyWith(
+                                    autoNicknameRegistration: value),
+                              );
+                            },
+                          ),
+                          if (widget.userAttributeStore != null)
+                            Builder(
+                              builder: (BuildContext context) {
+                                final String? broadcasterId =
+                                    widget.broadcasterIdNotifier?.value;
+                                final bool enabled = broadcasterId != null;
+                                return ListTile(
+                                  key: const Key('nickname-list-tile'),
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: const Icon(Icons.badge),
+                                  title: const Text('コテハン管理'),
+                                  subtitle: enabled
+                                      ? null
+                                      : const Text('放送に接続すると利用できます'),
+                                  trailing: const Icon(Icons.chevron_right),
+                                  enabled: enabled,
+                                  onTap: enabled
+                                      ? () async {
+                                          await Navigator.of(context).push(
+                                            MaterialPageRoute<void>(
+                                              builder: (_) =>
+                                                  NicknameListScreen(
+                                                userAttributeStore:
+                                                    widget.userAttributeStore!,
+                                                broadcasterId: broadcasterId,
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      : null,
+                                );
+                              },
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+      ),
     );
   }
 }
