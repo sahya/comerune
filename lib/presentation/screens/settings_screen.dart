@@ -1,6 +1,10 @@
 import 'dart:async';
+import 'dart:developer' as developer;
+import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../application/settings/settings_store.dart';
@@ -154,6 +158,118 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
+  Future<void> _exportSettings() async {
+    try {
+      final String json = await widget.settingsStore.exportAsJson();
+      await SharePlus.instance.share(
+        ShareParams(text: json, subject: 'comerune-settings.json'),
+      );
+    } on Exception catch (e) {
+      developer.log(
+        'Failed to export settings: $e',
+        name: 'SettingsScreen',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(content: Text('設定のエクスポートに失敗しました')),
+          );
+      }
+    }
+  }
+
+  Future<void> _importSettings() async {
+    try {
+      final FilePickerResult? result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: <String>['json'],
+      );
+      if (result == null || result.files.isEmpty) {
+        return;
+      }
+      final String? path = result.files.single.path;
+      if (path == null) {
+        return;
+      }
+      final String jsonString = await File(path).readAsString();
+
+      if (!mounted) {
+        return;
+      }
+
+      final bool? confirmed = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext dialogContext) {
+          return AlertDialog(
+            title: const Text('設定のインポート'),
+            content: const Text('現在の設定がインポートしたデータで上書きされます。よろしいですか？'),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('キャンセル'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('インポート'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (confirmed != true) {
+        return;
+      }
+
+      final AppSettings imported =
+          await widget.settingsStore.importFromJson(jsonString);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        settings = imported;
+      });
+
+      if (widget.themeModeNotifier != null &&
+          widget.themeModeNotifier!.value != imported.themeMode) {
+        widget.themeModeNotifier!.value = imported.themeMode;
+      }
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text('設定をインポートしました')),
+        );
+    } on FormatException catch (e) {
+      developer.log(
+        'Invalid settings file: $e',
+        name: 'SettingsScreen',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(content: Text('無効な設定ファイルです')),
+          );
+      }
+    } on Exception catch (e) {
+      developer.log(
+        'Failed to import settings: $e',
+        name: 'SettingsScreen',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(content: Text('設定のインポートに失敗しました')),
+          );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final AppSettings? settings = this.settings;
@@ -198,6 +314,36 @@ class _SettingsScreenState extends State<SettingsScreen>
                         Text(
                           'ダークモードは夜間の視認性を向上します。\n'
                           '色覚テーマは色の区別が難しい方に配慮した配色です。',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    SettingsSection(
+                      title: 'データ管理',
+                      children: <Widget>[
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            key: const Key('export-settings-button'),
+                            onPressed: _exportSettings,
+                            icon: const Icon(Icons.upload),
+                            label: const Text('設定をエクスポート'),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            key: const Key('import-settings-button'),
+                            onPressed: _importSettings,
+                            icon: const Icon(Icons.download),
+                            label: const Text('設定をインポート'),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'JSON形式で設定のバックアップ・復元ができます。',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ],
