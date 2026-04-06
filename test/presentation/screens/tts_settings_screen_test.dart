@@ -602,6 +602,84 @@ void main() {
     });
 
     testWidgets(
+      'hides style dropdown when synthesis mode is oneShot for Nemo speaker',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        await settingsStore.save(
+          AppSettings.defaults.copyWith(
+            voicevoxSpeaker: 10000,
+            voicevoxSynthesisMode: SynthesisMode.oneShot,
+          ),
+        );
+
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(
+            const Key('voicevox-style-dropdown'),
+            skipOffstage: false,
+          ),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'does not reset speaker when models are still loading',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        // Save a non-Nemo speaker (Kasukabe Tsumugi)
+        await settingsStore.save(
+          AppSettings.defaults.copyWith(voicevoxSpeaker: 8),
+        );
+        final FakeCommentSpeechPlatform platform = FakeCommentSpeechPlatform();
+        // Return models including the non-Nemo speaker
+        platform.availableModelsToReturn = <Map<String, dynamic>>[
+          <String, dynamic>{
+            'modelId': 'n0',
+            'displayName': 'VOICEVOX Nemo',
+            'speakerIds': <int>[
+              10000,
+              10001,
+              10002,
+              10003,
+              10004,
+              10005,
+              10006,
+              10007,
+              10008
+            ],
+            'vvmFileName': 'n0.vvm',
+            'fileSizeBytes': 100,
+            'isBundled': true,
+            'downloadState': 'DOWNLOADED',
+          },
+          <String, dynamic>{
+            'modelId': '2',
+            'displayName': 'VOICEVOX 春日部つむぎ',
+            'speakerIds': <int>[8],
+            'vvmFileName': '2.vvm',
+            'fileSizeBytes': 100,
+            'isBundled': false,
+            'downloadState': 'DOWNLOADED',
+          },
+        ];
+
+        await tester.pumpWidget(
+          _buildScreenWithPlatform(settingsStore, platform),
+        );
+        await tester.pumpAndSettle();
+
+        // Verify the speaker was NOT reset to 10000
+        final AppSettings loaded = await settingsStore.load();
+        expect(loaded.voicevoxSpeaker, 8);
+      },
+    );
+
+    testWidgets(
       'slider change pushes updated SpeechSettings to platform engine',
       (WidgetTester tester) async {
         final SharedPreferencesSettingsStore settingsStore =

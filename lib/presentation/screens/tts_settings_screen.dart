@@ -611,7 +611,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         settings.voicevoxPlayerType == VoicevoxPlayerType.audioTrack;
 
     if (isAudioQuery && isAudioTrack) {
-      return '応答が速く、声の調整も可能な構成です（推奨）';
+      return '応答が速く、声の調整も可能な構成です';
     } else if (!isAudioQuery && isAudioTrack) {
       return '最速ですが、話速・音高などの調整はできません';
     } else if (isAudioQuery && !isAudioTrack) {
@@ -665,7 +665,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
           items: const <DropdownMenuItem<VoicevoxPlayerType>>[
             DropdownMenuItem<VoicevoxPlayerType>(
               value: VoicevoxPlayerType.audioTrack,
-              child: Text('低遅延モード（推奨）'),
+              child: Text('低遅延モード'),
             ),
             DropdownMenuItem<VoicevoxPlayerType>(
               value: VoicevoxPlayerType.mediaPlayer,
@@ -694,6 +694,42 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   Widget _buildVoicevoxSpeakerDropdown(AppSettings settings) {
     final List<VoicevoxModelInfo>? models = _voicevoxModels;
     final int fallbackSpeakerId = AppSettings.defaults.voicevoxSpeaker;
+
+    // Models still loading — show a disabled placeholder without resetting.
+    // This prevents the saved speaker from being overwritten during the
+    // async model refresh triggered by _initFromSettings().
+    if (models == null && widget.platform != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          DropdownButtonFormField<int>(
+            key: const Key('voicevox-speaker-dropdown'),
+            initialValue: settings.voicevoxSpeaker,
+            decoration: const InputDecoration(
+              labelText: '話者',
+              border: OutlineInputBorder(),
+            ),
+            items: [
+              DropdownMenuItem<int>(
+                value: settings.voicevoxSpeaker,
+                child: const Text('読み込み中…'),
+              ),
+            ],
+            onChanged: null,
+          ),
+          Semantics(
+            label: '話者モデルを読み込み中',
+            child: const Padding(
+              padding: EdgeInsets.only(top: 4),
+              child: LinearProgressIndicator(
+                key: Key('speaker-loading-indicator'),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
 
     // When models are available, build items from downloaded/bundled models.
     if (models != null && models.isNotEmpty) {
@@ -1040,7 +1076,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                               ),
                             ),
                           ],
-                          if (_isNemoPresetVisible(settings)) ...[
+                          if (_isNemoPresetVisible(settings) &&
+                              settings.voicevoxSynthesisMode ==
+                                  SynthesisMode.audioQuery) ...[
                             const SizedBox(height: 8),
                             _buildNemoStyleDropdown(settings),
                           ],
