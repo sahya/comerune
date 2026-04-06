@@ -2292,7 +2292,7 @@ void main() {
     );
 
     testWidgets(
-      'valid userName with empty userId still shows userName',
+      'valid userName with empty userId does not show user column',
       (WidgetTester tester) async {
         final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
         final List<AppMessage> messages = <AppMessage>[
@@ -2314,8 +2314,9 @@ void main() {
           ),
         );
 
-        // userName should still be shown even with empty userId.
-        expect(find.textContaining('プロトバフ名'), findsOneWidget);
+        // Empty userId: widget skips user column entirely regardless of userName.
+        expect(find.textContaining('プロトバフ名'), findsNothing);
+        expect(find.textContaining('リゾルブ名'), findsNothing);
       },
     );
 
