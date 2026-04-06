@@ -114,6 +114,7 @@ class _SelectScreenState extends State<SelectScreen> {
   final MethodChannelCommentSpeech _speechPlatform =
       MethodChannelCommentSpeech();
   int _broadcastEndedNotificationSequence = 0;
+  double? _preMuteVolume;
 
   static const Duration _followRefreshInterval = Duration(seconds: 60);
   static const Duration _favoriteRefreshInterval = Duration(seconds: 30);
@@ -552,6 +553,9 @@ class _SelectScreenState extends State<SelectScreen> {
           readUserName: _settingsNotifier.value.readUserName,
           settingsStore: widget.settingsStore,
           onDictionaryRulesChanged: _onDictionaryRulesChanged,
+          onSpeechMuteToggled:
+              widget.settingsStore != null ? _toggleSpeechMute : null,
+          isSpeechMuted: _preMuteVolume != null,
         );
       },
     );
@@ -714,6 +718,30 @@ class _SelectScreenState extends State<SelectScreen> {
 
   void _onDictionaryRulesChanged(AppSettings updated) {
     _settingsNotifier.value = updated;
+  }
+
+  void _toggleSpeechMute() {
+    final SettingsStore? settingsStore = widget.settingsStore;
+    if (settingsStore == null) return;
+
+    final AppSettings current = _settingsNotifier.value;
+    if (_preMuteVolume != null) {
+      // Unmute: restore previous volume.
+      final double restored = _preMuteVolume!;
+      _preMuteVolume = null;
+      final AppSettings updated = current.copyWith(voicevoxVolume: restored);
+      _settingsNotifier.value = updated;
+      unawaited(settingsStore.save(updated));
+      unawaited(settingsStore.savePreMuteVolume(null));
+    } else {
+      // Mute: save current volume and set to 0.
+      final double currentVolume = current.voicevoxVolume;
+      _preMuteVolume = currentVolume > 0 ? currentVolume : 1.0;
+      final AppSettings updated = current.copyWith(voicevoxVolume: 0.0);
+      _settingsNotifier.value = updated;
+      unawaited(settingsStore.save(updated));
+      unawaited(settingsStore.savePreMuteVolume(_preMuteVolume));
+    }
   }
 
   void _toggleNgUser(String userId) {
@@ -1123,6 +1151,7 @@ class _SelectScreenState extends State<SelectScreen> {
     }
 
     _settingsNotifier.value = loaded;
+    _preMuteVolume = settingsStore.loadPreMuteVolume();
     _requestFavoriteUserNameResolution();
     if (widget.themeModeNotifier != null &&
         widget.themeModeNotifier!.value != loaded.themeMode) {
