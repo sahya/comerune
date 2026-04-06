@@ -86,8 +86,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   bool _isLoadingModel = false;
 
   /// Model IDs allowed in the speaker dropdown.
-  /// Matches VoiceLibraryScreen._supportedModelIds: Nemo, 春日部つむぎ, 波音リツ.
-  static const Set<String> _allowedModelIds = <String>{'n0', '2', '3'};
+  /// Uses the shared constant from voicevox_model_info.dart.
+  static const Set<String> _allowedModelIds = supportedVoicevoxModelIds;
 
   static const Map<int, String> _nemoSpeakerNames = <int, String>{
     10000: '男声2',
@@ -472,6 +472,10 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         voicevoxVolume: volume,
       ),
     );
+    // Clear pre-mute volume when user applies a preset with non-zero volume.
+    if (volume > 0) {
+      unawaited(widget.settingsStore.savePreMuteVolume(null));
+    }
   }
 
   void _saveNgWords() {
@@ -1120,6 +1124,13 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                               updateAndSave(
                                 settings.copyWith(voicevoxVolume: value),
                               );
+                              // Clear pre-mute volume when user manually
+                              // changes volume, so mute icon stays in sync.
+                              if (value > 0) {
+                                unawaited(
+                                  widget.settingsStore.savePreMuteVolume(null),
+                                );
+                              }
                             },
                           ),
                           const SizedBox(height: 12),

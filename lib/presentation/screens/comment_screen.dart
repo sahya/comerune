@@ -2915,7 +2915,7 @@ class _SpeechStatusIcon extends StatelessWidget {
         icon: Icon(icon, size: 20, color: color),
         tooltip: tooltip,
         padding: const EdgeInsets.symmetric(horizontal: 8),
-        constraints: const BoxConstraints(),
+        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
         onPressed: onTap,
       );
     }

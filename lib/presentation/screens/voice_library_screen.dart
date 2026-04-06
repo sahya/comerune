@@ -38,8 +38,8 @@ class VoiceLibraryScreen extends StatefulWidget {
 
 class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
   /// Model IDs to show in the voice library.
-  /// Includes VOICEVOX Nemo, 春日部つむぎ, and 波音リツ.
-  static const Set<String> _supportedModelIds = <String>{'n0', '2', '3'};
+  /// Uses the shared constant from voicevox_model_info.dart.
+  static const Set<String> _supportedModelIds = supportedVoicevoxModelIds;
 
   late final VoicevoxModelManager _manager;
   bool _loadError = false;
@@ -381,11 +381,9 @@ class _VoicevoxTermsDialogState extends State<_VoicevoxTermsDialog> {
   }
 
   /// Speaker names whose terms sections should be displayed.
-  static const Set<String> _supportedSpeakerNames = <String>{
-    '春日部つむぎ',
-    '波音リツ',
-    'VOICEVOX Nemo',
-  };
+  /// Uses the shared constant from voicevox_model_info.dart.
+  static const Set<String> _supportedSpeakerNames =
+      supportedVoicevoxSpeakerNames;
 
   /// Filters TERMS.txt to keep only the common header sections and
   /// the individual speaker sections for the supported speakers.
