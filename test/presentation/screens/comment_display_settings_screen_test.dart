@@ -162,6 +162,33 @@ void main() {
       expect(loaded.commentTwoLineEnabled, isTrue);
     });
 
+    testWidgets('toggles commentZebraStripingEnabled and persists value', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      AppSettings loaded = await settingsStore.load();
+      expect(loaded.commentZebraStripingEnabled, isFalse);
+
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('comment-zebra-striping-switch'),
+      );
+      await toggleSwitchByKey(
+        tester,
+        _listKey,
+        const Key('comment-zebra-striping-switch'),
+      );
+
+      loaded = await settingsStore.load();
+      expect(loaded.commentZebraStripingEnabled, isTrue);
+    });
+
     testWidgets('disables statistics child toggles when parent toggle is off', (
       WidgetTester tester,
     ) async {
