@@ -54,6 +54,22 @@ void main() {
       test('appleid.apple.com for Apple Sign-In', () {
         expect(isAllowedLoginDomain('appleid.apple.com'), isTrue);
       });
+
+      test('accounts.nintendo.com for Nintendo Account', () {
+        expect(isAllowedLoginDomain('accounts.nintendo.com'), isTrue);
+      });
+
+      test('access.line.me for LINE Login', () {
+        expect(isAllowedLoginDomain('access.line.me'), isTrue);
+      });
+
+      test('liff.line.me for LINE Login', () {
+        expect(isAllowedLoginDomain('liff.line.me'), isTrue);
+      });
+
+      test('login.yahoo.co.jp for Yahoo! JAPAN Login', () {
+        expect(isAllowedLoginDomain('login.yahoo.co.jp'), isTrue);
+      });
     });
 
     group('blocks unrelated domains', () {

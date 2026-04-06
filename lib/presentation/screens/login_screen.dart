@@ -9,8 +9,7 @@ import '../../data/auth/user_session_store.dart';
 /// Hosts allowed during the niconico login flow.
 ///
 /// Includes niconico's own domains and the external OAuth provider domains
-/// required for Google, X/Twitter, and Apple sign-in buttons on the
-/// niconico login page.
+/// required for social login buttons on the niconico login page.
 const Set<String> _allowedLoginHosts = <String>{
   // niconico domains
   'account.nicovideo.jp',
@@ -30,6 +29,16 @@ const Set<String> _allowedLoginHosts = <String>{
 
   // Apple Sign-In
   'appleid.apple.com',
+
+  // Nintendo Account
+  'accounts.nintendo.com',
+
+  // LINE Login
+  'access.line.me',
+  'liff.line.me',
+
+  // Yahoo! JAPAN Login
+  'login.yahoo.co.jp',
 };
 
 /// Login screen that opens niconico login page in a WebView.
