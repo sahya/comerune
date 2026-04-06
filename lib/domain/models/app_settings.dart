@@ -545,6 +545,8 @@ class AppSettings {
   ///
   /// Uses the same key names and value formats as
   /// [SharedPreferencesSettingsStore] for consistency.
+  // TODO: toJson/fromJson のフィールドマッピングは SharedPreferencesSettingsStore.load/save と
+  // 重複している。フィールド追加時の変更漏れを防ぐため、将来的にマッピング定義の共通化を検討する。
   Map<String, dynamic> toJson() {
     return <String, dynamic>{
       '_version': settingsVersion,

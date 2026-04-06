@@ -194,6 +194,34 @@ class _SettingsScreenState extends State<SettingsScreen>
       }
       final String jsonString = await File(path).readAsString();
 
+      if (!mounted) {
+        return;
+      }
+
+      final bool? confirmed = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext dialogContext) {
+          return AlertDialog(
+            title: const Text('設定のインポート'),
+            content: const Text('現在の設定がインポートしたデータで上書きされます。よろしいですか？'),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('キャンセル'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('インポート'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (confirmed != true) {
+        return;
+      }
+
       final AppSettings imported =
           await widget.settingsStore.importFromJson(jsonString);
 
