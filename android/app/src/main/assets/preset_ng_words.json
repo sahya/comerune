@@ -140,5 +140,5 @@
       ]
     }
   },
-  "note": "語の表記形式（漢字/カタカナ/ひらがな）に関わらず、マッチング時はNgWordTextNormalizerで正規化される。既存カテゴリは原形、vulgar_sexual_expressionsはひらがな正規化形で登録しているが動作は同等。"
+  "note": "語の表記形式（漢字/カタカナ/ひらがな）に関わらず、マッチング時はNgWordTextNormalizerで正規化される。既存カテゴリは原形（意味的グルーピング順）、vulgar_sexual_expressionsはひらがな正規化形（Unicodeソート順）で登録しているが動作は同等。"
 }
