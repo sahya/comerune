@@ -12,35 +12,35 @@ dependencies:
     sdk: flutter
 
   # Dartアノテーション（@visibleForTesting等）
-  meta: ^1.9.0
+  meta: 1.17.0
 
   # WebSocket（入口WS: wss://a.live2.nicovideo.jp/wsapi/v2/watch/{lv}）
-  web_socket_channel: ^3.0.1
+  web_socket_channel: 3.0.3
 
   # HTTP streaming（NDGR: /api/view/v4/, /data/segment/v4/, /data/backward/v4/）
   # および VOICEVOX HTTP API（/audio_query, /synthesis）
   # StreamedResponse でチャンク単位の読み取りが必要
-  http: ^1.2.2
+  http: 1.6.0
 
   # 音声再生（VOICEVOX合成音声の再生）
-  audioplayers: ^6.1.0
+  audioplayers: 6.6.0
 
   # リアクティブストリーム（複数 segment 接続の合成・イベント配信）
   # N Air実装(NdgrCommentReceiver)がRxJS Subject/Observable相当を多用するため必要
   # dart:async の StreamController だけでは switchMap/mergeAll 等の演算子が得られない
-  rxdart: ^0.28.0
+  rxdart: 0.28.0
 
   # 設定永続化（読み上げエンジン選択・接続設定）
-  shared_preferences: ^2.3.3
+  shared_preferences: 2.5.5
 
   # WebView（ニコニコログイン画面でuser_sessionクッキー取得）
-  webview_flutter: ^4.10.0
+  webview_flutter: 4.13.1
 
   # 認証情報の暗号化保存（Android Keystore / iOS Keychain）
-  flutter_secure_storage: ^10.0.0
+  flutter_secure_storage: 10.0.0
 
   # コメントログのファイル保存先ディレクトリ取得
-  path_provider: ^2.1.0
+  path_provider: 2.1.5
 
   # コメントログの共有（Google Drive等の外部ストレージへの保存）
   share_plus: 12.0.2
@@ -50,7 +50,7 @@ dependencies:
 
   # Android Foreground Service（バックグラウンド接続維持・通知バー常駐表示）
   flutter_foreground_task: 9.2.2
-  wakelock_plus: ^1.2.8
+  wakelock_plus: 1.5.1
 
 dev_dependencies:
   flutter_test:
