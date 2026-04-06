@@ -817,7 +817,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   }
 
   /// Speaker style names for 春日部つむぎ and 波音リツ models.
-  static const Map<int, String> _otherSpeakerStyles = <int, String>{
+  static const Map<int, String> _additionalSpeakerStyles = <int, String>{
     8: 'ノーマル',
     9: 'ノーマル',
     65: 'クイーン',
@@ -834,7 +834,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
       }
       return 'Nemo | Unknown (ID:$speakerId)';
     }
-    final String? styleName = _otherSpeakerStyles[speakerId];
+    final String? styleName = _additionalSpeakerStyles[speakerId];
     if (styleName != null) {
       return '${model.displayName} | $styleName (ID:$speakerId)';
     }
@@ -1133,6 +1133,32 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                               }
                             },
                           ),
+                          if (widget.settingsStore.loadPreMuteVolume() != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.volume_mute,
+                                    size: 16,
+                                    color:
+                                        Theme.of(context).colorScheme.outline,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'コメント画面でミュート中です',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .outline,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           const SizedBox(height: 12),
                           Text(
                             _buildCreditText(settings.voicevoxSpeaker),

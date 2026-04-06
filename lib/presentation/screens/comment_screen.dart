@@ -995,6 +995,12 @@ class _CommentScreenState extends State<CommentScreen> {
                     onUnpin: _unpinMessage,
                     beginAt: widget.programInfo.beginAt,
                   ),
+                if (widget.speechSettings.enabled && widget.isSpeechMuted)
+                  _MuteBanner(
+                    key: const Key('mute-banner'),
+                    themeColors: themeColors,
+                    onTap: widget.onSpeechMuteToggled,
+                  ),
                 Expanded(
                   child: Stack(
                     children: <Widget>[
@@ -2858,6 +2864,47 @@ class _CommentRowState extends State<_CommentRow> {
 
   bool _isBroadcastEndedMessage(AppMessage message) {
     return message.id.startsWith(kSystemBroadcastEndedMessageIdPrefix);
+  }
+}
+
+class _MuteBanner extends StatelessWidget {
+  const _MuteBanner({
+    super.key,
+    required this.themeColors,
+    this.onTap,
+  });
+
+  final AppThemeColors themeColors;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        color: themeColors.statusConnected.withAlpha(25),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.volume_mute,
+              size: 16,
+              color: themeColors.statusConnected,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              'ミュート中（タップで解除）',
+              style: TextStyle(
+                fontSize: 12,
+                color: themeColors.statusConnected,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

@@ -9,6 +9,55 @@ import '../../comment_speech/comment_speech.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/voicevox_model_info.dart';
 
+/// Filters VOICEVOX TERMS.txt to keep only the common header sections and
+/// the individual speaker sections for the supported speakers.
+///
+/// Exported for testing. Not intended for general use outside this library.
+@visibleForTesting
+String filterTermsForSupportedSpeakers(
+  String fullText,
+  Set<String> supportedNames,
+) {
+  final lines = fullText.split('\n');
+  final buffer = StringBuffer();
+  bool inSpeakerSection = false;
+  bool keepCurrentSection = false;
+  bool passedSpeakerSections = false;
+
+  for (final line in lines) {
+    if (line == '# 音声ライブラリ利用規約') {
+      passedSpeakerSections = true;
+      buffer.writeln(line);
+      continue;
+    }
+
+    if (!passedSpeakerSections) {
+      buffer.writeln(line);
+      continue;
+    }
+
+    if (line.startsWith('## ')) {
+      final sectionName = line.substring(3).trim();
+      inSpeakerSection = true;
+      keepCurrentSection = supportedNames.contains(sectionName);
+      if (keepCurrentSection) {
+        buffer.writeln(line);
+      }
+      continue;
+    }
+
+    if (inSpeakerSection) {
+      if (keepCurrentSection) {
+        buffer.writeln(line);
+      }
+    } else {
+      buffer.writeln(line);
+    }
+  }
+
+  return buffer.toString().trimRight();
+}
+
 void _debugLogLazy(String Function() messageBuilder) {
   appDebugLogLazy(messageBuilder);
 }
@@ -385,57 +434,15 @@ class _VoicevoxTermsDialogState extends State<_VoicevoxTermsDialog> {
   static const Set<String> _supportedSpeakerNames =
       supportedVoicevoxSpeakerNames;
 
-  /// Filters TERMS.txt to keep only the common header sections and
-  /// the individual speaker sections for the supported speakers.
-  static String _filterTermsForSupportedSpeakers(String fullText) {
-    final lines = fullText.split('\n');
-    final buffer = StringBuffer();
-    bool inSpeakerSection = false;
-    bool keepCurrentSection = false;
-    bool passedSpeakerSections = false;
-
-    for (final line in lines) {
-      // Detect the start of the individual speaker rules area.
-      if (line == '# 音声ライブラリ利用規約') {
-        passedSpeakerSections = true;
-        buffer.writeln(line);
-        continue;
-      }
-
-      if (!passedSpeakerSections) {
-        buffer.writeln(line);
-        continue;
-      }
-
-      // Each speaker section starts with "## SpeakerName".
-      if (line.startsWith('## ')) {
-        final sectionName = line.substring(3).trim();
-        inSpeakerSection = true;
-        keepCurrentSection = _supportedSpeakerNames.contains(sectionName);
-        if (keepCurrentSection) {
-          buffer.writeln(line);
-        }
-        continue;
-      }
-
-      if (inSpeakerSection) {
-        if (keepCurrentSection) {
-          buffer.writeln(line);
-        }
-      } else {
-        buffer.writeln(line);
-      }
-    }
-
-    return buffer.toString().trimRight();
-  }
-
   Future<void> _loadTerms() async {
     try {
       final fullText = await rootBundle.loadString(
         'android/app/src/main/assets/voicevox_models/TERMS.txt',
       );
-      final text = _filterTermsForSupportedSpeakers(fullText);
+      final text = filterTermsForSupportedSpeakers(
+        fullText,
+        _supportedSpeakerNames,
+      );
       if (mounted) setState(() => _termsText = text);
       // After content is loaded and rendered, check if scrolling is needed.
       WidgetsBinding.instance.addPostFrameCallback((_) {
