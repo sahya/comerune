@@ -255,6 +255,7 @@ class AppSettings {
     required this.voicevoxPlayerType,
     required this.voicevoxTermsAccepted,
     required this.commentTwoLineEnabled,
+    required this.commentZebraStripingEnabled,
     required this.dictionaryRules,
     required this.debugMode,
   }) : assert(
@@ -303,6 +304,7 @@ class AppSettings {
     voicevoxPlayerType: VoicevoxPlayerType.audioTrack,
     voicevoxTermsAccepted: false,
     commentTwoLineEnabled: false,
+    commentZebraStripingEnabled: false,
     dictionaryRules: defaultNicoDictionaryRules,
     debugMode: false,
   );
@@ -371,6 +373,9 @@ class AppSettings {
 
   /// 横幅が狭い端末向けにコメントを二段表示するかどうか。
   final bool commentTwoLineEnabled;
+
+  /// コメント行にゼブラストライプ（偶数/奇数で背景色交互）を適用するかどうか。
+  final bool commentZebraStripingEnabled;
 
   /// 読み上げ時のテキスト置換ルール（ニコニコ用語辞書）。
   final List<ReplaceRule> dictionaryRules;
@@ -488,6 +493,7 @@ class AppSettings {
     VoicevoxPlayerType? voicevoxPlayerType,
     bool? voicevoxTermsAccepted,
     bool? commentTwoLineEnabled,
+    bool? commentZebraStripingEnabled,
     List<ReplaceRule>? dictionaryRules,
     bool? debugMode,
   }) {
@@ -541,6 +547,8 @@ class AppSettings {
           voicevoxTermsAccepted ?? this.voicevoxTermsAccepted,
       commentTwoLineEnabled:
           commentTwoLineEnabled ?? this.commentTwoLineEnabled,
+      commentZebraStripingEnabled:
+          commentZebraStripingEnabled ?? this.commentZebraStripingEnabled,
       dictionaryRules: dictionaryRules ?? this.dictionaryRules,
       debugMode: debugMode ?? this.debugMode,
     );
