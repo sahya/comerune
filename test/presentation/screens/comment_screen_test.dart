@@ -2340,6 +2340,130 @@ void main() {
         expect(elapsedFinder, findsOneWidget);
       },
     );
+
+    testWidgets('FAB is hidden when auto-scroll is enabled (initial state)', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final GlobalKey<_CommentScreenHostState> hostKey =
+          GlobalKey<_CommentScreenHostState>();
+
+      await tester.pumpWidget(
+        _CommentScreenHost(
+          key: hostKey,
+          supervisor: supervisor,
+          initialLv: 'lv-fab-hidden',
+          initialMessages: List<AppMessage>.generate(
+            40,
+            (int index) => _message(
+              id: 'fab-hidden-$index',
+              type: AppMessageType.chat,
+              content: 'comment-$index',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('scroll-to-latest-button')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('FAB is shown after scrolling away from latest', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final GlobalKey<_CommentScreenHostState> hostKey =
+          GlobalKey<_CommentScreenHostState>();
+
+      await tester.pumpWidget(
+        _CommentScreenHost(
+          key: hostKey,
+          supervisor: supervisor,
+          initialLv: 'lv-fab-shown',
+          initialMessages: List<AppMessage>.generate(
+            40,
+            (int index) => _message(
+              id: 'fab-shown-$index',
+              type: AppMessageType.chat,
+              content: 'comment-$index',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Scroll up (positive offset = scroll towards top).
+      await tester.drag(
+        find.byKey(const Key('comment-list')),
+        const Offset(0, 300),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('scroll-to-latest-button')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('tapping FAB scrolls to latest and hides FAB', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final GlobalKey<_CommentScreenHostState> hostKey =
+          GlobalKey<_CommentScreenHostState>();
+
+      await tester.pumpWidget(
+        _CommentScreenHost(
+          key: hostKey,
+          supervisor: supervisor,
+          initialLv: 'lv-fab-tap',
+          initialMessages: List<AppMessage>.generate(
+            40,
+            (int index) => _message(
+              id: 'fab-tap-$index',
+              type: AppMessageType.chat,
+              content: 'comment-$index',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Scroll up to show FAB.
+      await tester.drag(
+        find.byKey(const Key('comment-list')),
+        const Offset(0, 300),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('scroll-to-latest-button')),
+        findsOneWidget,
+      );
+
+      // Tap the FAB.
+      await tester.tap(find.byKey(const Key('scroll-to-latest-button')));
+      await tester.pumpAndSettle();
+
+      // FAB should be hidden after tapping.
+      expect(
+        find.byKey(const Key('scroll-to-latest-button')),
+        findsNothing,
+      );
+
+      // Verify scrolled back to the bottom.
+      final ListView listView = tester.widget(
+        find.byKey(const Key('comment-list')),
+      );
+      final ScrollController controller = listView.controller!;
+      expect(
+        (controller.position.maxScrollExtent - controller.offset).abs() < 2,
+        isTrue,
+      );
+    });
   });
 
   group('Comment timestamp elapsed display', () {
