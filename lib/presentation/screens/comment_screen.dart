@@ -1194,6 +1194,11 @@ class _CommentScreenState extends State<CommentScreen> {
         .toList(growable: false);
   }
 
+  /// Resolves the display name for a comment message.
+  ///
+  /// Priority: nickname (コテハン) > protobuf name > API-resolved name.
+  /// Keep in sync with [_resolveSpeechDisplayName] which follows the same
+  /// priority chain for TTS output.
   String? _resolveDisplayName(AppMessage message) {
     final String? userId = message.userId;
     // Nickname (コテハン) takes highest priority.
@@ -1209,6 +1214,10 @@ class _CommentScreenState extends State<CommentScreen> {
     return widget.userNameResolution?.resolve(userId);
   }
 
+  /// Resolves the display name for TTS speech output.
+  ///
+  /// Same priority as [_resolveDisplayName] but returns null when no name
+  /// is available (the caller decides what to speak in that case).
   String? _resolveSpeechDisplayName(AppMessage message) {
     final String? userId = message.userId;
     if (userId != null && userId.isNotEmpty) {

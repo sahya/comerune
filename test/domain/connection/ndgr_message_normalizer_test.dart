@@ -88,6 +88,30 @@ void main() {
       expect(normalized!.userName, isNull);
     });
 
+    test('preserves non-empty chat.name as userName', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-with-name',
+        serverTimestamp: serverTime,
+        chat: const NdgrChat(
+          content: 'hello',
+          name: 'テスト名',
+          rawUserId: 456,
+          no: 2,
+        ),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.userName, 'テスト名');
+    });
+
     test('returns null when chat content is empty', () {
       final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
 
