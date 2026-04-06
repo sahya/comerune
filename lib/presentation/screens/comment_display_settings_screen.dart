@@ -104,6 +104,22 @@ class _CommentDisplaySettingsScreenState
                             },
                           ),
                           SwitchListTile(
+                            key: const Key('comment-zebra-striping-switch'),
+                            title: const Text('行の明暗交互表示'),
+                            subtitle: const Text(
+                              'コメント行ごとに背景色を交互に変え視認性を向上',
+                            ),
+                            contentPadding: EdgeInsets.zero,
+                            value: settings.commentZebraStripingEnabled,
+                            onChanged: (bool value) {
+                              updateAndSave(
+                                settings.copyWith(
+                                  commentZebraStripingEnabled: value,
+                                ),
+                              );
+                            },
+                          ),
+                          SwitchListTile(
                             key: const Key('auto-save-comment-log-switch'),
                             title: const Text('コメントログ自動保存'),
                             subtitle: const Text('接続終了時にコメントをファイルに保存'),
