@@ -134,7 +134,7 @@ PR を作成する際、対応する Issue 番号がある場合は必ず PR の
 
 - キャレット（`^`）やチルダ（`~`）を使わず、exact version で指定する（例: `http: 1.6.0`）
 - 新しいパッケージを追加する際も、`flutter pub add` 後に `pubspec.yaml` のバージョン指定をピン留めに修正する
-- バージョンアップは `flutter pub upgrade --major-versions` で調査し、破壊的変更の影響を確認した上で明示的に実施する
+- バージョンアップは `flutter pub upgrade --major-versions` で調査し、破壊的変更の影響とセキュリティ監査（パブリッシャー検証・既知CVE確認）を実施した上で明示的に行う
 - `pubspec.lock` は `.gitignore` 対象のため、`pubspec.yaml` 側でバージョンを固定し環境間の一貫性を確保する
 
 ## Issue Lifecycle
