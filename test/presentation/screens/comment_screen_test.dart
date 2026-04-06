@@ -250,11 +250,12 @@ void main() {
 
         final Finder totalRow = find.byKey(const Key('stats-total-comments'));
         expect(totalRow, findsOneWidget);
-        final List<Text> totalRowTexts = tester
-            .widgetList<Text>(
-              find.descendant(of: totalRow, matching: find.byType(Text)),
-            )
-            .toList();
+        final List<Text> totalRowTexts =
+            tester
+                .widgetList<Text>(
+                  find.descendant(of: totalRow, matching: find.byType(Text)),
+                )
+                .toList();
         expect(totalRowTexts.last.data, '1');
       },
     );
@@ -655,19 +656,22 @@ void main() {
                     onPressed: () {
                       Navigator.of(context).push(
                         MaterialPageRoute<void>(
-                          builder: (_) => CommentScreen(
-                            programInfo: const CommentProgramInfo(
-                              lv: 'lv999',
-                            ),
-                            connectionSupervisor: supervisor,
-                            messages: const <AppMessage>[],
-                            onStopAllConnections: () async {
-                              stopCalls += 1;
-                            },
-                            onReconnectSameLv: () async {},
-                            onDifferentLvConnected: (_, __) async {},
-                            themeMode: AppThemeMode.light,
-                          ),
+                          builder:
+                              (_) => CommentScreen(
+                                programInfo: const CommentProgramInfo(
+                                  lv: 'lv999',
+                                ),
+                                connectionSupervisor: supervisor,
+                                messages: const <AppMessage>[],
+                                callbacks: CommentCallbacks(
+                                  onStopAllConnections: () async {
+                                    stopCalls += 1;
+                                  },
+                                  onReconnectSameLv: () async {},
+                                  onDifferentLvConnected: (_, __) async {},
+                                ),
+                                themeMode: AppThemeMode.light,
+                              ),
                         ),
                       );
                     },
@@ -2073,168 +2077,162 @@ void main() {
       },
     );
 
-    testWidgets(
-      'empty userName falls back to resolved username',
-      (WidgetTester tester) async {
-        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-        final List<AppMessage> messages = <AppMessage>[
-          AppMessage(
-            id: 'msg-empty-name',
-            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
-            userId: 'user-1',
-            userName: '',
-            content: 'テスト',
-            type: AppMessageType.chat,
-          ),
-        ];
+    testWidgets('empty userName falls back to resolved username', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-empty-name',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          userName: '',
+          content: 'テスト',
+          type: AppMessageType.chat,
+        ),
+      ];
 
-        await tester.pumpWidget(
-          _buildScreen(
-            supervisor: supervisor,
-            messages: messages,
-            resolveUserName: (_) => 'リゾルブ名',
-          ),
-        );
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          resolveUserName: (_) => 'リゾルブ名',
+        ),
+      );
 
-        expect(find.textContaining('リゾルブ名'), findsOneWidget);
-      },
-    );
+      expect(find.textContaining('リゾルブ名'), findsOneWidget);
+    });
 
-    testWidgets(
-      'empty userName with no resolution shows userId',
-      (WidgetTester tester) async {
-        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-        final List<AppMessage> messages = <AppMessage>[
-          AppMessage(
-            id: 'msg-empty-name-no-resolve',
-            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
-            userId: 'user-2',
-            userName: '',
-            content: 'テスト',
-            type: AppMessageType.chat,
-          ),
-        ];
+    testWidgets('empty userName with no resolution shows userId', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-empty-name-no-resolve',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-2',
+          userName: '',
+          content: 'テスト',
+          type: AppMessageType.chat,
+        ),
+      ];
 
-        await tester.pumpWidget(
-          _buildScreen(
-            supervisor: supervisor,
-            messages: messages,
-            resolveUserName: (_) => null,
-          ),
-        );
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          resolveUserName: (_) => null,
+        ),
+      );
 
-        expect(find.textContaining('user-2'), findsOneWidget);
-      },
-    );
+      expect(find.textContaining('user-2'), findsOneWidget);
+    });
 
-    testWidgets(
-      'empty nickname in map falls back to userName or resolution',
-      (WidgetTester tester) async {
-        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-        final List<AppMessage> messages = <AppMessage>[
-          AppMessage(
-            id: 'msg-empty-nickname',
-            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
-            userId: 'user-1',
-            content: 'テスト',
-            type: AppMessageType.chat,
-          ),
-        ];
+    testWidgets('empty nickname in map falls back to userName or resolution', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-empty-nickname',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: 'テスト',
+          type: AppMessageType.chat,
+        ),
+      ];
 
-        await tester.pumpWidget(
-          _buildScreen(
-            supervisor: supervisor,
-            messages: messages,
-            userNicknameMap: const <String, String>{'user-1': ''},
-            resolveUserName: (_) => 'API名',
-          ),
-        );
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          userNicknameMap: const <String, String>{'user-1': ''},
+          resolveUserName: (_) => 'API名',
+        ),
+      );
 
-        // Empty nickname should be skipped, API-resolved name shown instead.
-        expect(find.textContaining('API名'), findsOneWidget);
-      },
-    );
+      // Empty nickname should be skipped, API-resolved name shown instead.
+      expect(find.textContaining('API名'), findsOneWidget);
+    });
 
-    testWidgets(
-      'empty userId message shows content without user column',
-      (WidgetTester tester) async {
-        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-        final List<AppMessage> messages = <AppMessage>[
-          AppMessage(
-            id: 'msg-empty-userid',
-            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
-            userId: '',
-            content: 'テスト',
-            type: AppMessageType.chat,
-          ),
-        ];
+    testWidgets('empty userId message shows content without user column', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-empty-userid',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: '',
+          content: 'テスト',
+          type: AppMessageType.chat,
+        ),
+      ];
 
-        await tester.pumpWidget(
-          _buildScreen(
-            supervisor: supervisor,
-            messages: messages,
-            resolveUserName: (_) => 'API名',
-          ),
-        );
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          resolveUserName: (_) => 'API名',
+        ),
+      );
 
-        // Empty userId: should not show username column at all.
-        expect(find.textContaining('API名'), findsNothing);
-      },
-    );
+      // Empty userId: should not show username column at all.
+      expect(find.textContaining('API名'), findsNothing);
+    });
 
-    testWidgets(
-      'null userName with valid userId falls back to resolved name',
-      (WidgetTester tester) async {
-        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-        final List<AppMessage> messages = <AppMessage>[
-          AppMessage(
-            id: 'msg-null-name',
-            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
-            userId: 'user-3',
-            content: 'テスト',
-            type: AppMessageType.chat,
-          ),
-        ];
+    testWidgets('null userName with valid userId falls back to resolved name', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-null-name',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-3',
+          content: 'テスト',
+          type: AppMessageType.chat,
+        ),
+      ];
 
-        await tester.pumpWidget(
-          _buildScreen(
-            supervisor: supervisor,
-            messages: messages,
-            resolveUserName: (_) => 'リゾルブ名',
-          ),
-        );
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          resolveUserName: (_) => 'リゾルブ名',
+        ),
+      );
 
-        expect(find.textContaining('リゾルブ名'), findsOneWidget);
-      },
-    );
+      expect(find.textContaining('リゾルブ名'), findsOneWidget);
+    });
 
-    testWidgets(
-      'empty resolve result falls back gracefully',
-      (WidgetTester tester) async {
-        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-        final List<AppMessage> messages = <AppMessage>[
-          AppMessage(
-            id: 'msg-empty-resolve',
-            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
-            userId: 'user-4',
-            content: 'テスト',
-            type: AppMessageType.chat,
-          ),
-        ];
+    testWidgets('empty resolve result falls back gracefully', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-empty-resolve',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-4',
+          content: 'テスト',
+          type: AppMessageType.chat,
+        ),
+      ];
 
-        await tester.pumpWidget(
-          _buildScreen(
-            supervisor: supervisor,
-            messages: messages,
-            resolveUserName: (_) => '',
-          ),
-        );
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          resolveUserName: (_) => '',
+        ),
+      );
 
-        // Empty resolve result should not be displayed as name.
-        // userId should be shown instead.
-        expect(find.textContaining('user-4'), findsOneWidget);
-      },
-    );
+      // Empty resolve result should not be displayed as name.
+      // userId should be shown instead.
+      expect(find.textContaining('user-4'), findsOneWidget);
+    });
 
     testWidgets(
       'null userName and null userId shows content without user column',
@@ -2262,63 +2260,61 @@ void main() {
       },
     );
 
-    testWidgets(
-      'valid userName without nickname shows userName directly',
-      (WidgetTester tester) async {
-        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-        final List<AppMessage> messages = <AppMessage>[
-          AppMessage(
-            id: 'msg-valid-name-no-nick',
-            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
-            userId: 'user-1',
-            userName: 'プロトバフ名',
-            content: 'テスト',
-            type: AppMessageType.chat,
-          ),
-        ];
+    testWidgets('valid userName without nickname shows userName directly', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-valid-name-no-nick',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-1',
+          userName: 'プロトバフ名',
+          content: 'テスト',
+          type: AppMessageType.chat,
+        ),
+      ];
 
-        await tester.pumpWidget(
-          _buildScreen(
-            supervisor: supervisor,
-            messages: messages,
-            resolveUserName: (_) => 'リゾルブ名',
-          ),
-        );
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          resolveUserName: (_) => 'リゾルブ名',
+        ),
+      );
 
-        // userName should be shown; resolve should not be needed.
-        expect(find.textContaining('プロトバフ名'), findsOneWidget);
-        expect(find.textContaining('リゾルブ名'), findsNothing);
-      },
-    );
+      // userName should be shown; resolve should not be needed.
+      expect(find.textContaining('プロトバフ名'), findsOneWidget);
+      expect(find.textContaining('リゾルブ名'), findsNothing);
+    });
 
-    testWidgets(
-      'valid userName with empty userId does not show user column',
-      (WidgetTester tester) async {
-        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-        final List<AppMessage> messages = <AppMessage>[
-          AppMessage(
-            id: 'msg-name-empty-userid',
-            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
-            userId: '',
-            userName: 'プロトバフ名',
-            content: 'テスト',
-            type: AppMessageType.chat,
-          ),
-        ];
+    testWidgets('valid userName with empty userId does not show user column', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-name-empty-userid',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: '',
+          userName: 'プロトバフ名',
+          content: 'テスト',
+          type: AppMessageType.chat,
+        ),
+      ];
 
-        await tester.pumpWidget(
-          _buildScreen(
-            supervisor: supervisor,
-            messages: messages,
-            resolveUserName: (_) => 'リゾルブ名',
-          ),
-        );
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          resolveUserName: (_) => 'リゾルブ名',
+        ),
+      );
 
-        // Empty userId: widget skips user column entirely regardless of userName.
-        expect(find.textContaining('プロトバフ名'), findsNothing);
-        expect(find.textContaining('リゾルブ名'), findsNothing);
-      },
-    );
+      // Empty userId: widget skips user column entirely regardless of userName.
+      expect(find.textContaining('プロトバフ名'), findsNothing);
+      expect(find.textContaining('リゾルブ名'), findsNothing);
+    });
 
     testWidgets(
       'all empty strings: empty userName, empty userId, empty resolve',
@@ -2641,10 +2637,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const Key('scroll-to-latest-button')),
-        findsNothing,
-      );
+      expect(find.byKey(const Key('scroll-to-latest-button')), findsNothing);
     });
 
     testWidgets('FAB is shown after scrolling away from latest', (
@@ -2678,10 +2671,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const Key('scroll-to-latest-button')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('scroll-to-latest-button')), findsOneWidget);
     });
 
     testWidgets('tapping FAB scrolls to latest and hides FAB', (
@@ -2715,20 +2705,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const Key('scroll-to-latest-button')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('scroll-to-latest-button')), findsOneWidget);
 
       // Tap the FAB.
       await tester.tap(find.byKey(const Key('scroll-to-latest-button')));
       await tester.pumpAndSettle();
 
       // FAB should be hidden after tapping.
-      expect(
-        find.byKey(const Key('scroll-to-latest-button')),
-        findsNothing,
-      );
+      expect(find.byKey(const Key('scroll-to-latest-button')), findsNothing);
 
       // Verify scrolled back to the bottom.
       final ListView listView = tester.widget(
@@ -2741,93 +2725,91 @@ void main() {
       );
     });
 
-    testWidgets(
-      'FAB shows arrow_downward icon in ascending sort order',
-      (WidgetTester tester) async {
-        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-        final GlobalKey<_CommentScreenHostState> hostKey =
-            GlobalKey<_CommentScreenHostState>();
+    testWidgets('FAB shows arrow_downward icon in ascending sort order', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final GlobalKey<_CommentScreenHostState> hostKey =
+          GlobalKey<_CommentScreenHostState>();
 
-        await tester.pumpWidget(
-          _CommentScreenHost(
-            key: hostKey,
-            supervisor: supervisor,
-            initialLv: 'lv-fab-icon-asc',
-            initialMessages: List<AppMessage>.generate(
-              40,
-              (int index) => _message(
-                id: 'fab-icon-asc-$index',
-                type: AppMessageType.chat,
-                content: 'comment-$index',
-              ),
+      await tester.pumpWidget(
+        _CommentScreenHost(
+          key: hostKey,
+          supervisor: supervisor,
+          initialLv: 'lv-fab-icon-asc',
+          initialMessages: List<AppMessage>.generate(
+            40,
+            (int index) => _message(
+              id: 'fab-icon-asc-$index',
+              type: AppMessageType.chat,
+              content: 'comment-$index',
             ),
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // Scroll up to disable auto-scroll and show the FAB.
-        await tester.drag(
-          find.byKey(const Key('comment-list')),
-          const Offset(0, 300),
-        );
-        await tester.pumpAndSettle();
+      // Scroll up to disable auto-scroll and show the FAB.
+      await tester.drag(
+        find.byKey(const Key('comment-list')),
+        const Offset(0, 300),
+      );
+      await tester.pumpAndSettle();
 
-        // In ascending order (default), FAB should show arrow_downward.
-        final Icon icon = tester.widget(
-          find.descendant(
-            of: find.byKey(const Key('scroll-to-latest-button')),
-            matching: find.byType(Icon),
-          ),
-        );
-        expect(icon.icon, Icons.arrow_downward);
-      },
-    );
+      // In ascending order (default), FAB should show arrow_downward.
+      final Icon icon = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('scroll-to-latest-button')),
+          matching: find.byType(Icon),
+        ),
+      );
+      expect(icon.icon, Icons.arrow_downward);
+    });
 
-    testWidgets(
-      'FAB shows arrow_upward icon in descending sort order',
-      (WidgetTester tester) async {
-        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-        final GlobalKey<_CommentScreenHostState> hostKey =
-            GlobalKey<_CommentScreenHostState>();
+    testWidgets('FAB shows arrow_upward icon in descending sort order', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final GlobalKey<_CommentScreenHostState> hostKey =
+          GlobalKey<_CommentScreenHostState>();
 
-        await tester.pumpWidget(
-          _CommentScreenHost(
-            key: hostKey,
-            supervisor: supervisor,
-            initialLv: 'lv-fab-icon-desc',
-            initialMessages: List<AppMessage>.generate(
-              40,
-              (int index) => _message(
-                id: 'fab-icon-desc-$index',
-                type: AppMessageType.chat,
-                content: 'comment-$index',
-              ),
+      await tester.pumpWidget(
+        _CommentScreenHost(
+          key: hostKey,
+          supervisor: supervisor,
+          initialLv: 'lv-fab-icon-desc',
+          initialMessages: List<AppMessage>.generate(
+            40,
+            (int index) => _message(
+              id: 'fab-icon-desc-$index',
+              type: AppMessageType.chat,
+              content: 'comment-$index',
             ),
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // Toggle sort order to descending.
-        await tester.tap(find.byKey(const Key('sort-toggle-button')));
-        await tester.pumpAndSettle();
+      // Toggle sort order to descending.
+      await tester.tap(find.byKey(const Key('sort-toggle-button')));
+      await tester.pumpAndSettle();
 
-        // Scroll down to disable auto-scroll and show the FAB.
-        await tester.drag(
-          find.byKey(const Key('comment-list')),
-          const Offset(0, -300),
-        );
-        await tester.pumpAndSettle();
+      // Scroll down to disable auto-scroll and show the FAB.
+      await tester.drag(
+        find.byKey(const Key('comment-list')),
+        const Offset(0, -300),
+      );
+      await tester.pumpAndSettle();
 
-        // In descending order, FAB should show arrow_upward.
-        final Icon icon = tester.widget(
-          find.descendant(
-            of: find.byKey(const Key('scroll-to-latest-button')),
-            matching: find.byType(Icon),
-          ),
-        );
-        expect(icon.icon, Icons.arrow_upward);
-      },
-    );
+      // In descending order, FAB should show arrow_upward.
+      final Icon icon = tester.widget(
+        find.descendant(
+          of: find.byKey(const Key('scroll-to-latest-button')),
+          matching: find.byType(Icon),
+        ),
+      );
+      expect(icon.icon, Icons.arrow_upward);
+    });
   });
 
   group('Comment timestamp elapsed display', () {
@@ -2958,18 +2940,20 @@ class _NicknameCommentScreenHostState
         programInfo: const CommentProgramInfo(lv: 'lv123'),
         connectionSupervisor: widget.supervisor,
         messages: _messages,
-        onStopAllConnections: () async {},
-        onReconnectSameLv: () async {},
-        onDifferentLvConnected: (_, __) async {},
+        callbacks: CommentCallbacks(
+          onStopAllConnections: () async {},
+          onReconnectSameLv: () async {},
+          onDifferentLvConnected: (_, __) async {},
+          onNicknameChanged: (String userId, String nickname) {
+            lastNicknameUserId = userId;
+            lastNickname = nickname;
+          },
+          onNicknameRemoved: (String userId) {
+            lastRemovedUserId = userId;
+            lastNickname = null;
+          },
+        ),
         autoNicknameRegistration: widget.autoNicknameRegistration,
-        onNicknameChanged: (String userId, String nickname) {
-          lastNicknameUserId = userId;
-          lastNickname = nickname;
-        },
-        onNicknameRemoved: (String userId) {
-          lastRemovedUserId = userId;
-          lastNickname = null;
-        },
         themeMode: AppThemeMode.light,
       ),
     );
@@ -3034,14 +3018,18 @@ class _CommentScreenHostState extends State<_CommentScreenHost> {
         programInfo: CommentProgramInfo(lv: _lv),
         connectionSupervisor: widget.supervisor,
         messages: _messages,
-        onStopAllConnections: () async {},
-        onReconnectSameLv: () async {},
-        onDifferentLvConnected: (String previous, String next) async {
-          differentLvCallbackCount += 1;
-          previousLv = previous;
-          nextLv = next;
-        },
-        starPrefixHidingEnabled: widget.starPrefixHidingEnabled,
+        callbacks: CommentCallbacks(
+          onStopAllConnections: () async {},
+          onReconnectSameLv: () async {},
+          onDifferentLvConnected: (String previous, String next) async {
+            differentLvCallbackCount += 1;
+            previousLv = previous;
+            nextLv = next;
+          },
+        ),
+        filterConfig: CommentFilterConfig(
+          starPrefixHidingEnabled: widget.starPrefixHidingEnabled,
+        ),
         themeMode: AppThemeMode.light,
       ),
     );
@@ -3079,13 +3067,14 @@ Widget _buildScreen({
   bool autoSaveCommentLog = false,
   String autoSaveCommentLogPath = '',
 }) {
-  final UserNameResolution? userNameResolution = resolveUserName == null
-      ? null
-      : UserNameResolution(
-          resolve: resolveUserName,
-          requestResolve: (_) {},
-          listenable: _NoopListenable.instance,
-        );
+  final UserNameResolution? userNameResolution =
+      resolveUserName == null
+          ? null
+          : UserNameResolution(
+            resolve: resolveUserName,
+            requestResolve: (_) {},
+            listenable: _NoopListenable.instance,
+          );
 
   return MaterialApp(
     home: CommentScreen(
@@ -3099,19 +3088,15 @@ Widget _buildScreen({
       ),
       connectionSupervisor: supervisor,
       messages: messages,
-      onStopAllConnections: onStopAllConnections ?? () async {},
-      onReconnectSameLv: onReconnectSameLv ?? () async {},
-      onDifferentLvConnected: (_, __) async {},
-      onOpenSettings: onOpenSettings,
+      callbacks: CommentCallbacks(
+        onStopAllConnections: onStopAllConnections ?? () async {},
+        onReconnectSameLv: onReconnectSameLv ?? () async {},
+        onDifferentLvConnected: (_, __) async {},
+        onOpenSettings: onOpenSettings,
+      ),
       debugMode: debugMode,
       userNameResolution: userNameResolution,
       commentFontSize: commentFontSize,
-      ngUserIds: ngUserIds,
-      ngWords: ngWords,
-      presetNgWords: presetNgWords,
-      userColorMap: userColorMap,
-      userNicknameMap: userNicknameMap,
-      starPrefixHidingEnabled: starPrefixHidingEnabled,
       themeMode: AppThemeMode.light,
       statistics: CommentStatisticsConfig(
         enabled: statisticsEnabled,
@@ -3121,9 +3106,19 @@ Widget _buildScreen({
         totalCommentCount: totalCommentCount,
         activeUserCount: activeUserCount,
       ),
-      commentLogWriter: commentLogWriter,
-      autoSaveCommentLog: autoSaveCommentLog,
-      autoSaveCommentLogPath: autoSaveCommentLogPath,
+      filterConfig: CommentFilterConfig(
+        ngUserIds: ngUserIds,
+        ngWords: ngWords,
+        presetNgWords: presetNgWords,
+        userColorMap: userColorMap,
+        userNicknameMap: userNicknameMap,
+        starPrefixHidingEnabled: starPrefixHidingEnabled,
+      ),
+      logConfig: CommentLogConfig(
+        commentLogWriter: commentLogWriter,
+        autoSaveCommentLog: autoSaveCommentLog,
+        autoSaveCommentLogPath: autoSaveCommentLogPath,
+      ),
     ),
   );
 }
