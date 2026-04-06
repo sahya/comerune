@@ -955,6 +955,114 @@ void main() {
       expect(fakePlatform.stopCalled, isFalse);
     });
   });
+
+  group('mute toggle', () {
+    late FakeCommentSpeechPlatform fakePlatform;
+
+    setUp(() {
+      fakePlatform = FakeCommentSpeechPlatform();
+      fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+        enabled: true,
+        engineState: 'READY',
+        playerState: 'IDLE',
+        queueSize: 0,
+        currentSpeakerId: 0,
+      );
+    });
+
+    tearDown(() {
+      fakePlatform.dispose();
+    });
+
+    testWidgets('muted icon shows volume_mute when isSpeechMuted is true', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          isSpeechMuted: true,
+          onSpeechMuteToggled: () {},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final Icon icon = tester.widget<Icon>(
+        find.descendant(
+          of: find.byKey(const Key('speech-status-icon')),
+          matching: find.byType(Icon),
+        ),
+      );
+      expect(icon.icon, Icons.volume_mute);
+    });
+
+    testWidgets('non-muted icon shows volume_up when isSpeechMuted is false', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          isSpeechMuted: false,
+          onSpeechMuteToggled: () {},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final Icon icon = tester.widget<Icon>(
+        find.descendant(
+          of: find.byKey(const Key('speech-status-icon')),
+          matching: find.byType(Icon),
+        ),
+      );
+      expect(icon.icon, Icons.volume_up);
+    });
+
+    testWidgets(
+        'tapping mute icon calls onSpeechMuteToggled and shows snackbar', (
+      WidgetTester tester,
+    ) async {
+      bool toggled = false;
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          isSpeechMuted: false,
+          onSpeechMuteToggled: () => toggled = true,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('speech-status-icon')));
+      await tester.pump();
+
+      expect(toggled, isTrue);
+      expect(find.text('ミュートしました'), findsOneWidget);
+    });
+
+    testWidgets('icon is not tappable when onSpeechMuteToggled is null', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          isSpeechMuted: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // When onSpeechMuteToggled is null, the icon should be a Tooltip
+      // (non-tappable), not an IconButton.
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('speech-status-icon')),
+          matching: find.byType(IconButton),
+        ),
+        findsNothing,
+      );
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -975,6 +1083,8 @@ class _SpeechTestHost extends StatefulWidget {
     this.userNicknameMap = const <String, String>{},
     this.resolveUserName,
     this.requestUserNameResolve,
+    this.isSpeechMuted = false,
+    this.onSpeechMuteToggled,
   });
 
   final List<AppMessage> initialMessages;
@@ -988,6 +1098,8 @@ class _SpeechTestHost extends StatefulWidget {
   final Map<String, String> userNicknameMap;
   final String? Function(String userId)? resolveUserName;
   final void Function(String userId)? requestUserNameResolve;
+  final bool isSpeechMuted;
+  final VoidCallback? onSpeechMuteToggled;
 
   @override
   State<_SpeechTestHost> createState() => _SpeechTestHostState();
@@ -1054,6 +1166,8 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
       readUserName: widget.readUserName,
       userNicknameMap: widget.userNicknameMap,
       userNameResolution: userNameResolution,
+      isSpeechMuted: widget.isSpeechMuted,
+      onSpeechMuteToggled: widget.onSpeechMuteToggled,
     );
   }
 }
@@ -1070,6 +1184,8 @@ Widget _buildScreen({
   Map<String, String> userNicknameMap = const <String, String>{},
   String? Function(String userId)? resolveUserName,
   void Function(String userId)? requestUserNameResolve,
+  bool isSpeechMuted = false,
+  VoidCallback? onSpeechMuteToggled,
 }) {
   return MaterialApp(
     home: _SpeechTestHost(
@@ -1084,6 +1200,8 @@ Widget _buildScreen({
       userNicknameMap: userNicknameMap,
       resolveUserName: resolveUserName,
       requestUserNameResolve: requestUserNameResolve,
+      isSpeechMuted: isSpeechMuted,
+      onSpeechMuteToggled: onSpeechMuteToggled,
     ),
   );
 }

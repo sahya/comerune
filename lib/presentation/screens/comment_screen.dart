@@ -132,6 +132,8 @@ class CommentScreen extends StatefulWidget {
     this.readUserName = false,
     this.settingsStore,
     this.onDictionaryRulesChanged,
+    this.onSpeechMuteToggled,
+    this.isSpeechMuted = false,
   });
 
   /// Program-level metadata (lv, title, broadcaster info, etc.).
@@ -215,6 +217,12 @@ class CommentScreen extends StatefulWidget {
 
   /// Called when dictionary rules are updated by a teach/unteach command.
   final void Function(AppSettings updated)? onDictionaryRulesChanged;
+
+  /// Called when the user taps the speech status icon to toggle mute.
+  final VoidCallback? onSpeechMuteToggled;
+
+  /// Whether the speech output is currently muted.
+  final bool isSpeechMuted;
 
   @override
   State<CommentScreen> createState() => _CommentScreenState();
@@ -911,7 +919,9 @@ class _CommentScreenState extends State<CommentScreen> {
                     engineState: _speechEngineState,
                     isStarted: _speechStarted,
                     isInitialized: _speechInitialized,
+                    isMuted: widget.isSpeechMuted,
                     themeColors: themeColors,
+                    onTap: widget.onSpeechMuteToggled,
                   ),
                 if (widget.commentLogWriter != null)
                   IconButton(
@@ -984,6 +994,12 @@ class _CommentScreenState extends State<CommentScreen> {
                     userColorMap: widget.userColorMap,
                     onUnpin: _unpinMessage,
                     beginAt: widget.programInfo.beginAt,
+                  ),
+                if (widget.speechSettings.enabled && widget.isSpeechMuted)
+                  _MuteBanner(
+                    key: const Key('mute-banner'),
+                    themeColors: themeColors,
+                    onTap: widget.onSpeechMuteToggled,
                   ),
                 Expanded(
                   child: Stack(
@@ -2851,19 +2867,64 @@ class _CommentRowState extends State<_CommentRow> {
   }
 }
 
+class _MuteBanner extends StatelessWidget {
+  const _MuteBanner({
+    super.key,
+    required this.themeColors,
+    this.onTap,
+  });
+
+  final AppThemeColors themeColors;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        color: themeColors.statusConnected.withAlpha(25),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.volume_mute,
+              size: 16,
+              color: themeColors.statusConnected,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              'ミュート中（タップで解除）',
+              style: TextStyle(
+                fontSize: 12,
+                color: themeColors.statusConnected,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _SpeechStatusIcon extends StatelessWidget {
   const _SpeechStatusIcon({
     super.key,
     required this.engineState,
     required this.isStarted,
     required this.isInitialized,
+    required this.isMuted,
     required this.themeColors,
+    this.onTap,
   });
 
   final String engineState;
   final bool isStarted;
   final bool isInitialized;
+  final bool isMuted;
   final AppThemeColors themeColors;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -2876,24 +2937,62 @@ class _SpeechStatusIcon extends StatelessWidget {
       color = themeColors.subtleTextColor;
       tooltip = '読み上げ: 初期化中';
     } else if (!isStarted) {
-      icon = Icons.volume_off;
+      icon = Icons.pause_circle_outline;
       color = themeColors.subtleTextColor;
       tooltip = '読み上げ: 停止中';
     } else if (engineState == 'ERROR') {
-      icon = Icons.volume_off;
+      icon = Icons.error_outline;
       color = themeColors.statusDisconnected;
       tooltip = '読み上げ: エラー';
+    } else if (isMuted) {
+      icon = Icons.volume_mute;
+      color = themeColors.statusConnected;
+      tooltip = 'ミュート解除';
     } else {
       icon = Icons.volume_up;
       color = themeColors.statusConnected;
-      tooltip = '読み上げ: 準備完了';
+      tooltip = 'ミュート';
     }
 
-    return Tooltip(
-      message: tooltip,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Icon(icon, size: 20, color: color),
+    final bool canToggleMute =
+        isInitialized && isStarted && engineState != 'ERROR';
+
+    if (canToggleMute && onTap != null) {
+      return Semantics(
+        label: isMuted ? '読み上げミュート中' : '読み上げ有効',
+        button: true,
+        enabled: true,
+        child: IconButton(
+          icon: Icon(icon, size: 24, color: color),
+          tooltip: tooltip,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+          onPressed: () {
+            onTap!();
+            HapticFeedback.lightImpact();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(isMuted ? 'ミュート解除しました' : 'ミュートしました'),
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          },
+        ),
+      );
+    }
+
+    return Semantics(
+      label: tooltip,
+      enabled: false,
+      child: Tooltip(
+        message: tooltip,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Opacity(
+            opacity: 0.5,
+            child: Icon(icon, size: 24, color: color),
+          ),
+        ),
       ),
     );
   }
