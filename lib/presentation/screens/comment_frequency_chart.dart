@@ -2,8 +2,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../widgets/empty_state_message.dart';
-
 /// A bar chart that visualises per-minute comment frequency.
 ///
 /// Each bar represents one minute offset from broadcast start. Tapping a bar
@@ -43,7 +41,13 @@ class CommentFrequencyChart extends StatelessWidget {
     if (commentsPerMinute.isEmpty) {
       return SizedBox(
         height: height,
-        child: const EmptyStateMessage(message: 'データなし'),
+        child: const Center(
+          child: Text(
+            'データなし',
+            style: TextStyle(fontSize: 14),
+            textAlign: TextAlign.center,
+          ),
+        ),
       );
     }
 
