@@ -6,6 +6,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -159,6 +160,64 @@ class SpeechControllerPipelineTest {
             "Expected at least 3 synthesize calls (normal + prefetch fail + fallback)",
             engine.synthesizeCount.get() >= 3
         )
+    }
+
+    @Test
+    fun `chunked pipeline prefetch uses captured item not second peek`() = runBlocking {
+        // Regression test for Bug #5: processChunkedPipeline must pass the
+        // SpeechQueueItem returned by startPrefetch() directly to collectPrefetch(),
+        // rather than re-peeking the queue after the loop. If re-peeking happened,
+        // the second peek could see null (because the worker already polled the
+        // item) and the prefetch result would be discarded.
+
+        val baseQueue = InMemorySpeechQueueManager(maxSize = 20)
+        val peekQueue = PeekCountingQueueManager(baseQueue)
+        // Make the 2nd peek return null to simulate the race condition where the
+        // worker has already polled the next item before a hypothetical re-peek.
+        // peek #1 = startPrefetch inside processChunkedPipeline (returns item 2)
+        // peek #2 = if the old code re-peeked here, it would get null
+        peekQueue.returnNullOnNthPeek = 2
+
+        val localController = SpeechControllerImpl(
+            normalizer = normalizer,
+            queueManager = peekQueue,
+            engine = engine,
+            player = player,
+            settingsRepository = settings,
+            eventEmitter = emitter,
+            dispatcher = Dispatchers.Default,
+            synthesisDispatcher = Dispatchers.Default
+        )
+
+        try {
+            localController.initialize()
+            localController.start()
+
+            // Item 1 is a chunked comment (triggers processChunkedPipeline).
+            // Item 2 is a short comment that should benefit from prefetch.
+            localController.submitComment(
+                rawComment("1", "でも岩国は今豪雨らしいからこれぐらいの雨でまだよかったよ")
+            )
+            localController.submitComment(rawComment("2", "次"))
+
+            delay(1500)
+
+            // Both items must complete successfully.
+            val completedEvents = emitter.eventsOfType("speech_completed")
+            assertEquals(
+                "Both comments should complete even when 2nd peek returns null",
+                2,
+                completedEvents.size
+            )
+
+            // Verify that peek was called (startPrefetch uses peek internally).
+            assertTrue(
+                "startPrefetch should have called peek at least once",
+                peekQueue.peekCount.get() >= 1
+            )
+        } finally {
+            localController.release()
+        }
     }
 
     @Test

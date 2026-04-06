@@ -65,7 +65,7 @@ class SpeechSettings {
   const SpeechSettings({
     this.enabled = true,
     this.synthesisMode = SynthesisMode.audioQuery,
-    this.speakerId = 10000, // VOICEVOX Nemo・男声2（UI の voicevoxSpeaker と同期）
+    this.speakerId = 10004, // VOICEVOX Nemo・女声3（UI の voicevoxSpeaker と同期）
     this.speedScale = 1.15,
     this.pitchScale = 0.0,
     this.intonationScale = 1.0,
