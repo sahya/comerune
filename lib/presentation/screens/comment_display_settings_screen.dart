@@ -92,7 +92,9 @@ class _CommentDisplaySettingsScreenState
                           SwitchListTile(
                             key: const Key('comment-two-line-switch'),
                             title: const Text('コメント二段表示'),
-                            subtitle: const Text('横幅が狭い端末向けに時刻とコメントを2行に分割'),
+                            subtitle: const Text(
+                              '時刻とユーザー名を1行目、コメント本文を2行目に表示',
+                            ),
                             contentPadding: EdgeInsets.zero,
                             value: settings.commentTwoLineEnabled,
                             onChanged: (bool value) {

@@ -2804,7 +2804,11 @@ class _CommentRowState extends State<_CommentRow> {
     final double idFontSize =
         hidden ? fontSize : (fontSize * 0.9).clamp(minSubFontSize, fontSize);
 
-    if (widget.commentTwoLineEnabled) {
+    // Two-line mode is only useful when the username is shown (line 1 holds
+    // timestamp + username). When the username column is hidden, the first
+    // line would contain only a timestamp, wasting vertical space – so fall
+    // back to single-line rendering.
+    if (widget.commentTwoLineEnabled && widget.showUserName) {
       return _buildTwoLineComment(
         timestamp: timestamp,
         content: content,
@@ -2912,8 +2916,9 @@ class _CommentRowState extends State<_CommentRow> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text.rich(TextSpan(children: metaSpans)),
+        const SizedBox(height: 2),
         Padding(
-          padding: const EdgeInsets.only(left: 8),
+          padding: const EdgeInsets.only(left: 16),
           child: Text(
             content,
             style: TextStyle(
