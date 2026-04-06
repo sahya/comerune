@@ -1200,7 +1200,7 @@ class _CommentScreenState extends State<CommentScreen> {
     if (userId != null && widget.userNicknameMap.containsKey(userId)) {
       return widget.userNicknameMap[userId];
     }
-    if (message.userName != null) {
+    if (message.userName != null && message.userName!.isNotEmpty) {
       return message.userName;
     }
     if (userId == null) {

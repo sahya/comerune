@@ -2073,6 +2073,60 @@ void main() {
       },
     );
 
+    testWidgets(
+      'empty userName falls back to resolved username',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          AppMessage(
+            id: 'msg-empty-name',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'user-1',
+            userName: '',
+            content: 'テスト',
+            type: AppMessageType.chat,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            resolveUserName: (_) => 'リゾルブ名',
+          ),
+        );
+
+        expect(find.textContaining('リゾルブ名'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'empty userName with no resolution shows userId',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          AppMessage(
+            id: 'msg-empty-name-no-resolve',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'user-2',
+            userName: '',
+            content: 'テスト',
+            type: AppMessageType.chat,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            resolveUserName: (_) => null,
+          ),
+        );
+
+        expect(find.textContaining('user-2'), findsOneWidget);
+      },
+    );
+
     testWidgets('@name comment triggers onNicknameChanged callback', (
       WidgetTester tester,
     ) async {
