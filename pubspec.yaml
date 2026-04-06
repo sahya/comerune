@@ -43,19 +43,20 @@ dependencies:
   path_provider: ^2.1.0
 
   # コメントログの共有（Google Drive等の外部ストレージへの保存）
-  share_plus: ^10.0.0
+  share_plus: ^12.0.2
 
   # コメントログ自動保存先のディレクトリ選択
-  file_picker: 10.3.10
+  file_picker: ^11.0.1
 
   # Android Foreground Service（バックグラウンド接続維持・通知バー常駐表示）
-  flutter_foreground_task: ^8.13.3
+  flutter_foreground_task: ^9.2.2
   wakelock_plus: ^1.2.8
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^4.0.0
+  flutter_lints: ^6.0.0
+  fake_async: ^1.3.1
 
 flutter:
   uses-material-design: true

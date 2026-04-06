@@ -432,13 +432,13 @@ String userFacingBroadcastError(
     case 'UNAUTHORIZED':
       return 'ログインが必要です';
     case 'FORBIDDEN':
-      return '放送の${operation}権限がありません';
+      return '放送の$operation権限がありません';
     case 'NOT_FOUND':
       return '番組が見つかりません';
     case 'NETWORK_ERROR':
       return 'ネットワークエラーが発生しました';
     default:
-      return '放送の${operation}に失敗しました';
+      return '放送の$operationに失敗しました';
   }
 }
 

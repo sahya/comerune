@@ -98,7 +98,7 @@ void main() {
         idGenerator: _sequentialIdGenerator(),
       );
 
-      final String rawJson =
+      const String rawJson =
           '{"ping":"pong","token":"secret-value","safe":"ok"}';
       final AppMessage? message = normalizer.normalizeLegacyJson(rawJson);
 
