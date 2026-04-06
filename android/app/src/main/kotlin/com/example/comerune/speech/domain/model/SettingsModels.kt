@@ -32,7 +32,7 @@ enum class SynthesisMode {
 data class SpeechSettings(
     val enabled: Boolean = true,
     val synthesisMode: SynthesisMode = SynthesisMode.AUDIO_QUERY,
-    val speakerId: Int = 10000, // VOICEVOX Nemo・男声2（AppSettings.voicevoxSpeaker と同期）
+    val speakerId: Int = 10004, // VOICEVOX Nemo・女声3（AppSettings.voicevoxSpeaker と同期）
     val speedScale: Float = 1.15f,
     val pitchScale: Float = 0.0f,
     val intonationScale: Float = 1.0f,
