@@ -218,6 +218,28 @@ void main() {
     });
   });
 
+  group('commentZebraStripingEnabled', () {
+    test('defaults to false', () {
+      expect(AppSettings.defaults.commentZebraStripingEnabled, isFalse);
+    });
+
+    test('copyWith updates commentZebraStripingEnabled', () {
+      final AppSettings updated = AppSettings.defaults.copyWith(
+        commentZebraStripingEnabled: true,
+      );
+      expect(updated.commentZebraStripingEnabled, isTrue);
+    });
+
+    test('copyWith preserves commentZebraStripingEnabled when not specified',
+        () {
+      final AppSettings initial = AppSettings.defaults.copyWith(
+        commentZebraStripingEnabled: true,
+      );
+      final AppSettings updated = initial.copyWith(debugMode: true);
+      expect(updated.commentZebraStripingEnabled, isTrue);
+    });
+  });
+
   group('dictionaryRules', () {
     test('defaults include nico dictionary rules', () {
       expect(AppSettings.defaults.dictionaryRules, defaultNicoDictionaryRules);

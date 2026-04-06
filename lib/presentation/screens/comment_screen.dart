@@ -119,6 +119,7 @@ class CommentScreen extends StatefulWidget {
     this.onToggleNgUser,
     this.starPrefixHidingEnabled = false,
     this.commentTwoLineEnabled = false,
+    this.commentZebraStripingEnabled = false,
     this.userColorMap = const <String, int>{},
     this.onUserColorChanged,
     this.onUserColorRemoved,
@@ -179,6 +180,10 @@ class CommentScreen extends StatefulWidget {
   /// When true, comment rows are split into two lines:
   /// line 1 for timestamp/username, line 2 for content.
   final bool commentTwoLineEnabled;
+
+  /// When true, alternating comment rows have a subtle background tint
+  /// for easier visual scanning.
+  final bool commentZebraStripingEnabled;
 
   /// Per-user comment color map. Keys are user IDs, values are ARGB32 ints.
   final Map<String, int> userColorMap;
@@ -1040,6 +1045,9 @@ class _CommentScreenState extends State<CommentScreen> {
                                   widget.starPrefixHidingEnabled,
                               commentTwoLineEnabled:
                                   widget.commentTwoLineEnabled,
+                              zebraStripingEnabled:
+                                  widget.commentZebraStripingEnabled,
+                              zebraIndex: index,
                               userColor: userColor != null
                                   ? colorFromARGB32(userColor)
                                   : null,
@@ -2739,6 +2747,8 @@ class _CommentRow extends StatefulWidget {
     required this.fontSize,
     this.starPrefixHidingEnabled = false,
     this.commentTwoLineEnabled = false,
+    this.zebraStripingEnabled = false,
+    this.zebraIndex = 0,
     this.userColor,
     this.onLongPress,
     this.beginAt,
@@ -2751,6 +2761,8 @@ class _CommentRow extends StatefulWidget {
   final double fontSize;
   final bool starPrefixHidingEnabled;
   final bool commentTwoLineEnabled;
+  final bool zebraStripingEnabled;
+  final int zebraIndex;
   final Color? userColor;
   final VoidCallback? onLongPress;
   final DateTime? beginAt;
@@ -2778,12 +2790,17 @@ class _CommentRowState extends State<_CommentRow> {
   @override
   Widget build(BuildContext context) {
     final bool hidden = _isStarHidden;
+    final Color? specialBg = _backgroundColor(widget.message);
+    final Color? effectiveBg = specialBg ??
+        (widget.zebraStripingEnabled && widget.zebraIndex.isOdd
+            ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.04)
+            : null);
     return GestureDetector(
       key: Key('comment-row-${widget.message.id}'),
       onLongPress: widget.onLongPress,
       onTap: hidden ? () => setState(() => _revealed = true) : null,
       child: Container(
-        color: _backgroundColor(widget.message),
+        color: effectiveBg,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
         child: _buildRichCommentLine(context, hidden),
       ),
@@ -2804,14 +2821,24 @@ class _CommentRowState extends State<_CommentRow> {
     final double idFontSize =
         hidden ? fontSize : (fontSize * 0.9).clamp(minSubFontSize, fontSize);
 
-    if (widget.commentTwoLineEnabled) {
+    // Two-line mode is only useful when the username is shown (line 1 holds
+    // timestamp + username). When the username column is hidden, the first
+    // line would contain only a timestamp, wasting vertical space – so fall
+    // back to single-line rendering.
+    if (widget.commentTwoLineEnabled && widget.showUserName) {
+      // In two-line mode the comment text is the star, so the meta line
+      // (timestamp + username) is rendered much smaller: 40% of the
+      // comment font size with a 9 px floor for readability.
+      const double twoLineMinMeta = 9.0;
+      final double twoLineMetaSize =
+          hidden ? fontSize : (fontSize * 0.4).clamp(twoLineMinMeta, fontSize);
       return _buildTwoLineComment(
         timestamp: timestamp,
         content: content,
         hidden: hidden,
         fontSize: fontSize,
-        timestampFontSize: timestampFontSize,
-        idFontSize: idFontSize,
+        timestampFontSize: twoLineMetaSize,
+        idFontSize: twoLineMetaSize,
         timestampColor: timestampColor,
         idColor: idColor,
       );
@@ -2912,15 +2939,13 @@ class _CommentRowState extends State<_CommentRow> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text.rich(TextSpan(children: metaSpans)),
-        Padding(
-          padding: const EdgeInsets.only(left: 8),
-          child: Text(
-            content,
-            style: TextStyle(
-              fontSize: fontSize,
-              color: hidden ? Colors.grey : widget.userColor,
-              fontStyle: hidden ? FontStyle.italic : null,
-            ),
+        const SizedBox(height: 2),
+        Text(
+          content,
+          style: TextStyle(
+            fontSize: fontSize,
+            color: hidden ? Colors.grey : widget.userColor,
+            fontStyle: hidden ? FontStyle.italic : null,
           ),
         ),
       ],
