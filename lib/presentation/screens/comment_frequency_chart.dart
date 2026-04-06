@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../widgets/empty_state_message.dart';
+
 /// A bar chart that visualises per-minute comment frequency.
 ///
 /// Each bar represents one minute offset from broadcast start. Tapping a bar
@@ -41,7 +43,7 @@ class CommentFrequencyChart extends StatelessWidget {
     if (commentsPerMinute.isEmpty) {
       return SizedBox(
         height: height,
-        child: const Center(child: Text('データなし')),
+        child: const EmptyStateMessage(message: 'データなし'),
       );
     }
 
@@ -167,17 +169,18 @@ class _BarChartBody extends StatelessWidget {
         totalBars > 1 ? (width - barWidth * totalBars) / (totalBars - 1) : 0;
 
     return GestureDetector(
-      onTapUp: onBarTapped == null
-          ? null
-          : (TapUpDetails details) {
-              final double dx = details.localPosition.dx;
-              final double effectiveBarWidth = barWidth + gap;
-              final int index = (dx / effectiveBarWidth).floor().clamp(
-                    0,
-                    totalBars - 1,
-                  );
-              onBarTapped!.call(index);
-            },
+      onTapUp:
+          onBarTapped == null
+              ? null
+              : (TapUpDetails details) {
+                final double dx = details.localPosition.dx;
+                final double effectiveBarWidth = barWidth + gap;
+                final int index = (dx / effectiveBarWidth).floor().clamp(
+                  0,
+                  totalBars - 1,
+                );
+                onBarTapped!.call(index);
+              },
       child: CustomPaint(
         size: Size(width, height),
         painter: _BarChartPainter(
