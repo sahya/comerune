@@ -2464,6 +2464,94 @@ void main() {
         isTrue,
       );
     });
+
+    testWidgets(
+      'FAB shows arrow_downward icon in ascending sort order',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_CommentScreenHostState> hostKey =
+            GlobalKey<_CommentScreenHostState>();
+
+        await tester.pumpWidget(
+          _CommentScreenHost(
+            key: hostKey,
+            supervisor: supervisor,
+            initialLv: 'lv-fab-icon-asc',
+            initialMessages: List<AppMessage>.generate(
+              40,
+              (int index) => _message(
+                id: 'fab-icon-asc-$index',
+                type: AppMessageType.chat,
+                content: 'comment-$index',
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Scroll up to disable auto-scroll and show the FAB.
+        await tester.drag(
+          find.byKey(const Key('comment-list')),
+          const Offset(0, 300),
+        );
+        await tester.pumpAndSettle();
+
+        // In ascending order (default), FAB should show arrow_downward.
+        final Icon icon = tester.widget(
+          find.descendant(
+            of: find.byKey(const Key('scroll-to-latest-button')),
+            matching: find.byType(Icon),
+          ),
+        );
+        expect(icon.icon, Icons.arrow_downward);
+      },
+    );
+
+    testWidgets(
+      'FAB shows arrow_upward icon in descending sort order',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_CommentScreenHostState> hostKey =
+            GlobalKey<_CommentScreenHostState>();
+
+        await tester.pumpWidget(
+          _CommentScreenHost(
+            key: hostKey,
+            supervisor: supervisor,
+            initialLv: 'lv-fab-icon-desc',
+            initialMessages: List<AppMessage>.generate(
+              40,
+              (int index) => _message(
+                id: 'fab-icon-desc-$index',
+                type: AppMessageType.chat,
+                content: 'comment-$index',
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Toggle sort order to descending.
+        await tester.tap(find.byKey(const Key('sort-toggle-button')));
+        await tester.pumpAndSettle();
+
+        // Scroll down to disable auto-scroll and show the FAB.
+        await tester.drag(
+          find.byKey(const Key('comment-list')),
+          const Offset(0, -300),
+        );
+        await tester.pumpAndSettle();
+
+        // In descending order, FAB should show arrow_upward.
+        final Icon icon = tester.widget(
+          find.descendant(
+            of: find.byKey(const Key('scroll-to-latest-button')),
+            matching: find.byType(Icon),
+          ),
+        );
+        expect(icon.icon, Icons.arrow_upward);
+      },
+    );
   });
 
   group('Comment timestamp elapsed display', () {

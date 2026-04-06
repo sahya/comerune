@@ -85,6 +85,36 @@ void main() {
       );
     });
 
+    group('markChanged', () {
+      testWidgets('markChanged sets hasChanges to true', (
+        WidgetTester tester,
+      ) async {
+        final _ThrowingSettingsStore store = _ThrowingSettingsStore()
+          ..shouldThrow = false;
+        final GlobalKey<_ErrorTestScreenState> screenKey =
+            GlobalKey<_ErrorTestScreenState>();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: _ErrorTestScreen(
+              key: screenKey,
+              settingsStore: store,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Before calling markChanged, hasChanges should be false.
+        expect(screenKey.currentState!.publicHasChanges, isFalse);
+
+        // Call markChanged directly.
+        screenKey.currentState!.triggerMarkChanged();
+
+        // After calling markChanged, hasChanges should be true.
+        expect(screenKey.currentState!.publicHasChanges, isTrue);
+      });
+    });
+
     group('PopScope', () {
       testWidgets('returns false when no changes were made', (
         WidgetTester tester,
@@ -222,7 +252,7 @@ class _ThrowingSettingsStore implements SettingsStore {
 /// Minimal StatefulWidget that uses [SettingsScreenMixin] for testing
 /// error state behaviour.
 class _ErrorTestScreen extends StatefulWidget {
-  const _ErrorTestScreen({required this.settingsStore});
+  const _ErrorTestScreen({super.key, required this.settingsStore});
 
   final SettingsStore settingsStore;
 
@@ -240,6 +270,12 @@ class _ErrorTestScreenState extends State<_ErrorTestScreen>
     super.initState();
     loadSettings();
   }
+
+  /// Expose [markChanged] for testing.
+  void triggerMarkChanged() => markChanged();
+
+  /// Expose [hasChanges] for testing.
+  bool get publicHasChanges => hasChanges;
 
   @override
   Widget build(BuildContext context) {
