@@ -673,7 +673,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
           items: const <DropdownMenuItem<VoicevoxPlayerType>>[
             DropdownMenuItem<VoicevoxPlayerType>(
               value: VoicevoxPlayerType.audioTrack,
-              child: Text('低遅延モード'),
+              child: Text('低遅延モード（推奨）'),
             ),
             DropdownMenuItem<VoicevoxPlayerType>(
               value: VoicevoxPlayerType.mediaPlayer,

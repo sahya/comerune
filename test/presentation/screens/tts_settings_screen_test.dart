@@ -713,8 +713,13 @@ void main() {
         await tester.pumpWidget(_buildScreen(settingsStore));
         await tester.pumpAndSettle();
 
-        // Verify "推奨" is not in any visible text
-        expect(find.textContaining('推奨', skipOffstage: false), findsNothing);
+        // The performance hint text should not contain "推奨".
+        // Note: the player type dropdown label still says "低遅延モード（推奨）"
+        // which is intentional, so we check the hint text specifically.
+        expect(
+          find.text('応答が速く、声の調整も可能な構成です', skipOffstage: false),
+          findsOneWidget,
+        );
       },
     );
 
