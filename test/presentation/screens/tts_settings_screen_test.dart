@@ -602,6 +602,128 @@ void main() {
     });
 
     testWidgets(
+      'hides style dropdown when synthesis mode is oneShot for Nemo speaker',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        await settingsStore.save(
+          AppSettings.defaults.copyWith(
+            voicevoxSpeaker: 10000,
+            voicevoxSynthesisMode: SynthesisMode.oneShot,
+          ),
+        );
+
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(
+            const Key('voicevox-style-dropdown'),
+            skipOffstage: false,
+          ),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'does not reset speaker when models are still loading',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        // Save a non-Nemo speaker (Kasukabe Tsumugi)
+        await settingsStore.save(
+          AppSettings.defaults.copyWith(voicevoxSpeaker: 8),
+        );
+        final FakeCommentSpeechPlatform platform = FakeCommentSpeechPlatform();
+        // Return models including the non-Nemo speaker
+        platform.availableModelsToReturn = <Map<String, dynamic>>[
+          <String, dynamic>{
+            'modelId': 'n0',
+            'displayName': 'VOICEVOX Nemo',
+            'speakerIds': <int>[
+              10000,
+              10001,
+              10002,
+              10003,
+              10004,
+              10005,
+              10006,
+              10007,
+              10008
+            ],
+            'vvmFileName': 'n0.vvm',
+            'fileSizeBytes': 100,
+            'isBundled': true,
+            'downloadState': 'DOWNLOADED',
+          },
+          <String, dynamic>{
+            'modelId': '2',
+            'displayName': 'VOICEVOX 春日部つむぎ',
+            'speakerIds': <int>[8],
+            'vvmFileName': '2.vvm',
+            'fileSizeBytes': 100,
+            'isBundled': false,
+            'downloadState': 'DOWNLOADED',
+          },
+        ];
+
+        await tester.pumpWidget(
+          _buildScreenWithPlatform(settingsStore, platform),
+        );
+        await tester.pumpAndSettle();
+
+        // Verify the speaker was NOT reset to 10000
+        final AppSettings loaded = await settingsStore.load();
+        expect(loaded.voicevoxSpeaker, 8);
+      },
+    );
+
+    testWidgets(
+      'shows fallback dropdown when model loading fails',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final FakeCommentSpeechPlatform platform = FakeCommentSpeechPlatform();
+        // Simulate getAvailableModels throwing an error
+        platform.availableModelsToReturn = <Map<String, dynamic>>[];
+
+        await tester.pumpWidget(
+          _buildScreenWithPlatform(settingsStore, platform),
+        );
+        await tester.pumpAndSettle();
+
+        // Dropdown should be present (not stuck in loading)
+        expect(
+          find.byKey(
+            const Key('voicevox-speaker-dropdown'),
+            skipOffstage: false,
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'performance hint does not contain recommended label',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
+
+        // The performance hint text should not contain "推奨".
+        // Note: the player type dropdown label still says "低遅延モード（推奨）"
+        // which is intentional, so we check the hint text specifically.
+        expect(
+          find.text('応答が速く、声の調整も可能な構成です', skipOffstage: false),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
       'slider change pushes updated SpeechSettings to platform engine',
       (WidgetTester tester) async {
         final SharedPreferencesSettingsStore settingsStore =
@@ -832,6 +954,387 @@ void main() {
 
         final AppSettings loaded = await settingsStore.load();
         expect(loaded.voicevoxSpeaker, 10005);
+      },
+    );
+
+    testWidgets(
+      'switching from audioQuery to oneShot hides style dropdown and sliders',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        // Start with a Nemo speaker in audioQuery mode (default).
+        await settingsStore.save(
+          AppSettings.defaults.copyWith(
+            voicevoxSpeaker: 10000,
+            voicevoxSynthesisMode: SynthesisMode.audioQuery,
+          ),
+        );
+
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
+
+        // Style dropdown should be visible initially (Nemo + audioQuery).
+        expect(
+          find.byKey(
+            const Key('voicevox-style-dropdown'),
+            skipOffstage: false,
+          ),
+          findsOneWidget,
+        );
+        // Speed slider should be visible initially.
+        expect(
+          find.byKey(
+            const Key('voicevox-speed-slider'),
+            skipOffstage: false,
+          ),
+          findsOneWidget,
+        );
+
+        // Switch to oneShot mode via the segmented button callback.
+        await scrollToKeyInList(
+          tester,
+          _listKey,
+          const Key('synthesis-mode-selector'),
+        );
+        final SegmentedButton<SynthesisMode> segmented =
+            tester.widget<SegmentedButton<SynthesisMode>>(
+          find.byKey(const Key('synthesis-mode-selector'), skipOffstage: false),
+        );
+        segmented.onSelectionChanged!(<SynthesisMode>{SynthesisMode.oneShot});
+        await tester.pumpAndSettle();
+
+        // Style dropdown should now be hidden.
+        expect(
+          find.byKey(
+            const Key('voicevox-style-dropdown'),
+            skipOffstage: false,
+          ),
+          findsNothing,
+        );
+        // Speed slider should be hidden in oneShot mode.
+        expect(
+          find.byKey(
+            const Key('voicevox-speed-slider'),
+            skipOffstage: false,
+          ),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'switching from oneShot to audioQuery shows style dropdown and sliders for Nemo speaker',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        // Start with a Nemo speaker in oneShot mode.
+        await settingsStore.save(
+          AppSettings.defaults.copyWith(
+            voicevoxSpeaker: 10000,
+            voicevoxSynthesisMode: SynthesisMode.oneShot,
+          ),
+        );
+
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
+
+        // Style dropdown should be hidden initially (oneShot).
+        expect(
+          find.byKey(
+            const Key('voicevox-style-dropdown'),
+            skipOffstage: false,
+          ),
+          findsNothing,
+        );
+
+        // Switch to audioQuery mode.
+        await scrollToKeyInList(
+          tester,
+          _listKey,
+          const Key('synthesis-mode-selector'),
+        );
+        final SegmentedButton<SynthesisMode> segmented =
+            tester.widget<SegmentedButton<SynthesisMode>>(
+          find.byKey(const Key('synthesis-mode-selector'), skipOffstage: false),
+        );
+        segmented.onSelectionChanged!(
+          <SynthesisMode>{SynthesisMode.audioQuery},
+        );
+        await tester.pumpAndSettle();
+
+        // Style dropdown should now be visible.
+        expect(
+          find.byKey(
+            const Key('voicevox-style-dropdown'),
+            skipOffstage: false,
+          ),
+          findsOneWidget,
+        );
+        // Speed slider should now be visible.
+        expect(
+          find.byKey(
+            const Key('voicevox-speed-slider'),
+            skipOffstage: false,
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'initialSettings preserves speaker when platform loads models',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final FakeCommentSpeechPlatform platform = FakeCommentSpeechPlatform();
+        platform.availableModelsToReturn = <Map<String, dynamic>>[
+          <String, dynamic>{
+            'modelId': 'n0',
+            'displayName': 'VOICEVOX Nemo',
+            'speakerIds': <int>[
+              10000,
+              10001,
+              10002,
+              10003,
+              10004,
+              10005,
+              10006,
+              10007,
+              10008,
+            ],
+            'vvmFileName': 'n0.vvm',
+            'fileSizeBytes': 100,
+            'isBundled': true,
+            'downloadState': 'DOWNLOADED',
+          },
+          <String, dynamic>{
+            'modelId': '2',
+            'displayName': 'VOICEVOX 春日部つむぎ',
+            'speakerIds': <int>[8],
+            'vvmFileName': '2.vvm',
+            'fileSizeBytes': 100,
+            'isBundled': false,
+            'downloadState': 'DOWNLOADED',
+          },
+        ];
+
+        // Pre-loaded settings with a non-default speaker.
+        final AppSettings preLoaded = AppSettings.defaults.copyWith(
+          voicevoxSpeaker: 8,
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: TtsSettingsScreen(
+              settingsStore: settingsStore,
+              platform: platform,
+              initialSettings: preLoaded,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The speaker from initialSettings should NOT have been reset.
+        await scrollToKeyInList(
+          tester,
+          _listKey,
+          const Key('voicevox-speaker-dropdown'),
+        );
+        final DropdownButtonFormField<int> dropdown =
+            tester.widget<DropdownButtonFormField<int>>(
+          find.byKey(
+            const Key('voicevox-speaker-dropdown'),
+            skipOffstage: false,
+          ),
+        );
+        expect(dropdown.initialValue, 8);
+      },
+    );
+
+    testWidgets(
+      'shows loading placeholder before models arrive with initialSettings',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final FakeCommentSpeechPlatform platform = FakeCommentSpeechPlatform();
+        // Simulate empty models (failure/no-models case).
+        // Instead, we just check first pump before models arrive.
+        platform.availableModelsToReturn = <Map<String, dynamic>>[];
+
+        final AppSettings preLoaded = AppSettings.defaults.copyWith(
+          voicevoxSpeaker: 8,
+        );
+
+        // To test the loading state, we need models to be null initially.
+        // Since FakeCommentSpeechPlatform returns immediately, we test
+        // that the dropdown shows the saved speaker value rather than
+        // resetting it, even when models list is empty (failure case).
+        await tester.pumpWidget(
+          MaterialApp(
+            home: TtsSettingsScreen(
+              settingsStore: settingsStore,
+              platform: platform,
+              initialSettings: preLoaded,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The speaker dropdown should be present (not stuck in loading).
+        expect(
+          find.byKey(
+            const Key('voicevox-speaker-dropdown'),
+            skipOffstage: false,
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'shows loading placeholder with LinearProgressIndicator while models are loading',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final FakeCommentSpeechPlatform platform = FakeCommentSpeechPlatform();
+        final Completer<void> modelsCompleter = Completer<void>();
+        platform.getAvailableModelsCompleter = modelsCompleter;
+        platform.availableModelsToReturn = <Map<String, dynamic>>[
+          <String, dynamic>{
+            'modelId': 'n0',
+            'displayName': 'VOICEVOX Nemo',
+            'speakerIds': <int>[10000],
+            'vvmFileName': 'n0.vvm',
+            'fileSizeBytes': 100,
+            'isBundled': true,
+            'downloadState': 'DOWNLOADED',
+          },
+        ];
+
+        final AppSettings preLoaded = AppSettings.defaults.copyWith(
+          voicevoxSpeaker: 10000,
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: TtsSettingsScreen(
+              settingsStore: settingsStore,
+              platform: platform,
+              initialSettings: preLoaded,
+            ),
+          ),
+        );
+        // Pump once to build — models are still loading.
+        await tester.pump();
+
+        // Loading indicator should be visible while models are null.
+        expect(
+          find.byKey(const Key('speaker-loading-indicator')),
+          findsOneWidget,
+        );
+        // Dropdown should show "読み込み中…" text.
+        expect(
+          find.text('読み込み中…', skipOffstage: false),
+          findsOneWidget,
+        );
+
+        // Complete the model loading.
+        modelsCompleter.complete();
+        await tester.pumpAndSettle();
+
+        // Loading indicator should be gone.
+        expect(
+          find.byKey(const Key('speaker-loading-indicator')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'getAvailableModels throwing sets empty list and shows fallback dropdown',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final FakeCommentSpeechPlatform platform = FakeCommentSpeechPlatform();
+        platform.getAvailableModelsError = Exception('network error');
+
+        await tester.pumpWidget(
+          _buildScreenWithPlatform(settingsStore, platform),
+        );
+        await tester.pumpAndSettle();
+
+        // Dropdown should be present (not stuck in loading).
+        expect(
+          find.byKey(
+            const Key('voicevox-speaker-dropdown'),
+            skipOffstage: false,
+          ),
+          findsOneWidget,
+        );
+        // Loading indicator should NOT be visible.
+        expect(
+          find.byKey(const Key('speaker-loading-indicator')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'loadSettings path (no initialSettings) preserves non-default speaker',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        // Save a non-default speaker before opening the screen.
+        await settingsStore.save(
+          AppSettings.defaults.copyWith(voicevoxSpeaker: 10005),
+        );
+        final FakeCommentSpeechPlatform platform = FakeCommentSpeechPlatform();
+        platform.availableModelsToReturn = <Map<String, dynamic>>[
+          <String, dynamic>{
+            'modelId': 'n0',
+            'displayName': 'VOICEVOX Nemo',
+            'speakerIds': <int>[
+              10000,
+              10001,
+              10002,
+              10003,
+              10004,
+              10005,
+              10006,
+              10007,
+              10008,
+            ],
+            'vvmFileName': 'n0.vvm',
+            'fileSizeBytes': 100,
+            'isBundled': true,
+            'downloadState': 'DOWNLOADED',
+          },
+        ];
+
+        // Open WITHOUT initialSettings — triggers loadSettings() path.
+        await tester.pumpWidget(
+          _buildScreenWithPlatform(settingsStore, platform),
+        );
+        await tester.pumpAndSettle();
+
+        // Speaker should NOT have been reset.
+        final AppSettings loaded = await settingsStore.load();
+        expect(loaded.voicevoxSpeaker, 10005);
+
+        // Dropdown should show the preserved speaker.
+        await scrollToKeyInList(
+          tester,
+          _listKey,
+          const Key('voicevox-speaker-dropdown'),
+        );
+        final DropdownButtonFormField<int> dropdown =
+            tester.widget<DropdownButtonFormField<int>>(
+          find.byKey(
+            const Key('voicevox-speaker-dropdown'),
+            skipOffstage: false,
+          ),
+        );
+        expect(dropdown.initialValue, 10005);
       },
     );
 

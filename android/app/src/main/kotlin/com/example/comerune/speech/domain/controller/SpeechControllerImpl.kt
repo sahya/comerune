@@ -424,6 +424,7 @@ class SpeechControllerImpl(
         prefetched = null
 
         var nextChunkDeferred: Deferred<Result<WavSynthesisResult>>? = null
+        var prefetchNextItem: SpeechQueueItem? = null
 
         for (i in chunks.indices) {
             val isFirst = i == 0
@@ -464,9 +465,11 @@ class SpeechControllerImpl(
                 nextChunkDeferred = scope.async(synthDispatcher) { synthesizeSafe(nextRequest) }
             }
 
-            // On the last chunk, start inter-comment prefetch
+            // On the last chunk, start inter-comment prefetch and capture
+            // the peeked item to avoid a second peek() that could return a
+            // different item if the queue was modified during playback.
             if (isLast) {
-                startPrefetch(settings)
+                prefetchNextItem = startPrefetch(settings)
             }
 
             val playResult = playSafe(wavBytes)
@@ -481,10 +484,11 @@ class SpeechControllerImpl(
             }
         }
 
-        // Collect inter-comment prefetch
-        val nextItem = queueManager.peek()
-        if (nextItem != null) {
-            collectPrefetch(nextItem)
+        // Collect inter-comment prefetch using the same item that was peeked
+        // in startPrefetch() to ensure the WAV is associated with the correct
+        // commentId even if the queue was modified during chunk playback.
+        if (prefetchNextItem != null) {
+            collectPrefetch(prefetchNextItem)
         }
 
         eventEmitter.emit(SpeechEvents.speechCompleted(commentId))
