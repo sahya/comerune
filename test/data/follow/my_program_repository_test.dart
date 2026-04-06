@@ -560,7 +560,7 @@ void main() {
   });
 
   group('fetchControllableProgram', () {
-    _FakeResponseConfig _onAirResponse(String id, String title) {
+    _FakeResponseConfig onAirResponse(String id, String title) {
       return _FakeResponseConfig(
         statusCode: 200,
         body: jsonEncode(<String, Object?>{
@@ -578,7 +578,7 @@ void main() {
       );
     }
 
-    _FakeResponseConfig _emptyResponse() {
+    _FakeResponseConfig emptyResponse() {
       return _FakeResponseConfig(
         statusCode: 200,
         body: jsonEncode(<String, Object?>{
@@ -589,7 +589,7 @@ void main() {
     }
 
     // Also need empty tool endpoint response for fallback path.
-    _FakeResponseConfig _emptyToolResponse() {
+    _FakeResponseConfig emptyToolResponse() {
       return _FakeResponseConfig(
         statusCode: 200,
         body: jsonEncode(<String, Object?>{'data': <Object?>[]}),
@@ -599,7 +599,7 @@ void main() {
     test('returns on-air program when available', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       // front-api returns on-air program immediately.
-      httpClient.queuedResponses.add(_onAirResponse('lv111', 'On Air'));
+      httpClient.queuedResponses.add(onAirResponse('lv111', 'On Air'));
 
       final MyProgramRepository repository = MyProgramRepository(
         httpClient: httpClient,
@@ -625,9 +625,9 @@ void main() {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       // 1: front-api onair → empty, 2: tool → empty, 3: front-api reserved → found
       httpClient.queuedResponses.addAll(<_FakeResponseConfig>[
-        _emptyResponse(),
-        _emptyToolResponse(),
-        _onAirResponse('lv222', 'Reserved'),
+        emptyResponse(),
+        emptyToolResponse(),
+        onAirResponse('lv222', 'Reserved'),
       ]);
 
       final MyProgramRepository repository = MyProgramRepository(
@@ -654,10 +654,10 @@ void main() {
       // 1: front-api onair → empty, 2: tool → empty,
       // 3: front-api reserved → empty, 4: front-api test → found
       httpClient.queuedResponses.addAll(<_FakeResponseConfig>[
-        _emptyResponse(),
-        _emptyToolResponse(),
-        _emptyResponse(),
-        _onAirResponse('lv333', 'Test'),
+        emptyResponse(),
+        emptyToolResponse(),
+        emptyResponse(),
+        onAirResponse('lv333', 'Test'),
       ]);
 
       final MyProgramRepository repository = MyProgramRepository(
@@ -684,10 +684,10 @@ void main() {
       // 1: front-api onair → empty, 2: tool → empty,
       // 3: front-api reserved → empty, 4: front-api test → empty
       httpClient.queuedResponses.addAll(<_FakeResponseConfig>[
-        _emptyResponse(),
-        _emptyToolResponse(),
-        _emptyResponse(),
-        _emptyResponse(),
+        emptyResponse(),
+        emptyToolResponse(),
+        emptyResponse(),
+        emptyResponse(),
       ]);
 
       final MyProgramRepository repository = MyProgramRepository(

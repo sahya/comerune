@@ -657,7 +657,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         const SizedBox(height: 12),
         DropdownButtonFormField<VoicevoxPlayerType>(
           key: const Key('player-type-dropdown'),
-          value: settings.voicevoxPlayerType,
+          initialValue: settings.voicevoxPlayerType,
           decoration: const InputDecoration(
             border: OutlineInputBorder(),
             labelText: '再生方式',
@@ -744,7 +744,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         children: [
           DropdownButtonFormField<int>(
             key: const Key('voicevox-speaker-dropdown'),
-            value: currentInList ? settings.voicevoxSpeaker : items.first.value,
+            initialValue:
+                currentInList ? settings.voicevoxSpeaker : items.first.value,
             decoration: const InputDecoration(
               labelText: '話者',
               border: OutlineInputBorder(),
@@ -784,7 +785,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
 
     return DropdownButtonFormField<int>(
       key: const Key('voicevox-speaker-dropdown'),
-      value:
+      initialValue:
           fallbackCurrentInList ? settings.voicevoxSpeaker : fallbackSpeakerId,
       decoration: const InputDecoration(
         labelText: '話者',
@@ -931,7 +932,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   Widget _buildNemoStyleDropdown(AppSettings settings) {
     return DropdownButtonFormField<_NemoStylePreset>(
       key: const Key('voicevox-style-dropdown'),
-      value: _currentNemoStyleValue(settings),
+      initialValue: _currentNemoStyleValue(settings),
       decoration: const InputDecoration(
         labelText: 'スタイル',
         border: OutlineInputBorder(),

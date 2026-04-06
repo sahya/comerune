@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:share_plus/share_plus.dart' show ShareParams, SharePlus, XFile;
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../app_logging.dart';
@@ -2082,7 +2082,8 @@ class _CommentScreenState extends State<CommentScreen> {
           ..clearSnackBars()
           ..showSnackBar(SnackBar(content: Text('コメントログを保存しました: $fileName')));
       }
-      await Share.shareXFiles(<XFile>[XFile(tempPath)]);
+      await SharePlus.instance
+          .share(ShareParams(files: <XFile>[XFile(tempPath)]));
     } finally {
       if (mounted) {
         setState(() {
