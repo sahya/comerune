@@ -90,6 +90,18 @@ class _CommentDisplaySettingsScreenState
                             },
                           ),
                           SwitchListTile(
+                            key: const Key('comment-two-line-switch'),
+                            title: const Text('コメント二段表示'),
+                            subtitle: const Text('横幅が狭い端末向けに時刻とコメントを2行に分割'),
+                            contentPadding: EdgeInsets.zero,
+                            value: settings.commentTwoLineEnabled,
+                            onChanged: (bool value) {
+                              updateAndSave(
+                                settings.copyWith(commentTwoLineEnabled: value),
+                              );
+                            },
+                          ),
+                          SwitchListTile(
                             key: const Key('auto-save-comment-log-switch'),
                             title: const Text('コメントログ自動保存'),
                             subtitle: const Text('接続終了時にコメントをファイルに保存'),
