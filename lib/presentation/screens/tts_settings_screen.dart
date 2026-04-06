@@ -199,7 +199,15 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         _nemoSpeakerIds = nemoSpeakerIds;
       });
     } on Object {
-      // Model listing failed; keep existing state.
+      // Model listing failed — set empty list so that the loading
+      // placeholder is replaced by the fallback dropdown rather than
+      // staying in a permanent loading state.
+      if (!mounted) return;
+      if (_voicevoxModels == null) {
+        setState(() {
+          _voicevoxModels = const [];
+        });
+      }
     }
   }
 
@@ -894,6 +902,11 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   }
 
   bool _isNemoPresetVisible(AppSettings settings) {
+    // Style presets only affect audioQuery parameters (speed, pitch, etc.)
+    // which are ignored in oneShot mode.
+    if (settings.voicevoxSynthesisMode != SynthesisMode.audioQuery) {
+      return false;
+    }
     final int speakerId = settings.voicevoxSpeaker;
     if (_nemoSpeakerNames.containsKey(speakerId)) {
       return true;
@@ -1076,9 +1089,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                               ),
                             ),
                           ],
-                          if (_isNemoPresetVisible(settings) &&
-                              settings.voicevoxSynthesisMode ==
-                                  SynthesisMode.audioQuery) ...[
+                          if (_isNemoPresetVisible(settings)) ...[
                             const SizedBox(height: 8),
                             _buildNemoStyleDropdown(settings),
                           ],

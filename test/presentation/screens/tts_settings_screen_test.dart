@@ -680,6 +680,45 @@ void main() {
     );
 
     testWidgets(
+      'shows fallback dropdown when model loading fails',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final FakeCommentSpeechPlatform platform = FakeCommentSpeechPlatform();
+        // Simulate getAvailableModels throwing an error
+        platform.availableModelsToReturn = <Map<String, dynamic>>[];
+
+        await tester.pumpWidget(
+          _buildScreenWithPlatform(settingsStore, platform),
+        );
+        await tester.pumpAndSettle();
+
+        // Dropdown should be present (not stuck in loading)
+        expect(
+          find.byKey(
+            const Key('voicevox-speaker-dropdown'),
+            skipOffstage: false,
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'performance hint does not contain recommended label',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
+
+        // Verify "推奨" is not in any visible text
+        expect(find.textContaining('推奨', skipOffstage: false), findsNothing);
+      },
+    );
+
+    testWidgets(
       'slider change pushes updated SpeechSettings to platform engine',
       (WidgetTester tester) async {
         final SharedPreferencesSettingsStore settingsStore =
