@@ -1202,16 +1202,23 @@ class _CommentScreenState extends State<CommentScreen> {
   String? _resolveDisplayName(AppMessage message) {
     final String? userId = message.userId;
     // Nickname (コテハン) takes highest priority.
-    if (userId != null && widget.userNicknameMap.containsKey(userId)) {
-      return widget.userNicknameMap[userId];
+    if (userId != null && userId.isNotEmpty) {
+      final String? nickname = widget.userNicknameMap[userId];
+      if (nickname != null && nickname.isNotEmpty) {
+        return nickname;
+      }
     }
     if (message.userName != null && message.userName!.isNotEmpty) {
       return message.userName;
     }
-    if (userId == null) {
+    if (userId == null || userId.isEmpty) {
       return null;
     }
-    return widget.userNameResolution?.resolve(userId);
+    final String? resolvedName = widget.userNameResolution?.resolve(userId);
+    if (resolvedName != null && resolvedName.isNotEmpty) {
+      return resolvedName;
+    }
+    return null;
   }
 
   /// Resolves the display name for TTS speech output.

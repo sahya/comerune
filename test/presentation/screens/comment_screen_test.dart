@@ -2127,6 +2127,61 @@ void main() {
       },
     );
 
+    testWidgets(
+      'empty nickname in map falls back to userName or resolution',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          AppMessage(
+            id: 'msg-empty-nickname',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'user-1',
+            content: 'テスト',
+            type: AppMessageType.chat,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            userNicknameMap: const <String, String>{'user-1': ''},
+            resolveUserName: (_) => 'API名',
+          ),
+        );
+
+        // Empty nickname should be skipped, API-resolved name shown instead.
+        expect(find.textContaining('API名'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'empty userId message shows content without user column',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          AppMessage(
+            id: 'msg-empty-userid',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: '',
+            content: 'テスト',
+            type: AppMessageType.chat,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            resolveUserName: (_) => 'API名',
+          ),
+        );
+
+        // Empty userId: should not show username column at all.
+        expect(find.textContaining('API名'), findsNothing);
+      },
+    );
+
     testWidgets('@name comment triggers onNicknameChanged callback', (
       WidgetTester tester,
     ) async {
