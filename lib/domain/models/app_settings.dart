@@ -271,7 +271,7 @@ class AppSettings {
     bouyomiTone: -1,
     bouyomiVolume: -1,
     bouyomiVoice: 0,
-    voicevoxSpeaker: 10000,
+    voicevoxSpeaker: 10004,
     voicevoxSpeed: 1.0,
     voicevoxPitch: 0.0,
     voicevoxIntonation: 1.0,
