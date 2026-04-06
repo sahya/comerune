@@ -2890,41 +2890,62 @@ class _SpeechStatusIcon extends StatelessWidget {
       color = themeColors.subtleTextColor;
       tooltip = '読み上げ: 初期化中';
     } else if (!isStarted) {
-      icon = Icons.volume_off;
+      icon = Icons.pause_circle_outline;
       color = themeColors.subtleTextColor;
       tooltip = '読み上げ: 停止中';
     } else if (engineState == 'ERROR') {
-      icon = Icons.volume_off;
+      icon = Icons.error_outline;
       color = themeColors.statusDisconnected;
       tooltip = '読み上げ: エラー';
     } else if (isMuted) {
-      icon = Icons.volume_off;
+      icon = Icons.volume_mute;
       color = themeColors.statusConnected;
-      tooltip = '読み上げ: ミュート中（タップで解除）';
+      tooltip = 'ミュート解除';
     } else {
       icon = Icons.volume_up;
       color = themeColors.statusConnected;
-      tooltip = '読み上げ: 準備完了（タップでミュート）';
+      tooltip = 'ミュート';
     }
 
     final bool canToggleMute =
         isInitialized && isStarted && engineState != 'ERROR';
 
     if (canToggleMute && onTap != null) {
-      return IconButton(
-        icon: Icon(icon, size: 20, color: color),
-        tooltip: tooltip,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-        onPressed: onTap,
+      return Semantics(
+        label: isMuted ? '読み上げミュート中' : '読み上げ有効',
+        button: true,
+        enabled: true,
+        child: IconButton(
+          icon: Icon(icon, size: 24, color: color),
+          tooltip: tooltip,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+          onPressed: () {
+            onTap!();
+            HapticFeedback.lightImpact();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(isMuted ? 'ミュート解除しました' : 'ミュートしました'),
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          },
+        ),
       );
     }
 
-    return Tooltip(
-      message: tooltip,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Icon(icon, size: 20, color: color),
+    return Semantics(
+      label: tooltip,
+      enabled: false,
+      child: Tooltip(
+        message: tooltip,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Opacity(
+            opacity: 0.5,
+            child: Icon(icon, size: 24, color: color),
+          ),
+        ),
       ),
     );
   }

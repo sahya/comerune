@@ -974,7 +974,7 @@ void main() {
       fakePlatform.dispose();
     });
 
-    testWidgets('muted icon shows volume_off when isSpeechMuted is true', (
+    testWidgets('muted icon shows volume_mute when isSpeechMuted is true', (
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(
@@ -993,7 +993,7 @@ void main() {
           matching: find.byType(Icon),
         ),
       );
-      expect(icon.icon, Icons.volume_off);
+      expect(icon.icon, Icons.volume_mute);
     });
 
     testWidgets('non-muted icon shows volume_up when isSpeechMuted is false', (
@@ -1018,7 +1018,8 @@ void main() {
       expect(icon.icon, Icons.volume_up);
     });
 
-    testWidgets('tapping mute icon calls onSpeechMuteToggled', (
+    testWidgets(
+        'tapping mute icon calls onSpeechMuteToggled and shows snackbar', (
       WidgetTester tester,
     ) async {
       bool toggled = false;
@@ -1033,9 +1034,10 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('speech-status-icon')));
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       expect(toggled, isTrue);
+      expect(find.text('ミュートしました'), findsOneWidget);
     });
 
     testWidgets('icon is not tappable when onSpeechMuteToggled is null', (
