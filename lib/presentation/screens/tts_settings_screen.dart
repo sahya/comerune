@@ -693,7 +693,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
 
   Widget _buildVoicevoxSpeakerDropdown(AppSettings settings) {
     final List<VoicevoxModelInfo>? models = _voicevoxModels;
-    const int fallbackSpeakerId = 10000;
+    final int fallbackSpeakerId = AppSettings.defaults.voicevoxSpeaker;
 
     // When models are available, build items from downloaded/bundled models.
     if (models != null && models.isNotEmpty) {
@@ -730,10 +730,12 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
       }
 
       if (items.isEmpty) {
+        final String fallbackName =
+            _nemoSpeakerNames[fallbackSpeakerId] ?? '不明';
         items.add(
-          const DropdownMenuItem<int>(
+          DropdownMenuItem<int>(
             value: fallbackSpeakerId,
-            child: Text('Nemo | 男声2 (ID:10000)'),
+            child: Text('Nemo | $fallbackName (ID:$fallbackSpeakerId)'),
           ),
         );
       }
@@ -791,10 +793,12 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         labelText: '話者',
         border: OutlineInputBorder(),
       ),
-      items: const <DropdownMenuItem<int>>[
+      items: <DropdownMenuItem<int>>[
         DropdownMenuItem<int>(
           value: fallbackSpeakerId,
-          child: Text('Nemo | 男声2 (ID:10000)'),
+          child: Text(
+            'Nemo | ${_nemoSpeakerNames[fallbackSpeakerId] ?? '不明'} (ID:$fallbackSpeakerId)',
+          ),
         ),
       ],
       onChanged: (int? value) {

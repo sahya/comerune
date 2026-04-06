@@ -737,9 +737,9 @@ void main() {
       await tester.pumpAndSettle();
 
       final AppSettings loaded = await settingsStore.load();
-      expect(loaded.voicevoxSpeaker, 10000);
+      expect(loaded.voicevoxSpeaker, 10004);
       expect(
-        find.text('Nemo | 男声2 (ID:10000)', skipOffstage: false),
+        find.text('Nemo | 女声3 (ID:10004)', skipOffstage: false),
         findsOneWidget,
       );
     });
@@ -784,11 +784,11 @@ void main() {
       );
 
       expect(
-        find.text('Nemo | 男声2 (ID:10000)', skipOffstage: false),
+        find.text('Nemo | 女声3 (ID:10004)', skipOffstage: false),
         findsOneWidget,
       );
       expect(
-        find.textContaining('ID:10000', skipOffstage: false),
+        find.textContaining('ID:10004', skipOffstage: false),
         findsOneWidget,
       );
     });
