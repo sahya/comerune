@@ -85,6 +85,10 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   String? _ngWordsError;
   bool _isLoadingModel = false;
 
+  /// Model IDs allowed in the speaker dropdown.
+  /// Matches VoiceLibraryScreen._supportedModelIds: Nemo, 春日部つむぎ, 波音リツ.
+  static const Set<String> _allowedModelIds = <String>{'n0', '2', '3'};
+
   static const Map<int, String> _nemoSpeakerNames = <int, String>{
     10000: '男声2',
     10001: '男声1',
@@ -696,9 +700,13 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     const int fallbackSpeakerId = 10000;
 
     // When models are available, build items from downloaded/bundled models.
+    // Only show speakers from allowed models (Nemo, 春日部つむぎ, 波音リツ).
     if (models != null && models.isNotEmpty) {
       final List<DropdownMenuItem<int>> items = [];
       for (final model in models) {
+        if (!_allowedModelIds.contains(model.modelId)) {
+          continue;
+        }
         if (model.downloadState != ModelDownloadState.downloaded &&
             !model.isBundled) {
           continue;
@@ -804,6 +812,13 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     );
   }
 
+  /// Speaker style names for 春日部つむぎ and 波音リツ models.
+  static const Map<int, String> _otherSpeakerStyles = <int, String>{
+    8: 'ノーマル',
+    9: 'ノーマル',
+    65: 'クイーン',
+  };
+
   String _speakerMenuLabel(VoicevoxModelInfo model, int speakerId) {
     if (model.modelId == 'n0') {
       // TTS設定のプルダウンは横幅が限られるため、接頭辞を短くして
@@ -814,6 +829,10 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         return 'Nemo | $speakerName (ID:$speakerId)';
       }
       return 'Nemo | Unknown (ID:$speakerId)';
+    }
+    final String? styleName = _otherSpeakerStyles[speakerId];
+    if (styleName != null) {
+      return '${model.displayName} | $styleName (ID:$speakerId)';
     }
     return '${model.displayName} (ID:$speakerId)';
   }

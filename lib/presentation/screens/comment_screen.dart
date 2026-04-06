@@ -132,6 +132,8 @@ class CommentScreen extends StatefulWidget {
     this.readUserName = false,
     this.settingsStore,
     this.onDictionaryRulesChanged,
+    this.onSpeechMuteToggled,
+    this.isSpeechMuted = false,
   });
 
   /// Program-level metadata (lv, title, broadcaster info, etc.).
@@ -215,6 +217,12 @@ class CommentScreen extends StatefulWidget {
 
   /// Called when dictionary rules are updated by a teach/unteach command.
   final void Function(AppSettings updated)? onDictionaryRulesChanged;
+
+  /// Called when the user taps the speech status icon to toggle mute.
+  final VoidCallback? onSpeechMuteToggled;
+
+  /// Whether the speech output is currently muted.
+  final bool isSpeechMuted;
 
   @override
   State<CommentScreen> createState() => _CommentScreenState();
@@ -911,7 +919,9 @@ class _CommentScreenState extends State<CommentScreen> {
                     engineState: _speechEngineState,
                     isStarted: _speechStarted,
                     isInitialized: _speechInitialized,
+                    isMuted: widget.isSpeechMuted,
                     themeColors: themeColors,
+                    onTap: widget.onSpeechMuteToggled,
                   ),
                 if (widget.commentLogWriter != null)
                   IconButton(
@@ -2857,13 +2867,17 @@ class _SpeechStatusIcon extends StatelessWidget {
     required this.engineState,
     required this.isStarted,
     required this.isInitialized,
+    required this.isMuted,
     required this.themeColors,
+    this.onTap,
   });
 
   final String engineState;
   final bool isStarted;
   final bool isInitialized;
+  final bool isMuted;
   final AppThemeColors themeColors;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -2883,10 +2897,27 @@ class _SpeechStatusIcon extends StatelessWidget {
       icon = Icons.volume_off;
       color = themeColors.statusDisconnected;
       tooltip = '読み上げ: エラー';
+    } else if (isMuted) {
+      icon = Icons.volume_off;
+      color = themeColors.statusConnected;
+      tooltip = '読み上げ: ミュート中（タップで解除）';
     } else {
       icon = Icons.volume_up;
       color = themeColors.statusConnected;
-      tooltip = '読み上げ: 準備完了';
+      tooltip = '読み上げ: 準備完了（タップでミュート）';
+    }
+
+    final bool canToggleMute =
+        isInitialized && isStarted && engineState != 'ERROR';
+
+    if (canToggleMute && onTap != null) {
+      return IconButton(
+        icon: Icon(icon, size: 20, color: color),
+        tooltip: tooltip,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        constraints: const BoxConstraints(),
+        onPressed: onTap,
+      );
     }
 
     return Tooltip(

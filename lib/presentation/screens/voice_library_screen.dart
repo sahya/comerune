@@ -380,11 +380,64 @@ class _VoicevoxTermsDialogState extends State<_VoicevoxTermsDialog> {
     _loadTerms();
   }
 
+  /// Speaker names whose terms sections should be displayed.
+  static const Set<String> _supportedSpeakerNames = <String>{
+    '春日部つむぎ',
+    '波音リツ',
+    'VOICEVOX Nemo',
+  };
+
+  /// Filters TERMS.txt to keep only the common header sections and
+  /// the individual speaker sections for the supported speakers.
+  static String _filterTermsForSupportedSpeakers(String fullText) {
+    final lines = fullText.split('\n');
+    final buffer = StringBuffer();
+    bool inSpeakerSection = false;
+    bool keepCurrentSection = false;
+    bool passedSpeakerSections = false;
+
+    for (final line in lines) {
+      // Detect the start of the individual speaker rules area.
+      if (line == '# 音声ライブラリ利用規約') {
+        passedSpeakerSections = true;
+        buffer.writeln(line);
+        continue;
+      }
+
+      if (!passedSpeakerSections) {
+        buffer.writeln(line);
+        continue;
+      }
+
+      // Each speaker section starts with "## SpeakerName".
+      if (line.startsWith('## ')) {
+        final sectionName = line.substring(3).trim();
+        inSpeakerSection = true;
+        keepCurrentSection = _supportedSpeakerNames.contains(sectionName);
+        if (keepCurrentSection) {
+          buffer.writeln(line);
+        }
+        continue;
+      }
+
+      if (inSpeakerSection) {
+        if (keepCurrentSection) {
+          buffer.writeln(line);
+        }
+      } else {
+        buffer.writeln(line);
+      }
+    }
+
+    return buffer.toString().trimRight();
+  }
+
   Future<void> _loadTerms() async {
     try {
-      final text = await rootBundle.loadString(
+      final fullText = await rootBundle.loadString(
         'android/app/src/main/assets/voicevox_models/TERMS.txt',
       );
+      final text = _filterTermsForSupportedSpeakers(fullText);
       if (mounted) setState(() => _termsText = text);
       // After content is loaded and rendered, check if scrolling is needed.
       WidgetsBinding.instance.addPostFrameCallback((_) {

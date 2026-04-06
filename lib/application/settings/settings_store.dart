@@ -8,6 +8,12 @@ abstract class SettingsStore {
   Future<AppSettings> load();
 
   Future<void> save(AppSettings settings);
+
+  /// Load the volume stored before muting. Returns `null` if not muted.
+  double? loadPreMuteVolume();
+
+  /// Save the volume before muting. Pass `null` to clear.
+  Future<void> savePreMuteVolume(double? volume);
 }
 
 /// SharedPreferences API のうち本画面で利用する最小セット。
@@ -91,6 +97,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       'settings.voicevox.termsAccepted';
   static const String _kDictionaryRules = 'settings.speech.dictionaryRules';
   static const String _kDebugMode = 'settings.debugMode';
+  static const String _kPreMuteVolume = 'settings.voicevox.preMuteVolume';
 
   @override
   Future<AppSettings> load() async {
@@ -259,6 +266,18 @@ class SharedPreferencesSettingsStore implements SettingsStore {
         settings.dictionaryRules.map((ReplaceRule r) => r.toMap()).toList(),
       ),
     );
+  }
+
+  @override
+  double? loadPreMuteVolume() => _prefs.getDouble(_kPreMuteVolume);
+
+  @override
+  Future<void> savePreMuteVolume(double? volume) async {
+    if (volume == null) {
+      await _prefs.remove(_kPreMuteVolume);
+    } else {
+      await _prefs.setDouble(_kPreMuteVolume, volume);
+    }
   }
 
   List<ReplaceRule> _loadDictionaryRules() {
