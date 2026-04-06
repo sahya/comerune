@@ -254,6 +254,7 @@ class AppSettings {
     required this.voicevoxSynthesisMode,
     required this.voicevoxPlayerType,
     required this.voicevoxTermsAccepted,
+    required this.commentTwoLineEnabled,
     required this.dictionaryRules,
     required this.debugMode,
   }) : assert(
@@ -301,6 +302,7 @@ class AppSettings {
     voicevoxSynthesisMode: SynthesisMode.audioQuery,
     voicevoxPlayerType: VoicevoxPlayerType.audioTrack,
     voicevoxTermsAccepted: false,
+    commentTwoLineEnabled: false,
     dictionaryRules: defaultNicoDictionaryRules,
     debugMode: false,
   );
@@ -366,6 +368,9 @@ class AppSettings {
 
   /// VOICEVOX 音声モデルの利用規約に同意済みかどうか。
   final bool voicevoxTermsAccepted;
+
+  /// 横幅が狭い端末向けにコメントを二段表示するかどうか。
+  final bool commentTwoLineEnabled;
 
   /// 読み上げ時のテキスト置換ルール（ニコニコ用語辞書）。
   final List<ReplaceRule> dictionaryRules;
@@ -482,6 +487,7 @@ class AppSettings {
     SynthesisMode? voicevoxSynthesisMode,
     VoicevoxPlayerType? voicevoxPlayerType,
     bool? voicevoxTermsAccepted,
+    bool? commentTwoLineEnabled,
     List<ReplaceRule>? dictionaryRules,
     bool? debugMode,
   }) {
@@ -533,6 +539,8 @@ class AppSettings {
       voicevoxPlayerType: voicevoxPlayerType ?? this.voicevoxPlayerType,
       voicevoxTermsAccepted:
           voicevoxTermsAccepted ?? this.voicevoxTermsAccepted,
+      commentTwoLineEnabled:
+          commentTwoLineEnabled ?? this.commentTwoLineEnabled,
       dictionaryRules: dictionaryRules ?? this.dictionaryRules,
       debugMode: debugMode ?? this.debugMode,
     );

@@ -103,6 +103,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   static const String _kVoicevoxPlayerType = 'settings.voicevox.playerType';
   static const String _kVoicevoxTermsAccepted =
       'settings.voicevox.termsAccepted';
+  static const String _kCommentTwoLineEnabled = 'settings.comment.twoLine';
   static const String _kDictionaryRules = 'settings.speech.dictionaryRules';
   static const String _kDebugMode = 'settings.debugMode';
   static const String _kPreMuteVolume = 'settings.voicevox.preMuteVolume';
@@ -184,6 +185,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
               : VoicevoxPlayerType.audioTrack,
       voicevoxTermsAccepted: _prefs.getBool(_kVoicevoxTermsAccepted) ??
           defaults.voicevoxTermsAccepted,
+      commentTwoLineEnabled: _prefs.getBool(_kCommentTwoLineEnabled) ??
+          defaults.commentTwoLineEnabled,
       dictionaryRules: _loadDictionaryRules(),
       debugMode: _prefs.getBool(_kDebugMode) ?? defaults.debugMode,
     );
@@ -266,6 +269,10 @@ class SharedPreferencesSettingsStore implements SettingsStore {
     await _prefs.setBool(
       _kVoicevoxTermsAccepted,
       settings.voicevoxTermsAccepted,
+    );
+    await _prefs.setBool(
+      _kCommentTwoLineEnabled,
+      settings.commentTwoLineEnabled,
     );
     await _prefs.setBool(_kDebugMode, settings.debugMode);
     await _prefs.setString(

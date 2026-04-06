@@ -197,6 +197,27 @@ void main() {
     });
   });
 
+  group('commentTwoLineEnabled', () {
+    test('defaults to false', () {
+      expect(AppSettings.defaults.commentTwoLineEnabled, isFalse);
+    });
+
+    test('copyWith updates commentTwoLineEnabled', () {
+      final AppSettings updated = AppSettings.defaults.copyWith(
+        commentTwoLineEnabled: true,
+      );
+      expect(updated.commentTwoLineEnabled, isTrue);
+    });
+
+    test('copyWith preserves commentTwoLineEnabled when not specified', () {
+      final AppSettings initial = AppSettings.defaults.copyWith(
+        commentTwoLineEnabled: true,
+      );
+      final AppSettings updated = initial.copyWith(showUserName: false);
+      expect(updated.commentTwoLineEnabled, isTrue);
+    });
+  });
+
   group('dictionaryRules', () {
     test('defaults include nico dictionary rules', () {
       expect(AppSettings.defaults.dictionaryRules, defaultNicoDictionaryRules);
