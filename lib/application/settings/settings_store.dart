@@ -14,6 +14,14 @@ abstract class SettingsStore {
 
   /// Save the volume before muting. Pass `null` to clear.
   Future<void> savePreMuteVolume(double? volume);
+
+  /// Exports current settings as a pretty-printed JSON string.
+  Future<String> exportAsJson();
+
+  /// Imports settings from a JSON string, saves them, and returns the result.
+  ///
+  /// Throws [FormatException] if [jsonString] is not valid JSON.
+  Future<AppSettings> importFromJson(String jsonString);
 }
 
 /// SharedPreferences API のうち本画面で利用する最小セット。
@@ -297,5 +305,20 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       );
       return defaultNicoDictionaryRules;
     }
+  }
+
+  @override
+  Future<String> exportAsJson() async {
+    final AppSettings settings = await load();
+    final Map<String, dynamic> json = settings.toJson();
+    const JsonEncoder encoder = JsonEncoder.withIndent('  ');
+    return encoder.convert(json);
+  }
+
+  @override
+  Future<AppSettings> importFromJson(String jsonString) async {
+    final AppSettings imported = AppSettings.fromJsonString(jsonString);
+    await save(imported);
+    return imported;
   }
 }

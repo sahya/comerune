@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:developer' as developer;
 
 import '../../comment_speech/src/models/replace_rule.dart';
@@ -535,6 +536,173 @@ class AppSettings {
       dictionaryRules: dictionaryRules ?? this.dictionaryRules,
       debugMode: debugMode ?? this.debugMode,
     );
+  }
+
+  /// Settings export format version for forward compatibility.
+  static const int settingsVersion = 1;
+
+  /// Serializes all fields to a JSON-compatible map.
+  ///
+  /// Uses the same key names and value formats as
+  /// [SharedPreferencesSettingsStore] for consistency.
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      '_version': settingsVersion,
+      'themeMode': themeMode.storageValue,
+      'autoReadEnabled': autoReadEnabled,
+      'speechEngine':
+          speechEngine == SpeechEngine.voicevox ? 'voicevox' : 'bouyomi',
+      'bouyomiHost': bouyomiHost,
+      'bouyomiSpeed': bouyomiSpeed,
+      'bouyomiTone': bouyomiTone,
+      'bouyomiVolume': bouyomiVolume,
+      'bouyomiVoice': bouyomiVoice,
+      'voicevoxSpeaker': voicevoxSpeaker,
+      'voicevoxSpeed': voicevoxSpeed,
+      'voicevoxPitch': voicevoxPitch,
+      'voicevoxIntonation': voicevoxIntonation,
+      'voicevoxVolume': voicevoxVolume,
+      'queueLimit': queueLimit,
+      'maxDelaySeconds': maxDelaySeconds,
+      'omitUrl': omitUrl,
+      'suppressDuplicate': suppressDuplicate,
+      'ngWords': ngWords,
+      'ngUserIds': ngUserIds,
+      'favoriteUserIds': favoriteUserIds,
+      'pastCommentFetchCount': pastCommentFetchCount.storageValue,
+      'showUserName': showUserName,
+      'resolveUserName': resolveUserName,
+      'commentFontSize': commentFontSize,
+      'autoNicknameRegistration': autoNicknameRegistration,
+      'autoSaveCommentLog': autoSaveCommentLog,
+      'autoSaveCommentLogPath': autoSaveCommentLogPath,
+      'statisticsEnabled': statisticsEnabled,
+      'statisticsViewerCommentEnabled': statisticsViewerCommentEnabled,
+      'statisticsActiveUserEnabled': statisticsActiveUserEnabled,
+      'highlightPickupEnabled': highlightPickupEnabled,
+      'starPrefixHidingEnabled': starPrefixHidingEnabled,
+      'slashPrefixSkipEnabled': slashPrefixSkipEnabled,
+      'readUserName': readUserName,
+      'voicevoxSynthesisMode': voicevoxSynthesisMode.storageValue,
+      'voicevoxPlayerType': voicevoxPlayerType == VoicevoxPlayerType.mediaPlayer
+          ? 'media_player'
+          : 'audio_track',
+      'voicevoxTermsAccepted': voicevoxTermsAccepted,
+      'dictionaryRules':
+          dictionaryRules.map((ReplaceRule r) => r.toMap()).toList(),
+      'debugMode': debugMode,
+    };
+  }
+
+  /// Deserializes from a JSON map, using defaults for missing/invalid fields.
+  ///
+  /// Designed for defensive parsing: unknown keys are ignored and missing
+  /// keys fall back to [AppSettings.defaults].
+  static AppSettings fromJson(Map<String, dynamic> json) {
+    const AppSettings d = AppSettings.defaults;
+
+    List<ReplaceRule> parseDictionaryRules() {
+      final Object? raw = json['dictionaryRules'];
+      if (raw is List) {
+        try {
+          return raw
+              .map(
+                (dynamic e) => ReplaceRule.fromMap(e as Map<String, dynamic>),
+              )
+              .toList();
+        } on Object {
+          return d.dictionaryRules;
+        }
+      }
+      return d.dictionaryRules;
+    }
+
+    final double fontSize =
+        (json['commentFontSize'] as num?)?.toDouble() ?? d.commentFontSize;
+
+    return AppSettings(
+      themeMode: AppThemeModeValue.fromStorageValue(
+        json['themeMode'] as String?,
+      ),
+      autoReadEnabled: json['autoReadEnabled'] as bool? ?? d.autoReadEnabled,
+      speechEngine: (json['speechEngine'] as String?) == 'bouyomi'
+          ? SpeechEngine.bouyomi
+          : SpeechEngine.voicevox,
+      bouyomiHost: json['bouyomiHost'] as String? ?? d.bouyomiHost,
+      bouyomiSpeed: json['bouyomiSpeed'] as int? ?? d.bouyomiSpeed,
+      bouyomiTone: json['bouyomiTone'] as int? ?? d.bouyomiTone,
+      bouyomiVolume: json['bouyomiVolume'] as int? ?? d.bouyomiVolume,
+      bouyomiVoice: json['bouyomiVoice'] as int? ?? d.bouyomiVoice,
+      voicevoxSpeaker: json['voicevoxSpeaker'] as int? ?? d.voicevoxSpeaker,
+      voicevoxSpeed:
+          (json['voicevoxSpeed'] as num?)?.toDouble() ?? d.voicevoxSpeed,
+      voicevoxPitch:
+          (json['voicevoxPitch'] as num?)?.toDouble() ?? d.voicevoxPitch,
+      voicevoxIntonation: (json['voicevoxIntonation'] as num?)?.toDouble() ??
+          d.voicevoxIntonation,
+      voicevoxVolume:
+          (json['voicevoxVolume'] as num?)?.toDouble() ?? d.voicevoxVolume,
+      queueLimit: json['queueLimit'] as int? ?? d.queueLimit,
+      maxDelaySeconds: json['maxDelaySeconds'] as int? ?? d.maxDelaySeconds,
+      omitUrl: json['omitUrl'] as bool? ?? d.omitUrl,
+      suppressDuplicate:
+          json['suppressDuplicate'] as bool? ?? d.suppressDuplicate,
+      ngWords: json['ngWords'] as String? ?? d.ngWords,
+      ngUserIds: json['ngUserIds'] as String? ?? d.ngUserIds,
+      favoriteUserIds: json['favoriteUserIds'] as String? ?? d.favoriteUserIds,
+      pastCommentFetchCount: PastCommentFetchCountValue.fromStorageValue(
+        json['pastCommentFetchCount'] as String?,
+      ),
+      showUserName: json['showUserName'] as bool? ?? d.showUserName,
+      resolveUserName: json['resolveUserName'] as bool? ?? d.resolveUserName,
+      commentFontSize: fontSize.clamp(commentFontSizeMin, commentFontSizeMax),
+      autoNicknameRegistration: json['autoNicknameRegistration'] as bool? ??
+          d.autoNicknameRegistration,
+      autoSaveCommentLog:
+          json['autoSaveCommentLog'] as bool? ?? d.autoSaveCommentLog,
+      autoSaveCommentLogPath:
+          json['autoSaveCommentLogPath'] as String? ?? d.autoSaveCommentLogPath,
+      statisticsEnabled:
+          json['statisticsEnabled'] as bool? ?? d.statisticsEnabled,
+      statisticsViewerCommentEnabled:
+          json['statisticsViewerCommentEnabled'] as bool? ??
+              d.statisticsViewerCommentEnabled,
+      statisticsActiveUserEnabled:
+          json['statisticsActiveUserEnabled'] as bool? ??
+              d.statisticsActiveUserEnabled,
+      highlightPickupEnabled:
+          json['highlightPickupEnabled'] as bool? ?? d.highlightPickupEnabled,
+      starPrefixHidingEnabled:
+          json['starPrefixHidingEnabled'] as bool? ?? d.starPrefixHidingEnabled,
+      slashPrefixSkipEnabled:
+          json['slashPrefixSkipEnabled'] as bool? ?? d.slashPrefixSkipEnabled,
+      readUserName: json['readUserName'] as bool? ?? d.readUserName,
+      voicevoxSynthesisMode: SynthesisMode.fromStorageValue(
+        json['voicevoxSynthesisMode'] as String?,
+      ),
+      voicevoxPlayerType:
+          (json['voicevoxPlayerType'] as String?) == 'media_player'
+              ? VoicevoxPlayerType.mediaPlayer
+              : VoicevoxPlayerType.audioTrack,
+      voicevoxTermsAccepted:
+          json['voicevoxTermsAccepted'] as bool? ?? d.voicevoxTermsAccepted,
+      dictionaryRules: parseDictionaryRules(),
+      debugMode: json['debugMode'] as bool? ?? d.debugMode,
+    );
+  }
+
+  /// Converts a JSON string to [AppSettings].
+  ///
+  /// Throws [FormatException] if the string is not valid JSON or not a
+  /// JSON object.
+  static AppSettings fromJsonString(String jsonString) {
+    final Object? decoded = jsonDecode(jsonString);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException(
+        'Invalid settings JSON: expected a JSON object',
+      );
+    }
+    return fromJson(decoded);
   }
 
   /// Convert to [SpeechSettings] for the platform speech engine.
