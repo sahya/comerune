@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:share_plus/share_plus.dart' show ShareParams, SharePlus;
 
 import '../../domain/comment_log/comment_log_stats.dart';
 import '../../domain/models/app_message.dart';
@@ -214,7 +214,7 @@ class CommentLogStatsSheet extends StatelessWidget {
             icon: const Icon(Icons.share, size: 18),
             label: const Text('共有'),
             onPressed: () async {
-              await Share.share(shareText);
+              await SharePlus.instance.share(ShareParams(text: shareText));
             },
           ),
         ),

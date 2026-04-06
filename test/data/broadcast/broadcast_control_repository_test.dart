@@ -393,6 +393,7 @@ class _FakeHttpClientRequest implements HttpClientRequest {
   @override
   final Uri uri;
   final _FakeHttpClient client;
+  @override
   final String method;
   final _FakeHttpHeaders _headers = _FakeHttpHeaders();
   final StringBuffer _body = StringBuffer();

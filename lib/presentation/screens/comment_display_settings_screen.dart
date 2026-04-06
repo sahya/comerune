@@ -97,9 +97,8 @@ class _CommentDisplaySettingsScreenState
                             value: settings.autoSaveCommentLog,
                             onChanged: (bool value) async {
                               if (value) {
-                                final String? directory = await FilePicker
-                                    .platform
-                                    .getDirectoryPath();
+                                final String? directory =
+                                    await FilePicker.getDirectoryPath();
                                 if (directory == null) {
                                   return;
                                 }
@@ -149,7 +148,7 @@ class _CommentDisplaySettingsScreenState
                           const SizedBox(height: 8),
                           DropdownButtonFormField<PastCommentFetchCount>(
                             key: const Key('past-comment-count-dropdown'),
-                            value: settings.pastCommentFetchCount,
+                            initialValue: settings.pastCommentFetchCount,
                             decoration: const InputDecoration(
                               labelText: '過去コメント取得件数',
                               border: OutlineInputBorder(),
