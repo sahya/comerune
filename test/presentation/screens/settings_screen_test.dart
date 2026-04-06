@@ -116,6 +116,13 @@ void main() {
       await tester.pumpWidget(_buildScreen(settingsStore));
       await tester.pumpAndSettle();
 
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('debug-mode-switch')),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
       toggleSwitchByKeySync(tester, const Key('debug-mode-switch'));
       await tester.pumpAndSettle();
 
@@ -130,6 +137,14 @@ void main() {
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
       await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      // Scroll down so all navigation tiles are visible.
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('user-management-settings-tile')),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('tts-settings-tile')), findsOneWidget);
@@ -150,6 +165,13 @@ void main() {
       await tester.pumpWidget(_buildScreen(settingsStore));
       await tester.pumpAndSettle();
 
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('tts-settings-tile')),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
       // Default autoRead is OFF
       expect(find.text('自動読み上げ: OFF'), findsOneWidget);
     });
@@ -161,6 +183,13 @@ void main() {
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
       await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('comment-display-settings-tile')),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
 
       // Default font size is 14px
