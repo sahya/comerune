@@ -59,6 +59,13 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
   /// Useful for testing initialization races.
   Completer<void>? startCompleter;
 
+  /// If non-null, [getAvailableModels] will throw this.
+  Object? getAvailableModelsError;
+
+  /// If non-null, [getAvailableModels] will wait for this completer before
+  /// returning.  Useful for testing loading placeholders.
+  Completer<void>? getAvailableModelsCompleter;
+
   /// If non-null, [downloadModel] will throw this.
   Object? downloadModelError;
 
@@ -140,6 +147,12 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
 
   @override
   Future<List<Map<String, dynamic>>> getAvailableModels() async {
+    if (getAvailableModelsCompleter != null) {
+      await getAvailableModelsCompleter!.future;
+    }
+    if (getAvailableModelsError != null) {
+      throw getAvailableModelsError!;
+    }
     return availableModelsToReturn;
   }
 
