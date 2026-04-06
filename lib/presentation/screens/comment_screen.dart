@@ -79,36 +79,73 @@ void _errorLog(String message, {Object? error, StackTrace? stackTrace}) {
   );
 }
 
-String _commentLineText({
+/// Builds a [Text.rich] widget showing timestamp, optional user name, and
+/// comment content with per-segment styling.
+///
+/// Shared by both [_PinnedCommentRow] and [_CommentRow].
+Text _buildCommentLineRichText({
   required AppMessage message,
   required bool showUserName,
+  required double fontSize,
+  required Color timestampColor,
+  required Color idColor,
   String? resolvedUserName,
-  String? contentOverride,
+  Color? userColor,
   DateTime? beginAt,
-  bool twoLine = false,
+  bool hidden = false,
 }) {
   final String timestamp = _formatHms(message.timestamp, beginAt: beginAt);
-  final String content = contentOverride ?? message.content;
+  final String content = hidden ? 'ネタバレ防止: タップで表示' : message.content;
+  const double minSubFontSize = 9.0;
+  final double timestampFontSize =
+      hidden ? fontSize : (fontSize * 0.85).clamp(minSubFontSize, fontSize);
+  final double idFontSize =
+      hidden ? fontSize : (fontSize * 0.9).clamp(minSubFontSize, fontSize);
 
-  if (!showUserName) {
-    return '$timestamp  $content';
+  final List<InlineSpan> spans = <InlineSpan>[
+    TextSpan(
+      text: timestamp,
+      style: TextStyle(
+        fontSize: timestampFontSize,
+        color: hidden ? Colors.grey : timestampColor,
+        fontStyle: hidden ? FontStyle.italic : null,
+      ),
+    ),
+  ];
+
+  if (showUserName) {
+    final String? userId = message.userId;
+    if (userId != null && userId.isNotEmpty) {
+      final String displayName =
+          resolvedUserName != null ? '$resolvedUserName ($userId)' : userId;
+      spans.add(const TextSpan(text: '  '));
+      spans.add(
+        TextSpan(
+          text: displayName,
+          style: TextStyle(
+            fontSize: idFontSize,
+            color: hidden ? Colors.grey : (userColor ?? idColor),
+            fontWeight: hidden ? null : FontWeight.w500,
+            fontStyle: hidden ? FontStyle.italic : null,
+          ),
+        ),
+      );
+    }
   }
 
-  final String userId = message.userId ?? '';
+  spans.add(const TextSpan(text: '  '));
+  spans.add(
+    TextSpan(
+      text: content,
+      style: TextStyle(
+        fontSize: fontSize,
+        color: hidden ? Colors.grey : userColor,
+        fontStyle: hidden ? FontStyle.italic : null,
+      ),
+    ),
+  );
 
-  if (userId.isEmpty) {
-    return '$timestamp  $content';
-  }
-
-  final String displayName = resolvedUserName != null
-      ? '$resolvedUserName ($userId)'
-      : userId;
-
-  if (twoLine) {
-    return '$timestamp  $displayName\n$content';
-  }
-
-  return '$timestamp  $displayName  $content';
+  return Text.rich(TextSpan(children: spans));
 }
 
 enum CommentSortOrder { ascending, descending }
@@ -329,9 +366,8 @@ class _CommentScreenState extends State<CommentScreen> {
       _cleanUpStalePinnedIds();
     }
 
-    final String lastId = widget.messages.isNotEmpty
-        ? widget.messages.last.id
-        : 'empty';
+    final String lastId =
+        widget.messages.isNotEmpty ? widget.messages.last.id : 'empty';
     _debugLogLazy(
       () =>
           '[CommentScreen] didUpdate: msgs ${oldWidget.messages.length}→${widget.messages.length}, '
@@ -379,9 +415,10 @@ class _CommentScreenState extends State<CommentScreen> {
         // due to new messages, so we check here to resume auto-scroll.
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted || _autoScrollEnabled) return;
-          final bool atEdge = _sortOrder == CommentSortOrder.ascending
-              ? _isNearBottom()
-              : _isNearTop();
+          final bool atEdge =
+              _sortOrder == CommentSortOrder.ascending
+                  ? _isNearBottom()
+                  : _isNearTop();
           if (atEdge) {
             setState(() {
               _autoScrollEnabled = true;
@@ -928,9 +965,8 @@ class _CommentScreenState extends State<CommentScreen> {
                     key: const Key('save-comment-log-button'),
                     icon: const Icon(Icons.archive_outlined),
                     tooltip: 'コメントログを保存',
-                    onPressed: _isSavingLog
-                        ? null
-                        : () => unawaited(_saveLogManual()),
+                    onPressed:
+                        _isSavingLog ? null : () => unawaited(_saveLogManual()),
                   ),
                 IconButton(
                   key: const Key('sort-toggle-button'),
@@ -939,9 +975,10 @@ class _CommentScreenState extends State<CommentScreen> {
                         ? Icons.arrow_downward
                         : Icons.arrow_upward,
                   ),
-                  tooltip: _sortOrder == CommentSortOrder.ascending
-                      ? '新しい順に切替'
-                      : '古い順に切替',
+                  tooltip:
+                      _sortOrder == CommentSortOrder.ascending
+                          ? '新しい順に切替'
+                          : '古い順に切替',
                   onPressed: _toggleSortOrder,
                 ),
                 if (widget.callbacks.onOpenSettings != null)
@@ -1025,10 +1062,11 @@ class _CommentScreenState extends State<CommentScreen> {
                           itemCount: sortedMessages.length,
                           itemBuilder: (BuildContext context, int index) {
                             final AppMessage message = sortedMessages[index];
-                            final int? userColor = message.userId != null
-                                ? widget.filterConfig.userColorMap[message
-                                      .userId!]
-                                : null;
+                            final int? userColor =
+                                message.userId != null
+                                    ? widget.filterConfig.userColorMap[message
+                                        .userId!]
+                                    : null;
                             return _CommentRow(
                               message: message,
                               themeColors: themeColors,
@@ -1042,9 +1080,10 @@ class _CommentScreenState extends State<CommentScreen> {
                               zebraStripingEnabled:
                                   widget.commentZebraStripingEnabled,
                               commentIndex: index,
-                              userColor: userColor != null
-                                  ? colorFromARGB32(userColor)
-                                  : null,
+                              userColor:
+                                  userColor != null
+                                      ? colorFromARGB32(userColor)
+                                      : null,
                               onLongPress: () => _showCommentActions(message),
                               onOpenUrl: _showUrlConfirmDialog,
                               beginAt: widget.programInfo.beginAt,
@@ -1098,31 +1137,38 @@ class _CommentScreenState extends State<CommentScreen> {
           themeMode: widget.themeMode,
           beginAt: widget.programInfo.beginAt,
           currentColorValue: widget.filterConfig.userColorMap[userId],
-          onColorChanged: widget.callbacks.onUserColorChanged != null
-              ? (int colorValue) {
-                  widget.callbacks.onUserColorChanged!.call(userId, colorValue);
-                  Navigator.of(sheetContext).pop();
-                }
-              : null,
-          onColorRemoved: widget.callbacks.onUserColorRemoved != null
-              ? () {
-                  widget.callbacks.onUserColorRemoved!.call(userId);
-                  Navigator.of(sheetContext).pop();
-                }
-              : null,
+          onColorChanged:
+              widget.callbacks.onUserColorChanged != null
+                  ? (int colorValue) {
+                    widget.callbacks.onUserColorChanged!.call(
+                      userId,
+                      colorValue,
+                    );
+                    Navigator.of(sheetContext).pop();
+                  }
+                  : null,
+          onColorRemoved:
+              widget.callbacks.onUserColorRemoved != null
+                  ? () {
+                    widget.callbacks.onUserColorRemoved!.call(userId);
+                    Navigator.of(sheetContext).pop();
+                  }
+                  : null,
           nickname: widget.filterConfig.userNicknameMap[userId],
-          onNicknameChanged: widget.callbacks.onNicknameChanged != null
-              ? (String nickname) {
-                  widget.callbacks.onNicknameChanged!.call(userId, nickname);
-                  Navigator.of(sheetContext).pop();
-                }
-              : null,
-          onNicknameRemoved: widget.callbacks.onNicknameRemoved != null
-              ? () {
-                  widget.callbacks.onNicknameRemoved!.call(userId);
-                  Navigator.of(sheetContext).pop();
-                }
-              : null,
+          onNicknameChanged:
+              widget.callbacks.onNicknameChanged != null
+                  ? (String nickname) {
+                    widget.callbacks.onNicknameChanged!.call(userId, nickname);
+                    Navigator.of(sheetContext).pop();
+                  }
+                  : null,
+          onNicknameRemoved:
+              widget.callbacks.onNicknameRemoved != null
+                  ? () {
+                    widget.callbacks.onNicknameRemoved!.call(userId);
+                    Navigator.of(sheetContext).pop();
+                  }
+                  : null,
           onToggleNgUser: () {
             widget.callbacks.onToggleNgUser?.call(userId);
             Navigator.of(sheetContext).pop();
@@ -1217,11 +1263,14 @@ class _CommentScreenState extends State<CommentScreen> {
       return;
     }
 
-    final String? selected = matches.length == 1
-        ? await _confirmSingleUrl(matches.first.url)
-        : await _pickUrl(
-            matches.map((UrlMatch match) => match.url).toList(growable: false),
-          );
+    final String? selected =
+        matches.length == 1
+            ? await _confirmSingleUrl(matches.first.url)
+            : await _pickUrl(
+              matches
+                  .map((UrlMatch match) => match.url)
+                  .toList(growable: false),
+            );
     if (selected == null) {
       return;
     }
@@ -1363,9 +1412,8 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   void _cleanUpStalePinnedIds() {
-    final Set<String> currentIds = widget.messages
-        .map((AppMessage m) => m.id)
-        .toSet();
+    final Set<String> currentIds =
+        widget.messages.map((AppMessage m) => m.id).toSet();
     _pinnedMessageIds.removeWhere((String id) => !currentIds.contains(id));
   }
 
@@ -1444,9 +1492,10 @@ class _CommentScreenState extends State<CommentScreen> {
 
   void _toggleSortOrder() {
     setState(() {
-      _sortOrder = _sortOrder == CommentSortOrder.ascending
-          ? CommentSortOrder.descending
-          : CommentSortOrder.ascending;
+      _sortOrder =
+          _sortOrder == CommentSortOrder.ascending
+              ? CommentSortOrder.descending
+              : CommentSortOrder.ascending;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToEdge(animated: false);
@@ -1497,11 +1546,12 @@ class _CommentScreenState extends State<CommentScreen> {
         width: double.infinity,
         child: ElevatedButton(
           key: const Key('stop-button'),
-          onPressed: _isStopEnabled(status)
-              ? () async {
-                  await _stopAndPop();
-                }
-              : null,
+          onPressed:
+              _isStopEnabled(status)
+                  ? () async {
+                    await _stopAndPop();
+                  }
+                  : null,
           child: const Text('接続停止'),
         ),
       ),
@@ -1597,18 +1647,16 @@ class _CommentScreenState extends State<CommentScreen> {
         widget.connectionSupervisor.lastError;
     final String base = _failedMessage(errorCode);
     final String detail = widget.connectionSupervisor.lastErrorDetail ?? '';
-    final String compactDetail = detail.isEmpty
-        ? '-'
-        : _compactSingleLine(detail);
+    final String compactDetail =
+        detail.isEmpty ? '-' : _compactSingleLine(detail);
 
     if (widget.debugMode) {
       final String code = errorCode?.code ?? 'UNKNOWN_ERROR';
       return '$base [code: $code] 原因: $compactDetail 再接続ボタンで再試行できます。';
     }
 
-    final String detailSuffix = detail.isEmpty
-        ? ''
-        : ' 原因: ${_compactSingleLine(detail)}';
+    final String detailSuffix =
+        detail.isEmpty ? '' : ' 原因: ${_compactSingleLine(detail)}';
     return '$base$detailSuffix 再接続ボタンで再試行できます。';
   }
 
@@ -2325,8 +2373,8 @@ class _CommentScreenState extends State<CommentScreen> {
 
     final Directory? customDir =
         widget.logConfig.autoSaveCommentLogPath.isNotEmpty
-        ? Directory(widget.logConfig.autoSaveCommentLogPath)
-        : null;
+            ? Directory(widget.logConfig.autoSaveCommentLogPath)
+            : null;
 
     String? savedPath;
     try {
@@ -2376,9 +2424,10 @@ class _CommentScreenState extends State<CommentScreen> {
       return;
     }
 
-    final double offset = _sortOrder == CommentSortOrder.ascending
-        ? _scrollController.position.maxScrollExtent
-        : 0;
+    final double offset =
+        _sortOrder == CommentSortOrder.ascending
+            ? _scrollController.position.maxScrollExtent
+            : 0;
 
     if (!animated) {
       _scrollController.jumpTo(offset);
@@ -2401,9 +2450,10 @@ class _CommentScreenState extends State<CommentScreen> {
 
   void _checkAutoScrollResume() {
     if (_autoScrollEnabled) return;
-    final bool atEdge = _sortOrder == CommentSortOrder.ascending
-        ? _isNearBottom()
-        : _isNearTop();
+    final bool atEdge =
+        _sortOrder == CommentSortOrder.ascending
+            ? _isNearBottom()
+            : _isNearTop();
     if (atEdge) {
       setState(() {
         _autoScrollEnabled = true;
@@ -2550,8 +2600,8 @@ class _StatusBarState extends State<_StatusBar> {
   Widget build(BuildContext context) {
     final Color wifiColor =
         widget.supervisor.wifiIndicatorColor == WifiIndicatorColor.green
-        ? widget.themeColors.statusConnected
-        : widget.themeColors.statusDisconnected;
+            ? widget.themeColors.statusConnected
+            : widget.themeColors.statusDisconnected;
 
     return Semantics(
       button: true,
@@ -2758,17 +2808,18 @@ class _BroadcasterIcon extends StatelessWidget {
       child: SizedBox(
         width: size,
         height: size,
-        child: url != null && url!.isNotEmpty
-            ? Image.network(
-                url!,
-                width: size,
-                height: size,
-                fit: BoxFit.cover,
-                cacheWidth: (size * 2).round(),
-                cacheHeight: (size * 2).round(),
-                errorBuilder: (_, _, _) => Icon(Icons.person, size: size),
-              )
-            : Icon(Icons.person, size: size),
+        child:
+            url != null && url!.isNotEmpty
+                ? Image.network(
+                  url!,
+                  width: size,
+                  height: size,
+                  fit: BoxFit.cover,
+                  cacheWidth: (size * 2).round(),
+                  cacheHeight: (size * 2).round(),
+                  errorBuilder: (_, _, _) => Icon(Icons.person, size: size),
+                )
+                : Icon(Icons.person, size: size),
       ),
     );
   }
@@ -2850,9 +2901,9 @@ class _PinnedCommentsSection extends StatelessWidget {
               commentTwoLineEnabled: commentTwoLineEnabled,
               userColor:
                   message.userId != null &&
-                      userColorMap.containsKey(message.userId!)
-                  ? colorFromARGB32(userColorMap[message.userId!]!)
-                  : null,
+                          userColorMap.containsKey(message.userId!)
+                      ? colorFromARGB32(userColorMap[message.userId!]!)
+                      : null,
               onUnpin: () => onUnpin(message.id),
               beginAt: beginAt,
             ),
@@ -2895,17 +2946,19 @@ class _PinnedCommentRow extends StatelessWidget {
       child: Row(
         children: <Widget>[
           Expanded(
-            child: useTwoLine
-                ? _buildTwoLinePinned(context)
-                : Text(
-                    _commentLineText(
+            child:
+                useTwoLine
+                    ? _buildTwoLinePinned(context)
+                    : _buildCommentLineRichText(
                       message: message,
                       showUserName: showUserName,
+                      fontSize: fontSize,
+                      timestampColor: themeColors.subtleTextColor,
+                      idColor: themeColors.subtleTextColor,
                       resolvedUserName: resolvedUserName,
+                      userColor: userColor,
                       beginAt: beginAt,
                     ),
-                    style: TextStyle(fontSize: fontSize, color: userColor),
-                  ),
           ),
           SizedBox(
             width: 32,
@@ -2939,9 +2992,8 @@ class _PinnedCommentRow extends StatelessWidget {
 
     final StringBuffer metaBuffer = StringBuffer(timestamp);
     if (userId != null && userId.isNotEmpty) {
-      final String displayName = resolvedUserName != null
-          ? '$resolvedUserName ($userId)'
-          : userId;
+      final String displayName =
+          resolvedUserName != null ? '$resolvedUserName ($userId)' : userId;
       metaBuffer.write('  $displayName');
     }
 
@@ -3033,17 +3085,16 @@ class _CommentRowState extends State<_CommentRow> {
     final bool hidden = _isStarHidden;
     // URL detection is skipped for hidden (star-prefixed) comments because
     // the rendered body is the placeholder, not the original text.
-    final List<UrlMatch> urlMatches = hidden
-        ? const <UrlMatch>[]
-        : _resolveUrlMatches();
+    final List<UrlMatch> urlMatches =
+        hidden ? const <UrlMatch>[] : _resolveUrlMatches();
     final bool hasUrl = urlMatches.isNotEmpty;
     final Color? specialBg = _backgroundColor(widget.message);
     final Color? effectiveBg =
         specialBg ??
         (widget.zebraStripingEnabled && widget.commentIndex.isOdd
             ? Theme.of(
-                context,
-              ).colorScheme.onSurface.withValues(alpha: _zebraStripingAlpha)
+              context,
+            ).colorScheme.onSurface.withValues(alpha: _zebraStripingAlpha)
             : null);
 
     VoidCallback? onTap;
@@ -3070,34 +3121,27 @@ class _CommentRowState extends State<_CommentRow> {
     bool hidden,
     List<UrlMatch> urlMatches,
   ) {
-    final AppMessage message = widget.message;
-    final String timestamp = _formatHms(
-      message.timestamp,
-      beginAt: widget.beginAt,
-    );
-    final String content = hidden ? 'ネタバレ防止: タップで表示' : message.content;
-    final double fontSize = widget.fontSize;
-    final Color timestampColor = widget.themeColors.subtleTextColor;
-    final Color idColor = widget.themeColors.subtleTextColor;
-    const double minSubFontSize = 9.0;
-    final double timestampFontSize = hidden
-        ? fontSize
-        : (fontSize * 0.85).clamp(minSubFontSize, fontSize);
-    final double idFontSize = hidden
-        ? fontSize
-        : (fontSize * 0.9).clamp(minSubFontSize, fontSize);
-
     // Two-line mode is only useful when the username is shown (line 1 holds
     // timestamp + username). When the username column is hidden, the first
     // line would contain only a timestamp, wasting vertical space -- so fall
     // back to single-line rendering.
     if (widget.commentTwoLineEnabled && widget.showUserName) {
-      final double twoLineMetaSize = hidden
-          ? fontSize
-          : (fontSize * _twoLineMetaFontRatio).clamp(
-              _twoLineMinMetaFontSize,
-              fontSize,
-            );
+      final AppMessage message = widget.message;
+      final String timestamp = _formatHms(
+        message.timestamp,
+        beginAt: widget.beginAt,
+      );
+      final String content = hidden ? 'ネタバレ防止: タップで表示' : message.content;
+      final double fontSize = widget.fontSize;
+      final Color timestampColor = widget.themeColors.subtleTextColor;
+      final Color idColor = widget.themeColors.subtleTextColor;
+      final double twoLineMetaSize =
+          hidden
+              ? fontSize
+              : (fontSize * _twoLineMetaFontRatio).clamp(
+                _twoLineMinMetaFontSize,
+                fontSize,
+              );
       return _buildTwoLineComment(
         context: context,
         timestamp: timestamp,
@@ -3111,6 +3155,39 @@ class _CommentRowState extends State<_CommentRow> {
         idColor: idColor,
       );
     }
+
+    // Single-line rendering: delegate to the shared top-level helper when
+    // there are no clickable URLs.  When URLs are present, build inline
+    // so that _buildContentSpans can produce tappable link spans.
+    if (urlMatches.isEmpty) {
+      return _buildCommentLineRichText(
+        message: widget.message,
+        showUserName: widget.showUserName,
+        fontSize: widget.fontSize,
+        timestampColor: widget.themeColors.subtleTextColor,
+        idColor: widget.themeColors.subtleTextColor,
+        resolvedUserName: widget.resolvedUserName,
+        userColor: widget.userColor,
+        beginAt: widget.beginAt,
+        hidden: hidden,
+      );
+    }
+
+    // URL-aware single-line path.
+    final AppMessage message = widget.message;
+    final String timestamp = _formatHms(
+      message.timestamp,
+      beginAt: widget.beginAt,
+    );
+    final String content = hidden ? 'ネタバレ防止: タップで表示' : message.content;
+    final double fontSize = widget.fontSize;
+    final Color timestampColor = widget.themeColors.subtleTextColor;
+    final Color idColor = widget.themeColors.subtleTextColor;
+    const double minSubFontSize = 9.0;
+    final double timestampFontSize =
+        hidden ? fontSize : (fontSize * 0.85).clamp(minSubFontSize, fontSize);
+    final double idFontSize =
+        hidden ? fontSize : (fontSize * 0.9).clamp(minSubFontSize, fontSize);
 
     final List<InlineSpan> spans = <InlineSpan>[
       TextSpan(
@@ -3126,9 +3203,10 @@ class _CommentRowState extends State<_CommentRow> {
     if (widget.showUserName) {
       final String? userId = message.userId;
       if (userId != null && userId.isNotEmpty) {
-        final String displayName = widget.resolvedUserName != null
-            ? '${widget.resolvedUserName} ($userId)'
-            : userId;
+        final String displayName =
+            widget.resolvedUserName != null
+                ? '${widget.resolvedUserName} ($userId)'
+                : userId;
         spans.add(const TextSpan(text: '  '));
         spans.add(
           TextSpan(
@@ -3189,9 +3267,10 @@ class _CommentRowState extends State<_CommentRow> {
     if (widget.showUserName) {
       final String? userId = widget.message.userId;
       if (userId != null && userId.isNotEmpty) {
-        final String displayName = widget.resolvedUserName != null
-            ? '${widget.resolvedUserName} ($userId)'
-            : userId;
+        final String displayName =
+            widget.resolvedUserName != null
+                ? '${widget.resolvedUserName} ($userId)'
+                : userId;
         metaSpans.add(const TextSpan(text: '  '));
         metaSpans.add(
           TextSpan(
