@@ -2182,6 +2182,172 @@ void main() {
       },
     );
 
+    testWidgets(
+      'null userName with valid userId falls back to resolved name',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          AppMessage(
+            id: 'msg-null-name',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'user-3',
+            content: 'テスト',
+            type: AppMessageType.chat,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            resolveUserName: (_) => 'リゾルブ名',
+          ),
+        );
+
+        expect(find.textContaining('リゾルブ名'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'empty resolve result falls back gracefully',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          AppMessage(
+            id: 'msg-empty-resolve',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'user-4',
+            content: 'テスト',
+            type: AppMessageType.chat,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            resolveUserName: (_) => '',
+          ),
+        );
+
+        // Empty resolve result should not be displayed as name.
+        // userId should be shown instead.
+        expect(find.textContaining('user-4'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'null userName and null userId shows content without user column',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          AppMessage(
+            id: 'msg-null-all',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            content: 'テスト',
+            type: AppMessageType.chat,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            resolveUserName: (_) => 'API名',
+          ),
+        );
+
+        // Both null: no user name column should appear.
+        expect(find.textContaining('API名'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'valid userName without nickname shows userName directly',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          AppMessage(
+            id: 'msg-valid-name-no-nick',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'user-1',
+            userName: 'プロトバフ名',
+            content: 'テスト',
+            type: AppMessageType.chat,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            resolveUserName: (_) => 'リゾルブ名',
+          ),
+        );
+
+        // userName should be shown; resolve should not be needed.
+        expect(find.textContaining('プロトバフ名'), findsOneWidget);
+        expect(find.textContaining('リゾルブ名'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'valid userName with empty userId still shows userName',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          AppMessage(
+            id: 'msg-name-empty-userid',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: '',
+            userName: 'プロトバフ名',
+            content: 'テスト',
+            type: AppMessageType.chat,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            resolveUserName: (_) => 'リゾルブ名',
+          ),
+        );
+
+        // userName should still be shown even with empty userId.
+        expect(find.textContaining('プロトバフ名'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'all empty strings: empty userName, empty userId, empty resolve',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          AppMessage(
+            id: 'msg-all-empty',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: '',
+            userName: '',
+            content: 'テスト',
+            type: AppMessageType.chat,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            resolveUserName: (_) => '',
+          ),
+        );
+
+        // All empty: no user name should appear.
+        expect(find.textContaining('リゾルブ名'), findsNothing);
+        expect(find.textContaining('API名'), findsNothing);
+      },
+    );
+
     testWidgets('@name comment triggers onNicknameChanged callback', (
       WidgetTester tester,
     ) async {

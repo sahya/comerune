@@ -121,5 +121,120 @@ void main() {
 
       expect(normalized, isNull);
     });
+
+    test('normalizes null chat.name to null userName', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-null-name',
+        serverTimestamp: serverTime,
+        chat: const NdgrChat(
+          content: 'hello',
+          rawUserId: 789,
+          no: 3,
+        ),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.userName, isNull);
+    });
+
+    test('resolves userId from hashedUserId when rawUserId is absent', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-hashed-only',
+        serverTimestamp: serverTime,
+        chat: const NdgrChat(
+          content: 'hello',
+          hashedUserId: 'abc123',
+          no: 4,
+        ),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.userId, 'abc123');
+    });
+
+    test('returns null userId when both rawUserId and hashedUserId are absent',
+        () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-no-user',
+        serverTimestamp: serverTime,
+        chat: const NdgrChat(content: 'hello', no: 5),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.userId, isNull);
+    });
+
+    test('preserves whitespace-only chat.name as userName', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-whitespace-name',
+        serverTimestamp: serverTime,
+        chat: const NdgrChat(
+          content: 'hello',
+          name: '  ',
+          rawUserId: 100,
+          no: 7,
+        ),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      // Whitespace-only is not empty per isNotEmpty, so it passes through.
+      // This documents current behavior; trimming is outside this fix scope.
+      expect(normalized!.userName, '  ');
+    });
+
+    test('skips empty hashedUserId and returns null userId', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-empty-hashed',
+        serverTimestamp: serverTime,
+        chat: const NdgrChat(
+          content: 'hello',
+          hashedUserId: '',
+          no: 6,
+        ),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.userId, isNull);
+    });
   });
 }
