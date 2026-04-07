@@ -681,6 +681,10 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         }
     }
 
+    // TODO: Replace this probe with a dedicated native API (e.g.
+    //  voicevox_synthesizer_is_model_loaded) if VOICEVOX Core adds one in a
+    //  future release. The current approach uses nativeCreateAudioQuery as an
+    //  indirect check, which is heavier than necessary.
     private fun isModelAlreadyLoadedBySpeakerProbe(modelId: String?): Boolean {
         if (modelId.isNullOrBlank()) {
             return false
