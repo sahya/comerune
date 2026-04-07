@@ -16,5 +16,14 @@ interface VoicevoxEngine {
     /** Load a VVM model file into the engine at runtime. */
     suspend fun loadModel(modelPath: String): Result<Unit>
 
+    /**
+     * Clear the loaded-model tracking for [modelId] so that a subsequent
+     * [loadModel] call will not skip the native load.
+     *
+     * This does **not** unload the model from the native synthesizer (VOICEVOX
+     * Core has no unload API). It only invalidates the skip-optimization cache.
+     */
+    fun clearLoadedModel(modelId: String)
+
     fun release()
 }

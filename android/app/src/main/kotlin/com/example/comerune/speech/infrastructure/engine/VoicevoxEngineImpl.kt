@@ -449,16 +449,33 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             val alreadyLoadedByPath = loadedModelPaths.contains(normalizedPath)
             val alreadyLoadedById = modelId != null && loadedModelIds.contains(modelId)
             if (alreadyLoadedByPath || alreadyLoadedById) {
-                val reason = when {
-                    alreadyLoadedByPath && alreadyLoadedById -> "already_loaded_path_and_id"
-                    alreadyLoadedByPath -> "already_loaded_path"
-                    else -> "already_loaded_id"
+                // Verify that the native synthesizer actually has this model loaded.
+                // The tracking sets can become stale (e.g. after deleteModel followed
+                // by re-download) so we probe the native engine before skipping.
+                val nativeHasModel = isModelAlreadyLoadedBySpeakerProbe(modelId)
+                if (nativeHasModel) {
+                    val reason = when {
+                        alreadyLoadedByPath && alreadyLoadedById -> "already_loaded_path_and_id"
+                        alreadyLoadedByPath -> "already_loaded_path"
+                        else -> "already_loaded_id"
+                    }
+                    Log.i(
+                        TAG,
+                        "loadModel skip: reason=$reason modelId=${modelId ?: "unknown"} modelPath=$normalizedPath"
+                    )
+                    return@withLock Result.success(Unit)
                 }
-                Log.i(
+                // Tracking says loaded but native doesn't have it — clear stale
+                // tracking and fall through to actually load the model.
+                Log.w(
                     TAG,
-                    "loadModel skip: reason=$reason modelId=${modelId ?: "unknown"} modelPath=$normalizedPath"
+                    "loadModel stale tracking detected: modelId=${modelId ?: "unknown"} " +
+                        "modelPath=$normalizedPath — clearing and reloading"
                 )
-                return@withLock Result.success(Unit)
+                loadedModelPaths.remove(normalizedPath)
+                if (modelId != null) {
+                    loadedModelIds.remove(modelId)
+                }
             }
 
             try {
@@ -503,6 +520,17 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         state == TtsEngineState.READY || state == TtsEngineState.SYNTHESIZING
 
     override fun currentState(): TtsEngineState = state
+
+    override fun clearLoadedModel(modelId: String) {
+        val removedPath = loadedModelPaths.removeAll { path ->
+            extractModelId(path) == modelId
+        }
+        val removedId = loadedModelIds.remove(modelId)
+        Log.i(
+            TAG,
+            "clearLoadedModel: modelId=$modelId removedPath=$removedPath removedId=$removedId"
+        )
+    }
 
     override fun release() {
         // Since release() is non-suspend, we use a @Volatile flag + native-level

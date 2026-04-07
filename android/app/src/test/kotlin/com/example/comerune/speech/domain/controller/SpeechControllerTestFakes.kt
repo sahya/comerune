@@ -70,6 +70,7 @@ open class FakeEngine : VoicevoxEngine {
 
     override suspend fun loadModel(modelPath: String): Result<Unit> = Result.success(Unit)
 
+    override fun clearLoadedModel(modelId: String) {}
     override fun isReady(): Boolean = true
     override fun currentState(): TtsEngineState = TtsEngineState.READY
     override fun release() {}
