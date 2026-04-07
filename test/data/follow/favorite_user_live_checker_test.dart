@@ -221,10 +221,10 @@ void main() {
     });
 
     test(
-      'returns empty map when server responds with non-200 status',
+      'returns empty map when server responds with non-200 status (e.g. 500)',
       () async {
         final _FakeHttpClient httpClient = _FakeHttpClient();
-        httpClient.statusCodeByUrlPrefix['providerId=12345'] = 429;
+        httpClient.statusCodeByUrlPrefix['providerId=12345'] = 500;
 
         final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
           httpClient: httpClient,
@@ -239,6 +239,58 @@ void main() {
         checker.dispose();
       },
     );
+
+    test(
+      'retries once on 429 and succeeds if second attempt returns 200',
+      () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        // First call returns 429, subsequent calls return ON_AIR.
+        httpClient.statusCodeByUrlPrefix['providerId=12345'] = 429;
+        httpClient.retryAfterByUrlPrefix['providerId=12345'] = '1';
+        httpClient.statusCodeByUrlPrefixOnRetry['providerId=12345'] =
+            _buildHistoryResponse(
+              programId: 'lv100001',
+              status: 'ON_AIR',
+              providerName: 'テスト',
+            );
+
+        final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
+          httpClient: httpClient,
+          minInterval: Duration.zero,
+        );
+
+        final Map<String, FollowProgram> result = await checker
+            .checkBroadcastStatus(<String>{'12345'});
+
+        expect(result, hasLength(1));
+        expect(result['12345']!.programId, 'lv100001');
+        // 2 requests: initial 429 + retry 200.
+        expect(httpClient.requestCount, 2);
+
+        checker.dispose();
+      },
+    );
+
+    test('returns empty when 429 retry also fails', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      // Both calls return 429 (no retry response override).
+      httpClient.statusCodeByUrlPrefix['providerId=12345'] = 429;
+      httpClient.retryAfterByUrlPrefix['providerId=12345'] = '1';
+
+      final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
+        httpClient: httpClient,
+        minInterval: Duration.zero,
+      );
+
+      final Map<String, FollowProgram> result = await checker
+          .checkBroadcastStatus(<String>{'12345'});
+
+      expect(result, isEmpty);
+      // 2 requests: initial 429 + retry 429.
+      expect(httpClient.requestCount, 2);
+
+      checker.dispose();
+    });
 
     test('returns empty map when response is malformed JSON', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
@@ -506,10 +558,22 @@ class _FakeHttpClient implements HttpClient {
   /// Maps a URL substring to a non-200 HTTP status code.
   final Map<String, int> statusCodeByUrlPrefix = <String, int>{};
 
+  /// Maps a URL substring to the Retry-After header value for 429 responses.
+  final Map<String, String> retryAfterByUrlPrefix = <String, String>{};
+
+  /// Maps a URL substring to the response body to return on the retry attempt
+  /// after a 429. If set, the second request for this prefix returns 200 with
+  /// this body instead of the 429.
+  final Map<String, String> statusCodeByUrlPrefixOnRetry = <String, String>{};
+
   /// Maps a URL substring to an exception to throw.
   final Map<String, Exception> throwOnUrlPrefix = <String, Exception>{};
 
   int requestCount = 0;
+
+  /// Tracks how many times each URL prefix has been requested (for retry
+  /// simulation).
+  final Map<String, int> _hitCountByPrefix = <String, int>{};
 
   @override
   Future<HttpClientRequest> getUrl(Uri url) async {
@@ -524,11 +588,26 @@ class _FakeHttpClient implements HttpClient {
     // Check for non-200 status code overrides.
     for (final MapEntry<String, int> entry in statusCodeByUrlPrefix.entries) {
       if (urlStr.contains(entry.key)) {
+        final int hitCount = _hitCountByPrefix[entry.key] =
+            (_hitCountByPrefix[entry.key] ?? 0) + 1;
         requestCount++;
+
+        // On retry (second hit), return success body if configured.
+        if (hitCount > 1 &&
+            statusCodeByUrlPrefixOnRetry.containsKey(entry.key)) {
+          return _FakeHttpClientRequest(
+            uri: url,
+            responseBody: statusCodeByUrlPrefixOnRetry[entry.key]!,
+            statusCode: 200,
+          );
+        }
+
+        final String? retryAfter = retryAfterByUrlPrefix[entry.key];
         return _FakeHttpClientRequest(
           uri: url,
           responseBody: '',
           statusCode: entry.value,
+          retryAfterHeader: retryAfter,
         );
       }
     }
@@ -563,12 +642,14 @@ class _FakeHttpClientRequest implements HttpClientRequest {
     required this.uri,
     required this.responseBody,
     this.statusCode = 200,
+    this.retryAfterHeader,
   });
 
   @override
   final Uri uri;
   final String responseBody;
   final int statusCode;
+  final String? retryAfterHeader;
   final _FakeHttpHeaders _headers = _FakeHttpHeaders();
 
   @override
@@ -576,7 +657,11 @@ class _FakeHttpClientRequest implements HttpClientRequest {
 
   @override
   Future<HttpClientResponse> close() async {
-    return _FakeHttpClientResponse(statusCode: statusCode, body: responseBody);
+    return _FakeHttpClientResponse(
+      statusCode: statusCode,
+      body: responseBody,
+      retryAfterHeader: retryAfterHeader,
+    );
   }
 
   @override
@@ -611,14 +696,21 @@ class _FakeHttpHeaders implements HttpHeaders {
 
 class _FakeHttpClientResponse extends Stream<List<int>>
     implements HttpClientResponse {
-  _FakeHttpClientResponse({required this.statusCode, required this.body});
+  _FakeHttpClientResponse({
+    required this.statusCode,
+    required this.body,
+    this.retryAfterHeader,
+  });
 
   @override
   final int statusCode;
   final String body;
+  final String? retryAfterHeader;
 
   @override
-  final HttpHeaders headers = _FakeResponseHeaders();
+  late final HttpHeaders headers = _FakeResponseHeaders(
+    retryAfter: retryAfterHeader,
+  );
 
   @override
   StreamSubscription<List<int>> listen(
@@ -647,11 +739,23 @@ class _FakeHttpClientResponse extends Stream<List<int>>
 }
 
 class _FakeResponseHeaders implements HttpHeaders {
-  @override
-  String? value(String name) => null;
+  _FakeResponseHeaders({this.retryAfter});
+
+  final String? retryAfter;
 
   @override
-  List<String>? operator [](String name) => null;
+  String? value(String name) {
+    if (name.toLowerCase() == 'retry-after') {
+      return retryAfter;
+    }
+    return null;
+  }
+
+  @override
+  List<String>? operator [](String name) {
+    final String? v = value(name);
+    return v != null ? <String>[v] : null;
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) {

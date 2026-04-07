@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import '../../app_logging.dart';
 import '../../domain/models/follow_program.dart';
@@ -180,42 +181,55 @@ class FavoriteUserLiveChecker {
     return results;
   }
 
+  /// Default backoff duration used when a 429 response lacks a Retry-After
+  /// header.
+  static const Duration _defaultRetryAfter = Duration(seconds: 2);
+
+  /// Maximum Retry-After value we honour. Anything larger is treated as a
+  /// permanent failure for this cycle to avoid blocking the worker too long.
+  static const Duration _maxRetryAfter = Duration(seconds: 10);
+
+  /// Maximum random jitter added to the retry delay to spread concurrent
+  /// retries across time and avoid a thundering-herd effect.
+  static const int _jitterMaxMs = 1000;
+
+  final Random _random = Random();
+
   Future<MapEntry<String, FollowProgram>?> _checkSingleUser(
     String userId,
   ) async {
     final String maskedUserId = _maskUserIdForLog(userId);
     try {
-      final Uri uri = Uri(
-        scheme: 'https',
-        host: 'live.nicovideo.jp',
-        path: '/front/api/v2/user-broadcast-history',
-        queryParameters: <String, String>{
-          'providerId': userId,
-          'providerType': _providerType,
-          'isIncludeNonPublic': 'false',
-          'offset': '0',
-          'limit': '1',
-          'withTotalCount': 'false',
-        },
-      );
-      final HttpClientRequest request = await _httpClient.getUrl(uri);
-      request.headers.set('User-Agent', _defaultUserAgent);
+      final Uri uri = _buildUri(userId);
+      final HttpClientResponse response = await _sendRequest(uri);
 
-      final HttpClientResponse response = await request.close().timeout(
-        _responseTimeout,
-      );
-      if (response.statusCode != 200) {
-        // TODO: Consider retry with backoff for 429 (Rate Limit) responses.
+      if (response.statusCode == 429) {
+        final Duration retryAfter = _parseRetryAfter(response);
+        await response.drain<void>();
+
+        if (retryAfter > _maxRetryAfter) {
+          appDebugLogLazy(
+            () =>
+                '[FavoriteUserLiveChecker] user=$maskedUserId rate-limited (retry-after=${retryAfter.inSeconds}s > max), giving up',
+          );
+          return null;
+        }
+
+        // Add random jitter to avoid thundering-herd retries.
+        final int jitterMs = _random.nextInt(_jitterMaxMs);
+        final Duration delay = retryAfter + Duration(milliseconds: jitterMs);
         appDebugLogLazy(
           () =>
-              '[FavoriteUserLiveChecker] user=$maskedUserId http=${response.statusCode}',
+              '[FavoriteUserLiveChecker] user=$maskedUserId rate-limited, retrying after ${delay.inMilliseconds}ms',
         );
-        await response.drain<void>();
-        return null;
+        await Future<void>.delayed(delay);
+
+        // Single retry — if this also fails, give up.
+        final HttpClientResponse retryResponse = await _sendRequest(uri);
+        return _handleResponse(retryResponse, userId, maskedUserId);
       }
 
-      final String body = await response.transform(utf8.decoder).join();
-      return _parseResponse(userId, body);
+      return _handleResponse(response, userId, maskedUserId);
     } on Exception catch (e) {
       appErrorLog(
         name: 'FavoriteUserLiveChecker',
@@ -225,6 +239,61 @@ class FavoriteUserLiveChecker {
       );
     }
     return null;
+  }
+
+  Uri _buildUri(String userId) {
+    return Uri(
+      scheme: 'https',
+      host: 'live.nicovideo.jp',
+      path: '/front/api/v2/user-broadcast-history',
+      queryParameters: <String, String>{
+        'providerId': userId,
+        'providerType': _providerType,
+        'isIncludeNonPublic': 'false',
+        'offset': '0',
+        'limit': '1',
+        'withTotalCount': 'false',
+      },
+    );
+  }
+
+  Future<HttpClientResponse> _sendRequest(Uri uri) async {
+    final HttpClientRequest request = await _httpClient.getUrl(uri);
+    request.headers.set('User-Agent', _defaultUserAgent);
+    return request.close().timeout(_responseTimeout);
+  }
+
+  Future<MapEntry<String, FollowProgram>?> _handleResponse(
+    HttpClientResponse response,
+    String userId,
+    String maskedUserId,
+  ) async {
+    if (response.statusCode != 200) {
+      appDebugLogLazy(
+        () =>
+            '[FavoriteUserLiveChecker] user=$maskedUserId http=${response.statusCode}',
+      );
+      await response.drain<void>();
+      return null;
+    }
+
+    final String body = await response.transform(utf8.decoder).join();
+    return _parseResponse(userId, body);
+  }
+
+  /// Parses the `Retry-After` header from an HTTP response.
+  ///
+  /// Returns the parsed [Duration] if the header contains a valid number of
+  /// seconds, or [_defaultRetryAfter] if the header is missing or unparseable.
+  static Duration _parseRetryAfter(HttpClientResponse response) {
+    final String? value = response.headers.value('retry-after');
+    if (value != null) {
+      final int? seconds = int.tryParse(value);
+      if (seconds != null && seconds > 0) {
+        return Duration(seconds: seconds);
+      }
+    }
+    return _defaultRetryAfter;
   }
 
   /// Parses the broadcast-history API response and returns an entry if the
