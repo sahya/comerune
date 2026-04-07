@@ -187,9 +187,32 @@ void main() {
       await tester.pumpAndSettle();
 
       // Error snackbar is shown.
-      expect(find.text('無効な正規表現パターンです'), findsOneWidget);
+      expect(find.text('無効なパターンです'), findsOneWidget);
 
       // No rule was added.
+      final AppSettings loaded = await store.load();
+      expect(loaded.ngWordRules, isEmpty);
+    });
+
+    testWidgets('ignores empty input from add dialog', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      await store.save(AppSettings.defaults);
+
+      await tester.pumpWidget(_buildScreen(store));
+      await tester.pumpAndSettle();
+
+      // Tap add button.
+      await tester.tap(find.byKey(const Key('ng-word-add-button')));
+      await tester.pumpAndSettle();
+
+      // Submit empty input.
+      await tester.tap(find.byKey(const Key('ng-word-add-confirm-button')));
+      await tester.pumpAndSettle();
+
+      // Nothing added — still empty.
       final AppSettings loaded = await store.load();
       expect(loaded.ngWordRules, isEmpty);
     });

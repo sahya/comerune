@@ -107,8 +107,8 @@ class _NgWordListScreenState extends State<NgWordListScreen> {
     final String? input = await showTextInputDialog(
       context: context,
       title: 'NGワード追加',
-      labelText: 'パターン（正規表現可）',
-      hintText: '例: NGにしたい単語',
+      labelText: 'パターン（部分一致）',
+      hintText: '例: スパム',
       textFieldKey: const Key('ng-word-add-input'),
       confirmButtonKey: const Key('ng-word-add-confirm-button'),
       confirmLabel: '追加',
@@ -118,7 +118,9 @@ class _NgWordListScreenState extends State<NgWordListScreen> {
       return;
     }
 
-    // Validate as a regex pattern.
+    // Validate pattern syntax. Currently NG words are matched via
+    // String.contains (substring match), but we validate as a regex
+    // to reject obviously malformed input and for forward-compatibility.
     try {
       RegExp(input);
     } on FormatException {
@@ -128,7 +130,7 @@ class _NgWordListScreenState extends State<NgWordListScreen> {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
-          const SnackBar(content: Text('無効な正規表現パターンです')),
+          const SnackBar(content: Text('無効なパターンです')),
         );
       return;
     }
