@@ -3065,7 +3065,7 @@ class _MuteBanner extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              Icons.volume_mute,
+              Icons.volume_off,
               size: 16,
               color: themeColors.statusConnected,
             ),
@@ -3121,7 +3121,7 @@ class _SpeechStatusIcon extends StatelessWidget {
       color = themeColors.statusDisconnected;
       tooltip = '読み上げ: エラー';
     } else if (isMuted) {
-      icon = Icons.volume_mute;
+      icon = Icons.volume_off;
       color = themeColors.statusConnected;
       tooltip = 'ミュート解除';
     } else {
