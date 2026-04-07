@@ -11,16 +11,16 @@ class ReplaceRule {
   });
 
   Map<String, dynamic> toMap() => {
-        'pattern': pattern,
-        'replacement': replacement,
-        'enabled': enabled,
-      };
+    'pattern': pattern,
+    'replacement': replacement,
+    'enabled': enabled,
+  };
 
   factory ReplaceRule.fromMap(Map<String, dynamic> map) => ReplaceRule(
-        pattern: map['pattern'] as String,
-        replacement: map['replacement'] as String,
-        enabled: map['enabled'] as bool? ?? true,
-      );
+    pattern: map['pattern'] as String,
+    replacement: map['replacement'] as String,
+    enabled: map['enabled'] as bool? ?? true,
+  );
 
   @override
   bool operator ==(Object other) =>

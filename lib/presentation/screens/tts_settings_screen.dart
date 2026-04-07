@@ -185,8 +185,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     if (platform == null) return;
     try {
       final rawList = await platform.getAvailableModels();
-      final allModels =
-          rawList.map((m) => VoicevoxModelInfo.fromMap(m)).toList();
+      final allModels = rawList
+          .map((m) => VoicevoxModelInfo.fromMap(m))
+          .toList();
       final Set<int> nemoSpeakerIds = <int>{};
       for (final VoicevoxModelInfo model in allModels) {
         if (model.modelId == 'n0') {
@@ -273,14 +274,16 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
       if (currentSpeakerId != null &&
           _isSpeakerInSameModel(currentSpeakerId, speakerId, models)) {
         _debugLogLazy(
-          () => '[TtsSettings] loadModel decision=skip_same_model '
+          () =>
+              '[TtsSettings] loadModel decision=skip_same_model '
               'currentSpeaker=$currentSpeakerId '
               'and targetSpeaker=$speakerId are in same modelId=${selectedModel.modelId}',
         );
         return true;
       }
       _debugLogLazy(
-        () => '[TtsSettings] loadModel decision=load_model '
+        () =>
+            '[TtsSettings] loadModel decision=load_model '
             'speaker=$speakerId modelId=${selectedModel.modelId}',
       );
       await platform.loadModel(selectedModel.modelId);
@@ -328,7 +331,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   Future<void> _onSpeakerChanged(AppSettings current, int newSpeaker) async {
     if (newSpeaker == current.voicevoxSpeaker) {
       _debugLogLazy(
-        () => '[TtsSettings] speaker change decision=no_op_same_speaker '
+        () =>
+            '[TtsSettings] speaker change decision=no_op_same_speaker '
             'fromSpeaker=${current.voicevoxSpeaker} toSpeaker=$newSpeaker',
       );
       return;
@@ -337,7 +341,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     final int previousSpeaker = current.voicevoxSpeaker;
     final int generation = ++_speakerChangeGeneration;
     _debugLogLazy(
-      () => '[TtsSettings] speaker change requested: '
+      () =>
+          '[TtsSettings] speaker change requested: '
           'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker '
           'generation=$generation',
     );
@@ -360,7 +365,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     // result -- the newer change takes precedence.
     if (generation != _speakerChangeGeneration) {
       _debugLogLazy(
-        () => '[TtsSettings] speaker change discarded stale result: '
+        () =>
+            '[TtsSettings] speaker change discarded stale result: '
             'reason=stale_generation '
             'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker '
             'generation=$generation latestGeneration=$_speakerChangeGeneration',
@@ -369,7 +375,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     }
     if (!mounted) {
       _debugLogLazy(
-        () => '[TtsSettings] speaker change discarded result: '
+        () =>
+            '[TtsSettings] speaker change discarded result: '
             'reason=widget_unmounted '
             'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker '
             'generation=$generation latestGeneration=$_speakerChangeGeneration',
@@ -382,7 +389,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         _isLoadingModel = false;
       });
       _debugLogLazy(
-        () => '[TtsSettings] speaker change applied: '
+        () =>
+            '[TtsSettings] speaker change applied: '
             'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker',
       );
       _pushSettingsToEngine(next);
@@ -397,7 +405,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
       });
       unawaited(saveSettings(reverted));
       _debugLogLazy(
-        () => '[TtsSettings] speaker change reverted: '
+        () =>
+            '[TtsSettings] speaker change reverted: '
             'fromSpeaker=$previousSpeaker toSpeaker=$newSpeaker '
             'revertedToSpeaker=$previousSpeaker',
       );
@@ -437,7 +446,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   @override
   void updateAndSave(AppSettings next) {
     _debugLogLazy(
-      () => '[TtsSettings] save: autoRead=${next.autoReadEnabled}, '
+      () =>
+          '[TtsSettings] save: autoRead=${next.autoReadEnabled}, '
           'engine=${next.speechEngine}, speaker=${next.voicevoxSpeaker}, '
           'speed=${next.voicevoxSpeed}',
     );
@@ -633,15 +643,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(
-          '音声処理',
-          style: Theme.of(context).textTheme.titleSmall,
-        ),
+        Text('音声処理', style: Theme.of(context).textTheme.titleSmall),
         const SizedBox(height: 8),
-        Text(
-          '音声合成',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
+        Text('音声合成', style: Theme.of(context).textTheme.bodyMedium),
         const SizedBox(height: 4),
         SegmentedButton<SynthesisMode>(
           key: const Key('synthesis-mode-selector'),
@@ -682,9 +686,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
           ],
           onChanged: (VoicevoxPlayerType? value) {
             if (value != null) {
-              updateAndSave(
-                settings.copyWith(voicevoxPlayerType: value),
-              );
+              updateAndSave(settings.copyWith(voicevoxPlayerType: value));
             }
           },
         ),
@@ -692,8 +694,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         Text(
           _buildPerformanceHint(settings),
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.outline,
-              ),
+            color: Theme.of(context).colorScheme.outline,
+          ),
         ),
       ],
     );
@@ -790,8 +792,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         children: [
           DropdownButtonFormField<int>(
             key: const Key('voicevox-speaker-dropdown'),
-            initialValue:
-                currentInList ? settings.voicevoxSpeaker : items.first.value,
+            initialValue: currentInList
+                ? settings.voicevoxSpeaker
+                : items.first.value,
             decoration: const InputDecoration(
               labelText: '話者',
               border: OutlineInputBorder(),
@@ -831,8 +834,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
 
     return DropdownButtonFormField<int>(
       key: const Key('voicevox-speaker-dropdown'),
-      initialValue:
-          fallbackCurrentInList ? settings.voicevoxSpeaker : fallbackSpeakerId,
+      initialValue: fallbackCurrentInList
+          ? settings.voicevoxSpeaker
+          : fallbackSpeakerId,
       decoration: const InputDecoration(
         labelText: '話者',
         border: OutlineInputBorder(),
@@ -1029,269 +1033,263 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         body: settingsError != null
             ? buildSettingsError(context)
             : settings == null
-                ? const Center(child: CircularProgressIndicator())
-                : ListView(
-                    key: const Key('tts-settings-list'),
-                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+                key: const Key('tts-settings-list'),
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+                children: <Widget>[
+                  SettingsSection(
+                    title: '読み上げ',
                     children: <Widget>[
-                      SettingsSection(
-                        title: '読み上げ',
-                        children: <Widget>[
-                          SwitchListTile(
-                            key: const Key('auto-read-switch'),
-                            title: const Text('自動読み上げ'),
-                            contentPadding: EdgeInsets.zero,
-                            value: settings.autoReadEnabled,
-                            onChanged: (bool value) {
-                              updateAndSave(
-                                settings.copyWith(autoReadEnabled: value),
-                              );
-                            },
-                          ),
-                          SwitchListTile(
-                            key: const Key('read-user-name-switch'),
-                            title: const Text('名前を読み上げる'),
-                            subtitle: const Text('ONにすると「名前、コメント」の形式で読み上げます'),
-                            contentPadding: EdgeInsets.zero,
-                            value: settings.readUserName,
-                            onChanged: (bool value) {
-                              updateAndSave(
-                                  settings.copyWith(readUserName: value));
-                            },
-                          ),
-                        ],
+                      SwitchListTile(
+                        key: const Key('auto-read-switch'),
+                        title: const Text('自動読み上げ'),
+                        contentPadding: EdgeInsets.zero,
+                        value: settings.autoReadEnabled,
+                        onChanged: (bool value) {
+                          updateAndSave(
+                            settings.copyWith(autoReadEnabled: value),
+                          );
+                        },
                       ),
-                      const SizedBox(height: 12),
-                      SettingsSection(
-                        key: const Key('voicevox-section'),
-                        title: 'VOICEVOX',
-                        children: <Widget>[
-                          _buildVoicevoxSpeakerDropdown(settings),
-                          if (widget.platform != null) ...[
-                            const SizedBox(height: 8),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: OutlinedButton.icon(
-                                key: const Key('voicevox-add-speaker-btn'),
-                                onPressed: () async {
-                                  await Navigator.of(context).push(
-                                    MaterialPageRoute<void>(
-                                      builder: (_) => VoiceLibraryScreen(
-                                        platform: widget.platform!,
-                                        settingsStore: widget.settingsStore,
-                                      ),
-                                    ),
-                                  );
-                                  await _refreshVoicevoxModels();
-                                },
-                                icon: const Icon(Icons.add),
-                                label: const Text('話者を追加'),
-                              ),
-                            ),
-                          ],
-                          if (_isNemoPresetVisible(settings)) ...[
-                            const SizedBox(height: 8),
-                            _buildNemoStyleDropdown(settings),
-                          ],
-                          const SizedBox(height: 16),
-                          _buildPerformanceSection(settings),
-                          const SizedBox(height: 16),
-                          Text(
-                            '声の調整',
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                          const SizedBox(height: 8),
-                          if (settings.voicevoxSynthesisMode ==
-                              SynthesisMode.audioQuery) ...[
-                            SettingsDoubleSliderField(
-                              key: const Key('voicevox-speed-slider'),
-                              label: '話速',
-                              min: 0.5,
-                              max: 2.0,
-                              divisions: 15,
-                              value: settings.voicevoxSpeed,
-                              onChanged: (double value) {
-                                updateAndSave(
-                                  settings.copyWith(voicevoxSpeed: value),
-                                );
-                              },
-                            ),
-                            SettingsDoubleSliderField(
-                              key: const Key('voicevox-pitch-slider'),
-                              label: '音高',
-                              min: -0.15,
-                              max: 0.15,
-                              divisions: 30,
-                              value: settings.voicevoxPitch,
-                              onChanged: (double value) {
-                                updateAndSave(
-                                  settings.copyWith(voicevoxPitch: value),
-                                );
-                              },
-                            ),
-                            SettingsDoubleSliderField(
-                              key: const Key('voicevox-intonation-slider'),
-                              label: '抑揚',
-                              min: 0.0,
-                              max: 2.0,
-                              divisions: 20,
-                              value: settings.voicevoxIntonation,
-                              onChanged: (double value) {
-                                updateAndSave(
-                                  settings.copyWith(voicevoxIntonation: value),
-                                );
-                              },
-                            ),
-                          ],
-                          SettingsDoubleSliderField(
-                            key: const Key('voicevox-volume-slider'),
-                            label: '音量',
-                            min: 0.0,
-                            max: 2.0,
-                            divisions: 20,
-                            value: settings.voicevoxVolume,
-                            onChanged: (double value) {
-                              updateAndSave(
-                                settings.copyWith(voicevoxVolume: value),
-                              );
-                            },
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            _buildCreditText(settings.voicevoxSpeaker),
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(
-                                  color: Theme.of(context).colorScheme.outline,
-                                ),
-                          ),
-                        ],
+                      SwitchListTile(
+                        key: const Key('read-user-name-switch'),
+                        title: const Text('名前を読み上げる'),
+                        subtitle: const Text('ONにすると「名前、コメント」の形式で読み上げます'),
+                        contentPadding: EdgeInsets.zero,
+                        value: settings.readUserName,
+                        onChanged: (bool value) {
+                          updateAndSave(settings.copyWith(readUserName: value));
+                        },
                       ),
-                      const SizedBox(height: 12),
-                      SettingsSection(
-                        title: '読み上げキュー',
-                        children: <Widget>[
-                          TextFormField(
-                            key: const Key('queue-limit-field'),
-                            controller: _queueLimitController,
-                            focusNode: _queueLimitFocusNode,
-                            keyboardType: TextInputType.number,
-                            decoration: InputDecoration(
-                              labelText: 'キュー上限',
-                              border: const OutlineInputBorder(),
-                              errorText: _queueLimitError,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextFormField(
-                            key: const Key('max-delay-field'),
-                            controller: _maxDelayController,
-                            focusNode: _maxDelayFocusNode,
-                            keyboardType: TextInputType.number,
-                            decoration: InputDecoration(
-                              labelText: '最大遅延（秒）',
-                              border: const OutlineInputBorder(),
-                              errorText: _maxDelayError,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      SettingsSection(
-                        title: '読み上げフィルタ',
-                        children: <Widget>[
-                          SwitchListTile(
-                            key: const Key('slash-prefix-skip-switch'),
-                            title: const Text('「/」で読み上げスキップ'),
-                            subtitle: const Text('/ で始まるコメントを読み上げない'),
-                            contentPadding: EdgeInsets.zero,
-                            value: settings.slashPrefixSkipEnabled,
-                            onChanged: (bool value) {
-                              updateAndSave(
-                                settings.copyWith(
-                                    slashPrefixSkipEnabled: value),
-                              );
-                            },
-                          ),
-                          SwitchListTile(
-                            key: const Key('star-prefix-hiding-switch'),
-                            title: const Text('「☆」で本文非表示'),
-                            subtitle: const Text(
-                              '☆ で始まるコメントの本文を隠す（タップで展開可能）。読み上げもしない',
-                            ),
-                            contentPadding: EdgeInsets.zero,
-                            value: settings.starPrefixHidingEnabled,
-                            onChanged: (bool value) {
-                              updateAndSave(
-                                settings.copyWith(
-                                    starPrefixHidingEnabled: value),
-                              );
-                            },
-                          ),
-                          SwitchListTile(
-                            key: const Key('omit-url-switch'),
-                            title: const Text('URLを省略する'),
-                            contentPadding: EdgeInsets.zero,
-                            value: settings.omitUrl,
-                            onChanged: (bool value) {
-                              updateAndSave(settings.copyWith(omitUrl: value));
-                            },
-                          ),
-                          SwitchListTile(
-                            key: const Key('suppress-duplicate-switch'),
-                            title: const Text('連投抑制'),
-                            contentPadding: EdgeInsets.zero,
-                            value: settings.suppressDuplicate,
-                            onChanged: (bool value) {
-                              updateAndSave(
-                                settings.copyWith(suppressDuplicate: value),
-                              );
-                            },
-                          ),
-                          TextFormField(
-                            key: const Key('ng-words-field'),
-                            controller: _ngWordsController,
-                            focusNode: _ngWordsFocusNode,
-                            minLines: 3,
-                            maxLines: 6,
-                            decoration: InputDecoration(
-                              labelText: 'NGワード（正規表現）',
-                              hintText: '例: ^8+\$',
-                              border: const OutlineInputBorder(),
-                              errorText: _ngWordsError,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          ListTile(
-                            key: const Key('dictionary-rules-tile'),
-                            contentPadding: EdgeInsets.zero,
-                            leading: const Icon(Icons.book),
-                            title: const Text('読み上げ辞書'),
-                            subtitle: Text(
-                              settings.dictionaryRules.isEmpty
-                                  ? '未登録'
-                                  : '${settings.dictionaryRules.length}件登録中',
-                            ),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () async {
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  SettingsSection(
+                    key: const Key('voicevox-section'),
+                    title: 'VOICEVOX',
+                    children: <Widget>[
+                      _buildVoicevoxSpeakerDropdown(settings),
+                      if (widget.platform != null) ...[
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: OutlinedButton.icon(
+                            key: const Key('voicevox-add-speaker-btn'),
+                            onPressed: () async {
                               await Navigator.of(context).push(
                                 MaterialPageRoute<void>(
-                                  builder: (_) => DictionaryRulesScreen(
+                                  builder: (_) => VoiceLibraryScreen(
+                                    platform: widget.platform!,
                                     settingsStore: widget.settingsStore,
                                   ),
                                 ),
                               );
-                              await loadSettings();
-                              if (this.settings != null) {
-                                _pushSettingsToEngine(this.settings!);
-                              }
+                              await _refreshVoicevoxModels();
                             },
+                            icon: const Icon(Icons.add),
+                            label: const Text('話者を追加'),
                           ),
-                        ],
+                        ),
+                      ],
+                      if (_isNemoPresetVisible(settings)) ...[
+                        const SizedBox(height: 8),
+                        _buildNemoStyleDropdown(settings),
+                      ],
+                      const SizedBox(height: 16),
+                      _buildPerformanceSection(settings),
+                      const SizedBox(height: 16),
+                      Text(
+                        '声の調整',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 8),
+                      if (settings.voicevoxSynthesisMode ==
+                          SynthesisMode.audioQuery) ...[
+                        SettingsDoubleSliderField(
+                          key: const Key('voicevox-speed-slider'),
+                          label: '話速',
+                          min: 0.5,
+                          max: 2.0,
+                          divisions: 15,
+                          value: settings.voicevoxSpeed,
+                          onChanged: (double value) {
+                            updateAndSave(
+                              settings.copyWith(voicevoxSpeed: value),
+                            );
+                          },
+                        ),
+                        SettingsDoubleSliderField(
+                          key: const Key('voicevox-pitch-slider'),
+                          label: '音高',
+                          min: -0.15,
+                          max: 0.15,
+                          divisions: 30,
+                          value: settings.voicevoxPitch,
+                          onChanged: (double value) {
+                            updateAndSave(
+                              settings.copyWith(voicevoxPitch: value),
+                            );
+                          },
+                        ),
+                        SettingsDoubleSliderField(
+                          key: const Key('voicevox-intonation-slider'),
+                          label: '抑揚',
+                          min: 0.0,
+                          max: 2.0,
+                          divisions: 20,
+                          value: settings.voicevoxIntonation,
+                          onChanged: (double value) {
+                            updateAndSave(
+                              settings.copyWith(voicevoxIntonation: value),
+                            );
+                          },
+                        ),
+                      ],
+                      SettingsDoubleSliderField(
+                        key: const Key('voicevox-volume-slider'),
+                        label: '音量',
+                        min: 0.0,
+                        max: 2.0,
+                        divisions: 20,
+                        value: settings.voicevoxVolume,
+                        onChanged: (double value) {
+                          updateAndSave(
+                            settings.copyWith(voicevoxVolume: value),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        _buildCreditText(settings.voicevoxSpeaker),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 12),
+                  SettingsSection(
+                    title: '読み上げキュー',
+                    children: <Widget>[
+                      TextFormField(
+                        key: const Key('queue-limit-field'),
+                        controller: _queueLimitController,
+                        focusNode: _queueLimitFocusNode,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: 'キュー上限',
+                          border: const OutlineInputBorder(),
+                          errorText: _queueLimitError,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        key: const Key('max-delay-field'),
+                        controller: _maxDelayController,
+                        focusNode: _maxDelayFocusNode,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: '最大遅延（秒）',
+                          border: const OutlineInputBorder(),
+                          errorText: _maxDelayError,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  SettingsSection(
+                    title: '読み上げフィルタ',
+                    children: <Widget>[
+                      SwitchListTile(
+                        key: const Key('slash-prefix-skip-switch'),
+                        title: const Text('「/」で読み上げスキップ'),
+                        subtitle: const Text('/ で始まるコメントを読み上げない'),
+                        contentPadding: EdgeInsets.zero,
+                        value: settings.slashPrefixSkipEnabled,
+                        onChanged: (bool value) {
+                          updateAndSave(
+                            settings.copyWith(slashPrefixSkipEnabled: value),
+                          );
+                        },
+                      ),
+                      SwitchListTile(
+                        key: const Key('star-prefix-hiding-switch'),
+                        title: const Text('「☆」で本文非表示'),
+                        subtitle: const Text(
+                          '☆ で始まるコメントの本文を隠す（タップで展開可能）。読み上げもしない',
+                        ),
+                        contentPadding: EdgeInsets.zero,
+                        value: settings.starPrefixHidingEnabled,
+                        onChanged: (bool value) {
+                          updateAndSave(
+                            settings.copyWith(starPrefixHidingEnabled: value),
+                          );
+                        },
+                      ),
+                      SwitchListTile(
+                        key: const Key('omit-url-switch'),
+                        title: const Text('URLを省略する'),
+                        contentPadding: EdgeInsets.zero,
+                        value: settings.omitUrl,
+                        onChanged: (bool value) {
+                          updateAndSave(settings.copyWith(omitUrl: value));
+                        },
+                      ),
+                      SwitchListTile(
+                        key: const Key('suppress-duplicate-switch'),
+                        title: const Text('連投抑制'),
+                        contentPadding: EdgeInsets.zero,
+                        value: settings.suppressDuplicate,
+                        onChanged: (bool value) {
+                          updateAndSave(
+                            settings.copyWith(suppressDuplicate: value),
+                          );
+                        },
+                      ),
+                      TextFormField(
+                        key: const Key('ng-words-field'),
+                        controller: _ngWordsController,
+                        focusNode: _ngWordsFocusNode,
+                        minLines: 3,
+                        maxLines: 6,
+                        decoration: InputDecoration(
+                          labelText: 'NGワード（正規表現）',
+                          hintText: '例: ^8+\$',
+                          border: const OutlineInputBorder(),
+                          errorText: _ngWordsError,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ListTile(
+                        key: const Key('dictionary-rules-tile'),
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.book),
+                        title: const Text('読み上げ辞書'),
+                        subtitle: Text(
+                          settings.dictionaryRules.isEmpty
+                              ? '未登録'
+                              : '${settings.dictionaryRules.length}件登録中',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => DictionaryRulesScreen(
+                                settingsStore: widget.settingsStore,
+                              ),
+                            ),
+                          );
+                          await loadSettings();
+                          if (this.settings != null) {
+                            _pushSettingsToEngine(this.settings!);
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
       ),
     );
   }

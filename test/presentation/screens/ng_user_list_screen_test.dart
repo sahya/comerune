@@ -30,8 +30,9 @@ void main() {
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
       // Pre-save settings with NG user IDs.
-      final AppSettings initial =
-          AppSettings.defaults.addNgUserId('user123').addNgUserId('user456');
+      final AppSettings initial = AppSettings.defaults
+          .addNgUserId('user123')
+          .addNgUserId('user456');
       await store.save(initial);
 
       await tester.pumpWidget(_buildScreen(store));
@@ -50,8 +51,9 @@ void main() {
       final SharedPreferencesSettingsStore store =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
-      final AppSettings initial =
-          AppSettings.defaults.addNgUserId('user123').addNgUserId('user456');
+      final AppSettings initial = AppSettings.defaults
+          .addNgUserId('user123')
+          .addNgUserId('user456');
       await store.save(initial);
 
       await tester.pumpWidget(_buildScreen(store));

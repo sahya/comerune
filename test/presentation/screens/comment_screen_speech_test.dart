@@ -868,7 +868,7 @@ void main() {
             messages: const <AppMessage>[],
             onStopAllConnections: () async {},
             onReconnectSameLv: () async {},
-            onDifferentLvConnected: (_, __) async {},
+            onDifferentLvConnected: (_, _) async {},
             themeMode: AppThemeMode.light,
             speechPlatform: fakePlatform,
             speechSettings: const SpeechSettings(enabled: true),
@@ -901,7 +901,7 @@ void main() {
               messages: const <AppMessage>[],
               onStopAllConnections: () async {},
               onReconnectSameLv: () async {},
-              onDifferentLvConnected: (_, __) async {},
+              onDifferentLvConnected: (_, _) async {},
               themeMode: AppThemeMode.light,
               speechPlatform: fakePlatform,
               speechSettings: const SpeechSettings(enabled: true),
@@ -937,7 +937,7 @@ void main() {
             messages: const <AppMessage>[],
             onStopAllConnections: () async {},
             onReconnectSameLv: () async {},
-            onDifferentLvConnected: (_, __) async {},
+            onDifferentLvConnected: (_, _) async {},
             themeMode: AppThemeMode.light,
             speechPlatform: fakePlatform,
             speechSettings: const SpeechSettings(enabled: false),
@@ -1030,12 +1030,12 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
         widget.resolveUserName != null || widget.requestUserNameResolve != null;
     final UserNameResolution? userNameResolution =
         hasUserNameResolutionCallbacks
-            ? UserNameResolution(
-                resolve: widget.resolveUserName ?? (_) => null,
-                requestResolve: widget.requestUserNameResolve ?? (_) {},
-                listenable: _NoopListenable.instance,
-              )
-            : null;
+        ? UserNameResolution(
+            resolve: widget.resolveUserName ?? (_) => null,
+            requestResolve: widget.requestUserNameResolve ?? (_) {},
+            listenable: _NoopListenable.instance,
+          )
+        : null;
 
     return CommentScreen(
       programInfo: const CommentProgramInfo(lv: 'lv123456789'),
@@ -1043,7 +1043,7 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
       messages: _messages,
       onStopAllConnections: () async {},
       onReconnectSameLv: () async {},
-      onDifferentLvConnected: (_, __) async {},
+      onDifferentLvConnected: (_, _) async {},
       themeMode: AppThemeMode.light,
       speechPlatform: widget.speechPlatform,
       speechSettings: _speechSettings,

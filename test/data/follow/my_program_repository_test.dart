@@ -366,8 +366,7 @@ void main() {
       repository.dispose();
     });
 
-    test('extracts icon from tool endpoint using provider ID fallback',
-        () async {
+    test('extracts icon from tool endpoint using provider ID fallback', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.queuedResponses.addAll(<_FakeResponseConfig>[
         _FakeResponseConfig(statusCode: 404, body: ''),
@@ -613,10 +612,7 @@ void main() {
       expect(result!.programId, 'lv111');
       // Should only make one request (on-air found immediately).
       expect(httpClient.requests, hasLength(1));
-      expect(
-        httpClient.requests[0].uri.queryParameters['status'],
-        'onair',
-      );
+      expect(httpClient.requests[0].uri.queryParameters['status'], 'onair');
 
       repository.dispose();
     });
@@ -641,10 +637,7 @@ void main() {
       expect(result, isNotNull);
       expect(result!.programId, 'lv222');
       expect(httpClient.requests, hasLength(3));
-      expect(
-        httpClient.requests[2].uri.queryParameters['status'],
-        'reserved',
-      );
+      expect(httpClient.requests[2].uri.queryParameters['status'], 'reserved');
 
       repository.dispose();
     });
@@ -671,10 +664,7 @@ void main() {
       expect(result, isNotNull);
       expect(result!.programId, 'lv333');
       expect(httpClient.requests, hasLength(4));
-      expect(
-        httpClient.requests[3].uri.queryParameters['status'],
-        'test',
-      );
+      expect(httpClient.requests[3].uri.queryParameters['status'], 'test');
 
       repository.dispose();
     });
@@ -711,9 +701,7 @@ void main() {
         httpClient: httpClient,
       );
 
-      final result = await repository.fetchControllableProgram(
-        userSession: '',
-      );
+      final result = await repository.fetchControllableProgram(userSession: '');
 
       expect(result, isNull);
       expect(httpClient.requests, isEmpty);
@@ -832,7 +820,7 @@ class _FakeHttpHeaders implements HttpHeaders {
 class _FakeHttpClientResponse extends Stream<List<int>>
     implements HttpClientResponse {
   _FakeHttpClientResponse({required this.statusCode, required String body})
-      : _body = body;
+    : _body = body;
 
   @override
   final int statusCode;

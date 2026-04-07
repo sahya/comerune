@@ -23,8 +23,8 @@ class SecureUserSessionStore implements UserSessionStore {
   SecureUserSessionStore({
     required SharedPreferences prefs,
     FlutterSecureStorage? secureStorage,
-  })  : _prefs = prefs,
-        _secureStorage = secureStorage ?? const FlutterSecureStorage();
+  }) : _prefs = prefs,
+       _secureStorage = secureStorage ?? const FlutterSecureStorage();
 
   final SharedPreferences _prefs;
   final FlutterSecureStorage _secureStorage;

@@ -72,7 +72,8 @@ class DefaultLegacyChatExtractor implements LegacyChatExtractor {
 
     final String? userId =
         _readString(chat['user_id']) ?? _readString(chat['userId']);
-    final DateTime timestamp = _parseTimestamp(chat['timestamp']) ??
+    final DateTime timestamp =
+        _parseTimestamp(chat['timestamp']) ??
         _parseTimestamp(chat['date']) ??
         receivedAt;
 
@@ -126,10 +127,10 @@ class MessageNormalizer {
     LegacyChatExtractor? legacyChatExtractor,
     LegacyMessageIdGenerator? idGenerator,
     DateTime Function()? clockNow,
-  })  : _legacyChatExtractor =
-            legacyChatExtractor ?? const DefaultLegacyChatExtractor(),
-        _clockNow = clockNow ?? DateTime.now,
-        _idGenerator = idGenerator;
+  }) : _legacyChatExtractor =
+           legacyChatExtractor ?? const DefaultLegacyChatExtractor(),
+       _clockNow = clockNow ?? DateTime.now,
+       _idGenerator = idGenerator;
 
   final LegacyChatExtractor _legacyChatExtractor;
   final DateTime Function() _clockNow;

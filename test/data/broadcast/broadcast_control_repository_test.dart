@@ -47,10 +47,7 @@ void main() {
         final _FakeHttpClient httpClient = _FakeHttpClient();
         httpClient.responseStatusCode = 403;
         httpClient.responseBody = jsonEncode(<String, Object?>{
-          'meta': <String, Object?>{
-            'status': 403,
-            'errorCode': 'FORBIDDEN',
-          },
+          'meta': <String, Object?>{'status': 403, 'errorCode': 'FORBIDDEN'},
         });
 
         final BroadcastControlRepository repository =
@@ -125,9 +122,7 @@ void main() {
         final _FakeHttpClient httpClient = _FakeHttpClient();
         httpClient.responseBody = jsonEncode(<String, Object?>{
           'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
-          'data': <String, Object?>{
-            'end_time': 1711900000,
-          },
+          'data': <String, Object?>{'end_time': 1711900000},
         });
 
         final BroadcastControlRepository repository =
@@ -153,10 +148,7 @@ void main() {
         final _FakeHttpClient httpClient = _FakeHttpClient();
         httpClient.responseStatusCode = 409;
         httpClient.responseBody = jsonEncode(<String, Object?>{
-          'meta': <String, Object?>{
-            'status': 409,
-            'errorCode': 'CONFLICT',
-          },
+          'meta': <String, Object?>{'status': 409, 'errorCode': 'CONFLICT'},
         });
 
         final BroadcastControlRepository repository =
@@ -179,9 +171,7 @@ void main() {
         final _FakeHttpClient httpClient = _FakeHttpClient();
         httpClient.responseBody = jsonEncode(<String, Object?>{
           'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
-          'data': <String, Object?>{
-            'end_time': 1711903600,
-          },
+          'data': <String, Object?>{'end_time': 1711903600},
         });
 
         final BroadcastControlRepository repository =
@@ -463,7 +453,7 @@ class _FakeHttpHeaders implements HttpHeaders {
 class _FakeHttpClientResponse extends Stream<List<int>>
     implements HttpClientResponse {
   _FakeHttpClientResponse({required this.statusCode, required String body})
-      : _body = body;
+    : _body = body;
 
   @override
   final int statusCode;

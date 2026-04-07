@@ -1417,12 +1417,12 @@ void main() {
 
       final _FakeFollowProgramRepository followRepository =
           _FakeFollowProgramRepository(<FollowProgram>[
-        FollowProgram(
-          programId: 'lv200',
-          title: 'フォロー放送',
-          providerName: 'フォロー放送者',
-        ),
-      ]);
+            FollowProgram(
+              programId: 'lv200',
+              title: 'フォロー放送',
+              providerName: 'フォロー放送者',
+            ),
+          ]);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -1523,20 +1523,20 @@ class _FakeUserAttributeStore implements UserAttributeStore {
         const <String, Map<String, int>>{},
     Map<String, Map<String, String>> nicknamesByBroadcaster =
         const <String, Map<String, String>>{},
-  })  : _colorsByBroadcaster = colorsByBroadcaster.map(
-          (String broadcasterId, Map<String, int> colors) =>
-              MapEntry<String, Map<String, int>>(
-            broadcasterId,
-            Map<String, int>.from(colors),
-          ),
-        ),
-        _nicknamesByBroadcaster = nicknamesByBroadcaster.map(
-          (String broadcasterId, Map<String, String> nicknames) =>
-              MapEntry<String, Map<String, String>>(
-            broadcasterId,
-            Map<String, String>.from(nicknames),
-          ),
-        );
+  }) : _colorsByBroadcaster = colorsByBroadcaster.map(
+         (String broadcasterId, Map<String, int> colors) =>
+             MapEntry<String, Map<String, int>>(
+               broadcasterId,
+               Map<String, int>.from(colors),
+             ),
+       ),
+       _nicknamesByBroadcaster = nicknamesByBroadcaster.map(
+         (String broadcasterId, Map<String, String> nicknames) =>
+             MapEntry<String, Map<String, String>>(
+               broadcasterId,
+               Map<String, String>.from(nicknames),
+             ),
+       );
 
   final Map<String, Map<String, int>> _colorsByBroadcaster;
   final Map<String, Map<String, String>> _nicknamesByBroadcaster;

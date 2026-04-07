@@ -234,11 +234,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Scroll to the ng-words field to make error text visible.
-      await scrollToKeyInList(
-        tester,
-        _listKey,
-        const Key('ng-words-field'),
-      );
+      await scrollToKeyInList(tester, _listKey, const Key('ng-words-field'));
 
       // Error message should be visible.
       expect(
@@ -617,111 +613,102 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(
-          find.byKey(
-            const Key('voicevox-style-dropdown'),
-            skipOffstage: false,
-          ),
+          find.byKey(const Key('voicevox-style-dropdown'), skipOffstage: false),
           findsNothing,
         );
       },
     );
 
-    testWidgets(
-      'does not reset speaker when models are still loading',
-      (WidgetTester tester) async {
-        final SharedPreferencesSettingsStore settingsStore =
-            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-        // Save a non-Nemo speaker (Kasukabe Tsumugi)
-        await settingsStore.save(
-          AppSettings.defaults.copyWith(voicevoxSpeaker: 8),
-        );
-        final FakeCommentSpeechPlatform platform = FakeCommentSpeechPlatform();
-        // Return models including the non-Nemo speaker
-        platform.availableModelsToReturn = <Map<String, dynamic>>[
-          <String, dynamic>{
-            'modelId': 'n0',
-            'displayName': 'VOICEVOX Nemo',
-            'speakerIds': <int>[
-              10000,
-              10001,
-              10002,
-              10003,
-              10004,
-              10005,
-              10006,
-              10007,
-              10008
-            ],
-            'vvmFileName': 'n0.vvm',
-            'fileSizeBytes': 100,
-            'isBundled': true,
-            'downloadState': 'DOWNLOADED',
-          },
-          <String, dynamic>{
-            'modelId': '2',
-            'displayName': 'VOICEVOX 春日部つむぎ',
-            'speakerIds': <int>[8],
-            'vvmFileName': '2.vvm',
-            'fileSizeBytes': 100,
-            'isBundled': false,
-            'downloadState': 'DOWNLOADED',
-          },
-        ];
+    testWidgets('does not reset speaker when models are still loading', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      // Save a non-Nemo speaker (Kasukabe Tsumugi)
+      await settingsStore.save(
+        AppSettings.defaults.copyWith(voicevoxSpeaker: 8),
+      );
+      final FakeCommentSpeechPlatform platform = FakeCommentSpeechPlatform();
+      // Return models including the non-Nemo speaker
+      platform.availableModelsToReturn = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'modelId': 'n0',
+          'displayName': 'VOICEVOX Nemo',
+          'speakerIds': <int>[
+            10000,
+            10001,
+            10002,
+            10003,
+            10004,
+            10005,
+            10006,
+            10007,
+            10008,
+          ],
+          'vvmFileName': 'n0.vvm',
+          'fileSizeBytes': 100,
+          'isBundled': true,
+          'downloadState': 'DOWNLOADED',
+        },
+        <String, dynamic>{
+          'modelId': '2',
+          'displayName': 'VOICEVOX 春日部つむぎ',
+          'speakerIds': <int>[8],
+          'vvmFileName': '2.vvm',
+          'fileSizeBytes': 100,
+          'isBundled': false,
+          'downloadState': 'DOWNLOADED',
+        },
+      ];
 
-        await tester.pumpWidget(
-          _buildScreenWithPlatform(settingsStore, platform),
-        );
-        await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        _buildScreenWithPlatform(settingsStore, platform),
+      );
+      await tester.pumpAndSettle();
 
-        // Verify the speaker was NOT reset to 10000
-        final AppSettings loaded = await settingsStore.load();
-        expect(loaded.voicevoxSpeaker, 8);
-      },
-    );
+      // Verify the speaker was NOT reset to 10000
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.voicevoxSpeaker, 8);
+    });
 
-    testWidgets(
-      'shows fallback dropdown when model loading fails',
-      (WidgetTester tester) async {
-        final SharedPreferencesSettingsStore settingsStore =
-            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-        final FakeCommentSpeechPlatform platform = FakeCommentSpeechPlatform();
-        // Simulate getAvailableModels throwing an error
-        platform.availableModelsToReturn = <Map<String, dynamic>>[];
+    testWidgets('shows fallback dropdown when model loading fails', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeCommentSpeechPlatform platform = FakeCommentSpeechPlatform();
+      // Simulate getAvailableModels throwing an error
+      platform.availableModelsToReturn = <Map<String, dynamic>>[];
 
-        await tester.pumpWidget(
-          _buildScreenWithPlatform(settingsStore, platform),
-        );
-        await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        _buildScreenWithPlatform(settingsStore, platform),
+      );
+      await tester.pumpAndSettle();
 
-        // Dropdown should be present (not stuck in loading)
-        expect(
-          find.byKey(
-            const Key('voicevox-speaker-dropdown'),
-            skipOffstage: false,
-          ),
-          findsOneWidget,
-        );
-      },
-    );
+      // Dropdown should be present (not stuck in loading)
+      expect(
+        find.byKey(const Key('voicevox-speaker-dropdown'), skipOffstage: false),
+        findsOneWidget,
+      );
+    });
 
-    testWidgets(
-      'performance hint does not contain recommended label',
-      (WidgetTester tester) async {
-        final SharedPreferencesSettingsStore settingsStore =
-            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+    testWidgets('performance hint does not contain recommended label', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
-        await tester.pumpWidget(_buildScreen(settingsStore));
-        await tester.pumpAndSettle();
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
 
-        // The performance hint text should not contain "推奨".
-        // Note: the player type dropdown label still says "低遅延モード（推奨）"
-        // which is intentional, so we check the hint text specifically.
-        expect(
-          find.text('応答が速く、声の調整も可能な構成です', skipOffstage: false),
-          findsOneWidget,
-        );
-      },
-    );
+      // The performance hint text should not contain "推奨".
+      // Note: the player type dropdown label still says "低遅延モード（推奨）"
+      // which is intentional, so we check the hint text specifically.
+      expect(
+        find.text('応答が速く、声の調整も可能な構成です', skipOffstage: false),
+        findsOneWidget,
+      );
+    });
 
     testWidgets(
       'slider change pushes updated SpeechSettings to platform engine',
@@ -975,18 +962,12 @@ void main() {
 
         // Style dropdown should be visible initially (Nemo + audioQuery).
         expect(
-          find.byKey(
-            const Key('voicevox-style-dropdown'),
-            skipOffstage: false,
-          ),
+          find.byKey(const Key('voicevox-style-dropdown'), skipOffstage: false),
           findsOneWidget,
         );
         // Speed slider should be visible initially.
         expect(
-          find.byKey(
-            const Key('voicevox-speed-slider'),
-            skipOffstage: false,
-          ),
+          find.byKey(const Key('voicevox-speed-slider'), skipOffstage: false),
           findsOneWidget,
         );
 
@@ -996,27 +977,24 @@ void main() {
           _listKey,
           const Key('synthesis-mode-selector'),
         );
-        final SegmentedButton<SynthesisMode> segmented =
-            tester.widget<SegmentedButton<SynthesisMode>>(
-          find.byKey(const Key('synthesis-mode-selector'), skipOffstage: false),
-        );
+        final SegmentedButton<SynthesisMode> segmented = tester
+            .widget<SegmentedButton<SynthesisMode>>(
+              find.byKey(
+                const Key('synthesis-mode-selector'),
+                skipOffstage: false,
+              ),
+            );
         segmented.onSelectionChanged!(<SynthesisMode>{SynthesisMode.oneShot});
         await tester.pumpAndSettle();
 
         // Style dropdown should now be hidden.
         expect(
-          find.byKey(
-            const Key('voicevox-style-dropdown'),
-            skipOffstage: false,
-          ),
+          find.byKey(const Key('voicevox-style-dropdown'), skipOffstage: false),
           findsNothing,
         );
         // Speed slider should be hidden in oneShot mode.
         expect(
-          find.byKey(
-            const Key('voicevox-speed-slider'),
-            skipOffstage: false,
-          ),
+          find.byKey(const Key('voicevox-speed-slider'), skipOffstage: false),
           findsNothing,
         );
       },
@@ -1040,10 +1018,7 @@ void main() {
 
         // Style dropdown should be hidden initially (oneShot).
         expect(
-          find.byKey(
-            const Key('voicevox-style-dropdown'),
-            skipOffstage: false,
-          ),
+          find.byKey(const Key('voicevox-style-dropdown'), skipOffstage: false),
           findsNothing,
         );
 
@@ -1053,29 +1028,26 @@ void main() {
           _listKey,
           const Key('synthesis-mode-selector'),
         );
-        final SegmentedButton<SynthesisMode> segmented =
-            tester.widget<SegmentedButton<SynthesisMode>>(
-          find.byKey(const Key('synthesis-mode-selector'), skipOffstage: false),
-        );
-        segmented.onSelectionChanged!(
-          <SynthesisMode>{SynthesisMode.audioQuery},
-        );
+        final SegmentedButton<SynthesisMode> segmented = tester
+            .widget<SegmentedButton<SynthesisMode>>(
+              find.byKey(
+                const Key('synthesis-mode-selector'),
+                skipOffstage: false,
+              ),
+            );
+        segmented.onSelectionChanged!(<SynthesisMode>{
+          SynthesisMode.audioQuery,
+        });
         await tester.pumpAndSettle();
 
         // Style dropdown should now be visible.
         expect(
-          find.byKey(
-            const Key('voicevox-style-dropdown'),
-            skipOffstage: false,
-          ),
+          find.byKey(const Key('voicevox-style-dropdown'), skipOffstage: false),
           findsOneWidget,
         );
         // Speed slider should now be visible.
         expect(
-          find.byKey(
-            const Key('voicevox-speed-slider'),
-            skipOffstage: false,
-          ),
+          find.byKey(const Key('voicevox-speed-slider'), skipOffstage: false),
           findsOneWidget,
         );
       },
@@ -1140,13 +1112,13 @@ void main() {
           _listKey,
           const Key('voicevox-speaker-dropdown'),
         );
-        final DropdownButtonFormField<int> dropdown =
-            tester.widget<DropdownButtonFormField<int>>(
-          find.byKey(
-            const Key('voicevox-speaker-dropdown'),
-            skipOffstage: false,
-          ),
-        );
+        final DropdownButtonFormField<int> dropdown = tester
+            .widget<DropdownButtonFormField<int>>(
+              find.byKey(
+                const Key('voicevox-speaker-dropdown'),
+                skipOffstage: false,
+              ),
+            );
         expect(dropdown.initialValue, 8);
       },
     );
@@ -1233,10 +1205,7 @@ void main() {
           findsOneWidget,
         );
         // Dropdown should show "読み込み中…" text.
-        expect(
-          find.text('読み込み中…', skipOffstage: false),
-          findsOneWidget,
-        );
+        expect(find.text('読み込み中…', skipOffstage: false), findsOneWidget);
 
         // Complete the model loading.
         modelsCompleter.complete();
@@ -1327,13 +1296,13 @@ void main() {
           _listKey,
           const Key('voicevox-speaker-dropdown'),
         );
-        final DropdownButtonFormField<int> dropdown =
-            tester.widget<DropdownButtonFormField<int>>(
-          find.byKey(
-            const Key('voicevox-speaker-dropdown'),
-            skipOffstage: false,
-          ),
-        );
+        final DropdownButtonFormField<int> dropdown = tester
+            .widget<DropdownButtonFormField<int>>(
+              find.byKey(
+                const Key('voicevox-speaker-dropdown'),
+                skipOffstage: false,
+              ),
+            );
         expect(dropdown.initialValue, 10005);
       },
     );
@@ -1370,8 +1339,8 @@ void main() {
         (WidgetTester tester) async {
           final SharedPreferencesSettingsStore settingsStore =
               SharedPreferencesSettingsStore(
-            prefs: InMemorySharedPreferences(),
-          );
+                prefs: InMemorySharedPreferences(),
+              );
           final FakeCommentSpeechPlatform platform = createPlatformWithModels();
 
           await tester.pumpWidget(
@@ -1389,13 +1358,13 @@ void main() {
             _listKey,
             const Key('voicevox-speaker-dropdown'),
           );
-          final DropdownButtonFormField<int> dropdown =
-              tester.widget<DropdownButtonFormField<int>>(
-            find.byKey(
-              const Key('voicevox-speaker-dropdown'),
-              skipOffstage: false,
-            ),
-          );
+          final DropdownButtonFormField<int> dropdown = tester
+              .widget<DropdownButtonFormField<int>>(
+                find.byKey(
+                  const Key('voicevox-speaker-dropdown'),
+                  skipOffstage: false,
+                ),
+              );
           // The onChanged is not null because _isLoadingModel is false.
           dropdown.onChanged!(1);
           await tester.pumpAndSettle();
@@ -1433,13 +1402,13 @@ void main() {
           _listKey,
           const Key('voicevox-speaker-dropdown'),
         );
-        final DropdownButtonFormField<int> dropdown =
-            tester.widget<DropdownButtonFormField<int>>(
-          find.byKey(
-            const Key('voicevox-speaker-dropdown'),
-            skipOffstage: false,
-          ),
-        );
+        final DropdownButtonFormField<int> dropdown = tester
+            .widget<DropdownButtonFormField<int>>(
+              find.byKey(
+                const Key('voicevox-speaker-dropdown'),
+                skipOffstage: false,
+              ),
+            );
         // Initial speaker is 0 in this test setup.
         final List<String> logs = await _captureDebugLogs(() async {
           dropdown.onChanged!(0);
@@ -1463,8 +1432,8 @@ void main() {
         (WidgetTester tester) async {
           final SharedPreferencesSettingsStore settingsStore =
               SharedPreferencesSettingsStore(
-            prefs: InMemorySharedPreferences(),
-          );
+                prefs: InMemorySharedPreferences(),
+              );
           final FakeCommentSpeechPlatform platform = createPlatformWithModels();
           platform.statusToReturn = const SpeechRuntimeStatus(
             enabled: false,
@@ -1484,13 +1453,13 @@ void main() {
             _listKey,
             const Key('voicevox-speaker-dropdown'),
           );
-          final DropdownButtonFormField<int> dropdown =
-              tester.widget<DropdownButtonFormField<int>>(
-            find.byKey(
-              const Key('voicevox-speaker-dropdown'),
-              skipOffstage: false,
-            ),
-          );
+          final DropdownButtonFormField<int> dropdown = tester
+              .widget<DropdownButtonFormField<int>>(
+                find.byKey(
+                  const Key('voicevox-speaker-dropdown'),
+                  skipOffstage: false,
+                ),
+              );
           dropdown.onChanged!(1);
           await tester.pumpAndSettle();
 
@@ -1523,13 +1492,13 @@ void main() {
           _listKey,
           const Key('voicevox-speaker-dropdown'),
         );
-        final DropdownButtonFormField<int> dropdown =
-            tester.widget<DropdownButtonFormField<int>>(
-          find.byKey(
-            const Key('voicevox-speaker-dropdown'),
-            skipOffstage: false,
-          ),
-        );
+        final DropdownButtonFormField<int> dropdown = tester
+            .widget<DropdownButtonFormField<int>>(
+              find.byKey(
+                const Key('voicevox-speaker-dropdown'),
+                skipOffstage: false,
+              ),
+            );
         dropdown.onChanged!(1);
         await tester.pumpAndSettle();
 
@@ -1566,13 +1535,13 @@ void main() {
           _listKey,
           const Key('voicevox-speaker-dropdown'),
         );
-        final DropdownButtonFormField<int> dropdown =
-            tester.widget<DropdownButtonFormField<int>>(
-          find.byKey(
-            const Key('voicevox-speaker-dropdown'),
-            skipOffstage: false,
-          ),
-        );
+        final DropdownButtonFormField<int> dropdown = tester
+            .widget<DropdownButtonFormField<int>>(
+              find.byKey(
+                const Key('voicevox-speaker-dropdown'),
+                skipOffstage: false,
+              ),
+            );
         dropdown.onChanged!(2);
         await tester.pumpAndSettle();
 
@@ -1586,8 +1555,8 @@ void main() {
         (WidgetTester tester) async {
           final SharedPreferencesSettingsStore settingsStore =
               SharedPreferencesSettingsStore(
-            prefs: InMemorySharedPreferences(),
-          );
+                prefs: InMemorySharedPreferences(),
+              );
           final FakeCommentSpeechPlatform platform = createPlatformWithModels();
           platform.statusToReturn = const SpeechRuntimeStatus(
             enabled: true,
@@ -1612,13 +1581,13 @@ void main() {
             _listKey,
             const Key('voicevox-speaker-dropdown'),
           );
-          final DropdownButtonFormField<int> dropdown =
-              tester.widget<DropdownButtonFormField<int>>(
-            find.byKey(
-              const Key('voicevox-speaker-dropdown'),
-              skipOffstage: false,
-            ),
-          );
+          final DropdownButtonFormField<int> dropdown = tester
+              .widget<DropdownButtonFormField<int>>(
+                find.byKey(
+                  const Key('voicevox-speaker-dropdown'),
+                  skipOffstage: false,
+                ),
+              );
           dropdown.onChanged!(1);
           await tester.pumpAndSettle();
 
@@ -1633,8 +1602,8 @@ void main() {
         (WidgetTester tester) async {
           final SharedPreferencesSettingsStore settingsStore =
               SharedPreferencesSettingsStore(
-            prefs: InMemorySharedPreferences(),
-          );
+                prefs: InMemorySharedPreferences(),
+              );
           await settingsStore.save(
             AppSettings.defaults.copyWith(voicevoxSpeaker: 1),
           );
@@ -1665,13 +1634,13 @@ void main() {
             _listKey,
             const Key('voicevox-speaker-dropdown'),
           );
-          final DropdownButtonFormField<int> dropdown =
-              tester.widget<DropdownButtonFormField<int>>(
-            find.byKey(
-              const Key('voicevox-speaker-dropdown'),
-              skipOffstage: false,
-            ),
-          );
+          final DropdownButtonFormField<int> dropdown = tester
+              .widget<DropdownButtonFormField<int>>(
+                find.byKey(
+                  const Key('voicevox-speaker-dropdown'),
+                  skipOffstage: false,
+                ),
+              );
           dropdown.onChanged!(2);
           await tester.pumpAndSettle();
 
@@ -1686,8 +1655,8 @@ void main() {
         (WidgetTester tester) async {
           final SharedPreferencesSettingsStore settingsStore =
               SharedPreferencesSettingsStore(
-            prefs: InMemorySharedPreferences(),
-          );
+                prefs: InMemorySharedPreferences(),
+              );
           final FakeCommentSpeechPlatform platform = createPlatformWithModels();
           platform.statusToReturn = const SpeechRuntimeStatus(
             enabled: true,
@@ -1710,13 +1679,13 @@ void main() {
             _listKey,
             const Key('voicevox-speaker-dropdown'),
           );
-          final DropdownButtonFormField<int> dropdown =
-              tester.widget<DropdownButtonFormField<int>>(
-            find.byKey(
-              const Key('voicevox-speaker-dropdown'),
-              skipOffstage: false,
-            ),
-          );
+          final DropdownButtonFormField<int> dropdown = tester
+              .widget<DropdownButtonFormField<int>>(
+                find.byKey(
+                  const Key('voicevox-speaker-dropdown'),
+                  skipOffstage: false,
+                ),
+              );
           dropdown.onChanged!(1);
           await tester.pumpAndSettle();
 
@@ -1731,8 +1700,8 @@ void main() {
         (WidgetTester tester) async {
           final SharedPreferencesSettingsStore settingsStore =
               SharedPreferencesSettingsStore(
-            prefs: InMemorySharedPreferences(),
-          );
+                prefs: InMemorySharedPreferences(),
+              );
           final FakeCommentSpeechPlatform platform = createPlatformWithModels();
           platform.loadModelError = Exception('disk full');
 
@@ -1750,13 +1719,13 @@ void main() {
             _listKey,
             const Key('voicevox-speaker-dropdown'),
           );
-          final DropdownButtonFormField<int> dropdown =
-              tester.widget<DropdownButtonFormField<int>>(
-            find.byKey(
-              const Key('voicevox-speaker-dropdown'),
-              skipOffstage: false,
-            ),
-          );
+          final DropdownButtonFormField<int> dropdown = tester
+              .widget<DropdownButtonFormField<int>>(
+                find.byKey(
+                  const Key('voicevox-speaker-dropdown'),
+                  skipOffstage: false,
+                ),
+              );
           dropdown.onChanged!(1);
           await tester.pumpAndSettle();
 
@@ -1795,13 +1764,13 @@ void main() {
           _listKey,
           const Key('voicevox-speaker-dropdown'),
         );
-        final DropdownButtonFormField<int> dropdown =
-            tester.widget<DropdownButtonFormField<int>>(
-          find.byKey(
-            const Key('voicevox-speaker-dropdown'),
-            skipOffstage: false,
-          ),
-        );
+        final DropdownButtonFormField<int> dropdown = tester
+            .widget<DropdownButtonFormField<int>>(
+              find.byKey(
+                const Key('voicevox-speaker-dropdown'),
+                skipOffstage: false,
+              ),
+            );
         dropdown.onChanged!(1);
         await tester.pump(); // Process the setState for _isLoadingModel = true.
 
@@ -1812,13 +1781,13 @@ void main() {
         );
 
         // Dropdown should be disabled (onChanged is null).
-        final DropdownButtonFormField<int> disabledDropdown =
-            tester.widget<DropdownButtonFormField<int>>(
-          find.byKey(
-            const Key('voicevox-speaker-dropdown'),
-            skipOffstage: false,
-          ),
-        );
+        final DropdownButtonFormField<int> disabledDropdown = tester
+            .widget<DropdownButtonFormField<int>>(
+              find.byKey(
+                const Key('voicevox-speaker-dropdown'),
+                skipOffstage: false,
+              ),
+            );
         expect(disabledDropdown.onChanged, isNull);
 
         // Complete the load.
@@ -1837,8 +1806,8 @@ void main() {
         (WidgetTester tester) async {
           final SharedPreferencesSettingsStore settingsStore =
               SharedPreferencesSettingsStore(
-            prefs: InMemorySharedPreferences(),
-          );
+                prefs: InMemorySharedPreferences(),
+              );
           final FakeCommentSpeechPlatform platform = createPlatformWithModels();
 
           // Add a third model for the second change target.
@@ -1870,13 +1839,13 @@ void main() {
             _listKey,
             const Key('voicevox-speaker-dropdown'),
           );
-          final DropdownButtonFormField<int> dropdown1 =
-              tester.widget<DropdownButtonFormField<int>>(
-            find.byKey(
-              const Key('voicevox-speaker-dropdown'),
-              skipOffstage: false,
-            ),
-          );
+          final DropdownButtonFormField<int> dropdown1 = tester
+              .widget<DropdownButtonFormField<int>>(
+                find.byKey(
+                  const Key('voicevox-speaker-dropdown'),
+                  skipOffstage: false,
+                ),
+              );
           final List<String> logs = await _captureDebugLogs(() async {
             // First change: speaker 0 -> 1 (slow).
             dropdown1.onChanged!(1);
@@ -1914,8 +1883,8 @@ void main() {
         (WidgetTester tester) async {
           final SharedPreferencesSettingsStore settingsStore =
               SharedPreferencesSettingsStore(
-            prefs: InMemorySharedPreferences(),
-          );
+                prefs: InMemorySharedPreferences(),
+              );
           final FakeCommentSpeechPlatform platform = createPlatformWithModels();
           final Completer<void> loadCompleter = Completer<void>();
           platform.loadModelCompleter = loadCompleter;
@@ -1930,13 +1899,13 @@ void main() {
             _listKey,
             const Key('voicevox-speaker-dropdown'),
           );
-          final DropdownButtonFormField<int> dropdown =
-              tester.widget<DropdownButtonFormField<int>>(
-            find.byKey(
-              const Key('voicevox-speaker-dropdown'),
-              skipOffstage: false,
-            ),
-          );
+          final DropdownButtonFormField<int> dropdown = tester
+              .widget<DropdownButtonFormField<int>>(
+                find.byKey(
+                  const Key('voicevox-speaker-dropdown'),
+                  skipOffstage: false,
+                ),
+              );
 
           final List<String> logs = await _captureDebugLogs(() async {
             dropdown.onChanged!(1);
