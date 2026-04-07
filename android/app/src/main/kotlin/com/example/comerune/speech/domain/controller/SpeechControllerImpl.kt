@@ -237,7 +237,9 @@ class SpeechControllerImpl(
         }
         println("[SpeechController] updateSettings: speakerId=${settings.speakerId} " +
             "enabled=${settings.enabled} synthesisMode=${settings.synthesisMode} " +
-            "speed=${settings.speedScale} volume=${settings.volumeScale}")
+            "playerType=${settings.playerType} " +
+            "speed=${settings.speedScale} pitch=${settings.pitchScale} " +
+            "intonation=${settings.intonationScale} volume=${settings.volumeScale}")
         settingsRepository.save(settings)
 
         // Propagate runtime-tunable settings via interface methods
@@ -252,6 +254,10 @@ class SpeechControllerImpl(
 
     override suspend fun getStatus(): SpeechRuntimeStatus {
         val settings = settingsRepository.get()
+        println("[SpeechController] getStatus: speakerId=${settings.speakerId} " +
+            "enabled=${settings.enabled} synthesisMode=${settings.synthesisMode} " +
+            "playerType=${settings.playerType} " +
+            "engineState=${engine.currentState()} playerState=${player.currentState()}")
         return SpeechRuntimeStatus(
             enabled = settings.enabled,
             engineState = engine.currentState(),
