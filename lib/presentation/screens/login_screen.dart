@@ -6,6 +6,42 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../data/auth/user_session_store.dart';
 
+/// Hosts allowed during the niconico login flow.
+///
+/// Includes niconico's own domains and the external OAuth provider domains
+/// required for social login buttons on the niconico login page.
+const Set<String> _allowedLoginHosts = <String>{
+  // niconico domains
+  'account.nicovideo.jp',
+  'nicovideo.jp',
+  'www.nicovideo.jp',
+  'live.nicovideo.jp',
+  'oauth.nicovideo.jp',
+  'secure.nicovideo.jp',
+
+  // Google OAuth
+  'accounts.google.com',
+
+  // X/Twitter OAuth
+  'api.x.com',
+  'x.com',
+  'twitter.com',
+
+  // Apple Sign-In
+  'appleid.apple.com',
+
+  // Nintendo Account
+  'accounts.nintendo.com',
+
+  // LINE Login
+  'access.line.me',
+  'liff.line.me',
+
+  // Yahoo! JAPAN Login
+  'login.yahoo.co.jp',
+  'auth.login.yahoo.co.jp',
+};
+
 /// Login screen that opens niconico login page in a WebView.
 ///
 /// After the user logs in, the user_session cookie is extracted
@@ -26,15 +62,8 @@ class _LoginScreenState extends State<LoginScreen> {
     'com.example.comerune/cookies',
   );
 
-  /// Hosts allowed during the login flow.
-  static const Set<String> _allowedHosts = <String>{
-    'account.nicovideo.jp',
-    'nicovideo.jp',
-    'www.nicovideo.jp',
-    'live.nicovideo.jp',
-    'oauth.nicovideo.jp',
-    'secure.nicovideo.jp',
-  };
+  // Domain allowlist is defined in the top-level [_allowedLoginHosts]
+  // constant and exposed via [isAllowedLoginDomain] for testability.
 
   /// URLs that indicate the user has likely completed login.
   static const List<String> _postLoginUrlPrefixes = <String>[
@@ -111,8 +140,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (uri == null) {
       return NavigationDecision.prevent;
     }
-    final String host = uri.host;
-    if (_allowedHosts.contains(host) || host.endsWith('.nicovideo.jp')) {
+    if (isAllowedLoginDomain(uri.host)) {
       return NavigationDecision.navigate;
     }
     return NavigationDecision.prevent;
@@ -255,6 +283,15 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
+}
+
+/// Returns whether [host] is allowed during the niconico login flow.
+///
+/// Allows niconico domains (including any subdomain of `nicovideo.jp`)
+/// and the external OAuth provider domains needed for Google, X/Twitter,
+/// and Apple sign-in.
+bool isAllowedLoginDomain(String host) {
+  return _allowedLoginHosts.contains(host) || host.endsWith('.nicovideo.jp');
 }
 
 /// Parses the user_session cookie value from a cookie string.

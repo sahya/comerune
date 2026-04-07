@@ -118,6 +118,8 @@ class CommentScreen extends StatefulWidget {
     this.presetNgWords = const <String>[],
     this.onToggleNgUser,
     this.starPrefixHidingEnabled = false,
+    this.commentTwoLineEnabled = false,
+    this.commentZebraStripingEnabled = false,
     this.userColorMap = const <String, int>{},
     this.onUserColorChanged,
     this.onUserColorRemoved,
@@ -174,6 +176,14 @@ class CommentScreen extends StatefulWidget {
   /// When true, comments starting with `☆` have their body hidden
   /// and can be revealed by tapping.
   final bool starPrefixHidingEnabled;
+
+  /// When true, comment rows are split into two lines:
+  /// line 1 for timestamp/username, line 2 for content.
+  final bool commentTwoLineEnabled;
+
+  /// When true, alternating comment rows have a subtle background tint
+  /// for easier visual scanning.
+  final bool commentZebraStripingEnabled;
 
   /// Per-user comment color map. Keys are user IDs, values are ARGB32 ints.
   final Map<String, int> userColorMap;
@@ -1033,6 +1043,11 @@ class _CommentScreenState extends State<CommentScreen> {
                               fontSize: widget.commentFontSize,
                               starPrefixHidingEnabled:
                                   widget.starPrefixHidingEnabled,
+                              commentTwoLineEnabled:
+                                  widget.commentTwoLineEnabled,
+                              zebraStripingEnabled:
+                                  widget.commentZebraStripingEnabled,
+                              zebraIndex: index,
                               userColor: userColor != null
                                   ? colorFromARGB32(userColor)
                                   : null,
@@ -2731,6 +2746,9 @@ class _CommentRow extends StatefulWidget {
     this.showUserName = true,
     required this.fontSize,
     this.starPrefixHidingEnabled = false,
+    this.commentTwoLineEnabled = false,
+    this.zebraStripingEnabled = false,
+    this.zebraIndex = 0,
     this.userColor,
     this.onLongPress,
     this.beginAt,
@@ -2742,6 +2760,9 @@ class _CommentRow extends StatefulWidget {
   final bool showUserName;
   final double fontSize;
   final bool starPrefixHidingEnabled;
+  final bool commentTwoLineEnabled;
+  final bool zebraStripingEnabled;
+  final int zebraIndex;
   final Color? userColor;
   final VoidCallback? onLongPress;
   final DateTime? beginAt;
@@ -2769,12 +2790,17 @@ class _CommentRowState extends State<_CommentRow> {
   @override
   Widget build(BuildContext context) {
     final bool hidden = _isStarHidden;
+    final Color? specialBg = _backgroundColor(widget.message);
+    final Color? effectiveBg = specialBg ??
+        (widget.zebraStripingEnabled && widget.zebraIndex.isOdd
+            ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.04)
+            : null);
     return GestureDetector(
       key: Key('comment-row-${widget.message.id}'),
       onLongPress: widget.onLongPress,
       onTap: hidden ? () => setState(() => _revealed = true) : null,
       child: Container(
-        color: _backgroundColor(widget.message),
+        color: effectiveBg,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
         child: _buildRichCommentLine(context, hidden),
       ),
@@ -2794,6 +2820,29 @@ class _CommentRowState extends State<_CommentRow> {
         hidden ? fontSize : (fontSize * 0.85).clamp(minSubFontSize, fontSize);
     final double idFontSize =
         hidden ? fontSize : (fontSize * 0.9).clamp(minSubFontSize, fontSize);
+
+    // Two-line mode is only useful when the username is shown (line 1 holds
+    // timestamp + username). When the username column is hidden, the first
+    // line would contain only a timestamp, wasting vertical space – so fall
+    // back to single-line rendering.
+    if (widget.commentTwoLineEnabled && widget.showUserName) {
+      // In two-line mode the comment text is the star, so the meta line
+      // (timestamp + username) is rendered much smaller: 40% of the
+      // comment font size with a 9 px floor for readability.
+      const double twoLineMinMeta = 9.0;
+      final double twoLineMetaSize =
+          hidden ? fontSize : (fontSize * 0.4).clamp(twoLineMinMeta, fontSize);
+      return _buildTwoLineComment(
+        timestamp: timestamp,
+        content: content,
+        hidden: hidden,
+        fontSize: fontSize,
+        timestampFontSize: twoLineMetaSize,
+        idFontSize: twoLineMetaSize,
+        timestampColor: timestampColor,
+        idColor: idColor,
+      );
+    }
 
     final List<InlineSpan> spans = <InlineSpan>[
       TextSpan(
@@ -2841,6 +2890,65 @@ class _CommentRowState extends State<_CommentRow> {
 
     return Text.rich(
       TextSpan(children: spans),
+    );
+  }
+
+  Widget _buildTwoLineComment({
+    required String timestamp,
+    required String content,
+    required bool hidden,
+    required double fontSize,
+    required double timestampFontSize,
+    required double idFontSize,
+    required Color timestampColor,
+    required Color idColor,
+  }) {
+    final List<InlineSpan> metaSpans = <InlineSpan>[
+      TextSpan(
+        text: timestamp,
+        style: TextStyle(
+          fontSize: timestampFontSize,
+          color: hidden ? Colors.grey : timestampColor,
+          fontStyle: hidden ? FontStyle.italic : null,
+        ),
+      ),
+    ];
+
+    if (widget.showUserName) {
+      final String? userId = widget.message.userId;
+      if (userId != null && userId.isNotEmpty) {
+        final String displayName = widget.resolvedUserName != null
+            ? '${widget.resolvedUserName} ($userId)'
+            : userId;
+        metaSpans.add(const TextSpan(text: '  '));
+        metaSpans.add(
+          TextSpan(
+            text: displayName,
+            style: TextStyle(
+              fontSize: idFontSize,
+              color: hidden ? Colors.grey : (widget.userColor ?? idColor),
+              fontWeight: hidden ? null : FontWeight.w500,
+              fontStyle: hidden ? FontStyle.italic : null,
+            ),
+          ),
+        );
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text.rich(TextSpan(children: metaSpans)),
+        const SizedBox(height: 2),
+        Text(
+          content,
+          style: TextStyle(
+            fontSize: fontSize,
+            color: hidden ? Colors.grey : widget.userColor,
+            fontStyle: hidden ? FontStyle.italic : null,
+          ),
+        ),
+      ],
     );
   }
 
