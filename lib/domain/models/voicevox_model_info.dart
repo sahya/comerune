@@ -1,14 +1,14 @@
 /// Model IDs for VOICEVOX speakers supported by this app.
 ///
-/// - `n0`: VOICEVOX Nemo (bundled)
-/// - `2`: 春日部つむぎ
+/// - `n0`: VOICEVOX Nemo
+/// - `0`: 春日部つむぎ (0.vvm に四国めたん・ずんだもん等と同梱)
 /// - `3`: 波音リツ
-const Set<String> supportedVoicevoxModelIds = <String>{'n0', '2', '3'};
+const Set<String> supportedVoicevoxModelIds = <String>{'n0', '0', '3'};
 
 /// Display names of supported speakers for terms filtering.
 const Set<String> supportedVoicevoxSpeakerNames = <String>{
   'VOICEVOX Nemo',
-  '春日部つむぎ',
+  '四国めたん・ずんだもん・春日部つむぎ',
   '波音リツ',
 };
 
