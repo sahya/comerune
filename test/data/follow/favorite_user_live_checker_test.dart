@@ -68,52 +68,46 @@ String _buildEmptyHistoryResponse() {
 
 void main() {
   group('FavoriteUserLiveChecker (broadcast-history API)', () {
-    test(
-      'returns FollowProgram when user is broadcasting (ON_AIR)',
-      () async {
-        final _FakeHttpClient httpClient = _FakeHttpClient();
-        httpClient.responseBodyByUrlPrefix['providerId=12345'] =
-            _buildHistoryResponse(
-          programId: 'lv348712105',
-          status: 'ON_AIR',
-          title: 'テスト放送タイトル',
-          providerName: '放送者名',
-        );
-
-        final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
-          httpClient: httpClient,
-          minInterval: Duration.zero,
-        );
-
-        final Map<String, FollowProgram> result =
-            await checker.checkBroadcastStatus(<String>{'12345'});
-
-        expect(result, hasLength(1));
-        expect(result['12345'], isNotNull);
-        expect(result['12345']!.programId, 'lv348712105');
-        expect(result['12345']!.title, 'テスト放送タイトル');
-        expect(result['12345']!.providerName, '放送者名');
-        expect(result['12345']!.status, ProgramStatus.onAir);
-
-        checker.dispose();
-      },
-    );
-
-    test('returns empty map when user is not broadcasting (ENDED)', () async {
+    test('returns FollowProgram when user is broadcasting (ON_AIR)', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBodyByUrlPrefix['providerId=12345'] =
           _buildHistoryResponse(
-        programId: 'lv348712105',
-        status: 'ENDED',
-      );
+            programId: 'lv348712105',
+            status: 'ON_AIR',
+            title: 'テスト放送タイトル',
+            providerName: '放送者名',
+          );
 
       final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
         httpClient: httpClient,
         minInterval: Duration.zero,
       );
 
-      final Map<String, FollowProgram> result =
-          await checker.checkBroadcastStatus(<String>{'12345'});
+      final Map<String, FollowProgram> result = await checker
+          .checkBroadcastStatus(<String>{'12345'});
+
+      expect(result, hasLength(1));
+      expect(result['12345'], isNotNull);
+      expect(result['12345']!.programId, 'lv348712105');
+      expect(result['12345']!.title, 'テスト放送タイトル');
+      expect(result['12345']!.providerName, '放送者名');
+      expect(result['12345']!.status, ProgramStatus.onAir);
+
+      checker.dispose();
+    });
+
+    test('returns empty map when user is not broadcasting (ENDED)', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBodyByUrlPrefix['providerId=12345'] =
+          _buildHistoryResponse(programId: 'lv348712105', status: 'ENDED');
+
+      final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
+        httpClient: httpClient,
+        minInterval: Duration.zero,
+      );
+
+      final Map<String, FollowProgram> result = await checker
+          .checkBroadcastStatus(<String>{'12345'});
 
       expect(result, isEmpty);
 
@@ -130,8 +124,8 @@ void main() {
         minInterval: Duration.zero,
       );
 
-      final Map<String, FollowProgram> result =
-          await checker.checkBroadcastStatus(<String>{'12345'});
+      final Map<String, FollowProgram> result = await checker
+          .checkBroadcastStatus(<String>{'12345'});
 
       expect(result, isEmpty);
 
@@ -146,8 +140,8 @@ void main() {
         minInterval: Duration.zero,
       );
 
-      final Map<String, FollowProgram> result =
-          await checker.checkBroadcastStatus(<String>{});
+      final Map<String, FollowProgram> result = await checker
+          .checkBroadcastStatus(<String>{});
 
       expect(result, isEmpty);
       expect(httpClient.requestCount, 0);
@@ -159,21 +153,18 @@ void main() {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBodyByUrlPrefix['providerId=111'] =
           _buildHistoryResponse(
-        programId: 'lv100001',
-        status: 'ON_AIR',
-        providerName: 'User111',
-      );
+            programId: 'lv100001',
+            status: 'ON_AIR',
+            providerName: 'User111',
+          );
       httpClient.responseBodyByUrlPrefix['providerId=222'] =
-          _buildHistoryResponse(
-        programId: 'lv100002',
-        status: 'ENDED',
-      );
+          _buildHistoryResponse(programId: 'lv100002', status: 'ENDED');
       httpClient.responseBodyByUrlPrefix['providerId=333'] =
           _buildHistoryResponse(
-        programId: 'lv100003',
-        status: 'ON_AIR',
-        providerName: 'User333',
-      );
+            programId: 'lv100003',
+            status: 'ON_AIR',
+            providerName: 'User333',
+          );
 
       final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
         httpClient: httpClient,
@@ -181,8 +172,8 @@ void main() {
         minInterval: Duration.zero,
       );
 
-      final Map<String, FollowProgram> result =
-          await checker.checkBroadcastStatus(<String>{'111', '222', '333'});
+      final Map<String, FollowProgram> result = await checker
+          .checkBroadcastStatus(<String>{'111', '222', '333'});
 
       expect(result, hasLength(2));
       expect(result['111']!.programId, 'lv100001');
@@ -193,16 +184,17 @@ void main() {
 
     test('handles network error gracefully', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
-      httpClient.throwOnUrlPrefix['providerId=999'] =
-          const SocketException('Connection refused');
+      httpClient.throwOnUrlPrefix['providerId=999'] = const SocketException(
+        'Connection refused',
+      );
 
       final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
         httpClient: httpClient,
         minInterval: Duration.zero,
       );
 
-      final Map<String, FollowProgram> result =
-          await checker.checkBroadcastStatus(<String>{'999'});
+      final Map<String, FollowProgram> result = await checker
+          .checkBroadcastStatus(<String>{'999'});
 
       expect(result, isEmpty);
 
@@ -212,10 +204,7 @@ void main() {
     test('returns cached result within minInterval', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBodyByUrlPrefix['providerId=12345'] =
-          _buildHistoryResponse(
-        programId: 'lv100001',
-        status: 'ON_AIR',
-      );
+          _buildHistoryResponse(programId: 'lv100001', status: 'ON_AIR');
 
       final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
         httpClient: httpClient,
@@ -223,14 +212,14 @@ void main() {
       );
 
       // First call makes network request.
-      final Map<String, FollowProgram> first =
-          await checker.checkBroadcastStatus(<String>{'12345'});
+      final Map<String, FollowProgram> first = await checker
+          .checkBroadcastStatus(<String>{'12345'});
       expect(first, hasLength(1));
       expect(httpClient.requestCount, 1);
 
       // Second call within minInterval returns cache.
-      final Map<String, FollowProgram> second =
-          await checker.checkBroadcastStatus(<String>{'12345'});
+      final Map<String, FollowProgram> second = await checker
+          .checkBroadcastStatus(<String>{'12345'});
       expect(second, hasLength(1));
       expect(httpClient.requestCount, 1); // No new request.
 
@@ -240,10 +229,7 @@ void main() {
     test('invalidateCache forces network request on next call', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBodyByUrlPrefix['providerId=12345'] =
-          _buildHistoryResponse(
-        programId: 'lv100001',
-        status: 'ON_AIR',
-      );
+          _buildHistoryResponse(programId: 'lv100001', status: 'ON_AIR');
 
       final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
         httpClient: httpClient,
@@ -265,10 +251,7 @@ void main() {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       for (int i = 1; i <= 5; i++) {
         httpClient.responseBodyByUrlPrefix['providerId=$i'] =
-            _buildHistoryResponse(
-          programId: 'lv10000$i',
-          status: 'ENDED',
-        );
+            _buildHistoryResponse(programId: 'lv10000$i', status: 'ENDED');
       }
 
       final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
@@ -277,10 +260,8 @@ void main() {
         minInterval: Duration.zero,
       );
 
-      final Map<String, FollowProgram> result =
-          await checker.checkBroadcastStatus(
-        <String>{'1', '2', '3', '4', '5'},
-      );
+      final Map<String, FollowProgram> result = await checker
+          .checkBroadcastStatus(<String>{'1', '2', '3', '4', '5'});
 
       expect(result, isEmpty);
       expect(httpClient.requestCount, 5);
@@ -293,15 +274,9 @@ void main() {
       () async {
         final _FakeHttpClient httpClient = _FakeHttpClient();
         httpClient.responseBodyByUrlPrefix['providerId=111'] =
-            _buildHistoryResponse(
-          programId: 'lv100001',
-          status: 'ON_AIR',
-        );
+            _buildHistoryResponse(programId: 'lv100001', status: 'ON_AIR');
         httpClient.responseBodyByUrlPrefix['providerId=222'] =
-            _buildHistoryResponse(
-          programId: 'lv100002',
-          status: 'ENDED',
-        );
+            _buildHistoryResponse(programId: 'lv100002', status: 'ENDED');
 
         final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
           httpClient: httpClient,
@@ -310,22 +285,22 @@ void main() {
         );
 
         // Cycle 1: both users checked.
-        final Map<String, FollowProgram> first =
-            await checker.checkBroadcastStatus(<String>{'111', '222'});
+        final Map<String, FollowProgram> first = await checker
+            .checkBroadcastStatus(<String>{'111', '222'});
         expect(first, hasLength(1));
         expect(first['111']!.programId, 'lv100001');
         expect(httpClient.requestCount, 2);
 
         // Cycle 2 (even): user 111 is known on-air, re-checked.
-        final Map<String, FollowProgram> second =
-            await checker.checkBroadcastStatus(<String>{'111', '222'});
+        final Map<String, FollowProgram> second = await checker
+            .checkBroadcastStatus(<String>{'111', '222'});
         expect(second, hasLength(1));
         expect(httpClient.requestCount, 4);
 
         // Cycle 3 (odd): user 111 is known on-air, skipped.
         httpClient.requestCount = 0;
-        final Map<String, FollowProgram> third =
-            await checker.checkBroadcastStatus(<String>{'111', '222'});
+        final Map<String, FollowProgram> third = await checker
+            .checkBroadcastStatus(<String>{'111', '222'});
         expect(third, hasLength(1));
         expect(third['111']!.programId, 'lv100001');
         expect(httpClient.requestCount, 1); // Only user 222.
@@ -338,19 +313,19 @@ void main() {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBodyByUrlPrefix['providerId=12345'] =
           _buildHistoryResponse(
-        programId: 'lv100001',
-        status: 'ON_AIR',
-        beginTimeSeconds: 1700000000,
-        scheduledEndTimeSeconds: 1700001800,
-      );
+            programId: 'lv100001',
+            status: 'ON_AIR',
+            beginTimeSeconds: 1700000000,
+            scheduledEndTimeSeconds: 1700001800,
+          );
 
       final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
         httpClient: httpClient,
         minInterval: Duration.zero,
       );
 
-      final Map<String, FollowProgram> result =
-          await checker.checkBroadcastStatus(<String>{'12345'});
+      final Map<String, FollowProgram> result = await checker
+          .checkBroadcastStatus(<String>{'12345'});
 
       final FollowProgram program = result['12345']!;
       expect(
@@ -368,18 +343,15 @@ void main() {
     test('extracts provider icon URL from icons object', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBodyByUrlPrefix['providerId=12345'] =
-          _buildHistoryResponse(
-        programId: 'lv100001',
-        status: 'ON_AIR',
-      );
+          _buildHistoryResponse(programId: 'lv100001', status: 'ON_AIR');
 
       final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
         httpClient: httpClient,
         minInterval: Duration.zero,
       );
 
-      final Map<String, FollowProgram> result =
-          await checker.checkBroadcastStatus(<String>{'12345'});
+      final Map<String, FollowProgram> result = await checker
+          .checkBroadcastStatus(<String>{'12345'});
 
       expect(result['12345']!.providerIconUrl, isNotNull);
       expect(result['12345']!.providerIconUrl, contains('https://'));
@@ -399,14 +371,10 @@ void main() {
                 'schedule': <String, dynamic>{
                   'status': 'ON_AIR',
                   'beginTime': <String, dynamic>{'seconds': 1700000000},
-                  'scheduledEndTime': <String, dynamic>{
-                    'seconds': 1700001800,
-                  },
+                  'scheduledEndTime': <String, dynamic>{'seconds': 1700001800},
                 },
               },
-              'programProvider': <String, dynamic>{
-                'name': 'テスト放送者',
-              },
+              'programProvider': <String, dynamic>{'name': 'テスト放送者'},
               'socialGroup': <String, dynamic>{
                 'name': '削除されたコミュニティ',
                 'isDeleted': <String, dynamic>{'value': true},
@@ -424,8 +392,8 @@ void main() {
         minInterval: Duration.zero,
       );
 
-      final Map<String, FollowProgram> result =
-          await checker.checkBroadcastStatus(<String>{'12345'});
+      final Map<String, FollowProgram> result = await checker
+          .checkBroadcastStatus(<String>{'12345'});
 
       expect(result['12345']!.communityName, isNull);
 
@@ -495,10 +463,7 @@ class _FakeHttpClientRequest implements HttpClientRequest {
 
   @override
   Future<HttpClientResponse> close() async {
-    return _FakeHttpClientResponse(
-      statusCode: 200,
-      body: responseBody,
-    );
+    return _FakeHttpClientResponse(statusCode: 200, body: responseBody);
   }
 
   @override
@@ -533,10 +498,7 @@ class _FakeHttpHeaders implements HttpHeaders {
 
 class _FakeHttpClientResponse extends Stream<List<int>>
     implements HttpClientResponse {
-  _FakeHttpClientResponse({
-    required this.statusCode,
-    required this.body,
-  });
+  _FakeHttpClientResponse({required this.statusCode, required this.body});
 
   @override
   final int statusCode;

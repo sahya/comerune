@@ -48,8 +48,7 @@ class FavoriteUserLiveChecker {
   final Duration minInterval;
 
   /// Cached result from the last successful network check.
-  Map<String, FollowProgram> _cachedOnAirMap =
-      const <String, FollowProgram>{};
+  Map<String, FollowProgram> _cachedOnAirMap = const <String, FollowProgram>{};
 
   /// When the last network check completed.
   DateTime? _lastCheckTime;
@@ -106,8 +105,9 @@ class FavoriteUserLiveChecker {
     );
 
     // Run requests with concurrency throttling.
-    final Map<String, FollowProgram> freshResults =
-        await _checkWithThrottling(usersToCheck);
+    final Map<String, FollowProgram> freshResults = await _checkWithThrottling(
+      usersToCheck,
+    );
 
     // Merge: start from the previous cache (filtered to current favorites),
     // then overlay fresh results. Users that were skipped this cycle retain
@@ -158,8 +158,9 @@ class FavoriteUserLiveChecker {
         if (myIndex >= queue.length) {
           break;
         }
-        final MapEntry<String, FollowProgram>? entry =
-            await _checkSingleUser(queue[myIndex]);
+        final MapEntry<String, FollowProgram>? entry = await _checkSingleUser(
+          queue[myIndex],
+        );
         if (entry != null) {
           results[entry.key] = entry.value;
         }
@@ -187,8 +188,8 @@ class FavoriteUserLiveChecker {
       request.headers.set('User-Agent', _defaultUserAgent);
 
       final HttpClientResponse response = await request.close().timeout(
-            _responseTimeout,
-          );
+        _responseTimeout,
+      );
       try {
         if (response.statusCode != 200) {
           appDebugLogLazy(
@@ -216,10 +217,7 @@ class FavoriteUserLiveChecker {
 
   /// Parses the broadcast-history API response and returns an entry if the
   /// most recent program is currently ON_AIR.
-  MapEntry<String, FollowProgram>? _parseResponse(
-    String userId,
-    String body,
-  ) {
+  MapEntry<String, FollowProgram>? _parseResponse(String userId, String body) {
     final String maskedUserId = _maskUserIdForLog(userId);
     try {
       final Object? decoded = jsonDecode(body);
@@ -290,8 +288,8 @@ class FavoriteUserLiveChecker {
       final Object? socialGroup = first['socialGroup'];
       if (socialGroup is Map<String, dynamic>) {
         final Object? isDeleted = socialGroup['isDeleted'];
-        final bool deleted = isDeleted is Map<String, dynamic> &&
-            isDeleted['value'] == true;
+        final bool deleted =
+            isDeleted is Map<String, dynamic> && isDeleted['value'] == true;
         if (!deleted) {
           communityName = socialGroup['name'] as String?;
         }
@@ -303,8 +301,10 @@ class FavoriteUserLiveChecker {
       if (beginTime is Map<String, dynamic>) {
         final Object? seconds = beginTime['seconds'];
         if (seconds is int) {
-          beginAt =
-              DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true);
+          beginAt = DateTime.fromMillisecondsSinceEpoch(
+            seconds * 1000,
+            isUtc: true,
+          );
         }
       }
 
@@ -314,8 +314,10 @@ class FavoriteUserLiveChecker {
       if (scheduledEndTime is Map<String, dynamic>) {
         final Object? seconds = scheduledEndTime['seconds'];
         if (seconds is int) {
-          endAt =
-              DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true);
+          endAt = DateTime.fromMillisecondsSinceEpoch(
+            seconds * 1000,
+            isUtc: true,
+          );
         }
       }
 
