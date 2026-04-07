@@ -1124,7 +1124,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                               child: Row(
                                 children: [
                                   Icon(
-                                    Icons.volume_mute,
+                                    Icons.volume_off,
                                     size: 16,
                                     color:
                                         Theme.of(context).colorScheme.outline,

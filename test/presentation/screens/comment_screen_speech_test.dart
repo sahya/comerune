@@ -1005,7 +1005,7 @@ void main() {
           matching: find.byType(Icon),
         ),
       );
-      expect(icon.icon, Icons.volume_mute);
+      expect(icon.icon, Icons.volume_off);
     });
 
     testWidgets('non-muted icon shows volume_up when isSpeechMuted is false', (
