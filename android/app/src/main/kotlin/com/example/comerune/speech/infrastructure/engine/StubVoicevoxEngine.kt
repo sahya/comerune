@@ -48,6 +48,10 @@ class StubVoicevoxEngine : VoicevoxEngine {
         )
     }
 
+    override fun clearLoadedModel(modelId: String) {
+        // No-op for stub.
+    }
+
     override fun isReady(): Boolean = ready
 
     override fun currentState(): TtsEngineState =

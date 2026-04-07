@@ -294,6 +294,9 @@ class CommentSpeechPlugin :
                 }
                 val deleteResult = repo.deleteModel(modelId)
                 if (deleteResult.isSuccess) {
+                    // Clear the engine's loaded-model tracking so that a
+                    // subsequent loadModel() will not skip the native load.
+                    engine?.clearLoadedModel(modelId)
                     emitter?.emit(
                         mapOf(
                             "type" to "model_deleted",
