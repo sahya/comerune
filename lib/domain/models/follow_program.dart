@@ -48,8 +48,8 @@ class FollowProgram {
     this.isOwnBroadcast = false,
     this.status,
   }) : communityName = (communityName != null && communityName.isNotEmpty)
-           ? communityName
-           : null;
+            ? communityName
+            : null;
 
   /// The program ID (e.g., "lv348712105").
   final String programId;

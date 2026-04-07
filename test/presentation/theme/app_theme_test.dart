@@ -59,7 +59,8 @@ void main() {
       }
     });
 
-    test('returns distinct statusDisconnected color for every concrete mode', () {
+    test('returns distinct statusDisconnected color for every concrete mode',
+        () {
       final Map<Color, AppThemeMode> seen = <Color, AppThemeMode>{};
       for (final AppThemeMode mode in concreteModes) {
         final Color color = AppTheme.colorsFor(mode).statusDisconnected;

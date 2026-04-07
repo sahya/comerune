@@ -108,9 +108,8 @@ class SettingsIntSliderField extends StatelessWidget {
             max: max.toDouble(),
             divisions: divisions,
             value: value.toDouble(),
-            semanticFormatterCallback: suffix.isNotEmpty
-                ? (double v) => '${v.round()}$suffix'
-                : null,
+            semanticFormatterCallback:
+                suffix.isNotEmpty ? (double v) => '${v.round()}$suffix' : null,
             onChanged: (double next) {
               onChanged(next.round());
             },

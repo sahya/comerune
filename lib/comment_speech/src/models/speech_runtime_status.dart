@@ -43,12 +43,12 @@ class SpeechRuntimeStatus {
 
   @override
   int get hashCode => Object.hash(
-    enabled,
-    engineState,
-    playerState,
-    queueSize,
-    currentCommentId,
-    currentText,
-    currentSpeakerId,
-  );
+        enabled,
+        engineState,
+        playerState,
+        queueSize,
+        currentCommentId,
+        currentText,
+        currentSpeakerId,
+      );
 }

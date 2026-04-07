@@ -18,9 +18,9 @@ class UserNameResolver extends ChangeNotifier {
     HttpClient Function()? httpClientFactory,
     Duration connectionTimeout = const Duration(seconds: 5),
     Duration debounceDuration = const Duration(milliseconds: 200),
-  }) : _httpClientFactory = httpClientFactory ?? HttpClient.new,
-       _connectionTimeout = connectionTimeout,
-       _debounceDuration = debounceDuration {
+  })  : _httpClientFactory = httpClientFactory ?? HttpClient.new,
+        _connectionTimeout = connectionTimeout,
+        _debounceDuration = debounceDuration {
     if (httpClient != null) {
       _seedHttpClient = httpClient;
     }
