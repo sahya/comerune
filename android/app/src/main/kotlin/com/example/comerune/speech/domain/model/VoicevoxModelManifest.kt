@@ -38,7 +38,7 @@ object VoicevoxModelManifest {
         VoicevoxModelInfo(
             modelId = "3",
             displayName = "波音リツ",
-            speakerIds = listOf(9),
+            speakerIds = listOf(9, 65),
             vvmFileName = "3.vvm",
             downloadUrl = "${VVM_BASE_URL}3.vvm",
             fileSizeBytes = 52_000_000L,
