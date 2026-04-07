@@ -1682,6 +1682,36 @@ void main() {
       expect(find.byKey(const Key('pinned-comments-section')), findsNothing);
     });
 
+    testWidgets(
+      'two-line mode renders content on separate line from timestamp',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          AppMessage(
+            id: 'msg-tl-1',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'user-1',
+            content: '二段表示テスト',
+            type: AppMessageType.chat,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            commentTwoLineEnabled: true,
+            resolveUserName: (_) => 'ユーザー名',
+          ),
+        );
+
+        // In two-line mode, both the username and content should be visible
+        // as separate text widgets (not merged into a single line).
+        expect(find.textContaining('ユーザー名'), findsOneWidget);
+        expect(find.textContaining('二段表示テスト'), findsOneWidget);
+      },
+    );
+
     testWidgets('shows settings button when onOpenSettings is provided', (
       WidgetTester tester,
     ) async {
@@ -3058,6 +3088,7 @@ Widget _buildScreen({
   int totalCommentCount = 0,
   int activeUserCount = 0,
   bool starPrefixHidingEnabled = false,
+  bool commentTwoLineEnabled = false,
   DateTime? beginAt,
   CommentLogWriter? commentLogWriter,
   bool autoSaveCommentLog = false,
@@ -3091,6 +3122,7 @@ Widget _buildScreen({
       ),
       debugMode: debugMode,
       userNameResolution: userNameResolution,
+      commentTwoLineEnabled: commentTwoLineEnabled,
       commentFontSize: commentFontSize,
       themeMode: AppThemeMode.light,
       statistics: CommentStatisticsConfig(

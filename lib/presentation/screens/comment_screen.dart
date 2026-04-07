@@ -2750,6 +2750,11 @@ class _PinnedCommentRow extends StatelessWidget {
     );
   }
 
+  /// Builds a two-line layout for a pinned comment.
+  ///
+  /// Shares the same font ratio constants as
+  /// [_CommentRowState._buildTwoLineComment] but uses a simpler layout
+  /// because pinned rows don't support star-prefix hiding or hidden state.
   Widget _buildTwoLinePinned(BuildContext context) {
     final String timestamp = _formatHms(message.timestamp, beginAt: beginAt);
     final String? userId = message.userId;
