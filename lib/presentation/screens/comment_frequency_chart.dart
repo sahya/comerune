@@ -173,18 +173,17 @@ class _BarChartBody extends StatelessWidget {
         totalBars > 1 ? (width - barWidth * totalBars) / (totalBars - 1) : 0;
 
     return GestureDetector(
-      onTapUp:
-          onBarTapped == null
-              ? null
-              : (TapUpDetails details) {
-                final double dx = details.localPosition.dx;
-                final double effectiveBarWidth = barWidth + gap;
-                final int index = (dx / effectiveBarWidth).floor().clamp(
-                  0,
-                  totalBars - 1,
-                );
-                onBarTapped!.call(index);
-              },
+      onTapUp: onBarTapped == null
+          ? null
+          : (TapUpDetails details) {
+              final double dx = details.localPosition.dx;
+              final double effectiveBarWidth = barWidth + gap;
+              final int index = (dx / effectiveBarWidth).floor().clamp(
+                    0,
+                    totalBars - 1,
+                  );
+              onBarTapped!.call(index);
+            },
       child: CustomPaint(
         size: Size(width, height),
         painter: _BarChartPainter(
