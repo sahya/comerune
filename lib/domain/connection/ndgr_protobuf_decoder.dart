@@ -418,9 +418,10 @@ class NdgrProtobufDecoder {
 
     return NdgrChat(
       content: content,
-      name: name,
+      name: name != null && name.isNotEmpty ? name : null,
       rawUserId: rawUserId,
-      hashedUserId: hashedUserId,
+      hashedUserId:
+          hashedUserId != null && hashedUserId.isNotEmpty ? hashedUserId : null,
       no: no,
     );
   }

@@ -351,4 +351,74 @@ void main() {
       expect(find.text('VOICEVOX 利用規約'), findsOneWidget);
     });
   });
+
+  group('filterTermsForSupportedSpeakers', () {
+    const String fullTerms = '''# VOICEVOX 音声モデル 利用規約
+
+## 許諾内容
+利用可能です
+
+## 禁止事項
+禁止事項です
+
+# 音声ライブラリ利用規約
+
+## 四国めたん
+四国めたんの規約です
+
+## 春日部つむぎ
+春日部つむぎの規約です
+
+## 波音リツ
+波音リツの規約です
+
+## 玄野武宏
+玄野武宏の規約です
+
+## VOICEVOX Nemo
+Nemoの規約です''';
+
+    const Set<String> supported = {'春日部つむぎ', '波音リツ', 'VOICEVOX Nemo'};
+
+    test('keeps common header sections', () {
+      final result = filterTermsForSupportedSpeakers(fullTerms, supported);
+      expect(result, contains('# VOICEVOX 音声モデル 利用規約'));
+      expect(result, contains('## 許諾内容'));
+      expect(result, contains('## 禁止事項'));
+      expect(result, contains('# 音声ライブラリ利用規約'));
+    });
+
+    test('keeps supported speaker sections', () {
+      final result = filterTermsForSupportedSpeakers(fullTerms, supported);
+      expect(result, contains('## 春日部つむぎ'));
+      expect(result, contains('春日部つむぎの規約です'));
+      expect(result, contains('## 波音リツ'));
+      expect(result, contains('波音リツの規約です'));
+      expect(result, contains('## VOICEVOX Nemo'));
+      expect(result, contains('Nemoの規約です'));
+    });
+
+    test('removes unsupported speaker sections', () {
+      final result = filterTermsForSupportedSpeakers(fullTerms, supported);
+      expect(result, isNot(contains('## 四国めたん')));
+      expect(result, isNot(contains('四国めたんの規約です')));
+      expect(result, isNot(contains('## 玄野武宏')));
+      expect(result, isNot(contains('玄野武宏の規約です')));
+    });
+
+    test('handles empty supported set', () {
+      final result =
+          filterTermsForSupportedSpeakers(fullTerms, const <String>{});
+      expect(result, contains('# VOICEVOX 音声モデル 利用規約'));
+      expect(result, isNot(contains('## 春日部つむぎ')));
+      expect(result, isNot(contains('## VOICEVOX Nemo')));
+    });
+
+    test('handles text without speaker sections', () {
+      const headerOnly = '# VOICEVOX 音声モデル 利用規約\n\n許諾内容';
+      final result = filterTermsForSupportedSpeakers(headerOnly, supported);
+      expect(result, contains('# VOICEVOX 音声モデル 利用規約'));
+      expect(result, contains('許諾内容'));
+    });
+  });
 }

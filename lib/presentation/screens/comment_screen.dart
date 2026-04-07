@@ -118,6 +118,8 @@ class CommentScreen extends StatefulWidget {
     this.presetNgWords = const <String>[],
     this.onToggleNgUser,
     this.starPrefixHidingEnabled = false,
+    this.commentTwoLineEnabled = false,
+    this.commentZebraStripingEnabled = false,
     this.userColorMap = const <String, int>{},
     this.onUserColorChanged,
     this.onUserColorRemoved,
@@ -132,6 +134,8 @@ class CommentScreen extends StatefulWidget {
     this.readUserName = false,
     this.settingsStore,
     this.onDictionaryRulesChanged,
+    this.onSpeechMuteToggled,
+    this.isSpeechMuted = false,
   });
 
   /// Program-level metadata (lv, title, broadcaster info, etc.).
@@ -172,6 +176,14 @@ class CommentScreen extends StatefulWidget {
   /// When true, comments starting with `☆` have their body hidden
   /// and can be revealed by tapping.
   final bool starPrefixHidingEnabled;
+
+  /// When true, comment rows are split into two lines:
+  /// line 1 for timestamp/username, line 2 for content.
+  final bool commentTwoLineEnabled;
+
+  /// When true, alternating comment rows have a subtle background tint
+  /// for easier visual scanning.
+  final bool commentZebraStripingEnabled;
 
   /// Per-user comment color map. Keys are user IDs, values are ARGB32 ints.
   final Map<String, int> userColorMap;
@@ -215,6 +227,12 @@ class CommentScreen extends StatefulWidget {
 
   /// Called when dictionary rules are updated by a teach/unteach command.
   final void Function(AppSettings updated)? onDictionaryRulesChanged;
+
+  /// Called when the user taps the speech status icon to toggle mute.
+  final VoidCallback? onSpeechMuteToggled;
+
+  /// Whether the speech output is currently muted.
+  final bool isSpeechMuted;
 
   @override
   State<CommentScreen> createState() => _CommentScreenState();
@@ -911,7 +929,9 @@ class _CommentScreenState extends State<CommentScreen> {
                     engineState: _speechEngineState,
                     isStarted: _speechStarted,
                     isInitialized: _speechInitialized,
+                    isMuted: widget.isSpeechMuted,
                     themeColors: themeColors,
+                    onTap: widget.onSpeechMuteToggled,
                   ),
                 if (widget.commentLogWriter != null)
                   IconButton(
@@ -985,6 +1005,12 @@ class _CommentScreenState extends State<CommentScreen> {
                     onUnpin: _unpinMessage,
                     beginAt: widget.programInfo.beginAt,
                   ),
+                if (widget.speechSettings.enabled && widget.isSpeechMuted)
+                  _MuteBanner(
+                    key: const Key('mute-banner'),
+                    themeColors: themeColors,
+                    onTap: widget.onSpeechMuteToggled,
+                  ),
                 Expanded(
                   child: Stack(
                     children: <Widget>[
@@ -1017,6 +1043,11 @@ class _CommentScreenState extends State<CommentScreen> {
                               fontSize: widget.commentFontSize,
                               starPrefixHidingEnabled:
                                   widget.starPrefixHidingEnabled,
+                              commentTwoLineEnabled:
+                                  widget.commentTwoLineEnabled,
+                              zebraStripingEnabled:
+                                  widget.commentZebraStripingEnabled,
+                              zebraIndex: index,
                               userColor: userColor != null
                                   ? colorFromARGB32(userColor)
                                   : null,
@@ -1178,21 +1209,37 @@ class _CommentScreenState extends State<CommentScreen> {
         .toList(growable: false);
   }
 
+  /// Resolves the display name for a comment message.
+  ///
+  /// Priority: nickname (コテハン) > protobuf name > API-resolved name.
+  /// Keep in sync with [_resolveSpeechDisplayName] which follows the same
+  /// priority chain for TTS output.
   String? _resolveDisplayName(AppMessage message) {
     final String? userId = message.userId;
     // Nickname (コテハン) takes highest priority.
-    if (userId != null && widget.userNicknameMap.containsKey(userId)) {
-      return widget.userNicknameMap[userId];
+    if (userId != null && userId.isNotEmpty) {
+      final String? nickname = widget.userNicknameMap[userId];
+      if (nickname != null && nickname.isNotEmpty) {
+        return nickname;
+      }
     }
-    if (message.userName != null) {
+    if (message.userName != null && message.userName!.isNotEmpty) {
       return message.userName;
     }
-    if (userId == null) {
+    if (userId == null || userId.isEmpty) {
       return null;
     }
-    return widget.userNameResolution?.resolve(userId);
+    final String? resolvedName = widget.userNameResolution?.resolve(userId);
+    if (resolvedName != null && resolvedName.isNotEmpty) {
+      return resolvedName;
+    }
+    return null;
   }
 
+  /// Resolves the display name for TTS speech output.
+  ///
+  /// Same priority as [_resolveDisplayName] but returns null when no name
+  /// is available (the caller decides what to speak in that case).
   String? _resolveSpeechDisplayName(AppMessage message) {
     final String? userId = message.userId;
     if (userId != null && userId.isNotEmpty) {
@@ -2699,6 +2746,9 @@ class _CommentRow extends StatefulWidget {
     this.showUserName = true,
     required this.fontSize,
     this.starPrefixHidingEnabled = false,
+    this.commentTwoLineEnabled = false,
+    this.zebraStripingEnabled = false,
+    this.zebraIndex = 0,
     this.userColor,
     this.onLongPress,
     this.beginAt,
@@ -2710,6 +2760,9 @@ class _CommentRow extends StatefulWidget {
   final bool showUserName;
   final double fontSize;
   final bool starPrefixHidingEnabled;
+  final bool commentTwoLineEnabled;
+  final bool zebraStripingEnabled;
+  final int zebraIndex;
   final Color? userColor;
   final VoidCallback? onLongPress;
   final DateTime? beginAt;
@@ -2737,12 +2790,17 @@ class _CommentRowState extends State<_CommentRow> {
   @override
   Widget build(BuildContext context) {
     final bool hidden = _isStarHidden;
+    final Color? specialBg = _backgroundColor(widget.message);
+    final Color? effectiveBg = specialBg ??
+        (widget.zebraStripingEnabled && widget.zebraIndex.isOdd
+            ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.04)
+            : null);
     return GestureDetector(
       key: Key('comment-row-${widget.message.id}'),
       onLongPress: widget.onLongPress,
       onTap: hidden ? () => setState(() => _revealed = true) : null,
       child: Container(
-        color: _backgroundColor(widget.message),
+        color: effectiveBg,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
         child: _buildRichCommentLine(context, hidden),
       ),
@@ -2762,6 +2820,29 @@ class _CommentRowState extends State<_CommentRow> {
         hidden ? fontSize : (fontSize * 0.85).clamp(minSubFontSize, fontSize);
     final double idFontSize =
         hidden ? fontSize : (fontSize * 0.9).clamp(minSubFontSize, fontSize);
+
+    // Two-line mode is only useful when the username is shown (line 1 holds
+    // timestamp + username). When the username column is hidden, the first
+    // line would contain only a timestamp, wasting vertical space – so fall
+    // back to single-line rendering.
+    if (widget.commentTwoLineEnabled && widget.showUserName) {
+      // In two-line mode the comment text is the star, so the meta line
+      // (timestamp + username) is rendered much smaller: 40% of the
+      // comment font size with a 9 px floor for readability.
+      const double twoLineMinMeta = 9.0;
+      final double twoLineMetaSize =
+          hidden ? fontSize : (fontSize * 0.4).clamp(twoLineMinMeta, fontSize);
+      return _buildTwoLineComment(
+        timestamp: timestamp,
+        content: content,
+        hidden: hidden,
+        fontSize: fontSize,
+        timestampFontSize: twoLineMetaSize,
+        idFontSize: twoLineMetaSize,
+        timestampColor: timestampColor,
+        idColor: idColor,
+      );
+    }
 
     final List<InlineSpan> spans = <InlineSpan>[
       TextSpan(
@@ -2812,6 +2893,65 @@ class _CommentRowState extends State<_CommentRow> {
     );
   }
 
+  Widget _buildTwoLineComment({
+    required String timestamp,
+    required String content,
+    required bool hidden,
+    required double fontSize,
+    required double timestampFontSize,
+    required double idFontSize,
+    required Color timestampColor,
+    required Color idColor,
+  }) {
+    final List<InlineSpan> metaSpans = <InlineSpan>[
+      TextSpan(
+        text: timestamp,
+        style: TextStyle(
+          fontSize: timestampFontSize,
+          color: hidden ? Colors.grey : timestampColor,
+          fontStyle: hidden ? FontStyle.italic : null,
+        ),
+      ),
+    ];
+
+    if (widget.showUserName) {
+      final String? userId = widget.message.userId;
+      if (userId != null && userId.isNotEmpty) {
+        final String displayName = widget.resolvedUserName != null
+            ? '${widget.resolvedUserName} ($userId)'
+            : userId;
+        metaSpans.add(const TextSpan(text: '  '));
+        metaSpans.add(
+          TextSpan(
+            text: displayName,
+            style: TextStyle(
+              fontSize: idFontSize,
+              color: hidden ? Colors.grey : (widget.userColor ?? idColor),
+              fontWeight: hidden ? null : FontWeight.w500,
+              fontStyle: hidden ? FontStyle.italic : null,
+            ),
+          ),
+        );
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text.rich(TextSpan(children: metaSpans)),
+        const SizedBox(height: 2),
+        Text(
+          content,
+          style: TextStyle(
+            fontSize: fontSize,
+            color: hidden ? Colors.grey : widget.userColor,
+            fontStyle: hidden ? FontStyle.italic : null,
+          ),
+        ),
+      ],
+    );
+  }
+
   Color? _backgroundColor(AppMessage message) {
     if (_isLegacyUnsupportedSystemMessage(message)) {
       return widget.themeColors.notificationMessageBackground;
@@ -2851,19 +2991,64 @@ class _CommentRowState extends State<_CommentRow> {
   }
 }
 
+class _MuteBanner extends StatelessWidget {
+  const _MuteBanner({
+    super.key,
+    required this.themeColors,
+    this.onTap,
+  });
+
+  final AppThemeColors themeColors;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        color: themeColors.statusConnected.withAlpha(25),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.volume_mute,
+              size: 16,
+              color: themeColors.statusConnected,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              'ミュート中（タップで解除）',
+              style: TextStyle(
+                fontSize: 12,
+                color: themeColors.statusConnected,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _SpeechStatusIcon extends StatelessWidget {
   const _SpeechStatusIcon({
     super.key,
     required this.engineState,
     required this.isStarted,
     required this.isInitialized,
+    required this.isMuted,
     required this.themeColors,
+    this.onTap,
   });
 
   final String engineState;
   final bool isStarted;
   final bool isInitialized;
+  final bool isMuted;
   final AppThemeColors themeColors;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -2876,24 +3061,62 @@ class _SpeechStatusIcon extends StatelessWidget {
       color = themeColors.subtleTextColor;
       tooltip = '読み上げ: 初期化中';
     } else if (!isStarted) {
-      icon = Icons.volume_off;
+      icon = Icons.pause_circle_outline;
       color = themeColors.subtleTextColor;
       tooltip = '読み上げ: 停止中';
     } else if (engineState == 'ERROR') {
-      icon = Icons.volume_off;
+      icon = Icons.error_outline;
       color = themeColors.statusDisconnected;
       tooltip = '読み上げ: エラー';
+    } else if (isMuted) {
+      icon = Icons.volume_mute;
+      color = themeColors.statusConnected;
+      tooltip = 'ミュート解除';
     } else {
       icon = Icons.volume_up;
       color = themeColors.statusConnected;
-      tooltip = '読み上げ: 準備完了';
+      tooltip = 'ミュート';
     }
 
-    return Tooltip(
-      message: tooltip,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Icon(icon, size: 20, color: color),
+    final bool canToggleMute =
+        isInitialized && isStarted && engineState != 'ERROR';
+
+    if (canToggleMute && onTap != null) {
+      return Semantics(
+        label: isMuted ? '読み上げミュート中' : '読み上げ有効',
+        button: true,
+        enabled: true,
+        child: IconButton(
+          icon: Icon(icon, size: 24, color: color),
+          tooltip: tooltip,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+          onPressed: () {
+            onTap!();
+            HapticFeedback.lightImpact();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(isMuted ? 'ミュート解除しました' : 'ミュートしました'),
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          },
+        ),
+      );
+    }
+
+    return Semantics(
+      label: tooltip,
+      enabled: false,
+      child: Tooltip(
+        message: tooltip,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Opacity(
+            opacity: 0.5,
+            child: Icon(icon, size: 24, color: color),
+          ),
+        ),
       ),
     );
   }

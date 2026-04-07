@@ -109,6 +109,65 @@ void main() {
       expect(message.statistics!.viewers, 42);
     });
 
+    test('normalizes empty chat.name to null at decode level', () {
+      final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+      final List<int> chat = <int>[
+        ..._stringField(1, 'hello'),
+        ..._stringField(2, ''),
+        ..._varintField(5, 100),
+      ];
+      final List<int> nicoliveMessage = <int>[..._bytesField(1, chat)];
+
+      final Uint8List bytes = Uint8List.fromList(<int>[
+        ..._bytesField(2, nicoliveMessage),
+      ]);
+
+      final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+      expect(message.chat, isNotNull);
+      expect(message.chat!.name, isNull);
+    });
+
+    test('normalizes empty hashedUserId to null at decode level', () {
+      final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+      final List<int> chat = <int>[
+        ..._stringField(1, 'hello'),
+        ..._stringField(6, ''),
+      ];
+      final List<int> nicoliveMessage = <int>[..._bytesField(1, chat)];
+
+      final Uint8List bytes = Uint8List.fromList(<int>[
+        ..._bytesField(2, nicoliveMessage),
+      ]);
+
+      final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+      expect(message.chat, isNotNull);
+      expect(message.chat!.hashedUserId, isNull);
+    });
+
+    test('preserves non-empty chat.name at decode level', () {
+      final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+      final List<int> chat = <int>[
+        ..._stringField(1, 'hello'),
+        ..._stringField(2, 'ユーザー名'),
+        ..._varintField(5, 200),
+      ];
+      final List<int> nicoliveMessage = <int>[..._bytesField(1, chat)];
+
+      final Uint8List bytes = Uint8List.fromList(<int>[
+        ..._bytesField(2, nicoliveMessage),
+      ]);
+
+      final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+      expect(message.chat, isNotNull);
+      expect(message.chat!.name, 'ユーザー名');
+    });
+
     test('decodes message with both chat and statistics', () {
       final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
 

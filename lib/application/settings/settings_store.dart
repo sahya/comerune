@@ -8,6 +8,20 @@ abstract class SettingsStore {
   Future<AppSettings> load();
 
   Future<void> save(AppSettings settings);
+
+  /// Load the volume stored before muting. Returns `null` if not muted.
+  double? loadPreMuteVolume();
+
+  /// Save the volume before muting. Pass `null` to clear.
+  Future<void> savePreMuteVolume(double? volume);
+
+  /// Exports current settings as a pretty-printed JSON string.
+  Future<String> exportAsJson();
+
+  /// Imports settings from a JSON string, saves them, and returns the result.
+  ///
+  /// Throws [FormatException] if [jsonString] is not valid JSON.
+  Future<AppSettings> importFromJson(String jsonString);
 }
 
 /// SharedPreferences API のうち本画面で利用する最小セット。
@@ -89,8 +103,11 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   static const String _kVoicevoxPlayerType = 'settings.voicevox.playerType';
   static const String _kVoicevoxTermsAccepted =
       'settings.voicevox.termsAccepted';
+  static const String _kCommentTwoLineEnabled = 'settings.comment.twoLine';
+  static const String _kCommentZebraStriping = 'settings.comment.zebraStriping';
   static const String _kDictionaryRules = 'settings.speech.dictionaryRules';
   static const String _kDebugMode = 'settings.debugMode';
+  static const String _kPreMuteVolume = 'settings.voicevox.preMuteVolume';
 
   @override
   Future<AppSettings> load() async {
@@ -169,6 +186,10 @@ class SharedPreferencesSettingsStore implements SettingsStore {
               : VoicevoxPlayerType.audioTrack,
       voicevoxTermsAccepted: _prefs.getBool(_kVoicevoxTermsAccepted) ??
           defaults.voicevoxTermsAccepted,
+      commentTwoLineEnabled: _prefs.getBool(_kCommentTwoLineEnabled) ??
+          defaults.commentTwoLineEnabled,
+      commentZebraStripingEnabled: _prefs.getBool(_kCommentZebraStriping) ??
+          defaults.commentZebraStripingEnabled,
       dictionaryRules: _loadDictionaryRules(),
       debugMode: _prefs.getBool(_kDebugMode) ?? defaults.debugMode,
     );
@@ -252,6 +273,14 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       _kVoicevoxTermsAccepted,
       settings.voicevoxTermsAccepted,
     );
+    await _prefs.setBool(
+      _kCommentTwoLineEnabled,
+      settings.commentTwoLineEnabled,
+    );
+    await _prefs.setBool(
+      _kCommentZebraStriping,
+      settings.commentZebraStripingEnabled,
+    );
     await _prefs.setBool(_kDebugMode, settings.debugMode);
     await _prefs.setString(
       _kDictionaryRules,
@@ -259,6 +288,18 @@ class SharedPreferencesSettingsStore implements SettingsStore {
         settings.dictionaryRules.map((ReplaceRule r) => r.toMap()).toList(),
       ),
     );
+  }
+
+  @override
+  double? loadPreMuteVolume() => _prefs.getDouble(_kPreMuteVolume);
+
+  @override
+  Future<void> savePreMuteVolume(double? volume) async {
+    if (volume == null) {
+      await _prefs.remove(_kPreMuteVolume);
+    } else {
+      await _prefs.setDouble(_kPreMuteVolume, volume);
+    }
   }
 
   List<ReplaceRule> _loadDictionaryRules() {
@@ -278,5 +319,20 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       );
       return defaultNicoDictionaryRules;
     }
+  }
+
+  @override
+  Future<String> exportAsJson() async {
+    final AppSettings settings = await load();
+    final Map<String, dynamic> json = settings.toJson();
+    const JsonEncoder encoder = JsonEncoder.withIndent('  ');
+    return encoder.convert(json);
+  }
+
+  @override
+  Future<AppSettings> importFromJson(String jsonString) async {
+    final AppSettings imported = AppSettings.fromJsonString(jsonString);
+    await save(imported);
+    return imported;
   }
 }
