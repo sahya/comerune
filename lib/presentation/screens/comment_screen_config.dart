@@ -97,7 +97,7 @@ class CommentCallbacks {
   final Future<void> Function() onStopAllConnections;
   final Future<void> Function() onReconnectSameLv;
   final Future<void> Function(String previousLv, String nextLv)
-  onDifferentLvConnected;
+      onDifferentLvConnected;
   final Future<void> Function()? onOpenSettings;
 
   /// Called to toggle NG status for a user.

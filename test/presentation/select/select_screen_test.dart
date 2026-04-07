@@ -674,7 +674,8 @@ void main() {
     final CommentScreen commentScreen = tester.widget<CommentScreen>(
       find.byType(CommentScreen),
     );
-    await commentScreen.callbacks.onDifferentLvConnected('lv345678901', 'lv999999999');
+    await commentScreen.callbacks
+        .onDifferentLvConnected('lv345678901', 'lv999999999');
     await tester.pump();
 
     final CommentScreen updated = tester.widget<CommentScreen>(

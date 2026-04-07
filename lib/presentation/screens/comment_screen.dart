@@ -299,8 +299,7 @@ class _CommentScreenState extends State<CommentScreen> {
     if (oldWidget.speechConfig.speechSettings !=
         widget.speechConfig.speechSettings) {
       _debugLogLazy(
-        () =>
-            '[CommentScreen] didUpdate: speechSettings changed: '
+        () => '[CommentScreen] didUpdate: speechSettings changed: '
             'enabled ${oldWidget.speechConfig.speechSettings.enabled}→${widget.speechConfig.speechSettings.enabled}',
       );
       unawaited(
@@ -337,10 +336,9 @@ class _CommentScreenState extends State<CommentScreen> {
         // due to new messages, so we check here to resume auto-scroll.
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted || _autoScrollEnabled) return;
-          final bool atEdge =
-              _sortOrder == CommentSortOrder.ascending
-                  ? _isNearBottom()
-                  : _isNearTop();
+          final bool atEdge = _sortOrder == CommentSortOrder.ascending
+              ? _isNearBottom()
+              : _isNearTop();
           if (atEdge) {
             setState(() {
               _autoScrollEnabled = true;
@@ -447,8 +445,7 @@ class _CommentScreenState extends State<CommentScreen> {
 
   Future<void> _initializeAndStartSpeech() async {
     _debugLogLazy(
-      () =>
-          '[CommentScreen] initSpeech: enter '
+      () => '[CommentScreen] initSpeech: enter '
           '(initializing=$_speechInitializing, initialized=$_speechInitialized)',
     );
     if (_speechInitializing) return;
@@ -465,8 +462,7 @@ class _CommentScreenState extends State<CommentScreen> {
       try {
         final SpeechRuntimeStatus status = await platform.getStatus();
         _debugLogLazy(
-          () =>
-              '[CommentScreen] initSpeech: engine=${status.engineState}, '
+          () => '[CommentScreen] initSpeech: engine=${status.engineState}, '
               'player=${status.playerState}, queue=${status.queueSize}',
         );
         if (status.engineState == 'READY') {
@@ -539,8 +535,7 @@ class _CommentScreenState extends State<CommentScreen> {
       }
       _startSpeechPollTimer();
       _debugLogLazy(
-        () =>
-            '[CommentScreen] Speech started. baseline=$_lastSpeechMessageId, '
+        () => '[CommentScreen] Speech started. baseline=$_lastSpeechMessageId, '
             'msgCount=${widget.messages.length}',
       );
     } catch (e, stackTrace) {
@@ -561,8 +556,7 @@ class _CommentScreenState extends State<CommentScreen> {
 
   Future<void> _handleSpeechSettingsChanged(SpeechSettings oldSettings) async {
     _debugLogLazy(
-      () =>
-          '[CommentScreen] settingsChanged: enabled ${oldSettings.enabled}→'
+      () => '[CommentScreen] settingsChanged: enabled ${oldSettings.enabled}→'
           '${widget.speechConfig.speechSettings.enabled}, started=$_speechStarted',
     );
     if (!oldSettings.enabled && widget.speechConfig.speechSettings.enabled) {
@@ -897,10 +891,9 @@ class _CommentScreenState extends State<CommentScreen> {
                         ? Icons.arrow_downward
                         : Icons.arrow_upward,
                   ),
-                  tooltip:
-                      _sortOrder == CommentSortOrder.ascending
-                          ? '新しい順に切替'
-                          : '古い順に切替',
+                  tooltip: _sortOrder == CommentSortOrder.ascending
+                      ? '新しい順に切替'
+                      : '古い順に切替',
                   onPressed: _toggleSortOrder,
                 ),
                 if (widget.callbacks.onOpenSettings != null)
@@ -983,11 +976,10 @@ class _CommentScreenState extends State<CommentScreen> {
                           itemCount: sortedMessages.length,
                           itemBuilder: (BuildContext context, int index) {
                             final AppMessage message = sortedMessages[index];
-                            final int? userColor =
-                                message.userId != null
-                                    ? widget.filterConfig.userColorMap[message
-                                        .userId!]
-                                    : null;
+                            final int? userColor = message.userId != null
+                                ? widget
+                                    .filterConfig.userColorMap[message.userId!]
+                                : null;
                             return _CommentRow(
                               message: message,
                               themeColors: themeColors,
@@ -1001,10 +993,9 @@ class _CommentScreenState extends State<CommentScreen> {
                               zebraStripingEnabled:
                                   widget.commentZebraStripingEnabled,
                               zebraIndex: index,
-                              userColor:
-                                  userColor != null
-                                      ? colorFromARGB32(userColor)
-                                      : null,
+                              userColor: userColor != null
+                                  ? colorFromARGB32(userColor)
+                                  : null,
                               onLongPress: () => _showCommentActions(message),
                               beginAt: widget.programInfo.beginAt,
                             );
@@ -1057,38 +1048,34 @@ class _CommentScreenState extends State<CommentScreen> {
           themeMode: widget.themeMode,
           beginAt: widget.programInfo.beginAt,
           currentColorValue: widget.filterConfig.userColorMap[userId],
-          onColorChanged:
-              widget.callbacks.onUserColorChanged != null
-                  ? (int colorValue) {
-                    widget.callbacks.onUserColorChanged!.call(
-                      userId,
-                      colorValue,
-                    );
-                    Navigator.of(sheetContext).pop();
-                  }
-                  : null,
-          onColorRemoved:
-              widget.callbacks.onUserColorRemoved != null
-                  ? () {
-                    widget.callbacks.onUserColorRemoved!.call(userId);
-                    Navigator.of(sheetContext).pop();
-                  }
-                  : null,
+          onColorChanged: widget.callbacks.onUserColorChanged != null
+              ? (int colorValue) {
+                  widget.callbacks.onUserColorChanged!.call(
+                    userId,
+                    colorValue,
+                  );
+                  Navigator.of(sheetContext).pop();
+                }
+              : null,
+          onColorRemoved: widget.callbacks.onUserColorRemoved != null
+              ? () {
+                  widget.callbacks.onUserColorRemoved!.call(userId);
+                  Navigator.of(sheetContext).pop();
+                }
+              : null,
           nickname: widget.filterConfig.userNicknameMap[userId],
-          onNicknameChanged:
-              widget.callbacks.onNicknameChanged != null
-                  ? (String nickname) {
-                    widget.callbacks.onNicknameChanged!.call(userId, nickname);
-                    Navigator.of(sheetContext).pop();
-                  }
-                  : null,
-          onNicknameRemoved:
-              widget.callbacks.onNicknameRemoved != null
-                  ? () {
-                    widget.callbacks.onNicknameRemoved!.call(userId);
-                    Navigator.of(sheetContext).pop();
-                  }
-                  : null,
+          onNicknameChanged: widget.callbacks.onNicknameChanged != null
+              ? (String nickname) {
+                  widget.callbacks.onNicknameChanged!.call(userId, nickname);
+                  Navigator.of(sheetContext).pop();
+                }
+              : null,
+          onNicknameRemoved: widget.callbacks.onNicknameRemoved != null
+              ? () {
+                  widget.callbacks.onNicknameRemoved!.call(userId);
+                  Navigator.of(sheetContext).pop();
+                }
+              : null,
           onToggleNgUser: () {
             widget.callbacks.onToggleNgUser?.call(userId);
             Navigator.of(sheetContext).pop();
@@ -1239,10 +1226,9 @@ class _CommentScreenState extends State<CommentScreen> {
 
   void _toggleSortOrder() {
     setState(() {
-      _sortOrder =
-          _sortOrder == CommentSortOrder.ascending
-              ? CommentSortOrder.descending
-              : CommentSortOrder.ascending;
+      _sortOrder = _sortOrder == CommentSortOrder.ascending
+          ? CommentSortOrder.descending
+          : CommentSortOrder.ascending;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToEdge(animated: false);
@@ -1293,12 +1279,11 @@ class _CommentScreenState extends State<CommentScreen> {
         width: double.infinity,
         child: ElevatedButton(
           key: const Key('stop-button'),
-          onPressed:
-              _isStopEnabled(status)
-                  ? () async {
-                    await _stopAndPop();
-                  }
-                  : null,
+          onPressed: _isStopEnabled(status)
+              ? () async {
+                  await _stopAndPop();
+                }
+              : null,
           child: const Text('接続停止'),
         ),
       ),
@@ -1532,8 +1517,7 @@ class _CommentScreenState extends State<CommentScreen> {
       return true;
     }
 
-    final double distanceToBottom =
-        _scrollController.position.maxScrollExtent -
+    final double distanceToBottom = _scrollController.position.maxScrollExtent -
         _scrollController.position.pixels;
     return distanceToBottom <= _autoScrollResumeThreshold;
   }
@@ -1769,8 +1753,7 @@ class _CommentScreenState extends State<CommentScreen> {
   String _removeControlAndInvisible(String text) {
     final StringBuffer sb = StringBuffer();
     for (final int cp in text.runes) {
-      final bool invisible =
-          cp == 0x200B ||
+      final bool invisible = cp == 0x200B ||
           cp == 0x200C ||
           cp == 0x200D ||
           cp == 0xFEFF ||
@@ -1844,15 +1827,13 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   bool _isLetterOrDigitCodePoint(int cp) {
-    final bool asciiAlphaNum =
-        (cp >= 0x30 && cp <= 0x39) ||
+    final bool asciiAlphaNum = (cp >= 0x30 && cp <= 0x39) ||
         (cp >= 0x41 && cp <= 0x5A) ||
         (cp >= 0x61 && cp <= 0x7A);
     if (asciiAlphaNum) {
       return true;
     }
-    final bool fullWidthAlphaNum =
-        (cp >= 0xFF10 && cp <= 0xFF19) ||
+    final bool fullWidthAlphaNum = (cp >= 0xFF10 && cp <= 0xFF19) ||
         (cp >= 0xFF21 && cp <= 0xFF3A) ||
         (cp >= 0xFF41 && cp <= 0xFF5A);
     if (fullWidthAlphaNum) {
@@ -2015,9 +1996,8 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   void _scrollToMinuteOffset(int minuteOffset) {
-    final List<AppMessage> visibleMessages = widget.messages
-        .where(_shouldDisplayMessage)
-        .toList(growable: false);
+    final List<AppMessage> visibleMessages =
+        widget.messages.where(_shouldDisplayMessage).toList(growable: false);
     final List<AppMessage> sorted = _applySortOrder(visibleMessages);
     if (sorted.isEmpty) {
       return;
@@ -2171,10 +2151,9 @@ class _CommentScreenState extends State<CommentScreen> {
       return;
     }
 
-    final double offset =
-        _sortOrder == CommentSortOrder.ascending
-            ? _scrollController.position.maxScrollExtent
-            : 0;
+    final double offset = _sortOrder == CommentSortOrder.ascending
+        ? _scrollController.position.maxScrollExtent
+        : 0;
 
     if (!animated) {
       _scrollController.jumpTo(offset);
@@ -2197,10 +2176,9 @@ class _CommentScreenState extends State<CommentScreen> {
 
   void _checkAutoScrollResume() {
     if (_autoScrollEnabled) return;
-    final bool atEdge =
-        _sortOrder == CommentSortOrder.ascending
-            ? _isNearBottom()
-            : _isNearTop();
+    final bool atEdge = _sortOrder == CommentSortOrder.ascending
+        ? _isNearBottom()
+        : _isNearTop();
     if (atEdge) {
       setState(() {
         _autoScrollEnabled = true;
@@ -2555,18 +2533,17 @@ class _BroadcasterIcon extends StatelessWidget {
       child: SizedBox(
         width: size,
         height: size,
-        child:
-            url != null && url!.isNotEmpty
-                ? Image.network(
-                  url!,
-                  width: size,
-                  height: size,
-                  fit: BoxFit.cover,
-                  cacheWidth: (size * 2).round(),
-                  cacheHeight: (size * 2).round(),
-                  errorBuilder: (_, __, ___) => Icon(Icons.person, size: size),
-                )
-                : Icon(Icons.person, size: size),
+        child: url != null && url!.isNotEmpty
+            ? Image.network(
+                url!,
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+                cacheWidth: (size * 2).round(),
+                cacheHeight: (size * 2).round(),
+                errorBuilder: (_, __, ___) => Icon(Icons.person, size: size),
+              )
+            : Icon(Icons.person, size: size),
       ),
     );
   }
@@ -2643,11 +2620,10 @@ class _PinnedCommentsSection extends StatelessWidget {
               resolvedUserName: resolveDisplayName(message),
               showUserName: showUserName,
               fontSize: fontSize,
-              userColor:
-                  message.userId != null &&
-                          userColorMap.containsKey(message.userId!)
-                      ? colorFromARGB32(userColorMap[message.userId!]!)
-                      : null,
+              userColor: message.userId != null &&
+                      userColorMap.containsKey(message.userId!)
+                  ? colorFromARGB32(userColorMap[message.userId!]!)
+                  : null,
               onUnpin: () => onUnpin(message.id),
               beginAt: beginAt,
             ),
@@ -2766,8 +2742,7 @@ class _CommentRowState extends State<_CommentRow> {
   Widget build(BuildContext context) {
     final bool hidden = _isStarHidden;
     final Color? specialBg = _backgroundColor(widget.message);
-    final Color? effectiveBg =
-        specialBg ??
+    final Color? effectiveBg = specialBg ??
         (widget.zebraStripingEnabled && widget.zebraIndex.isOdd
             ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.04)
             : null);
@@ -2836,10 +2811,9 @@ class _CommentRowState extends State<_CommentRow> {
     if (widget.showUserName) {
       final String? userId = message.userId;
       if (userId != null && userId.isNotEmpty) {
-        final String displayName =
-            widget.resolvedUserName != null
-                ? '${widget.resolvedUserName} ($userId)'
-                : userId;
+        final String displayName = widget.resolvedUserName != null
+            ? '${widget.resolvedUserName} ($userId)'
+            : userId;
         spans.add(const TextSpan(text: '  '));
         spans.add(
           TextSpan(
@@ -2894,10 +2868,9 @@ class _CommentRowState extends State<_CommentRow> {
     if (widget.showUserName) {
       final String? userId = widget.message.userId;
       if (userId != null && userId.isNotEmpty) {
-        final String displayName =
-            widget.resolvedUserName != null
-                ? '${widget.resolvedUserName} ($userId)'
-                : userId;
+        final String displayName = widget.resolvedUserName != null
+            ? '${widget.resolvedUserName} ($userId)'
+            : userId;
         metaSpans.add(const TextSpan(text: '  '));
         metaSpans.add(
           TextSpan(

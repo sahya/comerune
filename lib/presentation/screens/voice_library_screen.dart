@@ -193,8 +193,7 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
     }
     try {
       _debugLogLazy(
-        () =>
-            '[VoiceLibrary] download start: modelId=${model.modelId}, '
+        () => '[VoiceLibrary] download start: modelId=${model.modelId}, '
             'name=${model.displayName}',
       );
       await _manager.downloadModel(model.modelId);
@@ -223,8 +222,7 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
       // Automatically load the model into the engine after download.
       await _manager.loadModel(model.modelId);
       _debugLogLazy(
-        () =>
-            '[VoiceLibrary] loadModel success after download: '
+        () => '[VoiceLibrary] loadModel success after download: '
             'modelId=${model.modelId}',
       );
     } on Object catch (e) {
@@ -512,20 +510,18 @@ class _VoicevoxTermsDialogState extends State<_VoicevoxTermsDialog> {
             ),
             const SizedBox(height: 8),
             Expanded(
-              child:
-                  _termsText == null
-                      ? const Center(child: CircularProgressIndicator())
-                      : Scrollbar(
+              child: _termsText == null
+                  ? const Center(child: CircularProgressIndicator())
+                  : Scrollbar(
+                      controller: _scrollController,
+                      thumbVisibility: true,
+                      child: SingleChildScrollView(
                         controller: _scrollController,
-                        thumbVisibility: true,
-                        child: SingleChildScrollView(
-                          controller: _scrollController,
-                          child:
-                              _termsContentCache ??= _buildTermsContent(
-                                context,
-                              ),
+                        child: _termsContentCache ??= _buildTermsContent(
+                          context,
                         ),
                       ),
+                    ),
             ),
             const SizedBox(height: 12),
             if (!_canAccept)
@@ -534,8 +530,8 @@ class _VoicevoxTermsDialogState extends State<_VoicevoxTermsDialog> {
                     ? 'あと $_cooldownSeconds 秒...'
                     : '規約を最後までお読みください',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.outline,
-                ),
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
               ),
           ],
         ),
@@ -625,8 +621,7 @@ class _VoicevoxTermsDialogState extends State<_VoicevoxTermsDialog> {
     );
     spans.add(
       TextSpan(
-        text:
-            '・読み上げ内容はユーザーの責任のもとでご利用ください。'
+        text: '・読み上げ内容はユーザーの責任のもとでご利用ください。'
             'ライブ配信ではコメント投稿者が内容を制御するため、'
             '不適切な内容が読み上げられる可能性があります。\n'
             '・NGワードフィルター機能を活用することで、'

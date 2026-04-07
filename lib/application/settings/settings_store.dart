@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 
 import '../../comment_speech/src/models/replace_rule.dart';
 import '../../domain/models/app_settings.dart';
+import '../../domain/models/ng_word_rule.dart';
 
 abstract class SettingsStore {
   Future<AppSettings> load();
@@ -103,6 +104,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   static const String _kVoicevoxPlayerType = 'settings.voicevox.playerType';
   static const String _kVoicevoxTermsAccepted =
       'settings.voicevox.termsAccepted';
+  static const String _kNgWordRules = 'settings.filter.ngWordRules';
   static const String _kCommentTwoLineEnabled = 'settings.comment.twoLine';
   static const String _kCommentZebraStriping = 'settings.comment.zebraStriping';
   static const String _kDictionaryRules = 'settings.speech.dictionaryRules';
@@ -186,6 +188,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
               : VoicevoxPlayerType.audioTrack,
       voicevoxTermsAccepted: _prefs.getBool(_kVoicevoxTermsAccepted) ??
           defaults.voicevoxTermsAccepted,
+      ngWordRules: _loadNgWordRules(),
       commentTwoLineEnabled: _prefs.getBool(_kCommentTwoLineEnabled) ??
           defaults.commentTwoLineEnabled,
       commentZebraStripingEnabled: _prefs.getBool(_kCommentZebraStriping) ??
@@ -283,11 +286,38 @@ class SharedPreferencesSettingsStore implements SettingsStore {
     );
     await _prefs.setBool(_kDebugMode, settings.debugMode);
     await _prefs.setString(
+      _kNgWordRules,
+      jsonEncode(
+        settings.ngWordRules.map((NgWordRule r) => r.toMap()).toList(),
+      ),
+    );
+    await _prefs.setString(
       _kDictionaryRules,
       jsonEncode(
         settings.dictionaryRules.map((ReplaceRule r) => r.toMap()).toList(),
       ),
     );
+  }
+
+  List<NgWordRule> _loadNgWordRules() {
+    final String? raw = _prefs.getString(_kNgWordRules);
+    if (raw == null) {
+      return const <NgWordRule>[];
+    }
+    try {
+      final List<dynamic> decoded = jsonDecode(raw) as List<dynamic>;
+      return decoded
+          .map(
+            (dynamic e) => NgWordRule.fromMap(e as Map<String, dynamic>),
+          )
+          .toList();
+    } on Object catch (e) {
+      developer.log(
+        'Failed to parse ngWordRules, returning empty list: $e',
+        name: 'SettingsStore',
+      );
+      return const <NgWordRule>[];
+    }
   }
 
   @override
