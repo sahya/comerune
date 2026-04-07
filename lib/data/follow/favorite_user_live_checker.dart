@@ -272,7 +272,8 @@ class FavoriteUserLiveChecker {
         return null;
       }
 
-      final String title = (program['title'] as String?) ?? '';
+      final Object? rawTitle = program['title'];
+      final String title = rawTitle is String ? rawTitle : '';
 
       appDebugLogLazy(
         () =>
