@@ -175,7 +175,37 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
     @Volatile
     private var state: TtsEngineState = TtsEngineState.UNINITIALIZED
 
-    /** Lock for state transitions and synthesis count updates (release, synthesize). */
+    /**
+     * Lock for state transitions and synthesis count updates (release, synthesize,
+     * clearLoadedModel).
+     *
+     * ## Lock hierarchy
+     *
+     * This class uses two independent locks:
+     * - [mutex] (coroutine Mutex) — guards lifecycle operations: initialize,
+     *   loadModel, prepareForModelDownload. These are suspend functions that may
+     *   perform slow I/O (native calls, file access).
+     * - [stateLock] (JVM monitor) — guards fast, non-suspend state mutations:
+     *   synthesize entry/exit, release, clearLoadedModel.
+     *
+     * The two locks are intentionally independent. [mutex] is never held while
+     * acquiring [stateLock] within the same call path, and vice versa.
+     * [loadModel] reads [loadedModelPaths]/[loadedModelIds] under [mutex] only,
+     * while [clearLoadedModel] writes them under [stateLock] only. This is safe
+     * because:
+     * 1. Both sets are [ConcurrentHashMap]-backed, so individual operations are
+     *    thread-safe.
+     * 2. [loadModel] uses a native probe ([isModelAlreadyLoadedBySpeakerProbe])
+     *    as a second check, preventing stale tracking from causing incorrect
+     *    skip decisions.
+     * 3. [clearLoadedModel] only invalidates tracking — it does not unload the
+     *    model from the native synthesizer — so the worst outcome of a race is
+     *    a redundant native load, which is idempotent.
+     *
+     * Native-level thread safety is provided by [g_mutex] (C++ shared_mutex)
+     * in voicevox_jni.cpp: lifecycle ops take exclusive locks, synthesis ops
+     * take shared locks.
+     */
     private val stateLock = Any()
 
     /** Mutex for lifecycle operations (initialize, loadModel, prepareForModelDownload). */
@@ -527,7 +557,16 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
     override fun clearLoadedModel(modelId: String) {
         // Use stateLock to ensure both sets are modified atomically,
         // consistent with release() which also holds stateLock.
+        // Safe to call in any engine state — if the engine has been released
+        // the sets are already empty so this is a harmless no-op.
         synchronized(stateLock) {
+            if (state == TtsEngineState.UNINITIALIZED) {
+                Log.d(
+                    TAG,
+                    "clearLoadedModel: modelId=$modelId skipped (engine uninitialized)"
+                )
+                return
+            }
             val removedPath = loadedModelPaths.removeAll { path ->
                 extractModelId(path) == modelId
             }
