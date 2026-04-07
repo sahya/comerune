@@ -269,41 +269,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                   padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
                   children: <Widget>[
                     SettingsSection(
-                      title: 'テーマ',
-                      children: <Widget>[
-                        DropdownButtonFormField<AppThemeMode>(
-                          key: const Key('theme-mode-dropdown'),
-                          initialValue: settings.themeMode,
-                          decoration: const InputDecoration(
-                            labelText: '配色テーマ',
-                            border: OutlineInputBorder(),
-                          ),
-                          items: AppThemeMode.values
-                              .map(
-                                (AppThemeMode mode) =>
-                                    DropdownMenuItem<AppThemeMode>(
-                                  value: mode,
-                                  child: Text(mode.label),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (AppThemeMode? value) {
-                            if (value == null) {
-                              return;
-                            }
-                            updateAndSave(settings.copyWith(themeMode: value));
-                          },
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'ダークモードは夜間の視認性を向上します。\n'
-                          '色覚テーマは色の区別が難しい方に配慮した配色です。',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    SettingsSection(
                       title: 'ニコニコアカウント',
                       children: <Widget>[
                         if (_isLoggedIn) ...<Widget>[
@@ -344,6 +309,67 @@ class _SettingsScreenState extends State<SettingsScreen>
                       ],
                     ),
                     const SizedBox(height: 12),
+                    SettingsSection(
+                      title: 'テーマ',
+                      children: <Widget>[
+                        DropdownButtonFormField<AppThemeMode>(
+                          key: const Key('theme-mode-dropdown'),
+                          initialValue: settings.themeMode,
+                          decoration: const InputDecoration(
+                            labelText: '配色テーマ',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: AppThemeMode.values
+                              .map(
+                                (AppThemeMode mode) =>
+                                    DropdownMenuItem<AppThemeMode>(
+                                  value: mode,
+                                  child: Text(mode.label),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (AppThemeMode? value) {
+                            if (value == null) {
+                              return;
+                            }
+                            updateAndSave(settings.copyWith(themeMode: value));
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'ダークモードは夜間の視認性を向上します。\n'
+                          '色覚テーマは色の区別が難しい方に配慮した配色です。',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Card(
+                      child: ListTile(
+                        key: const Key('comment-display-settings-tile'),
+                        leading: const Icon(Icons.chat_bubble_outline),
+                        title: const Text('コメント表示設定'),
+                        subtitle: Text(
+                          'フォントサイズ: ${settings.commentFontSize.round()}px',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () async {
+                          final bool? changed =
+                              await Navigator.of(context).push<bool>(
+                            MaterialPageRoute<bool>(
+                              builder: (_) => CommentDisplaySettingsScreen(
+                                settingsStore: widget.settingsStore,
+                                initialSettings: settings,
+                              ),
+                            ),
+                          );
+                          if (changed == true) {
+                            await _loadSettings();
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     Card(
                       child: ListTile(
                         key: const Key('tts-settings-tile'),
@@ -362,32 +388,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                               builder: (_) => TtsSettingsScreen(
                                 settingsStore: widget.settingsStore,
                                 platform: widget.speechPlatform,
-                                initialSettings: settings,
-                              ),
-                            ),
-                          );
-                          if (changed == true) {
-                            await _loadSettings();
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Card(
-                      child: ListTile(
-                        key: const Key('comment-display-settings-tile'),
-                        leading: const Icon(Icons.chat_bubble_outline),
-                        title: const Text('コメント表示設定'),
-                        subtitle: Text(
-                          'フォントサイズ: ${settings.commentFontSize.round()}px',
-                        ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () async {
-                          final bool? changed =
-                              await Navigator.of(context).push<bool>(
-                            MaterialPageRoute<bool>(
-                              builder: (_) => CommentDisplaySettingsScreen(
-                                settingsStore: widget.settingsStore,
                                 initialSettings: settings,
                               ),
                             ),
