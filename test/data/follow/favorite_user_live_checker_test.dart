@@ -1,50 +1,137 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:comerune/data/follow/favorite_user_live_checker.dart';
+import 'package:comerune/domain/models/follow_program.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+/// Helper to build a broadcast-history API JSON response.
+String _buildHistoryResponse({
+  required String programId,
+  required String status,
+  String title = 'テスト放送',
+  String providerName = 'テストユーザー',
+  int beginTimeSeconds = 1700000000,
+  int scheduledEndTimeSeconds = 1700001800,
+}) {
+  return jsonEncode(<String, dynamic>{
+    'meta': <String, dynamic>{'status': 200},
+    'data': <String, dynamic>{
+      'programsList': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'id': <String, dynamic>{'value': programId},
+          'program': <String, dynamic>{
+            'title': title,
+            'schedule': <String, dynamic>{
+              'status': status,
+              'beginTime': <String, dynamic>{
+                'seconds': beginTimeSeconds,
+                'nanos': 0,
+              },
+              'scheduledEndTime': <String, dynamic>{
+                'seconds': scheduledEndTimeSeconds,
+                'nanos': 0,
+              },
+            },
+          },
+          'programProvider': <String, dynamic>{
+            'name': providerName,
+            'programProviderId': <String, dynamic>{'value': '12345'},
+            'icons': <String, dynamic>{
+              'uri50x50':
+                  'https://secure-dcdn.cdn.nimg.jp/nicoaccount/usericon/s/1234/12345.jpg',
+              'uri150x150':
+                  'https://secure-dcdn.cdn.nimg.jp/nicoaccount/usericon/1234/12345.jpg',
+            },
+          },
+          'socialGroup': <String, dynamic>{
+            'name': 'テストコミュニティ',
+            'isDeleted': <String, dynamic>{'value': false},
+          },
+        },
+      ],
+      'hasNext': false,
+    },
+  });
+}
+
+String _buildEmptyHistoryResponse() {
+  return jsonEncode(<String, dynamic>{
+    'meta': <String, dynamic>{'status': 200},
+    'data': <String, dynamic>{
+      'programsList': <Map<String, dynamic>>[],
+      'hasNext': false,
+    },
+  });
+}
+
 void main() {
-  group('FavoriteUserLiveChecker', () {
+  group('FavoriteUserLiveChecker (broadcast-history API)', () {
     test(
-      'returns programId when user is broadcasting (302 redirect)',
+      'returns FollowProgram when user is broadcasting (ON_AIR)',
       () async {
         final _FakeHttpClient httpClient = _FakeHttpClient();
-        httpClient
-                .responsesByUrl['https://live.nicovideo.jp/watch/user/12345'] =
-            _FakeResponseConfig(
-          statusCode: 302,
-          headers: <String, String>{
-            'location': 'https://live.nicovideo.jp/watch/lv348712105',
-          },
+        httpClient.responseBodyByUrlPrefix['providerId=12345'] =
+            _buildHistoryResponse(
+          programId: 'lv348712105',
+          status: 'ON_AIR',
+          title: 'テスト放送タイトル',
+          providerName: '放送者名',
         );
 
         final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
           httpClient: httpClient,
+          minInterval: Duration.zero,
         );
 
-        final Map<String, String> result = await checker.checkBroadcastStatus(
-          <String>{'12345'},
-        );
+        final Map<String, FollowProgram> result =
+            await checker.checkBroadcastStatus(<String>{'12345'});
 
-        expect(result, <String, String>{'12345': 'lv348712105'});
+        expect(result, hasLength(1));
+        expect(result['12345'], isNotNull);
+        expect(result['12345']!.programId, 'lv348712105');
+        expect(result['12345']!.title, 'テスト放送タイトル');
+        expect(result['12345']!.providerName, '放送者名');
+        expect(result['12345']!.status, ProgramStatus.onAir);
 
         checker.dispose();
       },
     );
 
-    test('returns empty map when user is not broadcasting (200)', () async {
+    test('returns empty map when user is not broadcasting (ENDED)', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
-      httpClient.responsesByUrl['https://live.nicovideo.jp/watch/user/12345'] =
-          _FakeResponseConfig(statusCode: 200);
+      httpClient.responseBodyByUrlPrefix['providerId=12345'] =
+          _buildHistoryResponse(
+        programId: 'lv348712105',
+        status: 'ENDED',
+      );
 
       final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
         httpClient: httpClient,
+        minInterval: Duration.zero,
       );
 
-      final Map<String, String> result = await checker.checkBroadcastStatus(
-        <String>{'12345'},
+      final Map<String, FollowProgram> result =
+          await checker.checkBroadcastStatus(<String>{'12345'});
+
+      expect(result, isEmpty);
+
+      checker.dispose();
+    });
+
+    test('returns empty map when user has no broadcast history', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBodyByUrlPrefix['providerId=12345'] =
+          _buildEmptyHistoryResponse();
+
+      final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
+        httpClient: httpClient,
+        minInterval: Duration.zero,
       );
+
+      final Map<String, FollowProgram> result =
+          await checker.checkBroadcastStatus(<String>{'12345'});
 
       expect(result, isEmpty);
 
@@ -56,195 +143,78 @@ void main() {
 
       final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
         httpClient: httpClient,
+        minInterval: Duration.zero,
       );
 
-      final Map<String, String> result = await checker.checkBroadcastStatus(
-        <String>{},
-      );
+      final Map<String, FollowProgram> result =
+          await checker.checkBroadcastStatus(<String>{});
 
       expect(result, isEmpty);
-      expect(httpClient.requests, isEmpty);
+      expect(httpClient.requestCount, 0);
 
       checker.dispose();
     });
 
     test('handles mixed results for multiple users', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
-      httpClient.responsesByUrl['https://live.nicovideo.jp/watch/user/111'] =
-          _FakeResponseConfig(
-        statusCode: 302,
-        headers: <String, String>{
-          'location': 'https://live.nicovideo.jp/watch/lv100001',
-        },
+      httpClient.responseBodyByUrlPrefix['providerId=111'] =
+          _buildHistoryResponse(
+        programId: 'lv100001',
+        status: 'ON_AIR',
+        providerName: 'User111',
       );
-      httpClient.responsesByUrl['https://live.nicovideo.jp/watch/user/222'] =
-          _FakeResponseConfig(statusCode: 200);
-      httpClient.responsesByUrl['https://live.nicovideo.jp/watch/user/333'] =
-          _FakeResponseConfig(
-        statusCode: 301,
-        headers: <String, String>{
-          'location': 'https://live.nicovideo.jp/watch/lv100003',
-        },
+      httpClient.responseBodyByUrlPrefix['providerId=222'] =
+          _buildHistoryResponse(
+        programId: 'lv100002',
+        status: 'ENDED',
+      );
+      httpClient.responseBodyByUrlPrefix['providerId=333'] =
+          _buildHistoryResponse(
+        programId: 'lv100003',
+        status: 'ON_AIR',
+        providerName: 'User333',
       );
 
       final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
         httpClient: httpClient,
+        maxConcurrentRequests: 5,
+        minInterval: Duration.zero,
       );
 
-      final Map<String, String> result = await checker.checkBroadcastStatus(
-        <String>{'111', '222', '333'},
-      );
+      final Map<String, FollowProgram> result =
+          await checker.checkBroadcastStatus(<String>{'111', '222', '333'});
 
-      expect(result, <String, String>{'111': 'lv100001', '333': 'lv100003'});
+      expect(result, hasLength(2));
+      expect(result['111']!.programId, 'lv100001');
+      expect(result['333']!.programId, 'lv100003');
 
       checker.dispose();
     });
 
     test('handles network error gracefully', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
-      httpClient.throwOnUrl['https://live.nicovideo.jp/watch/user/999'] =
+      httpClient.throwOnUrlPrefix['providerId=999'] =
           const SocketException('Connection refused');
 
       final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
         httpClient: httpClient,
+        minInterval: Duration.zero,
       );
 
-      final Map<String, String> result = await checker.checkBroadcastStatus(
-        <String>{'999'},
-      );
+      final Map<String, FollowProgram> result =
+          await checker.checkBroadcastStatus(<String>{'999'});
 
       expect(result, isEmpty);
-
-      checker.dispose();
-    });
-
-    test('ignores redirect with no lv number in location', () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
-      httpClient.responsesByUrl['https://live.nicovideo.jp/watch/user/12345'] =
-          _FakeResponseConfig(
-        statusCode: 302,
-        headers: <String, String>{
-          'location': 'https://live.nicovideo.jp/watch/somethingelse',
-        },
-      );
-
-      final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
-        httpClient: httpClient,
-      );
-
-      final Map<String, String> result = await checker.checkBroadcastStatus(
-        <String>{'12345'},
-      );
-
-      expect(result, isEmpty);
-
-      checker.dispose();
-    });
-
-    test(
-      'parses uppercase lv with trailing slash in redirect location',
-      () async {
-        final _FakeHttpClient httpClient = _FakeHttpClient();
-        httpClient
-                .responsesByUrl['https://live.nicovideo.jp/watch/user/12345'] =
-            _FakeResponseConfig(
-          statusCode: 302,
-          headers: <String, String>{
-            'location': 'https://live.nicovideo.jp/watch/LV348712105/',
-          },
-        );
-
-        final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
-          httpClient: httpClient,
-        );
-
-        final Map<String, String> result = await checker.checkBroadcastStatus(
-          <String>{'12345'},
-        );
-
-        expect(result, <String, String>{'12345': 'lv348712105'});
-
-        checker.dispose();
-      },
-    );
-
-    test('handles redirect with no location header', () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
-      httpClient.responsesByUrl['https://live.nicovideo.jp/watch/user/12345'] =
-          _FakeResponseConfig(statusCode: 302);
-
-      final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
-        httpClient: httpClient,
-      );
-
-      final Map<String, String> result = await checker.checkBroadcastStatus(
-        <String>{'12345'},
-      );
-
-      expect(result, isEmpty);
-
-      checker.dispose();
-    });
-
-    test('supports all redirect status codes', () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
-      for (final MapEntry<String, int> entry in <String, int>{
-        '401': 303,
-        '402': 307,
-        '403': 308,
-      }.entries) {
-        httpClient.responsesByUrl[
-                'https://live.nicovideo.jp/watch/user/${entry.key}'] =
-            _FakeResponseConfig(
-          statusCode: entry.value,
-          headers: <String, String>{
-            'location': 'https://live.nicovideo.jp/watch/lv${entry.key}000',
-          },
-        );
-      }
-
-      final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
-        httpClient: httpClient,
-      );
-
-      final Map<String, String> result = await checker.checkBroadcastStatus(
-        <String>{'401', '402', '403'},
-      );
-
-      expect(result, <String, String>{
-        '401': 'lv401000',
-        '402': 'lv402000',
-        '403': 'lv403000',
-      });
-
-      checker.dispose();
-    });
-
-    test('sets followRedirects to false on request', () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
-      httpClient.responsesByUrl['https://live.nicovideo.jp/watch/user/12345'] =
-          _FakeResponseConfig(statusCode: 200);
-
-      final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
-        httpClient: httpClient,
-      );
-
-      await checker.checkBroadcastStatus(<String>{'12345'});
-
-      expect(httpClient.requests, hasLength(1));
-      expect(httpClient.requests[0].followRedirects, isFalse);
 
       checker.dispose();
     });
 
     test('returns cached result within minInterval', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
-      httpClient.responsesByUrl['https://live.nicovideo.jp/watch/user/12345'] =
-          _FakeResponseConfig(
-        statusCode: 302,
-        headers: <String, String>{
-          'location': 'https://live.nicovideo.jp/watch/lv100001',
-        },
+      httpClient.responseBodyByUrlPrefix['providerId=12345'] =
+          _buildHistoryResponse(
+        programId: 'lv100001',
+        status: 'ON_AIR',
       );
 
       final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
@@ -252,31 +222,27 @@ void main() {
         minInterval: const Duration(seconds: 60),
       );
 
-      // First call makes network requests.
-      final Map<String, String> first = await checker.checkBroadcastStatus(
-        <String>{'12345'},
-      );
-      expect(first, <String, String>{'12345': 'lv100001'});
-      expect(httpClient.requests, hasLength(1));
+      // First call makes network request.
+      final Map<String, FollowProgram> first =
+          await checker.checkBroadcastStatus(<String>{'12345'});
+      expect(first, hasLength(1));
+      expect(httpClient.requestCount, 1);
 
-      // Second call within minInterval returns cache without new requests.
-      final Map<String, String> second = await checker.checkBroadcastStatus(
-        <String>{'12345'},
-      );
-      expect(second, <String, String>{'12345': 'lv100001'});
-      expect(httpClient.requests, hasLength(1)); // No new request.
+      // Second call within minInterval returns cache.
+      final Map<String, FollowProgram> second =
+          await checker.checkBroadcastStatus(<String>{'12345'});
+      expect(second, hasLength(1));
+      expect(httpClient.requestCount, 1); // No new request.
 
       checker.dispose();
     });
 
     test('invalidateCache forces network request on next call', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
-      httpClient.responsesByUrl['https://live.nicovideo.jp/watch/user/12345'] =
-          _FakeResponseConfig(
-        statusCode: 302,
-        headers: <String, String>{
-          'location': 'https://live.nicovideo.jp/watch/lv100001',
-        },
+      httpClient.responseBodyByUrlPrefix['providerId=12345'] =
+          _buildHistoryResponse(
+        programId: 'lv100001',
+        status: 'ON_AIR',
       );
 
       final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
@@ -285,23 +251,24 @@ void main() {
       );
 
       await checker.checkBroadcastStatus(<String>{'12345'});
-      expect(httpClient.requests, hasLength(1));
+      expect(httpClient.requestCount, 1);
 
       checker.invalidateCache();
 
       await checker.checkBroadcastStatus(<String>{'12345'});
-      expect(httpClient.requests, hasLength(2)); // New request after invalidation.
+      expect(httpClient.requestCount, 2);
 
       checker.dispose();
     });
 
     test('throttles concurrent requests to maxConcurrentRequests', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
-      // Set up 5 users, all not broadcasting (200).
       for (int i = 1; i <= 5; i++) {
-        httpClient.responsesByUrl[
-                'https://live.nicovideo.jp/watch/user/$i'] =
-            _FakeResponseConfig(statusCode: 200);
+        httpClient.responseBodyByUrlPrefix['providerId=$i'] =
+            _buildHistoryResponse(
+          programId: 'lv10000$i',
+          status: 'ENDED',
+        );
       }
 
       final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
@@ -310,13 +277,13 @@ void main() {
         minInterval: Duration.zero,
       );
 
-      final Map<String, String> result = await checker.checkBroadcastStatus(
+      final Map<String, FollowProgram> result =
+          await checker.checkBroadcastStatus(
         <String>{'1', '2', '3', '4', '5'},
       );
 
-      // All 5 users checked, none broadcasting.
       expect(result, isEmpty);
-      expect(httpClient.requests, hasLength(5));
+      expect(httpClient.requestCount, 5);
 
       checker.dispose();
     });
@@ -325,17 +292,16 @@ void main() {
       'on-air users are skipped on odd cycles and re-checked on even cycles',
       () async {
         final _FakeHttpClient httpClient = _FakeHttpClient();
-        httpClient
-                .responsesByUrl['https://live.nicovideo.jp/watch/user/111'] =
-            _FakeResponseConfig(
-          statusCode: 302,
-          headers: <String, String>{
-            'location': 'https://live.nicovideo.jp/watch/lv100001',
-          },
+        httpClient.responseBodyByUrlPrefix['providerId=111'] =
+            _buildHistoryResponse(
+          programId: 'lv100001',
+          status: 'ON_AIR',
         );
-        httpClient
-                .responsesByUrl['https://live.nicovideo.jp/watch/user/222'] =
-            _FakeResponseConfig(statusCode: 200);
+        httpClient.responseBodyByUrlPrefix['providerId=222'] =
+            _buildHistoryResponse(
+          programId: 'lv100002',
+          status: 'ENDED',
+        );
 
         final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
           httpClient: httpClient,
@@ -343,68 +309,165 @@ void main() {
           minInterval: Duration.zero,
         );
 
-        // Cycle 1: both users checked (2 requests).
-        final Map<String, String> first = await checker.checkBroadcastStatus(
-          <String>{'111', '222'},
-        );
-        expect(first, <String, String>{'111': 'lv100001'});
-        expect(httpClient.requests, hasLength(2));
+        // Cycle 1: both users checked.
+        final Map<String, FollowProgram> first =
+            await checker.checkBroadcastStatus(<String>{'111', '222'});
+        expect(first, hasLength(1));
+        expect(first['111']!.programId, 'lv100001');
+        expect(httpClient.requestCount, 2);
 
         // Cycle 2 (even): user 111 is known on-air, re-checked.
-        final Map<String, String> second = await checker.checkBroadcastStatus(
-          <String>{'111', '222'},
-        );
-        expect(second, <String, String>{'111': 'lv100001'});
-        expect(httpClient.requests, hasLength(4)); // 2 more
+        final Map<String, FollowProgram> second =
+            await checker.checkBroadcastStatus(<String>{'111', '222'});
+        expect(second, hasLength(1));
+        expect(httpClient.requestCount, 4);
 
         // Cycle 3 (odd): user 111 is known on-air, skipped.
-        httpClient.requests.clear();
-        final Map<String, String> third = await checker.checkBroadcastStatus(
-          <String>{'111', '222'},
-        );
-        // user 111 retains cached status even though not checked.
-        expect(third, <String, String>{'111': 'lv100001'});
-        // Only user 222 was checked this cycle.
-        expect(httpClient.requests, hasLength(1));
+        httpClient.requestCount = 0;
+        final Map<String, FollowProgram> third =
+            await checker.checkBroadcastStatus(<String>{'111', '222'});
+        expect(third, hasLength(1));
+        expect(third['111']!.programId, 'lv100001');
+        expect(httpClient.requestCount, 1); // Only user 222.
 
         checker.dispose();
       },
     );
+
+    test('parses beginAt and endAt from schedule timestamps', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBodyByUrlPrefix['providerId=12345'] =
+          _buildHistoryResponse(
+        programId: 'lv100001',
+        status: 'ON_AIR',
+        beginTimeSeconds: 1700000000,
+        scheduledEndTimeSeconds: 1700001800,
+      );
+
+      final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
+        httpClient: httpClient,
+        minInterval: Duration.zero,
+      );
+
+      final Map<String, FollowProgram> result =
+          await checker.checkBroadcastStatus(<String>{'12345'});
+
+      final FollowProgram program = result['12345']!;
+      expect(
+        program.beginAt,
+        DateTime.fromMillisecondsSinceEpoch(1700000000 * 1000, isUtc: true),
+      );
+      expect(
+        program.endAt,
+        DateTime.fromMillisecondsSinceEpoch(1700001800 * 1000, isUtc: true),
+      );
+
+      checker.dispose();
+    });
+
+    test('extracts provider icon URL from icons object', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBodyByUrlPrefix['providerId=12345'] =
+          _buildHistoryResponse(
+        programId: 'lv100001',
+        status: 'ON_AIR',
+      );
+
+      final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
+        httpClient: httpClient,
+        minInterval: Duration.zero,
+      );
+
+      final Map<String, FollowProgram> result =
+          await checker.checkBroadcastStatus(<String>{'12345'});
+
+      expect(result['12345']!.providerIconUrl, isNotNull);
+      expect(result['12345']!.providerIconUrl, contains('https://'));
+
+      checker.dispose();
+    });
+
+    test('excludes deleted community name', () async {
+      final String body = jsonEncode(<String, dynamic>{
+        'meta': <String, dynamic>{'status': 200},
+        'data': <String, dynamic>{
+          'programsList': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': <String, dynamic>{'value': 'lv100001'},
+              'program': <String, dynamic>{
+                'title': 'テスト',
+                'schedule': <String, dynamic>{
+                  'status': 'ON_AIR',
+                  'beginTime': <String, dynamic>{'seconds': 1700000000},
+                  'scheduledEndTime': <String, dynamic>{
+                    'seconds': 1700001800,
+                  },
+                },
+              },
+              'programProvider': <String, dynamic>{
+                'name': 'テスト放送者',
+              },
+              'socialGroup': <String, dynamic>{
+                'name': '削除されたコミュニティ',
+                'isDeleted': <String, dynamic>{'value': true},
+              },
+            },
+          ],
+        },
+      });
+
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBodyByUrlPrefix['providerId=12345'] = body;
+
+      final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
+        httpClient: httpClient,
+        minInterval: Duration.zero,
+      );
+
+      final Map<String, FollowProgram> result =
+          await checker.checkBroadcastStatus(<String>{'12345'});
+
+      expect(result['12345']!.communityName, isNull);
+
+      checker.dispose();
+    });
   });
 }
 
-class _FakeResponseConfig {
-  _FakeResponseConfig({
-    required this.statusCode,
-    this.headers = const <String, String>{},
-  });
-
-  final int statusCode;
-  final Map<String, String> headers;
-}
-
-class _CapturedRequest {
-  _CapturedRequest({required this.uri, required this.followRedirects});
-
-  final Uri uri;
-  final bool followRedirects;
-}
+// ---------------------------------------------------------------------------
+// Fake HTTP infrastructure
+// ---------------------------------------------------------------------------
 
 class _FakeHttpClient implements HttpClient {
-  final Map<String, _FakeResponseConfig> responsesByUrl =
-      <String, _FakeResponseConfig>{};
-  final Map<String, Exception> throwOnUrl = <String, Exception>{};
-  final List<_CapturedRequest> requests = <_CapturedRequest>[];
+  /// Maps a URL substring (e.g. 'providerId=12345') to a JSON response body.
+  final Map<String, String> responseBodyByUrlPrefix = <String, String>{};
+
+  /// Maps a URL substring to an exception to throw.
+  final Map<String, Exception> throwOnUrlPrefix = <String, Exception>{};
+
+  int requestCount = 0;
 
   @override
   Future<HttpClientRequest> getUrl(Uri url) async {
     final String urlStr = url.toString();
-    if (throwOnUrl.containsKey(urlStr)) {
-      throw throwOnUrl[urlStr]!;
+
+    for (final MapEntry<String, Exception> entry in throwOnUrlPrefix.entries) {
+      if (urlStr.contains(entry.key)) {
+        throw entry.value;
+      }
     }
-    final _FakeResponseConfig config =
-        responsesByUrl[urlStr] ?? _FakeResponseConfig(statusCode: 200);
-    return _FakeHttpClientRequest(uri: url, client: this, config: config);
+
+    String body = '{"meta":{"status":200},"data":{"programsList":[]}}';
+    for (final MapEntry<String, String> entry
+        in responseBodyByUrlPrefix.entries) {
+      if (urlStr.contains(entry.key)) {
+        body = entry.value;
+        break;
+      }
+    }
+
+    requestCount++;
+    return _FakeHttpClientRequest(uri: url, responseBody: body);
   }
 
   @override
@@ -420,40 +483,21 @@ class _FakeHttpClient implements HttpClient {
 }
 
 class _FakeHttpClientRequest implements HttpClientRequest {
-  _FakeHttpClientRequest({
-    required this.uri,
-    required this.client,
-    required this.config,
-  });
+  _FakeHttpClientRequest({required this.uri, required this.responseBody});
 
   @override
   final Uri uri;
-  final _FakeHttpClient client;
-  final _FakeResponseConfig config;
+  final String responseBody;
   final _FakeHttpHeaders _headers = _FakeHttpHeaders();
-
-  bool _followRedirects = true;
 
   @override
   HttpHeaders get headers => _headers;
 
   @override
-  set followRedirects(bool value) {
-    _followRedirects = value;
-  }
-
-  @override
-  bool get followRedirects => _followRedirects;
-
-  @override
   Future<HttpClientResponse> close() async {
-    client.requests.add(
-      _CapturedRequest(uri: uri, followRedirects: _followRedirects),
-    );
-
     return _FakeHttpClientResponse(
-      statusCode: config.statusCode,
-      responseHeaders: config.headers,
+      statusCode: 200,
+      body: responseBody,
     );
   }
 
@@ -491,14 +535,15 @@ class _FakeHttpClientResponse extends Stream<List<int>>
     implements HttpClientResponse {
   _FakeHttpClientResponse({
     required this.statusCode,
-    required Map<String, String> responseHeaders,
-  }) : headers = _FakeResponseHeaders(responseHeaders);
+    required this.body,
+  });
 
   @override
   final int statusCode;
+  final String body;
 
   @override
-  final HttpHeaders headers;
+  final HttpHeaders headers = _FakeResponseHeaders();
 
   @override
   StreamSubscription<List<int>> listen(
@@ -507,7 +552,7 @@ class _FakeHttpClientResponse extends Stream<List<int>>
     void Function()? onDone,
     bool? cancelOnError,
   }) {
-    return Stream<List<int>>.value(<int>[]).listen(
+    return Stream<List<int>>.value(utf8.encode(body)).listen(
       onData,
       onError: onError,
       onDone: onDone,
@@ -527,20 +572,11 @@ class _FakeHttpClientResponse extends Stream<List<int>>
 }
 
 class _FakeResponseHeaders implements HttpHeaders {
-  _FakeResponseHeaders(this._values);
-
-  final Map<String, String> _values;
+  @override
+  String? value(String name) => null;
 
   @override
-  String? value(String name) {
-    return _values[name.toLowerCase()] ?? _values[name];
-  }
-
-  @override
-  List<String>? operator [](String name) {
-    final String? v = value(name);
-    return v != null ? <String>[v] : null;
-  }
+  List<String>? operator [](String name) => null;
 
   @override
   dynamic noSuchMethod(Invocation invocation) {
