@@ -90,7 +90,8 @@ class _TextInputDialogState extends State<_TextInputDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final InputDecoration effectiveDecoration = widget.decoration ??
+    final InputDecoration effectiveDecoration =
+        widget.decoration ??
         InputDecoration(labelText: widget.labelText, hintText: widget.hintText);
 
     return AlertDialog(

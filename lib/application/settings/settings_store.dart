@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 
 import '../../comment_speech/src/models/replace_rule.dart';
 import '../../domain/models/app_settings.dart';
+import '../../domain/models/ng_word_rule.dart';
 
 abstract class SettingsStore {
   Future<AppSettings> load();
@@ -50,7 +51,7 @@ abstract class SharedPreferencesLike {
 
 class SharedPreferencesSettingsStore implements SettingsStore {
   const SharedPreferencesSettingsStore({required SharedPreferencesLike prefs})
-      : _prefs = prefs;
+    : _prefs = prefs;
 
   final SharedPreferencesLike _prefs;
 
@@ -103,6 +104,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   static const String _kVoicevoxPlayerType = 'settings.voicevox.playerType';
   static const String _kVoicevoxTermsAccepted =
       'settings.voicevox.termsAccepted';
+  static const String _kNgWordRules = 'settings.filter.ngWordRules';
   static const String _kCommentTwoLineEnabled = 'settings.comment.twoLine';
   static const String _kCommentZebraStriping = 'settings.comment.zebraStriping';
   static const String _kDictionaryRules = 'settings.speech.dictionaryRules';
@@ -113,8 +115,9 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   Future<AppSettings> load() async {
     const AppSettings defaults = AppSettings.defaults;
     final String? engineValue = _prefs.getString(_kSpeechEngine);
-    final SpeechEngine speechEngine =
-        engineValue == 'bouyomi' ? SpeechEngine.bouyomi : SpeechEngine.voicevox;
+    final SpeechEngine speechEngine = engineValue == 'bouyomi'
+        ? SpeechEngine.bouyomi
+        : SpeechEngine.voicevox;
 
     return AppSettings(
       themeMode: AppThemeModeValue.fromStorageValue(
@@ -157,25 +160,30 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       commentFontSize: commentFontSizeFromStorageValue(
         _prefs.getString(_kCommentFontSize),
       ),
-      autoNicknameRegistration: _prefs.getBool(_kAutoNicknameRegistration) ??
+      autoNicknameRegistration:
+          _prefs.getBool(_kAutoNicknameRegistration) ??
           defaults.autoNicknameRegistration,
       autoSaveCommentLog:
           _prefs.getBool(_kAutoSaveCommentLog) ?? defaults.autoSaveCommentLog,
-      autoSaveCommentLogPath: _prefs.getString(_kAutoSaveCommentLogPath) ??
+      autoSaveCommentLogPath:
+          _prefs.getString(_kAutoSaveCommentLogPath) ??
           defaults.autoSaveCommentLogPath,
       statisticsEnabled:
           _prefs.getBool(_kStatisticsEnabled) ?? defaults.statisticsEnabled,
       statisticsViewerCommentEnabled:
           _prefs.getBool(_kStatisticsViewerCommentEnabled) ??
-              defaults.statisticsViewerCommentEnabled,
+          defaults.statisticsViewerCommentEnabled,
       statisticsActiveUserEnabled:
           _prefs.getBool(_kStatisticsActiveUserEnabled) ??
-              defaults.statisticsActiveUserEnabled,
-      highlightPickupEnabled: _prefs.getBool(_kHighlightPickupEnabled) ??
+          defaults.statisticsActiveUserEnabled,
+      highlightPickupEnabled:
+          _prefs.getBool(_kHighlightPickupEnabled) ??
           defaults.highlightPickupEnabled,
-      starPrefixHidingEnabled: _prefs.getBool(_kStarPrefixHidingEnabled) ??
+      starPrefixHidingEnabled:
+          _prefs.getBool(_kStarPrefixHidingEnabled) ??
           defaults.starPrefixHidingEnabled,
-      slashPrefixSkipEnabled: _prefs.getBool(_kSlashPrefixSkipEnabled) ??
+      slashPrefixSkipEnabled:
+          _prefs.getBool(_kSlashPrefixSkipEnabled) ??
           defaults.slashPrefixSkipEnabled,
       readUserName: _prefs.getBool(_kReadUserName) ?? defaults.readUserName,
       voicevoxSynthesisMode: SynthesisMode.fromStorageValue(
@@ -183,13 +191,17 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       ),
       voicevoxPlayerType:
           _prefs.getString(_kVoicevoxPlayerType) == 'media_player'
-              ? VoicevoxPlayerType.mediaPlayer
-              : VoicevoxPlayerType.audioTrack,
-      voicevoxTermsAccepted: _prefs.getBool(_kVoicevoxTermsAccepted) ??
+          ? VoicevoxPlayerType.mediaPlayer
+          : VoicevoxPlayerType.audioTrack,
+      voicevoxTermsAccepted:
+          _prefs.getBool(_kVoicevoxTermsAccepted) ??
           defaults.voicevoxTermsAccepted,
-      commentTwoLineEnabled: _prefs.getBool(_kCommentTwoLineEnabled) ??
+      ngWordRules: _loadNgWordRules(),
+      commentTwoLineEnabled:
+          _prefs.getBool(_kCommentTwoLineEnabled) ??
           defaults.commentTwoLineEnabled,
-      commentZebraStripingEnabled: _prefs.getBool(_kCommentZebraStriping) ??
+      commentZebraStripingEnabled:
+          _prefs.getBool(_kCommentZebraStriping) ??
           defaults.commentZebraStripingEnabled,
       dictionaryRules: _loadDictionaryRules(),
       debugMode: _prefs.getBool(_kDebugMode) ?? defaults.debugMode,
@@ -286,11 +298,36 @@ class SharedPreferencesSettingsStore implements SettingsStore {
     );
     await _prefs.setBool(_kDebugMode, settings.debugMode);
     await _prefs.setString(
+      _kNgWordRules,
+      jsonEncode(
+        settings.ngWordRules.map((NgWordRule r) => r.toMap()).toList(),
+      ),
+    );
+    await _prefs.setString(
       _kDictionaryRules,
       jsonEncode(
         settings.dictionaryRules.map((ReplaceRule r) => r.toMap()).toList(),
       ),
     );
+  }
+
+  List<NgWordRule> _loadNgWordRules() {
+    final String? raw = _prefs.getString(_kNgWordRules);
+    if (raw == null) {
+      return const <NgWordRule>[];
+    }
+    try {
+      final List<dynamic> decoded = jsonDecode(raw) as List<dynamic>;
+      return decoded
+          .map((dynamic e) => NgWordRule.fromMap(e as Map<String, dynamic>))
+          .toList();
+    } on Object catch (e) {
+      developer.log(
+        'Failed to parse ngWordRules, returning empty list: $e',
+        name: 'SettingsStore',
+      );
+      return const <NgWordRule>[];
+    }
   }
 
   @override

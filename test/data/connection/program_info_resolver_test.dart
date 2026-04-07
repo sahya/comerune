@@ -190,11 +190,119 @@ void main() {
 
         expect(result.title, 'No IDs');
         expect(result.supplierUserId, isNull);
-        expect(result.broadcasterName, 'テスト配信者');
+        // broadcaster[0].name is preferred over supplier.name even without id.
+        expect(result.broadcasterName, '名前だけ');
 
         resolver.dispose();
       },
     );
+
+    test(
+      'extracts broadcaster name when id is absent and no supplier exists',
+      () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseBody = jsonEncode(<String, Object?>{
+          'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+          'data': <String, Object?>{
+            'title': 'Name Only Broadcaster',
+            'broadcaster': <Object?>[
+              <String, Object?>{'name': '配信者のみ'},
+            ],
+            'rooms': <Object?>[
+              <String, Object?>{
+                'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/NameOnly',
+              },
+            ],
+          },
+        });
+
+        final ProgramInfoResolver resolver = ProgramInfoResolver(
+          httpClient: httpClient,
+        );
+
+        final ProgramInfo result = await resolver.resolve(
+          lv: 'lv777',
+          userSession: 'session',
+        );
+
+        expect(result.title, 'Name Only Broadcaster');
+        expect(result.supplierUserId, isNull);
+        expect(result.broadcasterName, '配信者のみ');
+
+        resolver.dispose();
+      },
+    );
+
+    test('uses supplier userId when broadcaster has name but no id', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'Mixed Sources',
+          'broadcaster': <Object?>[
+            <String, Object?>{'name': '配信者C'},
+          ],
+          'supplier': <String, Object?>{
+            'programProviderId': 99999,
+            'name': 'サプライヤー名',
+          },
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/MixedSrc',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv776',
+        userSession: 'session',
+      );
+
+      // broadcaster name preferred, supplier userId used as fallback.
+      expect(result.broadcasterName, '配信者C');
+      expect(result.supplierUserId, '99999');
+
+      resolver.dispose();
+    });
+
+    test('uses supplier name when broadcaster has id but no name', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'Id Only Broadcaster',
+          'broadcaster': <Object?>[
+            <String, Object?>{'id': 55555},
+          ],
+          'supplier': <String, Object?>{'name': 'サプライヤー補完名'},
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/IdOnly',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv775',
+        userSession: 'session',
+      );
+
+      // broadcaster id used, supplier name used as fallback.
+      expect(result.supplierUserId, '55555');
+      expect(result.broadcasterName, 'サプライヤー補完名');
+
+      resolver.dispose();
+    });
 
     test('extracts beginAt from ISO 8601 string', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
@@ -631,7 +739,7 @@ class _FakeHttpHeaders implements HttpHeaders {
 class _FakeHttpClientResponse extends Stream<List<int>>
     implements HttpClientResponse {
   _FakeHttpClientResponse({required this.statusCode, required String body})
-      : _body = body;
+    : _body = body;
 
   @override
   final int statusCode;

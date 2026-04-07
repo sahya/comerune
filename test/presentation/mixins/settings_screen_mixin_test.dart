@@ -129,14 +129,14 @@ void main() {
                   body: Center(
                     child: ElevatedButton(
                       onPressed: () async {
-                        final bool? result =
-                            await Navigator.of(context).push<bool>(
-                          MaterialPageRoute<bool>(
-                            builder: (_) => CommentDisplaySettingsScreen(
-                              settingsStore: store,
-                            ),
-                          ),
-                        );
+                        final bool? result = await Navigator.of(context)
+                            .push<bool>(
+                              MaterialPageRoute<bool>(
+                                builder: (_) => CommentDisplaySettingsScreen(
+                                  settingsStore: store,
+                                ),
+                              ),
+                            );
                         popResult = result;
                       },
                       child: const Text('open'),
@@ -177,14 +177,14 @@ void main() {
                   body: Center(
                     child: ElevatedButton(
                       onPressed: () async {
-                        final bool? result =
-                            await Navigator.of(context).push<bool>(
-                          MaterialPageRoute<bool>(
-                            builder: (_) => CommentDisplaySettingsScreen(
-                              settingsStore: store,
-                            ),
-                          ),
-                        );
+                        final bool? result = await Navigator.of(context)
+                            .push<bool>(
+                              MaterialPageRoute<bool>(
+                                builder: (_) => CommentDisplaySettingsScreen(
+                                  settingsStore: store,
+                                ),
+                              ),
+                            );
                         popResult = result;
                       },
                       child: const Text('open'),
@@ -244,6 +244,13 @@ class _ThrowingSettingsStore implements SettingsStore {
   @override
   Future<void> savePreMuteVolume(double? volume) =>
       _delegate.savePreMuteVolume(volume);
+
+  @override
+  Future<String> exportAsJson() => _delegate.exportAsJson();
+
+  @override
+  Future<AppSettings> importFromJson(String jsonString) =>
+      _delegate.importFromJson(jsonString);
 }
 
 /// Minimal StatefulWidget that uses [SettingsScreenMixin] for testing

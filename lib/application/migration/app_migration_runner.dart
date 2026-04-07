@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:developer';
 
+import '../../domain/models/ng_word_rule.dart';
 import '../settings/settings_store.dart';
 
 /// Runs one-time migration tasks when the app's migration version changes.
@@ -19,7 +21,7 @@ class AppMigrationRunner {
 
   /// Bump this constant and add a corresponding case in [_runMigration]
   /// whenever a new migration is needed.
-  static const int currentMigrationVersion = 1;
+  static const int currentMigrationVersion = 2;
 
   /// Run all pending migrations. Safe to call on every app startup.
   ///
@@ -36,9 +38,11 @@ class AppMigrationRunner {
       name: 'AppMigrationRunner',
     );
 
-    for (int version = storedVersion + 1;
-        version <= currentMigrationVersion;
-        version++) {
+    for (
+      int version = storedVersion + 1;
+      version <= currentMigrationVersion;
+      version++
+    ) {
       await _runMigration(version);
       // Persist progress after each successful migration so that a failure
       // in a later migration does not re-run already completed ones.
@@ -65,11 +69,55 @@ class AppMigrationRunner {
         // check. This migration simply records that the migration framework
         // has been initialized.
         break;
+      case 2:
+        // Migration v2: Convert newline-separated NG words to structured
+        // JSON format with per-word enable/disable toggle.
+        await _migrateNgWordsToRules();
+        break;
       default:
         log(
           'Unknown migration version: $version — skipping',
           name: 'AppMigrationRunner',
         );
     }
+  }
+
+  /// Convert legacy newline-separated NG words (`settings.filter.ngWords`)
+  /// to the structured JSON format (`settings.filter.ngWordRules`).
+  ///
+  /// All migrated words are created with `enabled: true`.
+  Future<void> _migrateNgWordsToRules() async {
+    const String oldKey = 'settings.filter.ngWords';
+    const String newKey = 'settings.filter.ngWordRules';
+
+    // Skip if the new format already exists.
+    final String? existing = _prefs.getString(newKey);
+    if (existing != null) {
+      return;
+    }
+
+    final String? raw = _prefs.getString(oldKey);
+    if (raw == null || raw.trim().isEmpty) {
+      return;
+    }
+
+    final List<Map<String, dynamic>> rules = raw
+        .split('\n')
+        .map((String s) => s.trim())
+        .where((String s) => s.isNotEmpty)
+        .map((String pattern) => NgWordRule(pattern: pattern).toMap())
+        .toList();
+
+    if (rules.isNotEmpty) {
+      // Write new format first, then clear old key (crash-safe order).
+      await _prefs.setString(newKey, jsonEncode(rules));
+    }
+
+    await _prefs.remove(oldKey);
+
+    log(
+      'Migrated ${rules.length} NG words to structured format',
+      name: 'AppMigrationRunner',
+    );
   }
 }

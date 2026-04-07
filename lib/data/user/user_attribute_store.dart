@@ -184,8 +184,9 @@ class SharedPreferencesUserAttributeStore implements UserAttributeStore {
 
     for (final String broadcasterId in index) {
       final Map<String, dynamic> raw = _readRaw(broadcasterId);
-      final int lastUsedAt =
-          raw[_lastUsedAtField] is int ? raw[_lastUsedAtField] as int : 0;
+      final int lastUsedAt = raw[_lastUsedAtField] is int
+          ? raw[_lastUsedAtField] as int
+          : 0;
 
       if (lastUsedAt < cutoff) {
         await _prefs.remove(_key(broadcasterId));

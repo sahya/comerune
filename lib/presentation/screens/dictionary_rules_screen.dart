@@ -139,62 +139,59 @@ class _DictionaryRulesScreenState extends State<DictionaryRulesScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _rules.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text(
-                      key: Key('dictionary-rules-empty'),
-                      '辞書ルールは登録されていません',
-                      style: TextStyle(fontSize: 14),
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  key: Key('dictionary-rules-empty'),
+                  '辞書ルールは登録されていません',
+                  style: TextStyle(fontSize: 14),
+                ),
+              ),
+            )
+          : ListView.separated(
+              key: const Key('dictionary-rules-list'),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              itemCount: _rules.length,
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (BuildContext context, int index) {
+                final ReplaceRule rule = _rules[index];
+                final bool isProtected = isDefaultNicoDictionaryRule(rule);
+                return ListTile(
+                  key: Key('dictionary-rule-tile-$index'),
+                  leading: Switch(
+                    key: Key('dictionary-rule-toggle-$index'),
+                    value: rule.enabled,
+                    onChanged: (_) => _toggleRule(index),
+                  ),
+                  title: Text(
+                    rule.pattern,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: rule.enabled ? null : Colors.grey,
                     ),
                   ),
-                )
-              : ListView.separated(
-                  key: const Key('dictionary-rules-list'),
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: _rules.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (BuildContext context, int index) {
-                    final ReplaceRule rule = _rules[index];
-                    final bool isProtected = isDefaultNicoDictionaryRule(rule);
-                    return ListTile(
-                      key: Key('dictionary-rule-tile-$index'),
-                      leading: Switch(
-                        key: Key('dictionary-rule-toggle-$index'),
-                        value: rule.enabled,
-                        onChanged: (_) => _toggleRule(index),
-                      ),
-                      title: Text(
-                        rule.pattern,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: rule.enabled ? null : Colors.grey,
-                        ),
-                      ),
-                      subtitle: Text(
-                        rule.replacement,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: rule.enabled ? null : Colors.grey,
-                        ),
-                      ),
-                      trailing: IconButton(
-                        key: Key('dictionary-rule-delete-$index'),
-                        icon: Icon(
-                          isProtected
-                              ? Icons.lock_outline
-                              : Icons.delete_outline,
-                        ),
-                        tooltip: isProtected
-                            ? '既定の辞書ルールは削除できません。設定画面で無効化してください'
-                            : '削除',
-                        onPressed:
-                            isProtected ? null : () => _deleteRule(index),
-                      ),
-                      onTap: isProtected ? null : () => _editRule(index),
-                    );
-                  },
-                ),
+                  subtitle: Text(
+                    rule.replacement,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: rule.enabled ? null : Colors.grey,
+                    ),
+                  ),
+                  trailing: IconButton(
+                    key: Key('dictionary-rule-delete-$index'),
+                    icon: Icon(
+                      isProtected ? Icons.lock_outline : Icons.delete_outline,
+                    ),
+                    tooltip: isProtected
+                        ? '既定の辞書ルールは削除できません。設定画面で無効化してください'
+                        : '削除',
+                    onPressed: isProtected ? null : () => _deleteRule(index),
+                  ),
+                  onTap: isProtected ? null : () => _editRule(index),
+                );
+              },
+            ),
     );
   }
 }
