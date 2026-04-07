@@ -866,12 +866,16 @@ void main() {
             programInfo: const CommentProgramInfo(lv: 'lv123456789'),
             connectionSupervisor: supervisor,
             messages: const <AppMessage>[],
-            onStopAllConnections: () async {},
-            onReconnectSameLv: () async {},
-            onDifferentLvConnected: (_, __) async {},
+            callbacks: CommentCallbacks(
+              onStopAllConnections: () async {},
+              onReconnectSameLv: () async {},
+              onDifferentLvConnected: (_, __) async {},
+            ),
             themeMode: AppThemeMode.light,
-            speechPlatform: fakePlatform,
-            speechSettings: const SpeechSettings(enabled: true),
+            speechConfig: CommentSpeechConfig(
+              speechPlatform: fakePlatform,
+              speechSettings: const SpeechSettings(enabled: true),
+            ),
           ),
         ),
       );
@@ -899,12 +903,16 @@ void main() {
               programInfo: const CommentProgramInfo(lv: 'lv123456789'),
               connectionSupervisor: supervisor,
               messages: const <AppMessage>[],
-              onStopAllConnections: () async {},
-              onReconnectSameLv: () async {},
-              onDifferentLvConnected: (_, __) async {},
+              callbacks: CommentCallbacks(
+                onStopAllConnections: () async {},
+                onReconnectSameLv: () async {},
+                onDifferentLvConnected: (_, __) async {},
+              ),
               themeMode: AppThemeMode.light,
-              speechPlatform: fakePlatform,
-              speechSettings: const SpeechSettings(enabled: true),
+              speechConfig: CommentSpeechConfig(
+                speechPlatform: fakePlatform,
+                speechSettings: const SpeechSettings(enabled: true),
+              ),
             ),
           ),
         );
@@ -935,12 +943,16 @@ void main() {
             programInfo: const CommentProgramInfo(lv: 'lv123456789'),
             connectionSupervisor: supervisor,
             messages: const <AppMessage>[],
-            onStopAllConnections: () async {},
-            onReconnectSameLv: () async {},
-            onDifferentLvConnected: (_, __) async {},
+            callbacks: CommentCallbacks(
+              onStopAllConnections: () async {},
+              onReconnectSameLv: () async {},
+              onDifferentLvConnected: (_, __) async {},
+            ),
             themeMode: AppThemeMode.light,
-            speechPlatform: fakePlatform,
-            speechSettings: const SpeechSettings(enabled: false),
+            speechConfig: CommentSpeechConfig(
+              speechPlatform: fakePlatform,
+              speechSettings: const SpeechSettings(enabled: false),
+            ),
           ),
         ),
       );
@@ -1019,26 +1031,26 @@ void main() {
     });
 
     testWidgets(
-        'tapping mute icon calls onSpeechMuteToggled and shows snackbar', (
-      WidgetTester tester,
-    ) async {
-      bool toggled = false;
-      await tester.pumpWidget(
-        _buildScreen(
-          speechPlatform: fakePlatform,
-          speechSettings: const SpeechSettings(enabled: true),
-          isSpeechMuted: false,
-          onSpeechMuteToggled: () => toggled = true,
-        ),
-      );
-      await tester.pumpAndSettle();
+      'tapping mute icon calls onSpeechMuteToggled and shows snackbar',
+      (WidgetTester tester) async {
+        bool toggled = false;
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+            isSpeechMuted: false,
+            onSpeechMuteToggled: () => toggled = true,
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('speech-status-icon')));
-      await tester.pump();
+        await tester.tap(find.byKey(const Key('speech-status-icon')));
+        await tester.pump();
 
-      expect(toggled, isTrue);
-      expect(find.text('ミュートしました'), findsOneWidget);
-    });
+        expect(toggled, isTrue);
+        expect(find.text('ミュートしました'), findsOneWidget);
+      },
+    );
 
     testWidgets('icon is not tappable when onSpeechMuteToggled is null', (
       WidgetTester tester,
@@ -1143,31 +1155,37 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
     final UserNameResolution? userNameResolution =
         hasUserNameResolutionCallbacks
             ? UserNameResolution(
-                resolve: widget.resolveUserName ?? (_) => null,
-                requestResolve: widget.requestUserNameResolve ?? (_) {},
-                listenable: _NoopListenable.instance,
-              )
+              resolve: widget.resolveUserName ?? (_) => null,
+              requestResolve: widget.requestUserNameResolve ?? (_) {},
+              listenable: _NoopListenable.instance,
+            )
             : null;
 
     return CommentScreen(
       programInfo: const CommentProgramInfo(lv: 'lv123456789'),
       connectionSupervisor: _buildStreamingSupervisor(),
       messages: _messages,
-      onStopAllConnections: () async {},
-      onReconnectSameLv: () async {},
-      onDifferentLvConnected: (_, __) async {},
+      callbacks: CommentCallbacks(
+        onStopAllConnections: () async {},
+        onReconnectSameLv: () async {},
+        onDifferentLvConnected: (_, __) async {},
+        onSpeechMuteToggled: widget.onSpeechMuteToggled,
+      ),
       themeMode: AppThemeMode.light,
-      speechPlatform: widget.speechPlatform,
-      speechSettings: _speechSettings,
-      ngUserIds: _ngUserIds,
-      ngWords: widget.ngWords,
-      starPrefixHidingEnabled: widget.starPrefixHidingEnabled,
       showUserName: widget.showUserName,
-      readUserName: widget.readUserName,
-      userNicknameMap: widget.userNicknameMap,
       userNameResolution: userNameResolution,
-      isSpeechMuted: widget.isSpeechMuted,
-      onSpeechMuteToggled: widget.onSpeechMuteToggled,
+      filterConfig: CommentFilterConfig(
+        ngUserIds: _ngUserIds,
+        ngWords: widget.ngWords,
+        starPrefixHidingEnabled: widget.starPrefixHidingEnabled,
+        userNicknameMap: widget.userNicknameMap,
+      ),
+      speechConfig: CommentSpeechConfig(
+        speechPlatform: widget.speechPlatform,
+        speechSettings: _speechSettings,
+        readUserName: widget.readUserName,
+        isSpeechMuted: widget.isSpeechMuted,
+      ),
     );
   }
 }
