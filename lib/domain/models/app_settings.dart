@@ -704,6 +704,11 @@ class AppSettings {
               : VoicevoxPlayerType.audioTrack,
       voicevoxTermsAccepted:
           json['voicevoxTermsAccepted'] as bool? ?? d.voicevoxTermsAccepted,
+      commentTwoLineEnabled:
+          json['commentTwoLineEnabled'] as bool? ?? d.commentTwoLineEnabled,
+      commentZebraStripingEnabled:
+          json['commentZebraStripingEnabled'] as bool? ??
+              d.commentZebraStripingEnabled,
       dictionaryRules: parseDictionaryRules(),
       debugMode: json['debugMode'] as bool? ?? d.debugMode,
     );
