@@ -201,9 +201,11 @@ void main() {
       checker.dispose();
     });
 
-    test('returns empty map when server responds with non-200 status', () async {
+    test('handles timeout gracefully', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
-      httpClient.statusCodeByUrlPrefix['providerId=12345'] = 429;
+      httpClient.throwOnUrlPrefix['providerId=12345'] = TimeoutException(
+        'Connection timed out',
+      );
 
       final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
         httpClient: httpClient,
@@ -217,6 +219,26 @@ void main() {
 
       checker.dispose();
     });
+
+    test(
+      'returns empty map when server responds with non-200 status',
+      () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.statusCodeByUrlPrefix['providerId=12345'] = 429;
+
+        final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
+          httpClient: httpClient,
+          minInterval: Duration.zero,
+        );
+
+        final Map<String, FollowProgram> result = await checker
+            .checkBroadcastStatus(<String>{'12345'});
+
+        expect(result, isEmpty);
+
+        checker.dispose();
+      },
+    );
 
     test('returns empty map when response is malformed JSON', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();

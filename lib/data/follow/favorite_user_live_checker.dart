@@ -152,6 +152,9 @@ class FavoriteUserLiveChecker {
 
     final List<String> queue = userIds.toList();
     final Map<String, FollowProgram> results = <String, FollowProgram>{};
+    // Shared index incremented by each worker. Safe because Dart is
+    // single-threaded: `index++` completes atomically before yielding
+    // at the next `await`.
     int index = 0;
 
     Future<void> worker() async {
@@ -202,6 +205,7 @@ class FavoriteUserLiveChecker {
         _responseTimeout,
       );
       if (response.statusCode != 200) {
+        // TODO: Consider retry with backoff for 429 (Rate Limit) responses.
         appDebugLogLazy(
           () =>
               '[FavoriteUserLiveChecker] user=$maskedUserId http=${response.statusCode}',
@@ -353,10 +357,7 @@ class FavoriteUserLiveChecker {
     if (obj is Map<String, dynamic>) {
       final Object? seconds = obj['seconds'];
       if (seconds is int) {
-        return DateTime.fromMillisecondsSinceEpoch(
-          seconds * 1000,
-          isUtc: true,
-        );
+        return DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true);
       }
     }
     return null;
