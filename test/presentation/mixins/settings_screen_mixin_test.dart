@@ -247,6 +247,13 @@ class _ThrowingSettingsStore implements SettingsStore {
   @override
   Future<void> savePreMuteVolume(double? volume) =>
       _delegate.savePreMuteVolume(volume);
+
+  @override
+  Future<String> exportAsJson() => _delegate.exportAsJson();
+
+  @override
+  Future<AppSettings> importFromJson(String jsonString) =>
+      _delegate.importFromJson(jsonString);
 }
 
 /// Minimal StatefulWidget that uses [SettingsScreenMixin] for testing

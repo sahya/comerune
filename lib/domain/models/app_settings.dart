@@ -4,6 +4,7 @@ import 'dart:developer' as developer;
 import '../../comment_speech/src/models/replace_rule.dart';
 import '../../comment_speech/src/models/speech_settings.dart';
 import '../utils/newline_parser.dart';
+import 'ng_word_rule.dart';
 
 export '../../comment_speech/src/models/speech_settings.dart'
     show SynthesisMode;
@@ -254,6 +255,7 @@ class AppSettings {
     required this.voicevoxSynthesisMode,
     required this.voicevoxPlayerType,
     required this.voicevoxTermsAccepted,
+    required this.ngWordRules,
     required this.commentTwoLineEnabled,
     required this.commentZebraStripingEnabled,
     required this.dictionaryRules,
@@ -303,6 +305,7 @@ class AppSettings {
     voicevoxSynthesisMode: SynthesisMode.audioQuery,
     voicevoxPlayerType: VoicevoxPlayerType.audioTrack,
     voicevoxTermsAccepted: false,
+    ngWordRules: <NgWordRule>[],
     commentTwoLineEnabled: false,
     commentZebraStripingEnabled: false,
     dictionaryRules: defaultNicoDictionaryRules,
@@ -326,6 +329,8 @@ class AppSettings {
   final int maxDelaySeconds;
   final bool omitUrl;
   final bool suppressDuplicate;
+  // TODO(#388): マイグレーション完了後、ngWords フィールドと SettingsStore の
+  // 関連 load/save を削除する。現在は後方互換のために残している。
   final String ngWords;
 
   /// Newline-separated user IDs to filter out from display.
@@ -371,6 +376,12 @@ class AppSettings {
   /// VOICEVOX 音声モデルの利用規約に同意済みかどうか。
   final bool voicevoxTermsAccepted;
 
+  /// 構造化されたNGワードルール（有効/無効トグル付き）。
+  ///
+  /// 空リストの場合は旧形式の [ngWords] 文字列にフォールバックする。
+  /// マイグレーション後は常にこちらが使用される。
+  final List<NgWordRule> ngWordRules;
+
   /// 横幅が狭い端末向けにコメントを二段表示するかどうか。
   final bool commentTwoLineEnabled;
 
@@ -382,12 +393,18 @@ class AppSettings {
 
   final bool debugMode;
 
-  /// Parses [ngWords] into a list of lower-cased NG word strings.
+  /// Returns a list of lower-cased NG word pattern strings for filtering.
   ///
-  /// Each line is trimmed and lower-cased; blank lines are ignored.
-  /// The result is pre-lowered so that callers can compare with a single
-  /// [String.contains] against lower-cased content.
+  /// When [ngWordRules] is populated (post-migration), only **enabled** rules
+  /// are returned. Otherwise falls back to the legacy [ngWords] string.
   List<String> get ngWordList {
+    if (ngWordRules.isNotEmpty) {
+      return ngWordRules
+          .where((NgWordRule r) => r.enabled)
+          .map((NgWordRule r) => r.pattern.trim().toLowerCase())
+          .where((String s) => s.isNotEmpty)
+          .toList();
+    }
     return parseNewlineSeparatedLowerList(ngWords);
   }
 
@@ -492,6 +509,7 @@ class AppSettings {
     SynthesisMode? voicevoxSynthesisMode,
     VoicevoxPlayerType? voicevoxPlayerType,
     bool? voicevoxTermsAccepted,
+    List<NgWordRule>? ngWordRules,
     bool? commentTwoLineEnabled,
     bool? commentZebraStripingEnabled,
     List<ReplaceRule>? dictionaryRules,
@@ -545,6 +563,7 @@ class AppSettings {
       voicevoxPlayerType: voicevoxPlayerType ?? this.voicevoxPlayerType,
       voicevoxTermsAccepted:
           voicevoxTermsAccepted ?? this.voicevoxTermsAccepted,
+      ngWordRules: ngWordRules ?? this.ngWordRules,
       commentTwoLineEnabled:
           commentTwoLineEnabled ?? this.commentTwoLineEnabled,
       commentZebraStripingEnabled:
@@ -606,6 +625,9 @@ class AppSettings {
           ? 'media_player'
           : 'audio_track',
       'voicevoxTermsAccepted': voicevoxTermsAccepted,
+      'ngWordRules': ngWordRules.map((NgWordRule r) => r.toMap()).toList(),
+      'commentTwoLineEnabled': commentTwoLineEnabled,
+      'commentZebraStripingEnabled': commentZebraStripingEnabled,
       'dictionaryRules':
           dictionaryRules.map((ReplaceRule r) => r.toMap()).toList(),
       'debugMode': debugMode,
@@ -618,6 +640,22 @@ class AppSettings {
   /// keys fall back to [AppSettings.defaults].
   static AppSettings fromJson(Map<String, dynamic> json) {
     const AppSettings d = AppSettings.defaults;
+
+    List<NgWordRule> parseNgWordRules() {
+      final Object? raw = json['ngWordRules'];
+      if (raw is List) {
+        try {
+          return raw
+              .map(
+                (dynamic e) => NgWordRule.fromMap(e as Map<String, dynamic>),
+              )
+              .toList();
+        } on Object {
+          return d.ngWordRules;
+        }
+      }
+      return d.ngWordRules;
+    }
 
     List<ReplaceRule> parseDictionaryRules() {
       final Object? raw = json['dictionaryRules'];
@@ -704,6 +742,12 @@ class AppSettings {
               : VoicevoxPlayerType.audioTrack,
       voicevoxTermsAccepted:
           json['voicevoxTermsAccepted'] as bool? ?? d.voicevoxTermsAccepted,
+      ngWordRules: parseNgWordRules(),
+      commentTwoLineEnabled:
+          json['commentTwoLineEnabled'] as bool? ?? d.commentTwoLineEnabled,
+      commentZebraStripingEnabled:
+          json['commentZebraStripingEnabled'] as bool? ??
+              d.commentZebraStripingEnabled,
       dictionaryRules: parseDictionaryRules(),
       debugMode: json['debugMode'] as bool? ?? d.debugMode,
     );
