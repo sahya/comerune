@@ -139,19 +139,34 @@ void main() {
       await tester.pumpWidget(_buildScreen(settingsStore));
       await tester.pumpAndSettle();
 
-      // Scroll down so all navigation tiles are visible.
+      final Finder scrollable = find.byType(Scrollable).first;
+
+      // Scroll to each tile individually to verify it exists.
       await tester.scrollUntilVisible(
-        find.byKey(const Key('user-management-settings-tile')),
+        find.byKey(const Key('comment-display-settings-tile')),
         200,
-        scrollable: find.byType(Scrollable).first,
+        scrollable: scrollable,
       );
       await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('tts-settings-tile')), findsOneWidget);
       expect(
         find.byKey(const Key('comment-display-settings-tile')),
         findsOneWidget,
       );
+
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('tts-settings-tile')),
+        200,
+        scrollable: scrollable,
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('tts-settings-tile')), findsOneWidget);
+
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('user-management-settings-tile')),
+        200,
+        scrollable: scrollable,
+      );
+      await tester.pumpAndSettle();
       expect(
         find.byKey(const Key('user-management-settings-tile')),
         findsOneWidget,
@@ -174,6 +189,92 @@ void main() {
 
       // Default autoRead is OFF
       expect(find.text('自動読み上げ: OFF'), findsOneWidget);
+    });
+
+    testWidgets('settings sections are displayed in correct order', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      final Finder scrollable = find.byType(Scrollable).first;
+
+      // Account section should appear before theme (both visible initially).
+      final double accountY = tester.getTopLeft(find.text('ニコニコアカウント')).dy;
+      final double themeY = tester.getTopLeft(find.text('配色テーマ')).dy;
+      expect(
+        accountY,
+        lessThan(themeY),
+        reason: 'ニコニコアカウント should appear before テーマ',
+      );
+
+      // Scroll to comment-display tile; adjacent TTS tile should also be
+      // visible since they are directly next to each other.
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('comment-display-settings-tile')),
+        100,
+        scrollable: scrollable,
+      );
+      await tester.pumpAndSettle();
+
+      // Comment display should appear before TTS.
+      final double commentDisplayY = tester
+          .getTopLeft(find.byKey(const Key('comment-display-settings-tile')))
+          .dy;
+      final double ttsY = tester
+          .getTopLeft(find.byKey(const Key('tts-settings-tile')))
+          .dy;
+      expect(
+        commentDisplayY,
+        lessThan(ttsY),
+        reason: 'コメント表示設定 should appear before 読み上げ設定',
+      );
+
+      // Scroll to user-management tile; adjacent export button should also be
+      // visible.
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('user-management-settings-tile')),
+        100,
+        scrollable: scrollable,
+      );
+      await tester.pumpAndSettle();
+
+      // User management should appear before data management.
+      final double userMgmtY = tester
+          .getTopLeft(find.byKey(const Key('user-management-settings-tile')))
+          .dy;
+      final double exportY = tester
+          .getTopLeft(find.byKey(const Key('export-settings-button')))
+          .dy;
+      expect(
+        userMgmtY,
+        lessThan(exportY),
+        reason: 'ユーザー管理 should appear before データ管理',
+      );
+
+      // Scroll to debug switch; adjacent export button should still be visible.
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('debug-mode-switch')),
+        100,
+        scrollable: scrollable,
+      );
+      await tester.pumpAndSettle();
+
+      // Data management should appear before debug.
+      final double exportY2 = tester
+          .getTopLeft(find.byKey(const Key('export-settings-button')))
+          .dy;
+      final double debugY = tester
+          .getTopLeft(find.byKey(const Key('debug-mode-switch')))
+          .dy;
+      expect(
+        exportY2,
+        lessThan(debugY),
+        reason: 'データ管理 should appear before デバッグ',
+      );
     });
 
     testWidgets('comment display tile shows font size', (
