@@ -1086,7 +1086,14 @@ void main() {
     ) async {
       final ConnectionSupervisor supervisor = ConnectionSupervisor();
       final _FakeFavoriteUserLiveChecker checker = _FakeFavoriteUserLiveChecker(
-        resultMap: <String, String>{'12345': 'lv777888999'},
+        resultMap: <String, FollowProgram>{
+          '12345': FollowProgram(
+            programId: 'lv777888999',
+            title: 'テスト放送',
+            providerName: 'テストユーザー',
+            status: ProgramStatus.onAir,
+          ),
+        },
       );
 
       await tester.pumpWidget(
@@ -1102,43 +1109,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('お気に入りユーザー'), findsOneWidget);
-      expect(find.text('12345'), findsOneWidget);
+      expect(find.text('お気に入りユーザーの放送'), findsOneWidget);
+      expect(find.text('テスト放送'), findsOneWidget);
 
-      await tester.tap(find.text('12345'));
+      await tester.tap(find.text('テスト放送'));
       await tester.pumpAndSettle();
 
       expect(find.byType(CommentScreen), findsOneWidget);
-      expect(find.text('lv777888999'), findsOneWidget);
       expect(checker.lastRequestedUserIds, <String>{'12345'});
-    });
-
-    testWidgets('shows snackbar when favorite tile has invalid program id', (
-      WidgetTester tester,
-    ) async {
-      final ConnectionSupervisor supervisor = ConnectionSupervisor();
-      final _FakeFavoriteUserLiveChecker checker = _FakeFavoriteUserLiveChecker(
-        resultMap: <String, String>{'12345': 'not-a-lv'},
-      );
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: SelectScreen(
-            connectionSupervisor: supervisor,
-            initialSettings: AppSettings.defaults.copyWith(
-              favoriteUserIds: '12345',
-            ),
-            favoriteUserLiveChecker: checker,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('12345'));
-      await tester.pump();
-
-      expect(find.byType(CommentScreen), findsNothing);
-      expect(find.text('放送IDが見つかりません'), findsOneWidget);
     });
   });
 
@@ -1420,12 +1398,12 @@ void main() {
 
       final _FakeFollowProgramRepository followRepository =
           _FakeFollowProgramRepository(<FollowProgram>[
-        FollowProgram(
-          programId: 'lv200',
-          title: 'フォロー放送',
-          providerName: 'フォロー放送者',
-        ),
-      ]);
+            FollowProgram(
+              programId: 'lv200',
+              title: 'フォロー放送',
+              providerName: 'フォロー放送者',
+            ),
+          ]);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -1481,17 +1459,19 @@ class _FakeMyProgramRepository extends MyProgramRepository {
 class _FakeFavoriteUserLiveChecker extends FavoriteUserLiveChecker {
   _FakeFavoriteUserLiveChecker({required this.resultMap});
 
-  final Map<String, String> resultMap;
+  final Map<String, FollowProgram> resultMap;
   Set<String> lastRequestedUserIds = const <String>{};
 
   @override
-  Future<Map<String, String>> checkBroadcastStatus(Set<String> userIds) async {
+  Future<Map<String, FollowProgram>> checkBroadcastStatus(
+    Set<String> userIds,
+  ) async {
     lastRequestedUserIds = Set<String>.from(userIds);
-    final Map<String, String> filtered = <String, String>{};
+    final Map<String, FollowProgram> filtered = <String, FollowProgram>{};
     for (final String userId in userIds) {
-      final String? programId = resultMap[userId];
-      if (programId != null) {
-        filtered[userId] = programId;
+      final FollowProgram? program = resultMap[userId];
+      if (program != null) {
+        filtered[userId] = program;
       }
     }
     return filtered;
@@ -1526,20 +1506,20 @@ class _FakeUserAttributeStore implements UserAttributeStore {
         const <String, Map<String, int>>{},
     Map<String, Map<String, String>> nicknamesByBroadcaster =
         const <String, Map<String, String>>{},
-  })  : _colorsByBroadcaster = colorsByBroadcaster.map(
-          (String broadcasterId, Map<String, int> colors) =>
-              MapEntry<String, Map<String, int>>(
-            broadcasterId,
-            Map<String, int>.from(colors),
-          ),
-        ),
-        _nicknamesByBroadcaster = nicknamesByBroadcaster.map(
-          (String broadcasterId, Map<String, String> nicknames) =>
-              MapEntry<String, Map<String, String>>(
-            broadcasterId,
-            Map<String, String>.from(nicknames),
-          ),
-        );
+  }) : _colorsByBroadcaster = colorsByBroadcaster.map(
+         (String broadcasterId, Map<String, int> colors) =>
+             MapEntry<String, Map<String, int>>(
+               broadcasterId,
+               Map<String, int>.from(colors),
+             ),
+       ),
+       _nicknamesByBroadcaster = nicknamesByBroadcaster.map(
+         (String broadcasterId, Map<String, String> nicknames) =>
+             MapEntry<String, Map<String, String>>(
+               broadcasterId,
+               Map<String, String>.from(nicknames),
+             ),
+       );
 
   final Map<String, Map<String, int>> _colorsByBroadcaster;
   final Map<String, Map<String, String>> _nicknamesByBroadcaster;
