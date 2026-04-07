@@ -606,6 +606,8 @@ class AppSettings {
           ? 'media_player'
           : 'audio_track',
       'voicevoxTermsAccepted': voicevoxTermsAccepted,
+      'commentTwoLineEnabled': commentTwoLineEnabled,
+      'commentZebraStripingEnabled': commentZebraStripingEnabled,
       'dictionaryRules':
           dictionaryRules.map((ReplaceRule r) => r.toMap()).toList(),
       'debugMode': debugMode,

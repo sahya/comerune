@@ -27,6 +27,11 @@ void main() {
       expect(restored.suppressDuplicate, original.suppressDuplicate);
       expect(restored.ngWords, original.ngWords);
       expect(restored.commentFontSize, original.commentFontSize);
+      expect(restored.commentTwoLineEnabled, original.commentTwoLineEnabled);
+      expect(
+        restored.commentZebraStripingEnabled,
+        original.commentZebraStripingEnabled,
+      );
       expect(restored.dictionaryRules, original.dictionaryRules);
       expect(restored.debugMode, original.debugMode);
     });
@@ -40,6 +45,8 @@ void main() {
         ngWords: 'bad\nwords',
         commentFontSize: 24,
         pastCommentFetchCount: PastCommentFetchCount.all,
+        commentTwoLineEnabled: true,
+        commentZebraStripingEnabled: true,
         debugMode: true,
         dictionaryRules: const <ReplaceRule>[
           ReplaceRule(pattern: 'test', replacement: 'replaced'),
@@ -56,6 +63,8 @@ void main() {
       expect(restored.ngWords, 'bad\nwords');
       expect(restored.commentFontSize, 24);
       expect(restored.pastCommentFetchCount, PastCommentFetchCount.all);
+      expect(restored.commentTwoLineEnabled, isTrue);
+      expect(restored.commentZebraStripingEnabled, isTrue);
       expect(restored.debugMode, isTrue);
       expect(restored.dictionaryRules.length, 1);
       expect(restored.dictionaryRules.first.pattern, 'test');
@@ -87,6 +96,14 @@ void main() {
       expect(result.autoReadEnabled, AppSettings.defaults.autoReadEnabled);
       expect(result.voicevoxSpeaker, AppSettings.defaults.voicevoxSpeaker);
       expect(result.commentFontSize, AppSettings.defaults.commentFontSize);
+      expect(
+        result.commentTwoLineEnabled,
+        AppSettings.defaults.commentTwoLineEnabled,
+      );
+      expect(
+        result.commentZebraStripingEnabled,
+        AppSettings.defaults.commentZebraStripingEnabled,
+      );
       expect(result.dictionaryRules, AppSettings.defaults.dictionaryRules);
       expect(result.debugMode, AppSettings.defaults.debugMode);
     });
