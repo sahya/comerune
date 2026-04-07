@@ -41,7 +41,13 @@ class CommentFrequencyChart extends StatelessWidget {
     if (commentsPerMinute.isEmpty) {
       return SizedBox(
         height: height,
-        child: const Center(child: Text('データなし')),
+        child: const Center(
+          child: Text(
+            'データなし',
+            style: TextStyle(fontSize: 14),
+            textAlign: TextAlign.center,
+          ),
+        ),
       );
     }
 
@@ -167,17 +173,18 @@ class _BarChartBody extends StatelessWidget {
         totalBars > 1 ? (width - barWidth * totalBars) / (totalBars - 1) : 0;
 
     return GestureDetector(
-      onTapUp: onBarTapped == null
-          ? null
-          : (TapUpDetails details) {
-              final double dx = details.localPosition.dx;
-              final double effectiveBarWidth = barWidth + gap;
-              final int index = (dx / effectiveBarWidth).floor().clamp(
-                    0,
-                    totalBars - 1,
-                  );
-              onBarTapped!.call(index);
-            },
+      onTapUp:
+          onBarTapped == null
+              ? null
+              : (TapUpDetails details) {
+                final double dx = details.localPosition.dx;
+                final double effectiveBarWidth = barWidth + gap;
+                final int index = (dx / effectiveBarWidth).floor().clamp(
+                  0,
+                  totalBars - 1,
+                );
+                onBarTapped!.call(index);
+              },
       child: CustomPaint(
         size: Size(width, height),
         painter: _BarChartPainter(
