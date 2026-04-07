@@ -29,8 +29,10 @@ class FavoriteUserLiveChecker {
     _httpClient.connectionTimeout = const Duration(seconds: 10);
   }
 
-  static const String _baseUrl =
-      'https://live.nicovideo.jp/front/api/v2/user-broadcast-history';
+  static const String _providerType = 'user';
+
+  /// The schedule status value indicating an active broadcast.
+  static const String _statusOnAir = 'ON_AIR';
 
   static const Duration _responseTimeout = Duration(seconds: 10);
 
@@ -54,7 +56,7 @@ class FavoriteUserLiveChecker {
   DateTime? _lastCheckTime;
 
   /// Counter used to skip re-checking already-on-air users every other cycle.
-  int _cycleCounter = 0;
+  int _pollCycleCounter = 0;
 
   /// Checks broadcast status for the given [userIds].
   ///
@@ -86,7 +88,7 @@ class FavoriteUserLiveChecker {
           '[FavoriteUserLiveChecker] checking favorite users: count=${userIds.length}',
     );
 
-    _cycleCounter++;
+    _pollCycleCounter++;
 
     // Split users into those that need checking this cycle.
     // Users already known to be on-air are only re-checked on even cycles,
@@ -94,14 +96,14 @@ class FavoriteUserLiveChecker {
     final Set<String> usersToCheck = <String>{};
     for (final String userId in userIds) {
       final bool knownOnAir = _cachedOnAirMap.containsKey(userId);
-      if (!knownOnAir || _cycleCounter.isEven) {
+      if (!knownOnAir || _pollCycleCounter.isEven) {
         usersToCheck.add(userId);
       }
     }
 
     appDebugLogLazy(
       () =>
-          '[FavoriteUserLiveChecker] checking ${usersToCheck.length} of ${userIds.length} users (cycle=$_cycleCounter)',
+          '[FavoriteUserLiveChecker] checking ${usersToCheck.length} of ${userIds.length} users (cycle=$_pollCycleCounter)',
     );
 
     // Run requests with concurrency throttling.
@@ -180,9 +182,18 @@ class FavoriteUserLiveChecker {
   ) async {
     final String maskedUserId = _maskUserIdForLog(userId);
     try {
-      final Uri uri = Uri.parse(
-        '$_baseUrl?providerId=$userId&providerType=user'
-        '&isIncludeNonPublic=false&offset=0&limit=1&withTotalCount=false',
+      final Uri uri = Uri(
+        scheme: 'https',
+        host: 'live.nicovideo.jp',
+        path: '/front/api/v2/user-broadcast-history',
+        queryParameters: <String, String>{
+          'providerId': userId,
+          'providerType': _providerType,
+          'isIncludeNonPublic': 'false',
+          'offset': '0',
+          'limit': '1',
+          'withTotalCount': 'false',
+        },
       );
       final HttpClientRequest request = await _httpClient.getUrl(uri);
       request.headers.set('User-Agent', _defaultUserAgent);
@@ -190,20 +201,17 @@ class FavoriteUserLiveChecker {
       final HttpClientResponse response = await request.close().timeout(
         _responseTimeout,
       );
-      try {
-        if (response.statusCode != 200) {
-          appDebugLogLazy(
-            () =>
-                '[FavoriteUserLiveChecker] user=$maskedUserId http=${response.statusCode}',
-          );
-          return null;
-        }
-
-        final String body = await response.transform(utf8.decoder).join();
-        return _parseResponse(userId, body);
-      } finally {
-        // Response body already consumed by transform above; no drain needed.
+      if (response.statusCode != 200) {
+        appDebugLogLazy(
+          () =>
+              '[FavoriteUserLiveChecker] user=$maskedUserId http=${response.statusCode}',
+        );
+        await response.drain<void>();
+        return null;
       }
+
+      final String body = await response.transform(utf8.decoder).join();
+      return _parseResponse(userId, body);
     } on Exception catch (e) {
       appErrorLog(
         name: 'FavoriteUserLiveChecker',
@@ -240,7 +248,6 @@ class FavoriteUserLiveChecker {
         return null;
       }
 
-      // Check schedule.status for ON_AIR.
       final Object? program = first['program'];
       if (program is! Map<String, dynamic>) {
         return null;
@@ -252,7 +259,7 @@ class FavoriteUserLiveChecker {
       }
 
       final Object? status = schedule['status'];
-      if (status is! String || status != 'ON_AIR') {
+      if (status is! String || status != _statusOnAir) {
         appDebugLogLazy(
           () =>
               '[FavoriteUserLiveChecker] user=$maskedUserId status=$status (not on-air)',
@@ -260,66 +267,12 @@ class FavoriteUserLiveChecker {
         return null;
       }
 
-      // Extract program ID.
       final String? programId = _extractNestedValue(first['id']);
       if (programId == null) {
         return null;
       }
 
-      // Extract title.
       final String title = (program['title'] as String?) ?? '';
-
-      // Extract provider info.
-      final Object? provider = first['programProvider'];
-      String providerName = '';
-      String? providerIconUrl;
-      if (provider is Map<String, dynamic>) {
-        providerName = (provider['name'] as String?) ?? '';
-        final Object? icons = provider['icons'];
-        if (icons is Map<String, dynamic>) {
-          providerIconUrl =
-              (icons['uri50x50'] as String?) ??
-              (icons['uri150x150'] as String?);
-        }
-      }
-
-      // Extract community name.
-      String? communityName;
-      final Object? socialGroup = first['socialGroup'];
-      if (socialGroup is Map<String, dynamic>) {
-        final Object? isDeleted = socialGroup['isDeleted'];
-        final bool deleted =
-            isDeleted is Map<String, dynamic> && isDeleted['value'] == true;
-        if (!deleted) {
-          communityName = socialGroup['name'] as String?;
-        }
-      }
-
-      // Extract begin time from schedule.beginTime.seconds (Unix epoch).
-      DateTime? beginAt;
-      final Object? beginTime = schedule['beginTime'];
-      if (beginTime is Map<String, dynamic>) {
-        final Object? seconds = beginTime['seconds'];
-        if (seconds is int) {
-          beginAt = DateTime.fromMillisecondsSinceEpoch(
-            seconds * 1000,
-            isUtc: true,
-          );
-        }
-      }
-
-      // Extract end time from schedule.scheduledEndTime.seconds.
-      DateTime? endAt;
-      final Object? scheduledEndTime = schedule['scheduledEndTime'];
-      if (scheduledEndTime is Map<String, dynamic>) {
-        final Object? seconds = scheduledEndTime['seconds'];
-        if (seconds is int) {
-          endAt = DateTime.fromMillisecondsSinceEpoch(
-            seconds * 1000,
-            isUtc: true,
-          );
-        }
-      }
 
       appDebugLogLazy(
         () =>
@@ -331,20 +284,79 @@ class FavoriteUserLiveChecker {
         FollowProgram(
           programId: programId,
           title: title,
-          providerName: providerName,
-          providerIconUrl: providerIconUrl,
-          communityName: communityName,
-          beginAt: beginAt,
-          endAt: endAt,
+          providerName: _extractProviderName(first),
+          providerIconUrl: _extractProviderIconUrl(first),
+          communityName: _extractCommunityName(first),
+          beginAt: _extractTimestamp(schedule['beginTime']),
+          endAt: _extractTimestamp(schedule['scheduledEndTime']),
           status: ProgramStatus.onAir,
         ),
       );
-    } on Object catch (e) {
+    } on FormatException catch (e) {
       appErrorLog(
         name: 'FavoriteUserLiveChecker',
         message: 'Error parsing broadcast history for user $maskedUserId',
         error: e,
       );
+    }
+    return null;
+  }
+
+  static String _extractProviderName(Map<String, dynamic> item) {
+    final Object? provider = item['programProvider'];
+    if (provider is Map<String, dynamic>) {
+      final Object? name = provider['name'];
+      if (name is String && name.isNotEmpty) {
+        return name;
+      }
+    }
+    return '';
+  }
+
+  static String? _extractProviderIconUrl(Map<String, dynamic> item) {
+    final Object? provider = item['programProvider'];
+    if (provider is Map<String, dynamic>) {
+      final Object? icons = provider['icons'];
+      if (icons is Map<String, dynamic>) {
+        final Object? uri50 = icons['uri50x50'];
+        if (uri50 is String && uri50.isNotEmpty) {
+          return uri50;
+        }
+        final Object? uri150 = icons['uri150x150'];
+        if (uri150 is String && uri150.isNotEmpty) {
+          return uri150;
+        }
+      }
+    }
+    return null;
+  }
+
+  static String? _extractCommunityName(Map<String, dynamic> item) {
+    final Object? socialGroup = item['socialGroup'];
+    if (socialGroup is Map<String, dynamic>) {
+      final Object? isDeleted = socialGroup['isDeleted'];
+      final bool deleted =
+          isDeleted is Map<String, dynamic> && isDeleted['value'] == true;
+      if (!deleted) {
+        final Object? name = socialGroup['name'];
+        if (name is String && name.isNotEmpty) {
+          return name;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Extracts a [DateTime] from a `{ "seconds": <int> }` timestamp object.
+  static DateTime? _extractTimestamp(Object? obj) {
+    if (obj is Map<String, dynamic>) {
+      final Object? seconds = obj['seconds'];
+      if (seconds is int) {
+        return DateTime.fromMillisecondsSinceEpoch(
+          seconds * 1000,
+          isUtc: true,
+        );
+      }
     }
     return null;
   }

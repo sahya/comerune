@@ -201,6 +201,77 @@ void main() {
       checker.dispose();
     });
 
+    test('returns empty map when server responds with non-200 status', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.statusCodeByUrlPrefix['providerId=12345'] = 429;
+
+      final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
+        httpClient: httpClient,
+        minInterval: Duration.zero,
+      );
+
+      final Map<String, FollowProgram> result = await checker
+          .checkBroadcastStatus(<String>{'12345'});
+
+      expect(result, isEmpty);
+
+      checker.dispose();
+    });
+
+    test('returns empty map when response is malformed JSON', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBodyByUrlPrefix['providerId=12345'] =
+          'not valid json {{{';
+
+      final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
+        httpClient: httpClient,
+        minInterval: Duration.zero,
+      );
+
+      final Map<String, FollowProgram> result = await checker
+          .checkBroadcastStatus(<String>{'12345'});
+
+      expect(result, isEmpty);
+
+      checker.dispose();
+    });
+
+    test('returns empty map when programId is missing from response', () async {
+      final String body = jsonEncode(<String, dynamic>{
+        'meta': <String, dynamic>{'status': 200},
+        'data': <String, dynamic>{
+          'programsList': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': <String, dynamic>{},
+              'program': <String, dynamic>{
+                'title': 'テスト',
+                'schedule': <String, dynamic>{
+                  'status': 'ON_AIR',
+                  'beginTime': <String, dynamic>{'seconds': 1700000000},
+                },
+              },
+              'programProvider': <String, dynamic>{'name': 'テスト'},
+            },
+          ],
+        },
+      });
+
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBodyByUrlPrefix['providerId=12345'] = body;
+
+      final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
+        httpClient: httpClient,
+        minInterval: Duration.zero,
+      );
+
+      final Map<String, FollowProgram> result = await checker
+          .checkBroadcastStatus(<String>{'12345'});
+
+      expect(result, isEmpty);
+
+      checker.dispose();
+    });
+
     test('returns cached result within minInterval', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBodyByUrlPrefix['providerId=12345'] =
@@ -410,6 +481,9 @@ class _FakeHttpClient implements HttpClient {
   /// Maps a URL substring (e.g. 'providerId=12345') to a JSON response body.
   final Map<String, String> responseBodyByUrlPrefix = <String, String>{};
 
+  /// Maps a URL substring to a non-200 HTTP status code.
+  final Map<String, int> statusCodeByUrlPrefix = <String, int>{};
+
   /// Maps a URL substring to an exception to throw.
   final Map<String, Exception> throwOnUrlPrefix = <String, Exception>{};
 
@@ -422,6 +496,18 @@ class _FakeHttpClient implements HttpClient {
     for (final MapEntry<String, Exception> entry in throwOnUrlPrefix.entries) {
       if (urlStr.contains(entry.key)) {
         throw entry.value;
+      }
+    }
+
+    // Check for non-200 status code overrides.
+    for (final MapEntry<String, int> entry in statusCodeByUrlPrefix.entries) {
+      if (urlStr.contains(entry.key)) {
+        requestCount++;
+        return _FakeHttpClientRequest(
+          uri: url,
+          responseBody: '',
+          statusCode: entry.value,
+        );
       }
     }
 
@@ -451,11 +537,16 @@ class _FakeHttpClient implements HttpClient {
 }
 
 class _FakeHttpClientRequest implements HttpClientRequest {
-  _FakeHttpClientRequest({required this.uri, required this.responseBody});
+  _FakeHttpClientRequest({
+    required this.uri,
+    required this.responseBody,
+    this.statusCode = 200,
+  });
 
   @override
   final Uri uri;
   final String responseBody;
+  final int statusCode;
   final _FakeHttpHeaders _headers = _FakeHttpHeaders();
 
   @override
@@ -463,7 +554,7 @@ class _FakeHttpClientRequest implements HttpClientRequest {
 
   @override
   Future<HttpClientResponse> close() async {
-    return _FakeHttpClientResponse(statusCode: 200, body: responseBody);
+    return _FakeHttpClientResponse(statusCode: statusCode, body: responseBody);
   }
 
   @override
