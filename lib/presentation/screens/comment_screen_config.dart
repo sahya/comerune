@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:meta/meta.dart';
 
 import '../../application/settings/settings_store.dart';
 import '../../comment_speech/comment_speech.dart';
@@ -97,7 +96,7 @@ class CommentCallbacks {
   final Future<void> Function() onStopAllConnections;
   final Future<void> Function() onReconnectSameLv;
   final Future<void> Function(String previousLv, String nextLv)
-      onDifferentLvConnected;
+  onDifferentLvConnected;
   final Future<void> Function()? onOpenSettings;
 
   /// Called to toggle NG status for a user.

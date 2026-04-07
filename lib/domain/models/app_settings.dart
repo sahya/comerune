@@ -261,11 +261,11 @@ class AppSettings {
     required this.dictionaryRules,
     required this.debugMode,
   }) : assert(
-          commentFontSize >= commentFontSizeMin &&
-              commentFontSize <= commentFontSizeMax,
-          'commentFontSize must be between $commentFontSizeMin and $commentFontSizeMax, '
-          'but was $commentFontSize',
-        );
+         commentFontSize >= commentFontSizeMin &&
+             commentFontSize <= commentFontSizeMax,
+         'commentFontSize must be between $commentFontSizeMin and $commentFontSizeMax, '
+         'but was $commentFontSize',
+       );
 
   static const AppSettings defaults = AppSettings(
     themeMode: AppThemeMode.light,
@@ -587,8 +587,9 @@ class AppSettings {
       '_version': settingsVersion,
       'themeMode': themeMode.storageValue,
       'autoReadEnabled': autoReadEnabled,
-      'speechEngine':
-          speechEngine == SpeechEngine.voicevox ? 'voicevox' : 'bouyomi',
+      'speechEngine': speechEngine == SpeechEngine.voicevox
+          ? 'voicevox'
+          : 'bouyomi',
       'bouyomiHost': bouyomiHost,
       'bouyomiSpeed': bouyomiSpeed,
       'bouyomiTone': bouyomiTone,
@@ -628,8 +629,9 @@ class AppSettings {
       'ngWordRules': ngWordRules.map((NgWordRule r) => r.toMap()).toList(),
       'commentTwoLineEnabled': commentTwoLineEnabled,
       'commentZebraStripingEnabled': commentZebraStripingEnabled,
-      'dictionaryRules':
-          dictionaryRules.map((ReplaceRule r) => r.toMap()).toList(),
+      'dictionaryRules': dictionaryRules
+          .map((ReplaceRule r) => r.toMap())
+          .toList(),
       'debugMode': debugMode,
     };
   }
@@ -646,9 +648,7 @@ class AppSettings {
       if (raw is List) {
         try {
           return raw
-              .map(
-                (dynamic e) => NgWordRule.fromMap(e as Map<String, dynamic>),
-              )
+              .map((dynamic e) => NgWordRule.fromMap(e as Map<String, dynamic>))
               .toList();
         } on Object {
           return d.ngWordRules;
@@ -694,7 +694,8 @@ class AppSettings {
           (json['voicevoxSpeed'] as num?)?.toDouble() ?? d.voicevoxSpeed,
       voicevoxPitch:
           (json['voicevoxPitch'] as num?)?.toDouble() ?? d.voicevoxPitch,
-      voicevoxIntonation: (json['voicevoxIntonation'] as num?)?.toDouble() ??
+      voicevoxIntonation:
+          (json['voicevoxIntonation'] as num?)?.toDouble() ??
           d.voicevoxIntonation,
       voicevoxVolume:
           (json['voicevoxVolume'] as num?)?.toDouble() ?? d.voicevoxVolume,
@@ -712,7 +713,8 @@ class AppSettings {
       showUserName: json['showUserName'] as bool? ?? d.showUserName,
       resolveUserName: json['resolveUserName'] as bool? ?? d.resolveUserName,
       commentFontSize: fontSize.clamp(commentFontSizeMin, commentFontSizeMax),
-      autoNicknameRegistration: json['autoNicknameRegistration'] as bool? ??
+      autoNicknameRegistration:
+          json['autoNicknameRegistration'] as bool? ??
           d.autoNicknameRegistration,
       autoSaveCommentLog:
           json['autoSaveCommentLog'] as bool? ?? d.autoSaveCommentLog,
@@ -722,10 +724,10 @@ class AppSettings {
           json['statisticsEnabled'] as bool? ?? d.statisticsEnabled,
       statisticsViewerCommentEnabled:
           json['statisticsViewerCommentEnabled'] as bool? ??
-              d.statisticsViewerCommentEnabled,
+          d.statisticsViewerCommentEnabled,
       statisticsActiveUserEnabled:
           json['statisticsActiveUserEnabled'] as bool? ??
-              d.statisticsActiveUserEnabled,
+          d.statisticsActiveUserEnabled,
       highlightPickupEnabled:
           json['highlightPickupEnabled'] as bool? ?? d.highlightPickupEnabled,
       starPrefixHidingEnabled:
@@ -738,8 +740,8 @@ class AppSettings {
       ),
       voicevoxPlayerType:
           (json['voicevoxPlayerType'] as String?) == 'media_player'
-              ? VoicevoxPlayerType.mediaPlayer
-              : VoicevoxPlayerType.audioTrack,
+          ? VoicevoxPlayerType.mediaPlayer
+          : VoicevoxPlayerType.audioTrack,
       voicevoxTermsAccepted:
           json['voicevoxTermsAccepted'] as bool? ?? d.voicevoxTermsAccepted,
       ngWordRules: parseNgWordRules(),
@@ -747,7 +749,7 @@ class AppSettings {
           json['commentTwoLineEnabled'] as bool? ?? d.commentTwoLineEnabled,
       commentZebraStripingEnabled:
           json['commentZebraStripingEnabled'] as bool? ??
-              d.commentZebraStripingEnabled,
+          d.commentZebraStripingEnabled,
       dictionaryRules: parseDictionaryRules(),
       debugMode: json['debugMode'] as bool? ?? d.debugMode,
     );
@@ -769,18 +771,18 @@ class AppSettings {
 
   /// Convert to [SpeechSettings] for the platform speech engine.
   SpeechSettings toSpeechSettings() => SpeechSettings(
-        enabled: autoReadEnabled && speechEngine == SpeechEngine.voicevox,
-        synthesisMode: voicevoxSynthesisMode,
-        speakerId: voicevoxSpeaker,
-        speedScale: voicevoxSpeed,
-        pitchScale: voicevoxPitch,
-        intonationScale: voicevoxIntonation,
-        volumeScale: voicevoxVolume,
-        maxQueueSize: queueLimit,
-        ngWords: ngWordList,
-        dictionaryRules: dictionaryRules,
-        playerType: voicevoxPlayerType == VoicevoxPlayerType.mediaPlayer
-            ? 'media_player'
-            : 'audio_track',
-      );
+    enabled: autoReadEnabled && speechEngine == SpeechEngine.voicevox,
+    synthesisMode: voicevoxSynthesisMode,
+    speakerId: voicevoxSpeaker,
+    speedScale: voicevoxSpeed,
+    pitchScale: voicevoxPitch,
+    intonationScale: voicevoxIntonation,
+    volumeScale: voicevoxVolume,
+    maxQueueSize: queueLimit,
+    ngWords: ngWordList,
+    dictionaryRules: dictionaryRules,
+    playerType: voicevoxPlayerType == VoicevoxPlayerType.mediaPlayer
+        ? 'media_player'
+        : 'audio_track',
+  );
 }

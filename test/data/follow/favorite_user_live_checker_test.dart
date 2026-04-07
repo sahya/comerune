@@ -13,11 +13,11 @@ void main() {
         httpClient
                 .responsesByUrl['https://live.nicovideo.jp/watch/user/12345'] =
             _FakeResponseConfig(
-          statusCode: 302,
-          headers: <String, String>{
-            'location': 'https://live.nicovideo.jp/watch/lv348712105',
-          },
-        );
+              statusCode: 302,
+              headers: <String, String>{
+                'location': 'https://live.nicovideo.jp/watch/lv348712105',
+              },
+            );
 
         final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
           httpClient: httpClient,
@@ -72,20 +72,20 @@ void main() {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responsesByUrl['https://live.nicovideo.jp/watch/user/111'] =
           _FakeResponseConfig(
-        statusCode: 302,
-        headers: <String, String>{
-          'location': 'https://live.nicovideo.jp/watch/lv100001',
-        },
-      );
+            statusCode: 302,
+            headers: <String, String>{
+              'location': 'https://live.nicovideo.jp/watch/lv100001',
+            },
+          );
       httpClient.responsesByUrl['https://live.nicovideo.jp/watch/user/222'] =
           _FakeResponseConfig(statusCode: 200);
       httpClient.responsesByUrl['https://live.nicovideo.jp/watch/user/333'] =
           _FakeResponseConfig(
-        statusCode: 301,
-        headers: <String, String>{
-          'location': 'https://live.nicovideo.jp/watch/lv100003',
-        },
-      );
+            statusCode: 301,
+            headers: <String, String>{
+              'location': 'https://live.nicovideo.jp/watch/lv100003',
+            },
+          );
 
       final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
         httpClient: httpClient,
@@ -122,11 +122,11 @@ void main() {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responsesByUrl['https://live.nicovideo.jp/watch/user/12345'] =
           _FakeResponseConfig(
-        statusCode: 302,
-        headers: <String, String>{
-          'location': 'https://live.nicovideo.jp/watch/somethingelse',
-        },
-      );
+            statusCode: 302,
+            headers: <String, String>{
+              'location': 'https://live.nicovideo.jp/watch/somethingelse',
+            },
+          );
 
       final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
         httpClient: httpClient,
@@ -148,11 +148,11 @@ void main() {
         httpClient
                 .responsesByUrl['https://live.nicovideo.jp/watch/user/12345'] =
             _FakeResponseConfig(
-          statusCode: 302,
-          headers: <String, String>{
-            'location': 'https://live.nicovideo.jp/watch/LV348712105/',
-          },
-        );
+              statusCode: 302,
+              headers: <String, String>{
+                'location': 'https://live.nicovideo.jp/watch/LV348712105/',
+              },
+            );
 
         final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
           httpClient: httpClient,
@@ -193,14 +193,14 @@ void main() {
         '402': 307,
         '403': 308,
       }.entries) {
-        httpClient.responsesByUrl[
-                'https://live.nicovideo.jp/watch/user/${entry.key}'] =
+        httpClient
+                .responsesByUrl['https://live.nicovideo.jp/watch/user/${entry.key}'] =
             _FakeResponseConfig(
-          statusCode: entry.value,
-          headers: <String, String>{
-            'location': 'https://live.nicovideo.jp/watch/lv${entry.key}000',
-          },
-        );
+              statusCode: entry.value,
+              headers: <String, String>{
+                'location': 'https://live.nicovideo.jp/watch/lv${entry.key}000',
+              },
+            );
       }
 
       final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(

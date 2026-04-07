@@ -65,10 +65,7 @@ mixin SettingsScreenMixin<T extends StatefulWidget> on State<T> {
             color: Theme.of(context).colorScheme.error,
           ),
           const SizedBox(height: 16),
-          Semantics(
-            liveRegion: true,
-            child: const Text('設定の読み込みに失敗しました'),
-          ),
+          Semantics(liveRegion: true, child: const Text('設定の読み込みに失敗しました')),
           const SizedBox(height: 16),
           ElevatedButton(
             onPressed: () {

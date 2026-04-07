@@ -102,8 +102,8 @@ abstract class SessionWsChannel {
   Future<void> close([int? code, String? reason]);
 }
 
-typedef SessionWsChannelFactory = FutureOr<SessionWsChannel> Function(
-    Uri uri, Map<String, String> headers);
+typedef SessionWsChannelFactory =
+    FutureOr<SessionWsChannel> Function(Uri uri, Map<String, String> headers);
 
 class WebSocketSessionWsChannel implements SessionWsChannel {
   WebSocketSessionWsChannel(this._inner);
@@ -137,26 +137,26 @@ class SessionWsClient {
         SessionWsStartWatchingMode.full,
     Map<String, String>? connectHeaders,
     String userAgent = defaultAndroidUserAgent,
-  })  : _channelFactory = channelFactory ?? _defaultChannelFactory,
-        _endpointFallbackDelay = endpointFallbackDelay,
-        _endpointResolveTimeout = endpointResolveTimeout,
-        _startWatchingMode = startWatchingMode,
-        _connectHeaders = _buildConnectHeaders(
-          connectHeaders: connectHeaders,
-          userAgent: userAgent,
-        ),
-        _keepaliveResponses = keepaliveResponses == null
-            ? const <String, Map<String, Object>>{
-                'servertime': <String, Object>{'type': 'pong'},
-                'ping': <String, Object>{'type': 'pong'},
-              }
-            : keepaliveResponses.map<String, Map<String, Object>>(
-                (String key, Map<String, Object> value) =>
-                    MapEntry<String, Map<String, Object>>(
-                  key.toLowerCase(),
-                  value,
-                ),
-              );
+  }) : _channelFactory = channelFactory ?? _defaultChannelFactory,
+       _endpointFallbackDelay = endpointFallbackDelay,
+       _endpointResolveTimeout = endpointResolveTimeout,
+       _startWatchingMode = startWatchingMode,
+       _connectHeaders = _buildConnectHeaders(
+         connectHeaders: connectHeaders,
+         userAgent: userAgent,
+       ),
+       _keepaliveResponses = keepaliveResponses == null
+           ? const <String, Map<String, Object>>{
+               'servertime': <String, Object>{'type': 'pong'},
+               'ping': <String, Object>{'type': 'pong'},
+             }
+           : keepaliveResponses.map<String, Map<String, Object>>(
+               (String key, Map<String, Object> value) =>
+                   MapEntry<String, Map<String, Object>>(
+                     key.toLowerCase(),
+                     value,
+                   ),
+             );
 
   final String lv;
   final SessionWsChannelFactory _channelFactory;

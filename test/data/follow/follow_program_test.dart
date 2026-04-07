@@ -84,8 +84,9 @@ void main() {
         status: ProgramStatus.reserved,
       );
 
-      final FollowProgram updated =
-          original.copyWith(status: ProgramStatus.onAir);
+      final FollowProgram updated = original.copyWith(
+        status: ProgramStatus.onAir,
+      );
 
       expect(updated.programId, 'lv123');
       expect(updated.title, 'Test');

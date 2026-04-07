@@ -113,22 +113,22 @@ class ConnectionSupervisor extends ChangeNotifier {
     int legacySameUrlFailureThreshold = 3,
     DelayExecutor? delayExecutor,
     JitterProvider? jitterProvider,
-  })  : assert(
-          (sessionWsClient == null &&
-                  ndgrClient == null &&
-                  legacyCommentClient == null) ||
-              (sessionWsClient != null &&
-                  ndgrClient != null &&
-                  legacyCommentClient != null),
-          'Provide all reconnect clients together or none.',
-        ),
-        _sessionWsClient = sessionWsClient,
-        _ndgrClient = ndgrClient,
-        _legacyCommentClient = legacyCommentClient,
-        _maxReconnectAttempts = maxReconnectAttempts,
-        _legacySameUrlFailureThreshold = legacySameUrlFailureThreshold,
-        _delayExecutor = delayExecutor ?? _defaultDelayExecutor,
-        _jitterProvider = jitterProvider ?? _defaultJitterProvider {
+  }) : assert(
+         (sessionWsClient == null &&
+                 ndgrClient == null &&
+                 legacyCommentClient == null) ||
+             (sessionWsClient != null &&
+                 ndgrClient != null &&
+                 legacyCommentClient != null),
+         'Provide all reconnect clients together or none.',
+       ),
+       _sessionWsClient = sessionWsClient,
+       _ndgrClient = ndgrClient,
+       _legacyCommentClient = legacyCommentClient,
+       _maxReconnectAttempts = maxReconnectAttempts,
+       _legacySameUrlFailureThreshold = legacySameUrlFailureThreshold,
+       _delayExecutor = delayExecutor ?? _defaultDelayExecutor,
+       _jitterProvider = jitterProvider ?? _defaultJitterProvider {
     if (_hasReconnectClients) {
       _sessionEventSubscription = _sessionWsClient!.events.listen(
         _onSessionWsEvent,
@@ -144,7 +144,7 @@ class ConnectionSupervisor extends ChangeNotifier {
   static final math.Random _random = math.Random();
 
   static const Map<ConnectionStatus, Set<ConnectionStatus>>
-      _allowedTransitions = <ConnectionStatus, Set<ConnectionStatus>>{
+  _allowedTransitions = <ConnectionStatus, Set<ConnectionStatus>>{
     ConnectionStatus.idle: <ConnectionStatus>{
       ConnectionStatus.connectingSessionWs,
     },

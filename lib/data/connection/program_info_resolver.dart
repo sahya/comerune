@@ -18,9 +18,9 @@ class ProgramInfoResolver {
     HttpClient Function()? httpClientFactory,
     String userAgent = defaultUserAgent,
     Duration connectionTimeout = const Duration(seconds: 10),
-  })  : _httpClientFactory = httpClientFactory ?? HttpClient.new,
-        _userAgent = userAgent,
-        _connectionTimeout = connectionTimeout {
+  }) : _httpClientFactory = httpClientFactory ?? HttpClient.new,
+       _userAgent = userAgent,
+       _connectionTimeout = connectionTimeout {
     if (httpClient != null) {
       _seedHttpClient = httpClient;
     }

@@ -88,8 +88,9 @@ String _commentLineText({
     return '$timestamp  $content';
   }
 
-  final String displayName =
-      resolvedUserName != null ? '$resolvedUserName ($userId)' : userId;
+  final String displayName = resolvedUserName != null
+      ? '$resolvedUserName ($userId)'
+      : userId;
 
   return '$timestamp  $displayName  $content';
 }
@@ -288,8 +289,9 @@ class _CommentScreenState extends State<CommentScreen> {
       _cleanUpStalePinnedIds();
     }
 
-    final String lastId =
-        widget.messages.isNotEmpty ? widget.messages.last.id : 'empty';
+    final String lastId = widget.messages.isNotEmpty
+        ? widget.messages.last.id
+        : 'empty';
     _debugLogLazy(
       () =>
           '[CommentScreen] didUpdate: msgs ${oldWidget.messages.length}→${widget.messages.length}, '
@@ -299,7 +301,8 @@ class _CommentScreenState extends State<CommentScreen> {
     if (oldWidget.speechConfig.speechSettings !=
         widget.speechConfig.speechSettings) {
       _debugLogLazy(
-        () => '[CommentScreen] didUpdate: speechSettings changed: '
+        () =>
+            '[CommentScreen] didUpdate: speechSettings changed: '
             'enabled ${oldWidget.speechConfig.speechSettings.enabled}→${widget.speechConfig.speechSettings.enabled}',
       );
       unawaited(
@@ -445,7 +448,8 @@ class _CommentScreenState extends State<CommentScreen> {
 
   Future<void> _initializeAndStartSpeech() async {
     _debugLogLazy(
-      () => '[CommentScreen] initSpeech: enter '
+      () =>
+          '[CommentScreen] initSpeech: enter '
           '(initializing=$_speechInitializing, initialized=$_speechInitialized)',
     );
     if (_speechInitializing) return;
@@ -462,7 +466,8 @@ class _CommentScreenState extends State<CommentScreen> {
       try {
         final SpeechRuntimeStatus status = await platform.getStatus();
         _debugLogLazy(
-          () => '[CommentScreen] initSpeech: engine=${status.engineState}, '
+          () =>
+              '[CommentScreen] initSpeech: engine=${status.engineState}, '
               'player=${status.playerState}, queue=${status.queueSize}',
         );
         if (status.engineState == 'READY') {
@@ -535,7 +540,8 @@ class _CommentScreenState extends State<CommentScreen> {
       }
       _startSpeechPollTimer();
       _debugLogLazy(
-        () => '[CommentScreen] Speech started. baseline=$_lastSpeechMessageId, '
+        () =>
+            '[CommentScreen] Speech started. baseline=$_lastSpeechMessageId, '
             'msgCount=${widget.messages.length}',
       );
     } catch (e, stackTrace) {
@@ -556,7 +562,8 @@ class _CommentScreenState extends State<CommentScreen> {
 
   Future<void> _handleSpeechSettingsChanged(SpeechSettings oldSettings) async {
     _debugLogLazy(
-      () => '[CommentScreen] settingsChanged: enabled ${oldSettings.enabled}→'
+      () =>
+          '[CommentScreen] settingsChanged: enabled ${oldSettings.enabled}→'
           '${widget.speechConfig.speechSettings.enabled}, started=$_speechStarted',
     );
     if (!oldSettings.enabled && widget.speechConfig.speechSettings.enabled) {
@@ -881,8 +888,9 @@ class _CommentScreenState extends State<CommentScreen> {
                     key: const Key('save-comment-log-button'),
                     icon: const Icon(Icons.archive_outlined),
                     tooltip: 'コメントログを保存',
-                    onPressed:
-                        _isSavingLog ? null : () => unawaited(_saveLogManual()),
+                    onPressed: _isSavingLog
+                        ? null
+                        : () => unawaited(_saveLogManual()),
                   ),
                 IconButton(
                   key: const Key('sort-toggle-button'),
@@ -977,8 +985,8 @@ class _CommentScreenState extends State<CommentScreen> {
                           itemBuilder: (BuildContext context, int index) {
                             final AppMessage message = sortedMessages[index];
                             final int? userColor = message.userId != null
-                                ? widget
-                                    .filterConfig.userColorMap[message.userId!]
+                                ? widget.filterConfig.userColorMap[message
+                                      .userId!]
                                 : null;
                             return _CommentRow(
                               message: message,
@@ -1050,10 +1058,7 @@ class _CommentScreenState extends State<CommentScreen> {
           currentColorValue: widget.filterConfig.userColorMap[userId],
           onColorChanged: widget.callbacks.onUserColorChanged != null
               ? (int colorValue) {
-                  widget.callbacks.onUserColorChanged!.call(
-                    userId,
-                    colorValue,
-                  );
+                  widget.callbacks.onUserColorChanged!.call(userId, colorValue);
                   Navigator.of(sheetContext).pop();
                 }
               : null,
@@ -1146,8 +1151,9 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   void _cleanUpStalePinnedIds() {
-    final Set<String> currentIds =
-        widget.messages.map((AppMessage m) => m.id).toSet();
+    final Set<String> currentIds = widget.messages
+        .map((AppMessage m) => m.id)
+        .toSet();
     _pinnedMessageIds.removeWhere((String id) => !currentIds.contains(id));
   }
 
@@ -1379,16 +1385,18 @@ class _CommentScreenState extends State<CommentScreen> {
         widget.connectionSupervisor.lastError;
     final String base = _failedMessage(errorCode);
     final String detail = widget.connectionSupervisor.lastErrorDetail ?? '';
-    final String compactDetail =
-        detail.isEmpty ? '-' : _compactSingleLine(detail);
+    final String compactDetail = detail.isEmpty
+        ? '-'
+        : _compactSingleLine(detail);
 
     if (widget.debugMode) {
       final String code = errorCode?.code ?? 'UNKNOWN_ERROR';
       return '$base [code: $code] 原因: $compactDetail 再接続ボタンで再試行できます。';
     }
 
-    final String detailSuffix =
-        detail.isEmpty ? '' : ' 原因: ${_compactSingleLine(detail)}';
+    final String detailSuffix = detail.isEmpty
+        ? ''
+        : ' 原因: ${_compactSingleLine(detail)}';
     return '$base$detailSuffix 再接続ボタンで再試行できます。';
   }
 
@@ -1517,7 +1525,8 @@ class _CommentScreenState extends State<CommentScreen> {
       return true;
     }
 
-    final double distanceToBottom = _scrollController.position.maxScrollExtent -
+    final double distanceToBottom =
+        _scrollController.position.maxScrollExtent -
         _scrollController.position.pixels;
     return distanceToBottom <= _autoScrollResumeThreshold;
   }
@@ -1753,7 +1762,8 @@ class _CommentScreenState extends State<CommentScreen> {
   String _removeControlAndInvisible(String text) {
     final StringBuffer sb = StringBuffer();
     for (final int cp in text.runes) {
-      final bool invisible = cp == 0x200B ||
+      final bool invisible =
+          cp == 0x200B ||
           cp == 0x200C ||
           cp == 0x200D ||
           cp == 0xFEFF ||
@@ -1827,13 +1837,15 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   bool _isLetterOrDigitCodePoint(int cp) {
-    final bool asciiAlphaNum = (cp >= 0x30 && cp <= 0x39) ||
+    final bool asciiAlphaNum =
+        (cp >= 0x30 && cp <= 0x39) ||
         (cp >= 0x41 && cp <= 0x5A) ||
         (cp >= 0x61 && cp <= 0x7A);
     if (asciiAlphaNum) {
       return true;
     }
-    final bool fullWidthAlphaNum = (cp >= 0xFF10 && cp <= 0xFF19) ||
+    final bool fullWidthAlphaNum =
+        (cp >= 0xFF10 && cp <= 0xFF19) ||
         (cp >= 0xFF21 && cp <= 0xFF3A) ||
         (cp >= 0xFF41 && cp <= 0xFF5A);
     if (fullWidthAlphaNum) {
@@ -1996,8 +2008,9 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   void _scrollToMinuteOffset(int minuteOffset) {
-    final List<AppMessage> visibleMessages =
-        widget.messages.where(_shouldDisplayMessage).toList(growable: false);
+    final List<AppMessage> visibleMessages = widget.messages
+        .where(_shouldDisplayMessage)
+        .toList(growable: false);
     final List<AppMessage> sorted = _applySortOrder(visibleMessages);
     if (sorted.isEmpty) {
       return;
@@ -2100,8 +2113,8 @@ class _CommentScreenState extends State<CommentScreen> {
 
     final Directory? customDir =
         widget.logConfig.autoSaveCommentLogPath.isNotEmpty
-            ? Directory(widget.logConfig.autoSaveCommentLogPath)
-            : null;
+        ? Directory(widget.logConfig.autoSaveCommentLogPath)
+        : null;
 
     String? savedPath;
     try {
@@ -2325,8 +2338,8 @@ class _StatusBarState extends State<_StatusBar> {
   Widget build(BuildContext context) {
     final Color wifiColor =
         widget.supervisor.wifiIndicatorColor == WifiIndicatorColor.green
-            ? widget.themeColors.statusConnected
-            : widget.themeColors.statusDisconnected;
+        ? widget.themeColors.statusConnected
+        : widget.themeColors.statusDisconnected;
 
     return Semantics(
       button: true,
@@ -2541,7 +2554,7 @@ class _BroadcasterIcon extends StatelessWidget {
                 fit: BoxFit.cover,
                 cacheWidth: (size * 2).round(),
                 cacheHeight: (size * 2).round(),
-                errorBuilder: (_, __, ___) => Icon(Icons.person, size: size),
+                errorBuilder: (_, _, _) => Icon(Icons.person, size: size),
               )
             : Icon(Icons.person, size: size),
       ),
@@ -2620,7 +2633,8 @@ class _PinnedCommentsSection extends StatelessWidget {
               resolvedUserName: resolveDisplayName(message),
               showUserName: showUserName,
               fontSize: fontSize,
-              userColor: message.userId != null &&
+              userColor:
+                  message.userId != null &&
                       userColorMap.containsKey(message.userId!)
                   ? colorFromARGB32(userColorMap[message.userId!]!)
                   : null,
@@ -2742,7 +2756,8 @@ class _CommentRowState extends State<_CommentRow> {
   Widget build(BuildContext context) {
     final bool hidden = _isStarHidden;
     final Color? specialBg = _backgroundColor(widget.message);
-    final Color? effectiveBg = specialBg ??
+    final Color? effectiveBg =
+        specialBg ??
         (widget.zebraStripingEnabled && widget.zebraIndex.isOdd
             ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.04)
             : null);
@@ -2769,10 +2784,12 @@ class _CommentRowState extends State<_CommentRow> {
     final Color timestampColor = widget.themeColors.subtleTextColor;
     final Color idColor = widget.themeColors.subtleTextColor;
     const double minSubFontSize = 9.0;
-    final double timestampFontSize =
-        hidden ? fontSize : (fontSize * 0.85).clamp(minSubFontSize, fontSize);
-    final double idFontSize =
-        hidden ? fontSize : (fontSize * 0.9).clamp(minSubFontSize, fontSize);
+    final double timestampFontSize = hidden
+        ? fontSize
+        : (fontSize * 0.85).clamp(minSubFontSize, fontSize);
+    final double idFontSize = hidden
+        ? fontSize
+        : (fontSize * 0.9).clamp(minSubFontSize, fontSize);
 
     // Two-line mode is only useful when the username is shown (line 1 holds
     // timestamp + username). When the username column is hidden, the first
@@ -2783,8 +2800,9 @@ class _CommentRowState extends State<_CommentRow> {
       // (timestamp + username) is rendered much smaller: 40% of the
       // comment font size with a 9 px floor for readability.
       const double twoLineMinMeta = 9.0;
-      final double twoLineMetaSize =
-          hidden ? fontSize : (fontSize * 0.4).clamp(twoLineMinMeta, fontSize);
+      final double twoLineMetaSize = hidden
+          ? fontSize
+          : (fontSize * 0.4).clamp(twoLineMinMeta, fontSize);
       return _buildTwoLineComment(
         timestamp: timestamp,
         content: content,
