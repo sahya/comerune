@@ -297,7 +297,12 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                 }
 
                 updateEngineState(TtsEngineState.READY, "initialize_completed")
-                Log.i(TAG, "VOICEVOX engine initialized successfully")
+                Log.i(
+                    TAG,
+                    "VOICEVOX engine initialized successfully. " +
+                        "loadedModelIds=${loadedModelIds.toList()}, " +
+                        "loadedModelPaths=${loadedModelPaths.map { File(it).name }}"
+                )
                 Result.success(Unit)
             } catch (e: Throwable) {
                 updateEngineState(TtsEngineState.ERROR, "initialize_failed")
@@ -334,6 +339,12 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         }
 
     override suspend fun synthesize(request: SpeechRequest): Result<WavSynthesisResult> {
+        Log.d(
+            TAG,
+            "synthesize: speakerId=${request.speakerId} mode=${request.synthesisMode} " +
+                "textLen=${request.text.length} " +
+                "loadedModelIds=${loadedModelIds.toList()} state=$state"
+        )
         // Guard + count increment must be atomic to prevent race with release().
         // No lifecycle mutex needed — concurrent synthesis is safe because
         // VOICEVOX Core's synthesizer accepts `const` pointers and is
@@ -476,6 +487,13 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             }
             val normalizedPath = normalizeModelPath(modelPath)
             val modelId = extractModelId(normalizedPath)
+            Log.d(
+                TAG,
+                "loadModel entry: modelPath=$modelPath modelId=${modelId ?: "null"} " +
+                    "normalizedPath=$normalizedPath state=$state " +
+                    "loadedModelIds=${loadedModelIds.toList()} " +
+                    "loadedModelPaths=${loadedModelPaths.map { File(it).name }}"
+            )
             val alreadyLoadedByPath = loadedModelPaths.contains(normalizedPath)
             val alreadyLoadedById = modelId != null && loadedModelIds.contains(modelId)
             if (alreadyLoadedByPath || alreadyLoadedById) {
@@ -737,6 +755,11 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         if (!modelId.isNullOrBlank()) {
             loadedModelIds.add(modelId)
         }
+        Log.d(
+            TAG,
+            "markModelLoaded: modelId=${modelId ?: "null"} path=${File(modelPath).name} " +
+                "loadedModelIds=${loadedModelIds.toList()}"
+        )
     }
 
     // TODO: Replace this probe with a dedicated native API (e.g.

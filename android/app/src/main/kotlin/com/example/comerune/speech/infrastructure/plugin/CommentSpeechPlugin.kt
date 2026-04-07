@@ -174,7 +174,14 @@ class CommentSpeechPlugin :
             }
             "updateSettings" -> {
                 val settings = parseSpeechSettings(call)
-                Log.d(TAG, "[onMethodCall] → updateSettings enabled=${settings.enabled}, speaker=${settings.speakerId}, speed=${settings.speedScale}, playerType=${settings.playerType}")
+                val eng = engine
+                val engineState = eng?.currentState()?.name ?: "null"
+                Log.d(
+                    TAG,
+                    "[onMethodCall] → updateSettings enabled=${settings.enabled}, " +
+                        "speaker=${settings.speakerId}, speed=${settings.speedScale}, " +
+                        "playerType=${settings.playerType}, engineState=$engineState"
+                )
                 switchablePlayer?.switchPlayerType(settings.playerType)
                 handleAsync(result) { ctrl.updateSettings(settings) }
             }
