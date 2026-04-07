@@ -542,6 +542,16 @@ class _SelectScreenState extends State<SelectScreen> {
           commentTwoLineEnabled: _settingsNotifier.value.commentTwoLineEnabled,
           commentZebraStripingEnabled:
               _settingsNotifier.value.commentZebraStripingEnabled,
+          userColorMap: _userAttrNotifier.value.colors,
+          onUserColorChanged:
+              widget.userAttributeStore != null ? _onUserColorChanged : null,
+          onUserColorRemoved:
+              widget.userAttributeStore != null ? _onUserColorRemoved : null,
+          userNicknameMap: _userAttrNotifier.value.nicknames,
+          onNicknameChanged:
+              widget.userAttributeStore != null ? _onNicknameChanged : null,
+          onNicknameRemoved:
+              widget.userAttributeStore != null ? _onNicknameRemoved : null,
           autoNicknameRegistration:
               _settingsNotifier.value.autoNicknameRegistration,
           themeMode: _settingsNotifier.value.themeMode,
