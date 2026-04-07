@@ -24,9 +24,11 @@ import '../../domain/models/follow_program.dart';
 class FavoriteUserLiveChecker {
   FavoriteUserLiveChecker({
     HttpClient? httpClient,
+    Random? random,
     this.maxConcurrentRequests = 3,
     this.minInterval = const Duration(seconds: 10),
-  }) : _httpClient = httpClient ?? HttpClient() {
+  }) : _httpClient = httpClient ?? HttpClient(),
+       _random = random ?? Random() {
     _httpClient.connectionTimeout = const Duration(seconds: 10);
   }
 
@@ -193,7 +195,7 @@ class FavoriteUserLiveChecker {
   /// retries across time and avoid a thundering-herd effect.
   static const int _jitterMaxMs = 1000;
 
-  final Random _random = Random();
+  final Random _random;
 
   Future<MapEntry<String, FollowProgram>?> _checkSingleUser(
     String userId,

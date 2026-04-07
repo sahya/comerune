@@ -292,6 +292,27 @@ void main() {
       checker.dispose();
     });
 
+    test('gives up without retry when Retry-After exceeds max', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.statusCodeByUrlPrefix['providerId=12345'] = 429;
+      // Retry-After of 30s exceeds _maxRetryAfter (10s).
+      httpClient.retryAfterByUrlPrefix['providerId=12345'] = '30';
+
+      final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
+        httpClient: httpClient,
+        minInterval: Duration.zero,
+      );
+
+      final Map<String, FollowProgram> result = await checker
+          .checkBroadcastStatus(<String>{'12345'});
+
+      expect(result, isEmpty);
+      // Only 1 request — no retry attempted.
+      expect(httpClient.requestCount, 1);
+
+      checker.dispose();
+    });
+
     test('returns empty map when response is malformed JSON', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBodyByUrlPrefix['providerId=12345'] =
