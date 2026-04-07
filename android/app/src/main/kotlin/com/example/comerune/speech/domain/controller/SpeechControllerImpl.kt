@@ -235,6 +235,9 @@ class SpeechControllerImpl(
         if (released) {
             return Result.failure(IllegalStateException("Controller has been released"))
         }
+        println("[SpeechController] updateSettings: speakerId=${settings.speakerId} " +
+            "enabled=${settings.enabled} synthesisMode=${settings.synthesisMode} " +
+            "speed=${settings.speedScale} volume=${settings.volumeScale}")
         settingsRepository.save(settings)
 
         // Propagate runtime-tunable settings via interface methods
@@ -358,6 +361,10 @@ class SpeechControllerImpl(
         eventEmitter.emit(SpeechEvents.speechStarted(item.commentId, item.text))
 
         val settings = settingsRepository.get()
+        // Debug: log the speaker ID that will be used for synthesis
+        println("[SpeechController] processItem: commentId=${item.commentId} " +
+            "speakerId=${settings.speakerId} synthesisMode=${settings.synthesisMode} " +
+            "textLen=${item.text.length}")
         val chunks = textSplitter.split(item.text)
 
         if (chunks.size == 1) {

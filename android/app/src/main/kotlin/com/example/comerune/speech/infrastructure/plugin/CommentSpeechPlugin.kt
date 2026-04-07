@@ -189,12 +189,17 @@ class CommentSpeechPlugin :
                 Log.d(TAG, "[onMethodCall] → getStatus")
                 handleAsync(result) {
                     val status = ctrl.getStatus()
-                    Log.d(TAG, "[onMethodCall] getStatus result: engine=${status.engineState}, player=${status.playerState}, queue=${status.queueSize}")
+                    Log.d(
+                        TAG,
+                        "[onMethodCall] getStatus result: engine=${status.engineState}, " +
+                            "player=${status.playerState}, queue=${status.queueSize}, " +
+                            "currentSpeaker=${status.currentSpeakerId}"
+                    )
                     Result.success(status.toMap())
                 }
             }
             "release" -> {
-                Log.d(TAG, "[onMethodCall] → release")
+                Log.d(TAG, "[onMethodCall] → release (from Flutter)")
                 try {
                     ctrl.release()
                     result.success(mapOf("ok" to true))

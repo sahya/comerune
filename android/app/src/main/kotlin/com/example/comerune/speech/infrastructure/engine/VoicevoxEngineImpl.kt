@@ -233,8 +233,14 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
     override suspend fun initialize(): Result<Unit> =
         mutex.withLock {
             if (state == TtsEngineState.READY) {
+                Log.d(
+                    TAG,
+                    "initialize: skipped (already READY). " +
+                        "loadedModelIds=${loadedModelIds.toList()}"
+                )
                 return@withLock Result.success(Unit)
             }
+            Log.d(TAG, "initialize: starting from state=$state")
 
             // Allow re-initialization from ERROR state (e.g., after a native crash
             // during a previous initialize attempt)
@@ -621,10 +627,22 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         // Any in-flight synthesis calls will see state == UNINITIALIZED in their
         // finally block and skip the READY restore. The native nativeRelease()
         // acquires an exclusive lock, so it waits for in-flight synthesis to finish.
+        Log.w(
+            TAG,
+            "release() called. state=$state " +
+                "loadedModelIds=${loadedModelIds.toList()} " +
+                "thread=${Thread.currentThread().name}",
+            Throwable("release() call-site trace")
+        )
         val alreadyReleased = synchronized(stateLock) {
             if (state == TtsEngineState.UNINITIALIZED) {
                 true
             } else {
+                Log.d(
+                    TAG,
+                    "release: clearing state. " +
+                        "loadedModelIds=${loadedModelIds.toList()} → empty"
+                )
                 state = TtsEngineState.UNINITIALIZED
                 activeSynthesisCount.set(0)
                 loadedModelPaths.clear()
