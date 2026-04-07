@@ -11,7 +11,7 @@ abstract class OnboardingStore {
 
 class SharedPreferencesOnboardingStore implements OnboardingStore {
   const SharedPreferencesOnboardingStore({required SharedPreferencesLike prefs})
-    : _prefs = prefs;
+      : _prefs = prefs;
 
   final SharedPreferencesLike _prefs;
 

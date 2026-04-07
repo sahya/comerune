@@ -80,9 +80,8 @@ class CommentLogStats {
     // Duration: first message to last message
     final DateTime first = filtered.first.timestamp;
     final DateTime last = filtered.last.timestamp;
-    final Duration duration = last.isAfter(first)
-        ? last.difference(first)
-        : Duration.zero;
+    final Duration duration =
+        last.isAfter(first) ? last.difference(first) : Duration.zero;
 
     // Comments per minute (minute offset from first message)
     final Map<int, int> commentsPerMinute = <int, int>{};
@@ -204,14 +203,13 @@ class CommentLogStats {
     // Minimum threshold: at least 2 comments/minute to be a peak.
     final double effectiveThreshold = threshold < 2 ? 2 : threshold;
 
-    final List<MapEntry<int, int>> candidates =
-        commentsPerMinute.entries
-            .where((MapEntry<int, int> e) => e.value >= effectiveThreshold)
-            .toList()
-          ..sort(
-            (MapEntry<int, int> a, MapEntry<int, int> b) =>
-                b.value.compareTo(a.value),
-          );
+    final List<MapEntry<int, int>> candidates = commentsPerMinute.entries
+        .where((MapEntry<int, int> e) => e.value >= effectiveThreshold)
+        .toList()
+      ..sort(
+        (MapEntry<int, int> a, MapEntry<int, int> b) =>
+            b.value.compareTo(a.value),
+      );
 
     if (candidates.isEmpty) {
       return const <HighlightPeak>[];
@@ -246,9 +244,8 @@ class CommentLogStats {
           minuteOffset: entry.key,
           label: _formatPeakLabel(entry.key),
           commentCount: entry.value,
-          representativeComments: minuteMessages
-              .take(3)
-              .toList(growable: false),
+          representativeComments:
+              minuteMessages.take(3).toList(growable: false),
         ),
       );
     }
@@ -261,19 +258,16 @@ class CommentLogStats {
     List<AppMessage> messages, {
     Set<String> ngUserIds = const <String>{},
   }) {
-    return messages
-        .where((AppMessage m) {
-          if (m.type == AppMessageType.gift ||
-              m.type == AppMessageType.nicoad) {
-            return false;
-          }
-          final String? userId = m.userId;
-          if (userId != null && ngUserIds.contains(userId)) {
-            return false;
-          }
-          return true;
-        })
-        .toList(growable: false);
+    return messages.where((AppMessage m) {
+      if (m.type == AppMessageType.gift || m.type == AppMessageType.nicoad) {
+        return false;
+      }
+      final String? userId = m.userId;
+      if (userId != null && ngUserIds.contains(userId)) {
+        return false;
+      }
+      return true;
+    }).toList(growable: false);
   }
 
   static String _formatPeakLabel(int minuteOffset) {

@@ -83,13 +83,13 @@ void main() {
         addTearDown(client.dispose);
 
         final List<AppMessage> messages = <AppMessage>[];
-        final StreamSubscription<NdgrClientEvent> subscription = client.events
-            .listen((NdgrClientEvent event) {
-              if (event.type == NdgrClientEventType.message &&
-                  event.message != null) {
-                messages.add(event.message!);
-              }
-            });
+        final StreamSubscription<NdgrClientEvent> subscription =
+            client.events.listen((NdgrClientEvent event) {
+          if (event.type == NdgrClientEventType.message &&
+              event.message != null) {
+            messages.add(event.message!);
+          }
+        });
         addTearDown(subscription.cancel);
 
         await client.connect(viewUri, historyCount: 2);
@@ -143,12 +143,12 @@ void main() {
         addTearDown(client.dispose);
 
         bool stalled = false;
-        final StreamSubscription<NdgrClientEvent> subscription = client.events
-            .listen((NdgrClientEvent event) {
-              if (event.type == NdgrClientEventType.stalled) {
-                stalled = true;
-              }
-            });
+        final StreamSubscription<NdgrClientEvent> subscription =
+            client.events.listen((NdgrClientEvent event) {
+          if (event.type == NdgrClientEventType.stalled) {
+            stalled = true;
+          }
+        });
         addTearDown(subscription.cancel);
 
         final Future<void> connectFuture = client.connect(viewUri);
@@ -230,13 +230,12 @@ void main() {
       addTearDown(client.dispose);
 
       final Completer<Duration> stalled = Completer<Duration>();
-      final StreamSubscription<NdgrClientEvent> subscription = client.events
-          .listen((NdgrClientEvent event) {
-            if (event.type == NdgrClientEventType.stalled &&
-                !stalled.isCompleted) {
-              stalled.complete(event.stallDuration!);
-            }
-          });
+      final StreamSubscription<NdgrClientEvent> subscription =
+          client.events.listen((NdgrClientEvent event) {
+        if (event.type == NdgrClientEventType.stalled && !stalled.isCompleted) {
+          stalled.complete(event.stallDuration!);
+        }
+      });
       addTearDown(subscription.cancel);
 
       final Future<void> connectFuture = client.connect(viewUri);
@@ -296,12 +295,12 @@ void main() {
       addTearDown(client.dispose);
 
       int connectedCount = 0;
-      final StreamSubscription<NdgrClientEvent> subscription = client.events
-          .listen((NdgrClientEvent event) {
-            if (event.type == NdgrClientEventType.connected) {
-              connectedCount += 1;
-            }
-          });
+      final StreamSubscription<NdgrClientEvent> subscription =
+          client.events.listen((NdgrClientEvent event) {
+        if (event.type == NdgrClientEventType.connected) {
+          connectedCount += 1;
+        }
+      });
       addTearDown(subscription.cancel);
 
       await client.connect(viewUri);
@@ -336,10 +335,10 @@ void main() {
       addTearDown(client.dispose);
 
       final List<NdgrClientEventType> eventTypes = <NdgrClientEventType>[];
-      final StreamSubscription<NdgrClientEvent> subscription = client.events
-          .listen((NdgrClientEvent event) {
-            eventTypes.add(event.type);
-          });
+      final StreamSubscription<NdgrClientEvent> subscription =
+          client.events.listen((NdgrClientEvent event) {
+        eventTypes.add(event.type);
+      });
       addTearDown(subscription.cancel);
 
       await expectLater(client.connect(viewUri), throwsA(isA<HttpException>()));
@@ -392,13 +391,13 @@ void main() {
         addTearDown(client.dispose);
 
         final List<AppMessage> messages = <AppMessage>[];
-        final StreamSubscription<NdgrClientEvent> subscription = client.events
-            .listen((NdgrClientEvent event) {
-              if (event.type == NdgrClientEventType.message &&
-                  event.message != null) {
-                messages.add(event.message!);
-              }
-            });
+        final StreamSubscription<NdgrClientEvent> subscription =
+            client.events.listen((NdgrClientEvent event) {
+          if (event.type == NdgrClientEventType.message &&
+              event.message != null) {
+            messages.add(event.message!);
+          }
+        });
         addTearDown(subscription.cancel);
 
         await client.connect(viewUri);

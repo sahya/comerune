@@ -1046,7 +1046,7 @@ class FakeSessionWsClient implements SessionWsClient {
 
 class FakeNdgrClient implements NdgrClient {
   FakeNdgrClient({List<bool>? connectResults})
-    : _connectResults = connectResults ?? <bool>[];
+      : _connectResults = connectResults ?? <bool>[];
 
   final List<bool> _connectResults;
   final StreamController<NdgrEvent> _eventsController =
@@ -1093,7 +1093,7 @@ class FakeNdgrClient implements NdgrClient {
 
 class FakeLegacyCommentClient implements LegacyCommentClient {
   FakeLegacyCommentClient({List<bool>? connectResults})
-    : _connectResults = connectResults ?? <bool>[];
+      : _connectResults = connectResults ?? <bool>[];
 
   final List<bool> _connectResults;
   final StreamController<LegacyCommentEvent> _eventsController =

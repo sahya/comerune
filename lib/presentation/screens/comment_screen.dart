@@ -2753,14 +2753,17 @@ class _PinnedCommentRow extends StatelessWidget {
   Widget _buildTwoLinePinned(BuildContext context) {
     final String timestamp = _formatHms(message.timestamp, beginAt: beginAt);
     final String? userId = message.userId;
-    final double metaFontSize = (fontSize * _twoLineMetaFontRatio)
-        .clamp(_twoLineMinMetaFontSize, fontSize);
+    final double metaFontSize = (fontSize * _twoLineMetaFontRatio).clamp(
+      _twoLineMinMetaFontSize,
+      fontSize,
+    );
     final Color metaColor = themeColors.subtleTextColor;
 
     final StringBuffer metaBuffer = StringBuffer(timestamp);
     if (userId != null && userId.isNotEmpty) {
-      final String displayName =
-          resolvedUserName != null ? '$resolvedUserName ($userId)' : userId;
+      final String displayName = resolvedUserName != null
+          ? '$resolvedUserName ($userId)'
+          : userId;
       metaBuffer.write('  $displayName');
     }
 
@@ -2837,7 +2840,9 @@ class _CommentRowState extends State<_CommentRow> {
     final Color? effectiveBg =
         specialBg ??
         (widget.zebraStripingEnabled && widget.commentIndex.isOdd
-            ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.04)
+            ? Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: _zebraStripingAlpha)
             : null);
     return GestureDetector(
       key: Key('comment-row-${widget.message.id}'),
@@ -2876,8 +2881,10 @@ class _CommentRowState extends State<_CommentRow> {
     if (widget.commentTwoLineEnabled && widget.showUserName) {
       final double twoLineMetaSize = hidden
           ? fontSize
-          : (fontSize * _twoLineMetaFontRatio)
-              .clamp(_twoLineMinMetaFontSize, fontSize);
+          : (fontSize * _twoLineMetaFontRatio).clamp(
+              _twoLineMinMetaFontSize,
+              fontSize,
+            );
       return _buildTwoLineComment(
         timestamp: timestamp,
         content: content,

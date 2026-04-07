@@ -12,7 +12,7 @@ import '../../app_logging.dart';
 /// A 200 response or any error means the user is not broadcasting.
 class FavoriteUserLiveChecker {
   FavoriteUserLiveChecker({HttpClient? httpClient})
-    : _httpClient = httpClient ?? HttpClient() {
+      : _httpClient = httpClient ?? HttpClient() {
     _httpClient.connectionTimeout = const Duration(seconds: 10);
   }
 
@@ -40,9 +40,8 @@ class FavoriteUserLiveChecker {
       () =>
           '[FavoriteUserLiveChecker] checking favorite users: count=${userIds.length}',
     );
-    final List<Future<MapEntry<String, String>?>> futures = userIds
-        .map(_checkSingleUser)
-        .toList();
+    final List<Future<MapEntry<String, String>?>> futures =
+        userIds.map(_checkSingleUser).toList();
     final List<MapEntry<String, String>?> results = await Future.wait(futures);
 
     final Map<String, String> onAirMap = <String, String>{};
@@ -66,8 +65,8 @@ class FavoriteUserLiveChecker {
       request.followRedirects = false;
 
       final HttpClientResponse response = await request.close().timeout(
-        _responseTimeout,
-      );
+            _responseTimeout,
+          );
       try {
         final int statusCode = response.statusCode;
         appDebugLogLazy(

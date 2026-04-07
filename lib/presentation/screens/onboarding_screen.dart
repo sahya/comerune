@@ -204,8 +204,7 @@ class _WelcomePage extends StatelessWidget {
       icon: Icons.waving_hand_rounded,
       iconColor: const Color(0xFFFFA726),
       title: 'comerune へようこそ',
-      body:
-          'ニコ生のコメントを\nもっと楽しく、もっと便利に。\n\n'
+      body: 'ニコ生のコメントを\nもっと楽しく、もっと便利に。\n\n'
           'あなたの配信ライフに寄り添う\nコメントビューアです。\n'
           'まずは簡単にご紹介させてください。',
       colorScheme: colorScheme,
@@ -224,8 +223,7 @@ class _CommentViewPage extends StatelessWidget {
       icon: Icons.chat_bubble_outline_rounded,
       iconColor: const Color(0xFF42A5F5),
       title: 'リアルタイムでコメントを表示',
-      body:
-          '放送に届くコメントを\nリアルタイムで見やすく表示します。\n\n'
+      body: '放送に届くコメントを\nリアルタイムで見やすく表示します。\n\n'
           'お気に入りユーザーのマークや\n'
           'NGワードで快適な環境を作れます。\n'
           'コメントの統計やログ保存も。',
@@ -245,8 +243,7 @@ class _SpeechPage extends StatelessWidget {
       icon: Icons.record_voice_over_rounded,
       iconColor: const Color(0xFF66BB6A),
       title: 'コメントを声で届ける',
-      body:
-          '棒読みちゃんや VOICEVOX と連携して、\n'
+      body: '棒読みちゃんや VOICEVOX と連携して、\n'
           'コメントを音声で読み上げます。\n\n'
           '画面から目を離しているときでも\n'
           'リスナーの声を逃さず受け取れます。\n'
@@ -267,8 +264,7 @@ class _StartPage extends StatelessWidget {
       icon: Icons.rocket_launch_rounded,
       iconColor: const Color(0xFFAB47BC),
       title: '準備完了！',
-      body:
-          'ログインして放送番号を入力すれば\n'
+      body: 'ログインして放送番号を入力すれば\n'
           'すぐにコメントを見られます。\n\n'
           'テーマや色覚モードなど設定も充実。\n'
           'まずは気軽に使ってみてください。\n\n'
@@ -321,9 +317,9 @@ class _OnboardingPageLayout extends StatelessWidget {
           Text(
             body,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-              height: 1.5,
-            ),
+                  color: colorScheme.onSurfaceVariant,
+                  height: 1.5,
+                ),
             textAlign: TextAlign.center,
           ),
         ],

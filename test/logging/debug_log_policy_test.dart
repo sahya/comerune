@@ -4,7 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('debug log policy', () {
-    test('high-frequency files avoid interpolated direct appDebugLog calls', () {
+    test('high-frequency files avoid interpolated direct appDebugLog calls',
+        () {
       const List<String> targets = <String>[
         'lib/data/follow/my_program_repository.dart',
         'lib/data/follow/favorite_user_live_checker.dart',
