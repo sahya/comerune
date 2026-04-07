@@ -10,9 +10,20 @@ import '../../app_logging.dart';
 /// broadcasting and the redirect Location header contains the program URL
 /// (e.g. `https://live.nicovideo.jp/watch/lv348712105`).
 /// A 200 response or any error means the user is not broadcasting.
+///
+/// Battery-efficiency features:
+/// - **Concurrency throttling**: At most [maxConcurrentRequests] HTTP requests
+///   run in parallel, reducing CPU/radio wake-ups.
+/// - **Result caching**: The last known on-air map is cached for
+///   [minInterval]. Calls within that window return the cache immediately.
+/// - **Staggered requests**: Users already known to be on-air are checked
+///   less frequently (every other cycle) to halve redundant traffic.
 class FavoriteUserLiveChecker {
-  FavoriteUserLiveChecker({HttpClient? httpClient})
-      : _httpClient = httpClient ?? HttpClient() {
+  FavoriteUserLiveChecker({
+    HttpClient? httpClient,
+    this.maxConcurrentRequests = 3,
+    this.minInterval = const Duration(seconds: 45),
+  }) : _httpClient = httpClient ?? HttpClient() {
     _httpClient.connectionTimeout = const Duration(seconds: 10);
   }
 
@@ -26,35 +37,137 @@ class FavoriteUserLiveChecker {
 
   final HttpClient _httpClient;
 
+  /// Maximum number of HTTP requests that run concurrently.
+  final int maxConcurrentRequests;
+
+  /// Minimum interval between full network checks. Calls arriving before this
+  /// window elapses return the cached result.
+  final Duration minInterval;
+
+  /// Cached result from the last successful network check.
+  Map<String, String> _cachedOnAirMap = const <String, String>{};
+
+  /// When the last network check completed.
+  DateTime? _lastCheckTime;
+
+  /// Counter used to skip re-checking already-on-air users every other cycle.
+  int _cycleCounter = 0;
+
   /// Checks broadcast status for the given [userIds].
   ///
   /// Returns a map of userId to programId (e.g. `lv348712105`) for users
   /// who are currently broadcasting. Users who are not broadcasting are
   /// omitted from the result.
+  ///
+  /// When called within [minInterval] of the previous check, returns the
+  /// cached result without making network requests.
   Future<Map<String, String>> checkBroadcastStatus(Set<String> userIds) async {
     if (userIds.isEmpty) {
+      _cachedOnAirMap = const <String, String>{};
       return const <String, String>{};
+    }
+
+    // Return cached result when the minimum interval has not elapsed.
+    if (_lastCheckTime != null &&
+        DateTime.now().difference(_lastCheckTime!) < minInterval) {
+      appDebugLogLazy(
+        () =>
+            '[FavoriteUserLiveChecker] returning cached result: count=${_cachedOnAirMap.length}',
+      );
+      return Map<String, String>.of(_cachedOnAirMap);
     }
 
     appDebugLogLazy(
       () =>
           '[FavoriteUserLiveChecker] checking favorite users: count=${userIds.length}',
     );
-    final List<Future<MapEntry<String, String>?>> futures =
-        userIds.map(_checkSingleUser).toList();
-    final List<MapEntry<String, String>?> results = await Future.wait(futures);
 
-    final Map<String, String> onAirMap = <String, String>{};
-    for (final MapEntry<String, String>? entry in results) {
-      if (entry != null) {
-        onAirMap[entry.key] = entry.value;
+    _cycleCounter++;
+
+    // Split users into those that need checking this cycle.
+    // Users already known to be on-air are only re-checked on even cycles,
+    // halving redundant traffic for stable broadcasts.
+    final Set<String> usersToCheck = <String>{};
+    for (final String userId in userIds) {
+      final bool knownOnAir = _cachedOnAirMap.containsKey(userId);
+      if (!knownOnAir || _cycleCounter.isEven) {
+        usersToCheck.add(userId);
       }
     }
+
     appDebugLogLazy(
       () =>
-          '[FavoriteUserLiveChecker] on-air favorites resolved: count=${onAirMap.length}',
+          '[FavoriteUserLiveChecker] checking ${usersToCheck.length} of ${userIds.length} users (cycle=$_cycleCounter)',
     );
-    return onAirMap;
+
+    // Run requests with concurrency throttling.
+    final Map<String, String> freshResults =
+        await _checkWithThrottling(usersToCheck);
+
+    // Merge: start from the previous cache (filtered to current favorites),
+    // then overlay fresh results. Users that were skipped this cycle retain
+    // their cached on-air status.
+    final Map<String, String> merged = <String, String>{};
+    for (final String userId in userIds) {
+      if (freshResults.containsKey(userId)) {
+        merged[userId] = freshResults[userId]!;
+      } else if (_cachedOnAirMap.containsKey(userId) &&
+          !usersToCheck.contains(userId)) {
+        // Retain cached status for users skipped this cycle.
+        merged[userId] = _cachedOnAirMap[userId]!;
+      }
+    }
+
+    _cachedOnAirMap = merged;
+    _lastCheckTime = DateTime.now();
+
+    appDebugLogLazy(
+      () =>
+          '[FavoriteUserLiveChecker] on-air favorites resolved: count=${merged.length}',
+    );
+    return Map<String, String>.of(merged);
+  }
+
+  /// Invalidates the cached result so the next [checkBroadcastStatus] call
+  /// will always perform network requests.
+  void invalidateCache() {
+    _lastCheckTime = null;
+  }
+
+  /// Runs HTTP checks for [userIds] with at most [maxConcurrentRequests]
+  /// concurrent requests.
+  Future<Map<String, String>> _checkWithThrottling(
+    Set<String> userIds,
+  ) async {
+    if (userIds.isEmpty) {
+      return const <String, String>{};
+    }
+
+    final List<String> queue = userIds.toList();
+    final Map<String, String> results = <String, String>{};
+    int index = 0;
+
+    Future<void> worker() async {
+      while (true) {
+        final int myIndex = index++;
+        if (myIndex >= queue.length) {
+          break;
+        }
+        final MapEntry<String, String>? entry =
+            await _checkSingleUser(queue[myIndex]);
+        if (entry != null) {
+          results[entry.key] = entry.value;
+        }
+      }
+    }
+
+    final int workerCount =
+        maxConcurrentRequests.clamp(1, queue.length);
+    await Future.wait(
+      List<Future<void>>.generate(workerCount, (_) => worker()),
+    );
+
+    return results;
   }
 
   Future<MapEntry<String, String>?> _checkSingleUser(String userId) async {

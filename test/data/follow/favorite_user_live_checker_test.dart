@@ -236,6 +236,140 @@ void main() {
 
       checker.dispose();
     });
+
+    test('returns cached result within minInterval', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responsesByUrl['https://live.nicovideo.jp/watch/user/12345'] =
+          _FakeResponseConfig(
+        statusCode: 302,
+        headers: <String, String>{
+          'location': 'https://live.nicovideo.jp/watch/lv100001',
+        },
+      );
+
+      final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
+        httpClient: httpClient,
+        minInterval: const Duration(seconds: 60),
+      );
+
+      // First call makes network requests.
+      final Map<String, String> first = await checker.checkBroadcastStatus(
+        <String>{'12345'},
+      );
+      expect(first, <String, String>{'12345': 'lv100001'});
+      expect(httpClient.requests, hasLength(1));
+
+      // Second call within minInterval returns cache without new requests.
+      final Map<String, String> second = await checker.checkBroadcastStatus(
+        <String>{'12345'},
+      );
+      expect(second, <String, String>{'12345': 'lv100001'});
+      expect(httpClient.requests, hasLength(1)); // No new request.
+
+      checker.dispose();
+    });
+
+    test('invalidateCache forces network request on next call', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responsesByUrl['https://live.nicovideo.jp/watch/user/12345'] =
+          _FakeResponseConfig(
+        statusCode: 302,
+        headers: <String, String>{
+          'location': 'https://live.nicovideo.jp/watch/lv100001',
+        },
+      );
+
+      final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
+        httpClient: httpClient,
+        minInterval: const Duration(seconds: 60),
+      );
+
+      await checker.checkBroadcastStatus(<String>{'12345'});
+      expect(httpClient.requests, hasLength(1));
+
+      checker.invalidateCache();
+
+      await checker.checkBroadcastStatus(<String>{'12345'});
+      expect(httpClient.requests, hasLength(2)); // New request after invalidation.
+
+      checker.dispose();
+    });
+
+    test('throttles concurrent requests to maxConcurrentRequests', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      // Set up 5 users, all not broadcasting (200).
+      for (int i = 1; i <= 5; i++) {
+        httpClient.responsesByUrl[
+                'https://live.nicovideo.jp/watch/user/$i'] =
+            _FakeResponseConfig(statusCode: 200);
+      }
+
+      final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
+        httpClient: httpClient,
+        maxConcurrentRequests: 2,
+        minInterval: Duration.zero,
+      );
+
+      final Map<String, String> result = await checker.checkBroadcastStatus(
+        <String>{'1', '2', '3', '4', '5'},
+      );
+
+      // All 5 users checked, none broadcasting.
+      expect(result, isEmpty);
+      expect(httpClient.requests, hasLength(5));
+
+      checker.dispose();
+    });
+
+    test(
+      'on-air users are skipped on odd cycles and re-checked on even cycles',
+      () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient
+                .responsesByUrl['https://live.nicovideo.jp/watch/user/111'] =
+            _FakeResponseConfig(
+          statusCode: 302,
+          headers: <String, String>{
+            'location': 'https://live.nicovideo.jp/watch/lv100001',
+          },
+        );
+        httpClient
+                .responsesByUrl['https://live.nicovideo.jp/watch/user/222'] =
+            _FakeResponseConfig(statusCode: 200);
+
+        final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
+          httpClient: httpClient,
+          maxConcurrentRequests: 5,
+          minInterval: Duration.zero,
+        );
+
+        // Cycle 1: both users checked (2 requests).
+        final Map<String, String> first = await checker.checkBroadcastStatus(
+          <String>{'111', '222'},
+        );
+        expect(first, <String, String>{'111': 'lv100001'});
+        expect(httpClient.requests, hasLength(2));
+
+        // Cycle 2 (even): user 111 is known on-air, re-checked.
+        final Map<String, String> second = await checker.checkBroadcastStatus(
+          <String>{'111', '222'},
+        );
+        expect(second, <String, String>{'111': 'lv100001'});
+        expect(httpClient.requests, hasLength(4)); // 2 more
+
+        // Cycle 3 (odd): user 111 is known on-air, skipped.
+        httpClient.requests.clear();
+        final Map<String, String> third = await checker.checkBroadcastStatus(
+          <String>{'111', '222'},
+        );
+        // user 111 retains cached status even though not checked.
+        expect(third, <String, String>{'111': 'lv100001'});
+        // Only user 222 was checked this cycle.
+        expect(httpClient.requests, hasLength(1));
+
+        checker.dispose();
+      },
+    );
   });
 }
 

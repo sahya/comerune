@@ -87,7 +87,8 @@ class SelectScreen extends StatefulWidget {
   State<SelectScreen> createState() => _SelectScreenState();
 }
 
-class _SelectScreenState extends State<SelectScreen> {
+class _SelectScreenState extends State<SelectScreen>
+    with WidgetsBindingObserver {
   late final TextEditingController _controller;
   late final ValueNotifier<AppSettings> _settingsNotifier;
   late ConnectionStatus _previousStatus;
@@ -117,11 +118,16 @@ class _SelectScreenState extends State<SelectScreen> {
   double? _preMuteVolume;
 
   static const Duration _followRefreshInterval = Duration(seconds: 60);
-  static const Duration _favoriteRefreshInterval = Duration(seconds: 30);
+  static const Duration _favoriteRefreshIntervalForeground =
+      Duration(seconds: 60);
+  static const Duration _favoriteRefreshIntervalBackground =
+      Duration(seconds: 180);
+  bool _isInForeground = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _setFavoriteUserLiveChecker(widget.favoriteUserLiveChecker);
     _controller = TextEditingController();
     _settingsNotifier = ValueNotifier<AppSettings>(widget.initialSettings);
@@ -177,6 +183,7 @@ class _SelectScreenState extends State<SelectScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _followRefreshTimer?.cancel();
     _favoriteRefreshTimer?.cancel();
     if (_ownsFavoriteUserLiveChecker) {
@@ -189,6 +196,23 @@ class _SelectScreenState extends State<SelectScreen> {
     _settingsNotifier.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final bool wasForeground = _isInForeground;
+    _isInForeground =
+        state == AppLifecycleState.resumed;
+    if (!wasForeground && _isInForeground) {
+      // Returning to foreground: invalidate cache and trigger an immediate
+      // check so the user sees up-to-date status right away.
+      _favoriteUserLiveChecker.invalidateCache();
+      unawaited(_fetchFavoriteUserStatus());
+      _scheduleFavoriteRefresh();
+    } else if (wasForeground && !_isInForeground) {
+      // Moving to background: reschedule with the longer interval.
+      _scheduleFavoriteRefresh();
+    }
   }
 
   void _setFavoriteUserLiveChecker(FavoriteUserLiveChecker? checker) {
@@ -433,21 +457,17 @@ class _SelectScreenState extends State<SelectScreen> {
               ),
           ],
           Expanded(
-            child: _FollowProgramList(
-              programs: _followPrograms,
+            child: _CombinedProgramList(
+              followPrograms: _followPrograms,
+              favoriteOnAirMap: _favoriteOnAirMap,
               enabled: !_isConnectionInProgress,
-              onTap: _connectToProgram,
+              onFollowTap: _connectToProgram,
+              onFavoriteTap: _connectToFavoriteUser,
               onRefresh: _refreshAll,
-            ),
-          ),
-          if (_favoriteOnAirMap.isNotEmpty)
-            _FavoriteUserSection(
-              onAirUserPrograms: _favoriteOnAirMap,
-              enabled: !_isConnectionInProgress,
-              onTap: _connectToFavoriteUser,
-              onRefresh: _fetchFavoriteUserStatus,
+              onFavoriteRefresh: _fetchFavoriteUserStatus,
               userNameResolution: widget.userNameResolution,
             ),
+          ),
         ],
       ),
     );
@@ -899,11 +919,15 @@ class _SelectScreenState extends State<SelectScreen> {
     }
   }
 
-  /// Schedules the next favorite-user broadcast check after
-  /// [_favoriteRefreshInterval].
+  /// Schedules the next favorite-user broadcast check using an adaptive
+  /// interval that depends on whether the app is in the foreground or
+  /// background.
   void _scheduleFavoriteRefresh() {
     _favoriteRefreshTimer?.cancel();
-    _favoriteRefreshTimer = Timer(_favoriteRefreshInterval, () async {
+    final Duration interval = _isInForeground
+        ? _favoriteRefreshIntervalForeground
+        : _favoriteRefreshIntervalBackground;
+    _favoriteRefreshTimer = Timer(interval, () async {
       await _fetchFavoriteUserStatus();
       if (mounted) {
         _scheduleFavoriteRefresh();
@@ -1284,76 +1308,196 @@ class _LoginStatusBanner extends StatelessWidget {
   }
 }
 
-class _FollowProgramList extends StatelessWidget {
-  const _FollowProgramList({
-    required this.programs,
+/// Combined scrollable list showing both follow programs and favorite user
+/// broadcasts in a single [RefreshIndicator]-wrapped [ListView].
+///
+/// Sections are rendered as:
+///   1. Favorite users on-air (if any)
+///   2. Follow programs (if any)
+///   3. Empty placeholder when both lists are empty
+class _CombinedProgramList extends StatefulWidget {
+  const _CombinedProgramList({
+    required this.followPrograms,
+    required this.favoriteOnAirMap,
     required this.enabled,
-    required this.onTap,
+    required this.onFollowTap,
+    required this.onFavoriteTap,
     required this.onRefresh,
+    this.onFavoriteRefresh,
+    this.userNameResolution,
   });
 
-  final List<FollowProgram> programs;
+  final List<FollowProgram> followPrograms;
+  final Map<String, String> favoriteOnAirMap;
   final bool enabled;
-  final void Function(FollowProgram program) onTap;
+  final void Function(FollowProgram program) onFollowTap;
+  final void Function(String userId, String programId) onFavoriteTap;
   final Future<void> Function() onRefresh;
+  final VoidCallback? onFavoriteRefresh;
+  final UserNameResolution? userNameResolution;
+
+  @override
+  State<_CombinedProgramList> createState() => _CombinedProgramListState();
+}
+
+class _CombinedProgramListState extends State<_CombinedProgramList> {
+  @override
+  void initState() {
+    super.initState();
+    widget.userNameResolution?.listenable.addListener(_onNameChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _CombinedProgramList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.userNameResolution?.listenable !=
+        widget.userNameResolution?.listenable) {
+      oldWidget.userNameResolution?.listenable.removeListener(_onNameChanged);
+      widget.userNameResolution?.listenable.addListener(_onNameChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.userNameResolution?.listenable.removeListener(_onNameChanged);
+    super.dispose();
+  }
+
+  void _onNameChanged() {
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (programs.isEmpty) {
-      return const SizedBox.shrink();
-    }
+    final bool hasFavorites = widget.favoriteOnAirMap.isNotEmpty;
+    final bool hasFollows = widget.followPrograms.isNotEmpty;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: <Widget>[
-              const Icon(Icons.sensors, size: 16, color: Colors.red),
-              const SizedBox(width: 6),
-              Text('フォロー中の放送', style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(width: 8),
-              Text(
-                '${programs.length}件',
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+    if (!hasFavorites && !hasFollows) {
+      // Empty state: still allow pull-to-refresh.
+      return RefreshIndicator(
+        onRefresh: widget.onRefresh,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: <Widget>[
+            const SizedBox(height: 64),
+            Center(
+              child: Text(
+                '放送中の番組はありません',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: Theme.of(context).colorScheme.outline,
                     ),
               ),
-              const Spacer(),
-              SizedBox(
-                height: 32,
-                width: 32,
-                child: IconButton(
-                  padding: EdgeInsets.zero,
-                  iconSize: 18,
-                  icon: const Icon(Icons.refresh),
-                  tooltip: '更新',
-                  onPressed: onRefresh,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const Divider(height: 1),
-        Expanded(
-          child: RefreshIndicator(
-            onRefresh: onRefresh,
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              itemCount: programs.length,
-              separatorBuilder: (_, _) => const Divider(height: 1),
-              itemBuilder: (BuildContext context, int index) {
-                return _FollowProgramTile(
-                  program: programs[index],
-                  enabled: enabled,
-                  onTap: () => onTap(programs[index]),
-                );
-              },
             ),
-          ),
+          ],
         ),
-      ],
+      );
+    }
+
+    // Build a flat list of widgets: favorite section first, then follow section.
+    final List<Widget> children = <Widget>[];
+
+    if (hasFavorites) {
+      children.add(_buildFavoriteSectionHeader(context));
+      final List<MapEntry<String, String>> entries =
+          widget.favoriteOnAirMap.entries.toList();
+      for (int i = 0; i < entries.length; i++) {
+        if (i > 0) {
+          children.add(const Divider(height: 1));
+        }
+        final String userId = entries[i].key;
+        final String programId = entries[i].value;
+        children.add(
+          _FavoriteUserTile(
+            userId: userId,
+            programId: programId,
+            enabled: widget.enabled,
+            onTap: () => widget.onFavoriteTap(userId, programId),
+            userNameResolution: widget.userNameResolution,
+          ),
+        );
+      }
+    }
+
+    if (hasFollows) {
+      children.add(_buildFollowSectionHeader(context));
+      for (int i = 0; i < widget.followPrograms.length; i++) {
+        if (i > 0) {
+          children.add(const Divider(height: 1));
+        }
+        final FollowProgram program = widget.followPrograms[i];
+        children.add(
+          _FollowProgramTile(
+            program: program,
+            enabled: widget.enabled,
+            onTap: () => widget.onFollowTap(program),
+          ),
+        );
+      }
+    }
+
+    return RefreshIndicator(
+      onRefresh: widget.onRefresh,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        children: children,
+      ),
+    );
+  }
+
+  Widget _buildFavoriteSectionHeader(BuildContext context) {
+    final int count = widget.favoriteOnAirMap.length;
+    return Padding(
+      padding: const EdgeInsets.only(left: 16, right: 4, top: 4, bottom: 4),
+      child: Row(
+        children: <Widget>[
+          const Icon(Icons.favorite, size: 16, color: Colors.pinkAccent),
+          const SizedBox(width: 6),
+          Text(
+            'お気に入りユーザーの放送',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '$count件',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+          ),
+          const Spacer(),
+          if (widget.onFavoriteRefresh != null)
+            SizedBox(
+              width: 32,
+              height: 32,
+              child: IconButton(
+                icon: const Icon(Icons.refresh, size: 18),
+                padding: EdgeInsets.zero,
+                tooltip: '配信状態を更新',
+                onPressed: widget.onFavoriteRefresh,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFollowSectionHeader(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        children: <Widget>[
+          const Icon(Icons.sensors, size: 16, color: Colors.red),
+          const SizedBox(width: 6),
+          Text('フォロー中の放送', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(width: 8),
+          Text(
+            '${widget.followPrograms.length}件',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1667,142 +1811,123 @@ class _MyBroadcastSection extends StatelessWidget {
   }
 }
 
-class _FavoriteUserSection extends StatefulWidget {
-  const _FavoriteUserSection({
-    required this.onAirUserPrograms,
+/// A single tile for a favorite user who is currently broadcasting.
+class _FavoriteUserTile extends StatelessWidget {
+  const _FavoriteUserTile({
+    required this.userId,
+    required this.programId,
     required this.enabled,
     required this.onTap,
-    this.onRefresh,
     this.userNameResolution,
   });
 
-  /// Map of userId to programId (lv number) for users currently on air.
-  final Map<String, String> onAirUserPrograms;
+  final String userId;
+  final String programId;
   final bool enabled;
-  final void Function(String userId, String programId) onTap;
-  final VoidCallback? onRefresh;
+  final VoidCallback onTap;
   final UserNameResolution? userNameResolution;
 
   @override
-  State<_FavoriteUserSection> createState() => _FavoriteUserSectionState();
-}
-
-class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
-  @override
-  void initState() {
-    super.initState();
-    widget.userNameResolution?.listenable.addListener(_onUserNameChanged);
-  }
-
-  @override
-  void didUpdateWidget(covariant _FavoriteUserSection oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.userNameResolution?.listenable !=
-        widget.userNameResolution?.listenable) {
-      oldWidget.userNameResolution?.listenable.removeListener(
-        _onUserNameChanged,
-      );
-      widget.userNameResolution?.listenable.addListener(_onUserNameChanged);
-    }
-  }
-
-  @override
-  void dispose() {
-    widget.userNameResolution?.listenable.removeListener(_onUserNameChanged);
-    super.dispose();
-  }
-
-  void _onUserNameChanged() {
-    setState(() {});
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final List<MapEntry<String, String>> entries =
-        widget.onAirUserPrograms.entries.toList();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        const Divider(height: 1),
-        Padding(
-          padding: const EdgeInsets.only(left: 16, right: 4, top: 4, bottom: 4),
+    final ThemeData theme = Theme.of(context);
+    final String? iconUrl = buildNicoIconUrl(userId);
+    final String? nickname = userNameResolution?.resolve(userId);
+    final String displayName = nickname ?? userId;
+
+    return Semantics(
+      button: true,
+      label: '$displayNameの放送 $programId タップして接続',
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           child: Row(
             children: <Widget>[
-              const Icon(Icons.sensors, size: 16, color: Colors.red),
-              const SizedBox(width: 6),
-              Text('お気に入りユーザー', style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(width: 8),
-              Text(
-                '${entries.length}件',
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.outline,
+              _buildIconWithLiveIndicator(theme, iconUrl),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      nickname != null ? '$nickname ($userId)' : userId,
+                      style: theme.textTheme.bodyMedium,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-              ),
-              const Spacer(),
-              if (widget.onRefresh != null)
-                SizedBox(
-                  width: 32,
-                  height: 32,
-                  child: IconButton(
-                    icon: const Icon(Icons.refresh, size: 18),
-                    padding: EdgeInsets.zero,
-                    tooltip: '配信状態を更新',
-                    onPressed: widget.onRefresh,
-                  ),
+                    const SizedBox(height: 2),
+                    Text(
+                      programId,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.play_circle_outline,
+                size: 20,
+                color: enabled ? theme.colorScheme.primary : theme.disabledColor,
+              ),
             ],
           ),
         ),
-        const Divider(height: 1),
-        ...entries.map((MapEntry<String, String> entry) {
-          final String userId = entry.key;
-          final String programId = entry.value;
-          final String? iconUrl = buildNicoIconUrl(userId);
-          final String? nickname = widget.userNameResolution?.resolve(userId);
-          final String displayName = nickname ?? userId;
-          return Semantics(
-            button: true,
-            label: '$displayNameの放送 $programId タップして接続',
-            child: ListTile(
-              dense: true,
-              enabled: widget.enabled,
-              onTap:
-                  widget.enabled ? () => widget.onTap(userId, programId) : null,
-              leading: ClipOval(
-                child: SizedBox(
-                  width: 32,
-                  height: 32,
-                  child: iconUrl != null
-                      ? Image.network(
-                          iconUrl,
-                          width: 32,
-                          height: 32,
-                          fit: BoxFit.cover,
-                          cacheWidth: 64,
-                          cacheHeight: 64,
-                          errorBuilder: (_, _, _) =>
-                              const Icon(Icons.person, size: 20),
-                        )
-                      : const Icon(Icons.person, size: 20),
+      ),
+    );
+  }
+
+  Widget _buildIconWithLiveIndicator(ThemeData theme, String? iconUrl) {
+    return SizedBox(
+      width: 40,
+      height: 40,
+      child: Stack(
+        children: <Widget>[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: iconUrl != null
+                ? Image.network(
+                    iconUrl,
+                    width: 40,
+                    height: 40,
+                    fit: BoxFit.cover,
+                    cacheWidth: 80,
+                    cacheHeight: 80,
+                    errorBuilder: (_, _, _) => _buildFallbackIcon(),
+                  )
+                : _buildFallbackIcon(),
+          ),
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: Colors.pinkAccent,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: theme.colorScheme.surface,
+                  width: 1.5,
                 ),
               ),
-              title: Text(
-                nickname != null ? '$nickname ($userId)' : userId,
-                style: const TextStyle(fontSize: 13),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-              ),
-              trailing: Icon(
-                Icons.play_circle_outline,
-                size: 20,
-                color: widget.enabled
-                    ? Theme.of(context).colorScheme.primary
-                    : Theme.of(context).disabledColor,
-              ),
             ),
-          );
-        }),
-      ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Widget _buildFallbackIcon() {
+    return Container(
+      width: 40,
+      height: 40,
+      color: Colors.grey.shade300,
+      child: const Icon(Icons.person, size: 22, color: Colors.grey),
     );
   }
 }
