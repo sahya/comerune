@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/comment_speech/src/models/replace_rule.dart';
 import 'package:comerune/domain/models/app_settings.dart';
+import 'package:comerune/domain/models/ng_word_rule.dart';
 
 void main() {
   group('AppThemeModeValue.fromStorageValue', () {
@@ -157,6 +158,25 @@ void main() {
         ngWords: ' Spam \n\n Bad \n',
       );
       expect(settings.ngWordList, <String>['spam', 'bad']);
+    });
+
+    test('uses ngWordRules when populated, returning only enabled rules', () {
+      final AppSettings settings = AppSettings.defaults.copyWith(
+        ngWordRules: const <NgWordRule>[
+          NgWordRule(pattern: 'Enabled'),
+          NgWordRule(pattern: 'Disabled', enabled: false),
+          NgWordRule(pattern: '  TRIMMED  '),
+        ],
+      );
+      expect(settings.ngWordList, <String>['enabled', 'trimmed']);
+    });
+
+    test('falls back to ngWords when ngWordRules is empty', () {
+      final AppSettings settings = AppSettings.defaults.copyWith(
+        ngWords: 'legacy',
+        ngWordRules: const <NgWordRule>[],
+      );
+      expect(settings.ngWordList, <String>['legacy']);
     });
   });
 

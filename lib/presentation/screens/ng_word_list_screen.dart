@@ -133,6 +133,22 @@ class _NgWordListScreenState extends State<NgWordListScreen> {
       return;
     }
 
+    // Reject duplicate patterns.
+    final bool duplicate = _rules.any(
+      (NgWordRule r) => r.pattern == input,
+    );
+    if (duplicate) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text('同じパターンが既に登録されています')),
+        );
+      return;
+    }
+
     final List<NgWordRule> updated = List<NgWordRule>.from(_rules)
       ..add(NgWordRule(pattern: input));
     await _saveRules(updated);

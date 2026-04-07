@@ -324,6 +324,8 @@ class AppSettings {
   final int maxDelaySeconds;
   final bool omitUrl;
   final bool suppressDuplicate;
+  // TODO(#388): マイグレーション完了後、ngWords フィールドと SettingsStore の
+  // 関連 load/save を削除する。現在は後方互換のために残している。
   final String ngWords;
 
   /// Newline-separated user IDs to filter out from display.
