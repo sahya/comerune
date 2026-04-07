@@ -175,7 +175,37 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
     @Volatile
     private var state: TtsEngineState = TtsEngineState.UNINITIALIZED
 
-    /** Lock for state transitions and synthesis count updates (release, synthesize). */
+    /**
+     * Lock for state transitions and synthesis count updates (release, synthesize,
+     * clearLoadedModel).
+     *
+     * ## Lock hierarchy
+     *
+     * This class uses two independent locks:
+     * - [mutex] (coroutine Mutex) — guards lifecycle operations: initialize,
+     *   loadModel, prepareForModelDownload. These are suspend functions that may
+     *   perform slow I/O (native calls, file access).
+     * - [stateLock] (JVM monitor) — guards fast, non-suspend state mutations:
+     *   synthesize entry/exit, release, clearLoadedModel.
+     *
+     * The two locks are intentionally independent. [mutex] is never held while
+     * acquiring [stateLock] within the same call path, and vice versa.
+     * [loadModel] reads [loadedModelPaths]/[loadedModelIds] under [mutex] only,
+     * while [clearLoadedModel] writes them under [stateLock] only. This is safe
+     * because:
+     * 1. Both sets are [ConcurrentHashMap]-backed, so individual operations are
+     *    thread-safe.
+     * 2. [loadModel] uses a native probe ([isModelAlreadyLoadedBySpeakerProbe])
+     *    as a second check, preventing stale tracking from causing incorrect
+     *    skip decisions.
+     * 3. [clearLoadedModel] only invalidates tracking — it does not unload the
+     *    model from the native synthesizer — so the worst outcome of a race is
+     *    a redundant native load, which is idempotent.
+     *
+     * Native-level thread safety is provided by [g_mutex] (C++ shared_mutex)
+     * in voicevox_jni.cpp: lifecycle ops take exclusive locks, synthesis ops
+     * take shared locks.
+     */
     private val stateLock = Any()
 
     /** Mutex for lifecycle operations (initialize, loadModel, prepareForModelDownload). */
@@ -449,22 +479,55 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             val alreadyLoadedByPath = loadedModelPaths.contains(normalizedPath)
             val alreadyLoadedById = modelId != null && loadedModelIds.contains(modelId)
             if (alreadyLoadedByPath || alreadyLoadedById) {
-                val reason = when {
-                    alreadyLoadedByPath && alreadyLoadedById -> "already_loaded_path_and_id"
-                    alreadyLoadedByPath -> "already_loaded_path"
-                    else -> "already_loaded_id"
+                // Verify that the native synthesizer actually has this model loaded.
+                // The tracking sets can become stale (e.g. after deleteModel followed
+                // by re-download) so we probe the native engine before skipping.
+                // Note: The probe calls nativeCreateAudioQuery which has some overhead,
+                // but loadModel is only called on speaker change or after model download
+                // so the frequency is low enough to be acceptable.
+                val nativeHasModel = isModelAlreadyLoadedBySpeakerProbe(modelId)
+                if (nativeHasModel) {
+                    val reason = when {
+                        alreadyLoadedByPath && alreadyLoadedById -> "already_loaded_path_and_id"
+                        alreadyLoadedByPath -> "already_loaded_path"
+                        else -> "already_loaded_id"
+                    }
+                    Log.i(
+                        TAG,
+                        "loadModel skip: reason=$reason modelId=${modelId ?: "unknown"} modelPath=$normalizedPath"
+                    )
+                    return@withLock Result.success(Unit)
                 }
-                Log.i(
+                // Tracking says loaded but native doesn't have it — clear stale
+                // tracking and fall through to actually load the model.
+                Log.w(
                     TAG,
-                    "loadModel skip: reason=$reason modelId=${modelId ?: "unknown"} modelPath=$normalizedPath"
+                    "loadModel stale tracking detected: modelId=${modelId ?: "unknown"} " +
+                        "modelPath=$normalizedPath — clearing and reloading"
                 )
-                return@withLock Result.success(Unit)
+                loadedModelPaths.remove(normalizedPath)
+                if (modelId != null) {
+                    loadedModelIds.remove(modelId)
+                }
             }
 
             try {
                 withContext(Dispatchers.IO) {
                     Log.i(TAG, "Loading model: $normalizedPath")
                     val loaded = NativeVoicevoxBridge.nativeLoadModel(normalizedPath)
+                    // Re-check state after native call: release() can run
+                    // concurrently (it bypasses coroutine mutex) and destroy
+                    // the native synthesizer. If that happened, discard the
+                    // result to avoid recording stale tracking data.
+                    if (state != TtsEngineState.READY) {
+                        Log.w(
+                            TAG,
+                            "loadModel aborted: engine state changed to $state during native call, modelId=${modelId ?: "unknown"}"
+                        )
+                        throw IllegalStateException(
+                            "Engine released during model load (state=$state)"
+                        )
+                    }
                     if (!loaded) {
                         Log.w(
                             TAG,
@@ -473,6 +536,12 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                         val recoveredAsAlreadyLoaded =
                             isModelAlreadyLoadedBySpeakerProbe(modelId)
                         if (recoveredAsAlreadyLoaded) {
+                            // Re-check: release() may have run during the probe.
+                            if (state != TtsEngineState.READY) {
+                                throw IllegalStateException(
+                                    "Engine released during probe (state=$state)"
+                                )
+                            }
                             markModelLoaded(normalizedPath, modelId)
                             Log.i(
                                 TAG,
@@ -503,6 +572,30 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         state == TtsEngineState.READY || state == TtsEngineState.SYNTHESIZING
 
     override fun currentState(): TtsEngineState = state
+
+    override fun clearLoadedModel(modelId: String) {
+        // Use stateLock to ensure both sets are modified atomically,
+        // consistent with release() which also holds stateLock.
+        // Safe to call in any engine state — if the engine has been released
+        // the sets are already empty so this is a harmless no-op.
+        synchronized(stateLock) {
+            if (state == TtsEngineState.UNINITIALIZED) {
+                Log.d(
+                    TAG,
+                    "clearLoadedModel: modelId=$modelId skipped (engine uninitialized)"
+                )
+                return
+            }
+            val removedPath = loadedModelPaths.removeAll { path ->
+                extractModelId(path) == modelId
+            }
+            val removedId = loadedModelIds.remove(modelId)
+            Log.i(
+                TAG,
+                "clearLoadedModel: modelId=$modelId removedPath=$removedPath removedId=$removedId"
+            )
+        }
+    }
 
     override fun release() {
         // Since release() is non-suspend, we use a @Volatile flag + native-level
@@ -646,6 +739,10 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         }
     }
 
+    // TODO: Replace this probe with a dedicated native API (e.g.
+    //  voicevox_synthesizer_is_model_loaded) if VOICEVOX Core adds one in a
+    //  future release. The current approach uses nativeCreateAudioQuery as an
+    //  indirect check, which is heavier than necessary.
     private fun isModelAlreadyLoadedBySpeakerProbe(modelId: String?): Boolean {
         if (modelId.isNullOrBlank()) {
             return false
