@@ -369,7 +369,7 @@ class _FakeHttpHeaders implements HttpHeaders {
 class _FakeHttpClientResponse extends Stream<List<int>>
     implements HttpClientResponse {
   _FakeHttpClientResponse({required this.statusCode, required String body})
-      : _body = body;
+    : _body = body;
 
   @override
   final int statusCode;

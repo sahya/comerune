@@ -36,33 +36,33 @@ void main() {
     });
 
     testWidgets(
-        'start button is hidden for reserved program (pending API verification)',
-        (
-      WidgetTester tester,
-    ) async {
-      final FollowProgram program = FollowProgram(
-        programId: 'lv123',
-        title: 'Test',
-        providerName: 'User',
-        status: ProgramStatus.reserved,
-      );
+      'start button is hidden for reserved program (pending API verification)',
+      (WidgetTester tester) async {
+        final FollowProgram program = FollowProgram(
+          programId: 'lv123',
+          title: 'Test',
+          providerName: 'User',
+          status: ProgramStatus.reserved,
+        );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: BroadcastControlPanel(
-              program: program,
-              onStart: () async => const BroadcastControlResult(success: true),
-              onEnd: () async => const BroadcastControlResult(success: true),
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: BroadcastControlPanel(
+                program: program,
+                onStart: () async =>
+                    const BroadcastControlResult(success: true),
+                onEnd: () async => const BroadcastControlResult(success: true),
+              ),
             ),
           ),
-        ),
-      );
+        );
 
-      // 放送開始ボタンはAPI実機検証完了まで非表示。
-      expect(find.text('放送を開始'), findsNothing);
-      expect(find.text('スライドして放送を終了'), findsNothing);
-    });
+        // 放送開始ボタンはAPI実機検証完了まで非表示。
+        expect(find.text('放送を開始'), findsNothing);
+        expect(find.text('スライドして放送を終了'), findsNothing);
+      },
+    );
 
     testWidgets('shows slide-to-end for on-air program', (
       WidgetTester tester,
@@ -366,10 +366,7 @@ void main() {
       expect(
         userFacingBroadcastError(
           '開始',
-          const BroadcastControlResult(
-            success: false,
-            errorCode: 'FORBIDDEN',
-          ),
+          const BroadcastControlResult(success: false, errorCode: 'FORBIDDEN'),
         ),
         '放送の開始権限がありません',
       );
@@ -379,10 +376,7 @@ void main() {
       expect(
         userFacingBroadcastError(
           '終了',
-          const BroadcastControlResult(
-            success: false,
-            errorCode: 'NOT_FOUND',
-          ),
+          const BroadcastControlResult(success: false, errorCode: 'NOT_FOUND'),
         ),
         '番組が見つかりません',
       );
@@ -405,10 +399,7 @@ void main() {
       expect(
         userFacingBroadcastError(
           '終了',
-          const BroadcastControlResult(
-            success: false,
-            errorCode: 'HTTP_500',
-          ),
+          const BroadcastControlResult(success: false, errorCode: 'HTTP_500'),
         ),
         '放送の終了に失敗しました',
       );
@@ -417,17 +408,11 @@ void main() {
     test('uses operation name in FORBIDDEN and default messages', () {
       final String startForbidden = userFacingBroadcastError(
         '開始',
-        const BroadcastControlResult(
-          success: false,
-          errorCode: 'FORBIDDEN',
-        ),
+        const BroadcastControlResult(success: false, errorCode: 'FORBIDDEN'),
       );
       final String endForbidden = userFacingBroadcastError(
         '終了',
-        const BroadcastControlResult(
-          success: false,
-          errorCode: 'FORBIDDEN',
-        ),
+        const BroadcastControlResult(success: false, errorCode: 'FORBIDDEN'),
       );
       expect(startForbidden, contains('開始'));
       expect(endForbidden, contains('終了'));

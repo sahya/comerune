@@ -48,8 +48,8 @@ class FollowProgram {
     this.isOwnBroadcast = false,
     this.status,
   }) : communityName = (communityName != null && communityName.isNotEmpty)
-            ? communityName
-            : null;
+           ? communityName
+           : null;
 
   /// The program ID (e.g., "lv348712105").
   final String programId;
@@ -90,10 +90,7 @@ class FollowProgram {
   String? elapsedLabel() => formatElapsed(beginAt);
 
   /// Returns a copy with updated fields.
-  FollowProgram copyWith({
-    ProgramStatus? status,
-    DateTime? endAt,
-  }) {
+  FollowProgram copyWith({ProgramStatus? status, DateTime? endAt}) {
     return FollowProgram(
       programId: programId,
       title: title,

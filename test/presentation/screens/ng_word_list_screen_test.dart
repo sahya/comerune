@@ -9,9 +9,7 @@ import 'package:comerune/presentation/screens/ng_word_list_screen.dart';
 import '../../helpers/in_memory_shared_preferences.dart';
 
 Widget _buildScreen(SettingsStore store) {
-  return MaterialApp(
-    home: NgWordListScreen(settingsStore: store),
-  );
+  return MaterialApp(home: NgWordListScreen(settingsStore: store));
 }
 
 void main() {
@@ -68,9 +66,7 @@ void main() {
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
       final AppSettings initial = AppSettings.defaults.copyWith(
-        ngWordRules: const <NgWordRule>[
-          NgWordRule(pattern: 'word1'),
-        ],
+        ngWordRules: const <NgWordRule>[NgWordRule(pattern: 'word1')],
       );
       await store.save(initial);
 
@@ -99,9 +95,7 @@ void main() {
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
       final AppSettings initial = AppSettings.defaults.copyWith(
-        ngWordRules: const <NgWordRule>[
-          NgWordRule(pattern: 'to-delete'),
-        ],
+        ngWordRules: const <NgWordRule>[NgWordRule(pattern: 'to-delete')],
       );
       await store.save(initial);
 
@@ -224,9 +218,7 @@ void main() {
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
       final AppSettings initial = AppSettings.defaults.copyWith(
-        ngWordRules: const <NgWordRule>[
-          NgWordRule(pattern: 'existing'),
-        ],
+        ngWordRules: const <NgWordRule>[NgWordRule(pattern: 'existing')],
       );
       await store.save(initial);
 
@@ -269,9 +261,7 @@ void main() {
       await tester.pumpWidget(_buildScreen(store));
       await tester.pumpAndSettle();
 
-      final Text text = tester.widget(
-        find.text('disabled-word'),
-      );
+      final Text text = tester.widget(find.text('disabled-word'));
       expect(text.style?.color, Colors.grey);
     });
   });

@@ -54,8 +54,9 @@ void main() {
         'voicevoxSpeaker': 42,
         'commentFontSize': 20,
       };
-      final String jsonString =
-          const JsonEncoder.withIndent('  ').convert(json);
+      final String jsonString = const JsonEncoder.withIndent(
+        '  ',
+      ).convert(json);
 
       final AppSettings imported = await store.importFromJson(jsonString);
 
@@ -78,10 +79,7 @@ void main() {
     });
 
     test('importFromJson with JSON array throws FormatException', () async {
-      expect(
-        () => store.importFromJson('[1, 2, 3]'),
-        throwsFormatException,
-      );
+      expect(() => store.importFromJson('[1, 2, 3]'), throwsFormatException);
     });
 
     test('roundtrip: export then import preserves all settings', () async {

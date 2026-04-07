@@ -656,9 +656,7 @@ void main() {
                       Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) => CommentScreen(
-                            programInfo: const CommentProgramInfo(
-                              lv: 'lv999',
-                            ),
+                            programInfo: const CommentProgramInfo(lv: 'lv999'),
                             connectionSupervisor: supervisor,
                             messages: const <AppMessage>[],
                             callbacks: CommentCallbacks(
@@ -666,7 +664,7 @@ void main() {
                                 stopCalls += 1;
                               },
                               onReconnectSameLv: () async {},
-                              onDifferentLvConnected: (_, __) async {},
+                              onDifferentLvConnected: (_, _) async {},
                             ),
                             themeMode: AppThemeMode.light,
                           ),
@@ -2941,7 +2939,7 @@ class _NicknameCommentScreenHostState
         callbacks: CommentCallbacks(
           onStopAllConnections: () async {},
           onReconnectSameLv: () async {},
-          onDifferentLvConnected: (_, __) async {},
+          onDifferentLvConnected: (_, _) async {},
           onNicknameChanged: (String userId, String nickname) {
             lastNicknameUserId = userId;
             lastNickname = nickname;
@@ -3088,7 +3086,7 @@ Widget _buildScreen({
       callbacks: CommentCallbacks(
         onStopAllConnections: onStopAllConnections ?? () async {},
         onReconnectSameLv: onReconnectSameLv ?? () async {},
-        onDifferentLvConnected: (_, __) async {},
+        onDifferentLvConnected: (_, _) async {},
         onOpenSettings: onOpenSettings,
       ),
       debugMode: debugMode,

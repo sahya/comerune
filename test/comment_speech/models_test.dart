@@ -105,7 +105,9 @@ void main() {
     test('SynthesisMode fromStorageValue defaults to audioQuery', () {
       expect(SynthesisMode.fromStorageValue(null), SynthesisMode.audioQuery);
       expect(
-          SynthesisMode.fromStorageValue('UNKNOWN'), SynthesisMode.audioQuery);
+        SynthesisMode.fromStorageValue('UNKNOWN'),
+        SynthesisMode.audioQuery,
+      );
     });
 
     test('toMap includes all fields with defaults', () {

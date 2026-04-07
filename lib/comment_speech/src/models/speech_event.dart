@@ -26,11 +26,11 @@ class SpeechEvent {
   const SpeechEvent({required this.type, required this.payload});
 
   factory SpeechEvent.fromMap(Map<dynamic, dynamic> map) => SpeechEvent(
-        type: (map['type'] as String?) ?? 'unknown',
-        payload: map['payload'] != null
-            ? Map<String, dynamic>.from(map['payload'] as Map)
-            : const {},
-      );
+    type: (map['type'] as String?) ?? 'unknown',
+    payload: map['payload'] != null
+        ? Map<String, dynamic>.from(map['payload'] as Map)
+        : const {},
+  );
 
   @override
   bool operator ==(Object other) =>

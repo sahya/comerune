@@ -54,10 +54,7 @@ class _NgWordListScreenState extends State<NgWordListScreen> {
   Future<void> _toggleRule(int index) async {
     final List<NgWordRule> updated = List<NgWordRule>.from(_rules);
     final NgWordRule rule = updated[index];
-    updated[index] = NgWordRule(
-      pattern: rule.pattern,
-      enabled: !rule.enabled,
-    );
+    updated[index] = NgWordRule(pattern: rule.pattern, enabled: !rule.enabled);
     await _saveRules(updated);
   }
 
@@ -98,9 +95,7 @@ class _NgWordListScreenState extends State<NgWordListScreen> {
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text('「${rule.pattern}」を削除しました')),
-      );
+      ..showSnackBar(SnackBar(content: Text('「${rule.pattern}」を削除しました')));
   }
 
   Future<void> _addRule() async {
@@ -129,25 +124,19 @@ class _NgWordListScreenState extends State<NgWordListScreen> {
       }
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('無効なパターンです')),
-        );
+        ..showSnackBar(const SnackBar(content: Text('無効なパターンです')));
       return;
     }
 
     // Reject duplicate patterns.
-    final bool duplicate = _rules.any(
-      (NgWordRule r) => r.pattern == input,
-    );
+    final bool duplicate = _rules.any((NgWordRule r) => r.pattern == input);
     if (duplicate) {
       if (!mounted) {
         return;
       }
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('同じパターンが既に登録されています')),
-        );
+        ..showSnackBar(const SnackBar(content: Text('同じパターンが既に登録されています')));
       return;
     }
 
@@ -173,46 +162,46 @@ class _NgWordListScreenState extends State<NgWordListScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _rules.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text(
-                      key: Key('ng-word-list-empty'),
-                      'NGワードは登録されていません',
-                      style: TextStyle(fontSize: 14),
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  key: Key('ng-word-list-empty'),
+                  'NGワードは登録されていません',
+                  style: TextStyle(fontSize: 14),
+                ),
+              ),
+            )
+          : ListView.separated(
+              key: const Key('ng-word-list'),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              itemCount: _rules.length,
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (BuildContext context, int index) {
+                final NgWordRule rule = _rules[index];
+                return ListTile(
+                  key: Key('ng-word-tile-$index'),
+                  leading: Switch(
+                    key: Key('ng-word-toggle-$index'),
+                    value: rule.enabled,
+                    onChanged: (_) => _toggleRule(index),
+                  ),
+                  title: Text(
+                    rule.pattern,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: rule.enabled ? null : Colors.grey,
                     ),
                   ),
-                )
-              : ListView.separated(
-                  key: const Key('ng-word-list'),
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: _rules.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (BuildContext context, int index) {
-                    final NgWordRule rule = _rules[index];
-                    return ListTile(
-                      key: Key('ng-word-tile-$index'),
-                      leading: Switch(
-                        key: Key('ng-word-toggle-$index'),
-                        value: rule.enabled,
-                        onChanged: (_) => _toggleRule(index),
-                      ),
-                      title: Text(
-                        rule.pattern,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: rule.enabled ? null : Colors.grey,
-                        ),
-                      ),
-                      trailing: IconButton(
-                        key: Key('ng-word-delete-$index'),
-                        icon: const Icon(Icons.delete_outline),
-                        tooltip: '削除',
-                        onPressed: () => _deleteRule(index),
-                      ),
-                    );
-                  },
-                ),
+                  trailing: IconButton(
+                    key: Key('ng-word-delete-$index'),
+                    icon: const Icon(Icons.delete_outline),
+                    tooltip: '削除',
+                    onPressed: () => _deleteRule(index),
+                  ),
+                );
+              },
+            ),
     );
   }
 }

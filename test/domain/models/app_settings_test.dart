@@ -250,14 +250,16 @@ void main() {
       expect(updated.commentZebraStripingEnabled, isTrue);
     });
 
-    test('copyWith preserves commentZebraStripingEnabled when not specified',
-        () {
-      final AppSettings initial = AppSettings.defaults.copyWith(
-        commentZebraStripingEnabled: true,
-      );
-      final AppSettings updated = initial.copyWith(debugMode: true);
-      expect(updated.commentZebraStripingEnabled, isTrue);
-    });
+    test(
+      'copyWith preserves commentZebraStripingEnabled when not specified',
+      () {
+        final AppSettings initial = AppSettings.defaults.copyWith(
+          commentZebraStripingEnabled: true,
+        );
+        final AppSettings updated = initial.copyWith(debugMode: true);
+        expect(updated.commentZebraStripingEnabled, isTrue);
+      },
+    );
   });
 
   group('dictionaryRules', () {
