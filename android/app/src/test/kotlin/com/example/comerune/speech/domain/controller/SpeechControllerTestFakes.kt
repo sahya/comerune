@@ -46,6 +46,23 @@ open class FakeEngine : VoicevoxEngine {
     /** When set to N > 0, the N-th call to synthesize() will throw. */
     var failOnNthSynthesize = 0
 
+    /**
+     * Tracks model IDs that are considered "loaded" by this fake engine.
+     * When non-null, [loadModel] and [clearLoadedModel] track state,
+     * and [synthesize] checks that the model for the speaker is loaded.
+     * When null (default), tracking is disabled for backward compatibility.
+     */
+    var trackedLoadedModels: MutableSet<String>? = null
+
+    /** Records all modelIds passed to [loadModel], including duplicates. */
+    val loadModelCalls = CopyOnWriteArrayList<String>()
+
+    /** Records all modelIds passed to [clearLoadedModel]. */
+    val clearLoadedModelCalls = CopyOnWriteArrayList<String>()
+
+    /** When true, [loadModel] returns failure. */
+    var failOnLoadModel = false
+
     override suspend fun initialize(): Result<Unit> = Result.success(Unit)
 
     override suspend fun prepareForModelDownload(): Result<Unit> = Result.success(Unit)
@@ -72,9 +89,28 @@ open class FakeEngine : VoicevoxEngine {
         )
     }
 
-    override suspend fun loadModel(modelPath: String): Result<Unit> = Result.success(Unit)
+    override suspend fun loadModel(modelPath: String): Result<Unit> {
+        // Extract a simple model ID from the path (filename without extension)
+        val modelId = modelPath.substringAfterLast("/").substringBeforeLast(".")
+            .ifBlank { modelPath }
+        loadModelCalls.add(modelId)
+        if (failOnLoadModel) {
+            failOnLoadModel = false
+            return Result.failure(RuntimeException("Failed to load model: $modelPath"))
+        }
+        trackedLoadedModels?.add(modelId)
+        return Result.success(Unit)
+    }
 
-    override fun clearLoadedModel(modelId: String) {}
+    override fun clearLoadedModel(modelId: String) {
+        clearLoadedModelCalls.add(modelId)
+        trackedLoadedModels?.remove(modelId)
+    }
+
+    /** Check whether a model is tracked as loaded. Returns true if tracking is disabled (null). */
+    fun isModelTracked(modelId: String): Boolean =
+        trackedLoadedModels?.contains(modelId) ?: true
+
     override fun isReady(): Boolean = true
     override fun currentState(): TtsEngineState = TtsEngineState.READY
     override fun release() {}
@@ -124,6 +160,33 @@ open class FakeEventEmitter : SpeechEventEmitter {
 
     fun eventsOfType(type: String): List<Map<String, Any?>> =
         events.filter { (it["payload"] as? Map<*, *>) != null && it["type"] == type }
+}
+
+/**
+ * Delegating [SpeechQueueManager] that counts peek() calls and can
+ * return null on a specific peek invocation to simulate race conditions.
+ */
+class PeekCountingQueueManager(
+    private val delegate: SpeechQueueManager
+) : SpeechQueueManager {
+    val peekCount = AtomicInteger(0)
+
+    /** When set to N > 0, the N-th call to [peek] returns null. */
+    var returnNullOnNthPeek = 0
+
+    override fun offer(item: SpeechQueueItem): QueueOfferResult = delegate.offer(item)
+    override fun poll(): SpeechQueueItem? = delegate.poll()
+    override fun peek(): SpeechQueueItem? {
+        val call = peekCount.incrementAndGet()
+        if (returnNullOnNthPeek > 0 && call == returnNullOnNthPeek) {
+            return null
+        }
+        return delegate.peek()
+    }
+    override fun clear() = delegate.clear()
+    override fun size(): Int = delegate.size()
+    override fun isEmpty(): Boolean = delegate.isEmpty()
+    override fun updateMaxSize(newMaxSize: Int) = delegate.updateMaxSize(newMaxSize)
 }
 
 fun rawComment(id: String, text: String) = RawComment(
