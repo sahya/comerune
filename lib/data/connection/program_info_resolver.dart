@@ -152,7 +152,9 @@ class ProgramInfoResolver {
     final DateTime? beginAt = parseBeginAt(data);
 
     log(
-      'Resolved NDGR viewUri for $lv via programinfo',
+      'Resolved NDGR viewUri for $lv via programinfo'
+      ' (broadcaster: ${broadcasterInfo.name ?? 'null'}'
+      ', userId: ${broadcasterInfo.userId ?? 'null'})',
       name: 'ProgramInfoResolver',
     );
     return ProgramInfo(
@@ -170,9 +172,14 @@ class ProgramInfoResolver {
   /// Tries `data.broadcaster[0]` first (N Air's documented field) for both
   /// `id` and `name`, then falls back to `data.supplier.programProviderId`
   /// for the user ID and `data.supplier.name` for the display name.
+  /// When broadcaster has a name but no id, the name is still captured and
+  /// supplier is only consulted for the user ID.
   static ({String? userId, String? name}) _extractBroadcasterInfo(
     Map<String, dynamic> data,
   ) {
+    String? broadcasterName;
+    String? broadcasterUserId;
+
     // Primary: data.broadcaster (array of {id, name}).
     final Object? broadcaster = data['broadcaster'];
     if (broadcaster is List && broadcaster.isNotEmpty) {
@@ -180,9 +187,15 @@ class ProgramInfoResolver {
       if (first is Map<String, dynamic>) {
         final Object? id = first['id'];
         final Object? name = first['name'];
-        final String? nameStr = name is String && name.isNotEmpty ? name : null;
         if (id != null) {
-          return (userId: id.toString(), name: nameStr);
+          broadcasterUserId = id.toString();
+        }
+        if (name is String && name.isNotEmpty) {
+          broadcasterName = name;
+        }
+        // If both id and name are available, return immediately.
+        if (broadcasterUserId != null && broadcasterName != null) {
+          return (userId: broadcasterUserId, name: broadcasterName);
         }
       }
     }
@@ -192,12 +205,19 @@ class ProgramInfoResolver {
     final Object? supplier = data['supplier'];
     if (supplier is Map<String, dynamic>) {
       final Object? name = supplier['name'];
-      final String? nameStr = name is String && name.isNotEmpty ? name : null;
-      final Object? providerId = supplier['programProviderId'];
-      final String? userId = providerId?.toString();
-      if (userId != null || nameStr != null) {
-        return (userId: userId, name: nameStr);
+      if (broadcasterName == null && name is String && name.isNotEmpty) {
+        broadcasterName = name;
       }
+      if (broadcasterUserId == null) {
+        final Object? providerId = supplier['programProviderId'];
+        if (providerId != null) {
+          broadcasterUserId = providerId.toString();
+        }
+      }
+    }
+
+    if (broadcasterUserId != null || broadcasterName != null) {
+      return (userId: broadcasterUserId, name: broadcasterName);
     }
 
     return (userId: null, name: null);
