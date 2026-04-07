@@ -263,216 +263,236 @@ class _SettingsScreenState extends State<SettingsScreen>
       body: settingsError != null
           ? buildSettingsError(context)
           : settings == null
-              ? const Center(child: CircularProgressIndicator())
-              : ListView(
-                  key: const Key('settings-list'),
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
-                  children: <Widget>[
-                    SettingsSection(
-                      title: 'ニコニコアカウント',
-                      children: <Widget>[
-                        if (_isLoggedIn) ...<Widget>[
-                          Row(
-                            children: <Widget>[
-                              Icon(
-                                Icons.check_circle,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                              const SizedBox(width: 8),
-                              const Text('ログイン済み'),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton(
-                              key: const Key('logout-button'),
-                              onPressed: _logout,
-                              child: const Text('ログアウト'),
-                            ),
-                          ),
-                        ] else ...<Widget>[
-                          const Text('コメント取得にはログインが必要です'),
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton.icon(
-                              key: const Key('login-button'),
-                              onPressed: widget.userSessionStore != null
-                                  ? _openLoginScreen
-                                  : null,
-                              icon: const Icon(Icons.login),
-                              label: const Text('ニコニコにログイン'),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    SettingsSection(
-                      title: 'テーマ',
-                      children: <Widget>[
-                        DropdownButtonFormField<AppThemeMode>(
-                          key: const Key('theme-mode-dropdown'),
-                          initialValue: settings.themeMode,
-                          decoration: const InputDecoration(
-                            labelText: '配色テーマ',
-                            border: OutlineInputBorder(),
-                          ),
-                          items: AppThemeMode.values
-                              .map(
-                                (AppThemeMode mode) =>
-                                    DropdownMenuItem<AppThemeMode>(
-                                  value: mode,
-                                  child: Text(mode.label),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (AppThemeMode? value) {
-                            if (value == null) {
-                              return;
-                            }
-                            updateAndSave(settings.copyWith(themeMode: value));
-                          },
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'ダークモードは夜間の視認性を向上します。\n'
-                          '色覚テーマは色の区別が難しい方に配慮した配色です。',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Card(
-                      child: ListTile(
-                        key: const Key('comment-display-settings-tile'),
-                        leading: const Icon(Icons.chat_bubble_outline),
-                        title: const Text('コメント表示設定'),
-                        subtitle: Text(
-                          'フォントサイズ: ${settings.commentFontSize.round()}px',
-                        ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () async {
-                          final bool? changed =
-                              await Navigator.of(context).push<bool>(
-                            MaterialPageRoute<bool>(
-                              builder: (_) => CommentDisplaySettingsScreen(
-                                settingsStore: widget.settingsStore,
-                                initialSettings: settings,
-                              ),
-                            ),
-                          );
-                          if (changed == true) {
-                            await _loadSettings();
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Card(
-                      child: ListTile(
-                        key: const Key('tts-settings-tile'),
-                        leading: const Icon(Icons.record_voice_over),
-                        title: const Text('読み上げ設定'),
-                        subtitle: Text(
-                          settings.autoReadEnabled
-                              ? '自動読み上げ: ON'
-                              : '自動読み上げ: OFF',
-                        ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () async {
-                          final bool? changed =
-                              await Navigator.of(context).push<bool>(
-                            MaterialPageRoute<bool>(
-                              builder: (_) => TtsSettingsScreen(
-                                settingsStore: widget.settingsStore,
-                                platform: widget.speechPlatform,
-                                initialSettings: settings,
-                              ),
-                            ),
-                          );
-                          if (changed == true) {
-                            await _loadSettings();
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Card(
-                      child: ListTile(
-                        key: const Key('user-management-settings-tile'),
-                        leading: const Icon(Icons.people_outline),
-                        title: const Text('ユーザー管理'),
-                        subtitle: const Text('お気に入り・コテハン'),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () async {
-                          final bool? changed =
-                              await Navigator.of(context).push<bool>(
-                            MaterialPageRoute<bool>(
-                              builder: (_) => UserManagementSettingsScreen(
-                                settingsStore: widget.settingsStore,
-                                userAttributeStore: widget.userAttributeStore,
-                                broadcasterIdNotifier:
-                                    widget.broadcasterIdNotifier,
-                                userNameResolution: widget.userNameResolution,
-                                initialSettings: settings,
-                              ),
-                            ),
-                          );
-                          if (changed == true) {
-                            await _loadSettings();
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    SettingsSection(
-                      title: 'データ管理',
-                      children: <Widget>[
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            key: const Key('export-settings-button'),
-                            onPressed: _exportSettings,
-                            icon: const Icon(Icons.upload),
-                            label: const Text('設定をエクスポート'),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            key: const Key('import-settings-button'),
-                            onPressed: _importSettings,
-                            icon: const Icon(Icons.download),
-                            label: const Text('設定をインポート'),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'JSON形式で設定のバックアップ・復元ができます。',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    SettingsSection(
-                      title: 'デバッグ',
-                      children: <Widget>[
-                        SwitchListTile(
-                          key: const Key('debug-mode-switch'),
-                          title: const Text('デバッグモード'),
-                          contentPadding: EdgeInsets.zero,
-                          value: settings.debugMode,
-                          onChanged: (bool value) {
-                            updateAndSave(settings.copyWith(debugMode: value));
-                          },
-                        ),
-                      ],
-                    ),
-                  ],
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              key: const Key('settings-list'),
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+              children: <Widget>[
+                // --- アカウント ---
+                _buildAccountSection(context),
+                const Divider(height: 24),
+                // --- コア設定 ---
+                _buildThemeSection(context, settings),
+                const SizedBox(height: 12),
+                _buildCommentDisplayTile(context, settings),
+                const SizedBox(height: 12),
+                _buildTtsTile(context, settings),
+                const SizedBox(height: 12),
+                _buildUserManagementTile(context, settings),
+                const Divider(height: 24),
+                // --- 管理・上級 ---
+                _buildDataManagementSection(context),
+                const SizedBox(height: 12),
+                _buildDebugSection(context, settings),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildAccountSection(BuildContext context) {
+    return SettingsSection(
+      title: 'ニコニコアカウント',
+      children: <Widget>[
+        if (_isLoggedIn) ...<Widget>[
+          Row(
+            children: <Widget>[
+              Icon(
+                Icons.check_circle,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              const Text('ログイン済み'),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              key: const Key('logout-button'),
+              onPressed: _logout,
+              child: const Text('ログアウト'),
+            ),
+          ),
+        ] else ...<Widget>[
+          const Text('コメント取得にはログインが必要です'),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              key: const Key('login-button'),
+              onPressed: widget.userSessionStore != null
+                  ? _openLoginScreen
+                  : null,
+              icon: const Icon(Icons.login),
+              label: const Text('ニコニコにログイン'),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildThemeSection(BuildContext context, AppSettings settings) {
+    return SettingsSection(
+      title: 'テーマ',
+      children: <Widget>[
+        DropdownButtonFormField<AppThemeMode>(
+          key: const Key('theme-mode-dropdown'),
+          initialValue: settings.themeMode,
+          decoration: const InputDecoration(
+            labelText: '配色テーマ',
+            border: OutlineInputBorder(),
+          ),
+          items: AppThemeMode.values
+              .map(
+                (AppThemeMode mode) => DropdownMenuItem<AppThemeMode>(
+                  value: mode,
+                  child: Text(mode.label),
                 ),
+              )
+              .toList(),
+          onChanged: (AppThemeMode? value) {
+            if (value == null) {
+              return;
+            }
+            updateAndSave(settings.copyWith(themeMode: value));
+          },
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'ダークモードは夜間の視認性を向上します。\n'
+          '色覚テーマは色の区別が難しい方に配慮した配色です。',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCommentDisplayTile(BuildContext context, AppSettings settings) {
+    return Card(
+      child: ListTile(
+        key: const Key('comment-display-settings-tile'),
+        leading: const Icon(Icons.chat_bubble_outline),
+        title: const Text('コメント表示設定'),
+        subtitle: Text('フォントサイズ: ${settings.commentFontSize.round()}px'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () async {
+          final bool? changed = await Navigator.of(context).push<bool>(
+            MaterialPageRoute<bool>(
+              builder: (_) => CommentDisplaySettingsScreen(
+                settingsStore: widget.settingsStore,
+                initialSettings: settings,
+              ),
+            ),
+          );
+          if (changed == true) {
+            await _loadSettings();
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildTtsTile(BuildContext context, AppSettings settings) {
+    return Card(
+      child: ListTile(
+        key: const Key('tts-settings-tile'),
+        leading: const Icon(Icons.record_voice_over),
+        title: const Text('読み上げ設定'),
+        subtitle: Text(settings.autoReadEnabled ? '自動読み上げ: ON' : '自動読み上げ: OFF'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () async {
+          final bool? changed = await Navigator.of(context).push<bool>(
+            MaterialPageRoute<bool>(
+              builder: (_) => TtsSettingsScreen(
+                settingsStore: widget.settingsStore,
+                platform: widget.speechPlatform,
+                initialSettings: settings,
+              ),
+            ),
+          );
+          if (changed == true) {
+            await _loadSettings();
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildUserManagementTile(BuildContext context, AppSettings settings) {
+    return Card(
+      child: ListTile(
+        key: const Key('user-management-settings-tile'),
+        leading: const Icon(Icons.people_outline),
+        title: const Text('ユーザー管理'),
+        subtitle: const Text('お気に入り・コテハン'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () async {
+          final bool? changed = await Navigator.of(context).push<bool>(
+            MaterialPageRoute<bool>(
+              builder: (_) => UserManagementSettingsScreen(
+                settingsStore: widget.settingsStore,
+                userAttributeStore: widget.userAttributeStore,
+                broadcasterIdNotifier: widget.broadcasterIdNotifier,
+                userNameResolution: widget.userNameResolution,
+                initialSettings: settings,
+              ),
+            ),
+          );
+          if (changed == true) {
+            await _loadSettings();
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildDataManagementSection(BuildContext context) {
+    return SettingsSection(
+      title: 'データ管理',
+      children: <Widget>[
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            key: const Key('export-settings-button'),
+            onPressed: _exportSettings,
+            icon: const Icon(Icons.upload),
+            label: const Text('設定をエクスポート'),
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            key: const Key('import-settings-button'),
+            onPressed: _importSettings,
+            icon: const Icon(Icons.download),
+            label: const Text('設定をインポート'),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'JSON形式で設定のバックアップ・復元ができます。',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDebugSection(BuildContext context, AppSettings settings) {
+    return SettingsSection(
+      title: 'デバッグ',
+      children: <Widget>[
+        SwitchListTile(
+          key: const Key('debug-mode-switch'),
+          title: const Text('デバッグモード'),
+          contentPadding: EdgeInsets.zero,
+          value: settings.debugMode,
+          onChanged: (bool value) {
+            updateAndSave(settings.copyWith(debugMode: value));
+          },
+        ),
+      ],
     );
   }
 }
