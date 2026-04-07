@@ -39,6 +39,7 @@ const Set<String> _allowedLoginHosts = <String>{
 
   // Yahoo! JAPAN Login
   'login.yahoo.co.jp',
+  'auth.login.yahoo.co.jp',
 };
 
 /// Login screen that opens niconico login page in a WebView.

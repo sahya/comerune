@@ -70,6 +70,10 @@ void main() {
       test('login.yahoo.co.jp for Yahoo! JAPAN Login', () {
         expect(isAllowedLoginDomain('login.yahoo.co.jp'), isTrue);
       });
+
+      test('auth.login.yahoo.co.jp for Yahoo! JAPAN OAuth callback', () {
+        expect(isAllowedLoginDomain('auth.login.yahoo.co.jp'), isTrue);
+      });
     });
 
     group('blocks unrelated domains', () {
