@@ -53,10 +53,7 @@ class BroadcastControlPanel extends StatelessWidget {
           //     onStart: onStart,
           //   ),
           if (program.canEnd)
-            _SlideToEndBroadcast(
-              enabled: enabled,
-              onEnd: onEnd,
-            ),
+            _SlideToEndBroadcast(enabled: enabled, onEnd: onEnd),
           if (program.canEnd && program.endAt != null)
             _RemainingTimeIndicator(endAt: program.endAt!),
         ],
@@ -70,10 +67,7 @@ class BroadcastControlPanel extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _StartBroadcastButton extends StatefulWidget {
-  const _StartBroadcastButton({
-    required this.enabled,
-    required this.onStart,
-  });
+  const _StartBroadcastButton({required this.enabled, required this.onStart});
 
   final bool enabled;
   final BroadcastControlCallback onStart;
@@ -105,9 +99,9 @@ class _StartBroadcastButtonState extends State<_StartBroadcastButton> {
       } else {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
-          ..showSnackBar(SnackBar(
-            content: Text(userFacingBroadcastError('開始', result)),
-          ));
+          ..showSnackBar(
+            SnackBar(content: Text(userFacingBroadcastError('開始', result))),
+          );
       }
     } finally {
       if (mounted) {
@@ -170,9 +164,10 @@ class _CountdownDialogState extends State<_CountdownDialog>
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
-    _scaleAnimation = Tween<double>(begin: 1.5, end: 1.0).animate(
-      CurvedAnimation(parent: _scaleController, curve: Curves.easeOut),
-    );
+    _scaleAnimation = Tween<double>(
+      begin: 1.5,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _scaleController, curve: Curves.easeOut));
     _scaleController.forward();
 
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -211,10 +206,7 @@ class _CountdownDialogState extends State<_CountdownDialog>
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Text(
-            '放送を開始します',
-            style: theme.textTheme.titleMedium,
-          ),
+          Text('放送を開始します', style: theme.textTheme.titleMedium),
           const SizedBox(height: 24),
           Semantics(
             liveRegion: true,
@@ -259,10 +251,7 @@ class _CountdownDialogState extends State<_CountdownDialog>
 // ---------------------------------------------------------------------------
 
 class _SlideToEndBroadcast extends StatefulWidget {
-  const _SlideToEndBroadcast({
-    required this.enabled,
-    required this.onEnd,
-  });
+  const _SlideToEndBroadcast({required this.enabled, required this.onEnd});
 
   final bool enabled;
   final BroadcastControlCallback onEnd;
@@ -309,9 +298,9 @@ class _SlideToEndBroadcastState extends State<_SlideToEndBroadcast> {
       } else {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
-          ..showSnackBar(SnackBar(
-            content: Text(userFacingBroadcastError('終了', result)),
-          ));
+          ..showSnackBar(
+            SnackBar(content: Text(userFacingBroadcastError('終了', result))),
+          );
       }
     } finally {
       if (mounted) {
@@ -378,8 +367,10 @@ class _SlideToEndBroadcastState extends State<_SlideToEndBroadcast> {
                       return;
                     }
                     setState(() {
-                      _dragExtent = (_dragExtent + details.delta.dx)
-                          .clamp(0.0, _trackWidth);
+                      _dragExtent = (_dragExtent + details.delta.dx).clamp(
+                        0.0,
+                        _trackWidth,
+                      );
                     });
                     if (_progress >= _threshold) {
                       unawaited(_onThresholdReached());
@@ -426,7 +417,9 @@ class _SlideToEndBroadcastState extends State<_SlideToEndBroadcast> {
 /// Maps a [BroadcastControlResult] error to a user-friendly message.
 @visibleForTesting
 String userFacingBroadcastError(
-    String operation, BroadcastControlResult result) {
+  String operation,
+  BroadcastControlResult result,
+) {
   switch (result.errorCode) {
     case 'INVALID_PARAMS':
     case 'UNAUTHORIZED':

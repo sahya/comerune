@@ -129,11 +129,7 @@ void main() {
       final NdgrChunkedMessage source = NdgrChunkedMessage(
         id: 'ndgr-null-name',
         serverTimestamp: serverTime,
-        chat: const NdgrChat(
-          content: 'hello',
-          rawUserId: 789,
-          no: 3,
-        ),
+        chat: const NdgrChat(content: 'hello', rawUserId: 789, no: 3),
       );
 
       final AppMessage? normalized = normalizer.normalizeChunkedMessage(
@@ -152,11 +148,7 @@ void main() {
       final NdgrChunkedMessage source = NdgrChunkedMessage(
         id: 'ndgr-hashed-only',
         serverTimestamp: serverTime,
-        chat: const NdgrChat(
-          content: 'hello',
-          hashedUserId: 'abc123',
-          no: 4,
-        ),
+        chat: const NdgrChat(content: 'hello', hashedUserId: 'abc123', no: 4),
       );
 
       final AppMessage? normalized = normalizer.normalizeChunkedMessage(
@@ -168,25 +160,27 @@ void main() {
       expect(normalized!.userId, 'abc123');
     });
 
-    test('returns null userId when both rawUserId and hashedUserId are absent',
-        () {
-      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
-      final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+    test(
+      'returns null userId when both rawUserId and hashedUserId are absent',
+      () {
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
 
-      final NdgrChunkedMessage source = NdgrChunkedMessage(
-        id: 'ndgr-no-user',
-        serverTimestamp: serverTime,
-        chat: const NdgrChat(content: 'hello', no: 5),
-      );
+        final NdgrChunkedMessage source = NdgrChunkedMessage(
+          id: 'ndgr-no-user',
+          serverTimestamp: serverTime,
+          chat: const NdgrChat(content: 'hello', no: 5),
+        );
 
-      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
-        source,
-        receivedAt: serverTime,
-      );
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          source,
+          receivedAt: serverTime,
+        );
 
-      expect(normalized, isNotNull);
-      expect(normalized!.userId, isNull);
-    });
+        expect(normalized, isNotNull);
+        expect(normalized!.userId, isNull);
+      },
+    );
 
     test('preserves whitespace-only chat.name as userName', () {
       final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
@@ -221,11 +215,7 @@ void main() {
       final NdgrChunkedMessage source = NdgrChunkedMessage(
         id: 'ndgr-empty-hashed',
         serverTimestamp: serverTime,
-        chat: const NdgrChat(
-          content: 'hello',
-          hashedUserId: '',
-          no: 6,
-        ),
+        chat: const NdgrChat(content: 'hello', hashedUserId: '', no: 6),
       );
 
       final AppMessage? normalized = normalizer.normalizeChunkedMessage(

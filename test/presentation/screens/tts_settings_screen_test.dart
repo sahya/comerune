@@ -234,11 +234,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Scroll to the ng-words field to make error text visible.
-      await scrollToKeyInList(
-        tester,
-        _listKey,
-        const Key('ng-words-field'),
-      );
+      await scrollToKeyInList(tester, _listKey, const Key('ng-words-field'));
 
       // Error message should be visible.
       expect(
@@ -617,111 +613,102 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(
-          find.byKey(
-            const Key('voicevox-style-dropdown'),
-            skipOffstage: false,
-          ),
+          find.byKey(const Key('voicevox-style-dropdown'), skipOffstage: false),
           findsNothing,
         );
       },
     );
 
-    testWidgets(
-      'does not reset speaker when models are still loading',
-      (WidgetTester tester) async {
-        final SharedPreferencesSettingsStore settingsStore =
-            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-        // Save a non-Nemo speaker (Kasukabe Tsumugi)
-        await settingsStore.save(
-          AppSettings.defaults.copyWith(voicevoxSpeaker: 8),
-        );
-        final FakeCommentSpeechPlatform platform = FakeCommentSpeechPlatform();
-        // Return models including the non-Nemo speaker
-        platform.availableModelsToReturn = <Map<String, dynamic>>[
-          <String, dynamic>{
-            'modelId': 'n0',
-            'displayName': 'VOICEVOX Nemo',
-            'speakerIds': <int>[
-              10000,
-              10001,
-              10002,
-              10003,
-              10004,
-              10005,
-              10006,
-              10007,
-              10008
-            ],
-            'vvmFileName': 'n0.vvm',
-            'fileSizeBytes': 100,
-            'isBundled': true,
-            'downloadState': 'DOWNLOADED',
-          },
-          <String, dynamic>{
-            'modelId': '2',
-            'displayName': 'VOICEVOX 春日部つむぎ',
-            'speakerIds': <int>[8],
-            'vvmFileName': '2.vvm',
-            'fileSizeBytes': 100,
-            'isBundled': false,
-            'downloadState': 'DOWNLOADED',
-          },
-        ];
+    testWidgets('does not reset speaker when models are still loading', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      // Save a non-Nemo speaker (Kasukabe Tsumugi)
+      await settingsStore.save(
+        AppSettings.defaults.copyWith(voicevoxSpeaker: 8),
+      );
+      final FakeCommentSpeechPlatform platform = FakeCommentSpeechPlatform();
+      // Return models including the non-Nemo speaker
+      platform.availableModelsToReturn = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'modelId': 'n0',
+          'displayName': 'VOICEVOX Nemo',
+          'speakerIds': <int>[
+            10000,
+            10001,
+            10002,
+            10003,
+            10004,
+            10005,
+            10006,
+            10007,
+            10008,
+          ],
+          'vvmFileName': 'n0.vvm',
+          'fileSizeBytes': 100,
+          'isBundled': true,
+          'downloadState': 'DOWNLOADED',
+        },
+        <String, dynamic>{
+          'modelId': '2',
+          'displayName': 'VOICEVOX 春日部つむぎ',
+          'speakerIds': <int>[8],
+          'vvmFileName': '2.vvm',
+          'fileSizeBytes': 100,
+          'isBundled': false,
+          'downloadState': 'DOWNLOADED',
+        },
+      ];
 
-        await tester.pumpWidget(
-          _buildScreenWithPlatform(settingsStore, platform),
-        );
-        await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        _buildScreenWithPlatform(settingsStore, platform),
+      );
+      await tester.pumpAndSettle();
 
-        // Verify the speaker was NOT reset to 10000
-        final AppSettings loaded = await settingsStore.load();
-        expect(loaded.voicevoxSpeaker, 8);
-      },
-    );
+      // Verify the speaker was NOT reset to 10000
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.voicevoxSpeaker, 8);
+    });
 
-    testWidgets(
-      'shows fallback dropdown when model loading fails',
-      (WidgetTester tester) async {
-        final SharedPreferencesSettingsStore settingsStore =
-            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-        final FakeCommentSpeechPlatform platform = FakeCommentSpeechPlatform();
-        // Simulate getAvailableModels throwing an error
-        platform.availableModelsToReturn = <Map<String, dynamic>>[];
+    testWidgets('shows fallback dropdown when model loading fails', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeCommentSpeechPlatform platform = FakeCommentSpeechPlatform();
+      // Simulate getAvailableModels throwing an error
+      platform.availableModelsToReturn = <Map<String, dynamic>>[];
 
-        await tester.pumpWidget(
-          _buildScreenWithPlatform(settingsStore, platform),
-        );
-        await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        _buildScreenWithPlatform(settingsStore, platform),
+      );
+      await tester.pumpAndSettle();
 
-        // Dropdown should be present (not stuck in loading)
-        expect(
-          find.byKey(
-            const Key('voicevox-speaker-dropdown'),
-            skipOffstage: false,
-          ),
-          findsOneWidget,
-        );
-      },
-    );
+      // Dropdown should be present (not stuck in loading)
+      expect(
+        find.byKey(const Key('voicevox-speaker-dropdown'), skipOffstage: false),
+        findsOneWidget,
+      );
+    });
 
-    testWidgets(
-      'performance hint does not contain recommended label',
-      (WidgetTester tester) async {
-        final SharedPreferencesSettingsStore settingsStore =
-            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+    testWidgets('performance hint does not contain recommended label', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
-        await tester.pumpWidget(_buildScreen(settingsStore));
-        await tester.pumpAndSettle();
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
 
-        // The performance hint text should not contain "推奨".
-        // Note: the player type dropdown label still says "低遅延モード（推奨）"
-        // which is intentional, so we check the hint text specifically.
-        expect(
-          find.text('応答が速く、声の調整も可能な構成です', skipOffstage: false),
-          findsOneWidget,
-        );
-      },
-    );
+      // The performance hint text should not contain "推奨".
+      // Note: the player type dropdown label still says "低遅延モード（推奨）"
+      // which is intentional, so we check the hint text specifically.
+      expect(
+        find.text('応答が速く、声の調整も可能な構成です', skipOffstage: false),
+        findsOneWidget,
+      );
+    });
 
     testWidgets(
       'slider change pushes updated SpeechSettings to platform engine',
@@ -975,18 +962,12 @@ void main() {
 
         // Style dropdown should be visible initially (Nemo + audioQuery).
         expect(
-          find.byKey(
-            const Key('voicevox-style-dropdown'),
-            skipOffstage: false,
-          ),
+          find.byKey(const Key('voicevox-style-dropdown'), skipOffstage: false),
           findsOneWidget,
         );
         // Speed slider should be visible initially.
         expect(
-          find.byKey(
-            const Key('voicevox-speed-slider'),
-            skipOffstage: false,
-          ),
+          find.byKey(const Key('voicevox-speed-slider'), skipOffstage: false),
           findsOneWidget,
         );
 
@@ -998,25 +979,22 @@ void main() {
         );
         final SegmentedButton<SynthesisMode> segmented =
             tester.widget<SegmentedButton<SynthesisMode>>(
-          find.byKey(const Key('synthesis-mode-selector'), skipOffstage: false),
+          find.byKey(
+            const Key('synthesis-mode-selector'),
+            skipOffstage: false,
+          ),
         );
         segmented.onSelectionChanged!(<SynthesisMode>{SynthesisMode.oneShot});
         await tester.pumpAndSettle();
 
         // Style dropdown should now be hidden.
         expect(
-          find.byKey(
-            const Key('voicevox-style-dropdown'),
-            skipOffstage: false,
-          ),
+          find.byKey(const Key('voicevox-style-dropdown'), skipOffstage: false),
           findsNothing,
         );
         // Speed slider should be hidden in oneShot mode.
         expect(
-          find.byKey(
-            const Key('voicevox-speed-slider'),
-            skipOffstage: false,
-          ),
+          find.byKey(const Key('voicevox-speed-slider'), skipOffstage: false),
           findsNothing,
         );
       },
@@ -1040,10 +1018,7 @@ void main() {
 
         // Style dropdown should be hidden initially (oneShot).
         expect(
-          find.byKey(
-            const Key('voicevox-style-dropdown'),
-            skipOffstage: false,
-          ),
+          find.byKey(const Key('voicevox-style-dropdown'), skipOffstage: false),
           findsNothing,
         );
 
@@ -1055,27 +1030,24 @@ void main() {
         );
         final SegmentedButton<SynthesisMode> segmented =
             tester.widget<SegmentedButton<SynthesisMode>>(
-          find.byKey(const Key('synthesis-mode-selector'), skipOffstage: false),
+          find.byKey(
+            const Key('synthesis-mode-selector'),
+            skipOffstage: false,
+          ),
         );
-        segmented.onSelectionChanged!(
-          <SynthesisMode>{SynthesisMode.audioQuery},
-        );
+        segmented.onSelectionChanged!(<SynthesisMode>{
+          SynthesisMode.audioQuery,
+        });
         await tester.pumpAndSettle();
 
         // Style dropdown should now be visible.
         expect(
-          find.byKey(
-            const Key('voicevox-style-dropdown'),
-            skipOffstage: false,
-          ),
+          find.byKey(const Key('voicevox-style-dropdown'), skipOffstage: false),
           findsOneWidget,
         );
         // Speed slider should now be visible.
         expect(
-          find.byKey(
-            const Key('voicevox-speed-slider'),
-            skipOffstage: false,
-          ),
+          find.byKey(const Key('voicevox-speed-slider'), skipOffstage: false),
           findsOneWidget,
         );
       },
@@ -1233,10 +1205,7 @@ void main() {
           findsOneWidget,
         );
         // Dropdown should show "読み込み中…" text.
-        expect(
-          find.text('読み込み中…', skipOffstage: false),
-          findsOneWidget,
-        );
+        expect(find.text('読み込み中…', skipOffstage: false), findsOneWidget);
 
         // Complete the model loading.
         modelsCompleter.complete();
@@ -1898,10 +1867,7 @@ void main() {
           expect(loaded.voicevoxSpeaker, 2);
           expect(platform.lastUpdatedSettings, isNotNull);
           expect(platform.lastUpdatedSettings!.speakerId, 2);
-          expect(
-            platform.loadedModelIds,
-            containsAll(<String>['2', '3']),
-          );
+          expect(platform.loadedModelIds, containsAll(<String>['2', '3']));
           expect(
             logs.any((line) => line.contains('reason=stale_generation')),
             isTrue,

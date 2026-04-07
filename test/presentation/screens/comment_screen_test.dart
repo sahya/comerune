@@ -250,12 +250,11 @@ void main() {
 
         final Finder totalRow = find.byKey(const Key('stats-total-comments'));
         expect(totalRow, findsOneWidget);
-        final List<Text> totalRowTexts =
-            tester
-                .widgetList<Text>(
-                  find.descendant(of: totalRow, matching: find.byType(Text)),
-                )
-                .toList();
+        final List<Text> totalRowTexts = tester
+            .widgetList<Text>(
+              find.descendant(of: totalRow, matching: find.byType(Text)),
+            )
+            .toList();
         expect(totalRowTexts.last.data, '1');
       },
     );
@@ -656,22 +655,19 @@ void main() {
                     onPressed: () {
                       Navigator.of(context).push(
                         MaterialPageRoute<void>(
-                          builder:
-                              (_) => CommentScreen(
-                                programInfo: const CommentProgramInfo(
-                                  lv: 'lv999',
-                                ),
-                                connectionSupervisor: supervisor,
-                                messages: const <AppMessage>[],
-                                callbacks: CommentCallbacks(
-                                  onStopAllConnections: () async {
-                                    stopCalls += 1;
-                                  },
-                                  onReconnectSameLv: () async {},
-                                  onDifferentLvConnected: (_, __) async {},
-                                ),
-                                themeMode: AppThemeMode.light,
-                              ),
+                          builder: (_) => CommentScreen(
+                            programInfo: const CommentProgramInfo(lv: 'lv999'),
+                            connectionSupervisor: supervisor,
+                            messages: const <AppMessage>[],
+                            callbacks: CommentCallbacks(
+                              onStopAllConnections: () async {
+                                stopCalls += 1;
+                              },
+                              onReconnectSameLv: () async {},
+                              onDifferentLvConnected: (_, _) async {},
+                            ),
+                            themeMode: AppThemeMode.light,
+                          ),
                         ),
                       );
                     },
@@ -2943,7 +2939,7 @@ class _NicknameCommentScreenHostState
         callbacks: CommentCallbacks(
           onStopAllConnections: () async {},
           onReconnectSameLv: () async {},
-          onDifferentLvConnected: (_, __) async {},
+          onDifferentLvConnected: (_, _) async {},
           onNicknameChanged: (String userId, String nickname) {
             lastNicknameUserId = userId;
             lastNickname = nickname;
@@ -3067,14 +3063,13 @@ Widget _buildScreen({
   bool autoSaveCommentLog = false,
   String autoSaveCommentLogPath = '',
 }) {
-  final UserNameResolution? userNameResolution =
-      resolveUserName == null
-          ? null
-          : UserNameResolution(
-            resolve: resolveUserName,
-            requestResolve: (_) {},
-            listenable: _NoopListenable.instance,
-          );
+  final UserNameResolution? userNameResolution = resolveUserName == null
+      ? null
+      : UserNameResolution(
+          resolve: resolveUserName,
+          requestResolve: (_) {},
+          listenable: _NoopListenable.instance,
+        );
 
   return MaterialApp(
     home: CommentScreen(
@@ -3091,7 +3086,7 @@ Widget _buildScreen({
       callbacks: CommentCallbacks(
         onStopAllConnections: onStopAllConnections ?? () async {},
         onReconnectSameLv: onReconnectSameLv ?? () async {},
-        onDifferentLvConnected: (_, __) async {},
+        onDifferentLvConnected: (_, _) async {},
         onOpenSettings: onOpenSettings,
       ),
       debugMode: debugMode,

@@ -407,8 +407,10 @@ Nemoの規約です''';
     });
 
     test('handles empty supported set', () {
-      final result =
-          filterTermsForSupportedSpeakers(fullTerms, const <String>{});
+      final result = filterTermsForSupportedSpeakers(
+        fullTerms,
+        const <String>{},
+      );
       expect(result, contains('# VOICEVOX 音声モデル 利用規約'));
       expect(result, isNot(contains('## 春日部つむぎ')));
       expect(result, isNot(contains('## VOICEVOX Nemo')));

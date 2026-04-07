@@ -96,10 +96,7 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
-            home: _ErrorTestScreen(
-              key: screenKey,
-              settingsStore: store,
-            ),
+            home: _ErrorTestScreen(key: screenKey, settingsStore: store),
           ),
         );
         await tester.pumpAndSettle();

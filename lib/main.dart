@@ -681,7 +681,7 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
         _historyCountProvider = historyCountProvider {
     _clientEventsSubscription = _client.events.listen(
       _handleClientEvent,
-      onError: (_, __) {
+      onError: (_, _) {
         _emitDisconnected();
       },
     );

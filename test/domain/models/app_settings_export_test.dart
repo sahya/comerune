@@ -63,8 +63,9 @@ void main() {
 
     test('roundtrip via JSON string', () {
       const AppSettings original = AppSettings.defaults;
-      final String jsonString =
-          const JsonEncoder.withIndent('  ').convert(original.toJson());
+      final String jsonString = const JsonEncoder.withIndent(
+        '  ',
+      ).convert(original.toJson());
       final AppSettings restored = AppSettings.fromJsonString(jsonString);
 
       expect(restored.themeMode, original.themeMode);
@@ -79,9 +80,9 @@ void main() {
     });
 
     test('import with missing fields uses defaults', () {
-      final AppSettings result = AppSettings.fromJson(
-        <String, dynamic>{'_version': 1},
-      );
+      final AppSettings result = AppSettings.fromJson(<String, dynamic>{
+        '_version': 1,
+      });
 
       expect(result.themeMode, AppSettings.defaults.themeMode);
       expect(result.autoReadEnabled, AppSettings.defaults.autoReadEnabled);
@@ -98,33 +99,33 @@ void main() {
     });
 
     test('import clamps out-of-range commentFontSize', () {
-      final AppSettings tooSmall = AppSettings.fromJson(
-        <String, dynamic>{'commentFontSize': 1},
-      );
+      final AppSettings tooSmall = AppSettings.fromJson(<String, dynamic>{
+        'commentFontSize': 1,
+      });
       expect(tooSmall.commentFontSize, commentFontSizeMin);
 
-      final AppSettings tooLarge = AppSettings.fromJson(
-        <String, dynamic>{'commentFontSize': 200},
-      );
+      final AppSettings tooLarge = AppSettings.fromJson(<String, dynamic>{
+        'commentFontSize': 200,
+      });
       expect(tooLarge.commentFontSize, commentFontSizeMax);
     });
 
     test('import with invalid dictionaryRules falls back to defaults', () {
-      final AppSettings result = AppSettings.fromJson(
-        <String, dynamic>{'dictionaryRules': 'not a list'},
-      );
+      final AppSettings result = AppSettings.fromJson(<String, dynamic>{
+        'dictionaryRules': 'not a list',
+      });
       expect(result.dictionaryRules, AppSettings.defaults.dictionaryRules);
     });
 
-    test('import with malformed dictionaryRules items falls back to defaults',
-        () {
-      final AppSettings result = AppSettings.fromJson(
-        <String, dynamic>{
+    test(
+      'import with malformed dictionaryRules items falls back to defaults',
+      () {
+        final AppSettings result = AppSettings.fromJson(<String, dynamic>{
           'dictionaryRules': <dynamic>[42, 'bad'],
-        },
-      );
-      expect(result.dictionaryRules, AppSettings.defaults.dictionaryRules);
-    });
+        });
+        expect(result.dictionaryRules, AppSettings.defaults.dictionaryRules);
+      },
+    );
 
     test('fromJsonString throws FormatException on invalid JSON', () {
       expect(
@@ -141,13 +142,11 @@ void main() {
     });
 
     test('unknown keys in JSON are ignored', () {
-      final AppSettings result = AppSettings.fromJson(
-        <String, dynamic>{
-          '_version': 1,
-          'unknownField': 'should be ignored',
-          'anotherUnknown': 42,
-        },
-      );
+      final AppSettings result = AppSettings.fromJson(<String, dynamic>{
+        '_version': 1,
+        'unknownField': 'should be ignored',
+        'anotherUnknown': 42,
+      });
       expect(result.themeMode, AppSettings.defaults.themeMode);
     });
   });

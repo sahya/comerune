@@ -173,7 +173,7 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
                   key: const Key('favorite-user-id-list'),
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   itemCount: _favoriteUserIds.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (BuildContext context, int index) {
                     final String userId = _favoriteUserIds[index];
                     final String? nickname = widget.userNameResolution?.resolve(

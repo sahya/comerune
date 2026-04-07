@@ -80,7 +80,7 @@ class _NgUserListScreenState extends State<NgUserListScreen> {
                   key: const Key('ng-user-id-list'),
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   itemCount: _ngUserIds.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (BuildContext context, int index) {
                     final String userId = _ngUserIds[index];
                     return ListTile(

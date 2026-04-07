@@ -165,16 +165,11 @@ class _SettingsScreenState extends State<SettingsScreen>
         ShareParams(text: json, subject: 'comerune-settings.json'),
       );
     } on Exception catch (e) {
-      developer.log(
-        'Failed to export settings: $e',
-        name: 'SettingsScreen',
-      );
+      developer.log('Failed to export settings: $e', name: 'SettingsScreen');
       if (mounted) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
-          ..showSnackBar(
-            const SnackBar(content: Text('設定のエクスポートに失敗しました')),
-          );
+          ..showSnackBar(const SnackBar(content: Text('設定のエクスポートに失敗しました')));
       }
     }
   }
@@ -222,8 +217,9 @@ class _SettingsScreenState extends State<SettingsScreen>
         return;
       }
 
-      final AppSettings imported =
-          await widget.settingsStore.importFromJson(jsonString);
+      final AppSettings imported = await widget.settingsStore.importFromJson(
+        jsonString,
+      );
 
       if (!mounted) {
         return;
@@ -240,32 +236,20 @@ class _SettingsScreenState extends State<SettingsScreen>
 
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('設定をインポートしました')),
-        );
+        ..showSnackBar(const SnackBar(content: Text('設定をインポートしました')));
     } on FormatException catch (e) {
-      developer.log(
-        'Invalid settings file: $e',
-        name: 'SettingsScreen',
-      );
+      developer.log('Invalid settings file: $e', name: 'SettingsScreen');
       if (mounted) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
-          ..showSnackBar(
-            const SnackBar(content: Text('無効な設定ファイルです')),
-          );
+          ..showSnackBar(const SnackBar(content: Text('無効な設定ファイルです')));
       }
     } on Exception catch (e) {
-      developer.log(
-        'Failed to import settings: $e',
-        name: 'SettingsScreen',
-      );
+      developer.log('Failed to import settings: $e', name: 'SettingsScreen');
       if (mounted) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
-          ..showSnackBar(
-            const SnackBar(content: Text('設定のインポートに失敗しました')),
-          );
+          ..showSnackBar(const SnackBar(content: Text('設定のインポートに失敗しました')));
       }
     }
   }

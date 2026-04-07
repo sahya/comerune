@@ -641,15 +641,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(
-          '音声処理',
-          style: Theme.of(context).textTheme.titleSmall,
-        ),
+        Text('音声処理', style: Theme.of(context).textTheme.titleSmall),
         const SizedBox(height: 8),
-        Text(
-          '音声合成',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
+        Text('音声合成', style: Theme.of(context).textTheme.bodyMedium),
         const SizedBox(height: 4),
         SegmentedButton<SynthesisMode>(
           key: const Key('synthesis-mode-selector'),
@@ -690,9 +684,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
           ],
           onChanged: (VoicevoxPlayerType? value) {
             if (value != null) {
-              updateAndSave(
-                settings.copyWith(voicevoxPlayerType: value),
-              );
+              updateAndSave(settings.copyWith(voicevoxPlayerType: value));
             }
           },
         ),
@@ -1204,9 +1196,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                                         .textTheme
                                         .bodySmall
                                         ?.copyWith(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .outline,
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.outline,
                                         ),
                                   ),
                                 ],

@@ -179,7 +179,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
           defaults.slashPrefixSkipEnabled,
       readUserName: _prefs.getBool(_kReadUserName) ?? defaults.readUserName,
       voicevoxSynthesisMode: SynthesisMode.fromStorageValue(
-          _prefs.getString(_kVoicevoxSynthesisMode)),
+        _prefs.getString(_kVoicevoxSynthesisMode),
+      ),
       voicevoxPlayerType:
           _prefs.getString(_kVoicevoxPlayerType) == 'media_player'
               ? VoicevoxPlayerType.mediaPlayer
@@ -262,7 +263,9 @@ class SharedPreferencesSettingsStore implements SettingsStore {
     );
     await _prefs.setBool(_kReadUserName, settings.readUserName);
     await _prefs.setString(
-        _kVoicevoxSynthesisMode, settings.voicevoxSynthesisMode.storageValue);
+      _kVoicevoxSynthesisMode,
+      settings.voicevoxSynthesisMode.storageValue,
+    );
     await _prefs.setString(
       _kVoicevoxPlayerType,
       settings.voicevoxPlayerType == VoicevoxPlayerType.mediaPlayer

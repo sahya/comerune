@@ -869,7 +869,7 @@ void main() {
             callbacks: CommentCallbacks(
               onStopAllConnections: () async {},
               onReconnectSameLv: () async {},
-              onDifferentLvConnected: (_, __) async {},
+              onDifferentLvConnected: (_, _) async {},
             ),
             themeMode: AppThemeMode.light,
             speechConfig: CommentSpeechConfig(
@@ -906,7 +906,7 @@ void main() {
               callbacks: CommentCallbacks(
                 onStopAllConnections: () async {},
                 onReconnectSameLv: () async {},
-                onDifferentLvConnected: (_, __) async {},
+                onDifferentLvConnected: (_, _) async {},
               ),
               themeMode: AppThemeMode.light,
               speechConfig: CommentSpeechConfig(
@@ -946,7 +946,7 @@ void main() {
             callbacks: CommentCallbacks(
               onStopAllConnections: () async {},
               onReconnectSameLv: () async {},
-              onDifferentLvConnected: (_, __) async {},
+              onDifferentLvConnected: (_, _) async {},
             ),
             themeMode: AppThemeMode.light,
             speechConfig: CommentSpeechConfig(
@@ -1155,10 +1155,10 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
     final UserNameResolution? userNameResolution =
         hasUserNameResolutionCallbacks
             ? UserNameResolution(
-              resolve: widget.resolveUserName ?? (_) => null,
-              requestResolve: widget.requestUserNameResolve ?? (_) {},
-              listenable: _NoopListenable.instance,
-            )
+                resolve: widget.resolveUserName ?? (_) => null,
+                requestResolve: widget.requestUserNameResolve ?? (_) {},
+                listenable: _NoopListenable.instance,
+              )
             : null;
 
     return CommentScreen(
@@ -1168,7 +1168,7 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
       callbacks: CommentCallbacks(
         onStopAllConnections: () async {},
         onReconnectSameLv: () async {},
-        onDifferentLvConnected: (_, __) async {},
+        onDifferentLvConnected: (_, _) async {},
         onSpeechMuteToggled: widget.onSpeechMuteToggled,
       ),
       themeMode: AppThemeMode.light,

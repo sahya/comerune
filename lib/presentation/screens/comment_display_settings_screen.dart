@@ -92,9 +92,7 @@ class _CommentDisplaySettingsScreenState
                           SwitchListTile(
                             key: const Key('comment-two-line-switch'),
                             title: const Text('コメント二段表示'),
-                            subtitle: const Text(
-                              '時刻とユーザー名を1行目、コメント本文を2行目に表示',
-                            ),
+                            subtitle: const Text('時刻とユーザー名を1行目、コメント本文を2行目に表示'),
                             contentPadding: EdgeInsets.zero,
                             value: settings.commentTwoLineEnabled,
                             onChanged: (bool value) {
@@ -106,9 +104,7 @@ class _CommentDisplaySettingsScreenState
                           SwitchListTile(
                             key: const Key('comment-zebra-striping-switch'),
                             title: const Text('行の明暗交互表示'),
-                            subtitle: const Text(
-                              'コメント行ごとに背景色を交互に変え視認性を向上',
-                            ),
+                            subtitle: const Text('コメント行ごとに背景色を交互に変え視認性を向上'),
                             contentPadding: EdgeInsets.zero,
                             value: settings.commentZebraStripingEnabled,
                             onChanged: (bool value) {
@@ -171,7 +167,8 @@ class _CommentDisplaySettingsScreenState
                             onChanged: (int value) {
                               updateAndSave(
                                 settings.copyWith(
-                                    commentFontSize: value.toDouble()),
+                                  commentFontSize: value.toDouble(),
+                                ),
                               );
                             },
                           ),

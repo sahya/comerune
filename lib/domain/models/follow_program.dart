@@ -90,10 +90,7 @@ class FollowProgram {
   String? elapsedLabel() => formatElapsed(beginAt);
 
   /// Returns a copy with updated fields.
-  FollowProgram copyWith({
-    ProgramStatus? status,
-    DateTime? endAt,
-  }) {
+  FollowProgram copyWith({ProgramStatus? status, DateTime? endAt}) {
     return FollowProgram(
       programId: programId,
       title: title,

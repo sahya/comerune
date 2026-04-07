@@ -125,7 +125,7 @@ class _NicknameListScreenState extends State<NicknameListScreen> {
                   key: const Key('nickname-list'),
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   itemCount: entries.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (BuildContext context, int index) {
                     final MapEntry<String, String> entry = entries[index];
                     return ListTile(
