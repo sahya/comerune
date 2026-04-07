@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 import '../../comment_speech/src/models/replace_rule.dart';
 import '../../comment_speech/src/models/speech_settings.dart';
 import '../utils/newline_parser.dart';
+import 'ng_word_rule.dart';
 
 export '../../comment_speech/src/models/speech_settings.dart'
     show SynthesisMode;
@@ -253,6 +254,7 @@ class AppSettings {
     required this.voicevoxSynthesisMode,
     required this.voicevoxPlayerType,
     required this.voicevoxTermsAccepted,
+    required this.ngWordRules,
     required this.dictionaryRules,
     required this.debugMode,
   }) : assert(
@@ -300,6 +302,7 @@ class AppSettings {
     voicevoxSynthesisMode: SynthesisMode.audioQuery,
     voicevoxPlayerType: VoicevoxPlayerType.audioTrack,
     voicevoxTermsAccepted: false,
+    ngWordRules: <NgWordRule>[],
     dictionaryRules: defaultNicoDictionaryRules,
     debugMode: false,
   );
@@ -366,17 +369,29 @@ class AppSettings {
   /// VOICEVOX 音声モデルの利用規約に同意済みかどうか。
   final bool voicevoxTermsAccepted;
 
+  /// 構造化されたNGワードルール（有効/無効トグル付き）。
+  ///
+  /// 空リストの場合は旧形式の [ngWords] 文字列にフォールバックする。
+  /// マイグレーション後は常にこちらが使用される。
+  final List<NgWordRule> ngWordRules;
+
   /// 読み上げ時のテキスト置換ルール（ニコニコ用語辞書）。
   final List<ReplaceRule> dictionaryRules;
 
   final bool debugMode;
 
-  /// Parses [ngWords] into a list of lower-cased NG word strings.
+  /// Returns a list of lower-cased NG word pattern strings for filtering.
   ///
-  /// Each line is trimmed and lower-cased; blank lines are ignored.
-  /// The result is pre-lowered so that callers can compare with a single
-  /// [String.contains] against lower-cased content.
+  /// When [ngWordRules] is populated (post-migration), only **enabled** rules
+  /// are returned. Otherwise falls back to the legacy [ngWords] string.
   List<String> get ngWordList {
+    if (ngWordRules.isNotEmpty) {
+      return ngWordRules
+          .where((NgWordRule r) => r.enabled)
+          .map((NgWordRule r) => r.pattern.trim().toLowerCase())
+          .where((String s) => s.isNotEmpty)
+          .toList();
+    }
     return parseNewlineSeparatedLowerList(ngWords);
   }
 
@@ -481,6 +496,7 @@ class AppSettings {
     SynthesisMode? voicevoxSynthesisMode,
     VoicevoxPlayerType? voicevoxPlayerType,
     bool? voicevoxTermsAccepted,
+    List<NgWordRule>? ngWordRules,
     List<ReplaceRule>? dictionaryRules,
     bool? debugMode,
   }) {
@@ -532,6 +548,7 @@ class AppSettings {
       voicevoxPlayerType: voicevoxPlayerType ?? this.voicevoxPlayerType,
       voicevoxTermsAccepted:
           voicevoxTermsAccepted ?? this.voicevoxTermsAccepted,
+      ngWordRules: ngWordRules ?? this.ngWordRules,
       dictionaryRules: dictionaryRules ?? this.dictionaryRules,
       debugMode: debugMode ?? this.debugMode,
     );

@@ -169,86 +169,59 @@ void main() {
       );
       await focusFieldByKey(tester, _listKey, const Key('max-delay-field'));
 
-      await enterTextByKey(
-        tester,
-        _listKey,
-        const Key('ng-words-field'),
-        '^w+\$',
-      );
-      await focusFieldByKey(tester, _listKey, const Key('queue-limit-field'));
-
       final AppSettings loaded = await settingsStore.load();
       expect(loaded.queueLimit, 50);
-      expect(loaded.ngWords, '^w+\$');
     });
 
-    testWidgets('persists values and reloads on reopened screen', (
+    testWidgets('shows NG word list tile with count', (
       WidgetTester tester,
     ) async {
+      final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+      await prefs.setString(
+        'settings.filter.ngWordRules',
+        '[{"pattern":"test","enabled":true},{"pattern":"foo","enabled":false}]',
+      );
       final SharedPreferencesSettingsStore settingsStore =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+          SharedPreferencesSettingsStore(prefs: prefs);
 
       await tester.pumpWidget(_buildScreen(settingsStore));
       await tester.pumpAndSettle();
 
-      await toggleSwitchByKey(tester, _listKey, const Key('auto-read-switch'));
-      await enterTextByKey(
-        tester,
-        _listKey,
-        const Key('ng-words-field'),
-        '^8+\$',
-      );
-      await focusFieldByKey(tester, _listKey, const Key('queue-limit-field'));
-
-      // Re-open the screen to verify values are reloaded from store
-      await tester.pumpWidget(_buildScreen(settingsStore));
-      await tester.pumpAndSettle();
-
-      await scrollToKeyInList(tester, _listKey, const Key('ng-words-field'));
-      final TextFormField ngWordsField = tester.widget(
-        find.byKey(const Key('ng-words-field'), skipOffstage: false),
-      );
-      expect(ngWordsField.controller?.text, '^8+\$');
-    });
-
-    testWidgets('rejects invalid regex in NG words and shows error', (
-      WidgetTester tester,
-    ) async {
-      final SharedPreferencesSettingsStore settingsStore =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-
-      await tester.pumpWidget(_buildScreen(settingsStore));
-      await tester.pumpAndSettle();
-
-      // Enter invalid regex pattern.
-      await enterTextByKey(
-        tester,
-        _listKey,
-        const Key('ng-words-field'),
-        '[invalid',
-      );
-
-      // Unfocus explicitly by tapping outside the text field.
-      // FocusManager ensures _onNgWordsFocusChanged fires.
-      FocusManager.instance.primaryFocus?.unfocus();
-      await tester.pumpAndSettle();
-
-      // Scroll to the ng-words field to make error text visible.
       await scrollToKeyInList(
         tester,
         _listKey,
-        const Key('ng-words-field'),
+        const Key('ng-word-list-tile'),
       );
 
-      // Error message should be visible.
       expect(
-        find.textContaining('無効な正規表現', skipOffstage: false),
+        find.text('NGワード管理', skipOffstage: false),
         findsOneWidget,
       );
+      expect(
+        find.text('2件登録中', skipOffstage: false),
+        findsOneWidget,
+      );
+    });
 
-      // Value should NOT be persisted.
-      final AppSettings loaded = await settingsStore.load();
-      expect(loaded.ngWords, isEmpty);
+    testWidgets('shows empty subtitle when no NG word rules exist', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('ng-word-list-tile'),
+      );
+
+      expect(
+        find.text('未登録', skipOffstage: false),
+        findsOneWidget,
+      );
     });
 
     testWidgets('auto-read toggle persists value', (WidgetTester tester) async {

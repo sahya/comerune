@@ -10,6 +10,7 @@ import '../../domain/models/voicevox_model_info.dart';
 import '../mixins/settings_screen_mixin.dart';
 import '../widgets/settings_widgets.dart';
 import 'dictionary_rules_screen.dart';
+import 'ng_word_list_screen.dart';
 import 'voice_library_screen.dart';
 
 enum _NemoStylePreset { standard, energetic, calm }
@@ -69,11 +70,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
 
   late final TextEditingController _queueLimitController;
   late final TextEditingController _maxDelayController;
-  late final TextEditingController _ngWordsController;
 
   late final FocusNode _queueLimitFocusNode;
   late final FocusNode _maxDelayFocusNode;
-  late final FocusNode _ngWordsFocusNode;
 
   @override
   SettingsStore get settingsStore => widget.settingsStore;
@@ -82,7 +81,6 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   Set<int> _nemoSpeakerIds = <int>{};
   String? _queueLimitError;
   String? _maxDelayError;
-  String? _ngWordsError;
   bool _isLoadingModel = false;
 
   static const Map<int, String> _nemoSpeakerNames = <int, String>{
@@ -106,11 +104,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     super.initState();
     _queueLimitController = TextEditingController();
     _maxDelayController = TextEditingController();
-    _ngWordsController = TextEditingController();
 
     _queueLimitFocusNode = FocusNode()..addListener(_onQueueLimitFocusChanged);
     _maxDelayFocusNode = FocusNode()..addListener(_onMaxDelayFocusChanged);
-    _ngWordsFocusNode = FocusNode()..addListener(_onNgWordsFocusChanged);
 
     if (widget.initialSettings != null) {
       _initFromSettings(widget.initialSettings!);
@@ -127,12 +123,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     _maxDelayFocusNode
       ..removeListener(_onMaxDelayFocusChanged)
       ..dispose();
-    _ngWordsFocusNode
-      ..removeListener(_onNgWordsFocusChanged)
-      ..dispose();
     _queueLimitController.dispose();
     _maxDelayController.dispose();
-    _ngWordsController.dispose();
     super.dispose();
   }
 
@@ -149,7 +141,6 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   void onSettingsLoaded(AppSettings loaded) {
     _queueLimitController.text = loaded.queueLimit.toString();
     _maxDelayController.text = loaded.maxDelaySeconds.toString();
-    _ngWordsController.text = loaded.ngWords;
   }
 
   @override
@@ -427,13 +418,6 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     _saveMaxDelaySeconds();
   }
 
-  void _onNgWordsFocusChanged() {
-    if (_ngWordsFocusNode.hasFocus) {
-      return;
-    }
-    _saveNgWords();
-  }
-
   @override
   void updateAndSave(AppSettings next) {
     _debugLogLazy(
@@ -476,34 +460,6 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         voicevoxVolume: volume,
       ),
     );
-  }
-
-  void _saveNgWords() {
-    final AppSettings? current = settings;
-    if (current == null) {
-      return;
-    }
-
-    final String ngWords = _ngWordsController.text;
-    if (ngWords == current.ngWords) {
-      return;
-    }
-
-    final String? invalidPattern = _findInvalidRegExpPattern(ngWords);
-    if (invalidPattern != null) {
-      setState(() {
-        final String display = invalidPattern.length > 30
-            ? '${invalidPattern.substring(0, 30)}...'
-            : invalidPattern;
-        _ngWordsError = '無効な正規表現: $display';
-      });
-      return;
-    }
-
-    setState(() {
-      _ngWordsError = null;
-    });
-    updateAndSave(current.copyWith(ngWords: ngWords));
   }
 
   void _saveQueueLimit() {
@@ -578,22 +534,6 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     }
 
     updateAndSave(current.copyWith(maxDelaySeconds: parsed));
-  }
-
-  static String? _findInvalidRegExpPattern(String ngWords) {
-    final List<String> lines = ngWords.split('\n');
-    for (final String line in lines) {
-      final String trimmed = line.trim();
-      if (trimmed.isEmpty) {
-        continue;
-      }
-      try {
-        RegExp(trimmed);
-      } on FormatException {
-        return trimmed;
-      }
-    }
-    return null;
   }
 
   String _buildCreditText(int speakerId) {
@@ -1249,20 +1189,31 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                               );
                             },
                           ),
-                          TextFormField(
-                            key: const Key('ng-words-field'),
-                            controller: _ngWordsController,
-                            focusNode: _ngWordsFocusNode,
-                            minLines: 3,
-                            maxLines: 6,
-                            decoration: InputDecoration(
-                              labelText: 'NGワード（正規表現）',
-                              hintText: '例: ^8+\$',
-                              border: const OutlineInputBorder(),
-                              errorText: _ngWordsError,
+                          ListTile(
+                            key: const Key('ng-word-list-tile'),
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.block),
+                            title: const Text('NGワード管理'),
+                            subtitle: Text(
+                              settings.ngWordRules.isEmpty
+                                  ? '未登録'
+                                  : '${settings.ngWordRules.length}件登録中',
                             ),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () async {
+                              await Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => NgWordListScreen(
+                                    settingsStore: widget.settingsStore,
+                                  ),
+                                ),
+                              );
+                              await loadSettings();
+                              if (this.settings != null) {
+                                _pushSettingsToEngine(this.settings!);
+                              }
+                            },
                           ),
-                          const SizedBox(height: 8),
                           ListTile(
                             key: const Key('dictionary-rules-tile'),
                             contentPadding: EdgeInsets.zero,
