@@ -304,36 +304,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                     ),
                     const SizedBox(height: 12),
                     SettingsSection(
-                      title: 'データ管理',
-                      children: <Widget>[
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            key: const Key('export-settings-button'),
-                            onPressed: _exportSettings,
-                            icon: const Icon(Icons.upload),
-                            label: const Text('設定をエクスポート'),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            key: const Key('import-settings-button'),
-                            onPressed: _importSettings,
-                            icon: const Icon(Icons.download),
-                            label: const Text('設定をインポート'),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'JSON形式で設定のバックアップ・復元ができます。',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    SettingsSection(
                       title: 'ニコニコアカウント',
                       children: <Widget>[
                         if (_isLoggedIn) ...<Widget>[
@@ -455,6 +425,36 @@ class _SettingsScreenState extends State<SettingsScreen>
                           }
                         },
                       ),
+                    ),
+                    const SizedBox(height: 12),
+                    SettingsSection(
+                      title: 'データ管理',
+                      children: <Widget>[
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            key: const Key('export-settings-button'),
+                            onPressed: _exportSettings,
+                            icon: const Icon(Icons.upload),
+                            label: const Text('設定をエクスポート'),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            key: const Key('import-settings-button'),
+                            onPressed: _importSettings,
+                            icon: const Icon(Icons.download),
+                            label: const Text('設定をインポート'),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'JSON形式で設定のバックアップ・復元ができます。',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 12),
                     SettingsSection(
