@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/comment_speech/src/models/replace_rule.dart';
 import 'package:comerune/domain/models/app_settings.dart';
+import 'package:comerune/domain/models/ng_word_rule.dart';
 
 void main() {
   group('AppSettings toJson/fromJson', () {
@@ -27,6 +28,7 @@ void main() {
       expect(restored.suppressDuplicate, original.suppressDuplicate);
       expect(restored.ngWords, original.ngWords);
       expect(restored.commentFontSize, original.commentFontSize);
+      expect(restored.ngWordRules, original.ngWordRules);
       expect(restored.dictionaryRules, original.dictionaryRules);
       expect(restored.debugMode, original.debugMode);
     });
@@ -138,6 +140,39 @@ void main() {
         () => AppSettings.fromJsonString('[1, 2, 3]'),
         throwsFormatException,
       );
+    });
+
+    test('ngWordRules roundtrip preserves pattern and enabled', () {
+      final AppSettings original = AppSettings.defaults.copyWith(
+        ngWordRules: const <NgWordRule>[
+          NgWordRule(pattern: 'spam'),
+          NgWordRule(pattern: 'disabled', enabled: false),
+        ],
+      );
+      final Map<String, dynamic> json = original.toJson();
+      final AppSettings restored = AppSettings.fromJson(json);
+
+      expect(restored.ngWordRules.length, 2);
+      expect(restored.ngWordRules[0].pattern, 'spam');
+      expect(restored.ngWordRules[0].enabled, isTrue);
+      expect(restored.ngWordRules[1].pattern, 'disabled');
+      expect(restored.ngWordRules[1].enabled, isFalse);
+    });
+
+    test('import with invalid ngWordRules falls back to defaults', () {
+      final AppSettings result = AppSettings.fromJson(
+        <String, dynamic>{'ngWordRules': 'not a list'},
+      );
+      expect(result.ngWordRules, AppSettings.defaults.ngWordRules);
+    });
+
+    test('import with malformed ngWordRules items falls back to defaults', () {
+      final AppSettings result = AppSettings.fromJson(
+        <String, dynamic>{
+          'ngWordRules': <dynamic>[42, 'bad'],
+        },
+      );
+      expect(result.ngWordRules, AppSettings.defaults.ngWordRules);
     });
 
     test('unknown keys in JSON are ignored', () {
