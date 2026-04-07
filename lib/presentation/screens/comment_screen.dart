@@ -28,6 +28,15 @@ import 'user_detail_sheet.dart';
 
 const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
 
+/// Two-line mode: meta font size as a fraction of the comment font size.
+const double _twoLineMetaFontRatio = 0.4;
+
+/// Two-line mode: minimum meta font size in logical pixels.
+const double _twoLineMinMetaFontSize = 9.0;
+
+/// Zebra striping: background tint opacity applied to odd-indexed rows.
+const double _zebraStripingAlpha = 0.04;
+
 /// Converts an ARGB32 integer to [Color] without using the deprecated
 /// `Color(int)` constructor.
 Color colorFromARGB32(int argb32) {
@@ -74,6 +83,7 @@ String _commentLineText({
   String? resolvedUserName,
   String? contentOverride,
   DateTime? beginAt,
+  bool twoLine = false,
 }) {
   final String timestamp = _formatHms(message.timestamp, beginAt: beginAt);
   final String content = contentOverride ?? message.content;
@@ -91,6 +101,10 @@ String _commentLineText({
   final String displayName = resolvedUserName != null
       ? '$resolvedUserName ($userId)'
       : userId;
+
+  if (twoLine) {
+    return '$timestamp  $displayName\n$content';
+  }
 
   return '$timestamp  $displayName  $content';
 }
@@ -110,6 +124,12 @@ class CommentScreen extends StatefulWidget {
     this.userNameResolution,
     this.commentTwoLineEnabled = false,
     this.commentZebraStripingEnabled = false,
+    this.userColorMap = const <String, int>{},
+    this.onUserColorChanged,
+    this.onUserColorRemoved,
+    this.userNicknameMap = const <String, String>{},
+    this.onNicknameChanged,
+    this.onNicknameRemoved,
     this.autoNicknameRegistration = true,
     required this.themeMode,
     this.statistics = const CommentStatisticsConfig(),
@@ -141,6 +161,24 @@ class CommentScreen extends StatefulWidget {
   /// When true, alternating comment rows have a subtle background tint
   /// for easier visual scanning.
   final bool commentZebraStripingEnabled;
+
+  /// Per-user comment color map. Keys are user IDs, values are ARGB32 ints.
+  final Map<String, int> userColorMap;
+
+  /// Called when the user sets a custom comment color for a user.
+  final void Function(String userId, int colorValue)? onUserColorChanged;
+
+  /// Called when the user removes a custom comment color.
+  final void Function(String userId)? onUserColorRemoved;
+
+  /// Per-user nickname (コテハン) map. Keys are user IDs, values are nicknames.
+  final Map<String, String> userNicknameMap;
+
+  /// Called when a nickname is set or updated for a user.
+  final void Function(String userId, String nickname)? onNicknameChanged;
+
+  /// Called when a nickname is removed for a user.
+  final void Function(String userId)? onNicknameRemoved;
 
   /// Whether automatic nickname registration via `@name` comments is enabled.
   final bool autoNicknameRegistration;
@@ -955,6 +993,7 @@ class _CommentScreenState extends State<CommentScreen> {
                     userColorMap: widget.filterConfig.userColorMap,
                     onUnpin: _unpinMessage,
                     beginAt: widget.programInfo.beginAt,
+                    commentTwoLineEnabled: widget.commentTwoLineEnabled,
                   ),
                 if (widget.speechConfig.speechSettings.enabled &&
                     widget.speechConfig.isSpeechMuted)
@@ -1000,7 +1039,7 @@ class _CommentScreenState extends State<CommentScreen> {
                                   widget.commentTwoLineEnabled,
                               zebraStripingEnabled:
                                   widget.commentZebraStripingEnabled,
-                              zebraIndex: index,
+                              commentIndex: index,
                               userColor: userColor != null
                                   ? colorFromARGB32(userColor)
                                   : null,
@@ -2573,6 +2612,7 @@ class _PinnedCommentsSection extends StatelessWidget {
     required this.userColorMap,
     required this.onUnpin,
     this.beginAt,
+    this.commentTwoLineEnabled = false,
   });
 
   final List<AppMessage> pinnedMessages;
@@ -2583,6 +2623,7 @@ class _PinnedCommentsSection extends StatelessWidget {
   final Map<String, int> userColorMap;
   final void Function(String messageId) onUnpin;
   final DateTime? beginAt;
+  final bool commentTwoLineEnabled;
 
   @override
   Widget build(BuildContext context) {
@@ -2633,6 +2674,7 @@ class _PinnedCommentsSection extends StatelessWidget {
               resolvedUserName: resolveDisplayName(message),
               showUserName: showUserName,
               fontSize: fontSize,
+              commentTwoLineEnabled: commentTwoLineEnabled,
               userColor:
                   message.userId != null &&
                       userColorMap.containsKey(message.userId!)
@@ -2655,6 +2697,7 @@ class _PinnedCommentRow extends StatelessWidget {
     this.resolvedUserName,
     this.showUserName = true,
     required this.fontSize,
+    this.commentTwoLineEnabled = false,
     this.userColor,
     required this.onUnpin,
     this.beginAt,
@@ -2665,26 +2708,31 @@ class _PinnedCommentRow extends StatelessWidget {
   final String? resolvedUserName;
   final bool showUserName;
   final double fontSize;
+  final bool commentTwoLineEnabled;
   final Color? userColor;
   final VoidCallback onUnpin;
   final DateTime? beginAt;
 
   @override
   Widget build(BuildContext context) {
+    final bool useTwoLine = commentTwoLineEnabled && showUserName;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       child: Row(
         children: <Widget>[
           Expanded(
-            child: Text(
-              _commentLineText(
-                message: message,
-                showUserName: showUserName,
-                resolvedUserName: resolvedUserName,
-                beginAt: beginAt,
-              ),
-              style: TextStyle(fontSize: fontSize, color: userColor),
-            ),
+            child: useTwoLine
+                ? _buildTwoLinePinned(context)
+                : Text(
+                    _commentLineText(
+                      message: message,
+                      showUserName: showUserName,
+                      resolvedUserName: resolvedUserName,
+                      beginAt: beginAt,
+                    ),
+                    style: TextStyle(fontSize: fontSize, color: userColor),
+                  ),
           ),
           SizedBox(
             width: 32,
@@ -2701,6 +2749,44 @@ class _PinnedCommentRow extends StatelessWidget {
       ),
     );
   }
+
+  /// Builds a two-line layout for a pinned comment.
+  ///
+  /// Shares the same font ratio constants as
+  /// [_CommentRowState._buildTwoLineComment] but uses a simpler layout
+  /// because pinned rows don't support star-prefix hiding or hidden state.
+  Widget _buildTwoLinePinned(BuildContext context) {
+    final String timestamp = _formatHms(message.timestamp, beginAt: beginAt);
+    final String? userId = message.userId;
+    final double metaFontSize = (fontSize * _twoLineMetaFontRatio).clamp(
+      _twoLineMinMetaFontSize,
+      fontSize,
+    );
+    final Color metaColor = themeColors.subtleTextColor;
+
+    final StringBuffer metaBuffer = StringBuffer(timestamp);
+    if (userId != null && userId.isNotEmpty) {
+      final String displayName = resolvedUserName != null
+          ? '$resolvedUserName ($userId)'
+          : userId;
+      metaBuffer.write('  $displayName');
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          metaBuffer.toString(),
+          style: TextStyle(fontSize: metaFontSize, color: metaColor),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          message.content,
+          style: TextStyle(fontSize: fontSize, color: userColor),
+        ),
+      ],
+    );
+  }
 }
 
 class _CommentRow extends StatefulWidget {
@@ -2713,7 +2799,7 @@ class _CommentRow extends StatefulWidget {
     this.starPrefixHidingEnabled = false,
     this.commentTwoLineEnabled = false,
     this.zebraStripingEnabled = false,
-    this.zebraIndex = 0,
+    this.commentIndex = 0,
     this.userColor,
     this.onLongPress,
     this.beginAt,
@@ -2727,7 +2813,7 @@ class _CommentRow extends StatefulWidget {
   final bool starPrefixHidingEnabled;
   final bool commentTwoLineEnabled;
   final bool zebraStripingEnabled;
-  final int zebraIndex;
+  final int commentIndex;
   final Color? userColor;
   final VoidCallback? onLongPress;
   final DateTime? beginAt;
@@ -2758,8 +2844,10 @@ class _CommentRowState extends State<_CommentRow> {
     final Color? specialBg = _backgroundColor(widget.message);
     final Color? effectiveBg =
         specialBg ??
-        (widget.zebraStripingEnabled && widget.zebraIndex.isOdd
-            ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.04)
+        (widget.zebraStripingEnabled && widget.commentIndex.isOdd
+            ? Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: _zebraStripingAlpha)
             : null);
     return GestureDetector(
       key: Key('comment-row-${widget.message.id}'),
@@ -2793,16 +2881,15 @@ class _CommentRowState extends State<_CommentRow> {
 
     // Two-line mode is only useful when the username is shown (line 1 holds
     // timestamp + username). When the username column is hidden, the first
-    // line would contain only a timestamp, wasting vertical space – so fall
+    // line would contain only a timestamp, wasting vertical space -- so fall
     // back to single-line rendering.
     if (widget.commentTwoLineEnabled && widget.showUserName) {
-      // In two-line mode the comment text is the star, so the meta line
-      // (timestamp + username) is rendered much smaller: 40% of the
-      // comment font size with a 9 px floor for readability.
-      const double twoLineMinMeta = 9.0;
       final double twoLineMetaSize = hidden
           ? fontSize
-          : (fontSize * 0.4).clamp(twoLineMinMeta, fontSize);
+          : (fontSize * _twoLineMetaFontRatio).clamp(
+              _twoLineMinMetaFontSize,
+              fontSize,
+            );
       return _buildTwoLineComment(
         timestamp: timestamp,
         content: content,

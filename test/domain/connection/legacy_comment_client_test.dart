@@ -72,8 +72,8 @@ void main() {
       );
 
       final List<AppMessage> emitted = <AppMessage>[];
-      final StreamSubscription<AppMessage> subscription = client.messages
-          .listen(emitted.add);
+      final StreamSubscription<AppMessage> subscription =
+          client.messages.listen(emitted.add);
 
       await client.connect('wss://legacy.example/ws');
       fakeSocket.add(_legacyFixture('invalid_json.txt'));

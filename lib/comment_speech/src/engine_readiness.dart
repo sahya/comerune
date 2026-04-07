@@ -64,8 +64,7 @@ Future<void> ensureEngineReadyForModelLoad(
 
   if (_canInitialize(status.engineState)) {
     _debugLog(
-      () =>
-          '$logTag ensureEngineReady: decision=initialize '
+      () => '$logTag ensureEngineReady: decision=initialize '
           'fromState=${status.engineState}',
     );
     await platform.initialize();
@@ -94,8 +93,7 @@ Future<SpeechRuntimeStatus> _waitForStableState(
         voicevoxReadyExtraPollAttemptsForAssetPreparation;
     extendedForAssetPreparation = true;
     _debugLog(
-      () =>
-          '$logTag status-check(wait-guard): timeout-extended '
+      () => '$logTag status-check(wait-guard): timeout-extended '
           'reason=asset_preparation '
           'extraAttempts=$voicevoxReadyExtraPollAttemptsForAssetPreparation '
           'effectiveMaxAttempts=$effectiveMaxPollAttempts',
@@ -111,8 +109,7 @@ Future<SpeechRuntimeStatus> _waitForStableState(
           voicevoxReadyExtraPollAttemptsForAssetPreparation;
       extendedForAssetPreparation = true;
       _debugLog(
-        () =>
-            '$logTag status-check(wait-guard): timeout-extended '
+        () => '$logTag status-check(wait-guard): timeout-extended '
             'reason=asset_preparation '
             'extraAttempts=$voicevoxReadyExtraPollAttemptsForAssetPreparation '
             'effectiveMaxAttempts=$effectiveMaxPollAttempts',
@@ -128,9 +125,8 @@ Future<SpeechRuntimeStatus> _waitForStableState(
     }
   }
   final int pollIntervalMs = pollInterval.inMilliseconds;
-  final String timeoutHint = extendedForAssetPreparation
-      ? ' note=asset_preparation_timeout'
-      : '';
+  final String timeoutHint =
+      extendedForAssetPreparation ? ' note=asset_preparation_timeout' : '';
   throw TimeoutException(
     'Engine state did not settle from ${initialStatus.engineState} '
     '(attempts=$effectiveMaxPollAttempts, pollIntervalMs=$pollIntervalMs, '

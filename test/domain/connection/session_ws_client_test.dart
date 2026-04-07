@@ -34,8 +34,8 @@ void main() {
     test('falls back to legacy when ndgr endpoint is not found', () {
       final SessionEndpointResolution resolution =
           SessionWsMessageParser.extractEndpoints(<String, Object?>{
-            'legacy': 'wss://msgd.live2.nicovideo.jp/websocket?thread=123',
-          });
+        'legacy': 'wss://msgd.live2.nicovideo.jp/websocket?thread=123',
+      });
 
       expect(resolution.ndgrViewUri, isNull);
       expect(
@@ -51,9 +51,8 @@ void main() {
     test('normalizes detected URL by trimming trailing brace', () {
       final SessionEndpointResolution resolution =
           SessionWsMessageParser.extractEndpoints(<String, Object?>{
-            'messageServer':
-                'wss://msgd.live2.nicovideo.jp/websocket?thread=123}',
-          });
+        'messageServer': 'wss://msgd.live2.nicovideo.jp/websocket?thread=123}',
+      });
 
       expect(
         resolution.legacyWebSocketUrl,
@@ -237,8 +236,8 @@ void main() {
         channelFactory: (_, _) async => fakeChannel,
       );
       final List<SessionWsEvent> events = <SessionWsEvent>[];
-      final StreamSubscription<SessionWsEvent> subscription = client.events
-          .listen(events.add);
+      final StreamSubscription<SessionWsEvent> subscription =
+          client.events.listen(events.add);
 
       await client.connect();
 
@@ -307,8 +306,8 @@ void main() {
           channelFactory: (_, _) async => fakeChannel,
         );
         final List<SessionWsEvent> events = <SessionWsEvent>[];
-        final StreamSubscription<SessionWsEvent> subscription = client.events
-            .listen(events.add);
+        final StreamSubscription<SessionWsEvent> subscription =
+            client.events.listen(events.add);
 
         await client.connect();
 
@@ -396,8 +395,8 @@ void main() {
           channelFactory: (_, _) async => fakeChannel,
         );
         final List<SessionWsEvent> events = <SessionWsEvent>[];
-        final StreamSubscription<SessionWsEvent> subscription = client.events
-            .listen(events.add);
+        final StreamSubscription<SessionWsEvent> subscription =
+            client.events.listen(events.add);
 
         await client.connect();
         fakeChannel.pushIncoming(
@@ -438,8 +437,8 @@ void main() {
           channelFactory: (_, _) async => fakeChannel,
         );
         final List<SessionWsEvent> events = <SessionWsEvent>[];
-        final StreamSubscription<SessionWsEvent> subscription = client.events
-            .listen(events.add);
+        final StreamSubscription<SessionWsEvent> subscription =
+            client.events.listen(events.add);
 
         await client.connect();
 
@@ -483,8 +482,8 @@ void main() {
           endpointFallbackDelay: const Duration(milliseconds: 50),
         );
         final List<SessionWsEvent> events = <SessionWsEvent>[];
-        final StreamSubscription<SessionWsEvent> subscription = client.events
-            .listen(events.add);
+        final StreamSubscription<SessionWsEvent> subscription =
+            client.events.listen(events.add);
 
         await client.connect();
         fakeChannel.pushIncoming(
@@ -535,8 +534,8 @@ void main() {
           endpointFallbackDelay: const Duration(milliseconds: 10),
         );
         final List<SessionWsEvent> events = <SessionWsEvent>[];
-        final StreamSubscription<SessionWsEvent> subscription = client.events
-            .listen(events.add);
+        final StreamSubscription<SessionWsEvent> subscription =
+            client.events.listen(events.add);
 
         await client.connect();
         fakeChannel.pushIncoming(
@@ -574,8 +573,8 @@ void main() {
           endpointFallbackDelay: const Duration(milliseconds: 50),
         );
         final List<SessionWsEvent> events = <SessionWsEvent>[];
-        final StreamSubscription<SessionWsEvent> subscription = client.events
-            .listen(events.add);
+        final StreamSubscription<SessionWsEvent> subscription =
+            client.events.listen(events.add);
 
         await client.connect();
         fakeChannel.pushIncoming(
@@ -619,8 +618,8 @@ void main() {
         channelFactory: (_, _) async => fakeChannel,
       );
       final List<SessionWsEvent> events = <SessionWsEvent>[];
-      final StreamSubscription<SessionWsEvent> subscription = client.events
-          .listen(events.add);
+      final StreamSubscription<SessionWsEvent> subscription =
+          client.events.listen(events.add);
 
       await client.connect();
       fakeChannel.pushIncoming(
@@ -672,8 +671,8 @@ void main() {
         endpointResolveTimeout: const Duration(milliseconds: 20),
       );
       final List<SessionWsEvent> events = <SessionWsEvent>[];
-      final StreamSubscription<SessionWsEvent> subscription = client.events
-          .listen(events.add);
+      final StreamSubscription<SessionWsEvent> subscription =
+          client.events.listen(events.add);
 
       await client.connect();
       await Future<void>.delayed(const Duration(milliseconds: 40));
@@ -733,8 +732,8 @@ void main() {
         },
       );
       final List<SessionWsEvent> events = <SessionWsEvent>[];
-      final StreamSubscription<SessionWsEvent> subscription = client.events
-          .listen(events.add);
+      final StreamSubscription<SessionWsEvent> subscription =
+          client.events.listen(events.add);
 
       await client.connect();
       await Future<void>.delayed(const Duration(milliseconds: 10));
@@ -806,8 +805,8 @@ void main() {
         channelFactory: (_, _) => throw StateError('factory failed'),
       );
       final List<SessionWsEvent> events = <SessionWsEvent>[];
-      final StreamSubscription<SessionWsEvent> subscription = client.events
-          .listen(events.add);
+      final StreamSubscription<SessionWsEvent> subscription =
+          client.events.listen(events.add);
 
       await client.connect();
       await Future<void>.delayed(Duration.zero);
@@ -852,8 +851,8 @@ void main() {
         channelFactory: (_, _) async => fakeChannel,
       );
       final List<SessionWsEvent> events = <SessionWsEvent>[];
-      final StreamSubscription<SessionWsEvent> subscription = client.events
-          .listen(events.add);
+      final StreamSubscription<SessionWsEvent> subscription =
+          client.events.listen(events.add);
 
       await client.connect();
       await Future.wait<void>(<Future<void>>[
@@ -897,8 +896,8 @@ class _FakeSessionWsChannel implements SessionWsChannel {
     this.failOnKeepSeat = false,
     this.failOnStartWatching = false,
     this.closeDelay = Duration.zero,
-  }) : _incoming = StreamController<dynamic>(),
-       _sink = _FakeSink() {
+  })  : _incoming = StreamController<dynamic>(),
+        _sink = _FakeSink() {
     _sink.onAdd = (dynamic data) {
       sentMessages.add(data);
 

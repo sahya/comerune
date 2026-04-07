@@ -10,9 +10,9 @@ class StatisticsStore extends ChangeNotifier {
     Duration activeWindow = const Duration(minutes: 5),
     Duration purgeInterval = const Duration(seconds: 30),
     DateTime Function()? now,
-  }) : _activeWindow = activeWindow,
-       _purgeInterval = purgeInterval,
-       _now = now ?? DateTime.now;
+  })  : _activeWindow = activeWindow,
+        _purgeInterval = purgeInterval,
+        _now = now ?? DateTime.now;
 
   final Duration _activeWindow;
   final Duration _purgeInterval;

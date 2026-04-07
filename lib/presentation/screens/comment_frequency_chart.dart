@@ -169,9 +169,8 @@ class _BarChartBody extends StatelessWidget {
 
     // Calculate bar width, ensuring minimum touch target.
     final double barWidth = math.max(2, width / totalBars - 1);
-    final double gap = totalBars > 1
-        ? (width - barWidth * totalBars) / (totalBars - 1)
-        : 0;
+    final double gap =
+        totalBars > 1 ? (width - barWidth * totalBars) / (totalBars - 1) : 0;
 
     return GestureDetector(
       onTapUp: onBarTapped == null
@@ -180,9 +179,9 @@ class _BarChartBody extends StatelessWidget {
               final double dx = details.localPosition.dx;
               final double effectiveBarWidth = barWidth + gap;
               final int index = (dx / effectiveBarWidth).floor().clamp(
-                0,
-                totalBars - 1,
-              );
+                    0,
+                    totalBars - 1,
+                  );
               onBarTapped!.call(index);
             },
       child: CustomPaint(
@@ -237,9 +236,8 @@ class _BarChartPainter extends CustomPainter {
       final double x = minute * (barWidth + gap);
       final double y = size.height - barHeight;
 
-      final Paint paint = peakMinutes.contains(minute)
-          ? peakPaint
-          : normalPaint;
+      final Paint paint =
+          peakMinutes.contains(minute) ? peakPaint : normalPaint;
       canvas.drawRRect(
         RRect.fromRectAndCorners(
           Rect.fromLTWH(x, y, barWidth, barHeight),

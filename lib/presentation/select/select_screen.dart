@@ -70,7 +70,7 @@ class SelectScreen extends StatefulWidget {
   final UserSessionStore? userSessionStore;
   final CommentLogWriter? commentLogWriter;
   final Future<void> Function(String lv, AppSettings settings)?
-  onPrepareConnection;
+      onPrepareConnection;
   final ValueNotifier<String?>? programTitleNotifier;
   final UserNameResolution? userNameResolution;
   final ValueNotifier<String?>? broadcasterNameNotifier;
@@ -105,12 +105,11 @@ class _SelectScreenState extends State<SelectScreen> {
   Map<String, String> _favoriteOnAirMap = const <String, String>{};
   Timer? _favoriteRefreshTimer;
   final ValueNotifier<
-    ({Map<String, int> colors, Map<String, String> nicknames})
-  >
-  _userAttrNotifier =
+          ({Map<String, int> colors, Map<String, String> nicknames})>
+      _userAttrNotifier =
       ValueNotifier<({Map<String, int> colors, Map<String, String> nicknames})>(
-        (colors: const <String, int>{}, nicknames: const <String, String>{}),
-      );
+    (colors: const <String, int>{}, nicknames: const <String, String>{}),
+  );
   String? _currentBroadcasterId;
   final MethodChannelCommentSpeech _speechPlatform =
       MethodChannelCommentSpeech();
@@ -392,30 +391,28 @@ class _SelectScreenState extends State<SelectScreen> {
                   alignment: Alignment.centerRight,
                   child: ValueListenableBuilder<TextEditingValue>(
                     valueListenable: _controller,
-                    builder:
-                        (
-                          BuildContext context,
-                          TextEditingValue value,
-                          Widget? _,
-                        ) {
-                          final bool canConnect =
-                              value.text.trim().isNotEmpty &&
-                              widget.connectionSupervisor.canStartConnection;
-                          return ElevatedButton(
-                            key: const Key('select_screen_connect_button'),
-                            onPressed: canConnect
-                                ? () {
-                                    _followBroadcasterName = null;
-                                    _followBroadcasterIconUrl = null;
-                                    _followBeginAt = null;
-                                    unawaited(
-                                      _connect(connectSource: 'manual-button'),
-                                    );
-                                  }
-                                : null,
-                            child: const Text('接続開始'),
-                          );
-                        },
+                    builder: (
+                      BuildContext context,
+                      TextEditingValue value,
+                      Widget? _,
+                    ) {
+                      final bool canConnect = value.text.trim().isNotEmpty &&
+                          widget.connectionSupervisor.canStartConnection;
+                      return ElevatedButton(
+                        key: const Key('select_screen_connect_button'),
+                        onPressed: canConnect
+                            ? () {
+                                _followBroadcasterName = null;
+                                _followBroadcasterIconUrl = null;
+                                _followBeginAt = null;
+                                unawaited(
+                                  _connect(connectSource: 'manual-button'),
+                                );
+                              }
+                            : null,
+                        child: const Text('接続開始'),
+                      );
+                    },
                   ),
                 ),
               ],
@@ -487,12 +484,10 @@ class _SelectScreenState extends State<SelectScreen> {
         final String? cachedBroadcasterName = supplierUserId != null
             ? widget.userNameResolution?.resolve(supplierUserId)
             : null;
-        final String? broadcasterName =
-            cachedBroadcasterName ??
+        final String? broadcasterName = cachedBroadcasterName ??
             widget.broadcasterNameNotifier?.value ??
             _followBroadcasterName;
-        final String? broadcasterIconUrl =
-            _followBroadcasterIconUrl ??
+        final String? broadcasterIconUrl = _followBroadcasterIconUrl ??
             _buildIconUrlFromUserId(supplierUserId);
         final DateTime? beginAt = _resolveCommentBeginAt();
 
@@ -516,32 +511,36 @@ class _SelectScreenState extends State<SelectScreen> {
                 ? null
                 : () => _openSettings(routeContext, widget.userSessionStore),
             onToggleNgUser: _toggleNgUser,
-            onUserColorChanged: widget.userAttributeStore != null
-                ? _onUserColorChanged
-                : null,
-            onUserColorRemoved: widget.userAttributeStore != null
-                ? _onUserColorRemoved
-                : null,
-            onNicknameChanged: widget.userAttributeStore != null
-                ? _onNicknameChanged
-                : null,
-            onNicknameRemoved: widget.userAttributeStore != null
-                ? _onNicknameRemoved
-                : null,
+            onUserColorChanged:
+                widget.userAttributeStore != null ? _onUserColorChanged : null,
+            onUserColorRemoved:
+                widget.userAttributeStore != null ? _onUserColorRemoved : null,
+            onNicknameChanged:
+                widget.userAttributeStore != null ? _onNicknameChanged : null,
+            onNicknameRemoved:
+                widget.userAttributeStore != null ? _onNicknameRemoved : null,
             onDictionaryRulesChanged: _onDictionaryRulesChanged,
-            onSpeechMuteToggled: widget.settingsStore != null
-                ? _toggleSpeechMute
-                : null,
+            onSpeechMuteToggled:
+                widget.settingsStore != null ? _toggleSpeechMute : null,
           ),
           debugMode: _settingsNotifier.value.debugMode,
           showUserName: _settingsNotifier.value.showUserName,
           commentFontSize: _settingsNotifier.value.commentFontSize,
-          userNameResolution: nameResolutionEnabled
-              ? widget.userNameResolution
-              : null,
+          userNameResolution:
+              nameResolutionEnabled ? widget.userNameResolution : null,
           commentTwoLineEnabled: _settingsNotifier.value.commentTwoLineEnabled,
           commentZebraStripingEnabled:
               _settingsNotifier.value.commentZebraStripingEnabled,
+          userColorMap: _userAttrNotifier.value.colors,
+          onUserColorChanged:
+              widget.userAttributeStore != null ? _onUserColorChanged : null,
+          onUserColorRemoved:
+              widget.userAttributeStore != null ? _onUserColorRemoved : null,
+          userNicknameMap: _userAttrNotifier.value.nicknames,
+          onNicknameChanged:
+              widget.userAttributeStore != null ? _onNicknameChanged : null,
+          onNicknameRemoved:
+              widget.userAttributeStore != null ? _onNicknameRemoved : null,
           autoNicknameRegistration:
               _settingsNotifier.value.autoNicknameRegistration,
           themeMode: _settingsNotifier.value.themeMode,
@@ -608,8 +607,8 @@ class _SelectScreenState extends State<SelectScreen> {
     );
     await widget.onPrepareConnection?.call(lv, settings);
 
-    final bool retried = widget.connectionSupervisor
-        .retryConnectionFromTerminal();
+    final bool retried =
+        widget.connectionSupervisor.retryConnectionFromTerminal();
     if (!retried && widget.connectionSupervisor.canStartConnection) {
       widget.connectionSupervisor.startConnection();
     }
@@ -656,8 +655,8 @@ class _SelectScreenState extends State<SelectScreen> {
     final Map<String, int> colors = await widget.userAttributeStore!.loadColors(
       broadcasterId,
     );
-    final Map<String, String> nicknames = await widget.userAttributeStore!
-        .loadNicknames(broadcasterId);
+    final Map<String, String> nicknames =
+        await widget.userAttributeStore!.loadNicknames(broadcasterId);
     if (!mounted || _currentBroadcasterId != broadcasterId) {
       return;
     }
@@ -1111,8 +1110,8 @@ class _SelectScreenState extends State<SelectScreen> {
       () =>
           '[SelectScreen] favorite status refresh start: users=${favoriteIds.length}',
     );
-    final Map<String, String> result = await _favoriteUserLiveChecker
-        .checkBroadcastStatus(favoriteIds);
+    final Map<String, String> result =
+        await _favoriteUserLiveChecker.checkBroadcastStatus(favoriteIds);
     if (!mounted) {
       return;
     }
@@ -1318,8 +1317,8 @@ class _FollowProgramList extends StatelessWidget {
               Text(
                 '${programs.length}件',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: Theme.of(context).colorScheme.outline,
-                ),
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
               ),
               const Spacer(),
               SizedBox(
@@ -1429,9 +1428,8 @@ class _FollowProgramTile extends StatelessWidget {
               Icon(
                 Icons.play_circle_outline,
                 size: 20,
-                color: enabled
-                    ? theme.colorScheme.primary
-                    : theme.disabledColor,
+                color:
+                    enabled ? theme.colorScheme.primary : theme.disabledColor,
               ),
             ],
           ),
@@ -1720,10 +1718,8 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
 
   @override
   Widget build(BuildContext context) {
-    final List<MapEntry<String, String>> entries = widget
-        .onAirUserPrograms
-        .entries
-        .toList();
+    final List<MapEntry<String, String>> entries =
+        widget.onAirUserPrograms.entries.toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -1739,8 +1735,8 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
               Text(
                 '${entries.length}件',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: Theme.of(context).colorScheme.outline,
-                ),
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
               ),
               const Spacer(),
               if (widget.onRefresh != null)
@@ -1770,9 +1766,8 @@ class _FavoriteUserSectionState extends State<_FavoriteUserSection> {
             child: ListTile(
               dense: true,
               enabled: widget.enabled,
-              onTap: widget.enabled
-                  ? () => widget.onTap(userId, programId)
-                  : null,
+              onTap:
+                  widget.enabled ? () => widget.onTap(userId, programId) : null,
               leading: ClipOval(
                 child: SizedBox(
                   width: 32,

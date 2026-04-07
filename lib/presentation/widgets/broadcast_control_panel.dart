@@ -506,9 +506,8 @@ class _RemainingTimeIndicatorState extends State<_RemainingTimeIndicator> {
           Icon(
             Icons.timer_outlined,
             size: 14,
-            color: isUrgent
-                ? theme.colorScheme.error
-                : theme.colorScheme.outline,
+            color:
+                isUrgent ? theme.colorScheme.error : theme.colorScheme.outline,
           ),
           const SizedBox(width: 4),
           Text(

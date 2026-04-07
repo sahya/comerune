@@ -201,8 +201,7 @@ class _LoginScreenState extends State<LoginScreen> {
     // Try platform channel first (can read httpOnly cookies via
     // Android's CookieManager), fall back to document.cookie.
     try {
-      final String cookies =
-          await _cookieChannel.invokeMethod<String>(
+      final String cookies = await _cookieChannel.invokeMethod<String>(
             'getCookies',
             <String, String>{'url': 'https://nicovideo.jp'},
           ) ??
@@ -225,9 +224,8 @@ class _LoginScreenState extends State<LoginScreen> {
       final Object result = await _controller.runJavaScriptReturningResult(
         'document.cookie',
       );
-      final String cookieString = result is String
-          ? _unquote(result)
-          : result.toString();
+      final String cookieString =
+          result is String ? _unquote(result) : result.toString();
       return parseNicoUserSessionCookie(cookieString);
     } catch (error) {
       log(

@@ -46,8 +46,7 @@ Widget _buildScreen(
   return MaterialApp(
     home: VoiceLibraryScreen(
       platform: platform,
-      settingsStore:
-          settingsStore ??
+      settingsStore: settingsStore ??
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences()),
     ),
   );

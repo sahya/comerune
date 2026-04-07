@@ -30,8 +30,8 @@ class _NicknameListScreenState extends State<NicknameListScreen> {
   }
 
   Future<void> _loadNicknames() async {
-    final Map<String, String> nicknames = await widget.userAttributeStore
-        .loadNicknames(widget.broadcasterId);
+    final Map<String, String> nicknames =
+        await widget.userAttributeStore.loadNicknames(widget.broadcasterId);
     if (!mounted) {
       return;
     }
@@ -117,48 +117,49 @@ class _NicknameListScreenState extends State<NicknameListScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : entries.isEmpty
-          ? const EmptyStateMessage(
-              key: Key('nickname-list-empty'),
-              message: 'コテハンは登録されていません',
-            )
-          : ListView.separated(
-              key: const Key('nickname-list'),
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: entries.length,
-              separatorBuilder: (_, _) => const Divider(height: 1),
-              itemBuilder: (BuildContext context, int index) {
-                final MapEntry<String, String> entry = entries[index];
-                return ListTile(
-                  key: Key('nickname-tile-$index'),
-                  leading: const Icon(Icons.badge, size: 20),
-                  title: Text(
-                    entry.value,
-                    style: const TextStyle(fontSize: 14),
-                  ),
-                  subtitle: Text(
-                    'ID: ${entry.key}',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      IconButton(
-                        key: Key('nickname-edit-$index'),
-                        icon: const Icon(Icons.edit_outlined),
-                        tooltip: '編集',
-                        onPressed: () => _editNickname(entry.key, entry.value),
+              ? const EmptyStateMessage(
+                  key: Key('nickname-list-empty'),
+                  message: 'コテハンは登録されていません',
+                )
+              : ListView.separated(
+                  key: const Key('nickname-list'),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: entries.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (BuildContext context, int index) {
+                    final MapEntry<String, String> entry = entries[index];
+                    return ListTile(
+                      key: Key('nickname-tile-$index'),
+                      leading: const Icon(Icons.badge, size: 20),
+                      title: Text(
+                        entry.value,
+                        style: const TextStyle(fontSize: 14),
                       ),
-                      IconButton(
-                        key: Key('nickname-remove-$index'),
-                        icon: const Icon(Icons.delete_outline),
-                        tooltip: '削除',
-                        onPressed: () => _removeNickname(entry.key),
+                      subtitle: Text(
+                        'ID: ${entry.key}',
+                        style: const TextStyle(fontSize: 12),
                       ),
-                    ],
-                  ),
-                );
-              },
-            ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          IconButton(
+                            key: Key('nickname-edit-$index'),
+                            icon: const Icon(Icons.edit_outlined),
+                            tooltip: '編集',
+                            onPressed: () =>
+                                _editNickname(entry.key, entry.value),
+                          ),
+                          IconButton(
+                            key: Key('nickname-remove-$index'),
+                            icon: const Icon(Icons.delete_outline),
+                            tooltip: '削除',
+                            onPressed: () => _removeNickname(entry.key),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
     );
   }
 }
