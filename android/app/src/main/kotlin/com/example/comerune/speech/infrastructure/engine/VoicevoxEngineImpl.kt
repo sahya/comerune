@@ -303,11 +303,15 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                 }
 
                 updateEngineState(TtsEngineState.READY, "initialize_completed")
-                // Dump all registered speakers/styles for debugging.
-                // This reveals the actual style IDs inside loaded VVM files.
+                // Dump all registered speakers/styles for diagnostic purposes.
+                // Uses Log.d (debug level) since the JSON can be several KB.
                 try {
                     val metasJson = NativeVoicevoxBridge.nativeGetMetasJson()
-                    Log.i(TAG, "Synthesizer metas (all loaded styles): $metasJson")
+                    if (metasJson != null) {
+                        Log.d(TAG, "Synthesizer metas (all loaded styles): $metasJson")
+                    } else {
+                        Log.w(TAG, "Synthesizer metas: null (no models loaded?)")
+                    }
                 } catch (e: Throwable) {
                     Log.w(TAG, "Failed to get synthesizer metas", e)
                 }
@@ -353,12 +357,6 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         }
 
     override suspend fun synthesize(request: SpeechRequest): Result<WavSynthesisResult> {
-        Log.d(
-            TAG,
-            "synthesize: speakerId=${request.speakerId} mode=${request.synthesisMode} " +
-                "textLen=${request.text.length} " +
-                "loadedModelIds=${loadedModelIds.toList()} state=$state"
-        )
         // Guard + count increment must be atomic to prevent race with release().
         // No lifecycle mutex needed — concurrent synthesis is safe because
         // VOICEVOX Core's synthesizer accepts `const` pointers and is
@@ -635,22 +633,10 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         // Any in-flight synthesis calls will see state == UNINITIALIZED in their
         // finally block and skip the READY restore. The native nativeRelease()
         // acquires an exclusive lock, so it waits for in-flight synthesis to finish.
-        Log.w(
-            TAG,
-            "release() called. state=$state " +
-                "loadedModelIds=${loadedModelIds.toList()} " +
-                "thread=${Thread.currentThread().name}",
-            Throwable("release() call-site trace")
-        )
         val alreadyReleased = synchronized(stateLock) {
             if (state == TtsEngineState.UNINITIALIZED) {
                 true
             } else {
-                Log.d(
-                    TAG,
-                    "release: clearing state. " +
-                        "loadedModelIds=${loadedModelIds.toList()} → empty"
-                )
                 state = TtsEngineState.UNINITIALIZED
                 activeSynthesisCount.set(0)
                 loadedModelPaths.clear()

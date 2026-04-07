@@ -235,11 +235,6 @@ class SpeechControllerImpl(
         if (released) {
             return Result.failure(IllegalStateException("Controller has been released"))
         }
-        println("[SpeechController] updateSettings: speakerId=${settings.speakerId} " +
-            "enabled=${settings.enabled} synthesisMode=${settings.synthesisMode} " +
-            "playerType=${settings.playerType} " +
-            "speed=${settings.speedScale} pitch=${settings.pitchScale} " +
-            "intonation=${settings.intonationScale} volume=${settings.volumeScale}")
         settingsRepository.save(settings)
 
         // Propagate runtime-tunable settings via interface methods
@@ -254,10 +249,6 @@ class SpeechControllerImpl(
 
     override suspend fun getStatus(): SpeechRuntimeStatus {
         val settings = settingsRepository.get()
-        println("[SpeechController] getStatus: speakerId=${settings.speakerId} " +
-            "enabled=${settings.enabled} synthesisMode=${settings.synthesisMode} " +
-            "playerType=${settings.playerType} " +
-            "engineState=${engine.currentState()} playerState=${player.currentState()}")
         return SpeechRuntimeStatus(
             enabled = settings.enabled,
             engineState = engine.currentState(),
@@ -367,10 +358,6 @@ class SpeechControllerImpl(
         eventEmitter.emit(SpeechEvents.speechStarted(item.commentId, item.text))
 
         val settings = settingsRepository.get()
-        // Debug: log the speaker ID that will be used for synthesis
-        println("[SpeechController] processItem: commentId=${item.commentId} " +
-            "speakerId=${settings.speakerId} synthesisMode=${settings.synthesisMode} " +
-            "textLen=${item.text.length}")
         val chunks = textSplitter.split(item.text)
 
         if (chunks.size == 1) {
