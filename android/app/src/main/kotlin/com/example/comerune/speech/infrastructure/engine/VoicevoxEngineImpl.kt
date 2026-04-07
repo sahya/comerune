@@ -452,6 +452,9 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                 // Verify that the native synthesizer actually has this model loaded.
                 // The tracking sets can become stale (e.g. after deleteModel followed
                 // by re-download) so we probe the native engine before skipping.
+                // Note: The probe calls nativeCreateAudioQuery which has some overhead,
+                // but loadModel is only called on speaker change or after model download
+                // so the frequency is low enough to be acceptable.
                 val nativeHasModel = isModelAlreadyLoadedBySpeakerProbe(modelId)
                 if (nativeHasModel) {
                     val reason = when {
@@ -522,14 +525,18 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
     override fun currentState(): TtsEngineState = state
 
     override fun clearLoadedModel(modelId: String) {
-        val removedPath = loadedModelPaths.removeAll { path ->
-            extractModelId(path) == modelId
+        // Use stateLock to ensure both sets are modified atomically,
+        // consistent with release() which also holds stateLock.
+        synchronized(stateLock) {
+            val removedPath = loadedModelPaths.removeAll { path ->
+                extractModelId(path) == modelId
+            }
+            val removedId = loadedModelIds.remove(modelId)
+            Log.i(
+                TAG,
+                "clearLoadedModel: modelId=$modelId removedPath=$removedPath removedId=$removedId"
+            )
         }
-        val removedId = loadedModelIds.remove(modelId)
-        Log.i(
-            TAG,
-            "clearLoadedModel: modelId=$modelId removedPath=$removedPath removedId=$removedId"
-        )
     }
 
     override fun release() {
