@@ -176,6 +176,65 @@ void main() {
       expect(find.text('自動読み上げ: OFF'), findsOneWidget);
     });
 
+    testWidgets('settings sections are displayed in correct order', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      // Collect vertical positions of key widgets in display order.
+      // We scroll to the bottom to ensure all items are laid out.
+      final Finder scrollable = find.byType(Scrollable).first;
+
+      // Account section should appear before theme.
+      final double accountY = tester
+          .getTopLeft(find.text('ニコニコアカウント'))
+          .dy;
+      final double themeY = tester
+          .getTopLeft(find.text('配色テーマ'))
+          .dy;
+      expect(accountY, lessThan(themeY),
+          reason: 'ニコニコアカウント should appear before テーマ');
+
+      // Scroll to reveal lower items.
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('debug-mode-switch')),
+        200,
+        scrollable: scrollable,
+      );
+      await tester.pumpAndSettle();
+
+      // Comment display should appear before TTS.
+      final double commentDisplayY = tester
+          .getTopLeft(find.byKey(const Key('comment-display-settings-tile')))
+          .dy;
+      final double ttsY = tester
+          .getTopLeft(find.byKey(const Key('tts-settings-tile')))
+          .dy;
+      expect(commentDisplayY, lessThan(ttsY),
+          reason: 'コメント表示設定 should appear before 読み上げ設定');
+
+      // User management should appear before data management.
+      final double userMgmtY = tester
+          .getTopLeft(find.byKey(const Key('user-management-settings-tile')))
+          .dy;
+      final double exportY = tester
+          .getTopLeft(find.byKey(const Key('export-settings-button')))
+          .dy;
+      expect(userMgmtY, lessThan(exportY),
+          reason: 'ユーザー管理 should appear before データ管理');
+
+      // Data management should appear before debug.
+      final double debugY = tester
+          .getTopLeft(find.byKey(const Key('debug-mode-switch')))
+          .dy;
+      expect(exportY, lessThan(debugY),
+          reason: 'データ管理 should appear before デバッグ');
+    });
+
     testWidgets('comment display tile shows font size', (
       WidgetTester tester,
     ) async {
