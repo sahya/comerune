@@ -515,6 +515,19 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                 withContext(Dispatchers.IO) {
                     Log.i(TAG, "Loading model: $normalizedPath")
                     val loaded = NativeVoicevoxBridge.nativeLoadModel(normalizedPath)
+                    // Re-check state after native call: release() can run
+                    // concurrently (it bypasses coroutine mutex) and destroy
+                    // the native synthesizer. If that happened, discard the
+                    // result to avoid recording stale tracking data.
+                    if (state != TtsEngineState.READY) {
+                        Log.w(
+                            TAG,
+                            "loadModel aborted: engine state changed to $state during native call, modelId=${modelId ?: "unknown"}"
+                        )
+                        throw IllegalStateException(
+                            "Engine released during model load (state=$state)"
+                        )
+                    }
                     if (!loaded) {
                         Log.w(
                             TAG,
@@ -523,6 +536,12 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                         val recoveredAsAlreadyLoaded =
                             isModelAlreadyLoadedBySpeakerProbe(modelId)
                         if (recoveredAsAlreadyLoaded) {
+                            // Re-check: release() may have run during the probe.
+                            if (state != TtsEngineState.READY) {
+                                throw IllegalStateException(
+                                    "Engine released during probe (state=$state)"
+                                )
+                            }
                             markModelLoaded(normalizedPath, modelId)
                             Log.i(
                                 TAG,
