@@ -324,7 +324,7 @@ void main() {
         find.byType(CommentScreen),
       );
       expect(commentScreen.showUserName, isFalse);
-      expect(commentScreen.readUserName, isTrue);
+      expect(commentScreen.speechConfig.readUserName, isTrue);
       expect(commentScreen.userNameResolution?.resolve, isNotNull);
       expect(commentScreen.userNameResolution?.requestResolve, isNotNull);
 
@@ -591,13 +591,13 @@ void main() {
       CommentScreen commentScreen = tester.widget<CommentScreen>(
         find.byType(CommentScreen),
       );
-      commentScreen.onNicknameChanged?.call('user-1', 'コテハン名');
+      commentScreen.callbacks.onNicknameChanged?.call('user-1', 'コテハン名');
       await tester.pump();
 
       expect(find.textContaining('コテハン名 (user-1)'), findsOneWidget);
 
       commentScreen = tester.widget<CommentScreen>(find.byType(CommentScreen));
-      commentScreen.onUserColorChanged?.call('user-1', 0xFFE53935);
+      commentScreen.callbacks.onUserColorChanged?.call('user-1', 0xFFE53935);
       await tester.pump();
 
       final Text textWidget = tester.widget(
@@ -674,14 +674,14 @@ void main() {
     final CommentScreen commentScreen = tester.widget<CommentScreen>(
       find.byType(CommentScreen),
     );
-    await commentScreen.onDifferentLvConnected('lv345678901', 'lv999999999');
+    await commentScreen.callbacks.onDifferentLvConnected('lv345678901', 'lv999999999');
     await tester.pump();
 
     final CommentScreen updated = tester.widget<CommentScreen>(
       find.byType(CommentScreen),
     );
-    expect(updated.userColorMap, isEmpty);
-    expect(updated.userNicknameMap, isEmpty);
+    expect(updated.filterConfig.userColorMap, isEmpty);
+    expect(updated.filterConfig.userNicknameMap, isEmpty);
 
     expect(find.byKey(const Key('comment-row-msg-1')), findsNothing);
     expect(find.textContaining('初期コテハン (user-1)'), findsNothing);
