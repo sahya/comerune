@@ -273,6 +273,45 @@ void main() {
       },
     );
 
+    test(
+      'uses supplier name when broadcaster has id but no name',
+      () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseBody = jsonEncode(<String, Object?>{
+          'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+          'data': <String, Object?>{
+            'title': 'Id Only Broadcaster',
+            'broadcaster': <Object?>[
+              <String, Object?>{'id': 55555},
+            ],
+            'supplier': <String, Object?>{
+              'name': 'サプライヤー補完名',
+            },
+            'rooms': <Object?>[
+              <String, Object?>{
+                'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/IdOnly',
+              },
+            ],
+          },
+        });
+
+        final ProgramInfoResolver resolver = ProgramInfoResolver(
+          httpClient: httpClient,
+        );
+
+        final ProgramInfo result = await resolver.resolve(
+          lv: 'lv775',
+          userSession: 'session',
+        );
+
+        // broadcaster id used, supplier name used as fallback.
+        expect(result.supplierUserId, '55555');
+        expect(result.broadcasterName, 'サプライヤー補完名');
+
+        resolver.dispose();
+      },
+    );
+
     test('extracts beginAt from ISO 8601 string', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{

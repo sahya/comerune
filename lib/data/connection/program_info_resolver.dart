@@ -174,6 +174,11 @@ class ProgramInfoResolver {
   /// for the user ID and `data.supplier.name` for the display name.
   /// When broadcaster has a name but no id, the name is still captured and
   /// supplier is only consulted for the user ID.
+  ///
+  /// N-Air's type definition marks `broadcaster[0].id` as required (`number`),
+  /// but the actual API response may omit it for some broadcasts. This method
+  /// handles the missing-id case defensively to ensure the broadcaster name
+  /// is not lost.
   static ({String? userId, String? name}) _extractBroadcasterInfo(
     Map<String, dynamic> data,
   ) {
