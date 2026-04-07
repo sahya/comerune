@@ -1317,19 +1317,19 @@ void main() {
         final FakeCommentSpeechPlatform platform = FakeCommentSpeechPlatform();
         platform.availableModelsToReturn = <Map<String, dynamic>>[
           <String, dynamic>{
-            'modelId': 'model-a',
-            'displayName': 'Speaker A',
+            'modelId': 'n0',
+            'displayName': 'VOICEVOX Nemo',
             'speakerIds': <int>[0],
-            'vvmFileName': 'a.vvm',
+            'vvmFileName': 'n0.vvm',
             'fileSizeBytes': 100,
             'isBundled': true,
             'downloadState': 'DOWNLOADED',
           },
           <String, dynamic>{
-            'modelId': 'model-b',
-            'displayName': 'Speaker B',
+            'modelId': '2',
+            'displayName': '春日部つむぎ',
             'speakerIds': <int>[1],
-            'vvmFileName': 'b.vvm',
+            'vvmFileName': '2.vvm',
             'fileSizeBytes': 200,
             'isBundled': false,
             'downloadState': 'DOWNLOADED',
@@ -1374,7 +1374,7 @@ void main() {
           await tester.pumpAndSettle();
 
           // Model was loaded for the new speaker.
-          expect(platform.loadedModelIds, contains('model-b'));
+          expect(platform.loadedModelIds, contains('2'));
 
           // updateSettings was pushed with the new speaker ID.
           expect(platform.lastUpdatedSettings, isNotNull);
@@ -1468,7 +1468,7 @@ void main() {
           await tester.pumpAndSettle();
 
           expect(platform.initializeCalled, isTrue);
-          expect(platform.loadedModelIds, contains('model-b'));
+          expect(platform.loadedModelIds, contains('2'));
         },
       );
 
@@ -1507,7 +1507,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(platform.initializeCalled, isFalse);
-        expect(platform.loadedModelIds, contains('model-b'));
+        expect(platform.loadedModelIds, contains('2'));
       });
 
       testWidgets('speaker change in same model skips redundant model load', (
@@ -1595,7 +1595,7 @@ void main() {
           dropdown.onChanged!(1);
           await tester.pumpAndSettle();
 
-          expect(platform.loadedModelIds, contains('model-b'));
+          expect(platform.loadedModelIds, contains('2'));
           expect(platform.lastUpdatedSettings, isNotNull);
           expect(platform.lastUpdatedSettings!.speakerId, 1);
         },
@@ -1693,7 +1693,7 @@ void main() {
           dropdown.onChanged!(1);
           await tester.pumpAndSettle();
 
-          expect(platform.loadedModelIds, contains('model-b'));
+          expect(platform.loadedModelIds, contains('2'));
           expect(platform.lastUpdatedSettings, isNotNull);
           expect(platform.lastUpdatedSettings!.speakerId, 1);
         },
@@ -1816,10 +1816,10 @@ void main() {
 
           // Add a third model for the second change target.
           platform.availableModelsToReturn.add(<String, dynamic>{
-            'modelId': 'model-c',
-            'displayName': 'Speaker C',
+            'modelId': '3',
+            'displayName': '波音リツ',
             'speakerIds': <int>[2],
-            'vvmFileName': 'c.vvm',
+            'vvmFileName': '3.vvm',
             'fileSizeBytes': 300,
             'isBundled': false,
             'downloadState': 'DOWNLOADED',
@@ -1873,7 +1873,7 @@ void main() {
           expect(platform.lastUpdatedSettings!.speakerId, 2);
           expect(
             platform.loadedModelIds,
-            containsAll(<String>['model-b', 'model-c']),
+            containsAll(<String>['2', '3']),
           );
           expect(
             logs.any((line) => line.contains('reason=stale_generation')),

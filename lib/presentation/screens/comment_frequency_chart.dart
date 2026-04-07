@@ -41,7 +41,13 @@ class CommentFrequencyChart extends StatelessWidget {
     if (commentsPerMinute.isEmpty) {
       return SizedBox(
         height: height,
-        child: const Center(child: Text('データなし')),
+        child: const Center(
+          child: Text(
+            'データなし',
+            style: TextStyle(fontSize: 14),
+            textAlign: TextAlign.center,
+          ),
+        ),
       );
     }
 

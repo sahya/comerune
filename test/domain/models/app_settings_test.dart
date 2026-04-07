@@ -217,6 +217,49 @@ void main() {
     });
   });
 
+  group('commentTwoLineEnabled', () {
+    test('defaults to false', () {
+      expect(AppSettings.defaults.commentTwoLineEnabled, isFalse);
+    });
+
+    test('copyWith updates commentTwoLineEnabled', () {
+      final AppSettings updated = AppSettings.defaults.copyWith(
+        commentTwoLineEnabled: true,
+      );
+      expect(updated.commentTwoLineEnabled, isTrue);
+    });
+
+    test('copyWith preserves commentTwoLineEnabled when not specified', () {
+      final AppSettings initial = AppSettings.defaults.copyWith(
+        commentTwoLineEnabled: true,
+      );
+      final AppSettings updated = initial.copyWith(showUserName: false);
+      expect(updated.commentTwoLineEnabled, isTrue);
+    });
+  });
+
+  group('commentZebraStripingEnabled', () {
+    test('defaults to false', () {
+      expect(AppSettings.defaults.commentZebraStripingEnabled, isFalse);
+    });
+
+    test('copyWith updates commentZebraStripingEnabled', () {
+      final AppSettings updated = AppSettings.defaults.copyWith(
+        commentZebraStripingEnabled: true,
+      );
+      expect(updated.commentZebraStripingEnabled, isTrue);
+    });
+
+    test('copyWith preserves commentZebraStripingEnabled when not specified',
+        () {
+      final AppSettings initial = AppSettings.defaults.copyWith(
+        commentZebraStripingEnabled: true,
+      );
+      final AppSettings updated = initial.copyWith(debugMode: true);
+      expect(updated.commentZebraStripingEnabled, isTrue);
+    });
+  });
+
   group('dictionaryRules', () {
     test('defaults include nico dictionary rules', () {
       expect(AppSettings.defaults.dictionaryRules, defaultNicoDictionaryRules);

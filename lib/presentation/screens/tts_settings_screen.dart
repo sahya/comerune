@@ -83,6 +83,10 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   String? _maxDelayError;
   bool _isLoadingModel = false;
 
+  /// Model IDs allowed in the speaker dropdown.
+  /// Uses the shared constant from voicevox_model_info.dart.
+  static const Set<String> _allowedModelIds = supportedVoicevoxModelIds;
+
   static const Map<int, String> _nemoSpeakerNames = <int, String>{
     10000: '男声2',
     10001: '男声1',
@@ -460,6 +464,10 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         voicevoxVolume: volume,
       ),
     );
+    // Clear pre-mute volume when user applies a preset with non-zero volume.
+    if (volume > 0) {
+      unawaited(widget.settingsStore.savePreMuteVolume(null));
+    }
   }
 
   void _saveQueueLimit() {
@@ -680,9 +688,13 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     }
 
     // When models are available, build items from downloaded/bundled models.
+    // Only show speakers from allowed models (Nemo, 春日部つむぎ, 波音リツ).
     if (models != null && models.isNotEmpty) {
       final List<DropdownMenuItem<int>> items = [];
       for (final model in models) {
+        if (!_allowedModelIds.contains(model.modelId)) {
+          continue;
+        }
         if (model.downloadState != ModelDownloadState.downloaded &&
             !model.isBundled) {
           continue;
@@ -792,6 +804,13 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     );
   }
 
+  /// Speaker style names for 春日部つむぎ and 波音リツ models.
+  static const Map<int, String> _additionalSpeakerStyles = <int, String>{
+    8: 'ノーマル',
+    9: 'ノーマル',
+    65: 'クイーン',
+  };
+
   String _speakerMenuLabel(VoicevoxModelInfo model, int speakerId) {
     if (model.modelId == 'n0') {
       // TTS設定のプルダウンは横幅が限られるため、接頭辞を短くして
@@ -802,6 +821,10 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         return 'Nemo | $speakerName (ID:$speakerId)';
       }
       return 'Nemo | Unknown (ID:$speakerId)';
+    }
+    final String? styleName = _additionalSpeakerStyles[speakerId];
+    if (styleName != null) {
+      return '${model.displayName} | $styleName (ID:$speakerId)';
     }
     return '${model.displayName} (ID:$speakerId)';
   }
@@ -1094,8 +1117,41 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                               updateAndSave(
                                 settings.copyWith(voicevoxVolume: value),
                               );
+                              // Clear pre-mute volume when user manually
+                              // changes volume, so mute icon stays in sync.
+                              if (value > 0) {
+                                unawaited(
+                                  widget.settingsStore.savePreMuteVolume(null),
+                                );
+                              }
                             },
                           ),
+                          if (widget.settingsStore.loadPreMuteVolume() != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.volume_mute,
+                                    size: 16,
+                                    color:
+                                        Theme.of(context).colorScheme.outline,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'コメント画面でミュート中です',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .outline,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           const SizedBox(height: 12),
                           Text(
                             _buildCreditText(settings.voicevoxSpeaker),

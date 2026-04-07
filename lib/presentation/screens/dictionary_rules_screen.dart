@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../application/settings/settings_store.dart';
 import '../../comment_speech/src/models/replace_rule.dart';
 import '../../domain/models/app_settings.dart';
+import '../widgets/confirm_dialog.dart';
 import 'dictionary_rule_form.dart';
 
 /// Screen that displays and manages the list of dictionary replacement rules.
@@ -64,25 +65,12 @@ class _DictionaryRulesScreenState extends State<DictionaryRulesScreen> {
 
   Future<void> _deleteRule(int index) async {
     final ReplaceRule rule = _rules[index];
-    final bool? confirmed = await showDialog<bool>(
+    final bool? confirmed = await showConfirmDialog(
       context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text('ルール削除'),
-          content: Text('パターン「${rule.pattern}」を削除しますか？'),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('キャンセル'),
-            ),
-            TextButton(
-              key: const Key('rule-delete-confirm-button'),
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('削除'),
-            ),
-          ],
-        );
-      },
+      title: 'ルール削除',
+      content: 'パターン「${rule.pattern}」を削除しますか？',
+      confirmLabel: '削除',
+      confirmButtonKey: const Key('rule-delete-confirm-button'),
     );
 
     if (confirmed != true || !mounted) {

@@ -380,7 +380,7 @@ class SpeechControllerImpl(
     ) {
         val wavResult = synthesizeOrUsePrefetch(item, settings) ?: return
 
-        val nextItem = startPrefetch(settings)
+        val prefetchNextItem = startPrefetch(settings)
 
         val playResult = try {
             player.play(wavResult.wavBytes)
@@ -392,8 +392,8 @@ class SpeechControllerImpl(
             Result.failure(e)
         }
 
-        if (nextItem != null) {
-            collectPrefetch(nextItem)
+        if (prefetchNextItem != null) {
+            collectPrefetch(prefetchNextItem)
         }
 
         if (playResult.isFailure) {

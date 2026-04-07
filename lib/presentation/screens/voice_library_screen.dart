@@ -8,6 +8,56 @@ import '../../application/settings/settings_store.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/voicevox_model_info.dart';
+import '../widgets/confirm_dialog.dart';
+
+/// Filters VOICEVOX TERMS.txt to keep only the common header sections and
+/// the individual speaker sections for the supported speakers.
+///
+/// Exported for testing. Not intended for general use outside this library.
+@visibleForTesting
+String filterTermsForSupportedSpeakers(
+  String fullText,
+  Set<String> supportedNames,
+) {
+  final lines = fullText.split('\n');
+  final buffer = StringBuffer();
+  bool inSpeakerSection = false;
+  bool keepCurrentSection = false;
+  bool passedSpeakerSections = false;
+
+  for (final line in lines) {
+    if (line == '# 音声ライブラリ利用規約') {
+      passedSpeakerSections = true;
+      buffer.writeln(line);
+      continue;
+    }
+
+    if (!passedSpeakerSections) {
+      buffer.writeln(line);
+      continue;
+    }
+
+    if (line.startsWith('## ')) {
+      final sectionName = line.substring(3).trim();
+      inSpeakerSection = true;
+      keepCurrentSection = supportedNames.contains(sectionName);
+      if (keepCurrentSection) {
+        buffer.writeln(line);
+      }
+      continue;
+    }
+
+    if (inSpeakerSection) {
+      if (keepCurrentSection) {
+        buffer.writeln(line);
+      }
+    } else {
+      buffer.writeln(line);
+    }
+  }
+
+  return buffer.toString().trimRight();
+}
 
 void _debugLogLazy(String Function() messageBuilder) {
   appDebugLogLazy(messageBuilder);
@@ -38,8 +88,8 @@ class VoiceLibraryScreen extends StatefulWidget {
 
 class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
   /// Model IDs to show in the voice library.
-  /// Includes VOICEVOX Nemo, 春日部つむぎ, and 波音リツ.
-  static const Set<String> _supportedModelIds = <String>{'n0', '2', '3'};
+  /// Uses the shared constant from voicevox_model_info.dart.
+  static const Set<String> _supportedModelIds = supportedVoicevoxModelIds;
 
   late final VoicevoxModelManager _manager;
   bool _loadError = false;
@@ -97,9 +147,7 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (models.isEmpty) {
-            return const Center(
-              child: Text('利用可能な話者がありません'),
-            );
+            return const Center(child: Text('利用可能な話者がありません'));
           }
           return ValueListenableBuilder<Map<String, double>>(
             valueListenable: _manager.downloadProgress,
@@ -190,22 +238,11 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
   }
 
   Future<void> _onDelete(VoicevoxModelInfo model) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showConfirmDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('モデルの削除'),
-        content: Text('${model.displayName} を削除しますか？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('キャンセル'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('削除'),
-          ),
-        ],
-      ),
+      title: 'モデルの削除',
+      content: '${model.displayName} を削除しますか？',
+      confirmLabel: '削除',
     );
     if (confirmed != true) return;
     try {
@@ -380,10 +417,19 @@ class _VoicevoxTermsDialogState extends State<_VoicevoxTermsDialog> {
     _loadTerms();
   }
 
+  /// Speaker names whose terms sections should be displayed.
+  /// Uses the shared constant from voicevox_model_info.dart.
+  static const Set<String> _supportedSpeakerNames =
+      supportedVoicevoxSpeakerNames;
+
   Future<void> _loadTerms() async {
     try {
-      final text = await rootBundle.loadString(
+      final fullText = await rootBundle.loadString(
         'android/app/src/main/assets/voicevox_models/TERMS.txt',
+      );
+      final text = filterTermsForSupportedSpeakers(
+        fullText,
+        _supportedSpeakerNames,
       );
       if (mounted) setState(() => _termsText = text);
       // After content is loaded and rendered, check if scrolling is needed.

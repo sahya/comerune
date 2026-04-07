@@ -114,6 +114,7 @@ class _SelectScreenState extends State<SelectScreen> {
   final MethodChannelCommentSpeech _speechPlatform =
       MethodChannelCommentSpeech();
   int _broadcastEndedNotificationSequence = 0;
+  double? _preMuteVolume;
 
   static const Duration _followRefreshInterval = Duration(seconds: 60);
   static const Duration _favoriteRefreshInterval = Duration(seconds: 30);
@@ -502,36 +503,34 @@ class _SelectScreenState extends State<SelectScreen> {
           ),
           connectionSupervisor: widget.connectionSupervisor,
           messages: messages,
-          onStopAllConnections: _stopAllConnections,
-          onReconnectSameLv: _reconnectSameLv,
-          onDifferentLvConnected: _onDifferentLvConnected,
-          onOpenSettings: widget.settingsStore == null
-              ? null
-              : () => _openSettings(routeContext, widget.userSessionStore),
+          callbacks: CommentCallbacks(
+            onStopAllConnections: _stopAllConnections,
+            onReconnectSameLv: _reconnectSameLv,
+            onDifferentLvConnected: _onDifferentLvConnected,
+            onOpenSettings: widget.settingsStore == null
+                ? null
+                : () => _openSettings(routeContext, widget.userSessionStore),
+            onToggleNgUser: _toggleNgUser,
+            onUserColorChanged:
+                widget.userAttributeStore != null ? _onUserColorChanged : null,
+            onUserColorRemoved:
+                widget.userAttributeStore != null ? _onUserColorRemoved : null,
+            onNicknameChanged:
+                widget.userAttributeStore != null ? _onNicknameChanged : null,
+            onNicknameRemoved:
+                widget.userAttributeStore != null ? _onNicknameRemoved : null,
+            onDictionaryRulesChanged: _onDictionaryRulesChanged,
+            onSpeechMuteToggled:
+                widget.settingsStore != null ? _toggleSpeechMute : null,
+          ),
           debugMode: _settingsNotifier.value.debugMode,
           showUserName: _settingsNotifier.value.showUserName,
           commentFontSize: _settingsNotifier.value.commentFontSize,
           userNameResolution:
               nameResolutionEnabled ? widget.userNameResolution : null,
-          commentLogWriter: widget.commentLogWriter,
-          autoSaveCommentLog: _settingsNotifier.value.autoSaveCommentLog,
-          autoSaveCommentLogPath:
-              _settingsNotifier.value.autoSaveCommentLogPath,
-          ngUserIds: _settingsNotifier.value.ngUserIdSet,
-          ngWords: _settingsNotifier.value.ngWordList,
-          onToggleNgUser: _toggleNgUser,
-          starPrefixHidingEnabled:
-              _settingsNotifier.value.starPrefixHidingEnabled,
-          userColorMap: _userAttrNotifier.value.colors,
-          onUserColorChanged:
-              widget.userAttributeStore != null ? _onUserColorChanged : null,
-          onUserColorRemoved:
-              widget.userAttributeStore != null ? _onUserColorRemoved : null,
-          userNicknameMap: _userAttrNotifier.value.nicknames,
-          onNicknameChanged:
-              widget.userAttributeStore != null ? _onNicknameChanged : null,
-          onNicknameRemoved:
-              widget.userAttributeStore != null ? _onNicknameRemoved : null,
+          commentTwoLineEnabled: _settingsNotifier.value.commentTwoLineEnabled,
+          commentZebraStripingEnabled:
+              _settingsNotifier.value.commentZebraStripingEnabled,
           autoNicknameRegistration:
               _settingsNotifier.value.autoNicknameRegistration,
           themeMode: _settingsNotifier.value.themeMode,
@@ -547,11 +546,27 @@ class _SelectScreenState extends State<SelectScreen> {
             totalCommentCount: widget.statisticsStore?.totalCommentCount ?? 0,
             activeUserCount: widget.statisticsStore?.activeUserCount ?? 0,
           ),
-          speechPlatform: _speechPlatform,
-          speechSettings: _buildSpeechSettings(),
-          readUserName: _settingsNotifier.value.readUserName,
-          settingsStore: widget.settingsStore,
-          onDictionaryRulesChanged: _onDictionaryRulesChanged,
+          filterConfig: CommentFilterConfig(
+            ngUserIds: _settingsNotifier.value.ngUserIdSet,
+            ngWords: _settingsNotifier.value.ngWordList,
+            starPrefixHidingEnabled:
+                _settingsNotifier.value.starPrefixHidingEnabled,
+            userColorMap: _userAttrNotifier.value.colors,
+            userNicknameMap: _userAttrNotifier.value.nicknames,
+          ),
+          logConfig: CommentLogConfig(
+            commentLogWriter: widget.commentLogWriter,
+            autoSaveCommentLog: _settingsNotifier.value.autoSaveCommentLog,
+            autoSaveCommentLogPath:
+                _settingsNotifier.value.autoSaveCommentLogPath,
+          ),
+          speechConfig: CommentSpeechConfig(
+            speechPlatform: _speechPlatform,
+            speechSettings: _buildSpeechSettings(),
+            readUserName: _settingsNotifier.value.readUserName,
+            settingsStore: widget.settingsStore,
+            isSpeechMuted: _preMuteVolume != null,
+          ),
         );
       },
     );
@@ -714,6 +729,30 @@ class _SelectScreenState extends State<SelectScreen> {
 
   void _onDictionaryRulesChanged(AppSettings updated) {
     _settingsNotifier.value = updated;
+  }
+
+  void _toggleSpeechMute() {
+    final SettingsStore? settingsStore = widget.settingsStore;
+    if (settingsStore == null) return;
+
+    final AppSettings current = _settingsNotifier.value;
+    if (_preMuteVolume != null) {
+      // Unmute: restore previous volume.
+      final double restored = _preMuteVolume!;
+      _preMuteVolume = null;
+      final AppSettings updated = current.copyWith(voicevoxVolume: restored);
+      _settingsNotifier.value = updated;
+      unawaited(settingsStore.save(updated));
+      unawaited(settingsStore.savePreMuteVolume(null));
+    } else {
+      // Mute: save current volume and set to 0.
+      final double currentVolume = current.voicevoxVolume;
+      _preMuteVolume = currentVolume > 0 ? currentVolume : 1.0;
+      final AppSettings updated = current.copyWith(voicevoxVolume: 0.0);
+      _settingsNotifier.value = updated;
+      unawaited(settingsStore.save(updated));
+      unawaited(settingsStore.savePreMuteVolume(_preMuteVolume));
+    }
   }
 
   void _toggleNgUser(String userId) {
@@ -1123,6 +1162,7 @@ class _SelectScreenState extends State<SelectScreen> {
     }
 
     _settingsNotifier.value = loaded;
+    _preMuteVolume = settingsStore.loadPreMuteVolume();
     _requestFavoriteUserNameResolution();
     if (widget.themeModeNotifier != null &&
         widget.themeModeNotifier!.value != loaded.themeMode) {

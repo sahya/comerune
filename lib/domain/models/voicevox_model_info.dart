@@ -1,3 +1,17 @@
+/// Model IDs for VOICEVOX speakers supported by this app.
+///
+/// - `n0`: VOICEVOX Nemo (bundled)
+/// - `2`: 春日部つむぎ
+/// - `3`: 波音リツ
+const Set<String> supportedVoicevoxModelIds = <String>{'n0', '2', '3'};
+
+/// Display names of supported speakers for terms filtering.
+const Set<String> supportedVoicevoxSpeakerNames = <String>{
+  'VOICEVOX Nemo',
+  '春日部つむぎ',
+  '波音リツ',
+};
+
 /// Download state of a VOICEVOX voice model.
 enum ModelDownloadState { notDownloaded, downloading, downloaded, error }
 

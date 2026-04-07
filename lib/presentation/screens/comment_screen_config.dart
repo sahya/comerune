@@ -1,6 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:meta/meta.dart';
 
+import '../../application/settings/settings_store.dart';
+import '../../comment_speech/comment_speech.dart';
+import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/connection/connection_method.dart';
+import '../../domain/models/app_settings.dart';
 
 /// Program-level metadata for the comment screen.
 @immutable
@@ -70,4 +75,126 @@ class CommentStatisticsConfig {
 
   /// Number of active users in recent window.
   final int activeUserCount;
+}
+
+/// Groups callback parameters for [CommentScreen].
+@immutable
+class CommentCallbacks {
+  const CommentCallbacks({
+    required this.onStopAllConnections,
+    required this.onReconnectSameLv,
+    required this.onDifferentLvConnected,
+    this.onOpenSettings,
+    this.onToggleNgUser,
+    this.onDictionaryRulesChanged,
+    this.onSpeechMuteToggled,
+    this.onUserColorChanged,
+    this.onUserColorRemoved,
+    this.onNicknameChanged,
+    this.onNicknameRemoved,
+  });
+
+  final Future<void> Function() onStopAllConnections;
+  final Future<void> Function() onReconnectSameLv;
+  final Future<void> Function(String previousLv, String nextLv)
+      onDifferentLvConnected;
+  final Future<void> Function()? onOpenSettings;
+
+  /// Called to toggle NG status for a user.
+  final void Function(String userId)? onToggleNgUser;
+
+  /// Called when dictionary rules are updated by a teach/unteach command.
+  final void Function(AppSettings updated)? onDictionaryRulesChanged;
+
+  /// Called when the user taps the speech status icon to toggle mute.
+  final VoidCallback? onSpeechMuteToggled;
+
+  /// Called when the user sets a custom comment color for a user.
+  final void Function(String userId, int colorValue)? onUserColorChanged;
+
+  /// Called when the user removes a custom comment color.
+  final void Function(String userId)? onUserColorRemoved;
+
+  /// Called when a nickname is set or updated for a user.
+  final void Function(String userId, String nickname)? onNicknameChanged;
+
+  /// Called when a nickname is removed for a user.
+  final void Function(String userId)? onNicknameRemoved;
+}
+
+/// Groups filter-related parameters for [CommentScreen].
+@immutable
+class CommentFilterConfig {
+  const CommentFilterConfig({
+    this.ngUserIds = const <String>{},
+    this.ngWords = const <String>[],
+    this.presetNgWords = const <String>[],
+    this.starPrefixHidingEnabled = false,
+    this.userColorMap = const <String, int>{},
+    this.userNicknameMap = const <String, String>{},
+  });
+
+  /// Set of user IDs marked as NG (blocked).
+  final Set<String> ngUserIds;
+
+  /// List of NG words for content-based filtering (case-insensitive).
+  final List<String> ngWords;
+
+  /// System preset NG words (non-user editable in UI).
+  ///
+  /// When empty, the widget attempts to load `preset_ng_words.json` from assets.
+  final List<String> presetNgWords;
+
+  /// When true, comments starting with `☆` have their body hidden
+  /// and can be revealed by tapping.
+  final bool starPrefixHidingEnabled;
+
+  /// Per-user comment color map. Keys are user IDs, values are ARGB32 ints.
+  final Map<String, int> userColorMap;
+
+  /// Per-user nickname (コテハン) map. Keys are user IDs, values are nicknames.
+  final Map<String, String> userNicknameMap;
+}
+
+/// Groups comment-log parameters for [CommentScreen].
+@immutable
+class CommentLogConfig {
+  const CommentLogConfig({
+    this.commentLogWriter,
+    this.autoSaveCommentLog = false,
+    this.autoSaveCommentLogPath = '',
+  });
+
+  final CommentLogWriter? commentLogWriter;
+  final bool autoSaveCommentLog;
+  final String autoSaveCommentLogPath;
+}
+
+/// Groups speech (VoiceVox) parameters for [CommentScreen].
+@immutable
+class CommentSpeechConfig {
+  const CommentSpeechConfig({
+    this.speechPlatform,
+    this.speechSettings = const SpeechSettings(enabled: false),
+    this.readUserName = false,
+    this.settingsStore,
+    this.isSpeechMuted = false,
+  });
+
+  /// The platform channel bridge for VoiceVox speech synthesis.
+  /// Null when the speech plugin is not available.
+  final CommentSpeechPlatform? speechPlatform;
+
+  /// VoiceVox speech configuration. [SpeechSettings.enabled] reflects
+  /// whether auto-read is active with the VoiceVox engine.
+  final SpeechSettings speechSettings;
+
+  /// When true, the user name is prepended to the comment text for TTS.
+  final bool readUserName;
+
+  /// Settings store for persisting teach command dictionary changes.
+  final SettingsStore? settingsStore;
+
+  /// Whether the speech output is currently muted.
+  final bool isSpeechMuted;
 }

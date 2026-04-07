@@ -866,12 +866,16 @@ void main() {
             programInfo: const CommentProgramInfo(lv: 'lv123456789'),
             connectionSupervisor: supervisor,
             messages: const <AppMessage>[],
-            onStopAllConnections: () async {},
-            onReconnectSameLv: () async {},
-            onDifferentLvConnected: (_, __) async {},
+            callbacks: CommentCallbacks(
+              onStopAllConnections: () async {},
+              onReconnectSameLv: () async {},
+              onDifferentLvConnected: (_, __) async {},
+            ),
             themeMode: AppThemeMode.light,
-            speechPlatform: fakePlatform,
-            speechSettings: const SpeechSettings(enabled: true),
+            speechConfig: CommentSpeechConfig(
+              speechPlatform: fakePlatform,
+              speechSettings: const SpeechSettings(enabled: true),
+            ),
           ),
         ),
       );
@@ -899,12 +903,16 @@ void main() {
               programInfo: const CommentProgramInfo(lv: 'lv123456789'),
               connectionSupervisor: supervisor,
               messages: const <AppMessage>[],
-              onStopAllConnections: () async {},
-              onReconnectSameLv: () async {},
-              onDifferentLvConnected: (_, __) async {},
+              callbacks: CommentCallbacks(
+                onStopAllConnections: () async {},
+                onReconnectSameLv: () async {},
+                onDifferentLvConnected: (_, __) async {},
+              ),
               themeMode: AppThemeMode.light,
-              speechPlatform: fakePlatform,
-              speechSettings: const SpeechSettings(enabled: true),
+              speechConfig: CommentSpeechConfig(
+                speechPlatform: fakePlatform,
+                speechSettings: const SpeechSettings(enabled: true),
+              ),
             ),
           ),
         );
@@ -935,12 +943,16 @@ void main() {
             programInfo: const CommentProgramInfo(lv: 'lv123456789'),
             connectionSupervisor: supervisor,
             messages: const <AppMessage>[],
-            onStopAllConnections: () async {},
-            onReconnectSameLv: () async {},
-            onDifferentLvConnected: (_, __) async {},
+            callbacks: CommentCallbacks(
+              onStopAllConnections: () async {},
+              onReconnectSameLv: () async {},
+              onDifferentLvConnected: (_, __) async {},
+            ),
             themeMode: AppThemeMode.light,
-            speechPlatform: fakePlatform,
-            speechSettings: const SpeechSettings(enabled: false),
+            speechConfig: CommentSpeechConfig(
+              speechPlatform: fakePlatform,
+              speechSettings: const SpeechSettings(enabled: false),
+            ),
           ),
         ),
       );
@@ -953,6 +965,114 @@ void main() {
 
       // stop is not called because speech was never started.
       expect(fakePlatform.stopCalled, isFalse);
+    });
+  });
+
+  group('mute toggle', () {
+    late FakeCommentSpeechPlatform fakePlatform;
+
+    setUp(() {
+      fakePlatform = FakeCommentSpeechPlatform();
+      fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+        enabled: true,
+        engineState: 'READY',
+        playerState: 'IDLE',
+        queueSize: 0,
+        currentSpeakerId: 0,
+      );
+    });
+
+    tearDown(() {
+      fakePlatform.dispose();
+    });
+
+    testWidgets('muted icon shows volume_mute when isSpeechMuted is true', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          isSpeechMuted: true,
+          onSpeechMuteToggled: () {},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final Icon icon = tester.widget<Icon>(
+        find.descendant(
+          of: find.byKey(const Key('speech-status-icon')),
+          matching: find.byType(Icon),
+        ),
+      );
+      expect(icon.icon, Icons.volume_mute);
+    });
+
+    testWidgets('non-muted icon shows volume_up when isSpeechMuted is false', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          isSpeechMuted: false,
+          onSpeechMuteToggled: () {},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final Icon icon = tester.widget<Icon>(
+        find.descendant(
+          of: find.byKey(const Key('speech-status-icon')),
+          matching: find.byType(Icon),
+        ),
+      );
+      expect(icon.icon, Icons.volume_up);
+    });
+
+    testWidgets(
+      'tapping mute icon calls onSpeechMuteToggled and shows snackbar',
+      (WidgetTester tester) async {
+        bool toggled = false;
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+            isSpeechMuted: false,
+            onSpeechMuteToggled: () => toggled = true,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('speech-status-icon')));
+        await tester.pump();
+
+        expect(toggled, isTrue);
+        expect(find.text('ミュートしました'), findsOneWidget);
+      },
+    );
+
+    testWidgets('icon is not tappable when onSpeechMuteToggled is null', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          isSpeechMuted: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // When onSpeechMuteToggled is null, the icon should be a Tooltip
+      // (non-tappable), not an IconButton.
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('speech-status-icon')),
+          matching: find.byType(IconButton),
+        ),
+        findsNothing,
+      );
     });
   });
 }
@@ -975,6 +1095,8 @@ class _SpeechTestHost extends StatefulWidget {
     this.userNicknameMap = const <String, String>{},
     this.resolveUserName,
     this.requestUserNameResolve,
+    this.isSpeechMuted = false,
+    this.onSpeechMuteToggled,
   });
 
   final List<AppMessage> initialMessages;
@@ -988,6 +1110,8 @@ class _SpeechTestHost extends StatefulWidget {
   final Map<String, String> userNicknameMap;
   final String? Function(String userId)? resolveUserName;
   final void Function(String userId)? requestUserNameResolve;
+  final bool isSpeechMuted;
+  final VoidCallback? onSpeechMuteToggled;
 
   @override
   State<_SpeechTestHost> createState() => _SpeechTestHostState();
@@ -1041,19 +1165,27 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
       programInfo: const CommentProgramInfo(lv: 'lv123456789'),
       connectionSupervisor: _buildStreamingSupervisor(),
       messages: _messages,
-      onStopAllConnections: () async {},
-      onReconnectSameLv: () async {},
-      onDifferentLvConnected: (_, __) async {},
+      callbacks: CommentCallbacks(
+        onStopAllConnections: () async {},
+        onReconnectSameLv: () async {},
+        onDifferentLvConnected: (_, __) async {},
+        onSpeechMuteToggled: widget.onSpeechMuteToggled,
+      ),
       themeMode: AppThemeMode.light,
-      speechPlatform: widget.speechPlatform,
-      speechSettings: _speechSettings,
-      ngUserIds: _ngUserIds,
-      ngWords: widget.ngWords,
-      starPrefixHidingEnabled: widget.starPrefixHidingEnabled,
       showUserName: widget.showUserName,
-      readUserName: widget.readUserName,
-      userNicknameMap: widget.userNicknameMap,
       userNameResolution: userNameResolution,
+      filterConfig: CommentFilterConfig(
+        ngUserIds: _ngUserIds,
+        ngWords: widget.ngWords,
+        starPrefixHidingEnabled: widget.starPrefixHidingEnabled,
+        userNicknameMap: widget.userNicknameMap,
+      ),
+      speechConfig: CommentSpeechConfig(
+        speechPlatform: widget.speechPlatform,
+        speechSettings: _speechSettings,
+        readUserName: widget.readUserName,
+        isSpeechMuted: widget.isSpeechMuted,
+      ),
     );
   }
 }
@@ -1070,6 +1202,8 @@ Widget _buildScreen({
   Map<String, String> userNicknameMap = const <String, String>{},
   String? Function(String userId)? resolveUserName,
   void Function(String userId)? requestUserNameResolve,
+  bool isSpeechMuted = false,
+  VoidCallback? onSpeechMuteToggled,
 }) {
   return MaterialApp(
     home: _SpeechTestHost(
@@ -1084,6 +1218,8 @@ Widget _buildScreen({
       userNicknameMap: userNicknameMap,
       resolveUserName: resolveUserName,
       requestUserNameResolve: requestUserNameResolve,
+      isSpeechMuted: isSpeechMuted,
+      onSpeechMuteToggled: onSpeechMuteToggled,
     ),
   );
 }
