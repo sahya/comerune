@@ -1052,6 +1052,46 @@ void main() {
       },
     );
 
+    testWidgets(
+      'mute banner shows volume_off icon when isSpeechMuted is true',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+            isSpeechMuted: true,
+            onSpeechMuteToggled: () {},
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final Finder bannerIcon = find.descendant(
+          of: find.byKey(const Key('mute-banner')),
+          matching: find.byType(Icon),
+        );
+        expect(bannerIcon, findsOneWidget);
+
+        final Icon icon = tester.widget<Icon>(bannerIcon);
+        expect(icon.icon, Icons.volume_off);
+      },
+    );
+
+    testWidgets('mute banner is not shown when isSpeechMuted is false', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          isSpeechMuted: false,
+          onSpeechMuteToggled: () {},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('mute-banner')), findsNothing);
+    });
+
     testWidgets('icon is not tappable when onSpeechMuteToggled is null', (
       WidgetTester tester,
     ) async {
