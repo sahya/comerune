@@ -611,10 +611,10 @@ void main() {
           'downloadState': 'DOWNLOADED',
         },
         <String, dynamic>{
-          'modelId': '2',
+          'modelId': '0',
           'displayName': 'VOICEVOX 春日部つむぎ',
           'speakerIds': <int>[8],
-          'vvmFileName': '2.vvm',
+          'vvmFileName': '0.vvm',
           'fileSizeBytes': 100,
           'isBundled': false,
           'downloadState': 'DOWNLOADED',
@@ -1040,10 +1040,10 @@ void main() {
             'downloadState': 'DOWNLOADED',
           },
           <String, dynamic>{
-            'modelId': '2',
+            'modelId': '0',
             'displayName': 'VOICEVOX 春日部つむぎ',
             'speakerIds': <int>[8],
-            'vvmFileName': '2.vvm',
+            'vvmFileName': '0.vvm',
             'fileSizeBytes': 100,
             'isBundled': false,
             'downloadState': 'DOWNLOADED',
@@ -1282,10 +1282,10 @@ void main() {
             'downloadState': 'DOWNLOADED',
           },
           <String, dynamic>{
-            'modelId': '2',
+            'modelId': '0',
             'displayName': '春日部つむぎ',
             'speakerIds': <int>[1],
-            'vvmFileName': '2.vvm',
+            'vvmFileName': '0.vvm',
             'fileSizeBytes': 200,
             'isBundled': false,
             'downloadState': 'DOWNLOADED',
@@ -1330,7 +1330,7 @@ void main() {
           await tester.pumpAndSettle();
 
           // Model was loaded for the new speaker.
-          expect(platform.loadedModelIds, contains('2'));
+          expect(platform.loadedModelIds, contains('0'));
 
           // updateSettings was pushed with the new speaker ID.
           expect(platform.lastUpdatedSettings, isNotNull);
@@ -1424,7 +1424,7 @@ void main() {
           await tester.pumpAndSettle();
 
           expect(platform.initializeCalled, isTrue);
-          expect(platform.loadedModelIds, contains('2'));
+          expect(platform.loadedModelIds, contains('0'));
         },
       );
 
@@ -1463,7 +1463,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(platform.initializeCalled, isFalse);
-        expect(platform.loadedModelIds, contains('2'));
+        expect(platform.loadedModelIds, contains('0'));
       });
 
       testWidgets('speaker change in same model skips redundant model load', (
@@ -1551,7 +1551,7 @@ void main() {
           dropdown.onChanged!(1);
           await tester.pumpAndSettle();
 
-          expect(platform.loadedModelIds, contains('2'));
+          expect(platform.loadedModelIds, contains('0'));
           expect(platform.lastUpdatedSettings, isNotNull);
           expect(platform.lastUpdatedSettings!.speakerId, 1);
         },
@@ -1649,7 +1649,7 @@ void main() {
           dropdown.onChanged!(1);
           await tester.pumpAndSettle();
 
-          expect(platform.loadedModelIds, contains('2'));
+          expect(platform.loadedModelIds, contains('0'));
           expect(platform.lastUpdatedSettings, isNotNull);
           expect(platform.lastUpdatedSettings!.speakerId, 1);
         },
@@ -1827,7 +1827,7 @@ void main() {
           expect(loaded.voicevoxSpeaker, 2);
           expect(platform.lastUpdatedSettings, isNotNull);
           expect(platform.lastUpdatedSettings!.speakerId, 2);
-          expect(platform.loadedModelIds, containsAll(<String>['2', '3']));
+          expect(platform.loadedModelIds, containsAll(<String>['0', '3']));
           expect(
             logs.any((line) => line.contains('reason=stale_generation')),
             isTrue,
