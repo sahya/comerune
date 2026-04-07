@@ -303,6 +303,14 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                 }
 
                 updateEngineState(TtsEngineState.READY, "initialize_completed")
+                // Dump all registered speakers/styles for debugging.
+                // This reveals the actual style IDs inside loaded VVM files.
+                try {
+                    val metasJson = NativeVoicevoxBridge.nativeGetMetasJson()
+                    Log.i(TAG, "Synthesizer metas (all loaded styles): $metasJson")
+                } catch (e: Throwable) {
+                    Log.w(TAG, "Failed to get synthesizer metas", e)
+                }
                 Log.i(
                     TAG,
                     "VOICEVOX engine initialized successfully. " +

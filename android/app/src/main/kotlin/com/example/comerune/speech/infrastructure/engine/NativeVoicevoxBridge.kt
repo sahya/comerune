@@ -134,6 +134,14 @@ object NativeVoicevoxBridge {
     ): ByteArray?
 
     /**
+     * Return the JSON metadata of all speakers/styles currently loaded
+     * in the synthesizer. Useful for debugging style ID mismatches.
+     *
+     * @return JSON string, or null if the synthesizer is not initialized
+     */
+    external fun nativeGetMetasJson(): String?
+
+    /**
      * Release all native resources (synthesizer, OpenJTalk).
      * After calling this, [nativeInitialize] must be called again before use.
      */

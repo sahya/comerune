@@ -301,6 +301,29 @@ Java_com_example_comerune_speech_infrastructure_engine_NativeVoicevoxBridge_nati
     return javaWav;
 }
 
+JNIEXPORT jstring JNICALL
+Java_com_example_comerune_speech_infrastructure_engine_NativeVoicevoxBridge_nativeGetMetasJson(
+        JNIEnv* env, jobject /* thiz */) {
+    std::shared_lock<std::shared_mutex> lock(g_mutex);
+
+    if (g_synthesizer == nullptr) {
+        LOGE("nativeGetMetasJson: synthesizer not initialized");
+        return nullptr;
+    }
+
+    char* metasJson = voicevox_synthesizer_create_metas_json(g_synthesizer);
+    if (metasJson == nullptr) {
+        LOGE("nativeGetMetasJson: create_metas_json returned null");
+        return nullptr;
+    }
+
+    jstring result = env->NewStringUTF(metasJson);
+    voicevox_json_free(metasJson);
+
+    LOGI("nativeGetMetasJson: returned metas JSON");
+    return result;
+}
+
 JNIEXPORT void JNICALL
 Java_com_example_comerune_speech_infrastructure_engine_NativeVoicevoxBridge_nativeRelease(
         JNIEnv* /* env */, jobject /* thiz */) {
