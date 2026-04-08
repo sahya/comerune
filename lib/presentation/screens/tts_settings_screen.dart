@@ -703,6 +703,12 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         }
         final List<int> orderedSpeakerIds = _orderedSpeakerIds(model);
         for (final speakerId in orderedSpeakerIds) {
+          // 0.vvm には複数話者が同梱されているが、ドロップダウンには
+          // サポート対象のスタイル（_additionalSpeakerStyles）のみ表示する。
+          if (model.modelId != 'n0' &&
+              !_additionalSpeakerStyles.containsKey(speakerId)) {
+            continue;
+          }
           items.add(
             DropdownMenuItem<int>(
               value: speakerId,
