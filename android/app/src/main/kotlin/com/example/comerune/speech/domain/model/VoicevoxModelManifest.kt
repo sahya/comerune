@@ -7,6 +7,9 @@ object VoicevoxModelManifest {
     // File sizes are measured values from VOICEVOX VVM 0.16.2 release.
     // Actual download progress uses HTTP Content-Length from the server.
     //
+    // VVM バージョンアップ時は公式 README と照合すること:
+    // https://github.com/VOICEVOX/voicevox_vvm/blob/main/README.md
+    //
     // VVM 0.16.2 ファイル構成:
     //   0.vvm = 四国めたん(0-3) + ずんだもん(4-7) + 春日部つむぎ(8) + 雨晴はう(10)
     //   1.vvm = 冥鳴ひまり (サポート対象外)
