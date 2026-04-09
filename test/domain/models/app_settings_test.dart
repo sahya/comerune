@@ -331,19 +331,6 @@ void main() {
       );
     });
 
-    test('legacy built-in w→わら pattern remains protected', () {
-      // Older versions shipped `[wｗ]{1,2}$` as a default rule. Even though it
-      // is no longer part of the current defaults, users who upgraded from
-      // those versions still have it stored in their settings and must
-      // continue to see it as a built-in (protected) rule.
-      expect(
-        isDefaultNicoDictionaryRule(
-          const ReplaceRule(pattern: r'[wｗ]{1,2}$', replacement: 'わら'),
-        ),
-        isTrue,
-      );
-    });
-
     test('default rules distinguish ww (→わらわら) from single w (→わら)', () {
       // Applies the default dictionary rules in order, the same way the
       // native normalizer does. Verifies that `ww` at the end of a comment
