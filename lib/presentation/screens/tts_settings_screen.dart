@@ -1024,7 +1024,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                       SwitchListTile(
                         key: const Key('read-user-name-switch'),
                         title: const Text('名前を読み上げる'),
-                        subtitle: const Text('ONにすると「名前、コメント」の形式で読み上げます'),
+                        subtitle: const Text('ONにすると「コメント、名前」の形式で読み上げます'),
                         contentPadding: EdgeInsets.zero,
                         value: settings.readUserName,
                         onChanged: (bool value) {
