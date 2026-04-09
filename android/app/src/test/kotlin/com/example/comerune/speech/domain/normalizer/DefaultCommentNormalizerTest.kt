@@ -256,6 +256,27 @@ class DefaultCommentNormalizerTest {
     }
 
     @Test
+    fun `mixed halfwidth and fullwidth w sequence is compressed`() {
+        // キャラクタークラス `[wWｗＷ]` は順不同でマッチするので、
+        // 半角小文字/大文字/全角小文字/全角大文字が混在するケースも 2 文字
+        // 以上の笑いとして圧縮される。
+        val cases = listOf(
+            "おはようwｗ やったね",
+            "おはようｗw やったね",
+            "おはようwＷ やったね",
+            "おはようｗWｗＷ やったね", // 4 種混在 + 3 文字以上
+        )
+        for (input in cases) {
+            val result = normalizer.normalize(raw(input), defaultSettings)
+            assertEquals(
+                "おはようわらわら やったね",
+                result.normalizedText,
+                "input=$input",
+            )
+        }
+    }
+
+    @Test
     fun `scheme-prefixed www-URL is still handled as URL`() {
         // `https://www.example.com` のように scheme 付き + www サブドメインの
         // URL で、拡張後の URL_PATTERN の first alternative (`https?://...`)
