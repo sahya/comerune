@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart' show ShareParams, SharePlus, XFile;
+import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../app_logging.dart';
@@ -16,6 +17,7 @@ import '../../domain/comment_log/comment_log_stats.dart';
 import '../../domain/models/teach_command.dart';
 import '../../domain/models/teach_command_handler.dart';
 import '../../domain/utils/elapsed_formatter.dart';
+import '../../domain/utils/url_extractor.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
@@ -1044,6 +1046,7 @@ class _CommentScreenState extends State<CommentScreen> {
                                   ? colorFromARGB32(userColor)
                                   : null,
                               onLongPress: () => _showCommentActions(message),
+                              onOpenUrl: _showUrlConfirmDialog,
                               beginAt: widget.programInfo.beginAt,
                             );
                           },
@@ -1132,6 +1135,7 @@ class _CommentScreenState extends State<CommentScreen> {
   void _showCommentActions(AppMessage message) {
     final bool isPinned = _pinnedMessageIds.contains(message.id);
     final bool hasUserId = message.userId != null && message.userId!.isNotEmpty;
+    final bool canCopy = message.content.isNotEmpty;
 
     showModalBottomSheet<void>(
       context: context,
@@ -1160,6 +1164,16 @@ class _CommentScreenState extends State<CommentScreen> {
                   }
                 },
               ),
+              if (canCopy)
+                ListTile(
+                  key: const Key('action-copy-comment'),
+                  leading: const Icon(Icons.copy),
+                  title: const Text('コメントをコピー'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    unawaited(_copyCommentToClipboard(message));
+                  },
+                ),
               if (hasUserId)
                 ListTile(
                   key: const Key('action-user-detail'),
@@ -1175,6 +1189,165 @@ class _CommentScreenState extends State<CommentScreen> {
         );
       },
     );
+  }
+
+  Future<void> _copyCommentToClipboard(AppMessage message) async {
+    await Clipboard.setData(ClipboardData(text: message.content));
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        key: Key('comment-copied-snackbar'),
+        content: Text('コメントをコピーしました'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  /// Shows a confirmation dialog before handing a URL off to the OS browser.
+  ///
+  /// The dialog is the sole entry point through which comment text is allowed
+  /// to launch an external browser. Only `http(s)` URLs that pass
+  /// [isSafeHttpUrl] are launched, so tapping a comment that happens to
+  /// contain `javascript:` or `file:` text never leaves the app.
+  Future<void> _showUrlConfirmDialog(AppMessage message) async {
+    final List<UrlMatch> matches = findUrls(message.content);
+    if (matches.isEmpty) {
+      return;
+    }
+
+    final String? selected = matches.length == 1
+        ? await _confirmSingleUrl(matches.first.url)
+        : await _pickUrl(
+            matches.map((UrlMatch match) => match.url).toList(growable: false),
+          );
+    if (selected == null) {
+      return;
+    }
+    if (!isSafeHttpUrl(selected)) {
+      return;
+    }
+    await _launchExternalUrl(selected);
+  }
+
+  Future<String?> _confirmSingleUrl(String url) {
+    // Parse the host upfront so it can be shown in a larger font than the
+    // full URL. Highlighting the host helps users spot spoofed subdomains
+    // such as `https://example.com.evil.co.jp/...`.
+    final String host = Uri.tryParse(url)?.host ?? '';
+    return showDialog<String>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        final ThemeData theme = Theme.of(dialogContext);
+        return AlertDialog(
+          key: const Key('url-confirm-dialog'),
+          icon: const Icon(Icons.open_in_new),
+          title: const Text('外部サイトを開きますか？'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const Text('ブラウザでリンクを開きます。接続先のホスト名を確認してください。'),
+              const SizedBox(height: 12),
+              if (host.isNotEmpty)
+                SelectableText(
+                  host,
+                  key: const Key('url-confirm-host-text'),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              const SizedBox(height: 4),
+              SelectableText(
+                url,
+                key: const Key('url-confirm-url-text'),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.textTheme.bodySmall?.color?.withValues(
+                    alpha: 0.7,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              key: const Key('url-confirm-cancel'),
+              onPressed: () => Navigator.of(dialogContext).pop(null),
+              child: const Text('キャンセル'),
+            ),
+            TextButton(
+              key: const Key('url-confirm-open'),
+              onPressed: () => Navigator.of(dialogContext).pop(url),
+              child: const Text('開く'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<String?> _pickUrl(List<String> urls) {
+    return showDialog<String>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          key: const Key('url-picker-dialog'),
+          title: const Text('開くリンクを選択'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: urls.length,
+              itemBuilder: (BuildContext listContext, int index) {
+                final String url = urls[index];
+                return ListTile(
+                  key: Key('url-picker-option-$index'),
+                  dense: true,
+                  leading: const Icon(Icons.open_in_browser),
+                  title: Text(
+                    url,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onTap: () => Navigator.of(dialogContext).pop(url),
+                );
+              },
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              key: const Key('url-picker-cancel'),
+              onPressed: () => Navigator.of(dialogContext).pop(null),
+              child: const Text('キャンセル'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _launchExternalUrl(String url) async {
+    bool launched = false;
+    final Uri? uri = Uri.tryParse(url);
+    if (uri != null) {
+      try {
+        launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } on Object catch (error, stackTrace) {
+        _debugLogLazy(
+          () => '[CommentScreen] launchUrl failed: $error\n$stackTrace',
+        );
+      }
+    }
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          key: Key('url-launch-failed-snackbar'),
+          content: Text('リンクを開けませんでした'),
+        ),
+      );
+    }
   }
 
   void _pinMessage(String messageId) {
@@ -2802,6 +2975,7 @@ class _CommentRow extends StatefulWidget {
     this.commentIndex = 0,
     this.userColor,
     this.onLongPress,
+    this.onOpenUrl,
     this.beginAt,
   });
 
@@ -2816,6 +2990,7 @@ class _CommentRow extends StatefulWidget {
   final int commentIndex;
   final Color? userColor;
   final VoidCallback? onLongPress;
+  final ValueChanged<AppMessage>? onOpenUrl;
   final DateTime? beginAt;
 
   @override
@@ -2825,22 +3000,43 @@ class _CommentRow extends StatefulWidget {
 class _CommentRowState extends State<_CommentRow> {
   bool _revealed = false;
 
+  /// Cached URL matches for [widget.message.content].
+  ///
+  /// Computed lazily on demand and invalidated whenever the row is recycled
+  /// for a different [AppMessage] (tracked via [didUpdateWidget]). Avoiding a
+  /// fresh regex scan on every rebuild keeps comment list scrolling cheap,
+  /// since [_CommentRow] is rebuilt on every frame when new messages arrive.
+  List<UrlMatch>? _cachedUrlMatches;
+
   bool get _isStarHidden =>
       widget.starPrefixHidingEnabled &&
       widget.message.content.startsWith('☆') &&
       !_revealed;
+
+  List<UrlMatch> _resolveUrlMatches() {
+    return _cachedUrlMatches ??= findUrls(widget.message.content);
+  }
 
   @override
   void didUpdateWidget(covariant _CommentRow oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.message.id != widget.message.id) {
       _revealed = false;
+      _cachedUrlMatches = null;
+    } else if (oldWidget.message.content != widget.message.content) {
+      _cachedUrlMatches = null;
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final bool hidden = _isStarHidden;
+    // URL detection is skipped for hidden (star-prefixed) comments because
+    // the rendered body is the placeholder, not the original text.
+    final List<UrlMatch> urlMatches = hidden
+        ? const <UrlMatch>[]
+        : _resolveUrlMatches();
+    final bool hasUrl = urlMatches.isNotEmpty;
     final Color? specialBg = _backgroundColor(widget.message);
     final Color? effectiveBg =
         specialBg ??
@@ -2849,19 +3045,31 @@ class _CommentRowState extends State<_CommentRow> {
                 context,
               ).colorScheme.onSurface.withValues(alpha: _zebraStripingAlpha)
             : null);
+
+    VoidCallback? onTap;
+    if (hidden) {
+      onTap = () => setState(() => _revealed = true);
+    } else if (hasUrl && widget.onOpenUrl != null) {
+      onTap = () => widget.onOpenUrl!.call(widget.message);
+    }
+
     return GestureDetector(
       key: Key('comment-row-${widget.message.id}'),
       onLongPress: widget.onLongPress,
-      onTap: hidden ? () => setState(() => _revealed = true) : null,
+      onTap: onTap,
       child: Container(
         color: effectiveBg,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-        child: _buildRichCommentLine(context, hidden),
+        child: _buildRichCommentLine(context, hidden, urlMatches),
       ),
     );
   }
 
-  Widget _buildRichCommentLine(BuildContext context, bool hidden) {
+  Widget _buildRichCommentLine(
+    BuildContext context,
+    bool hidden,
+    List<UrlMatch> urlMatches,
+  ) {
     final AppMessage message = widget.message;
     final String timestamp = _formatHms(
       message.timestamp,
@@ -2891,9 +3099,11 @@ class _CommentRowState extends State<_CommentRow> {
               fontSize,
             );
       return _buildTwoLineComment(
+        context: context,
         timestamp: timestamp,
         content: content,
         hidden: hidden,
+        urlMatches: urlMatches,
         fontSize: fontSize,
         timestampFontSize: twoLineMetaSize,
         idFontSize: twoLineMetaSize,
@@ -2934,15 +3144,19 @@ class _CommentRowState extends State<_CommentRow> {
       }
     }
 
+    final TextStyle contentStyle = TextStyle(
+      fontSize: fontSize,
+      color: hidden ? Colors.grey : widget.userColor,
+      fontStyle: hidden ? FontStyle.italic : null,
+    );
+
     spans.add(const TextSpan(text: '  '));
-    spans.add(
-      TextSpan(
-        text: content,
-        style: TextStyle(
-          fontSize: fontSize,
-          color: hidden ? Colors.grey : widget.userColor,
-          fontStyle: hidden ? FontStyle.italic : null,
-        ),
+    spans.addAll(
+      _buildContentSpans(
+        context: context,
+        content: content,
+        urlMatches: urlMatches,
+        baseStyle: contentStyle,
       ),
     );
 
@@ -2950,9 +3164,11 @@ class _CommentRowState extends State<_CommentRow> {
   }
 
   Widget _buildTwoLineComment({
+    required BuildContext context,
     required String timestamp,
     required String content,
     required bool hidden,
+    required List<UrlMatch> urlMatches,
     required double fontSize,
     required double timestampFontSize,
     required double idFontSize,
@@ -2991,21 +3207,75 @@ class _CommentRowState extends State<_CommentRow> {
       }
     }
 
+    final TextStyle contentStyle = TextStyle(
+      fontSize: fontSize,
+      color: hidden ? Colors.grey : widget.userColor,
+      fontStyle: hidden ? FontStyle.italic : null,
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text.rich(TextSpan(children: metaSpans)),
         const SizedBox(height: 2),
-        Text(
-          content,
-          style: TextStyle(
-            fontSize: fontSize,
-            color: hidden ? Colors.grey : widget.userColor,
-            fontStyle: hidden ? FontStyle.italic : null,
+        Text.rich(
+          TextSpan(
+            children: _buildContentSpans(
+              context: context,
+              content: content,
+              urlMatches: urlMatches,
+              baseStyle: contentStyle,
+            ),
           ),
         ),
       ],
     );
+  }
+
+  /// Splits the comment body into alternating plain-text and URL spans so
+  /// that URLs stand out visually while sharing the same base text style.
+  ///
+  /// When [urlMatches] is empty the result is a single [TextSpan] with the
+  /// full content, preserving the previous rendering behavior for non-URL
+  /// comments.
+  List<InlineSpan> _buildContentSpans({
+    required BuildContext context,
+    required String content,
+    required List<UrlMatch> urlMatches,
+    required TextStyle baseStyle,
+  }) {
+    if (urlMatches.isEmpty) {
+      return <InlineSpan>[TextSpan(text: content, style: baseStyle)];
+    }
+    final Color linkColor = Theme.of(context).colorScheme.primary;
+    final TextStyle linkStyle = baseStyle.copyWith(
+      color: linkColor,
+      decoration: TextDecoration.underline,
+      decorationColor: linkColor,
+    );
+    final List<InlineSpan> spans = <InlineSpan>[];
+    int cursor = 0;
+    for (final UrlMatch match in urlMatches) {
+      if (match.start > cursor) {
+        spans.add(
+          TextSpan(
+            text: content.substring(cursor, match.start),
+            style: baseStyle,
+          ),
+        );
+      }
+      spans.add(
+        TextSpan(
+          text: content.substring(match.start, match.end),
+          style: linkStyle,
+        ),
+      );
+      cursor = match.end;
+    }
+    if (cursor < content.length) {
+      spans.add(TextSpan(text: content.substring(cursor), style: baseStyle));
+    }
+    return spans;
   }
 
   Color? _backgroundColor(AppMessage message) {
