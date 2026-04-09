@@ -231,6 +231,31 @@ class DefaultCommentNormalizerTest {
     }
 
     @Test
+    fun `fullwidth ｗｗ is compressed to わらわら`() {
+        val result = normalizer.normalize(raw("ｗｗ"), defaultSettings)
+        assertEquals("わらわら", result.normalizedText)
+        assertNull(result.skipReason)
+    }
+
+    @Test
+    fun `fullwidth ｗｗ in middle of text is also compressed`() {
+        // 以前は PATTERN_W が `[wW]{2,}` のみで全角ｗ未対応だったため、
+        // 中間の全角ｗｗがそのまま読み上げられていた。現在は `[wWｗＷ]{2,}`
+        // で半角/全角を同時にカバーする。
+        val result = normalizer.normalize(
+            raw("おはようｗｗ やったね"),
+            defaultSettings
+        )
+        assertEquals("おはようわらわら やったね", result.normalizedText)
+    }
+
+    @Test
+    fun `fullwidth Ｗ is also compressed`() {
+        val result = normalizer.normalize(raw("ＷＷＷＷ"), defaultSettings)
+        assertEquals("わらわら", result.normalizedText)
+    }
+
+    @Test
     fun `scheme-prefixed www-URL is still handled as URL`() {
         // `https://www.example.com` のように scheme 付き + www サブドメインの
         // URL で、拡張後の URL_PATTERN の first alternative (`https?://...`)

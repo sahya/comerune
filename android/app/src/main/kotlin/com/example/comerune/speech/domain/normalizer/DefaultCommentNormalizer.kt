@@ -404,7 +404,10 @@ class DefaultCommentNormalizer(
         )
 
         // Symbol compression patterns (spec Section 3.5.3)
-        private val PATTERN_W = Regex("""[wW]{2,}""")
+        // PATTERN_W は半角 w/W に加えて全角 ｗ/Ｗ もカバーする。これにより
+        // `おはようｗｗ やったね` のように全角ｗが文中にある場合も「わらわら」
+        // に圧縮される（URL_PATTERN と同じキャラクタークラス）。
+        private val PATTERN_W = Regex("""[wWｗＷ]{2,}""")
         private val PATTERN_KUSA = Regex("""草{2,}""")
         private val PATTERN_EIGHT = Regex("""[8８]{3,}""")
         private val PATTERN_EXCLAMATION = Regex("""[!！]{2,}""")
