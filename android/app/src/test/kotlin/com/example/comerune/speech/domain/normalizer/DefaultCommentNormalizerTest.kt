@@ -268,10 +268,12 @@ class DefaultCommentNormalizerTest {
         )
         for (input in cases) {
             val result = normalizer.normalize(raw(input), defaultSettings)
+            // JUnit 4 の assertEquals(message, expected, actual) 順で message を
+            // 先頭に置くことで、失敗時にどの input で落ちたか特定しやすくする。
             assertEquals(
+                "input=$input",
                 "おはようわらわら やったね",
                 result.normalizedText,
-                "input=$input",
             )
         }
     }
