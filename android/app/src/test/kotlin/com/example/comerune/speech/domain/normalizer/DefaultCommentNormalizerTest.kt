@@ -42,9 +42,9 @@ class DefaultCommentNormalizerTest {
     }
 
     @Test
-    fun `AC3 - repeated w is compressed to わら`() {
+    fun `AC3 - repeated w is compressed to わらわら`() {
         val result = normalizer.normalize(raw("wwwww"), defaultSettings)
-        assertEquals("わら", result.normalizedText)
+        assertEquals("わらわら", result.normalizedText)
         assertNull(result.skipReason)
     }
 
@@ -143,9 +143,9 @@ class DefaultCommentNormalizerTest {
     }
 
     @Test
-    fun `two ws compress to わら - boundary of 2`() {
+    fun `two ws compress to わらわら - boundary of 2`() {
         val result = normalizer.normalize(raw("ww"), defaultSettings)
-        assertEquals("わら", result.normalizedText)
+        assertEquals("わらわら", result.normalizedText)
         assertNull(result.skipReason)
     }
 
@@ -212,9 +212,9 @@ class DefaultCommentNormalizerTest {
 
     @Test
     fun `symbol compression followed by emoji does not result in blank skip`() {
-        // "wwww" compresses to "わら", then no emoji to remove
+        // "wwww" compresses to "わらわら", then no emoji to remove
         val result = normalizer.normalize(raw("wwww"), defaultSettings)
-        assertEquals("わら", result.normalizedText)
+        assertEquals("わらわら", result.normalizedText)
         assertNull(result.skipReason)
     }
 
@@ -227,7 +227,7 @@ class DefaultCommentNormalizerTest {
     @Test
     fun `uppercase W is also compressed`() {
         val result = normalizer.normalize(raw("WWWW"), defaultSettings)
-        assertEquals("わら", result.normalizedText)
+        assertEquals("わらわら", result.normalizedText)
     }
 
     // --- Text Length Truncation Tests ---

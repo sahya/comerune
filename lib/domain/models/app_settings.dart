@@ -186,9 +186,15 @@ extension PastCommentFetchCountValue on PastCommentFetchCount {
 }
 
 /// ニコニコ用語のデフォルト読み上げ辞書ルール。
+///
+/// メンテナンスガイド: ルールのパターンを変更・削除する場合は、旧パターンを
+/// [_legacyBuiltInNicoDictionaryPatterns] に追加して、旧バージョンから
+/// アップデートしたユーザーが持つ保存済みルールの built-in 保護が外れないよう
+/// にすること。
 const List<ReplaceRule> defaultNicoDictionaryRules = <ReplaceRule>[
   ReplaceRule(pattern: r'[wｗ]{3,}', replacement: 'わらわら'),
-  ReplaceRule(pattern: r'[wｗ]{1,2}$', replacement: 'わら'),
+  ReplaceRule(pattern: r'[wｗ]{2}$', replacement: 'わらわら'),
+  ReplaceRule(pattern: r'[wｗ]$', replacement: 'わら'),
   ReplaceRule(pattern: r'8{3,}|８{3,}', replacement: 'ぱちぱちぱち'),
   ReplaceRule(pattern: r'おつ$', replacement: 'おつかれ'),
   ReplaceRule(pattern: r'わこつ', replacement: 'わくおつ'),
@@ -198,11 +204,28 @@ const List<ReplaceRule> defaultNicoDictionaryRules = <ReplaceRule>[
   ReplaceRule(pattern: r'[kｋ][sｓ][kｋ]', replacement: 'かそく'),
 ];
 
+/// Legacy built-in dictionary patterns that were once part of
+/// [defaultNicoDictionaryRules] but have since been replaced.
+///
+/// These patterns remain protected so that users who upgraded from older
+/// versions (and therefore still have the old patterns persisted in their
+/// settings) do not suddenly see those rules become unprotected. Without this
+/// list, a teach/unteach command or the UI delete button would be able to
+/// modify a rule that the user has always seen as a built-in.
+const Set<String> _legacyBuiltInNicoDictionaryPatterns = <String>{
+  // Replaced in favor of `[wｗ]{2}$` (→わらわら) + `[wｗ]$` (→わら) so that
+  // `ww` and `w` produce distinct speech output.
+  r'[wｗ]{1,2}$',
+};
+
 /// Returns `true` when [rule] matches one of the built-in dictionary rules.
 ///
 /// The [enabled] flag is ignored so that a disabled built-in rule is still
 /// recognized as protected.
 bool isDefaultNicoDictionaryPattern(String pattern) {
+  if (_legacyBuiltInNicoDictionaryPatterns.contains(pattern)) {
+    return true;
+  }
   return defaultNicoDictionaryRules.any(
     (ReplaceRule defaultRule) => defaultRule.pattern == pattern,
   );

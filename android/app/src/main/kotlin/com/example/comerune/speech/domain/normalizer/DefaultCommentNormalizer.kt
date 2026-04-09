@@ -225,7 +225,7 @@ class DefaultCommentNormalizer(
      */
     internal fun compressSymbols(text: String): String {
         var result = text
-        result = PATTERN_W.replace(result, "わら")
+        result = PATTERN_W.replace(result, "わらわら")
         result = PATTERN_KUSA.replace(result, "くさ")
         result = PATTERN_EIGHT.replace(result, "はくしゅ")
         result = PATTERN_EXCLAMATION.replace(result, "びっくり")

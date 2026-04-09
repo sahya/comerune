@@ -330,5 +330,44 @@ void main() {
         isFalse,
       );
     });
+
+    test('legacy built-in w→わら pattern remains protected', () {
+      // Older versions shipped `[wｗ]{1,2}$` as a default rule. Even though it
+      // is no longer part of the current defaults, users who upgraded from
+      // those versions still have it stored in their settings and must
+      // continue to see it as a built-in (protected) rule.
+      expect(
+        isDefaultNicoDictionaryRule(
+          const ReplaceRule(pattern: r'[wｗ]{1,2}$', replacement: 'わら'),
+        ),
+        isTrue,
+      );
+    });
+
+    test('default rules distinguish ww (→わらわら) from single w (→わら)', () {
+      // Applies the default dictionary rules in order, the same way the
+      // native normalizer does. Verifies that `ww` at the end of a comment
+      // becomes `わらわら` (not `わら`), and a single `w` at the end still
+      // becomes `わら`. This is the user-visible behavior that split the
+      // original `[wｗ]{1,2}$` rule into two distinct rules.
+      String apply(String input) {
+        String out = input;
+        for (final ReplaceRule rule in defaultNicoDictionaryRules) {
+          if (!rule.enabled) continue;
+          out = out.replaceAll(RegExp(rule.pattern), rule.replacement);
+        }
+        return out;
+      }
+
+      expect(apply('w'), 'わら');
+      expect(apply('ww'), 'わらわら');
+      expect(apply('www'), 'わらわら');
+      expect(apply('おはようw'), 'おはようわら');
+      expect(apply('おはようww'), 'おはようわらわら');
+      expect(apply('おはようwww'), 'おはようわらわら');
+      // 全角ｗ も同様に処理されること。
+      expect(apply('おはようｗ'), 'おはようわら');
+      expect(apply('おはようｗｗ'), 'おはようわらわら');
+    });
   });
 }
