@@ -230,6 +230,140 @@ class DefaultCommentNormalizerTest {
         assertEquals("わらわら", result.normalizedText)
     }
 
+    @Test
+    fun `scheme-prefixed www-URL is still handled as URL`() {
+        // `https://www.example.com` のように scheme 付き + www サブドメインの
+        // URL で、拡張後の URL_PATTERN の first alternative (`https?://...`)
+        // が優先的にマッチすることを確認する回帰テスト。bare URL 分岐と
+        // 干渉しないこと。
+        val result = normalizer.normalize(
+            raw("https://www.example.com"),
+            defaultSettings
+        )
+        assertEquals("url_only", result.skipReason)
+    }
+
+    @Test
+    fun `scheme-prefixed www-URL in mixed text is replaced with URL省略`() {
+        val result = normalizer.normalize(
+            raw("見て https://www.example.com/path です"),
+            defaultSettings
+        )
+        assertEquals("見て URL省略 です", result.normalizedText)
+        assertNull(result.skipReason)
+    }
+
+    @Test
+    fun `bare www-URL without scheme is skipped as url_only`() {
+        val result = normalizer.normalize(raw("www.example.com"), defaultSettings)
+        assertEquals("url_only", result.skipReason)
+    }
+
+    @Test
+    fun `bare www-URL surrounded by text is replaced with URL省略`() {
+        val result = normalizer.normalize(
+            raw("見て www.example.com です"),
+            defaultSettings
+        )
+        assertEquals("見て URL省略 です", result.normalizedText)
+        assertNull(result.skipReason)
+    }
+
+    @Test
+    fun `many w-URL such as wwww-example-com is replaced with URL省略`() {
+        val result = normalizer.normalize(raw("wwww.example.com"), defaultSettings)
+        assertEquals("url_only", result.skipReason)
+    }
+
+    @Test
+    fun `two w followed by dot-alnum is also replaced with URL省略`() {
+        val result = normalizer.normalize(raw("ww.example.com"), defaultSettings)
+        assertEquals("url_only", result.skipReason)
+    }
+
+    @Test
+    fun `uppercase WWW-URL is also replaced with URL省略`() {
+        val result = normalizer.normalize(raw("WWW.EXAMPLE.COM"), defaultSettings)
+        assertEquals("url_only", result.skipReason)
+    }
+
+    @Test
+    fun `fullwidth wwww URL is also replaced with URL省略`() {
+        val result = normalizer.normalize(
+            raw("見て ｗｗｗ.example.com です"),
+            defaultSettings
+        )
+        assertEquals("見て URL省略 です", result.normalizedText)
+        assertNull(result.skipReason)
+    }
+
+    @Test
+    fun `bare www-URL is replaced with URL省略 even when skipUrlOnly is false`() {
+        val settings = defaultSettings.copy(skipUrlOnly = false)
+        val result = normalizer.normalize(raw("www.example.com"), settings)
+        assertEquals("URL省略", result.normalizedText)
+        assertNull(result.skipReason)
+    }
+
+    @Test
+    fun `bare www-URL with path and query is replaced with URL省略`() {
+        val result = normalizer.normalize(
+            raw("見て www.example.com/path?q=1&r=2 です"),
+            defaultSettings
+        )
+        assertEquals("見て URL省略 です", result.normalizedText)
+        assertNull(result.skipReason)
+    }
+
+    @Test
+    fun `digit-prefixed www-URL is not treated as URL`() {
+        // `(?<![a-zA-Z0-9])` lookbehind によって直前が数字の場合は bare URL
+        // として扱わない（誤検出回避）。`123wwww.example.com` の `wwww` は
+        // URL 検出対象外で、symbol compression 側の挙動に委ねられる。
+        // (結果として `www.example.com` の部分が URL にマッチする余地が残るが、
+        // lookbehind が数字を拒否するのでマッチしない。)
+        val result = normalizer.normalize(
+            raw("123wwww.example.com"),
+            defaultSettings
+        )
+        // URL 検出されない → symbol compression で `wwww` が `わらわら` に
+        // 変換される。
+        assertEquals("123わらわら.example.com", result.normalizedText)
+    }
+
+    @Test
+    fun `www followed by space is still laughter`() {
+        // `www` の直後が空白の場合は URL ではないので通常の笑いとして変換する。
+        val result = normalizer.normalize(raw("見て www やったね"), defaultSettings)
+        assertEquals("見て わらわら やったね", result.normalizedText)
+    }
+
+    @Test
+    fun `www followed by dot then end-of-string is still laughter`() {
+        // `www.` の後に何も続かない場合は URL 判定しない。
+        val result = normalizer.normalize(raw("すごい www."), defaultSettings)
+        assertEquals("すごい わらわら.", result.normalizedText)
+    }
+
+    @Test
+    fun `bare URL and trailing laughter coexist in one comment`() {
+        // `www.example.com` は URL として置換、末尾の `wwww` は笑いとして変換。
+        val result = normalizer.normalize(
+            raw("www.example.com wwww"),
+            defaultSettings
+        )
+        assertEquals("URL省略 わらわら", result.normalizedText)
+    }
+
+    @Test
+    fun `letter-prefixed w sequence is still laughter`() {
+        // `abwww` のように英字の直後に w が続く場合は URL 判定しない（bare URL
+        // の lookbehind が英数字を除外する）。symbol compression で普通に
+        // 「わらわら」に変換される。
+        val result = normalizer.normalize(raw("abwwww"), defaultSettings)
+        assertEquals("abわらわら", result.normalizedText)
+    }
+
     // --- Text Length Truncation Tests ---
 
     @Test
