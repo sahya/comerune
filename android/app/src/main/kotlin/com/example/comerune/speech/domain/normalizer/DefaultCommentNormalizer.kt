@@ -225,7 +225,7 @@ class DefaultCommentNormalizer(
      */
     internal fun compressSymbols(text: String): String {
         var result = text
-        result = PATTERN_W.replace(result, "わら")
+        result = PATTERN_W.replace(result, "わらわら")
         result = PATTERN_KUSA.replace(result, "くさ")
         result = PATTERN_EIGHT.replace(result, "はくしゅ")
         result = PATTERN_EXCLAMATION.replace(result, "びっくり")
@@ -387,10 +387,27 @@ class DefaultCommentNormalizer(
         private val CONSECUTIVE_SPACES = Regex(" {2,}")
 
         // URL pattern (spec Section 3.5.2)
-        internal val URL_PATTERN = Regex("""https?://[\w/:%#$&?()~.=+\-]+""")
+        //
+        // スキーム付き URL (`https?://...`) に加えて、スキーム無しの
+        // bare URL (`www.example.com` / `ｗｗｗ.example.com` 等) もここで検出して
+        // `URL省略` に置き換える。後段の symbol compression (`PATTERN_W`) が
+        // `www` を「わらわら」に変換する前に URL 部分を潰すことで、
+        // `www.google.com` が「わらわらエグザンプル…」のように読まれるのを
+        // 防ぐ。
+        //
+        // bare URL 部分は 2 文字以上の半角/全角 `w` + `.` + URL 本体 (ASCII
+        // 英数字・記号) の形。直前が英数字の場合（例: `abwww.com` のような
+        // 語尾に w が偶然続くケース）は URL として扱わず、そのまま symbol
+        // compression に流す。
+        internal val URL_PATTERN = Regex(
+            """(?:https?://|(?<![a-zA-Z0-9])[wWｗＷ]{2,}\.)[\w/:%#$&?()~.=+\-]+""",
+        )
 
         // Symbol compression patterns (spec Section 3.5.3)
-        private val PATTERN_W = Regex("""[wW]{2,}""")
+        // PATTERN_W は半角 w/W に加えて全角 ｗ/Ｗ もカバーする。これにより
+        // `おはようｗｗ やったね` のように全角ｗが文中にある場合も「わらわら」
+        // に圧縮される（URL_PATTERN と同じキャラクタークラス）。
+        private val PATTERN_W = Regex("""[wWｗＷ]{2,}""")
         private val PATTERN_KUSA = Regex("""草{2,}""")
         private val PATTERN_EIGHT = Regex("""[8８]{3,}""")
         private val PATTERN_EXCLAMATION = Regex("""[!！]{2,}""")

@@ -1275,7 +1275,7 @@ void main() {
           <String, dynamic>{
             'modelId': 'n0',
             'displayName': 'VOICEVOX Nemo',
-            'speakerIds': <int>[0],
+            'speakerIds': <int>[10004],
             'vvmFileName': 'n0.vvm',
             'fileSizeBytes': 100,
             'isBundled': true,
@@ -1284,7 +1284,7 @@ void main() {
           <String, dynamic>{
             'modelId': '0',
             'displayName': '春日部つむぎ',
-            'speakerIds': <int>[1],
+            'speakerIds': <int>[8],
             'vvmFileName': '0.vvm',
             'fileSizeBytes': 200,
             'isBundled': false,
@@ -1326,7 +1326,7 @@ void main() {
                 ),
               );
           // The onChanged is not null because _isLoadingModel is false.
-          dropdown.onChanged!(1);
+          dropdown.onChanged!(8);
           await tester.pumpAndSettle();
 
           // Model was loaded for the new speaker.
@@ -1334,11 +1334,11 @@ void main() {
 
           // updateSettings was pushed with the new speaker ID.
           expect(platform.lastUpdatedSettings, isNotNull);
-          expect(platform.lastUpdatedSettings!.speakerId, 1);
+          expect(platform.lastUpdatedSettings!.speakerId, 8);
 
           // Persisted value matches.
           final AppSettings loaded = await settingsStore.load();
-          expect(loaded.voicevoxSpeaker, 1);
+          expect(loaded.voicevoxSpeaker, 8);
         },
       );
 
@@ -1369,9 +1369,9 @@ void main() {
                 skipOffstage: false,
               ),
             );
-        // Initial speaker is 0 in this test setup.
+        // Initial speaker is 10004 (Nemo default) in this test setup.
         final List<String> logs = await _captureDebugLogs(() async {
-          dropdown.onChanged!(0);
+          dropdown.onChanged!(10004);
           await tester.pumpAndSettle();
         });
 
@@ -1381,7 +1381,7 @@ void main() {
           logs.any(
             (line) =>
                 line.contains('decision=no_op_same_speaker') &&
-                line.contains('fromSpeaker=0 toSpeaker=0'),
+                line.contains('fromSpeaker=10004 toSpeaker=10004'),
           ),
           isTrue,
         );
@@ -1420,7 +1420,7 @@ void main() {
                   skipOffstage: false,
                 ),
               );
-          dropdown.onChanged!(1);
+          dropdown.onChanged!(8);
           await tester.pumpAndSettle();
 
           expect(platform.initializeCalled, isTrue);
@@ -1459,7 +1459,7 @@ void main() {
                 skipOffstage: false,
               ),
             );
-        dropdown.onChanged!(1);
+        dropdown.onChanged!(8);
         await tester.pumpAndSettle();
 
         expect(platform.initializeCalled, isFalse);
@@ -1472,14 +1472,14 @@ void main() {
         final SharedPreferencesSettingsStore settingsStore =
             SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
         final FakeCommentSpeechPlatform platform = createPlatformWithModels();
-        // Put speaker 2 in the same model as speaker 1.
-        platform.availableModelsToReturn[1]['speakerIds'] = <int>[1, 2];
+        // Put speaker 9 in the same model as speaker 8.
+        platform.availableModelsToReturn[1]['speakerIds'] = <int>[8, 9];
         platform.statusToReturn = const SpeechRuntimeStatus(
           enabled: true,
           engineState: 'READY',
           playerState: 'IDLE',
           queueSize: 0,
-          currentSpeakerId: 1,
+          currentSpeakerId: 8,
         );
 
         await tester.pumpWidget(
@@ -1502,12 +1502,12 @@ void main() {
                 skipOffstage: false,
               ),
             );
-        dropdown.onChanged!(2);
+        dropdown.onChanged!(9);
         await tester.pumpAndSettle();
 
         expect(platform.loadedModelIds, isEmpty);
         expect(platform.lastUpdatedSettings, isNotNull);
-        expect(platform.lastUpdatedSettings!.speakerId, 2);
+        expect(platform.lastUpdatedSettings!.speakerId, 9);
       });
 
       testWidgets(
@@ -1548,12 +1548,12 @@ void main() {
                   skipOffstage: false,
                 ),
               );
-          dropdown.onChanged!(1);
+          dropdown.onChanged!(8);
           await tester.pumpAndSettle();
 
           expect(platform.loadedModelIds, contains('0'));
           expect(platform.lastUpdatedSettings, isNotNull);
-          expect(platform.lastUpdatedSettings!.speakerId, 1);
+          expect(platform.lastUpdatedSettings!.speakerId, 8);
         },
       );
 
@@ -1565,18 +1565,18 @@ void main() {
                 prefs: InMemorySharedPreferences(),
               );
           await settingsStore.save(
-            AppSettings.defaults.copyWith(voicevoxSpeaker: 1),
+            AppSettings.defaults.copyWith(voicevoxSpeaker: 8),
           );
 
           final FakeCommentSpeechPlatform platform = createPlatformWithModels();
-          // Put speaker 2 in the same model as speaker 1.
-          platform.availableModelsToReturn[1]['speakerIds'] = <int>[1, 2];
+          // Put speaker 9 in the same model as speaker 8.
+          platform.availableModelsToReturn[1]['speakerIds'] = <int>[8, 9];
           platform.statusToReturn = const SpeechRuntimeStatus(
             enabled: true,
             engineState: 'READY',
             playerState: 'IDLE',
             queueSize: 0,
-            currentSpeakerId: 1,
+            currentSpeakerId: 8,
           );
           platform.getStatusError = Exception('status failed');
           platform.getStatusErrorAtCall = 2;
@@ -1601,12 +1601,12 @@ void main() {
                   skipOffstage: false,
                 ),
               );
-          dropdown.onChanged!(2);
+          dropdown.onChanged!(9);
           await tester.pumpAndSettle();
 
           expect(platform.loadedModelIds, isEmpty);
           expect(platform.lastUpdatedSettings, isNotNull);
-          expect(platform.lastUpdatedSettings!.speakerId, 2);
+          expect(platform.lastUpdatedSettings!.speakerId, 9);
         },
       );
 
@@ -1646,12 +1646,12 @@ void main() {
                   skipOffstage: false,
                 ),
               );
-          dropdown.onChanged!(1);
+          dropdown.onChanged!(8);
           await tester.pumpAndSettle();
 
           expect(platform.loadedModelIds, contains('0'));
           expect(platform.lastUpdatedSettings, isNotNull);
-          expect(platform.lastUpdatedSettings!.speakerId, 1);
+          expect(platform.lastUpdatedSettings!.speakerId, 8);
         },
       );
 
@@ -1686,7 +1686,7 @@ void main() {
                   skipOffstage: false,
                 ),
               );
-          dropdown.onChanged!(1);
+          dropdown.onChanged!(8);
           await tester.pumpAndSettle();
 
           // updateSettings should NOT have been called because the load failed.
@@ -1698,9 +1698,9 @@ void main() {
             findsOneWidget,
           );
 
-          // Speaker was reverted to the original (0).
+          // Speaker was reverted to the original (10004).
           final AppSettings loaded = await settingsStore.load();
-          expect(loaded.voicevoxSpeaker, 0);
+          expect(loaded.voicevoxSpeaker, 10004);
         },
       );
 
@@ -1731,7 +1731,7 @@ void main() {
                 skipOffstage: false,
               ),
             );
-        dropdown.onChanged!(1);
+        dropdown.onChanged!(8);
         await tester.pump(); // Process the setState for _isLoadingModel = true.
 
         // Loading indicator should be visible.
@@ -1774,7 +1774,7 @@ void main() {
           platform.availableModelsToReturn.add(<String, dynamic>{
             'modelId': '3',
             'displayName': '波音リツ',
-            'speakerIds': <int>[2],
+            'speakerIds': <int>[9],
             'vvmFileName': '3.vvm',
             'fileSizeBytes': 300,
             'isBundled': false,
@@ -1807,14 +1807,14 @@ void main() {
                 ),
               );
           final List<String> logs = await _captureDebugLogs(() async {
-            // First change: speaker 0 -> 1 (slow).
-            dropdown1.onChanged!(1);
+            // First change: speaker 10004 -> 8 (slow).
+            dropdown1.onChanged!(8);
             await tester.pump();
 
             // Trigger a second change while the first load is still in-flight.
             platform.loadModelCompleter =
                 null; // Second load returns immediately.
-            dropdown1.onChanged!(2);
+            dropdown1.onChanged!(9);
             await tester.pumpAndSettle();
 
             // Complete the stale first load.
@@ -1822,11 +1822,11 @@ void main() {
             await tester.pumpAndSettle();
           });
 
-          // The final speaker should be the second request target (2).
+          // The final speaker should be the second request target (9).
           final AppSettings loaded = await settingsStore.load();
-          expect(loaded.voicevoxSpeaker, 2);
+          expect(loaded.voicevoxSpeaker, 9);
           expect(platform.lastUpdatedSettings, isNotNull);
-          expect(platform.lastUpdatedSettings!.speakerId, 2);
+          expect(platform.lastUpdatedSettings!.speakerId, 9);
           expect(platform.loadedModelIds, containsAll(<String>['0', '3']));
           expect(
             logs.any((line) => line.contains('reason=stale_generation')),
@@ -1865,7 +1865,7 @@ void main() {
               );
 
           final List<String> logs = await _captureDebugLogs(() async {
-            dropdown.onChanged!(1);
+            dropdown.onChanged!(8);
             await tester.pump();
 
             // Dispose the screen while model load is still in-flight.

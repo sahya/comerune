@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/domain/connection/connection_method.dart';
@@ -12,6 +13,10 @@ import 'package:comerune/domain/models/user_name_resolution.dart';
 import 'package:comerune/presentation/screens/comment_screen.dart';
 import 'package:comerune/presentation/screens/comment_screen_config.dart';
 import 'package:comerune/presentation/theme/app_theme.dart';
+// ignore: depend_on_referenced_packages
+import 'package:url_launcher_platform_interface/link.dart';
+// ignore: depend_on_referenced_packages
+import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 // ignore: depend_on_referenced_packages
 import 'package:wakelock_plus_platform_interface/wakelock_plus_platform_interface.dart';
@@ -1412,6 +1417,7 @@ void main() {
 
       expect(find.byKey(const Key('comment-actions-sheet')), findsOneWidget);
       expect(find.text('ピン留め'), findsOneWidget);
+      expect(find.text('コメントをコピー'), findsOneWidget);
       expect(find.text('ユーザー詳細'), findsOneWidget);
     });
 
@@ -1680,6 +1686,434 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('pinned-comments-section')), findsNothing);
+    });
+
+    testWidgets(
+      'copy comment action writes content to clipboard and shows snackbar',
+      (WidgetTester tester) async {
+        // Intercept the Clipboard method channel so we can observe what the
+        // app writes without relying on pumpAndSettle (which can hang on the
+        // SnackBar auto-dismiss timer).
+        String? clipboardText;
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          (MethodCall methodCall) async {
+            if (methodCall.method == 'Clipboard.setData') {
+              final Map<String, dynamic> args =
+                  (methodCall.arguments as Map<Object?, Object?>)
+                      .cast<String, dynamic>();
+              clipboardText = args['text'] as String?;
+            }
+            return null;
+          },
+        );
+        addTearDown(() {
+          tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            SystemChannels.platform,
+            null,
+          );
+        });
+
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          AppMessage(
+            id: 'msg-copy',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'u1',
+            content: 'コピー対象のコメント',
+            type: AppMessageType.chat,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(supervisor: supervisor, messages: messages),
+        );
+
+        await tester.longPress(find.byKey(const Key('comment-row-msg-copy')));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('action-copy-comment')));
+        // Pump a few frames but do NOT call pumpAndSettle — the SnackBar
+        // auto-dismiss timer can keep the scheduler busy for the entire
+        // pumpAndSettle timeout.
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 200));
+
+        expect(clipboardText, 'コピー対象のコメント');
+        expect(
+          find.byKey(const Key('comment-copied-snackbar')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('copy action is hidden when comment content is empty', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'msg-empty',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'u1',
+          content: '',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(supervisor: supervisor, messages: messages),
+      );
+
+      await tester.longPress(find.byKey(const Key('comment-row-msg-empty')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('action-copy-comment')), findsNothing);
+    });
+
+    group('URL short-tap behavior', () {
+      late UrlLauncherPlatform previousUrlLauncher;
+      late _FakeUrlLauncher fakeUrlLauncher;
+
+      setUp(() {
+        previousUrlLauncher = UrlLauncherPlatform.instance;
+        fakeUrlLauncher = _FakeUrlLauncher();
+        UrlLauncherPlatform.instance = fakeUrlLauncher;
+      });
+
+      tearDown(() {
+        UrlLauncherPlatform.instance = previousUrlLauncher;
+      });
+
+      testWidgets(
+        'tapping a comment that contains a URL opens the confirmation dialog',
+        (WidgetTester tester) async {
+          final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+          final List<AppMessage> messages = <AppMessage>[
+            AppMessage(
+              id: 'msg-url',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+              userId: 'u1',
+              content: '見てね https://example.com だよ',
+              type: AppMessageType.chat,
+            ),
+          ];
+
+          await tester.pumpWidget(
+            _buildScreen(supervisor: supervisor, messages: messages),
+          );
+
+          await tester.tap(find.byKey(const Key('comment-row-msg-url')));
+          await tester.pumpAndSettle();
+
+          expect(find.byKey(const Key('url-confirm-dialog')), findsOneWidget);
+          expect(find.byKey(const Key('url-confirm-open')), findsOneWidget);
+          expect(find.byKey(const Key('url-confirm-cancel')), findsOneWidget);
+          final SelectableText urlText = tester.widget(
+            find.byKey(const Key('url-confirm-url-text')),
+          );
+          expect(urlText.data, 'https://example.com');
+          expect(fakeUrlLauncher.launchedUrls, isEmpty);
+        },
+      );
+
+      testWidgets(
+        'confirming the dialog launches the URL in external browser mode',
+        (WidgetTester tester) async {
+          final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+          final List<AppMessage> messages = <AppMessage>[
+            AppMessage(
+              id: 'msg-url-confirm',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+              userId: 'u1',
+              content: 'https://example.com',
+              type: AppMessageType.chat,
+            ),
+          ];
+
+          await tester.pumpWidget(
+            _buildScreen(supervisor: supervisor, messages: messages),
+          );
+
+          await tester.tap(
+            find.byKey(const Key('comment-row-msg-url-confirm')),
+          );
+          await tester.pumpAndSettle();
+
+          await tester.tap(find.byKey(const Key('url-confirm-open')));
+          await tester.pumpAndSettle();
+
+          expect(fakeUrlLauncher.launchedUrls, <String>['https://example.com']);
+          expect(
+            fakeUrlLauncher.lastLaunchMode,
+            PreferredLaunchMode.externalApplication,
+          );
+          expect(find.byKey(const Key('url-confirm-dialog')), findsNothing);
+        },
+      );
+
+      testWidgets('cancelling the dialog does NOT launch the URL', (
+        WidgetTester tester,
+      ) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          AppMessage(
+            id: 'msg-url-cancel',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'u1',
+            content: 'https://example.com',
+            type: AppMessageType.chat,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(supervisor: supervisor, messages: messages),
+        );
+
+        await tester.tap(find.byKey(const Key('comment-row-msg-url-cancel')));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('url-confirm-cancel')));
+        await tester.pumpAndSettle();
+
+        expect(fakeUrlLauncher.launchedUrls, isEmpty);
+        expect(find.byKey(const Key('url-confirm-dialog')), findsNothing);
+      });
+
+      testWidgets('tapping a comment without a URL does not open any dialog', (
+        WidgetTester tester,
+      ) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          AppMessage(
+            id: 'msg-no-url',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'u1',
+            content: 'ただのコメント',
+            type: AppMessageType.chat,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(supervisor: supervisor, messages: messages),
+        );
+
+        await tester.tap(find.byKey(const Key('comment-row-msg-no-url')));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('url-confirm-dialog')), findsNothing);
+        expect(find.byKey(const Key('url-picker-dialog')), findsNothing);
+        expect(fakeUrlLauncher.launchedUrls, isEmpty);
+      });
+
+      testWidgets(
+        'javascript: pseudo-URL is never recognized as a tappable link',
+        (WidgetTester tester) async {
+          final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+          final List<AppMessage> messages = <AppMessage>[
+            AppMessage(
+              id: 'msg-js',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+              userId: 'u1',
+              content: 'click javascript:alert(1)',
+              type: AppMessageType.chat,
+            ),
+          ];
+
+          await tester.pumpWidget(
+            _buildScreen(supervisor: supervisor, messages: messages),
+          );
+
+          await tester.tap(find.byKey(const Key('comment-row-msg-js')));
+          await tester.pumpAndSettle();
+
+          expect(find.byKey(const Key('url-confirm-dialog')), findsNothing);
+          expect(fakeUrlLauncher.launchedUrls, isEmpty);
+        },
+      );
+
+      testWidgets('comment with two URLs shows a picker dialog', (
+        WidgetTester tester,
+      ) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          AppMessage(
+            id: 'msg-multi',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'u1',
+            content: 'a https://a.example b http://b.example c',
+            type: AppMessageType.chat,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(supervisor: supervisor, messages: messages),
+        );
+
+        await tester.tap(find.byKey(const Key('comment-row-msg-multi')));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('url-picker-dialog')), findsOneWidget);
+        expect(find.byKey(const Key('url-picker-option-0')), findsOneWidget);
+        expect(find.byKey(const Key('url-picker-option-1')), findsOneWidget);
+
+        // Selecting the second URL launches it.
+        await tester.tap(find.byKey(const Key('url-picker-option-1')));
+        await tester.pumpAndSettle();
+
+        expect(fakeUrlLauncher.launchedUrls, <String>['http://b.example']);
+      });
+
+      testWidgets(
+        'URL portion of the comment is rendered with underline decoration',
+        (WidgetTester tester) async {
+          final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+          final List<AppMessage> messages = <AppMessage>[
+            AppMessage(
+              id: 'msg-deco',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+              userId: 'u1',
+              content: '見て https://example.com だよ',
+              type: AppMessageType.chat,
+            ),
+          ];
+
+          await tester.pumpWidget(
+            _buildScreen(supervisor: supervisor, messages: messages),
+          );
+
+          final Text textWidget = tester.widget(
+            find.descendant(
+              of: find.byKey(const Key('comment-row-msg-deco')),
+              matching: find.byType(Text),
+            ),
+          );
+          final TextSpan root = textWidget.textSpan! as TextSpan;
+
+          // Collect all leaf TextSpans and find the one whose text is the URL.
+          final List<TextSpan> leaves = <TextSpan>[];
+          void walk(InlineSpan span) {
+            if (span is TextSpan) {
+              if (span.text != null) {
+                leaves.add(span);
+              }
+              for (final InlineSpan child
+                  in span.children ?? const <InlineSpan>[]) {
+                walk(child);
+              }
+            }
+          }
+
+          walk(root);
+          final TextSpan urlSpan = leaves.firstWhere(
+            (TextSpan span) => span.text == 'https://example.com',
+            orElse: () => throw StateError('URL span not found'),
+          );
+          expect(urlSpan.style?.decoration, TextDecoration.underline);
+        },
+      );
+
+      testWidgets(
+        'failing launchUrl shows a failure snackbar',
+        (WidgetTester tester) async {
+          fakeUrlLauncher.shouldSucceed = false;
+          final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+          final List<AppMessage> messages = <AppMessage>[
+            AppMessage(
+              id: 'msg-fail',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+              userId: 'u1',
+              content: 'https://example.com',
+              type: AppMessageType.chat,
+            ),
+          ];
+
+          await tester.pumpWidget(
+            _buildScreen(supervisor: supervisor, messages: messages),
+          );
+
+          await tester.tap(find.byKey(const Key('comment-row-msg-fail')));
+          await tester.pumpAndSettle();
+
+          await tester.tap(find.byKey(const Key('url-confirm-open')));
+          // The SnackBar auto-dismiss timer can hang pumpAndSettle, so pump
+          // a few explicit frames instead.
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 200));
+
+          expect(
+            find.byKey(const Key('url-launch-failed-snackbar')),
+            findsOneWidget,
+          );
+        },
+      );
+
+      testWidgets(
+        'URL confirm dialog shows host in a dedicated emphasised slot',
+        (WidgetTester tester) async {
+          final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+          final List<AppMessage> messages = <AppMessage>[
+            AppMessage(
+              id: 'msg-host',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+              userId: 'u1',
+              content: 'https://example.com/some/path?q=1',
+              type: AppMessageType.chat,
+            ),
+          ];
+
+          await tester.pumpWidget(
+            _buildScreen(supervisor: supervisor, messages: messages),
+          );
+
+          await tester.tap(find.byKey(const Key('comment-row-msg-host')));
+          await tester.pumpAndSettle();
+
+          final SelectableText hostText = tester.widget(
+            find.byKey(const Key('url-confirm-host-text')),
+          );
+          expect(hostText.data, 'example.com');
+          final SelectableText urlText = tester.widget(
+            find.byKey(const Key('url-confirm-url-text')),
+          );
+          expect(urlText.data, 'https://example.com/some/path?q=1');
+        },
+      );
+
+      testWidgets(
+        'star-hidden comment still reveals on tap and is not treated as URL',
+        (WidgetTester tester) async {
+          final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+          final List<AppMessage> messages = <AppMessage>[
+            AppMessage(
+              id: 'star-url',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+              userId: 'u1',
+              content: '☆ネタバレ https://spoilers.example',
+              type: AppMessageType.chat,
+            ),
+          ];
+
+          await tester.pumpWidget(
+            _buildScreen(
+              supervisor: supervisor,
+              messages: messages,
+              starPrefixHidingEnabled: true,
+            ),
+          );
+
+          // First tap reveals the body, does NOT open the URL dialog.
+          await tester.tap(find.byKey(const Key('comment-row-star-url')));
+          await tester.pumpAndSettle();
+          expect(find.byKey(const Key('url-confirm-dialog')), findsNothing);
+          expect(fakeUrlLauncher.launchedUrls, isEmpty);
+
+          // After reveal, a second tap opens the URL dialog as usual.
+          await tester.tap(find.byKey(const Key('comment-row-star-url')));
+          await tester.pumpAndSettle();
+          expect(find.byKey(const Key('url-confirm-dialog')), findsOneWidget);
+        },
+      );
     });
 
     testWidgets(
@@ -3223,5 +3657,21 @@ class _FakeWakelockPlusPlatform extends WakelockPlusPlatformInterface {
   Future<void> toggle({required bool enable}) async {
     toggles.add(enable);
     _enabled = enable;
+  }
+}
+
+class _FakeUrlLauncher extends UrlLauncherPlatform {
+  final List<String> launchedUrls = <String>[];
+  PreferredLaunchMode? lastLaunchMode;
+  bool shouldSucceed = true;
+
+  @override
+  LinkDelegate? get linkDelegate => null;
+
+  @override
+  Future<bool> launchUrl(String url, LaunchOptions options) async {
+    launchedUrls.add(url);
+    lastLaunchMode = options.mode;
+    return shouldSucceed;
   }
 }

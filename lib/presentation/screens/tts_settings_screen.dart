@@ -703,6 +703,12 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         }
         final List<int> orderedSpeakerIds = _orderedSpeakerIds(model);
         for (final speakerId in orderedSpeakerIds) {
+          // 0.vvm には複数話者が同梱されているが、ドロップダウンには
+          // サポート対象のスタイル（_additionalSpeakerStyles）のみ表示する。
+          if (model.modelId != 'n0' &&
+              !_additionalSpeakerStyles.containsKey(speakerId)) {
+            continue;
+          }
           items.add(
             DropdownMenuItem<int>(
               value: speakerId,
@@ -1018,7 +1024,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                       SwitchListTile(
                         key: const Key('read-user-name-switch'),
                         title: const Text('名前を読み上げる'),
-                        subtitle: const Text('ONにすると「名前、コメント」の形式で読み上げます'),
+                        subtitle: const Text('ONにすると「コメント、名前」の形式で読み上げます'),
                         contentPadding: EdgeInsets.zero,
                         value: settings.readUserName,
                         onChanged: (bool value) {
