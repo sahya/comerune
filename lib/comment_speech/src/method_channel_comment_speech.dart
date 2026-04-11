@@ -30,14 +30,15 @@ class MethodChannelCommentSpeech implements CommentSpeechPlatform {
     }
   }
 
-  late final Stream<SpeechEvent> _events =
-      _eventChannel.receiveBroadcastStream().map((event) {
-    final parsed = SpeechEvent.fromMap(Map<dynamic, dynamic>.from(event));
-    if (!_noisyEventTypes.contains(parsed.type)) {
-      _debugLog('[MethodChannel] event: ${parsed.type}');
-    }
-    return parsed;
-  });
+  late final Stream<SpeechEvent> _events = _eventChannel
+      .receiveBroadcastStream()
+      .map((event) {
+        final parsed = SpeechEvent.fromMap(Map<dynamic, dynamic>.from(event));
+        if (!_noisyEventTypes.contains(parsed.type)) {
+          _debugLog('[MethodChannel] event: ${parsed.type}');
+        }
+        return parsed;
+      });
 
   @override
   Future<void> initialize() async {

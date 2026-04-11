@@ -50,8 +50,9 @@ class CommentLogStatsSheet extends StatelessWidget {
             ngUserIds: ngUserIds,
           )
         : const <HighlightPeak>[];
-    final Set<int> peakMinutes =
-        peaks.map((HighlightPeak p) => p.minuteOffset).toSet();
+    final Set<int> peakMinutes = peaks
+        .map((HighlightPeak p) => p.minuteOffset)
+        .toSet();
 
     return DraggableScrollableSheet(
       initialChildSize: highlightPickupEnabled && peaks.isNotEmpty ? 0.65 : 0.5,
