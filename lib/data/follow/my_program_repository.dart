@@ -16,8 +16,8 @@ class MyProgramRepository {
   MyProgramRepository({
     HttpClient? httpClient,
     String userAgent = _defaultUserAgent,
-  })  : _httpClient = httpClient ?? HttpClient(),
-        _userAgent = userAgent {
+  }) : _httpClient = httpClient ?? HttpClient(),
+       _userAgent = userAgent {
     _httpClient.connectionTimeout = const Duration(seconds: 10);
   }
 
@@ -40,6 +40,11 @@ class MyProgramRepository {
 
   DateTime? _toolFallbackNullAt;
 
+  /// The user session that was active when [_toolFallbackNullAt] was recorded.
+  /// When the session changes the cache is invalidated so a fresh tool API
+  /// request is made for the new identity.
+  String? _toolFallbackSession;
+
   /// Fetches the user's own on-air program, if any.
   ///
   /// Requires a valid [userSession] for authentication.
@@ -52,11 +57,21 @@ class MyProgramRepository {
       return null;
     }
 
+    // Invalidate the tool-fallback cache when the session identity changes.
+    if (_toolFallbackSession != null && _toolFallbackSession != userSession) {
+      _toolFallbackNullAt = null;
+      _toolFallbackSession = null;
+      appDebugLog(
+        '[MyProgramRepository] tool-fallback cache invalidated (session changed)',
+      );
+    }
+
     final FollowProgram? fromFront = await _fetchFromFrontApi(
       userSession: userSession,
     );
     if (fromFront != null) {
       _toolFallbackNullAt = null;
+      _toolFallbackSession = null;
       appDebugLogLazy(
         () =>
             '[MyProgramRepository] Resolved own program from front-api endpoint: ${fromFront.programId}',
@@ -65,28 +80,42 @@ class MyProgramRepository {
     }
 
     final DateTime? cachedAt = _toolFallbackNullAt;
-    if (cachedAt != null &&
-        DateTime.now().difference(cachedAt) < _toolFallbackCacheDuration) {
-      appDebugLog(
-        '[MyProgramRepository] Front-api own program not found; tool fallback skipped (cached)',
+    if (cachedAt != null) {
+      final Duration elapsed = DateTime.now().difference(cachedAt);
+      if (elapsed < _toolFallbackCacheDuration) {
+        appDebugLogLazy(
+          () =>
+              '[MyProgramRepository] tool-fallback cache=Hit '
+              '(age=${elapsed.inSeconds}s, ttl=${_toolFallbackCacheDuration.inSeconds}s)',
+        );
+        return null;
+      }
+      // Cache has expired — allow a fresh tool request.
+      _toolFallbackNullAt = null;
+      _toolFallbackSession = null;
+      appDebugLogLazy(
+        () =>
+            '[MyProgramRepository] tool-fallback cache=Expire '
+            '(age=${elapsed.inSeconds}s)',
       );
-      return null;
     }
 
     appDebugLog(
-      '[MyProgramRepository] Front-api own program not found; trying tool endpoint',
+      '[MyProgramRepository] tool-fallback cache=Miss; trying tool endpoint',
     );
     final FollowProgram? fromTool = await _fetchFromToolApi(
       userSession: userSession,
     );
     if (fromTool != null) {
       _toolFallbackNullAt = null;
+      _toolFallbackSession = null;
       appDebugLogLazy(
         () =>
             '[MyProgramRepository] Resolved own program from tool endpoint: ${fromTool.programId}',
       );
     } else {
       _toolFallbackNullAt = DateTime.now();
+      _toolFallbackSession = userSession;
     }
     return fromTool;
   }
