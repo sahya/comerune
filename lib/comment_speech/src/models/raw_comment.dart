@@ -17,13 +17,13 @@ class RawComment {
   });
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'text': text,
-        'userId': userId,
-        'postedAtEpochMs': postedAtEpochMs,
-        'score': score,
-        'isOwner': isOwner,
-      };
+    'id': id,
+    'text': text,
+    'userId': userId,
+    'postedAtEpochMs': postedAtEpochMs,
+    'score': score,
+    'isOwner': isOwner,
+  };
 
   @override
   bool operator ==(Object other) =>

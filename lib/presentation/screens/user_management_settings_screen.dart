@@ -36,7 +36,8 @@ class UserManagementSettingsScreen extends StatefulWidget {
 }
 
 class _UserManagementSettingsScreenState
-    extends State<UserManagementSettingsScreen> with SettingsScreenMixin {
+    extends State<UserManagementSettingsScreen>
+    with SettingsScreenMixin {
   @override
   SettingsStore get settingsStore => widget.settingsStore;
 
@@ -87,70 +88,69 @@ class _UserManagementSettingsScreenState
         body: settingsError != null
             ? buildSettingsError(context)
             : settings == null
-                ? const Center(child: CircularProgressIndicator())
-                : ListView(
-                    key: const Key('user-management-settings-list'),
-                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+                key: const Key('user-management-settings-list'),
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+                children: <Widget>[
+                  SettingsSection(
+                    title: 'お気に入りユーザー',
                     children: <Widget>[
-                      SettingsSection(
-                        title: 'お気に入りユーザー',
-                        children: <Widget>[
-                          ListTile(
-                            key: const Key('favorite-user-list-tile'),
-                            contentPadding: EdgeInsets.zero,
-                            leading: const Icon(Icons.person_add),
-                            title: const Text('お気に入りユーザーID管理'),
-                            subtitle: Text(
-                              settings.favoriteUserIdSet.isEmpty
-                                  ? '未登録'
-                                  : '${settings.favoriteUserIdSet.length}件登録中',
+                      ListTile(
+                        key: const Key('favorite-user-list-tile'),
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.person_add),
+                        title: const Text('お気に入りユーザーID管理'),
+                        subtitle: Text(
+                          settings.favoriteUserIdSet.isEmpty
+                              ? '未登録'
+                              : '${settings.favoriteUserIdSet.length}件登録中',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => FavoriteUserListScreen(
+                                settingsStore: widget.settingsStore,
+                                userNameResolution: widget.userNameResolution,
+                              ),
                             ),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () async {
-                              await Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => FavoriteUserListScreen(
-                                    settingsStore: widget.settingsStore,
-                                    userNameResolution:
-                                        widget.userNameResolution,
-                                  ),
-                                ),
-                              );
-                              await loadSettings();
-                            },
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      SettingsSection(
-                        title: 'NGユーザー',
-                        children: <Widget>[
-                          ListTile(
-                            key: const Key('ng-user-list-tile'),
-                            contentPadding: EdgeInsets.zero,
-                            leading: const Icon(Icons.person_off),
-                            title: const Text('NGユーザーID管理'),
-                            subtitle: Text(
-                              settings.ngUserIdSet.isEmpty
-                                  ? '未登録'
-                                  : '${settings.ngUserIdSet.length}件登録中',
-                            ),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () async {
-                              await Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => NgUserListScreen(
-                                    settingsStore: widget.settingsStore,
-                                  ),
-                                ),
-                              );
-                              await loadSettings();
-                            },
-                          ),
-                        ],
+                          );
+                          await loadSettings();
+                        },
                       ),
                     ],
                   ),
+                  const SizedBox(height: 12),
+                  SettingsSection(
+                    title: 'NGユーザー',
+                    children: <Widget>[
+                      ListTile(
+                        key: const Key('ng-user-list-tile'),
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.person_off),
+                        title: const Text('NGユーザーID管理'),
+                        subtitle: Text(
+                          settings.ngUserIdSet.isEmpty
+                              ? '未登録'
+                              : '${settings.ngUserIdSet.length}件登録中',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => NgUserListScreen(
+                                settingsStore: widget.settingsStore,
+                              ),
+                            ),
+                          );
+                          await loadSettings();
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
       ),
     );
   }

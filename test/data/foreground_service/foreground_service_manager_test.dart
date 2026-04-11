@@ -118,8 +118,7 @@ void main() {
       },
     );
 
-    test(
-        'updateNotification catches exception from operations '
+    test('updateNotification catches exception from operations '
         'and remains running', () async {
       await manager.start(title: 'Test', text: 'body');
       fakeOps.updateException = Exception('platform error');
