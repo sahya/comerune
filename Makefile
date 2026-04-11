@@ -10,7 +10,7 @@ ENV := $(MISE_ACTIVATE) && \
        export ANDROID_HOME=$(ANDROID_HOME) && \
        export PATH=$(FLUTTER_BIN):$(ANDROID_HOME)/cmdline-tools/latest/bin:$(ANDROID_HOME)/platform-tools:$$PATH
 
-.PHONY: help doctor clean build build-release build-clean test pub-get analyze format format-all check
+.PHONY: help doctor clean build build-release build-clean test pub-get analyze format format-all check setup-libs
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -21,10 +21,13 @@ doctor: ## Run flutter doctor
 clean: ## Run flutter clean
 	$(ENV) && flutter clean
 
-build: ## Build debug APK
+setup-libs: ## Download VOICEVOX native libraries if missing
+	@bash scripts/setup-voicevox-libs.sh
+
+build: setup-libs ## Build debug APK
 	$(ENV) && flutter build apk --debug
 
-build-release: ## Build release APK
+build-release: setup-libs ## Build release APK
 	$(ENV) && flutter build apk --release --obfuscate --split-debug-info=build/debug-info
 
 build-clean: clean build ## Clean + build debug APK
