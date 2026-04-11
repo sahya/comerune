@@ -420,8 +420,9 @@ class NdgrProtobufDecoder {
       content: content,
       name: name != null && name.isNotEmpty ? name : null,
       rawUserId: rawUserId,
-      hashedUserId:
-          hashedUserId != null && hashedUserId.isNotEmpty ? hashedUserId : null,
+      hashedUserId: hashedUserId != null && hashedUserId.isNotEmpty
+          ? hashedUserId
+          : null,
       no: no,
     );
   }
