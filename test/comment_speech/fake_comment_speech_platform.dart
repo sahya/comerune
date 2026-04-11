@@ -75,6 +75,12 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
   /// Tracks which model IDs were passed to [loadModel].
   final List<String> loadedModelIds = <String>[];
 
+  /// Tracks which model IDs were passed to [cancelDownload].
+  final List<String> cancelledModelIds = <String>[];
+
+  /// If non-null, [cancelDownload] will throw this.
+  Object? cancelDownloadError;
+
   int _statusSequenceIndex = 0;
 
   @override
@@ -184,7 +190,12 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
   }
 
   @override
-  Future<void> cancelDownload(String modelId) async {}
+  Future<void> cancelDownload(String modelId) async {
+    cancelledModelIds.add(modelId);
+    if (cancelDownloadError != null) {
+      throw cancelDownloadError!;
+    }
+  }
 
   /// Emit a speech event for testing.
   void emitEvent(SpeechEvent event) {
