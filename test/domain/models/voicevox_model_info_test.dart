@@ -112,8 +112,12 @@ void main() {
     });
 
     test('supportedVoicevoxModelIds matches Kotlin manifest model IDs', () {
-      // Filter out single-line comments to avoid false positives.
-      final nonCommentLines = kotlinSource
+      // Remove block comments (/* ... */) and single-line comments (//).
+      final withoutBlockComments = kotlinSource.replaceAll(
+        RegExp(r'/\*[\s\S]*?\*/'),
+        '',
+      );
+      final nonCommentLines = withoutBlockComments
           .split('\n')
           .where((line) => !line.trimLeft().startsWith('//'))
           .join('\n');
@@ -147,8 +151,12 @@ void main() {
     test(
       'supportedVoicevoxSpeakerNames matches Kotlin manifest display names',
       () {
-        // Filter out single-line comments to avoid false positives.
-        final nonCommentLines = kotlinSource
+        // Remove block comments (/* ... */) and single-line comments (//).
+        final withoutBlockComments = kotlinSource.replaceAll(
+          RegExp(r'/\*[\s\S]*?\*/'),
+          '',
+        );
+        final nonCommentLines = withoutBlockComments
             .split('\n')
             .where((line) => !line.trimLeft().startsWith('//'))
             .join('\n');
