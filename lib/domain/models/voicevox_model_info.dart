@@ -3,9 +3,20 @@
 /// - `n0`: VOICEVOX Nemo (bundled)
 /// - `0`: 春日部つむぎ（0.vvm: 四国めたん・ずんだもん・雨晴はうを含む基本モデル）
 /// - `3`: 波音リツ
+///
+/// **Important:** These values must match the `models` list in
+/// `VoicevoxModelManifest.kt` (Android/Kotlin). When adding or removing
+/// models, update both files. The test in
+/// `test/domain/models/voicevox_model_info_test.dart` validates consistency
+/// automatically.
 const Set<String> supportedVoicevoxModelIds = <String>{'n0', '0', '3'};
 
 /// Display names of supported speakers for terms filtering.
+///
+/// **Important:** These values must match the `displayName` fields in
+/// `VoicevoxModelManifest.kt` (Android/Kotlin). See
+/// `test/domain/models/voicevox_model_info_test.dart` for automated
+/// consistency validation.
 const Set<String> supportedVoicevoxSpeakerNames = <String>{
   'VOICEVOX Nemo',
   '春日部つむぎ',
