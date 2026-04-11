@@ -366,8 +366,7 @@ void main() {
       repository.dispose();
     });
 
-    test('extracts icon from tool endpoint using provider ID fallback',
-        () async {
+    test('extracts icon from tool endpoint using provider ID fallback', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       httpClient.queuedResponses.addAll(<_FakeResponseConfig>[
         _FakeResponseConfig(statusCode: 404, body: ''),
@@ -557,6 +556,104 @@ void main() {
         repository.dispose();
       },
     );
+
+    test('invalidates tool fallback cache when session changes', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.queuedResponses.addAll(<_FakeResponseConfig>[
+        // First call (session A): front → empty, tool → empty.
+        _FakeResponseConfig(
+          statusCode: 200,
+          body: jsonEncode(<String, Object?>{
+            'data': <String, Object?>{'programs': <Object?>[]},
+          }),
+        ),
+        _FakeResponseConfig(
+          statusCode: 200,
+          body: jsonEncode(<String, Object?>{'data': <Object?>[]}),
+        ),
+        // Second call (session B): front → empty, tool → queried
+        // because session changed and cache was invalidated.
+        _FakeResponseConfig(
+          statusCode: 200,
+          body: jsonEncode(<String, Object?>{
+            'data': <String, Object?>{'programs': <Object?>[]},
+          }),
+        ),
+        _FakeResponseConfig(
+          statusCode: 200,
+          body: jsonEncode(<String, Object?>{'data': <Object?>[]}),
+        ),
+      ]);
+
+      final MyProgramRepository repository = MyProgramRepository(
+        httpClient: httpClient,
+      );
+
+      // Call with session A — populates cache.
+      final result1 = await repository.fetchOwnProgram(
+        userSession: 'session_a',
+      );
+      expect(result1, isNull);
+      expect(httpClient.requests, hasLength(2));
+
+      // Call with session B — cache should be invalidated, tool queried again.
+      final result2 = await repository.fetchOwnProgram(
+        userSession: 'session_b',
+      );
+      expect(result2, isNull);
+      // Both front and tool were called (cache invalidated on session change).
+      expect(httpClient.requests, hasLength(4));
+
+      repository.dispose();
+    });
+
+    test('retains tool fallback cache when same session calls again', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.queuedResponses.addAll(<_FakeResponseConfig>[
+        // First call: front → empty, tool → empty.
+        _FakeResponseConfig(
+          statusCode: 200,
+          body: jsonEncode(<String, Object?>{
+            'data': <String, Object?>{'programs': <Object?>[]},
+          }),
+        ),
+        _FakeResponseConfig(
+          statusCode: 200,
+          body: jsonEncode(<String, Object?>{'data': <Object?>[]}),
+        ),
+        // Second call (same session): front → empty, tool skipped (cache hit).
+        _FakeResponseConfig(
+          statusCode: 200,
+          body: jsonEncode(<String, Object?>{
+            'data': <String, Object?>{'programs': <Object?>[]},
+          }),
+        ),
+        // Third call (same session again): front → empty, tool skipped.
+        _FakeResponseConfig(
+          statusCode: 200,
+          body: jsonEncode(<String, Object?>{
+            'data': <String, Object?>{'programs': <Object?>[]},
+          }),
+        ),
+      ]);
+
+      final MyProgramRepository repository = MyProgramRepository(
+        httpClient: httpClient,
+      );
+
+      await repository.fetchOwnProgram(userSession: 'session_x');
+      expect(httpClient.requests, hasLength(2));
+
+      await repository.fetchOwnProgram(userSession: 'session_x');
+      // Tool skipped — only front queried.
+      expect(httpClient.requests, hasLength(3));
+
+      await repository.fetchOwnProgram(userSession: 'session_x');
+      // Tool still skipped — only front queried.
+      expect(httpClient.requests, hasLength(4));
+
+      repository.dispose();
+    });
   });
 
   group('fetchControllableProgram', () {
@@ -821,7 +918,7 @@ class _FakeHttpHeaders implements HttpHeaders {
 class _FakeHttpClientResponse extends Stream<List<int>>
     implements HttpClientResponse {
   _FakeHttpClientResponse({required this.statusCode, required String body})
-      : _body = body;
+    : _body = body;
 
   @override
   final int statusCode;

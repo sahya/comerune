@@ -4,8 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('debug log policy', () {
-    test('high-frequency files avoid interpolated direct appDebugLog calls',
-        () {
+    test('high-frequency files avoid interpolated direct appDebugLog calls', () {
       const List<String> targets = <String>[
         'lib/data/follow/my_program_repository.dart',
         'lib/data/follow/favorite_user_live_checker.dart',
@@ -40,6 +39,28 @@ void main() {
         isFalse,
         reason:
             'Use _debugLogLazy for interpolated messages in SelectScreen high-frequency logs',
+      );
+    });
+
+    test('MyProgramRepository contains cache Hit/Miss/Expire log labels', () {
+      const String path = 'lib/data/follow/my_program_repository.dart';
+      final String content = File(path).readAsStringSync();
+
+      expect(
+        content.contains('cache=Hit'),
+        isTrue,
+        reason: 'MyProgramRepository should log cache=Hit for logcat tracing',
+      );
+      expect(
+        content.contains('cache=Miss'),
+        isTrue,
+        reason: 'MyProgramRepository should log cache=Miss for logcat tracing',
+      );
+      expect(
+        content.contains('cache=Expire'),
+        isTrue,
+        reason:
+            'MyProgramRepository should log cache=Expire for logcat tracing',
       );
     });
   });
