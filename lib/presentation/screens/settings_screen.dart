@@ -491,7 +491,11 @@ class _SettingsScreenState extends State<SettingsScreen>
         subtitle: const Text('第三者ライブラリのライセンス情報'),
         trailing: const Icon(Icons.chevron_right),
         onTap: () {
-          showLicensePage(context: context, applicationName: 'comerune');
+          showLicensePage(
+            context: context,
+            applicationName: 'comerune',
+            applicationVersion: '1.2.0',
+          );
         },
       ),
     );
