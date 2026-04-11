@@ -424,4 +424,433 @@ Nemoの規約です''';
       expect(result, contains('許諾内容'));
     });
   });
+
+  group('download cancel', () {
+    testWidgets('shows cancel button during download', (tester) async {
+      fakePlatform.availableModelsToReturn = [_notDownloadedModel];
+      await tester.pumpWidget(_buildScreen(fakePlatform));
+      await tester.pumpAndSettle();
+
+      // Initially, download button is shown.
+      expect(find.byKey(const Key('download-btn-0')), findsOneWidget);
+      expect(find.byKey(const Key('cancel-btn-0')), findsNothing);
+
+      // Simulate download started.
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadStarted,
+          payload: {'modelId': '0'},
+        ),
+      );
+      await tester.pump(); // deliver stream event
+      await tester.pump(); // rebuild widget tree
+
+      // Cancel button should now be visible, download button should be gone.
+      expect(find.byKey(const Key('cancel-btn-0')), findsOneWidget);
+      expect(find.byKey(const Key('download-btn-0')), findsNothing);
+    });
+
+    testWidgets('tapping cancel button calls cancelDownload on platform', (
+      tester,
+    ) async {
+      fakePlatform.availableModelsToReturn = [_notDownloadedModel];
+      await tester.pumpWidget(_buildScreen(fakePlatform));
+      await tester.pumpAndSettle();
+
+      // Start download.
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadStarted,
+          payload: {'modelId': '0'},
+        ),
+      );
+      await tester.pump(); // deliver stream event
+      await tester.pump(); // rebuild widget tree
+
+      // Tap cancel button.
+      await tester.tap(find.byKey(const Key('cancel-btn-0')));
+      await tester.pump();
+
+      expect(fakePlatform.cancelledModelIds, contains('0'));
+    });
+
+    testWidgets(
+      'UI resets after cancel: download button restored, progress bar removed',
+      (tester) async {
+        fakePlatform.availableModelsToReturn = [_notDownloadedModel];
+        await tester.pumpWidget(_buildScreen(fakePlatform));
+        await tester.pumpAndSettle();
+
+        // Start download and show progress.
+        fakePlatform.emitEvent(
+          const SpeechEvent(
+            type: SpeechEventType.modelDownloadStarted,
+            payload: {'modelId': '0'},
+          ),
+        );
+        await tester.pump(); // deliver stream event
+        await tester.pump(); // rebuild widget tree
+
+        fakePlatform.emitEvent(
+          const SpeechEvent(
+            type: SpeechEventType.modelDownloadProgress,
+            payload: {
+              'modelId': '0',
+              'bytesDownloaded': 29107189,
+              'totalBytes': 58214379,
+            },
+          ),
+        );
+        await tester.pump(); // deliver stream event
+        await tester.pump(); // rebuild widget tree
+
+        // Verify downloading state is visible.
+        expect(find.byType(LinearProgressIndicator), findsOneWidget);
+        expect(find.text('50%'), findsOneWidget);
+        expect(find.byKey(const Key('cancel-btn-0')), findsOneWidget);
+
+        // Simulate cancel: platform emits modelDownloadFailed (or resets to
+        // notDownloaded). The native platform resets the model state via a
+        // modelDeleted event when cancel succeeds.
+        fakePlatform.emitEvent(
+          const SpeechEvent(
+            type: SpeechEventType.modelDeleted,
+            payload: {'modelId': '0'},
+          ),
+        );
+        await tester.pump(); // deliver stream event
+        await tester.pump(); // rebuild widget tree
+
+        // After cancel, download button should reappear.
+        expect(find.byKey(const Key('download-btn-0')), findsOneWidget);
+        expect(find.byKey(const Key('cancel-btn-0')), findsNothing);
+        // Progress bar and percentage should be gone.
+        expect(find.byType(LinearProgressIndicator), findsNothing);
+        expect(find.text('50%'), findsNothing);
+      },
+    );
+
+    testWidgets('shows snackbar when cancel fails', (tester) async {
+      fakePlatform.availableModelsToReturn = [_notDownloadedModel];
+      fakePlatform.cancelDownloadError = Exception('cancel failed');
+      await tester.pumpWidget(_buildScreen(fakePlatform));
+      await tester.pumpAndSettle();
+
+      // Start download.
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadStarted,
+          payload: {'modelId': '0'},
+        ),
+      );
+      await tester.pump(); // deliver stream event
+      await tester.pump(); // rebuild widget tree
+
+      // Tap cancel button (will throw).
+      await tester.tap(find.byKey(const Key('cancel-btn-0')));
+      await tester.pump();
+
+      expect(find.textContaining('キャンセルに失敗しました'), findsOneWidget);
+    });
+  });
+
+  group('download error', () {
+    testWidgets(
+      'shows error text and error badge when modelDownloadFailed is received',
+      (tester) async {
+        fakePlatform.availableModelsToReturn = [_notDownloadedModel];
+        await tester.pumpWidget(_buildScreen(fakePlatform));
+        await tester.pumpAndSettle();
+
+        // Start download.
+        fakePlatform.emitEvent(
+          const SpeechEvent(
+            type: SpeechEventType.modelDownloadStarted,
+            payload: {'modelId': '0'},
+          ),
+        );
+        await tester.pump(); // deliver stream event
+        await tester.pump(); // rebuild widget tree
+
+        // Add some progress.
+        fakePlatform.emitEvent(
+          const SpeechEvent(
+            type: SpeechEventType.modelDownloadProgress,
+            payload: {
+              'modelId': '0',
+              'bytesDownloaded': 10000000,
+              'totalBytes': 58214379,
+            },
+          ),
+        );
+        await tester.pump(); // deliver stream event
+        await tester.pump(); // rebuild widget tree
+
+        expect(find.byType(LinearProgressIndicator), findsOneWidget);
+
+        // Simulate download failure.
+        fakePlatform.emitEvent(
+          const SpeechEvent(
+            type: SpeechEventType.modelDownloadFailed,
+            payload: {'modelId': '0'},
+          ),
+        );
+        await tester.pump(); // deliver stream event
+        await tester.pump(); // rebuild widget tree
+
+        // Error text should appear.
+        expect(find.text('ダウンロードに失敗しました'), findsOneWidget);
+        // Error badge should appear.
+        expect(find.text('エラー'), findsOneWidget);
+        // Progress bar should be gone.
+        expect(find.byType(LinearProgressIndicator), findsNothing);
+      },
+    );
+
+    testWidgets('shows download button for retry after download failure', (
+      tester,
+    ) async {
+      fakePlatform.availableModelsToReturn = [_notDownloadedModel];
+      await tester.pumpWidget(_buildScreen(fakePlatform));
+      await tester.pumpAndSettle();
+
+      // Start and fail download.
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadStarted,
+          payload: {'modelId': '0'},
+        ),
+      );
+      await tester.pump(); // deliver stream event
+      await tester.pump(); // rebuild widget tree
+
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadFailed,
+          payload: {'modelId': '0'},
+        ),
+      );
+      await tester.pump(); // deliver stream event
+      await tester.pump(); // rebuild widget tree
+
+      // Download button should reappear for retry (error state shows download
+      // button per _buildAction).
+      expect(find.byKey(const Key('download-btn-0')), findsOneWidget);
+      // Cancel button should not be present.
+      expect(find.byKey(const Key('cancel-btn-0')), findsNothing);
+    });
+
+    testWidgets('cancel button disappears when download fails mid-progress', (
+      tester,
+    ) async {
+      fakePlatform.availableModelsToReturn = [_notDownloadedModel];
+      await tester.pumpWidget(_buildScreen(fakePlatform));
+      await tester.pumpAndSettle();
+
+      // Start download.
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadStarted,
+          payload: {'modelId': '0'},
+        ),
+      );
+      await tester.pump(); // deliver stream event
+      await tester.pump(); // rebuild widget tree
+
+      // Verify cancel button is present during download.
+      expect(find.byKey(const Key('cancel-btn-0')), findsOneWidget);
+
+      // Download fails.
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadFailed,
+          payload: {'modelId': '0'},
+        ),
+      );
+      await tester.pump(); // deliver stream event
+      await tester.pump(); // rebuild widget tree
+
+      // Cancel button should be gone, download (retry) button should appear.
+      expect(find.byKey(const Key('cancel-btn-0')), findsNothing);
+      expect(find.byKey(const Key('download-btn-0')), findsOneWidget);
+    });
+  });
+
+  group('multiple concurrent downloads', () {
+    /// A second not-downloaded model (modelId '3' set to NOT_DOWNLOADED).
+    final notDownloadedModel3 = <String, dynamic>{
+      'modelId': '3',
+      'displayName': '波音リツ',
+      'speakerIds': [9, 65],
+      'vvmFileName': '3.vvm',
+      'fileSizeBytes': 61730024,
+      'isBundled': false,
+      'downloadState': 'NOT_DOWNLOADED',
+    };
+
+    testWidgets('shows progress for two models downloading simultaneously', (
+      tester,
+    ) async {
+      fakePlatform.availableModelsToReturn = [
+        _notDownloadedModel,
+        notDownloadedModel3,
+      ];
+      await tester.pumpWidget(_buildScreen(fakePlatform));
+      await tester.pumpAndSettle();
+
+      // Start download for both models.
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadStarted,
+          payload: {'modelId': '0'},
+        ),
+      );
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadStarted,
+          payload: {'modelId': '3'},
+        ),
+      );
+      await tester.pump(); // deliver stream events
+      await tester.pump(); // rebuild widget tree
+
+      // Emit progress for both.
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadProgress,
+          payload: {
+            'modelId': '0',
+            'bytesDownloaded': 29107189,
+            'totalBytes': 58214379,
+          },
+        ),
+      );
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadProgress,
+          payload: {
+            'modelId': '3',
+            'bytesDownloaded': 18519007,
+            'totalBytes': 61730024,
+          },
+        ),
+      );
+      await tester.pump(); // deliver stream events
+      await tester.pump(); // rebuild widget tree
+
+      // Both should show progress bars.
+      expect(find.byType(LinearProgressIndicator), findsNWidgets(2));
+      // Both should show cancel buttons.
+      expect(find.byKey(const Key('cancel-btn-0')), findsOneWidget);
+      expect(find.byKey(const Key('cancel-btn-3')), findsOneWidget);
+      // Both should show downloading badge.
+      expect(find.text('ダウンロード中'), findsNWidgets(2));
+      // Progress percentages.
+      expect(find.text('50%'), findsOneWidget);
+      expect(find.text('30%'), findsOneWidget);
+    });
+
+    testWidgets('one model completes while another continues downloading', (
+      tester,
+    ) async {
+      fakePlatform.availableModelsToReturn = [
+        _notDownloadedModel,
+        notDownloadedModel3,
+      ];
+      await tester.pumpWidget(_buildScreen(fakePlatform));
+      await tester.pumpAndSettle();
+
+      // Start both downloads.
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadStarted,
+          payload: {'modelId': '0'},
+        ),
+      );
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadStarted,
+          payload: {'modelId': '3'},
+        ),
+      );
+      await tester.pump(); // deliver stream events
+      await tester.pump(); // rebuild widget tree
+
+      // Complete model '0'.
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadCompleted,
+          payload: {'modelId': '0'},
+        ),
+      );
+      await tester.pump(); // deliver stream event
+      await tester.pump(); // rebuild widget tree
+
+      // Model '0' should show downloaded state (delete button, badge).
+      expect(find.byKey(const Key('delete-btn-0')), findsOneWidget);
+      expect(find.byKey(const Key('cancel-btn-0')), findsNothing);
+      // Model '3' should still be downloading.
+      expect(find.byKey(const Key('cancel-btn-3')), findsOneWidget);
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    });
+
+    testWidgets('one model fails while another continues downloading', (
+      tester,
+    ) async {
+      fakePlatform.availableModelsToReturn = [
+        _notDownloadedModel,
+        notDownloadedModel3,
+      ];
+      await tester.pumpWidget(_buildScreen(fakePlatform));
+      await tester.pumpAndSettle();
+
+      // Start both downloads.
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadStarted,
+          payload: {'modelId': '0'},
+        ),
+      );
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadStarted,
+          payload: {'modelId': '3'},
+        ),
+      );
+      await tester.pump(); // deliver stream events
+      await tester.pump(); // rebuild widget tree
+
+      // Add progress for model '3'.
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadProgress,
+          payload: {
+            'modelId': '3',
+            'bytesDownloaded': 30865012,
+            'totalBytes': 61730024,
+          },
+        ),
+      );
+      await tester.pump(); // deliver stream event
+      await tester.pump(); // rebuild widget tree
+
+      // Fail model '0'.
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadFailed,
+          payload: {'modelId': '0'},
+        ),
+      );
+      await tester.pump(); // deliver stream event
+      await tester.pump(); // rebuild widget tree
+
+      // Model '0' should show error state.
+      expect(find.text('エラー'), findsOneWidget);
+      expect(find.byKey(const Key('download-btn-0')), findsOneWidget);
+      // Model '3' should still be downloading.
+      expect(find.byKey(const Key('cancel-btn-3')), findsOneWidget);
+      expect(find.text('50%'), findsOneWidget);
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    });
+  });
 }
