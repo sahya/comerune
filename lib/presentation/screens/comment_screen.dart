@@ -93,14 +93,19 @@ Text _buildCommentLineRichText({
   Color? userColor,
   DateTime? beginAt,
   bool hidden = false,
+  bool pinned = false,
 }) {
   final String timestamp = _formatHms(message.timestamp, beginAt: beginAt);
   final String content = hidden ? 'ネタバレ防止: タップで表示' : message.content;
   const double minSubFontSize = 9.0;
   final double timestampFontSize =
-      hidden ? fontSize : (fontSize * 0.85).clamp(minSubFontSize, fontSize);
+      hidden || pinned
+          ? fontSize
+          : (fontSize * 0.85).clamp(minSubFontSize, fontSize);
   final double idFontSize =
-      hidden ? fontSize : (fontSize * 0.9).clamp(minSubFontSize, fontSize);
+      hidden || pinned
+          ? fontSize
+          : (fontSize * 0.9).clamp(minSubFontSize, fontSize);
 
   final List<InlineSpan> spans = <InlineSpan>[
     TextSpan(
@@ -125,7 +130,7 @@ Text _buildCommentLineRichText({
           style: TextStyle(
             fontSize: idFontSize,
             color: hidden ? Colors.grey : (userColor ?? idColor),
-            fontWeight: hidden ? null : FontWeight.w500,
+            fontWeight: hidden || pinned ? null : FontWeight.w500,
             fontStyle: hidden ? FontStyle.italic : null,
           ),
         ),
@@ -2958,6 +2963,7 @@ class _PinnedCommentRow extends StatelessWidget {
                       resolvedUserName: resolvedUserName,
                       userColor: userColor,
                       beginAt: beginAt,
+                      pinned: true,
                     ),
           ),
           SizedBox(
