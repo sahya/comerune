@@ -68,6 +68,14 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = true
+            // Safe: no res/raw/ directory exists in this project, so resource
+            // shrinking will not accidentally strip required assets.
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
             ndk {
                 abiFilters.clear()
                 abiFilters += "arm64-v8a"

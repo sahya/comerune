@@ -25,7 +25,7 @@ build: ## Build debug APK
 	$(ENV) && flutter build apk --debug
 
 build-release: ## Build release APK
-	$(ENV) && flutter build apk --release
+	$(ENV) && flutter build apk --release --obfuscate --split-debug-info=build/debug-info
 
 build-clean: clean build ## Clean + build debug APK
 

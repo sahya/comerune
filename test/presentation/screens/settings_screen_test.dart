@@ -296,6 +296,36 @@ void main() {
       // Default font size is 14px
       expect(find.text('フォントサイズ: 14px'), findsOneWidget);
     });
+
+    testWidgets('license tile renders and is tappable', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      final Finder scrollable = find.byType(Scrollable).first;
+
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('license-tile')),
+        200,
+        scrollable: scrollable,
+      );
+      await tester.pumpAndSettle();
+
+      // Verify the license tile renders with correct text
+      expect(find.byKey(const Key('license-tile')), findsOneWidget);
+      expect(find.text('ライセンス'), findsOneWidget);
+
+      // Verify the tile is tappable (opens license page)
+      await tester.tap(find.byKey(const Key('license-tile')));
+      await tester.pumpAndSettle();
+
+      // showLicensePage pushes a new route with the LicensePage widget
+      expect(find.text('comerune'), findsOneWidget);
+    });
   });
 }
 
