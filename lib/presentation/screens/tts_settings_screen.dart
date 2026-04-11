@@ -592,6 +592,8 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text('音声処理', style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 4),
+        _buildPerformanceTips(),
         const SizedBox(height: 8),
         Text('音声合成', style: Theme.of(context).textTheme.bodyMedium),
         const SizedBox(height: 4),
@@ -643,6 +645,42 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
           _buildPerformanceHint(settings),
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: Theme.of(context).colorScheme.outline,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // NOTE: この内容の詳細版は docs/voicevox-performance-guide.md にあります。
+  // 両方を更新する場合は整合性を確認してください。
+  Widget _buildPerformanceTips() {
+    final TextStyle? captionStyle = Theme.of(context).textTheme.bodySmall
+        ?.copyWith(color: Theme.of(context).colorScheme.outline);
+    return ExpansionTile(
+      key: const Key('performance-tips-tile'),
+      tilePadding: EdgeInsets.zero,
+      childrenPadding: const EdgeInsets.only(bottom: 8),
+      shape: const Border(),
+      collapsedShape: const Border(),
+      title: Text('応答が遅いと感じたら', style: captionStyle),
+      children: <Widget>[
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            '端末のCPUで音声を合成しているため、'
+            '以下の状況では遅くなることがあります。'
+            '\n\n'
+            '\u2022 動画視聴中 / ライブ配信中'
+            '\n  → 「低遅延（調整なし）」モードに切り替える'
+            '\n  → 不要なアプリを閉じる'
+            '\n  → 配信時は画質を下げる'
+            '\n\n'
+            '\u2022 端末が熱いとき'
+            '\n  → しばらく休ませる'
+            '\n\n'
+            'それでも改善しない場合は、端末の性能が不足している'
+            '可能性があります。新しい端末で改善することがあります。',
+            style: captionStyle,
           ),
         ),
       ],
