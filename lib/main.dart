@@ -12,6 +12,7 @@ import 'application/migration/app_migration_runner.dart';
 import 'application/onboarding/onboarding_store.dart';
 import 'application/settings/settings_store.dart';
 import 'application/settings/shared_preferences_adapter.dart';
+import 'application/upgrade/upgrade_initializer.dart';
 import 'application/statistics/statistics_store.dart';
 import 'application/timeline/timeline_store.dart';
 import 'data/auth/user_session_store.dart';
@@ -40,8 +41,18 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final SharedPreferences prefs = await SharedPreferences.getInstance();
+  final SharedPreferencesLike prefsAdapter = SharedPreferencesAdapter(prefs);
+
+  // Clear ephemeral keys (transient runtime state) on APK update.
+  // Runs before migrations so that stale ephemeral values do not
+  // interfere with data transformations.
+  final UpgradeInitializer upgradeInitializer = UpgradeInitializer(
+    prefs: prefsAdapter,
+  );
+  await upgradeInitializer.run();
+
   final SettingsStore settingsStore = SharedPreferencesSettingsStore(
-    prefs: SharedPreferencesAdapter(prefs),
+    prefs: prefsAdapter,
   );
   final AppSettings initialSettings = await settingsStore.load();
   final UserSessionStore userSessionStore = SecureUserSessionStore(
@@ -55,14 +66,12 @@ Future<void> main() async {
     tempDirectory: Directory('${tempDir.path}/comment_logs'),
   );
   final UserAttributeStore userAttributeStore =
-      SharedPreferencesUserAttributeStore(
-        prefs: SharedPreferencesAdapter(prefs),
-      );
+      SharedPreferencesUserAttributeStore(prefs: prefsAdapter);
   // Run one-time migration tasks when the app version changes.
   // Awaited so that migrations complete before the app reads settings or
   // user data that a migration might alter.
   final AppMigrationRunner migrationRunner = AppMigrationRunner(
-    prefs: SharedPreferencesAdapter(prefs),
+    prefs: prefsAdapter,
   );
   await migrationRunner.run();
 
@@ -70,7 +79,7 @@ Future<void> main() async {
   unawaited(userAttributeStore.cleanup());
 
   final OnboardingStore onboardingStore = SharedPreferencesOnboardingStore(
-    prefs: SharedPreferencesAdapter(prefs),
+    prefs: prefsAdapter,
   );
 
   ForegroundServiceManager? foregroundServiceManager;

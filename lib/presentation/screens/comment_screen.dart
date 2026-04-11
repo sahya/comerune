@@ -79,36 +79,77 @@ void _errorLog(String message, {Object? error, StackTrace? stackTrace}) {
   );
 }
 
-String _commentLineText({
+/// Builds a [Text.rich] widget showing timestamp, optional user name, and
+/// comment content with per-segment styling.
+///
+/// Shared by both [_PinnedCommentRow] and [_CommentRow].
+Text _buildCommentLineRichText({
   required AppMessage message,
   required bool showUserName,
+  required double fontSize,
+  required Color timestampColor,
+  required Color idColor,
   String? resolvedUserName,
-  String? contentOverride,
+  Color? userColor,
   DateTime? beginAt,
-  bool twoLine = false,
+  bool hidden = false,
+  bool pinned = false,
 }) {
   final String timestamp = _formatHms(message.timestamp, beginAt: beginAt);
-  final String content = contentOverride ?? message.content;
+  final String content = hidden ? 'ネタバレ防止: タップで表示' : message.content;
+  const double minSubFontSize = 9.0;
+  final double timestampFontSize = hidden || pinned
+      ? fontSize
+      : (fontSize * 0.85).clamp(minSubFontSize, fontSize);
+  final double idFontSize = hidden || pinned
+      ? fontSize
+      : (fontSize * 0.9).clamp(minSubFontSize, fontSize);
 
-  if (!showUserName) {
-    return '$timestamp  $content';
+  final List<InlineSpan> spans = <InlineSpan>[
+    TextSpan(
+      text: timestamp,
+      style: TextStyle(
+        fontSize: timestampFontSize,
+        color: hidden ? Colors.grey : timestampColor,
+        fontStyle: hidden ? FontStyle.italic : null,
+      ),
+    ),
+  ];
+
+  if (showUserName) {
+    final String? userId = message.userId;
+    if (userId != null && userId.isNotEmpty) {
+      final String displayName = resolvedUserName != null
+          ? '$resolvedUserName ($userId)'
+          : userId;
+      spans.add(const TextSpan(text: '  '));
+      spans.add(
+        TextSpan(
+          text: displayName,
+          style: TextStyle(
+            fontSize: idFontSize,
+            color: hidden ? Colors.grey : (userColor ?? idColor),
+            fontWeight: hidden || pinned ? null : FontWeight.w500,
+            fontStyle: hidden ? FontStyle.italic : null,
+          ),
+        ),
+      );
+    }
   }
 
-  final String userId = message.userId ?? '';
+  spans.add(const TextSpan(text: '  '));
+  spans.add(
+    TextSpan(
+      text: content,
+      style: TextStyle(
+        fontSize: fontSize,
+        color: hidden ? Colors.grey : userColor,
+        fontStyle: hidden ? FontStyle.italic : null,
+      ),
+    ),
+  );
 
-  if (userId.isEmpty) {
-    return '$timestamp  $content';
-  }
-
-  final String displayName = resolvedUserName != null
-      ? '$resolvedUserName ($userId)'
-      : userId;
-
-  if (twoLine) {
-    return '$timestamp  $displayName\n$content';
-  }
-
-  return '$timestamp  $displayName  $content';
+  return Text.rich(TextSpan(children: spans));
 }
 
 enum CommentSortOrder { ascending, descending }
@@ -2897,14 +2938,16 @@ class _PinnedCommentRow extends StatelessWidget {
           Expanded(
             child: useTwoLine
                 ? _buildTwoLinePinned(context)
-                : Text(
-                    _commentLineText(
-                      message: message,
-                      showUserName: showUserName,
-                      resolvedUserName: resolvedUserName,
-                      beginAt: beginAt,
-                    ),
-                    style: TextStyle(fontSize: fontSize, color: userColor),
+                : _buildCommentLineRichText(
+                    message: message,
+                    showUserName: showUserName,
+                    fontSize: fontSize,
+                    timestampColor: themeColors.subtleTextColor,
+                    idColor: themeColors.subtleTextColor,
+                    resolvedUserName: resolvedUserName,
+                    userColor: userColor,
+                    beginAt: beginAt,
+                    pinned: true,
                   ),
           ),
           SizedBox(
@@ -3070,28 +3113,20 @@ class _CommentRowState extends State<_CommentRow> {
     bool hidden,
     List<UrlMatch> urlMatches,
   ) {
-    final AppMessage message = widget.message;
-    final String timestamp = _formatHms(
-      message.timestamp,
-      beginAt: widget.beginAt,
-    );
-    final String content = hidden ? 'ネタバレ防止: タップで表示' : message.content;
-    final double fontSize = widget.fontSize;
-    final Color timestampColor = widget.themeColors.subtleTextColor;
-    final Color idColor = widget.themeColors.subtleTextColor;
-    const double minSubFontSize = 9.0;
-    final double timestampFontSize = hidden
-        ? fontSize
-        : (fontSize * 0.85).clamp(minSubFontSize, fontSize);
-    final double idFontSize = hidden
-        ? fontSize
-        : (fontSize * 0.9).clamp(minSubFontSize, fontSize);
-
     // Two-line mode is only useful when the username is shown (line 1 holds
     // timestamp + username). When the username column is hidden, the first
     // line would contain only a timestamp, wasting vertical space -- so fall
     // back to single-line rendering.
     if (widget.commentTwoLineEnabled && widget.showUserName) {
+      final AppMessage message = widget.message;
+      final String timestamp = _formatHms(
+        message.timestamp,
+        beginAt: widget.beginAt,
+      );
+      final String content = hidden ? 'ネタバレ防止: タップで表示' : message.content;
+      final double fontSize = widget.fontSize;
+      final Color timestampColor = widget.themeColors.subtleTextColor;
+      final Color idColor = widget.themeColors.subtleTextColor;
       final double twoLineMetaSize = hidden
           ? fontSize
           : (fontSize * _twoLineMetaFontRatio).clamp(
@@ -3111,6 +3146,41 @@ class _CommentRowState extends State<_CommentRow> {
         idColor: idColor,
       );
     }
+
+    // Single-line rendering: delegate to the shared top-level helper when
+    // there are no clickable URLs.  When URLs are present, build inline
+    // so that _buildContentSpans can produce tappable link spans.
+    if (urlMatches.isEmpty) {
+      return _buildCommentLineRichText(
+        message: widget.message,
+        showUserName: widget.showUserName,
+        fontSize: widget.fontSize,
+        timestampColor: widget.themeColors.subtleTextColor,
+        idColor: widget.themeColors.subtleTextColor,
+        resolvedUserName: widget.resolvedUserName,
+        userColor: widget.userColor,
+        beginAt: widget.beginAt,
+        hidden: hidden,
+      );
+    }
+
+    // URL-aware single-line path.
+    final AppMessage message = widget.message;
+    final String timestamp = _formatHms(
+      message.timestamp,
+      beginAt: widget.beginAt,
+    );
+    final String content = hidden ? 'ネタバレ防止: タップで表示' : message.content;
+    final double fontSize = widget.fontSize;
+    final Color timestampColor = widget.themeColors.subtleTextColor;
+    final Color idColor = widget.themeColors.subtleTextColor;
+    const double minSubFontSize = 9.0;
+    final double timestampFontSize = hidden
+        ? fontSize
+        : (fontSize * 0.85).clamp(minSubFontSize, fontSize);
+    final double idFontSize = hidden
+        ? fontSize
+        : (fontSize * 0.9).clamp(minSubFontSize, fontSize);
 
     final List<InlineSpan> spans = <InlineSpan>[
       TextSpan(
