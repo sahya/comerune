@@ -85,6 +85,12 @@ void main() {
   });
 
   group('Kotlin/Dart model consistency', () {
+    // NOTE: The regex approach below is fragile and depends on Kotlin
+    // formatting conventions (e.g. `modelId = "..."` on its own line).
+    // If the regex breaks due to Kotlin code reformatting, update the
+    // pattern to match the new style. This is a trade-off: file-parsing
+    // test vs. no automated consistency check at all.
+
     // Path to VoicevoxModelManifest.kt relative to the project root.
     // The test resolves the project root from the test file location.
     late String kotlinSource;
@@ -106,11 +112,17 @@ void main() {
     });
 
     test('supportedVoicevoxModelIds matches Kotlin manifest model IDs', () {
+      // Filter out single-line comments to avoid false positives.
+      final nonCommentLines = kotlinSource
+          .split('\n')
+          .where((line) => !line.trimLeft().startsWith('//'))
+          .join('\n');
+
       // Extract modelId values from Kotlin source.
       // Pattern matches: modelId = "..." (with surrounding whitespace).
       final modelIdPattern = RegExp(r'modelId\s*=\s*"([^"]+)"');
       final kotlinModelIds = modelIdPattern
-          .allMatches(kotlinSource)
+          .allMatches(nonCommentLines)
           .map((m) => m.group(1)!)
           .toSet();
 
@@ -135,11 +147,17 @@ void main() {
     test(
       'supportedVoicevoxSpeakerNames matches Kotlin manifest display names',
       () {
+        // Filter out single-line comments to avoid false positives.
+        final nonCommentLines = kotlinSource
+            .split('\n')
+            .where((line) => !line.trimLeft().startsWith('//'))
+            .join('\n');
+
         // Extract displayName values from Kotlin source.
         // Pattern matches: displayName = "..." (with surrounding whitespace).
         final displayNamePattern = RegExp(r'displayName\s*=\s*"([^"]+)"');
         final kotlinDisplayNames = displayNamePattern
-            .allMatches(kotlinSource)
+            .allMatches(nonCommentLines)
             .map((m) => m.group(1)!)
             .toSet();
 
