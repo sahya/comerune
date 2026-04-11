@@ -282,6 +282,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                 const Divider(height: 24),
                 // --- 管理・上級 ---
                 _buildDataManagementSection(context),
+                const Divider(height: 24),
+                // --- ライセンス ---
+                _buildLicenseTile(context),
                 const SizedBox(height: 12),
                 _buildDebugSection(context, settings),
               ],
@@ -476,6 +479,21 @@ class _SettingsScreenState extends State<SettingsScreen>
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ],
+    );
+  }
+
+  Widget _buildLicenseTile(BuildContext context) {
+    return Card(
+      child: ListTile(
+        key: const Key('license-tile'),
+        leading: const Icon(Icons.description_outlined),
+        title: const Text('ライセンス'),
+        subtitle: const Text('第三者ライブラリのライセンス情報'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () {
+          showLicensePage(context: context, applicationName: 'comerune');
+        },
+      ),
     );
   }
 
