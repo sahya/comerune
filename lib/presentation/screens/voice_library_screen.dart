@@ -193,7 +193,8 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
     }
     try {
       _debugLogLazy(
-        () => '[VoiceLibrary] download start: modelId=${model.modelId}, '
+        () =>
+            '[VoiceLibrary] download start: modelId=${model.modelId}, '
             'name=${model.displayName}',
       );
       await _manager.downloadModel(model.modelId);
@@ -222,7 +223,8 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
       // Automatically load the model into the engine after download.
       await _manager.loadModel(model.modelId);
       _debugLogLazy(
-        () => '[VoiceLibrary] loadModel success after download: '
+        () =>
+            '[VoiceLibrary] loadModel success after download: '
             'modelId=${model.modelId}',
       );
     } on Object catch (e) {
@@ -307,10 +309,14 @@ class _VoiceModelCard extends StatelessWidget {
             const SizedBox(height: 8),
             if (model.downloadState == ModelDownloadState.downloading &&
                 progress != null) ...[
-              LinearProgressIndicator(value: progress),
+              // Show indeterminate bar while preparing (progress == 0),
+              // then switch to determinate once actual download begins.
+              LinearProgressIndicator(value: progress! > 0.0 ? progress : null),
               const SizedBox(height: 4),
               Text(
-                '${(progress! * 100).toStringAsFixed(0)}%',
+                progress! > 0.0
+                    ? '${(progress! * 100).toStringAsFixed(0)}%'
+                    : '準備中...',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
@@ -530,8 +536,8 @@ class _VoicevoxTermsDialogState extends State<_VoicevoxTermsDialog> {
                     ? 'あと $_cooldownSeconds 秒...'
                     : '規約を最後までお読みください',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.outline,
-                    ),
+                  color: Theme.of(context).colorScheme.outline,
+                ),
               ),
           ],
         ),
@@ -621,7 +627,8 @@ class _VoicevoxTermsDialogState extends State<_VoicevoxTermsDialog> {
     );
     spans.add(
       TextSpan(
-        text: '・読み上げ内容はユーザーの責任のもとでご利用ください。'
+        text:
+            '・読み上げ内容はユーザーの責任のもとでご利用ください。'
             'ライブ配信ではコメント投稿者が内容を制御するため、'
             '不適切な内容が読み上げられる可能性があります。\n'
             '・NGワードフィルター機能を活用することで、'

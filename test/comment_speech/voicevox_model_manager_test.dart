@@ -46,8 +46,7 @@ void main() {
       expect(model.downloadState, ModelDownloadState.notDownloaded);
     });
 
-    test(
-        'model_download_started updates model state to downloading '
+    test('model_download_started updates model state to downloading '
         'and sets progress to 0.0', () async {
       fakePlatform.availableModelsToReturn = [sampleModelMap];
       await manager.refreshModels();
@@ -96,8 +95,7 @@ void main() {
       expect(manager.downloadProgress.value['1'], 0.5);
     });
 
-    test(
-        'model_download_completed updates model state to downloaded '
+    test('model_download_completed updates model state to downloaded '
         'and removes progress', () async {
       fakePlatform.availableModelsToReturn = [sampleModelMap];
       await manager.refreshModels();
@@ -128,8 +126,7 @@ void main() {
       expect(manager.downloadProgress.value.containsKey('1'), false);
     });
 
-    test(
-        'model_download_failed updates model state to error '
+    test('model_download_failed updates model state to error '
         'and removes progress', () async {
       fakePlatform.availableModelsToReturn = [sampleModelMap];
       await manager.refreshModels();
@@ -191,6 +188,84 @@ void main() {
       await manager.cancelDownload('1');
       // No exception means the call was properly delegated.
       // FakeCommentSpeechPlatform.cancelDownload is a no-op stub.
+    });
+
+    test(
+      'downloadModel sets downloading state and progress immediately',
+      () async {
+        fakePlatform.availableModelsToReturn = [sampleModelMap];
+        await manager.refreshModels();
+
+        // downloadModel completes instantly on the fake platform.
+        await manager.downloadModel('1');
+
+        // The model should have been set to downloading before the platform
+        // call. After completion, the state stays downloading because no
+        // events were emitted.
+        expect(
+          manager.models.value.first.downloadState,
+          ModelDownloadState.downloading,
+        );
+        expect(manager.downloadProgress.value['1'], 0.0);
+        expect(fakePlatform.downloadedModelIds, contains('1'));
+      },
+    );
+
+    test(
+      'downloadModel resets state to error when platform call fails',
+      () async {
+        fakePlatform.availableModelsToReturn = [sampleModelMap];
+        await manager.refreshModels();
+        fakePlatform.downloadModelError = Exception('network error');
+
+        await expectLater(
+          () => manager.downloadModel('1'),
+          throwsA(isA<Exception>()),
+        );
+
+        expect(
+          manager.models.value.first.downloadState,
+          ModelDownloadState.error,
+        );
+        expect(manager.downloadProgress.value.containsKey('1'), false);
+      },
+    );
+
+    test('modelDownloadStarted does not reset progress '
+        'when already tracking', () async {
+      fakePlatform.availableModelsToReturn = [sampleModelMap];
+      await manager.refreshModels();
+
+      // Simulate optimistic update via downloadModel.
+      await manager.downloadModel('1');
+      expect(manager.downloadProgress.value['1'], 0.0);
+
+      // Simulate a progress event arriving before the started event.
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadProgress,
+          payload: {
+            'modelId': '1',
+            'bytesDownloaded': 10000000,
+            'totalBytes': 52000000,
+          },
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      final progressBefore = manager.downloadProgress.value['1']!;
+      expect(progressBefore, greaterThan(0.0));
+
+      // Now the started event arrives — should NOT reset progress to 0.0.
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.modelDownloadStarted,
+          payload: {'modelId': '1'},
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(manager.downloadProgress.value['1'], progressBefore);
     });
   });
 }

@@ -61,7 +61,13 @@ Future<void> _agreeVoicevoxTermsDialog(WidgetTester tester) async {
   expect(dialog, findsOneWidget);
   final context = tester.element(dialog);
   Navigator.of(context).pop(true);
-  await tester.pumpAndSettle();
+  // Pump multiple frames to dismiss the dialog and let the async download
+  // flow complete. Cannot use pumpAndSettle because the optimistic
+  // downloading state immediately shows an indeterminate progress indicator
+  // whose animation never settles.
+  for (var i = 0; i < 10; i++) {
+    await tester.pump(const Duration(milliseconds: 50));
+  }
 }
 
 void main() {
