@@ -309,10 +309,14 @@ class _VoiceModelCard extends StatelessWidget {
             const SizedBox(height: 8),
             if (model.downloadState == ModelDownloadState.downloading &&
                 progress != null) ...[
-              LinearProgressIndicator(value: progress),
+              // Show indeterminate bar while preparing (progress == 0),
+              // then switch to determinate once actual download begins.
+              LinearProgressIndicator(value: progress! > 0.0 ? progress : null),
               const SizedBox(height: 4),
               Text(
-                '${(progress! * 100).toStringAsFixed(0)}%',
+                progress! > 0.0
+                    ? '${(progress! * 100).toStringAsFixed(0)}%'
+                    : '準備中...',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ],

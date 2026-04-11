@@ -27,7 +27,13 @@ class VoicevoxModelManager {
         final modelId = event.payload['modelId'] as String?;
         if (modelId != null) {
           _updateModelState(modelId, ModelDownloadState.downloading);
-          downloadProgress.value = {...downloadProgress.value, modelId: 0.0};
+          // Only initialize progress if not already tracking this model.
+          // The optimistic update in downloadModel() may have already set
+          // progress, and a modelDownloadProgress event could arrive before
+          // this event—resetting to 0.0 would discard real progress.
+          if (!downloadProgress.value.containsKey(modelId)) {
+            downloadProgress.value = {...downloadProgress.value, modelId: 0.0};
+          }
         }
       case SpeechEventType.modelDownloadProgress:
         final modelId = event.payload['modelId'] as String?;
@@ -43,17 +49,12 @@ class VoicevoxModelManager {
         final modelId = event.payload['modelId'] as String?;
         if (modelId != null) {
           _updateModelState(modelId, ModelDownloadState.downloaded);
-          final progress = Map<String, double>.from(downloadProgress.value);
-          progress.remove(modelId);
-          downloadProgress.value = progress;
+          _removeProgress(modelId);
         }
       case SpeechEventType.modelDownloadFailed:
         final modelId = event.payload['modelId'] as String?;
         if (modelId != null) {
-          _updateModelState(modelId, ModelDownloadState.error);
-          final progress = Map<String, double>.from(downloadProgress.value);
-          progress.remove(modelId);
-          downloadProgress.value = progress;
+          _markDownloadFailed(modelId);
         }
       case SpeechEventType.modelDeleted:
         final modelId = event.payload['modelId'] as String?;
@@ -72,13 +73,37 @@ class VoicevoxModelManager {
     }
   }
 
+  void _removeProgress(String modelId) {
+    final progress = Map<String, double>.from(downloadProgress.value);
+    progress.remove(modelId);
+    downloadProgress.value = progress;
+  }
+
+  void _markDownloadFailed(String modelId) {
+    _updateModelState(modelId, ModelDownloadState.error);
+    _removeProgress(modelId);
+  }
+
   Future<void> refreshModels() async {
     final rawList = await _platform.getAvailableModels();
     models.value = rawList.map((m) => VoicevoxModelInfo.fromMap(m)).toList();
   }
 
   Future<void> downloadModel(String modelId) async {
-    await _platform.downloadModel(modelId);
+    // Immediately reflect the downloading state so the UI shows
+    // a progress bar right away, before the native side finishes
+    // preparing the dictionary.
+    _updateModelState(modelId, ModelDownloadState.downloading);
+    downloadProgress.value = {...downloadProgress.value, modelId: 0.0};
+    try {
+      await _platform.downloadModel(modelId);
+    } on Object {
+      // Clean up optimistic state when the platform call itself fails.
+      // Native-side failures also emit modelDownloadFailed, but this
+      // ensures cleanup even if the event is delayed or lost.
+      _markDownloadFailed(modelId);
+      rethrow;
+    }
   }
 
   Future<void> deleteModel(String modelId) async {
