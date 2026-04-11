@@ -1,5 +1,14 @@
 package com.example.comerune.speech.domain.model
 
+/**
+ * Single source of truth for available VOICEVOX models on Android.
+ *
+ * **Important:** The Dart constants `supportedVoicevoxModelIds` and
+ * `supportedVoicevoxSpeakerNames` in `voicevox_model_info.dart` must be
+ * kept in sync with this manifest. When adding or removing models, update
+ * both files. The test in `voicevox_model_info_test.dart` validates
+ * consistency automatically.
+ */
 object VoicevoxModelManifest {
     private const val VVM_BASE_URL =
         "https://github.com/VOICEVOX/voicevox_vvm/releases/download/0.16.2/"
