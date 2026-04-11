@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:comerune/domain/models/voicevox_model_info.dart';
 
@@ -80,5 +82,85 @@ void main() {
       // 52000000 / 1024 / 1024 = ~49.59 => "50 MB"
       expect(info.fileSizeDisplay, '50 MB');
     });
+  });
+
+  group('Kotlin/Dart model consistency', () {
+    // Path to VoicevoxModelManifest.kt relative to the project root.
+    // The test resolves the project root from the test file location.
+    late String kotlinSource;
+
+    setUpAll(() {
+      // Locate the project root by walking up from the test file.
+      final testDir = Directory.current.path;
+      final ktFile = File(
+        '$testDir/android/app/src/main/kotlin/com/example/comerune/'
+        'speech/domain/model/VoicevoxModelManifest.kt',
+      );
+      if (!ktFile.existsSync()) {
+        fail(
+          'VoicevoxModelManifest.kt not found at ${ktFile.path}. '
+          'Run this test from the project root.',
+        );
+      }
+      kotlinSource = ktFile.readAsStringSync();
+    });
+
+    test('supportedVoicevoxModelIds matches Kotlin manifest model IDs', () {
+      // Extract modelId values from Kotlin source.
+      // Pattern matches: modelId = "..." (with surrounding whitespace).
+      final modelIdPattern = RegExp(r'modelId\s*=\s*"([^"]+)"');
+      final kotlinModelIds = modelIdPattern
+          .allMatches(kotlinSource)
+          .map((m) => m.group(1)!)
+          .toSet();
+
+      expect(
+        kotlinModelIds,
+        isNotEmpty,
+        reason: 'Failed to parse any modelId from VoicevoxModelManifest.kt',
+      );
+
+      expect(
+        supportedVoicevoxModelIds,
+        equals(kotlinModelIds),
+        reason:
+            'supportedVoicevoxModelIds in voicevox_model_info.dart '
+            'does not match VoicevoxModelManifest.kt.\n'
+            '  Dart: $supportedVoicevoxModelIds\n'
+            '  Kotlin: $kotlinModelIds\n'
+            'Update both files when adding or removing models.',
+      );
+    });
+
+    test(
+      'supportedVoicevoxSpeakerNames matches Kotlin manifest display names',
+      () {
+        // Extract displayName values from Kotlin source.
+        // Pattern matches: displayName = "..." (with surrounding whitespace).
+        final displayNamePattern = RegExp(r'displayName\s*=\s*"([^"]+)"');
+        final kotlinDisplayNames = displayNamePattern
+            .allMatches(kotlinSource)
+            .map((m) => m.group(1)!)
+            .toSet();
+
+        expect(
+          kotlinDisplayNames,
+          isNotEmpty,
+          reason:
+              'Failed to parse any displayName from VoicevoxModelManifest.kt',
+        );
+
+        expect(
+          supportedVoicevoxSpeakerNames,
+          equals(kotlinDisplayNames),
+          reason:
+              'supportedVoicevoxSpeakerNames in voicevox_model_info.dart '
+              'does not match VoicevoxModelManifest.kt.\n'
+              '  Dart: $supportedVoicevoxSpeakerNames\n'
+              '  Kotlin: $kotlinDisplayNames\n'
+              'Update both files when adding or removing models.',
+        );
+      },
+    );
   });
 }
