@@ -9,14 +9,14 @@ class NgWordRule {
   const NgWordRule({required this.pattern, this.enabled = true});
 
   Map<String, dynamic> toMap() => <String, dynamic>{
-        'pattern': pattern,
-        'enabled': enabled,
-      };
+    'pattern': pattern,
+    'enabled': enabled,
+  };
 
   factory NgWordRule.fromMap(Map<String, dynamic> map) => NgWordRule(
-        pattern: map['pattern'] as String,
-        enabled: map['enabled'] as bool? ?? true,
-      );
+    pattern: map['pattern'] as String,
+    enabled: map['enabled'] as bool? ?? true,
+  );
 
   @override
   bool operator ==(Object other) =>

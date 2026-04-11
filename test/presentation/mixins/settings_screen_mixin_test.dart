@@ -129,14 +129,14 @@ void main() {
                   body: Center(
                     child: ElevatedButton(
                       onPressed: () async {
-                        final bool? result =
-                            await Navigator.of(context).push<bool>(
-                          MaterialPageRoute<bool>(
-                            builder: (_) => CommentDisplaySettingsScreen(
-                              settingsStore: store,
-                            ),
-                          ),
-                        );
+                        final bool? result = await Navigator.of(context)
+                            .push<bool>(
+                              MaterialPageRoute<bool>(
+                                builder: (_) => CommentDisplaySettingsScreen(
+                                  settingsStore: store,
+                                ),
+                              ),
+                            );
                         popResult = result;
                       },
                       child: const Text('open'),
@@ -177,14 +177,14 @@ void main() {
                   body: Center(
                     child: ElevatedButton(
                       onPressed: () async {
-                        final bool? result =
-                            await Navigator.of(context).push<bool>(
-                          MaterialPageRoute<bool>(
-                            builder: (_) => CommentDisplaySettingsScreen(
-                              settingsStore: store,
-                            ),
-                          ),
-                        );
+                        final bool? result = await Navigator.of(context)
+                            .push<bool>(
+                              MaterialPageRoute<bool>(
+                                builder: (_) => CommentDisplaySettingsScreen(
+                                  settingsStore: store,
+                                ),
+                              ),
+                            );
                         popResult = result;
                       },
                       child: const Text('open'),

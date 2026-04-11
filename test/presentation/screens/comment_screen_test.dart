@@ -2013,40 +2013,39 @@ void main() {
         },
       );
 
-      testWidgets(
-        'failing launchUrl shows a failure snackbar',
-        (WidgetTester tester) async {
-          fakeUrlLauncher.shouldSucceed = false;
-          final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-          final List<AppMessage> messages = <AppMessage>[
-            AppMessage(
-              id: 'msg-fail',
-              timestamp: DateTime(2026, 3, 22, 12, 0, 0),
-              userId: 'u1',
-              content: 'https://example.com',
-              type: AppMessageType.chat,
-            ),
-          ];
+      testWidgets('failing launchUrl shows a failure snackbar', (
+        WidgetTester tester,
+      ) async {
+        fakeUrlLauncher.shouldSucceed = false;
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          AppMessage(
+            id: 'msg-fail',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'u1',
+            content: 'https://example.com',
+            type: AppMessageType.chat,
+          ),
+        ];
 
-          await tester.pumpWidget(
-            _buildScreen(supervisor: supervisor, messages: messages),
-          );
+        await tester.pumpWidget(
+          _buildScreen(supervisor: supervisor, messages: messages),
+        );
 
-          await tester.tap(find.byKey(const Key('comment-row-msg-fail')));
-          await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('comment-row-msg-fail')));
+        await tester.pumpAndSettle();
 
-          await tester.tap(find.byKey(const Key('url-confirm-open')));
-          // The SnackBar auto-dismiss timer can hang pumpAndSettle, so pump
-          // a few explicit frames instead.
-          await tester.pump();
-          await tester.pump(const Duration(milliseconds: 200));
+        await tester.tap(find.byKey(const Key('url-confirm-open')));
+        // The SnackBar auto-dismiss timer can hang pumpAndSettle, so pump
+        // a few explicit frames instead.
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 200));
 
-          expect(
-            find.byKey(const Key('url-launch-failed-snackbar')),
-            findsOneWidget,
-          );
-        },
-      );
+        expect(
+          find.byKey(const Key('url-launch-failed-snackbar')),
+          findsOneWidget,
+        );
+      });
 
       testWidgets(
         'URL confirm dialog shows host in a dedicated emphasised slot',
