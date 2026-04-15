@@ -277,6 +277,60 @@ void main() {
       expect(loaded.showEmotion, isFalse);
     });
 
+    testWidgets('toggles showGiftComment and persists value (default ON)', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      AppSettings loaded = await settingsStore.load();
+      expect(loaded.showGiftComment, isTrue);
+
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('show-gift-comment-switch'),
+      );
+      await toggleSwitchByKey(
+        tester,
+        _listKey,
+        const Key('show-gift-comment-switch'),
+      );
+
+      loaded = await settingsStore.load();
+      expect(loaded.showGiftComment, isFalse);
+    });
+
+    testWidgets('toggles showNicoadComment and persists value (default ON)', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      AppSettings loaded = await settingsStore.load();
+      expect(loaded.showNicoadComment, isTrue);
+
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('show-nicoad-comment-switch'),
+      );
+      await toggleSwitchByKey(
+        tester,
+        _listKey,
+        const Key('show-nicoad-comment-switch'),
+      );
+
+      loaded = await settingsStore.load();
+      expect(loaded.showNicoadComment, isFalse);
+    });
+
     testWidgets(
       'toggles emphasizeGiftNicoadComment and persists value (default ON)',
       (WidgetTester tester) async {

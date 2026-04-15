@@ -155,6 +155,8 @@ class CommentFilterConfig {
     this.showOperatorComment = true,
     this.showSystemMessage = true,
     this.showEmotion = true,
+    this.showGiftComment = true,
+    this.showNicoadComment = true,
     this.ngProtectionNotificationEnabled = false,
   });
 
@@ -200,6 +202,21 @@ class CommentFilterConfig {
   /// Whether emotion notifications are displayed. Defaults to true.
   final bool showEmotion;
 
+  /// Whether gift comments are displayed in the comment list. Defaults to true.
+  ///
+  /// When false, gift messages are suppressed from the comment list entirely.
+  /// This does not affect the TTS read-aloud pipeline, which is governed
+  /// separately by `CommentSpeechConfig.readGiftComment`.
+  final bool showGiftComment;
+
+  /// Whether ニコニ広告 (nicoad) comments are displayed in the comment list.
+  /// Defaults to true.
+  ///
+  /// When false, nicoad messages are suppressed from the comment list entirely.
+  /// This does not affect the TTS read-aloud pipeline, which is governed
+  /// separately by `CommentSpeechConfig.readNicoadComment`.
+  final bool showNicoadComment;
+
   /// When true, the comment screen announces via snackbar + AppBar badge
   /// every time a comment is hidden by NG word or NG user filtering.
   ///
@@ -228,6 +245,8 @@ class CommentSpeechConfig {
     this.speechPlatform,
     this.speechSettings = const SpeechSettings(enabled: false),
     this.readUserName = false,
+    this.readGiftComment = false,
+    this.readNicoadComment = false,
     this.settingsStore,
     this.isSpeechMuted = false,
   });
@@ -242,6 +261,21 @@ class CommentSpeechConfig {
 
   /// When true, the user name is prepended to the comment text for TTS.
   final bool readUserName;
+
+  /// When true, gift messages are read aloud by TTS. Defaults to false.
+  ///
+  /// Only the message body (`message.content`) is spoken — no additional
+  /// formatting or user-name prefixing is applied. This is independent of
+  /// [CommentFilterConfig.showGiftComment], which controls list visibility.
+  final bool readGiftComment;
+
+  /// When true, ニコニ広告 (nicoad) messages are read aloud by TTS.
+  /// Defaults to false.
+  ///
+  /// Only the message body (`message.content`) is spoken — no additional
+  /// formatting or user-name prefixing is applied. This is independent of
+  /// [CommentFilterConfig.showNicoadComment], which controls list visibility.
+  final bool readNicoadComment;
 
   /// Settings store for persisting teach command dictionary changes.
   final SettingsStore? settingsStore;

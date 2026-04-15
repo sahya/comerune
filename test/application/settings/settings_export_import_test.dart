@@ -107,5 +107,28 @@ void main() {
       expect(imported.voicevoxSpeed, 1.5);
       expect(imported.commentFontSize, 36);
     });
+
+    test('roundtrip preserves gift/nicoad display + TTS toggles', () async {
+      final AppSettings original = AppSettings.defaults.copyWith(
+        showGiftComment: false,
+        showNicoadComment: false,
+        readGiftComment: true,
+        readNicoadComment: true,
+      );
+      await store.save(original);
+
+      final String exported = await store.exportAsJson();
+
+      final InMemorySharedPreferences newPrefs = InMemorySharedPreferences();
+      final SharedPreferencesSettingsStore newStore =
+          SharedPreferencesSettingsStore(prefs: newPrefs);
+
+      final AppSettings imported = await newStore.importFromJson(exported);
+
+      expect(imported.showGiftComment, isFalse);
+      expect(imported.showNicoadComment, isFalse);
+      expect(imported.readGiftComment, isTrue);
+      expect(imported.readNicoadComment, isTrue);
+    });
   });
 }

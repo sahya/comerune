@@ -135,6 +135,274 @@ void main() {
       expect(fakePlatform.submittedComments, isEmpty);
     });
 
+    testWidgets(
+      'gift messages are not submitted when readGiftComment is false',
+      (WidgetTester tester) async {
+        final List<AppMessage> messages = <AppMessage>[
+          _chatMessage(id: 'msg-1', content: '最初'),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+            messages: messages,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.addMessage(
+          AppMessage(
+            id: 'gift-1',
+            timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 1)),
+            content: 'ギフト本文',
+            type: AppMessageType.gift,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(fakePlatform.submittedComments, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'gift messages speak only the body when readGiftComment is true',
+      (WidgetTester tester) async {
+        final List<AppMessage> messages = <AppMessage>[
+          _chatMessage(id: 'msg-1', content: '最初'),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+            messages: messages,
+            readGiftComment: true,
+            // readUserName ON must NOT prepend a user name to gift speech.
+            readUserName: true,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.addMessage(
+          AppMessage(
+            id: 'gift-1',
+            timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 1)),
+            userId: 'advertiser-1',
+            userName: '広告主',
+            content: 'ギフト本文',
+            type: AppMessageType.gift,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(fakePlatform.submittedComments, hasLength(1));
+        expect(fakePlatform.submittedComments.first.text, 'ギフト本文');
+      },
+    );
+
+    testWidgets(
+      'nicoad messages are not submitted when readNicoadComment is false',
+      (WidgetTester tester) async {
+        final List<AppMessage> messages = <AppMessage>[
+          _chatMessage(id: 'msg-1', content: '最初'),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+            messages: messages,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.addMessage(
+          AppMessage(
+            id: 'nicoad-1',
+            timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 1)),
+            content: 'ニコニ広告本文',
+            type: AppMessageType.nicoad,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(fakePlatform.submittedComments, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'nicoad messages speak only the body when readNicoadComment is true',
+      (WidgetTester tester) async {
+        final List<AppMessage> messages = <AppMessage>[
+          _chatMessage(id: 'msg-1', content: '最初'),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+            messages: messages,
+            readNicoadComment: true,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.addMessage(
+          AppMessage(
+            id: 'nicoad-1',
+            timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 1)),
+            content: 'ニコニ広告本文',
+            type: AppMessageType.nicoad,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(fakePlatform.submittedComments, hasLength(1));
+        expect(fakePlatform.submittedComments.first.text, 'ニコニ広告本文');
+      },
+    );
+
+    testWidgets(
+      'gift speech bypasses NG word filter (body may contain NG words)',
+      (WidgetTester tester) async {
+        final List<AppMessage> messages = <AppMessage>[
+          _chatMessage(id: 'msg-1', content: '最初'),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+            messages: messages,
+            readGiftComment: true,
+            ngWords: const <String>['ng'],
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.addMessage(
+          AppMessage(
+            id: 'gift-1',
+            timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 1)),
+            content: 'NG word gift body',
+            type: AppMessageType.gift,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Gift is a system-generated event and is not subject to chat NG filters.
+        expect(fakePlatform.submittedComments, hasLength(1));
+        expect(fakePlatform.submittedComments.first.text, 'NG word gift body');
+      },
+    );
+
+    testWidgets('nicoad speech is skipped when body contains an NG word', (
+      WidgetTester tester,
+    ) async {
+      final List<AppMessage> messages = <AppMessage>[
+        _chatMessage(id: 'msg-1', content: '最初'),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          messages: messages,
+          readNicoadComment: true,
+          ngWords: const <String>['ng'],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
+      host.addMessage(
+        AppMessage(
+          id: 'nicoad-ng',
+          timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 1)),
+          content: 'this contains NG text',
+          type: AppMessageType.nicoad,
+        ),
+      );
+      // Send a clean nicoad right after to confirm the pipeline still
+      // flows for non-matching bodies (regression guard against a
+      // too-aggressive filter or short-circuited iteration).
+      host.addMessage(
+        AppMessage(
+          id: 'nicoad-clean',
+          timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 2)),
+          content: 'clean nicoad body',
+          type: AppMessageType.nicoad,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.submittedComments, hasLength(1));
+      expect(fakePlatform.submittedComments.first.text, 'clean nicoad body');
+    });
+
+    testWidgets(
+      'empty-body gift messages are skipped even when readGiftComment is true',
+      (WidgetTester tester) async {
+        final List<AppMessage> messages = <AppMessage>[
+          _chatMessage(id: 'msg-1', content: '最初'),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+            messages: messages,
+            readGiftComment: true,
+            readNicoadComment: true,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.addMessage(
+          AppMessage(
+            id: 'gift-empty',
+            timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 1)),
+            content: '',
+            type: AppMessageType.gift,
+          ),
+        );
+        host.addMessage(
+          AppMessage(
+            id: 'nicoad-empty',
+            timestamp: DateTime.now().add(const Duration(hours: 1, seconds: 2)),
+            content: '',
+            type: AppMessageType.nicoad,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Empty content must not be submitted — TTS engines would either
+        // error or speak nothing useful.
+        expect(fakePlatform.submittedComments, isEmpty);
+      },
+    );
+
     testWidgets('NG user messages are not submitted for speech', (
       WidgetTester tester,
     ) async {
@@ -1219,6 +1487,8 @@ class _SpeechTestHost extends StatefulWidget {
     this.slashPrefixSkipEnabled = true,
     this.showUserName = true,
     this.readUserName = false,
+    this.readGiftComment = false,
+    this.readNicoadComment = false,
     this.userNicknameMap = const <String, String>{},
     this.resolveUserName,
     this.requestUserNameResolve,
@@ -1235,6 +1505,8 @@ class _SpeechTestHost extends StatefulWidget {
   final bool slashPrefixSkipEnabled;
   final bool showUserName;
   final bool readUserName;
+  final bool readGiftComment;
+  final bool readNicoadComment;
   final Map<String, String> userNicknameMap;
   final String? Function(String userId)? resolveUserName;
   final void Function(String userId)? requestUserNameResolve;
@@ -1313,6 +1585,8 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
         speechPlatform: widget.speechPlatform,
         speechSettings: _speechSettings,
         readUserName: widget.readUserName,
+        readGiftComment: widget.readGiftComment,
+        readNicoadComment: widget.readNicoadComment,
         isSpeechMuted: widget.isSpeechMuted,
       ),
     );
@@ -1329,6 +1603,8 @@ Widget _buildScreen({
   bool slashPrefixSkipEnabled = true,
   bool showUserName = true,
   bool readUserName = false,
+  bool readGiftComment = false,
+  bool readNicoadComment = false,
   Map<String, String> userNicknameMap = const <String, String>{},
   String? Function(String userId)? resolveUserName,
   void Function(String userId)? requestUserNameResolve,
@@ -1346,6 +1622,8 @@ Widget _buildScreen({
       slashPrefixSkipEnabled: slashPrefixSkipEnabled,
       showUserName: showUserName,
       readUserName: readUserName,
+      readGiftComment: readGiftComment,
+      readNicoadComment: readNicoadComment,
       userNicknameMap: userNicknameMap,
       resolveUserName: resolveUserName,
       requestUserNameResolve: requestUserNameResolve,

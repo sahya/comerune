@@ -1069,6 +1069,30 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                           updateAndSave(settings.copyWith(readUserName: value));
                         },
                       ),
+                      SwitchListTile(
+                        key: const Key('read-gift-comment-switch'),
+                        title: const Text('ギフトコメントを読み上げる'),
+                        subtitle: const Text('本文のみ読み上げます'),
+                        contentPadding: EdgeInsets.zero,
+                        value: settings.readGiftComment,
+                        onChanged: (bool value) {
+                          updateAndSave(
+                            settings.copyWith(readGiftComment: value),
+                          );
+                        },
+                      ),
+                      SwitchListTile(
+                        key: const Key('read-nicoad-comment-switch'),
+                        title: const Text('ニコニ広告コメントを読み上げる'),
+                        subtitle: const Text('本文のみ読み上げます'),
+                        contentPadding: EdgeInsets.zero,
+                        value: settings.readNicoadComment,
+                        onChanged: (bool value) {
+                          updateAndSave(
+                            settings.copyWith(readNicoadComment: value),
+                          );
+                        },
+                      ),
                     ],
                   ),
                   const SizedBox(height: 12),

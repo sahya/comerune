@@ -15,10 +15,16 @@ import '../../helpers/settings_test_helpers.dart';
 const Key _listKey = Key('tts-settings-list');
 
 Future<void> _selectNemoStyle(WidgetTester tester, String styleLabel) async {
+  // Make sure the dropdown is fully within the tappable region of the
+  // viewport. Without this extra ensureVisible, the dropdown can end up
+  // partially clipped after prior scrolls (e.g. when the TTS section has
+  // grown with additional toggles), and the tap is silently dropped.
   final Finder dropdownFinder = find.byKey(
     const Key('voicevox-style-dropdown'),
     skipOffstage: false,
   );
+  await tester.ensureVisible(dropdownFinder);
+  await tester.pumpAndSettle();
   await tester.tap(dropdownFinder);
   await tester.pumpAndSettle();
   await tester.tap(find.text(styleLabel).last);
@@ -290,6 +296,60 @@ void main() {
 
       loaded = await settingsStore.load();
       expect(loaded.readUserName, isTrue);
+    });
+
+    testWidgets('read gift comment toggle persists value (default OFF)', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      AppSettings loaded = await settingsStore.load();
+      expect(loaded.readGiftComment, isFalse);
+
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('read-gift-comment-switch'),
+      );
+      await toggleSwitchByKey(
+        tester,
+        _listKey,
+        const Key('read-gift-comment-switch'),
+      );
+
+      loaded = await settingsStore.load();
+      expect(loaded.readGiftComment, isTrue);
+    });
+
+    testWidgets('read nicoad comment toggle persists value (default OFF)', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      AppSettings loaded = await settingsStore.load();
+      expect(loaded.readNicoadComment, isFalse);
+
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('read-nicoad-comment-switch'),
+      );
+      await toggleSwitchByKey(
+        tester,
+        _listKey,
+        const Key('read-nicoad-comment-switch'),
+      );
+
+      loaded = await settingsStore.load();
+      expect(loaded.readNicoadComment, isTrue);
     });
 
     testWidgets('VOICEVOX speed slider change persists value', (

@@ -170,6 +170,30 @@ class _CommentDisplaySettingsScreenState
                           updateAndSave(settings.copyWith(showEmotion: value));
                         },
                       ),
+                      SwitchListTile(
+                        key: const Key('show-gift-comment-switch'),
+                        title: const Text('ギフトコメントを表示'),
+                        subtitle: const Text('視聴者からのギフト通知を表示'),
+                        contentPadding: EdgeInsets.zero,
+                        value: settings.showGiftComment,
+                        onChanged: (bool value) {
+                          updateAndSave(
+                            settings.copyWith(showGiftComment: value),
+                          );
+                        },
+                      ),
+                      SwitchListTile(
+                        key: const Key('show-nicoad-comment-switch'),
+                        title: const Text('ニコニ広告コメントを表示'),
+                        subtitle: const Text('ニコニ広告の通知コメントを表示'),
+                        contentPadding: EdgeInsets.zero,
+                        value: settings.showNicoadComment,
+                        onChanged: (bool value) {
+                          updateAndSave(
+                            settings.copyWith(showNicoadComment: value),
+                          );
+                        },
+                      ),
                       const Divider(
                         key: Key('message-type-display-divider-end'),
                         height: 24,

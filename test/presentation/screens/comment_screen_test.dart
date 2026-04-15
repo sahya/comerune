@@ -4389,6 +4389,128 @@ void main() {
       expect(find.byKey(const Key('comment-row-emotion-hidden')), findsNothing);
     });
 
+    testWidgets('shows gift/nicoad messages by default (toggles ON)', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        _message(id: 'gift-vis', type: AppMessageType.gift, content: 'ギフト'),
+        _message(
+          id: 'nicoad-vis',
+          type: AppMessageType.nicoad,
+          content: 'ニコニ広告',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(supervisor: supervisor, messages: messages),
+      );
+
+      expect(find.byKey(const Key('comment-row-gift-vis')), findsOneWidget);
+      expect(find.byKey(const Key('comment-row-nicoad-vis')), findsOneWidget);
+    });
+
+    testWidgets('hides gift messages when showGiftComment is false', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        _message(id: 'chat-vis', type: AppMessageType.chat, content: '通常'),
+        _message(id: 'gift-hidden', type: AppMessageType.gift, content: 'ギフト'),
+        _message(
+          id: 'nicoad-vis',
+          type: AppMessageType.nicoad,
+          content: 'ニコニ広告',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          showGiftComment: false,
+        ),
+      );
+
+      expect(find.byKey(const Key('comment-row-chat-vis')), findsOneWidget);
+      expect(find.byKey(const Key('comment-row-nicoad-vis')), findsOneWidget);
+      expect(find.byKey(const Key('comment-row-gift-hidden')), findsNothing);
+    });
+
+    testWidgets('hides nicoad messages when showNicoadComment is false', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        _message(id: 'chat-vis', type: AppMessageType.chat, content: '通常'),
+        _message(id: 'gift-vis', type: AppMessageType.gift, content: 'ギフト'),
+        _message(
+          id: 'nicoad-hidden',
+          type: AppMessageType.nicoad,
+          content: 'ニコニ広告',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          showNicoadComment: false,
+        ),
+      );
+
+      expect(find.byKey(const Key('comment-row-chat-vis')), findsOneWidget);
+      expect(find.byKey(const Key('comment-row-gift-vis')), findsOneWidget);
+      expect(find.byKey(const Key('comment-row-nicoad-hidden')), findsNothing);
+    });
+
+    // Locks the asymmetric NG-filter design that ships with this PR:
+    //   - nicoad の TTS 経路は NG ワードでスキップする（攻撃ベクタ防御）
+    //   - nicoad の表示経路は従来どおり NG をバイパスし、必ず一覧に出す
+    //     （重要な収益イベントを silent に消さない）
+    //   - gift も同様に表示経路は NG をバイパスする（本文がシステム固定文の前提）
+    // chat 側との振る舞いの差を将来うっかり対称化されないよう regression
+    // テストとして固定しておく。chat の場合は同じ NG 文字列で hidden になる
+    // ことも対比として確認する。
+    testWidgets(
+      'gift / nicoad rows are still visible even when body contains an NG word '
+      '(display bypasses NG filter on purpose)',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          _message(
+            id: 'gift-ng',
+            type: AppMessageType.gift,
+            content: 'NG containing gift body',
+          ),
+          _message(
+            id: 'nicoad-ng',
+            type: AppMessageType.nicoad,
+            content: 'this contains NG ad copy',
+          ),
+          _message(
+            id: 'chat-ng',
+            type: AppMessageType.chat,
+            content: 'this contains NG chat',
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            ngWords: const <String>['NG'],
+          ),
+        );
+
+        // gift / nicoad は表示される（NG バイパス）
+        expect(find.byKey(const Key('comment-row-gift-ng')), findsOneWidget);
+        expect(find.byKey(const Key('comment-row-nicoad-ng')), findsOneWidget);
+        // chat は NG ワードで非表示になる（既存挙動の対比）
+        expect(find.byKey(const Key('comment-row-chat-ng')), findsNothing);
+      },
+    );
+
     testWidgets(
       'operator=OFF, system=ON, emotion=OFF keeps only system + chat',
       (WidgetTester tester) async {
@@ -5763,6 +5885,8 @@ Widget _buildScreen({
   bool showOperatorComment = true,
   bool showSystemMessage = true,
   bool showEmotion = true,
+  bool showGiftComment = true,
+  bool showNicoadComment = true,
   AppThemeMode themeMode = AppThemeMode.light,
   bool ngProtectionNotificationEnabled = false,
 }) {
@@ -5815,6 +5939,8 @@ Widget _buildScreen({
         showOperatorComment: showOperatorComment,
         showSystemMessage: showSystemMessage,
         showEmotion: showEmotion,
+        showGiftComment: showGiftComment,
+        showNicoadComment: showNicoadComment,
         emphasizeGiftNicoadComment: emphasizeGiftNicoadComment,
         ngProtectionNotificationEnabled: ngProtectionNotificationEnabled,
       ),

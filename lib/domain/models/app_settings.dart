@@ -265,6 +265,10 @@ class AppSettings {
     required this.showOperatorComment,
     required this.showSystemMessage,
     required this.showEmotion,
+    required this.showGiftComment,
+    required this.showNicoadComment,
+    required this.readGiftComment,
+    required this.readNicoadComment,
     required this.ngProtectionNotificationEnabled,
   }) : assert(
          commentFontSize >= commentFontSizeMin &&
@@ -320,6 +324,10 @@ class AppSettings {
     showOperatorComment: true,
     showSystemMessage: true,
     showEmotion: true,
+    showGiftComment: true,
+    showNicoadComment: true,
+    readGiftComment: false,
+    readNicoadComment: false,
     ngProtectionNotificationEnabled: false,
   );
 
@@ -417,6 +425,24 @@ class AppSettings {
 
   /// エモーション通知を表示するかどうか。既定 true。
   final bool showEmotion;
+
+  /// ギフトコメントを表示するかどうか。既定 true。
+  final bool showGiftComment;
+
+  /// ニコニ広告コメントを表示するかどうか。既定 true。
+  final bool showNicoadComment;
+
+  /// ギフトコメントを読み上げるかどうか。既定 false。
+  ///
+  /// true のとき、ギフトメッセージの本文をそのまま読み上げる
+  /// （ユーザー名などは付与しない）。
+  final bool readGiftComment;
+
+  /// ニコニ広告コメントを読み上げるかどうか。既定 false。
+  ///
+  /// true のとき、ニコニ広告メッセージの本文をそのまま読み上げる
+  /// （ユーザー名などは付与しない）。
+  final bool readNicoadComment;
 
   /// When true, the comment screen shows a snackbar + AppBar badge
   /// whenever a comment is hidden by NG word or NG user filtering.
@@ -565,6 +591,10 @@ class AppSettings {
     bool? showOperatorComment,
     bool? showSystemMessage,
     bool? showEmotion,
+    bool? showGiftComment,
+    bool? showNicoadComment,
+    bool? readGiftComment,
+    bool? readNicoadComment,
     bool? ngProtectionNotificationEnabled,
   }) {
     return AppSettings(
@@ -627,6 +657,10 @@ class AppSettings {
       showOperatorComment: showOperatorComment ?? this.showOperatorComment,
       showSystemMessage: showSystemMessage ?? this.showSystemMessage,
       showEmotion: showEmotion ?? this.showEmotion,
+      showGiftComment: showGiftComment ?? this.showGiftComment,
+      showNicoadComment: showNicoadComment ?? this.showNicoadComment,
+      readGiftComment: readGiftComment ?? this.readGiftComment,
+      readNicoadComment: readNicoadComment ?? this.readNicoadComment,
       ngProtectionNotificationEnabled:
           ngProtectionNotificationEnabled ??
           this.ngProtectionNotificationEnabled,
@@ -697,6 +731,10 @@ class AppSettings {
       'showOperatorComment': showOperatorComment,
       'showSystemMessage': showSystemMessage,
       'showEmotion': showEmotion,
+      'showGiftComment': showGiftComment,
+      'showNicoadComment': showNicoadComment,
+      'readGiftComment': readGiftComment,
+      'readNicoadComment': readNicoadComment,
       'ngProtectionNotificationEnabled': ngProtectionNotificationEnabled,
     };
   }
@@ -825,6 +863,12 @@ class AppSettings {
       showSystemMessage:
           json['showSystemMessage'] as bool? ?? d.showSystemMessage,
       showEmotion: json['showEmotion'] as bool? ?? d.showEmotion,
+      showGiftComment: json['showGiftComment'] as bool? ?? d.showGiftComment,
+      showNicoadComment:
+          json['showNicoadComment'] as bool? ?? d.showNicoadComment,
+      readGiftComment: json['readGiftComment'] as bool? ?? d.readGiftComment,
+      readNicoadComment:
+          json['readNicoadComment'] as bool? ?? d.readNicoadComment,
       ngProtectionNotificationEnabled:
           json['ngProtectionNotificationEnabled'] as bool? ??
           d.ngProtectionNotificationEnabled,

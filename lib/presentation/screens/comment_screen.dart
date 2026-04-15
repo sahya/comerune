@@ -910,6 +910,46 @@ class _CommentScreenState extends State<CommentScreen> {
           message.timestamp.isBefore(_speechBaselineTimestamp!)) {
         continue;
       }
+      // Decide whether this message type should ever be spoken.
+      // chat -> always speak (subject to filters below).
+      // gift / nicoad -> only when the user enabled the dedicated toggle.
+      //   When enabled, only the body (`message.content`) is spoken and the
+      //   NG user / star-prefix / teach / slash-prefix / NG-word / user-name
+      //   pipeline is intentionally skipped, because gift/nicoad messages
+      //   have no meaningful user context and their bodies are system-generated.
+      // Any other type -> skip (existing behavior preserved).
+      if (message.type == AppMessageType.gift) {
+        if (!widget.speechConfig.readGiftComment) {
+          continue;
+        }
+        // TODO(security): gift 本文は現在「xxx が yyy を購入しました」のような
+        // システム固定文を前提に NG フィルターをバイパスしている。将来 API が
+        // 変わり購入者が任意テキストを乗せられるようになった場合、ここを
+        // nicoad と同じ `_containsNgWord` チェックに切り替える必要がある。
+        _submitGiftOrNicoadSpeech(platform, message);
+        continue;
+      }
+      if (message.type == AppMessageType.nicoad) {
+        if (!widget.speechConfig.readNicoadComment) {
+          continue;
+        }
+        // ニコニ広告は購入者が任意テキストを乗せられるため、卑猥・悪意のある
+        // 文言を読み上げさせる攻撃ベクタになりうる。gift とは異なり本文が
+        // システム固定文ではないため、NG ワード一致時は読み上げをスキップする。
+        // 表示（_shouldDisplayMessage 側）は従来どおりバイパス（重要イベント
+        // の見逃し防止）で、読み上げだけに保護を効かせる非対称設計。
+        // NG ヒット時は silent skip（`_protectedCount` バッジには加算しない）。
+        // バッジは「NG ユーザー / NG ワードによりコメントが非表示にされた」
+        // ことを伝える既存仕様であり、ここは表示はバイパスして読み上げだけを
+        // 落とすため、バッジ加算するとユーザーに「コメントが消えた」と
+        // 誤解させてしまう。
+        if (_containsNgWord(message.content)) {
+          _debugLog('[CommentScreen] submitComment: SKIP nicoad NG word');
+          continue;
+        }
+        _submitGiftOrNicoadSpeech(platform, message);
+        continue;
+      }
       if (message.type != AppMessageType.chat) {
         continue;
       }
@@ -973,6 +1013,43 @@ class _CommentScreenState extends State<CommentScreen> {
         }),
       );
     }
+  }
+
+  /// Submits a gift / ニコニ広告 message body to TTS.
+  ///
+  /// Only `message.content` is spoken — user-name prefixing, NG user,
+  /// star/slash prefix handling, and teach-command parsing are intentionally
+  /// skipped because gift / nicoad messages carry system-generated bodies
+  /// (e.g. "xxx が yyy を購入しました") rather than user-authored chat.
+  ///
+  /// NG word filtering is applied *before* this helper is called for
+  /// nicoad only (ad buyers can embed arbitrary text); gift bodies are
+  /// system-fixed strings so NG filtering stays bypassed to avoid silencing
+  /// legitimate monetization events. See the call site in
+  /// [_submitNewCommentsForSpeech].
+  void _submitGiftOrNicoadSpeech(
+    CommentSpeechPlatform platform,
+    AppMessage message,
+  ) {
+    if (message.content.isEmpty) {
+      return;
+    }
+    _debugLogLazy(
+      () =>
+          '[CommentScreen] submitGiftOrNicoad: type=${message.type}, '
+          'text=${message.content}',
+    );
+    final RawComment comment = RawComment(
+      id: message.id,
+      text: message.content,
+      userId: message.userId,
+      postedAtEpochMs: message.timestamp.millisecondsSinceEpoch,
+    );
+    unawaited(
+      platform.submitComment(comment).then((_) {}).catchError((Object e) {
+        _errorLog('[CommentScreen] submitGiftOrNicoad FAILED', error: e);
+      }),
+    );
   }
 
   /// Returns `true` when [content] contains any configured NG word.
@@ -2481,16 +2558,24 @@ class _CommentScreenState extends State<CommentScreen> {
   /// be hidden by NG filters. See also `_shouldIncludeInStatsAndLogs`, which
   /// keeps them out of stats and saved comment logs.
   bool _shouldDisplayMessage(AppMessage message) {
-    // Type-based visibility toggles (operator / system / emotion). Gift /
-    // nicoad are always visible in the list — their visual emphasis (shaded
-    // background + leading icon) is controlled by
-    // `filterConfig.emphasizeGiftNicoadComment` at render time, not by this
-    // visibility filter.
+    // Type-based visibility toggles (operator / system / emotion /
+    // gift / nicoad). When a gift/nicoad toggle is OFF, the message is
+    // suppressed entirely from the list. When ON, emphasis styling is
+    // separately controlled by `filterConfig.emphasizeGiftNicoadComment`
+    // at render time.
     switch (message.type) {
       case AppMessageType.chat:
       case AppMessageType.notification:
+        break;
       case AppMessageType.gift:
+        if (!widget.filterConfig.showGiftComment) {
+          return false;
+        }
+        break;
       case AppMessageType.nicoad:
+        if (!widget.filterConfig.showNicoadComment) {
+          return false;
+        }
         break;
       case AppMessageType.operator:
         if (!widget.filterConfig.showOperatorComment) {

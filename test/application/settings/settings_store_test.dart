@@ -222,6 +222,64 @@ void main() {
       },
     );
 
+    test(
+      'showGiftComment / showNicoadComment default to true when not stored',
+      () async {
+        final SharedPreferencesSettingsStore store =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        final AppSettings loaded = await store.load();
+
+        expect(loaded.showGiftComment, isTrue);
+        expect(loaded.showNicoadComment, isTrue);
+      },
+    );
+
+    test('round-trips showGiftComment / showNicoadComment', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        showGiftComment: false,
+        showNicoadComment: false,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.showGiftComment, isFalse);
+      expect(loaded.showNicoadComment, isFalse);
+    });
+
+    test(
+      'readGiftComment / readNicoadComment default to false when not stored',
+      () async {
+        final SharedPreferencesSettingsStore store =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        final AppSettings loaded = await store.load();
+
+        expect(loaded.readGiftComment, isFalse);
+        expect(loaded.readNicoadComment, isFalse);
+      },
+    );
+
+    test('round-trips readGiftComment / readNicoadComment', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        readGiftComment: true,
+        readNicoadComment: true,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.readGiftComment, isTrue);
+      expect(loaded.readNicoadComment, isTrue);
+    });
+
     test('autoNicknameRegistration defaults to true when not stored', () async {
       final SharedPreferencesSettingsStore store =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());

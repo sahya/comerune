@@ -609,6 +609,8 @@ class _SelectScreenState extends State<SelectScreen>
             showOperatorComment: _settingsNotifier.value.showOperatorComment,
             showSystemMessage: _settingsNotifier.value.showSystemMessage,
             showEmotion: _settingsNotifier.value.showEmotion,
+            showGiftComment: _settingsNotifier.value.showGiftComment,
+            showNicoadComment: _settingsNotifier.value.showNicoadComment,
             ngProtectionNotificationEnabled:
                 _settingsNotifier.value.ngProtectionNotificationEnabled,
           ),
@@ -622,6 +624,8 @@ class _SelectScreenState extends State<SelectScreen>
             speechPlatform: _speechPlatform,
             speechSettings: _buildSpeechSettings(),
             readUserName: _settingsNotifier.value.readUserName,
+            readGiftComment: _settingsNotifier.value.readGiftComment,
+            readNicoadComment: _settingsNotifier.value.readNicoadComment,
             settingsStore: widget.settingsStore,
             isSpeechMuted: _preMuteVolume != null,
           ),

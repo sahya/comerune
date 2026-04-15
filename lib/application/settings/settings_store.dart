@@ -110,6 +110,10 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   static const String _kShowOperatorComment = 'settings.comment.showOperator';
   static const String _kShowSystemMessage = 'settings.comment.showSystem';
   static const String _kShowEmotion = 'settings.comment.showEmotion';
+  static const String _kShowGiftComment = 'settings.comment.showGift';
+  static const String _kShowNicoadComment = 'settings.comment.showNicoad';
+  static const String _kReadGiftComment = 'settings.tts.readGift';
+  static const String _kReadNicoadComment = 'settings.tts.readNicoad';
   static const String _kEmphasizeGiftNicoadComment =
       'settings.comment.emphasizeGiftNicoad';
   static const String _kDictionaryRules = 'settings.speech.dictionaryRules';
@@ -220,6 +224,14 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       showSystemMessage:
           _prefs.getBool(_kShowSystemMessage) ?? defaults.showSystemMessage,
       showEmotion: _prefs.getBool(_kShowEmotion) ?? defaults.showEmotion,
+      showGiftComment:
+          _prefs.getBool(_kShowGiftComment) ?? defaults.showGiftComment,
+      showNicoadComment:
+          _prefs.getBool(_kShowNicoadComment) ?? defaults.showNicoadComment,
+      readGiftComment:
+          _prefs.getBool(_kReadGiftComment) ?? defaults.readGiftComment,
+      readNicoadComment:
+          _prefs.getBool(_kReadNicoadComment) ?? defaults.readNicoadComment,
       ngProtectionNotificationEnabled:
           _prefs.getBool(_kNgProtectionNotificationEnabled) ??
           defaults.ngProtectionNotificationEnabled,
@@ -322,6 +334,10 @@ class SharedPreferencesSettingsStore implements SettingsStore {
     await _prefs.setBool(_kShowOperatorComment, settings.showOperatorComment);
     await _prefs.setBool(_kShowSystemMessage, settings.showSystemMessage);
     await _prefs.setBool(_kShowEmotion, settings.showEmotion);
+    await _prefs.setBool(_kShowGiftComment, settings.showGiftComment);
+    await _prefs.setBool(_kShowNicoadComment, settings.showNicoadComment);
+    await _prefs.setBool(_kReadGiftComment, settings.readGiftComment);
+    await _prefs.setBool(_kReadNicoadComment, settings.readNicoadComment);
     await _prefs.setBool(
       _kNgProtectionNotificationEnabled,
       settings.ngProtectionNotificationEnabled,
