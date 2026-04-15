@@ -55,6 +55,10 @@ dependencies:
   # コメント内URLを既定ブラウザで開く（WebView 経由ではなく OS ハンドラに委ねる）
   url_launcher: 6.3.2
 
+  # アプリバージョン取得（ライセンスページの applicationVersion を pubspec.yaml と自動同期）
+  # wakelock_plus 1.5.1 が package_info_plus ^9.0.0 を要求するため 9.x 系の最新版にピン留め
+  package_info_plus: 9.0.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

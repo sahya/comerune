@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -490,14 +491,49 @@ class _SettingsScreenState extends State<SettingsScreen>
         title: const Text('ライセンス'),
         subtitle: const Text('第三者ライブラリのライセンス情報'),
         trailing: const Icon(Icons.chevron_right),
-        onTap: () {
-          showLicensePage(
-            context: context,
-            applicationName: 'comerune',
-            applicationVersion: '1.2.0',
-          );
-        },
+        onTap: () => _openLicensePage(context),
       ),
+    );
+  }
+
+  Future<void> _openLicensePage(BuildContext context) async {
+    // pubspec.yaml と自動同期するため PackageInfo からバージョンを取得する。
+    // 取得に失敗した場合はバージョン非表示でライセンス画面を開く（UX 上、
+    // ライセンス情報の閲覧自体は阻害しない）。
+    // Error 系（OutOfMemoryError 等）は握りつぶさず伝搬させるため、
+    // Exception に限定して捕捉する。
+    //
+    // パッケージ一覧・ライセンス本文は Flutter 標準の [LicenseRegistry] が
+    // `pubspec.yaml` の依存解決結果を起動時に自動登録する仕組みに一本化している。
+    // [showLicensePage] は [LicenseRegistry.licenses] を参照して描画するため、
+    // 依存の追加・削除・バージョン更新は本画面で手動同期する必要はない。
+    //
+    // ポリシー: このアプリでは [LicenseRegistry.addLicense] を呼び出さない。
+    // - パッケージ名・ライセンス本文のハードコードを禁じ、真実の源を
+    //   `pubspec.yaml` に一本化するため。
+    // - もし将来 third-party asset（同梱フォント等）を追加する場合のみ、
+    //   そのアセットに限って [LicenseRegistry.addLicense] で登録する。
+    String? applicationVersion;
+    try {
+      final PackageInfo packageInfo = await PackageInfo.fromPlatform();
+      applicationVersion = packageInfo.version;
+    } on Exception catch (error, stackTrace) {
+      developer.log(
+        'Failed to load PackageInfo for license page',
+        name: 'SettingsScreen',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    if (!context.mounted) {
+      return;
+    }
+
+    showLicensePage(
+      context: context,
+      applicationName: 'comerune',
+      applicationVersion: applicationVersion,
     );
   }
 

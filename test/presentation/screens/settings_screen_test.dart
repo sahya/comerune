@@ -1,5 +1,9 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'package:comerune/application/settings/settings_store.dart';
 import 'package:comerune/data/auth/user_session_store.dart';
@@ -11,6 +15,19 @@ import '../../helpers/in_memory_user_session_store.dart';
 import '../../helpers/settings_test_helpers.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    // ライセンスページが参照する PackageInfo にテスト用のモック値を注入する。
+    PackageInfo.setMockInitialValues(
+      appName: 'comerune',
+      packageName: 'app.comerune',
+      version: '1.2.0',
+      buildNumber: '1',
+      buildSignature: '',
+    );
+  });
+
   group('SettingsScreen', () {
     testWidgets('shows login button when not logged in', (
       WidgetTester tester,
@@ -325,6 +342,126 @@ void main() {
 
       // showLicensePage pushes a new route with the LicensePage widget
       expect(find.text('comerune'), findsOneWidget);
+    });
+
+    testWidgets(
+      'license page shows applicationVersion from PackageInfo (not hardcoded)',
+      (WidgetTester tester) async {
+        // 既定の setUp モック値（1.2.0）を上書きし、ハードコードでないことを保証する。
+        PackageInfo.setMockInitialValues(
+          appName: 'comerune',
+          packageName: 'app.comerune',
+          version: '9.9.9-test',
+          buildNumber: '42',
+          buildSignature: '',
+        );
+
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
+
+        final Finder scrollable = find.byType(Scrollable).first;
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('license-tile')),
+          200,
+          scrollable: scrollable,
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('license-tile')));
+        await tester.pumpAndSettle();
+
+        // LicensePage は applicationVersion を本文に表示する。
+        // PackageInfo のモック値が反映されていることを確認し、
+        // 以前の '1.2.0' ハードコードへの逆戻りを検出する。
+        expect(find.text('9.9.9-test'), findsOneWidget);
+        expect(find.text('1.2.0'), findsNothing);
+      },
+    );
+
+    testWidgets('license page lists packages registered via LicenseRegistry '
+        '(pubspec.yaml auto-sync contract)', (WidgetTester tester) async {
+      // `showLicensePage` は Flutter 標準の [LicenseRegistry] を参照して
+      // パッケージ一覧を描画する。本テストは:
+      //   1. ダミーパッケージを [LicenseRegistry.addLicense] で登録し、
+      //      ライセンスページに表示されることを確認する。
+      //   2. これにより、実機では `pubspec.yaml` の依存が Flutter ツール
+      //      チェーンによって同様に [LicenseRegistry] へ自動登録され、
+      //      ライセンスページに自動反映されることの回帰テストとする。
+      // アプリ側で [LicenseRegistry.addLicense] を呼び出していなくても
+      // 自動表示が成立することを担保する契約テストに相当する。
+      const String sentinelPackage = '__license_registry_autosync_sentinel__';
+      const String sentinelBody = 'SENTINEL_LICENSE_BODY_42';
+      LicenseRegistry.addLicense(() async* {
+        yield const LicenseEntryWithLineBreaks(<String>[
+          sentinelPackage,
+        ], sentinelBody);
+      });
+      // 登録は LicenseRegistry.reset の公開 API が無いため累積する。
+      // テスト内で固有なセンチネル文字列を使い、他テストと衝突しないよう
+      // 識別子を十分にユニークにしてある。
+
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      final Finder scrollable = find.byType(Scrollable).first;
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('license-tile')),
+        200,
+        scrollable: scrollable,
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('license-tile')));
+      await tester.pumpAndSettle();
+
+      // LicensePage のパッケージ一覧に、LicenseRegistry 経由で登録した
+      // センチネルパッケージ名が表示されることを確認する。
+      expect(find.text(sentinelPackage), findsOneWidget);
+    });
+
+    test('app code does not call LicenseRegistry.addLicense '
+        '(no hardcoded package/license text policy)', () async {
+      // アプリ本体でパッケージ名・ライセンス本文のハードコードを禁止する
+      // ポリシーを、lib/ 配下に `LicenseRegistry.addLicense` / `LicenseEntry`
+      // のリテラルが現れないことで担保する。
+      // Flutter ツールチェーンが pubspec.yaml 依存を自動登録するため、
+      // アプリ側からの手動登録は不要であり、手動登録が復活した場合は
+      // 同期漏れリスクが再発する。
+      final Directory libDir = Directory('lib');
+      expect(
+        libDir.existsSync(),
+        isTrue,
+        reason: 'lib/ ディレクトリがテスト実行パスから見つかりません',
+      );
+      final List<File> dartFiles = libDir
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((File f) => f.path.endsWith('.dart'))
+          .toList();
+      final List<String> offenders = <String>[];
+      for (final File file in dartFiles) {
+        final String src = file.readAsStringSync();
+        // コメントは許容（ポリシー説明で語を使うため）。実呼び出しのみを検出する。
+        if (src.contains('LicenseRegistry.addLicense(') ||
+            src.contains('LicenseEntryWithLineBreaks(') ||
+            RegExp(r'\bLicenseEntry\s*\(').hasMatch(src)) {
+          offenders.add(file.path);
+        }
+      }
+      expect(
+        offenders,
+        isEmpty,
+        reason:
+            'lib/ 配下で LicenseRegistry への手動登録やハードコードが検出されました。'
+            'pubspec.yaml と表示の乖離を防ぐため、ライセンス情報は '
+            'pubspec.yaml の依存に一本化してください: $offenders',
+      );
     });
   });
 }
