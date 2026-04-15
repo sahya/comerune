@@ -129,6 +129,7 @@ class CommentFilterConfig {
     this.ngWords = const <String>[],
     this.presetNgWords = const <String>[],
     this.starPrefixHidingEnabled = false,
+    this.slashPrefixSkipEnabled = true,
     this.userColorMap = const <String, int>{},
     this.userNicknameMap = const <String, String>{},
   });
@@ -147,6 +148,10 @@ class CommentFilterConfig {
   /// When true, comments starting with `☆` have their body hidden
   /// and can be revealed by tapping.
   final bool starPrefixHidingEnabled;
+
+  /// When true, comments starting with `/` are skipped by the TTS engine
+  /// (they remain visible in the comment list).
+  final bool slashPrefixSkipEnabled;
 
   /// Per-user comment color map. Keys are user IDs, values are ARGB32 ints.
   final Map<String, int> userColorMap;

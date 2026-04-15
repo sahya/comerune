@@ -325,6 +325,92 @@ void main() {
       expect(fakePlatform.submittedComments, hasLength(1));
     });
 
+    testWidgets('slash-prefix messages are not submitted when skip enabled', (
+      WidgetTester tester,
+    ) async {
+      final List<AppMessage> messages = <AppMessage>[
+        _chatMessage(id: 'msg-1', content: '最初'),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          messages: messages,
+          slashPrefixSkipEnabled: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
+      host.addMessage(_chatMessage(id: 'msg-2', content: '/info 読み上げ対象外'));
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.submittedComments, isEmpty);
+    });
+
+    testWidgets('slash-prefix messages are submitted when skip disabled', (
+      WidgetTester tester,
+    ) async {
+      final List<AppMessage> messages = <AppMessage>[
+        _chatMessage(id: 'msg-1', content: '最初'),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          messages: messages,
+          slashPrefixSkipEnabled: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
+      host.addMessage(_chatMessage(id: 'msg-2', content: '/info 読み上げ対象'));
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.submittedComments, hasLength(1));
+      expect(fakePlatform.submittedComments.first.text, '/info 読み上げ対象');
+    });
+
+    testWidgets(
+      'teach/unteach commands are never read aloud regardless of slash skip',
+      (WidgetTester tester) async {
+        // Guards the ordering in _submitNewCommentsForSpeech: even when
+        // slash-prefix skip is disabled (meaning `/foo` would otherwise be
+        // spoken), `/teach` and `/unteach` must be intercepted by the teach
+        // handler and never sent to TTS. This protects against regressions
+        // where the slash-prefix skip check is moved before the teach check.
+        final List<AppMessage> messages = <AppMessage>[
+          _chatMessage(id: 'msg-1', content: '最初'),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+            messages: messages,
+            slashPrefixSkipEnabled: false,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.addMessage(_chatMessage(id: 'msg-2', content: '/teach パターン よみがな'));
+        host.addMessage(_chatMessage(id: 'msg-3', content: '/unteach パターン'));
+        await tester.pumpAndSettle();
+
+        expect(fakePlatform.submittedComments, isEmpty);
+      },
+    );
+
     testWidgets('NG word messages are not submitted for speech', (
       WidgetTester tester,
     ) async {
@@ -1130,6 +1216,7 @@ class _SpeechTestHost extends StatefulWidget {
     this.ngUserIds = const <String>{},
     this.ngWords = const <String>[],
     this.starPrefixHidingEnabled = false,
+    this.slashPrefixSkipEnabled = true,
     this.showUserName = true,
     this.readUserName = false,
     this.userNicknameMap = const <String, String>{},
@@ -1145,6 +1232,7 @@ class _SpeechTestHost extends StatefulWidget {
   final Set<String> ngUserIds;
   final List<String> ngWords;
   final bool starPrefixHidingEnabled;
+  final bool slashPrefixSkipEnabled;
   final bool showUserName;
   final bool readUserName;
   final Map<String, String> userNicknameMap;
@@ -1218,6 +1306,7 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
         ngUserIds: _ngUserIds,
         ngWords: widget.ngWords,
         starPrefixHidingEnabled: widget.starPrefixHidingEnabled,
+        slashPrefixSkipEnabled: widget.slashPrefixSkipEnabled,
         userNicknameMap: widget.userNicknameMap,
       ),
       speechConfig: CommentSpeechConfig(
@@ -1237,6 +1326,7 @@ Widget _buildScreen({
   Set<String> ngUserIds = const <String>{},
   List<String> ngWords = const <String>[],
   bool starPrefixHidingEnabled = false,
+  bool slashPrefixSkipEnabled = true,
   bool showUserName = true,
   bool readUserName = false,
   Map<String, String> userNicknameMap = const <String, String>{},
@@ -1253,6 +1343,7 @@ Widget _buildScreen({
       ngUserIds: ngUserIds,
       ngWords: ngWords,
       starPrefixHidingEnabled: starPrefixHidingEnabled,
+      slashPrefixSkipEnabled: slashPrefixSkipEnabled,
       showUserName: showUserName,
       readUserName: readUserName,
       userNicknameMap: userNicknameMap,

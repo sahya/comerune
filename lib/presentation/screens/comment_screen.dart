@@ -737,17 +737,25 @@ class _CommentScreenState extends State<CommentScreen> {
         _debugLog('[CommentScreen] submitComment: SKIP star-prefix');
         continue;
       }
-      // Skip comments containing NG words.
-      if (_containsNgWord(message.content)) {
-        _debugLog('[CommentScreen] submitComment: SKIP NG word');
-        continue;
-      }
-
       // Handle teach/unteach commands (owner only, never spoken).
+      // Must run before the slash-prefix skip so that `/teach` / `/unteach`
+      // commands still trigger the dictionary handler even when slash-prefix
+      // skip is enabled.
       if (TeachCommandParser.isTeachCommand(message.content)) {
         if (message.userId == widget.programInfo.broadcasterUserId) {
           unawaited(_handleTeachCommand(message));
         }
+        continue;
+      }
+      // Skip slash-prefix comments (shown in the list, but not read aloud).
+      if (widget.filterConfig.slashPrefixSkipEnabled &&
+          message.content.startsWith('/')) {
+        _debugLog('[CommentScreen] submitComment: SKIP slash-prefix');
+        continue;
+      }
+      // Skip comments containing NG words.
+      if (_containsNgWord(message.content)) {
+        _debugLog('[CommentScreen] submitComment: SKIP NG word');
         continue;
       }
 

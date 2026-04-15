@@ -597,6 +597,8 @@ class _SelectScreenState extends State<SelectScreen>
             ngWords: _settingsNotifier.value.ngWordList,
             starPrefixHidingEnabled:
                 _settingsNotifier.value.starPrefixHidingEnabled,
+            slashPrefixSkipEnabled:
+                _settingsNotifier.value.slashPrefixSkipEnabled,
             userColorMap: _userAttrNotifier.value.colors,
             userNicknameMap: _userAttrNotifier.value.nicknames,
           ),
