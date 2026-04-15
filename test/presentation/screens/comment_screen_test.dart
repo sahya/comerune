@@ -4870,6 +4870,209 @@ void main() {
       );
       expect(twoLine, '12:00:00  運営\nお知らせ');
     });
+
+    // ------------------------------------------------------------------
+    // Operator long-body / overflow boundary tests (Issue #477).
+    //
+    // Operator (運営) comments are broadcaster announcements that may carry
+    // multi-paragraph or rule-change notices. The renderer currently uses
+    // `Text.rich` with no `maxLines` / `overflow` cap, so long content wraps
+    // freely. These tests pin that behavior so:
+    //   * a future change that silently caps `maxLines` does not drop body
+    //     content without an explicit decision,
+    //   * narrow-screen wrapping (360dp class devices) keeps the body inside
+    //     the viewport,
+    //   * embedded newlines do not collapse into a single line.
+    // Two-line and one-line layouts are both covered.
+    // ------------------------------------------------------------------
+
+    testWidgets(
+      'operator long body (1000+ chars) renders without overflow exceptions',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        // 1100 visible characters (above the 1000-char threshold called out
+        // in the issue) — uses ASCII so the byte length is unambiguous.
+        final String longBody = 'A' * 1100;
+        final List<AppMessage> messages = <AppMessage>[
+          _message(
+            id: 'operator-long',
+            type: AppMessageType.operator,
+            content: longBody,
+            userId: null,
+            userName: '運営',
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(supervisor: supervisor, messages: messages),
+        );
+
+        // Row exists.
+        expect(
+          find.byKey(const Key('comment-row-operator-long')),
+          findsOneWidget,
+        );
+        // No layout / overflow exception was thrown during pump.
+        expect(tester.takeException(), isNull);
+
+        // Body text is still present in the rendered RichText (i.e. the
+        // renderer did not silently truncate to a few characters).
+        final RichText rich = findRichTextContaining(tester, longBody);
+        expect(
+          rich.text.toPlainText().contains(longBody),
+          isTrue,
+          reason:
+              'operator long body must render in full (current implementation '
+              'does not cap maxLines). If a maxLines cap is intentionally '
+              'introduced, update this test together with a spec note.',
+        );
+      },
+    );
+
+    testWidgets(
+      'operator body with embedded newlines renders all lines (one-line mode)',
+      (WidgetTester tester) async {
+        // 10 line breaks (issue acceptance criterion: "改行 10 個含む").
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<String> segments = List<String>.generate(
+          11,
+          (int i) => '段落${i + 1}',
+        );
+        final String multiLineBody = segments.join('\n');
+        final List<AppMessage> messages = <AppMessage>[
+          _message(
+            id: 'operator-newlines',
+            type: AppMessageType.operator,
+            content: multiLineBody,
+            userId: null,
+            userName: '運営',
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(supervisor: supervisor, messages: messages),
+        );
+
+        expect(tester.takeException(), isNull);
+        final RichText rich = findRichTextContaining(tester, '段落1');
+        final String plain = rich.text.toPlainText();
+        // Every segment must survive into the rendered tree -- a regression
+        // that collapses '\n' into spaces, or one that drops trailing
+        // segments via maxLines, would fail here.
+        for (final String segment in segments) {
+          expect(
+            plain.contains(segment),
+            isTrue,
+            reason: 'operator body lost newline-separated segment "$segment"',
+          );
+        }
+      },
+    );
+
+    testWidgets(
+      'operator long body in two-line mode keeps meta and body both rendered',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        // Distinct strings for label vs body so substring checks cannot
+        // false-positive across the two text spans.
+        const String label = '2行運営';
+        final String longBody =
+            '${'長文告知' * 250}_END'; // ~1000+ chars + sentinel
+        final List<AppMessage> messages = <AppMessage>[
+          _message(
+            id: 'operator-long-2l',
+            type: AppMessageType.operator,
+            content: longBody,
+            userId: null,
+            userName: label,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            commentTwoLineEnabled: true,
+          ),
+        );
+
+        expect(tester.takeException(), isNull);
+        // Meta line carries the label.
+        final RichText metaRich = findRichTextContaining(tester, label);
+        expect(metaRich.text.toPlainText().contains(label), isTrue);
+        // Body line carries the long content end-marker (proves the renderer
+        // did not cap before reaching the end of the body).
+        final RichText bodyRich = findRichTextContaining(tester, '_END');
+        expect(
+          bodyRich.text.toPlainText().endsWith('_END'),
+          isTrue,
+          reason:
+              'two-line mode must keep the full operator body; the trailing '
+              '"_END" sentinel is missing, suggesting a silent truncation.',
+        );
+      },
+    );
+
+    testWidgets(
+      'operator long body wraps inside a 360dp narrow viewport without overflow',
+      (WidgetTester tester) async {
+        // Force a 360x800 logical-pixel viewport (matches the smaller-end
+        // Android device class called out in the issue). Restored in
+        // addTearDown so adjacent tests are not affected.
+        const Size narrow = Size(360, 800);
+        tester.view.physicalSize = narrow;
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
+
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final String longBody = '長文告知のテキストが折り返されることを確認するための本文。' * 10;
+        final List<AppMessage> messages = <AppMessage>[
+          _message(
+            id: 'operator-narrow',
+            type: AppMessageType.operator,
+            content: longBody,
+            userId: null,
+            userName: '運営',
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(supervisor: supervisor, messages: messages),
+        );
+
+        expect(
+          find.byKey(const Key('comment-row-operator-narrow')),
+          findsOneWidget,
+        );
+        // Wrapping must succeed without producing a RenderFlex / overflow
+        // exception. takeException() returns only the first error captured
+        // during this pump cycle, so a cascade of follow-up exceptions is
+        // not reported individually — the first one is enough as a
+        // regression signal here.
+        expect(
+          tester.takeException(),
+          isNull,
+          reason:
+              'operator long body must wrap cleanly on a 360dp-wide viewport; '
+              'an overflow exception here means the row layout is no longer '
+              'flexible (e.g. a fixed-width Row child was introduced).',
+        );
+        // The rendered row must not exceed the viewport width.
+        final RenderBox rowBox = tester.renderObject(
+          find.byKey(const Key('comment-row-operator-narrow')),
+        );
+        expect(
+          rowBox.size.width,
+          lessThanOrEqualTo(narrow.width),
+          reason:
+              'operator row width (${rowBox.size.width}) exceeded the 360dp '
+              'narrow viewport — long content is escaping horizontally.',
+        );
+      },
+    );
   });
 
   group('CommentScreen keyword search (Issue #114)', () {

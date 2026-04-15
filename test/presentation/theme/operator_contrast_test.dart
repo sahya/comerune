@@ -1,10 +1,9 @@
-import 'dart:math' as math;
-import 'dart:ui';
-
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/presentation/theme/app_theme.dart';
+
+import '../../_support/wcag_contrast.dart';
 
 /// Machine-verifies that every app theme pairs `operatorTextColor` with
 /// `operatorMessageBackground` above the WCAG 2.1 AA contrast floor for
@@ -24,7 +23,9 @@ import 'package:comerune/presentation/theme/app_theme.dart';
 /// palette is tweaked. These tests compute the ratio from the actual
 /// `Color` values so a regression fails CI instead of silently shipping.
 ///
-/// Relative-luminance formula: https://www.w3.org/TR/WCAG21/#contrast-minimum
+/// The WCAG calculation is shared with `notification_contrast_test.dart` and
+/// `gift_nicoad_contrast_test.dart` via `test/_support/wcag_contrast.dart`
+/// to avoid drift between three independent implementations.
 void main() {
   group('operator message WCAG AA contrast', () {
     // Every defined theme mode must be covered; `system` resolves to
@@ -42,13 +43,13 @@ void main() {
       test('${mode.name}: operatorTextColor on operatorMessageBackground '
           'meets WCAG AA (>= 4.5:1)', () {
         final AppThemeColors colors = AppTheme.colorsFor(mode);
-        final double ratio = _contrastRatio(
+        final double ratio = wcagContrastRatio(
           colors.operatorTextColor,
           colors.operatorMessageBackground,
         );
         expect(
           ratio,
-          greaterThanOrEqualTo(4.5),
+          greaterThanOrEqualTo(kWcagAaNormalText),
           reason:
               'theme ${mode.name}: operatorTextColor vs '
               'operatorMessageBackground contrast is '
@@ -59,35 +60,4 @@ void main() {
       });
     }
   });
-}
-
-/// Returns the WCAG relative-luminance contrast ratio between two colors.
-///
-/// Formula from https://www.w3.org/TR/WCAG21/#dfn-contrast-ratio :
-///   (L1 + 0.05) / (L2 + 0.05)
-/// where L1 is the higher relative luminance.
-double _contrastRatio(Color a, Color b) {
-  final double la = _relativeLuminance(a);
-  final double lb = _relativeLuminance(b);
-  final double hi = math.max(la, lb);
-  final double lo = math.min(la, lb);
-  return (hi + 0.05) / (lo + 0.05);
-}
-
-/// WCAG 2.1 relative luminance for an sRGB color.
-/// See https://www.w3.org/TR/WCAG21/#dfn-relative-luminance .
-double _relativeLuminance(Color c) {
-  final double r = _channelLinear(c.r);
-  final double g = _channelLinear(c.g);
-  final double b = _channelLinear(c.b);
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-/// Converts a gamma-encoded sRGB channel (already normalised to [0, 1]
-/// by Flutter's `Color.r/g/b`) to linear light per the WCAG formula.
-double _channelLinear(double srgb) {
-  if (srgb <= 0.03928) {
-    return srgb / 12.92;
-  }
-  return math.pow((srgb + 0.055) / 1.055, 2.4).toDouble();
 }

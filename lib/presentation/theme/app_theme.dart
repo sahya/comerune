@@ -69,25 +69,23 @@ class AppThemeColors {
   /// constants for the measured ratios.
   final Color operatorTextColor;
 
-  // System / emotion body contrast (informational).
+  // System / emotion body contrast.
   //
   // System- and emotion-type messages render the body text using the chat
-  // default foreground (the theme's default body text color provided by
-  // [ThemeData.textTheme] — typically black87 on light themes and white on
-  // dark) over the shared [notificationMessageBackground]. This pairing was
-  // not introduced in the display-toggle feature; it is the pre-existing
-  // behavior. Measured contrast ratios against the default body text per
-  // theme:
-  //   - light        : default body text (black87) on #E1F5FE ≈ 15.0:1 (AAA)
-  //   - dark         : default body text (white)   on #1565C0 ≈ 6.36:1 (AA)
-  //   - protanopia   : default body text (black87) on #BBDEFB ≈ 13.3:1 (AAA)
-  //   - deuteranopia : default body text (black87) on #D1C4E9 ≈ 11.6:1 (AAA)
-  //   - tritanopia   : default body text (black87) on #B2DFDB ≈ 12.2:1 (AAA)
+  // default foreground over the shared [notificationMessageBackground]. The
+  // chat default foreground comes from the theme's `colorScheme.onSurface`
+  // (Material 3 wires this through `textTheme.bodyMedium.color`, which is
+  // what `Text` inherits when no explicit color is supplied).
   //
-  // All 5 themes currently pass WCAG AA (≥ 4.5:1) for normal text. If any
-  // future theme adjustment breaks this invariant, promote this block to a
-  // SHOULD-FIX item in the next review and widen the test coverage to assert
-  // the measured ratios.
+  // WCAG AA (>= 4.5:1) is enforced by
+  // `test/presentation/theme/notification_contrast_test.dart` so that any
+  // future palette tweak that drops below the floor fails CI. The earlier
+  // doc-only annotation here used black87 / pure white as the assumed
+  // foreground, but Material 3 derives `onSurface` from the seed and
+  // produces a tinted near-white in dark mode (~#E4E1E9 for indigo). That
+  // assumption mismatch silently masked a near-failure in dark mode
+  // (4.445:1 against the original #1565C0); see the comment on the dark
+  // [notificationMessageBackground] literal for the post-fix ratios.
 }
 
 class AppTheme {
@@ -126,7 +124,14 @@ class AppTheme {
     statusConnected: Color(0xFF66BB6A),
     statusDisconnected: Color(0xFFEF5350),
     operatorMessageBackground: Color(0xFF5D4037),
-    notificationMessageBackground: Color(0xFF1565C0),
+    // Darkened from #1565C0 to satisfy WCAG AA (>= 4.5:1) against the actual
+    // dark-mode chat foreground. The previous value (#1565C0) gave only
+    // 4.445:1 on Material 3's tinted `onSurface` (~#E4E1E9 for the indigo
+    // dark scheme) — the doc comment that claimed 6.36:1 assumed pure white,
+    // which Material 3 does not use. #0D47A1 (Material blue 900) gives
+    // ~6.37:1 against the same `onSurface`, leaving comfortable headroom.
+    // Verified by `test/presentation/theme/notification_contrast_test.dart`.
+    notificationMessageBackground: Color(0xFF0D47A1),
     giftMessageBackground: Color(0xFF2E3B2E),
     nicoadMessageBackground: Color(0xFF3E2E47),
     subtleTextColor: Color(0xFF90A4AE),
