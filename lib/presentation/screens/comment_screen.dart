@@ -167,6 +167,10 @@ String commentLineTextForTesting({
 
 enum CommentSortOrder { ascending, descending }
 
+/// Actions reachable through the AppBar overflow menu. Kept private to the
+/// screen because the menu's wiring lives entirely inside [CommentScreen].
+enum _AppBarMenuAction { search, saveLog, settings }
+
 /// Single source of truth for the "emphasize gift / nicoad" decision so
 /// that background color and leading icon stay in sync.
 ///
@@ -1603,21 +1607,6 @@ class _CommentScreenState extends State<CommentScreen> {
                           onTap: widget.callbacks.onSpeechMuteToggled,
                         ),
                       IconButton(
-                        key: const Key('comment-search-button'),
-                        icon: const Icon(Icons.search),
-                        tooltip: 'コメントを検索',
-                        onPressed: _openSearch,
-                      ),
-                      if (widget.logConfig.commentLogWriter != null)
-                        IconButton(
-                          key: const Key('save-comment-log-button'),
-                          icon: const Icon(Icons.archive_outlined),
-                          tooltip: 'コメントログを保存',
-                          onPressed: _isSavingLog
-                              ? null
-                              : () => unawaited(_saveLogManual()),
-                        ),
-                      IconButton(
                         key: const Key('sort-toggle-button'),
                         icon: Icon(
                           _sortOrder == CommentSortOrder.ascending
@@ -1650,15 +1639,12 @@ class _CommentScreenState extends State<CommentScreen> {
                             ),
                           ),
                         ),
-                      if (widget.callbacks.onOpenSettings != null)
-                        IconButton(
-                          key: const Key('settings-button'),
-                          icon: const Icon(Icons.settings),
-                          tooltip: '設定',
-                          onPressed: () async {
-                            await widget.callbacks.onOpenSettings!.call();
-                          },
-                        ),
+                      // Consolidate low-frequency actions (search / save-log /
+                      // settings) into an overflow menu so the AppBar keeps at
+                      // most 3 trailing actions per Material guidance. Only
+                      // these three actions are moved here; everything above
+                      // stays visible because it conveys state at a glance.
+                      _buildOverflowMenuButton(),
                     ],
             ),
             body: Column(
@@ -2550,6 +2536,75 @@ class _CommentScreenState extends State<CommentScreen> {
     return true;
   }
 
+  // ---- AppBar overflow menu ----
+
+  /// Build the AppBar overflow menu that groups low-frequency actions
+  /// (search / save-log / settings). Extracted from the main [build] method
+  /// to keep the AppBar `actions` list readable; behavior is identical to an
+  /// inline `PopupMenuButton` and stays bound to this State so that
+  /// `_isSavingLog` / `setState` interactions remain local.
+  Widget _buildOverflowMenuButton() {
+    return PopupMenuButton<_AppBarMenuAction>(
+      key: const Key('appbar-overflow-menu'),
+      icon: const Icon(Icons.more_vert),
+      tooltip: 'メニュー',
+      onSelected: (_AppBarMenuAction action) {
+        switch (action) {
+          case _AppBarMenuAction.search:
+            _openSearch();
+          case _AppBarMenuAction.saveLog:
+            // `enabled: !_isSavingLog` on the menu item already prevents a
+            // disabled tap from reaching here; the guard is a belt-and-
+            // suspenders check in case the underlying material state
+            // flips between menu open and selection.
+            if (!_isSavingLog) {
+              unawaited(_saveLogManual());
+            }
+          case _AppBarMenuAction.settings:
+            final Future<void> Function()? onOpen =
+                widget.callbacks.onOpenSettings;
+            if (onOpen != null) {
+              unawaited(onOpen());
+            }
+        }
+      },
+      itemBuilder: (BuildContext context) {
+        final bool hasLogWriter = widget.logConfig.commentLogWriter != null;
+        final bool hasSettings = widget.callbacks.onOpenSettings != null;
+        // Only insert a divider between action-group items (search /
+        // save-log) and the navigation item (settings) when settings is
+        // visible. Search is always present, so the divider never becomes
+        // the first entry of the menu.
+        final bool showDividerBeforeSettings = hasSettings;
+        return <PopupMenuEntry<_AppBarMenuAction>>[
+          PopupMenuItem<_AppBarMenuAction>(
+            key: const Key('comment-search-button'),
+            value: _AppBarMenuAction.search,
+            child: const _OverflowMenuRow(icon: Icons.search, label: 'コメントを検索'),
+          ),
+          if (hasLogWriter)
+            PopupMenuItem<_AppBarMenuAction>(
+              key: const Key('save-comment-log-button'),
+              value: _AppBarMenuAction.saveLog,
+              enabled: !_isSavingLog,
+              child: _OverflowMenuRow(
+                icon: Icons.archive_outlined,
+                label: 'コメントログを保存',
+                enabled: !_isSavingLog,
+              ),
+            ),
+          if (showDividerBeforeSettings) const PopupMenuDivider(),
+          if (hasSettings)
+            PopupMenuItem<_AppBarMenuAction>(
+              key: const Key('settings-button'),
+              value: _AppBarMenuAction.settings,
+              child: const _OverflowMenuRow(icon: Icons.settings, label: '設定'),
+            ),
+        ];
+      },
+    );
+  }
+
   // ---- Keyword search ----
 
   void _openSearch() {
@@ -3392,6 +3447,55 @@ class _CommentScreenState extends State<CommentScreen> {
         _autoScrollEnabled = true;
       });
     }
+  }
+}
+
+/// Visual row used inside AppBar overflow menu items. Factored out so the
+/// leading-icon + label layout stays consistent across all entries and future
+/// menu additions do not diverge.
+///
+/// Accessibility:
+/// - [MergeSemantics] collapses the icon + label into a single semantic node
+///   so screen readers announce the item once instead of reading the icon and
+///   label as separate children.
+/// - [Tooltip] satisfies the issue acceptance criterion of attaching a
+///   tooltip to each menu entry (long-press on mobile, hover on desktop) and
+///   also contributes an accessible hint on platforms that surface tooltips.
+/// - [ExcludeSemantics] around the visual row avoids duplicate announcement
+///   of the inner [Text] because the outer [Semantics.label] already carries
+///   the spoken label.
+class _OverflowMenuRow extends StatelessWidget {
+  const _OverflowMenuRow({
+    required this.icon,
+    required this.label,
+    this.enabled = true,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return MergeSemantics(
+      child: Semantics(
+        button: true,
+        enabled: enabled,
+        label: label,
+        child: Tooltip(
+          message: label,
+          child: ExcludeSemantics(
+            child: Row(
+              children: <Widget>[
+                Icon(icon),
+                const SizedBox(width: 12),
+                Text(label),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

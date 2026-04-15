@@ -663,12 +663,25 @@ void main() {
         ),
       );
 
-      final IconButton button = tester.widget(
-        find.byKey(const Key('save-comment-log-button')),
+      // The save action now lives inside the AppBar overflow menu. Open the
+      // menu first, then assert the menu entry carries the archive icon and
+      // label.
+      await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+      await tester.pumpAndSettle();
+
+      final Finder saveItem = find.byKey(const Key('save-comment-log-button'));
+      expect(saveItem, findsOneWidget);
+      expect(
+        find.descendant(
+          of: saveItem,
+          matching: find.byIcon(Icons.archive_outlined),
+        ),
+        findsOneWidget,
       );
-      final Icon icon = button.icon as Icon;
-      expect(icon.icon, Icons.archive_outlined);
-      expect(button.tooltip, 'コメントログを保存');
+      expect(
+        find.descendant(of: saveItem, matching: find.text('コメントログを保存')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('wakelock is released 45 seconds after ENDED', (
@@ -2546,6 +2559,9 @@ void main() {
         ),
       );
 
+      // Settings now lives inside the AppBar overflow menu; open it first.
+      await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+      await tester.pumpAndSettle();
       expect(find.byKey(const Key('settings-button')), findsOneWidget);
     });
 
@@ -2565,6 +2581,8 @@ void main() {
         ),
       );
 
+      await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('settings-button')));
       await tester.pumpAndSettle();
       expect(settingsCalls, 1);
@@ -2579,6 +2597,10 @@ void main() {
         _buildScreen(supervisor: supervisor, messages: const <AppMessage>[]),
       );
 
+      // Opening the overflow menu must not reveal a settings entry when the
+      // callback is null.
+      await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+      await tester.pumpAndSettle();
       expect(find.byKey(const Key('settings-button')), findsNothing);
     });
 
@@ -5107,14 +5129,24 @@ void main() {
       );
 
       expect(find.byKey(const Key('comment-search-field')), findsNothing);
-      expect(find.byKey(const Key('comment-search-button')), findsOneWidget);
+      // The search action is reached through the overflow menu, so the
+      // overflow button must be present and the search menu item must be
+      // present only once the menu is opened.
+      expect(find.byKey(const Key('appbar-overflow-menu')), findsOneWidget);
 
+      await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('comment-search-button')), findsOneWidget);
       await tester.tap(find.byKey(const Key('comment-search-button')));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('comment-search-field')), findsOneWidget);
       expect(find.byKey(const Key('appbar-title-text')), findsNothing);
       expect(find.byKey(const Key('search-close-button')), findsOneWidget);
+      // While search mode is active the overflow menu button must be hidden
+      // so the AppBar cannot launch nested modal flows (search inside search,
+      // settings dialog while typing a query, etc.).
+      expect(find.byKey(const Key('appbar-overflow-menu')), findsNothing);
     });
 
     testWidgets('entering a keyword filters comments to matches only', (
@@ -5126,6 +5158,8 @@ void main() {
         _buildScreen(supervisor: supervisor, messages: buildMessages()),
       );
 
+      await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('comment-search-button')));
       await tester.pumpAndSettle();
 
@@ -5147,6 +5181,8 @@ void main() {
         _buildScreen(supervisor: supervisor, messages: buildMessages()),
       );
 
+      await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('comment-search-button')));
       await tester.pumpAndSettle();
 
@@ -5170,6 +5206,8 @@ void main() {
         _buildScreen(supervisor: supervisor, messages: buildMessages()),
       );
 
+      await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('comment-search-button')));
       await tester.pumpAndSettle();
 
@@ -5195,6 +5233,8 @@ void main() {
         _buildScreen(supervisor: supervisor, messages: buildMessages()),
       );
 
+      await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('comment-search-button')));
       await tester.pumpAndSettle();
 
@@ -5222,6 +5262,8 @@ void main() {
           _buildScreen(supervisor: supervisor, messages: buildMessages()),
         );
 
+        await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('comment-search-button')));
         await tester.pumpAndSettle();
 
@@ -5263,6 +5305,8 @@ void main() {
         _buildScreen(supervisor: supervisor, messages: buildMessages()),
       );
 
+      await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('comment-search-button')));
       await tester.pumpAndSettle();
 
@@ -5294,6 +5338,8 @@ void main() {
         _buildScreen(supervisor: supervisor, messages: buildMessages()),
       );
 
+      await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('comment-search-button')));
       await tester.pumpAndSettle();
 
@@ -5327,6 +5373,8 @@ void main() {
           ),
         );
 
+        await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('comment-search-button')));
         await tester.pumpAndSettle();
 
@@ -5396,6 +5444,8 @@ void main() {
         expect(find.byKey(const Key('pinned-row-msg-pin')), findsOneWidget);
 
         // Search for a term that does NOT match the pinned comment.
+        await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('comment-search-button')));
         await tester.pumpAndSettle();
         await tester.enterText(
@@ -5432,6 +5482,8 @@ void main() {
         _buildScreen(supervisor: supervisor, messages: buildMessages()),
       );
 
+      await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('comment-search-button')));
       await tester.pumpAndSettle();
 
@@ -5463,6 +5515,8 @@ void main() {
         _buildScreen(supervisor: supervisor, messages: buildMessages()),
       );
 
+      await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('comment-search-button')));
       await tester.pumpAndSettle();
       await tester.enterText(
@@ -5477,7 +5531,9 @@ void main() {
       // Title is back, search bar is gone, all comments visible.
       expect(find.byKey(const Key('comment-search-field')), findsNothing);
       expect(find.byKey(const Key('appbar-title-text')), findsOneWidget);
-      expect(find.byKey(const Key('comment-search-button')), findsOneWidget);
+      // The overflow menu (which hosts the search entry) is rendered again
+      // when the AppBar returns to its normal state.
+      expect(find.byKey(const Key('appbar-overflow-menu')), findsOneWidget);
       expect(find.textContaining('Hello world'), findsOneWidget);
       expect(find.textContaining('goodbye world'), findsOneWidget);
       expect(find.textContaining('こんにちは世界'), findsOneWidget);
