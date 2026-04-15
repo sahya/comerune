@@ -11,7 +11,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../app_logging.dart';
+import '../../application/comment_post/comment_post_controller.dart';
 import '../../application/settings/settings_store.dart';
+import '../../domain/models/comment_post_result.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/comment_log/comment_log_stats.dart';
@@ -25,6 +27,7 @@ import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/user_name_resolution.dart';
 import '../theme/app_theme.dart';
+import '../widgets/comment_input_bar.dart';
 import 'comment_log_stats_sheet.dart';
 import 'comment_screen_config.dart';
 import 'user_detail_sheet.dart';
@@ -207,6 +210,8 @@ class CommentScreen extends StatefulWidget {
     this.filterConfig = const CommentFilterConfig(),
     this.logConfig = const CommentLogConfig(),
     this.speechConfig = const CommentSpeechConfig(),
+    this.commentPostController,
+    this.userSessionLoader,
   });
 
   /// Program-level metadata (lv, title, broadcaster info, etc.).
@@ -268,6 +273,14 @@ class CommentScreen extends StatefulWidget {
   /// Grouped speech (VoiceVox) parameters.
   final CommentSpeechConfig speechConfig;
 
+  /// Controller for posting live comments. When `null`, the comment-post
+  /// FAB/input bar is disabled regardless of login state.
+  final CommentPostController? commentPostController;
+
+  /// Loads the current niconico `user_session`. When it resolves to a
+  /// non-empty string the comment-post FAB is shown.
+  final Future<String> Function()? userSessionLoader;
+
   @override
   State<CommentScreen> createState() => _CommentScreenState();
 }
@@ -316,6 +329,31 @@ class _CommentScreenState extends State<CommentScreen> {
   List<String> _effectivePresetNgWords = const <String>[];
   List<String> _normalizedEffectiveNgWords = const <String>[];
 
+  /// Cached user_session for the comment-post feature. Empty string means
+  /// "not logged in" and hides the FAB. Loaded in [initState].
+  String _commentPostUserSession = '';
+
+  /// Whether the current user is the broadcaster of the viewed program.
+  /// Resolved asynchronously after [_commentPostUserSession] is loaded.
+  bool _isBroadcaster = false;
+
+  /// Whether the comment-post input overlay is currently expanded. When
+  /// `false` the FAB is shown; when `true` the input bar is shown inline
+  /// below the bottom action bar.
+  bool _commentInputExpanded = false;
+
+  /// Whether the input bar is currently awaiting a server response. While
+  /// `true`, the backdrop tap-to-close is suppressed so a stray tap does
+  /// not dismiss the bar out from under an in-progress submission.
+  bool _commentInputSending = false;
+
+  /// Monotonic counter incremented on every call to
+  /// [_resolveCommentPostContext]. Each in-flight resolution captures the
+  /// value at start; if it does not match the latest counter at await
+  /// resume time, the result is stale (e.g. a faster lv switch raced
+  /// ahead) and discarded so the UI reflects the most recent context only.
+  int _commentPostContextGeneration = 0;
+
   // ---------------------------------------------------------------------------
   // NG protection notification state (Issue #244)
   //
@@ -362,6 +400,7 @@ class _CommentScreenState extends State<CommentScreen> {
       ..addListener(_handleSearchTextChanged);
     _lastStatus = widget.connectionSupervisor.status;
     widget.connectionSupervisor.addListener(_handleConnectionChanged);
+    unawaited(_resolveCommentPostContext());
 
     // Keep screen on while viewing comments.
     unawaited(WakelockPlus.enable());
@@ -435,6 +474,15 @@ class _CommentScreenState extends State<CommentScreen> {
     if (oldWidget.programInfo.lv != widget.programInfo.lv) {
       _autoScrollEnabled = true;
       _pinnedMessageIds.clear();
+      // Reset NG-protection state when switching to a different program so
+      // that the AppBar badge / throttle window do not leak across lv
+      // transitions. The cursor is re-seeded after the new message tail
+      // arrives via _processNgProtectionNotifications.
+      _protectedCount = 0;
+      _lastProtectionInspectedMessageId = widget.messages.isNotEmpty
+          ? widget.messages.last.id
+          : null;
+      _lastProtectionNotificationAt = null;
       unawaited(
         widget.callbacks.onDifferentLvConnected(
           oldWidget.programInfo.lv,
@@ -444,6 +492,14 @@ class _CommentScreenState extends State<CommentScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToEdge(animated: false);
       });
+      // Re-resolve comment-post context (broadcaster flag) for the new lv.
+      // Note: state change from _resolveCommentPostContext will trigger
+      // the broadcaster flag reset via setState. The immediate reset below
+      // avoids a frame where the stale broadcaster flag is visible.
+      setState(() {
+        _isBroadcaster = false;
+      });
+      unawaited(_resolveCommentPostContext());
     }
 
     if (_pinnedMessageIds.isNotEmpty) {
@@ -1016,6 +1072,191 @@ class _CommentScreenState extends State<CommentScreen> {
     }
   }
 
+  /// Whether the comment-post FAB should be shown as a bottom-right overlay
+  /// on the comment list.
+  ///
+  /// Shown when the feature is wired up, the user is logged in, and the
+  /// input overlay is not already expanded.
+  bool get _shouldShowCommentPostFab =>
+      widget.commentPostController != null &&
+      _commentPostUserSession.isNotEmpty &&
+      !_commentInputExpanded;
+
+  void _expandCommentInput() {
+    if (_commentInputExpanded) {
+      return;
+    }
+    setState(() {
+      _commentInputExpanded = true;
+    });
+  }
+
+  void _collapseCommentInput() {
+    if (!_commentInputExpanded) {
+      return;
+    }
+    setState(() {
+      _commentInputExpanded = false;
+    });
+  }
+
+  /// Resolves the user_session and broadcaster status used by the
+  /// comment-post FAB. Called once in [initState] and again whenever
+  /// [CommentScreen.programInfo.lv] changes in [didUpdateWidget].
+  ///
+  /// Uses [_commentPostContextGeneration] to discard stale results when a
+  /// newer call has already started — without this guard, a slow first
+  /// resolve completing after a faster second resolve would clobber the
+  /// freshest broadcaster flag and leave the UI in an inconsistent state.
+  Future<void> _resolveCommentPostContext() async {
+    final Future<String> Function()? loader = widget.userSessionLoader;
+    final CommentPostController? controller = widget.commentPostController;
+    if (loader == null || controller == null) {
+      return;
+    }
+    final int generation = ++_commentPostContextGeneration;
+    final String session = await loader();
+    if (!mounted || generation != _commentPostContextGeneration) {
+      return;
+    }
+    final String trimmed = session.trim();
+    if (_commentPostUserSession != trimmed) {
+      setState(() {
+        _commentPostUserSession = trimmed;
+        // Reset broadcaster flag until re-checked against the new session.
+        _isBroadcaster = false;
+        // If the user logged out while the input was open, collapse it so
+        // the stale UI does not accept submissions against an empty session.
+        if (trimmed.isEmpty) {
+          _commentInputExpanded = false;
+        }
+      });
+    }
+    if (trimmed.isEmpty) {
+      return;
+    }
+
+    final BroadcasterCheckOutcome outcome = await controller
+        .ensureBroadcasterStatus(
+          lv: widget.programInfo.lv,
+          userSession: trimmed,
+        );
+    if (!mounted || generation != _commentPostContextGeneration) {
+      return;
+    }
+    final bool isBroadcaster = outcome == BroadcasterCheckOutcome.broadcaster;
+    if (_isBroadcaster != isBroadcaster) {
+      setState(() {
+        _isBroadcaster = isBroadcaster;
+      });
+    }
+  }
+
+  Future<CommentSendResult> _handleCommentSend({
+    required String text,
+    required bool asOperator,
+    required int maxLength,
+  }) async {
+    final CommentPostController? controller = widget.commentPostController;
+    if (controller == null) {
+      return const CommentSendResult.validation(
+        CommentValidationError.missingProgram,
+      );
+    }
+    final CommentSendResult result = await controller.postComment(
+      lv: widget.programInfo.lv,
+      userSession: _commentPostUserSession,
+      text: text,
+      asOperator: asOperator,
+      beginAt: widget.programInfo.beginAt,
+      maxLength: maxLength,
+    );
+    if (!mounted) {
+      return result;
+    }
+    _showCommentPostFeedback(result, asOperator: asOperator);
+    return result;
+  }
+
+  void _showCommentPostFeedback(
+    CommentSendResult result, {
+    required bool asOperator,
+  }) {
+    // Silently ignore duplicate submissions — the send button is already
+    // disabled while a post is in flight, and showing a snackbar for this
+    // case would be more confusing than helpful.
+    if (result.validationError == CommentValidationError.inFlight) {
+      return;
+    }
+
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    // Hide only the currently-shown snackbar (not the queue) so that an
+    // adjacent NG-protection snackbar from the merged main-side feature
+    // is not silently dropped when a comment post completes.
+    messenger.hideCurrentSnackBar();
+
+    if (result.isSuccess) {
+      messenger.showSnackBar(
+        SnackBar(
+          key: const Key('comment-post-success-snackbar'),
+          content: Text(asOperator ? '運営コメントを送信しました' : 'コメントを送信しました'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    final String message = _commentPostErrorMessage(result);
+    messenger.showSnackBar(
+      SnackBar(
+        key: const Key('comment-post-error-snackbar'),
+        content: Text(message),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  String _commentPostErrorMessage(CommentSendResult result) {
+    final CommentValidationError? validation = result.validationError;
+    if (validation != null) {
+      switch (validation) {
+        case CommentValidationError.empty:
+          return 'コメントを入力してください';
+        case CommentValidationError.tooLong:
+          return '文字数が上限を超えています';
+        case CommentValidationError.missingSession:
+          return 'ログインが必要です';
+        case CommentValidationError.missingProgram:
+          return '番組情報が取得できません';
+        case CommentValidationError.inFlight:
+          // Unreachable in the UI because the send button is disabled while
+          // sending; included for switch exhaustiveness.
+          return '送信中です';
+      }
+    }
+    final CommentPostResult? post = result.postResult;
+    if (post == null) {
+      return 'コメントの送信に失敗しました';
+    }
+    switch (post.errorCode) {
+      case CommentPostErrorCode.invalidParams:
+      case CommentPostErrorCode.unauthorized:
+        return 'ログインが必要です';
+      case CommentPostErrorCode.forbidden:
+        return 'コメントの投稿権限がありません';
+      case CommentPostErrorCode.notFound:
+        return '番組が見つかりません';
+      case CommentPostErrorCode.conflict:
+        return '放送は終了しています';
+      case CommentPostErrorCode.rateLimited:
+        return 'しばらく待ってから再送信してください';
+      case CommentPostErrorCode.networkError:
+        return 'ネットワークエラーが発生しました';
+      default:
+        return 'コメントの送信に失敗しました';
+    }
+  }
+
   /// Announces NG-filter protection for comments appended since the last
   /// call. The badge counter always increases on every NG hit, while the
   /// snackbar is throttled to at most one per [_protectionSnackBarWindow].
@@ -1556,10 +1797,30 @@ class _CommentScreenState extends State<CommentScreen> {
                             },
                           ),
                         ),
+                      // Tap-outside-to-close backdrop. Active only while
+                      // the input overlay is expanded so regular list taps
+                      // (long-press, URL open, etc.) remain unaffected in
+                      // the normal state. While a send is in flight the
+                      // backdrop does not dismiss the bar — otherwise a
+                      // stray tap would tear the expanded UI out from
+                      // under an in-progress submission.
+                      if (_commentInputExpanded)
+                        Positioned.fill(
+                          child: GestureDetector(
+                            key: const Key('comment-input-backdrop'),
+                            behavior: HitTestBehavior.translucent,
+                            onTap: _commentInputSending
+                                ? null
+                                : _collapseCommentInput,
+                          ),
+                        ),
                       if (!_autoScrollEnabled)
                         Positioned(
                           right: 12,
-                          bottom: 12,
+                          // Raise the scroll-to-latest FAB above the
+                          // comment-post FAB when the latter is visible, so
+                          // the two do not overlap.
+                          bottom: _shouldShowCommentPostFab ? 72 : 12,
                           child: FloatingActionButton.small(
                             key: const Key('scroll-to-latest-button'),
                             onPressed: _scrollToLatest,
@@ -1571,10 +1832,32 @@ class _CommentScreenState extends State<CommentScreen> {
                             ),
                           ),
                         ),
+                      if (_shouldShowCommentPostFab)
+                        Positioned(
+                          right: 12,
+                          bottom: 12,
+                          child: CommentPostFab(onPressed: _expandCommentInput),
+                        ),
                     ],
                   ),
                 ),
                 _buildBottomAction(status),
+                if (_commentInputExpanded &&
+                    widget.commentPostController != null)
+                  CommentInputBar(
+                    key: const Key('comment-input-bar'),
+                    isBroadcaster: _isBroadcaster,
+                    onSend: _handleCommentSend,
+                    onCollapse: _collapseCommentInput,
+                    onSendingChanged: (bool sending) {
+                      if (!mounted || _commentInputSending == sending) {
+                        return;
+                      }
+                      setState(() {
+                        _commentInputSending = sending;
+                      });
+                    },
+                  ),
               ],
             ),
           );

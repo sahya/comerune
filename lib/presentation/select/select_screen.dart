@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../app_logging.dart';
+import '../../application/comment_post/comment_post_controller.dart';
 import '../../application/settings/settings_store.dart';
 import '../../application/statistics/statistics_store.dart';
 import '../../application/timeline/timeline_store.dart';
@@ -59,6 +60,7 @@ class SelectScreen extends StatefulWidget {
     this.broadcastControlRepository,
     this.favoriteUserLiveChecker,
     this.userAttributeStore,
+    this.commentPostController,
     super.key,
   });
 
@@ -82,6 +84,7 @@ class SelectScreen extends StatefulWidget {
   final BroadcastControlRepository? broadcastControlRepository;
   final FavoriteUserLiveChecker? favoriteUserLiveChecker;
   final UserAttributeStore? userAttributeStore;
+  final CommentPostController? commentPostController;
 
   @override
   State<SelectScreen> createState() => _SelectScreenState();
@@ -622,6 +625,8 @@ class _SelectScreenState extends State<SelectScreen>
             settingsStore: widget.settingsStore,
             isSpeechMuted: _preMuteVolume != null,
           ),
+          commentPostController: widget.commentPostController,
+          userSessionLoader: widget.userSessionStore?.load,
         );
       },
     );

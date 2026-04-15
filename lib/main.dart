@@ -7,6 +7,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'application/comment_post/comment_post_controller.dart';
 import 'application/foreground_service/foreground_service_controller.dart';
 import 'application/migration/app_migration_runner.dart';
 import 'application/onboarding/onboarding_store.dart';
@@ -16,6 +17,7 @@ import 'application/upgrade/upgrade_initializer.dart';
 import 'application/statistics/statistics_store.dart';
 import 'application/timeline/timeline_store.dart';
 import 'data/auth/user_session_store.dart';
+import 'data/comment/live_comment_repository.dart';
 import 'data/comment_log/comment_log_writer.dart';
 import 'data/connection/program_info_resolver.dart';
 import 'data/broadcast/broadcast_control_repository.dart';
@@ -155,6 +157,8 @@ class _ComeruneAppState extends State<ComeruneApp> {
   late final FollowProgramRepository _followProgramRepository;
   late final MyProgramRepository _myProgramRepository;
   late final BroadcastControlRepository _broadcastControlRepository;
+  late final LiveCommentRepository _liveCommentRepository;
+  late final CommentPostController _commentPostController;
   ForegroundServiceController? _foregroundServiceController;
 
   @override
@@ -181,6 +185,11 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _followProgramRepository = FollowProgramRepository();
     _myProgramRepository = MyProgramRepository();
     _broadcastControlRepository = BroadcastControlRepository();
+    _liveCommentRepository = LiveCommentRepository();
+    _commentPostController = CommentPostController(
+      liveCommentRepository: _liveCommentRepository,
+      myProgramRepository: _myProgramRepository,
+    );
     _timelineStore = TimelineStore(capacity: _ndgrHistoryCount);
     _statisticsStore = StatisticsStore();
     _sessionWsClient = _SessionWsClientAdapter(
@@ -258,9 +267,14 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _timelineStore.dispose();
     _statisticsStore.dispose();
     _userNameResolver.dispose();
+    // Dispose the CommentPostController before its dependencies so any
+    // in-flight postComment / ensureBroadcasterStatus future sees the
+    // disposed flag before we close the underlying HttpClients.
+    _commentPostController.dispose();
     _followProgramRepository.dispose();
     _myProgramRepository.dispose();
     _broadcastControlRepository.dispose();
+    _liveCommentRepository.dispose();
     _programTitleNotifier.dispose();
     _broadcasterNameNotifier.dispose();
     _supplierUserIdNotifier.dispose();
@@ -323,6 +337,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
           myProgramRepository: _myProgramRepository,
           broadcastControlRepository: _broadcastControlRepository,
           userAttributeStore: widget.userAttributeStore,
+          commentPostController: _commentPostController,
         ),
       ),
     );

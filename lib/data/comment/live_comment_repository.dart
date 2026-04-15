@@ -1,0 +1,400 @@
+import 'dart:convert';
+import 'dart:io';
+
+import '../../app_logging.dart';
+import '../../domain/models/comment_post_result.dart';
+
+/// Re-exports [CommentPostResult] from the domain layer.
+///
+/// Prefer importing `package:comerune/domain/models/comment_post_result.dart`
+/// directly in new code.
+export '../../domain/models/comment_post_result.dart';
+
+/// Posts live comments to niconico (normal viewer comments and operator
+/// comments).
+///
+/// Uses the same API surface as N Air:
+/// - Operator comment: `PUT /watch/{programId}/operator_comment`
+///   with `{ "text": "...", "isPermCommand": false }`.
+/// - Normal comment:   `POST /unama/tool/v2/programs/{programId}/comments`
+///   with `{ "text": "...", "vpos": N }` and the `x-frontend-id: 134` header.
+class LiveCommentRepository {
+  LiveCommentRepository({
+    HttpClient? httpClient,
+    String userAgent = _defaultUserAgent,
+    Duration requestTimeout = const Duration(seconds: 10),
+  }) : _httpClient = httpClient ?? HttpClient(),
+       _userAgent = userAgent,
+       _requestTimeout = requestTimeout {
+    _httpClient.connectionTimeout = const Duration(seconds: 10);
+  }
+
+  /// Deadline for the full request/response roundtrip after the TCP
+  /// connection has been established. `HttpClient.connectionTimeout` only
+  /// guards the initial connect; without this guard a stalled server keeps
+  /// the send button spinning indefinitely.
+  final Duration _requestTimeout;
+
+  static const String _defaultUserAgent =
+      'Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 '
+      '(KHTML, like Gecko) Chrome Mobile Safari/537.36';
+
+  static const String _operatorBaseUrl = 'https://live2.nicovideo.jp/watch';
+  static const String _normalBaseUrl =
+      'https://live2.nicovideo.jp/unama/tool/v2/programs';
+
+  /// `x-frontend-id` value expected by the normal comment endpoint.
+  /// 134 is the value N Air uses and is required for the endpoint to accept
+  /// the request.
+  static const String _frontendId = '134';
+
+  final HttpClient _httpClient;
+  final String _userAgent;
+
+  /// Posts an operator comment (broadcaster only).
+  ///
+  /// [programId] must be a valid program id (e.g. "lv348712105"). The
+  /// [userSession] must be non-empty. [text] is sent as-is (caller is
+  /// responsible for client-side length validation).
+  ///
+  /// [isPermCommand] is forwarded to the API but the current UI always sends
+  /// `false`. Kept as a parameter for symmetry with the API.
+  Future<CommentPostResult> postOperatorComment({
+    required String programId,
+    required String userSession,
+    required String text,
+    bool isPermCommand = false,
+  }) async {
+    final CommentPostResult? invalid = _checkCallInputs(
+      programId: programId,
+      userSession: userSession,
+    );
+    if (invalid != null) {
+      return invalid;
+    }
+
+    try {
+      final Uri uri = Uri.parse(
+        '$_operatorBaseUrl/$programId/operator_comment',
+      );
+      final HttpClientRequest request = await _httpClient.putUrl(uri);
+      _setCommonHeaders(request, userSession);
+      request.write(
+        jsonEncode(<String, Object>{
+          'text': text,
+          'isPermCommand': isPermCommand,
+        }),
+      );
+
+      final HttpClientResponse response = await request.close().timeout(
+        _requestTimeout,
+      );
+      return _parseResponse(response, 'postOperatorComment');
+    } on Exception catch (e) {
+      appErrorLog(
+        name: 'LiveCommentRepository',
+        message: 'Error in postOperatorComment',
+        error: e,
+      );
+      return CommentPostResult(
+        success: false,
+        errorCode: CommentPostErrorCode.networkError,
+        errorMessage: e.runtimeType.toString(),
+      );
+    }
+  }
+
+  /// Posts a normal viewer comment.
+  ///
+  /// [programId] must be a valid program id, [userSession] must be non-empty,
+  /// and [vpos] is the 1/100-second offset from the program's `beginAt`.
+  /// Caller should validate [text] length before calling.
+  Future<CommentPostResult> postNormalComment({
+    required String programId,
+    required String userSession,
+    required String text,
+    required int vpos,
+  }) async {
+    final CommentPostResult? invalid = _checkCallInputs(
+      programId: programId,
+      userSession: userSession,
+    );
+    if (invalid != null) {
+      return invalid;
+    }
+
+    try {
+      final Uri uri = Uri.parse('$_normalBaseUrl/$programId/comments');
+      final HttpClientRequest request = await _httpClient.postUrl(uri);
+      _setCommonHeaders(request, userSession);
+      request.headers.set('x-frontend-id', _frontendId);
+      request.write(jsonEncode(<String, Object>{'text': text, 'vpos': vpos}));
+
+      final HttpClientResponse response = await request.close().timeout(
+        _requestTimeout,
+      );
+      return _parseResponse(response, 'postNormalComment');
+    } on Exception catch (e) {
+      appErrorLog(
+        name: 'LiveCommentRepository',
+        message: 'Error in postNormalComment',
+        error: e,
+      );
+      return CommentPostResult(
+        success: false,
+        errorCode: CommentPostErrorCode.networkError,
+        errorMessage: e.runtimeType.toString(),
+      );
+    }
+  }
+
+  void _setCommonHeaders(HttpClientRequest request, String userSession) {
+    request.headers.set('Cookie', 'user_session=$userSession');
+    request.headers.set('X-Niconico-Session', userSession);
+    request.headers.set('User-Agent', _userAgent);
+    request.headers.set('Content-Type', 'application/json');
+    // Ensure CDN / WAF does not return an HTML error page — the parser
+    // treats HTML as non-JSON body and could silently accept HTTP 200 as
+    // success without an Accept filter.
+    request.headers.set('Accept', 'application/json');
+  }
+
+  Future<CommentPostResult> _parseResponse(
+    HttpClientResponse response,
+    String operationName,
+  ) async {
+    // HTTP 204: success with no body.
+    if (response.statusCode == 204) {
+      await response.drain<void>();
+      return const CommentPostResult(success: true);
+    }
+
+    final String body = await response
+        .transform(utf8.decoder)
+        .join()
+        .timeout(_requestTimeout);
+
+    if (response.statusCode == 200) {
+      // N Air's `WrappedResult` treats `meta.status != 200` (or a non-"OK"
+      // `errorCode`) as failure even when HTTP is 200 — comment endpoints
+      // can return rate-limit / forbidden-word errors inside a 200 body.
+      // Inspect the body and map to an error when present.
+      final CommentPostResult? metaError = _parseMetaError(body);
+      if (metaError != null) {
+        appDebugLogLazy(
+          () =>
+              '[LiveCommentRepository] $operationName failed via meta: '
+              '${metaError.errorCode}',
+        );
+        return metaError;
+      }
+      return const CommentPostResult(success: true);
+    }
+
+    return _parseErrorBody(body, response.statusCode, operationName);
+  }
+
+  /// Returns a failure [CommentPostResult] when the response body advertises
+  /// an error via `meta.status` / `meta.errorCode`, or `null` when the body
+  /// indicates success (or is non-JSON / empty, in which case the HTTP status
+  /// is authoritative).
+  static CommentPostResult? _parseMetaError(String body) {
+    if (body.isEmpty) {
+      return null;
+    }
+    Object? decoded;
+    try {
+      decoded = jsonDecode(body);
+    } on FormatException {
+      return null;
+    }
+    if (decoded is! Map<String, dynamic>) {
+      return null;
+    }
+    final Object? meta = decoded['meta'];
+    if (meta is! Map<String, dynamic>) {
+      return null;
+    }
+    final Object? status = meta['status'];
+    final Object? errorCode = meta['errorCode'];
+    // Success shapes (defensively tolerate string/int for `status` since the
+    // N Air type declares `number` but some related APIs serialize it as a
+    // string):
+    //   {status: 200}
+    //   {status: "200"}
+    //   {status: 200, errorCode: "OK"}
+    //   {errorCode: "OK"}
+    final bool statusIsOk =
+        (status is int && status == 200) ||
+        (status is String && status == '200');
+    final bool errorCodeIsOk =
+        errorCode == null || (errorCode is String && errorCode == 'OK');
+    // Explicit OK code overrides a missing / odd status; otherwise require
+    // both the status and error code to look healthy.
+    if (errorCode is String && errorCode == 'OK') {
+      return null;
+    }
+    if (statusIsOk && errorCodeIsOk) {
+      return null;
+    }
+    // Otherwise treat as failure even though HTTP was 200.
+    final String? resolvedCode = errorCode is String && errorCode.isNotEmpty
+        ? errorCode
+        : (status is int
+              ? 'HTTP_$status'
+              : (status is String ? 'HTTP_$status' : 'UNKNOWN'));
+    final Object? rawMessage = meta['errorMessage'];
+    String? resolvedMessage = rawMessage is String ? rawMessage : null;
+    if (resolvedMessage == null) {
+      final Object? data = decoded['data'];
+      if (data is Map<String, dynamic>) {
+        final Object? message = data['message'];
+        if (message is String) {
+          resolvedMessage = message;
+        }
+      }
+    }
+    return CommentPostResult(
+      success: false,
+      errorCode: resolvedCode,
+      errorMessage: resolvedMessage,
+    );
+  }
+
+  CommentPostResult _parseErrorBody(
+    String body,
+    int statusCode,
+    String operationName,
+  ) {
+    appDebugLogLazy(
+      () => '[LiveCommentRepository] $operationName failed: HTTP $statusCode',
+    );
+
+    String? errorCode;
+    String? errorMessage;
+
+    try {
+      final Object? decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) {
+        final Object? meta = decoded['meta'];
+        if (meta is Map<String, dynamic>) {
+          errorCode = meta['errorCode'] as String?;
+          errorMessage = meta['errorMessage'] as String?;
+        }
+        if (errorMessage == null) {
+          final Object? data = decoded['data'];
+          if (data is Map<String, dynamic>) {
+            errorMessage = data['message'] as String?;
+          }
+        }
+      }
+    } on FormatException {
+      // Non-JSON error body — fall through to status-code mapping.
+    }
+
+    errorCode ??= _httpStatusToErrorCode(statusCode);
+
+    return CommentPostResult(
+      success: false,
+      errorCode: errorCode,
+      errorMessage: errorMessage,
+    );
+  }
+
+  /// Combined entry-guard for both post methods. Returns a failure
+  /// [CommentPostResult] when the inputs are rejected, or `null` when the
+  /// call may proceed. Centralises the previously duplicated empty /
+  /// malformed-value checks so the two post methods stay in lock step and
+  /// a single audit-log call covers both.
+  CommentPostResult? _checkCallInputs({
+    required String programId,
+    required String userSession,
+  }) {
+    if (programId.isEmpty || userSession.trim().isEmpty) {
+      return const CommentPostResult(
+        success: false,
+        errorCode: CommentPostErrorCode.invalidParams,
+        errorMessage: 'programId and userSession are required',
+      );
+    }
+    final bool sessionOk = _isValidHeaderValue(userSession);
+    final bool lvOk = _isValidLv(programId);
+    if (!sessionOk || !lvOk) {
+      appDebugLogLazy(
+        () =>
+            '[LiveCommentRepository] input rejected: '
+            'session=${sessionOk ? 'ok' : 'bad'} lv=${lvOk ? 'ok' : 'bad'}',
+      );
+      return const CommentPostResult(
+        success: false,
+        errorCode: CommentPostErrorCode.invalidParams,
+        errorMessage: 'userSession or programId contains invalid characters',
+      );
+    }
+    return null;
+  }
+
+  /// Defensive check: reject values containing CR, LF, or NUL which could
+  /// otherwise split the `Cookie` / `X-Niconico-Session` headers and
+  /// inject arbitrary request headers.
+  ///
+  /// Scope is intentionally limited to the three ASCII control characters
+  /// that classic CRLF-injection advisories cite: Dart's `HttpHeaders.set`
+  /// does not sanitise the value, but niconico's `user_session` is
+  /// URL-safe in practice so stricter filtering (e.g. U+0085 / U+2028 /
+  /// U+2029 or all C0 controls) would risk rejecting otherwise valid
+  /// sessions for no additional protection in a niconico-only context.
+  static bool _isValidHeaderValue(String value) {
+    for (int i = 0; i < value.length; i++) {
+      final int c = value.codeUnitAt(i);
+      if (c == 0x00 || c == 0x0A || c == 0x0D) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// Live program IDs are of the form `lv` + decimal digits. Reject
+  /// anything else so that a malformed program id cannot inject extra
+  /// URL path segments (e.g. `lv123/../admin`) when interpolated into the
+  /// request URL.
+  ///
+  /// Only ASCII `0`-`9` are accepted — full-width (`１２３`), Arabic-Indic
+  /// digits and other Unicode decimal numerals are rejected because the
+  /// niconico API normalises ids as ASCII decimals.
+  static bool _isValidLv(String lv) {
+    if (lv.length < 3 || !lv.startsWith('lv')) {
+      return false;
+    }
+    for (int i = 2; i < lv.length; i++) {
+      final int c = lv.codeUnitAt(i);
+      if (c < 0x30 || c > 0x39) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  static String _httpStatusToErrorCode(int statusCode) {
+    switch (statusCode) {
+      case 400:
+        return CommentPostErrorCode.badRequest;
+      case 401:
+        return CommentPostErrorCode.unauthorized;
+      case 403:
+        return CommentPostErrorCode.forbidden;
+      case 404:
+        return CommentPostErrorCode.notFound;
+      case 409:
+        return CommentPostErrorCode.conflict;
+      case 429:
+        return CommentPostErrorCode.rateLimited;
+      default:
+        return 'HTTP_$statusCode';
+    }
+  }
+
+  void dispose() {
+    _httpClient.close();
+  }
+}
