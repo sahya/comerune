@@ -110,6 +110,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   static const String _kShowOperatorComment = 'settings.comment.showOperator';
   static const String _kShowSystemMessage = 'settings.comment.showSystem';
   static const String _kShowEmotion = 'settings.comment.showEmotion';
+  static const String _kEmphasizeGiftNicoadComment =
+      'settings.comment.emphasizeGiftNicoad';
   static const String _kDictionaryRules = 'settings.speech.dictionaryRules';
   static const String _kDebugMode = 'settings.debugMode';
   static const String _kPreMuteVolume = 'settings.voicevox.preMuteVolume';
@@ -206,6 +208,9 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       commentZebraStripingEnabled:
           _prefs.getBool(_kCommentZebraStriping) ??
           defaults.commentZebraStripingEnabled,
+      emphasizeGiftNicoadComment:
+          _prefs.getBool(_kEmphasizeGiftNicoadComment) ??
+          defaults.emphasizeGiftNicoadComment,
       dictionaryRules: _loadDictionaryRules(),
       debugMode: _prefs.getBool(_kDebugMode) ?? defaults.debugMode,
       showOperatorComment:
@@ -303,6 +308,10 @@ class SharedPreferencesSettingsStore implements SettingsStore {
     await _prefs.setBool(
       _kCommentZebraStriping,
       settings.commentZebraStripingEnabled,
+    );
+    await _prefs.setBool(
+      _kEmphasizeGiftNicoadComment,
+      settings.emphasizeGiftNicoadComment,
     );
     await _prefs.setBool(_kDebugMode, settings.debugMode);
     await _prefs.setBool(_kShowOperatorComment, settings.showOperatorComment);

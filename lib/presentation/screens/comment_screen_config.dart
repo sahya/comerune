@@ -149,6 +149,7 @@ class CommentFilterConfig {
     this.presetNgWords = const <String>[],
     this.starPrefixHidingEnabled = false,
     this.slashPrefixSkipEnabled = true,
+    this.emphasizeGiftNicoadComment = true,
     this.userColorMap = const <String, int>{},
     this.userNicknameMap = const <String, String>{},
     this.showOperatorComment = true,
@@ -174,6 +175,14 @@ class CommentFilterConfig {
   /// When true, comments starting with `/` are skipped by the TTS engine
   /// (they remain visible in the comment list).
   final bool slashPrefixSkipEnabled;
+
+  /// When true, gift / ニコニ広告 (nicoad) comments are rendered with a
+  /// subtle shaded background and a leading type icon. When false, they are
+  /// displayed with the default chat styling.
+  ///
+  /// This only affects rendering; gift/nicoad messages are always shown in
+  /// the comment list regardless of this flag.
+  final bool emphasizeGiftNicoadComment;
 
   /// Per-user comment color map. Keys are user IDs, values are ARGB32 ints.
   final Map<String, int> userColorMap;

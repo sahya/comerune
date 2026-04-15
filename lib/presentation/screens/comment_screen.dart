@@ -163,6 +163,24 @@ String commentLineTextForTesting({
 
 enum CommentSortOrder { ascending, descending }
 
+/// Single source of truth for the "emphasize gift / nicoad" decision so
+/// that background color and leading icon stay in sync.
+///
+/// Returns `true` only when [message] is a gift / nicoad message and the
+/// user-facing emphasize toggle ([emphasize]) is on.
+///
+/// Implemented as a file-private top-level pure function so it can be
+/// unit-tested without building a widget tree. Keep it pure: it must not
+/// touch `BuildContext`, state, or global configuration — callers are
+/// expected to resolve the `emphasize` flag from their own scope.
+bool _shouldEmphasizeGiftNicoad(AppMessage message, {required bool emphasize}) {
+  if (!emphasize) {
+    return false;
+  }
+  return message.type == AppMessageType.gift ||
+      message.type == AppMessageType.nicoad;
+}
+
 class CommentScreen extends StatefulWidget {
   const CommentScreen({
     super.key,
@@ -960,6 +978,15 @@ class _CommentScreenState extends State<CommentScreen> {
             MediaQuery.platformBrightnessOf(context),
           );
           final AppThemeColors themeColors = AppTheme.colorsFor(effectiveMode);
+          // Resolve the current text scaler once per CommentScreen build and
+          // forward it to every _CommentRow via a prop. Reading
+          // MediaQuery.textScalerOf(context) inside each row would subscribe
+          // thousands of list items to the same MediaQuery change
+          // notification, causing a storm of rebuilds when the user adjusts
+          // OS-level font scaling. Passing it as a prop keeps the
+          // accessibility behaviour while letting the ListView.builder
+          // recycle rows cheaply.
+          final TextScaler textScaler = MediaQuery.textScalerOf(context);
 
           return Scaffold(
             appBar: AppBar(
@@ -1093,12 +1120,16 @@ class _CommentScreenState extends State<CommentScreen> {
                               resolvedUserName: _resolveDisplayName(message),
                               showUserName: widget.showUserName,
                               fontSize: widget.commentFontSize,
+                              textScaler: textScaler,
                               starPrefixHidingEnabled:
                                   widget.filterConfig.starPrefixHidingEnabled,
                               commentTwoLineEnabled:
                                   widget.commentTwoLineEnabled,
                               zebraStripingEnabled:
                                   widget.commentZebraStripingEnabled,
+                              emphasizeGiftNicoadComment: widget
+                                  .filterConfig
+                                  .emphasizeGiftNicoadComment,
                               commentIndex: index,
                               userColor: userColor != null
                                   ? colorFromARGB32(userColor)
@@ -1747,10 +1778,33 @@ class _CommentScreenState extends State<CommentScreen> {
     }
   }
 
+  /// Decides whether [message] should be rendered in the comment list.
+  ///
+  /// Responsibilities (combined here by design):
+  ///   * Type-based visibility: system broadcast-ended messages always show,
+  ///     and gift / nicoad messages bypass the NG user / NG word filters so
+  ///     they are never accidentally silenced by a matching NG word (e.g. an
+  ///     advertiser name). Their visual emphasis (shaded background + leading
+  ///     icon) is controlled separately by
+  ///     `filterConfig.emphasizeGiftNicoadComment` at render time.
+  ///   * NG user / NG word filtering for chat / operator / notification.
+  ///
+  /// NOTE: `AppMessageType.gift` / `.nicoad` are not produced by the current
+  /// normalizer pipeline. This branch exists so that when a future protobuf
+  /// or legacy path starts emitting those types, gift / nicoad events cannot
+  /// be hidden by NG filters. See also `_shouldIncludeInStatsAndLogs`, which
+  /// keeps them out of stats and saved comment logs.
   bool _shouldDisplayMessage(AppMessage message) {
+    // Type-based visibility toggles (operator / system / emotion). Gift /
+    // nicoad are always visible in the list — their visual emphasis (shaded
+    // background + leading icon) is controlled by
+    // `filterConfig.emphasizeGiftNicoadComment` at render time, not by this
+    // visibility filter.
     switch (message.type) {
       case AppMessageType.chat:
       case AppMessageType.notification:
+      case AppMessageType.gift:
+      case AppMessageType.nicoad:
         break;
       case AppMessageType.operator:
         if (!widget.filterConfig.showOperatorComment) {
@@ -1767,12 +1821,22 @@ class _CommentScreenState extends State<CommentScreen> {
           return false;
         }
         break;
-      case AppMessageType.gift:
-      case AppMessageType.nicoad:
-        return false;
     }
 
     if (_isSystemBroadcastEndedMessage(message)) {
+      return true;
+    }
+
+    // gift / nicoad bypass NG user / NG word filters so that important
+    // monetization events are not accidentally hidden. Issue #108 is a
+    // single "emphasize ON/OFF" toggle; a dedicated show/hide toggle is
+    // intentionally out of scope.
+    //
+    // TODO(follow-up): 将来 protobuf/legacy 由来の AppMessageType が user payload
+    // によって偽装される攻撃面を想定し、NG バイパス条件に「type の由来保証」
+    // (例: raw フィールドの metadata 検証、userId === null など) を追加する。
+    if (message.type == AppMessageType.gift ||
+        message.type == AppMessageType.nicoad) {
       return true;
     }
 
@@ -2436,11 +2500,60 @@ class _CommentScreenState extends State<CommentScreen> {
         .toList(growable: false);
   }
 
+  /// Decides whether [message] contributes to in-app statistics and to the
+  /// saved / shared comment log file.
+  ///
+  /// This is a stats/log-only predicate that is intentionally independent
+  /// from [_shouldDisplayMessage] so that UI-facing display rules cannot
+  /// accidentally leak into stats / persisted logs.
+  ///
+  /// Evaluation order (the order is load-bearing — see notes below):
+  ///   1. system broadcast-ended system rows are excluded (they are UI
+  ///      affordances, not real comments).
+  ///   2. gift / nicoad messages are excluded to preserve the documented
+  ///      contract of `CommentLogWriter` ("Callers are responsible for
+  ///      filtering messages, e.g. excluding gift / nicoad types").
+  ///   3. NG user messages are excluded.
+  ///   4. NG word messages are excluded (this is stricter than
+  ///      `CommentLogStats._filterDisplayable`, which drops only gift /
+  ///      nicoad + NG user; the stats sheet recomputes from the same
+  ///      underlying list so the stricter filter here is safe).
+  ///
+  /// Difference from `CommentLogStats._filterDisplayable`:
+  ///   * `_filterDisplayable` excludes gift / nicoad and NG user only; it
+  ///     does NOT consult the NG word list.
+  ///   * This predicate additionally excludes NG word matches so that the
+  ///     saved comment log / shared log file never contains content the
+  ///     user has explicitly filtered out. Intentional divergence; the
+  ///     stats sheet uses its own path and does not rely on this method.
+  ///
+  /// NOTE: changing step order changes behaviour (e.g. swapping steps 1 and
+  /// 2 would not change results, but swapping step 2 with steps 3–4 would
+  /// cause gift / nicoad to be checked against NG user / NG word first).
+  /// Keep early excludes before NG checks.
   bool _shouldIncludeInStatsAndLogs(AppMessage message) {
+    // Step 1: system broadcast-ended rows are UI-only.
     if (_isSystemBroadcastEndedMessage(message)) {
       return false;
     }
-    return _shouldDisplayMessage(message);
+    // Step 2: gift / nicoad are never persisted, matching CommentLogWriter's
+    // contract. Evaluated before NG checks so that the decision does not
+    // depend on NG configuration.
+    if (message.type == AppMessageType.gift ||
+        message.type == AppMessageType.nicoad) {
+      return false;
+    }
+    // Step 3: NG user.
+    final String? userId = message.userId;
+    if (userId != null && widget.filterConfig.ngUserIds.contains(userId)) {
+      return false;
+    }
+    // Step 4: NG word. Stricter than `_filterDisplayable`, which does not
+    // consider NG words; log / stats use this predicate directly.
+    if (_containsNgWord(message.content)) {
+      return false;
+    }
+    return true;
   }
 
   void _scrollToEdge({bool animated = true}) {
@@ -3077,9 +3190,11 @@ class _CommentRow extends StatefulWidget {
     this.resolvedUserName,
     this.showUserName = true,
     required this.fontSize,
+    this.textScaler = TextScaler.noScaling,
     this.starPrefixHidingEnabled = false,
     this.commentTwoLineEnabled = false,
     this.zebraStripingEnabled = false,
+    this.emphasizeGiftNicoadComment = true,
     this.commentIndex = 0,
     this.userColor,
     this.onLongPress,
@@ -3092,9 +3207,19 @@ class _CommentRow extends StatefulWidget {
   final String? resolvedUserName;
   final bool showUserName;
   final double fontSize;
+
+  /// Forwarded text scaler from the parent. Passed in rather than read from
+  /// `MediaQuery.textScalerOf(context)` at build time so that a text scaler
+  /// change does not trigger a rebuild of every row in the comment list.
+  final TextScaler textScaler;
   final bool starPrefixHidingEnabled;
   final bool commentTwoLineEnabled;
   final bool zebraStripingEnabled;
+
+  /// When true and the message is gift/nicoad, render with a shaded
+  /// background and a small leading type icon. When false, gift/nicoad rows
+  /// render with the same styling as regular chat messages.
+  final bool emphasizeGiftNicoadComment;
   final int commentIndex;
   final Color? userColor;
   final VoidCallback? onLongPress;
@@ -3227,7 +3352,16 @@ class _CommentRowState extends State<_CommentRow> {
       );
     }
 
-    final List<InlineSpan> spans = <InlineSpan>[
+    final List<InlineSpan> spans = <InlineSpan>[];
+    final InlineSpan? leadingIconSpan = _buildLeadingTypeIconSpan(
+      context,
+      fontSize,
+    );
+    if (leadingIconSpan != null) {
+      spans.add(leadingIconSpan);
+      spans.add(const TextSpan(text: ' '));
+    }
+    spans.add(
       TextSpan(
         text: timestamp,
         style: TextStyle(
@@ -3236,7 +3370,7 @@ class _CommentRowState extends State<_CommentRow> {
           fontStyle: hidden ? FontStyle.italic : null,
         ),
       ),
-    ];
+    );
 
     if (widget.showUserName) {
       final String? displayName = _displayNameFor(message);
@@ -3286,6 +3420,65 @@ class _CommentRowState extends State<_CommentRow> {
     );
   }
 
+  /// Builds a [WidgetSpan] rendering the leading type icon for gift / nicoad
+  /// messages. Returns `null` when no leading icon should be rendered (either
+  /// emphasis is disabled or the message is not gift/nicoad).
+  InlineSpan? _buildLeadingTypeIconSpan(BuildContext context, double fontSize) {
+    final IconData? iconData = _leadingTypeIcon(widget.message);
+    if (iconData == null) {
+      return null;
+    }
+    final Color iconColor =
+        widget.userColor ??
+        DefaultTextStyle.of(context).style.color ??
+        Theme.of(context).colorScheme.onSurface;
+    // Icon tracks the chat font size but stays slightly smaller so it reads
+    // as a modest type marker rather than dominating the row. The base size
+    // is clamped for layout stability, then scaled by the user's text scaler
+    // so it remains legible at larger accessibility font settings.
+    //
+    // The text scaler is forwarded from the parent as a prop (see
+    // [_CommentRow.textScaler]) so that a text scaler change notification
+    // does not invalidate every row at once.
+    final double baseIconSize = (fontSize * 0.95).clamp(10.0, 20.0);
+    final double iconSize = widget.textScaler.scale(baseIconSize);
+    return WidgetSpan(
+      alignment: PlaceholderAlignment.middle,
+      child: Icon(
+        iconData,
+        size: iconSize,
+        color: iconColor,
+        semanticLabel: _semanticLabelForLeadingIcon(widget.message.type),
+      ),
+    );
+  }
+
+  /// Resolves the semantic label for the leading type icon. Using a switch
+  /// (rather than a ternary) so that adding a new `AppMessageType` surfaces
+  /// a compile-time warning here instead of silently picking the fallback.
+  ///
+  /// Returning `null` is the documented way to say "this message type does
+  /// not show a leading icon, and therefore has no associated semantic
+  /// label". Any fallback to `null` for a *new* type is a bug: reviewers
+  /// adding a new [AppMessageType] must update this function (and
+  /// [_leadingTypeIcon]) to either provide a label or explicitly mark the
+  /// type as icon-less. The exhaustive switch above is the enforcement
+  /// point — do not introduce a `default` branch.
+  String? _semanticLabelForLeadingIcon(AppMessageType type) {
+    switch (type) {
+      case AppMessageType.gift:
+        return 'ギフト';
+      case AppMessageType.nicoad:
+        return 'ニコニ広告';
+      case AppMessageType.chat:
+      case AppMessageType.operator:
+      case AppMessageType.notification:
+      case AppMessageType.system:
+      case AppMessageType.emotion:
+        return null;
+    }
+  }
+
   Widget _buildTwoLineComment({
     required BuildContext context,
     required String timestamp,
@@ -3299,7 +3492,16 @@ class _CommentRowState extends State<_CommentRow> {
     required Color idColor,
     Color? effectiveUserColor,
   }) {
-    final List<InlineSpan> metaSpans = <InlineSpan>[
+    final List<InlineSpan> metaSpans = <InlineSpan>[];
+    final InlineSpan? leadingIconSpan = _buildLeadingTypeIconSpan(
+      context,
+      timestampFontSize,
+    );
+    if (leadingIconSpan != null) {
+      metaSpans.add(leadingIconSpan);
+      metaSpans.add(const TextSpan(text: ' '));
+    }
+    metaSpans.add(
       TextSpan(
         text: timestamp,
         style: TextStyle(
@@ -3308,7 +3510,7 @@ class _CommentRowState extends State<_CommentRow> {
           fontStyle: hidden ? FontStyle.italic : null,
         ),
       ),
-    ];
+    );
 
     if (widget.showUserName) {
       final String? displayName = _displayNameFor(widget.message);
@@ -3415,11 +3617,55 @@ class _CommentRowState extends State<_CommentRow> {
       case AppMessageType.system:
       case AppMessageType.emotion:
         return widget.themeColors.notificationMessageBackground;
-      case AppMessageType.chat:
-      // TODO(PR#20-O1): gift/nicoad は _shouldDisplayMessage で除外済みのため
-      //   ここには到達しない。将来 gift/nicoad を表示する際に背景色を定義する。
       case AppMessageType.gift:
+        return _shouldEmphasizeGiftNicoad(
+              message,
+              emphasize: widget.emphasizeGiftNicoadComment,
+            )
+            ? widget.themeColors.giftMessageBackground
+            : null;
       case AppMessageType.nicoad:
+        return _shouldEmphasizeGiftNicoad(
+              message,
+              emphasize: widget.emphasizeGiftNicoadComment,
+            )
+            ? widget.themeColors.nicoadMessageBackground
+            : null;
+      case AppMessageType.chat:
+        return null;
+    }
+  }
+
+  /// Returns the Material icon to render at the start of the row for
+  /// gift / nicoad messages when emphasis is enabled. Returns `null` for all
+  /// other cases (no leading icon).
+  ///
+  /// NOTE: this switch intentionally does not provide a `default` branch.
+  /// `null` is the documented meaning of "this message type does not have a
+  /// leading icon", so any newly added [AppMessageType] will cause a
+  /// compile-time warning here, prompting reviewers to decide whether the
+  /// new type needs a leading icon rather than silently falling through to
+  /// `null`. Reviewers: when extending [AppMessageType], update this
+  /// function explicitly.
+  IconData? _leadingTypeIcon(AppMessage message) {
+    if (!_shouldEmphasizeGiftNicoad(
+      message,
+      emphasize: widget.emphasizeGiftNicoadComment,
+    )) {
+      return null;
+    }
+    switch (message.type) {
+      case AppMessageType.gift:
+        return Icons.card_giftcard;
+      case AppMessageType.nicoad:
+        // ニコニ広告は「広告・宣伝」のメタファとしてメガホン (Icons.campaign)
+        // を採用。`Icons.monetization_on` は通貨性が強調されすぎるため不採用。
+        return Icons.campaign;
+      case AppMessageType.chat:
+      case AppMessageType.operator:
+      case AppMessageType.notification:
+      case AppMessageType.system:
+      case AppMessageType.emotion:
         return null;
     }
   }

@@ -266,34 +266,319 @@ void main() {
       },
     );
 
-    testWidgets('does not render gift and nicoad messages on v1.2', (
-      WidgetTester tester,
-    ) async {
-      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-      final List<AppMessage> messages = <AppMessage>[
-        _message(
-          id: 'chat-visible',
-          type: AppMessageType.chat,
-          content: '通常コメント',
+    testWidgets(
+      'gift and nicoad messages are excluded from saved comment logs',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final _FakeCommentLogWriter commentLogWriter = _FakeCommentLogWriter();
+        final List<AppMessage> messages = <AppMessage>[
+          _message(
+            id: 'chat-real',
+            type: AppMessageType.chat,
+            content: '通常コメント',
+          ),
+          _message(id: 'gift-1', type: AppMessageType.gift, content: 'ギフト'),
+          _message(
+            id: 'nicoad-1',
+            type: AppMessageType.nicoad,
+            content: 'ニコニ広告',
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            autoSaveCommentLog: true,
+            commentLogWriter: commentLogWriter,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(supervisor.endBroadcast(), isTrue);
+        await tester.pumpAndSettle();
+
+        // Only the plain chat message should be persisted; gift / nicoad are
+        // excluded to preserve the CommentLogWriter contract even though they
+        // now bypass NG filters and are visible in the UI.
+        expect(commentLogWriter.lastSavedMessages, hasLength(1));
+        expect(commentLogWriter.lastSavedMessages!.single.id, 'chat-real');
+      },
+    );
+
+    group('log writer exclusion table', () {
+      // Table-driven coverage for _shouldIncludeInStatsAndLogs: for each
+      // message type we verify whether it is persisted into the saved comment
+      // log. chat / operator / notification pass through; gift / nicoad and
+      // the system broadcast-ended row are excluded.
+      final List<({String label, AppMessage input, bool expectedPersisted})>
+      cases = <({String label, AppMessage input, bool expectedPersisted})>[
+        (
+          label: 'chat is persisted',
+          input: _message(
+            id: 'chat-1',
+            type: AppMessageType.chat,
+            content: '通常コメント',
+          ),
+          expectedPersisted: true,
         ),
-        _message(id: 'gift-hidden', type: AppMessageType.gift, content: 'ギフト'),
-        _message(
-          id: 'nicoad-hidden',
-          type: AppMessageType.nicoad,
-          content: 'ニコニ広告',
+        (
+          label: 'operator is persisted',
+          input: _message(
+            id: 'operator-1',
+            type: AppMessageType.operator,
+            content: '運営コメント',
+          ),
+          expectedPersisted: true,
+        ),
+        (
+          label: 'notification is persisted',
+          input: _message(
+            id: 'notification-1',
+            type: AppMessageType.notification,
+            content: 'お知らせ',
+          ),
+          expectedPersisted: true,
+        ),
+        (
+          label: 'system broadcast-ended notification is excluded',
+          input: AppMessage(
+            id: '${kSystemBroadcastEndedMessageIdPrefix}42',
+            timestamp: DateTime(2026, 3, 22, 12, 35, 0),
+            content: '放送が終了しました',
+            type: AppMessageType.notification,
+          ),
+          expectedPersisted: false,
+        ),
+        (
+          label: 'gift is excluded',
+          input: _message(
+            id: 'gift-1',
+            type: AppMessageType.gift,
+            content: 'ギフト',
+          ),
+          expectedPersisted: false,
+        ),
+        (
+          label: 'nicoad is excluded',
+          input: _message(
+            id: 'nicoad-1',
+            type: AppMessageType.nicoad,
+            content: 'ニコニ広告',
+          ),
+          expectedPersisted: false,
         ),
       ];
 
-      await tester.pumpWidget(
-        _buildScreen(supervisor: supervisor, messages: messages),
-      );
+      for (final ({String label, AppMessage input, bool expectedPersisted})
+          testCase
+          in cases) {
+        testWidgets('${testCase.label} in saved comment log', (
+          WidgetTester tester,
+        ) async {
+          final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+          final _FakeCommentLogWriter commentLogWriter =
+              _FakeCommentLogWriter();
 
-      expect(find.byKey(const Key('comment-row-chat-visible')), findsOneWidget);
-      expect(find.byKey(const Key('comment-row-gift-hidden')), findsNothing);
-      expect(find.byKey(const Key('comment-row-nicoad-hidden')), findsNothing);
-      expect(find.text('ギフト'), findsNothing);
-      expect(find.text('ニコニ広告'), findsNothing);
+          await tester.pumpWidget(
+            _buildScreen(
+              supervisor: supervisor,
+              messages: <AppMessage>[testCase.input],
+              autoSaveCommentLog: true,
+              commentLogWriter: commentLogWriter,
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          expect(supervisor.endBroadcast(), isTrue);
+          await tester.pumpAndSettle();
+
+          final List<AppMessage> saved =
+              commentLogWriter.lastSavedMessages ?? const <AppMessage>[];
+          final bool persisted = saved.any(
+            (AppMessage m) => m.id == testCase.input.id,
+          );
+          expect(
+            persisted,
+            testCase.expectedPersisted,
+            reason:
+                'type=${testCase.input.type} id=${testCase.input.id} '
+                'expectedPersisted=${testCase.expectedPersisted}',
+          );
+        });
+      }
     });
+
+    testWidgets(
+      'renders gift and nicoad messages with shaded background when emphasize is enabled',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final AppThemeColors themeColors = AppTheme.colorsFor(
+          AppThemeMode.light,
+        );
+        final List<AppMessage> messages = <AppMessage>[
+          _message(
+            id: 'chat-visible',
+            type: AppMessageType.chat,
+            content: '通常コメント',
+          ),
+          _message(id: 'gift-1', type: AppMessageType.gift, content: 'ギフト'),
+          _message(
+            id: 'nicoad-1',
+            type: AppMessageType.nicoad,
+            content: 'ニコニ広告',
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(supervisor: supervisor, messages: messages),
+        );
+
+        expect(
+          find.byKey(const Key('comment-row-chat-visible')),
+          findsOneWidget,
+        );
+        expect(find.byKey(const Key('comment-row-gift-1')), findsOneWidget);
+        expect(find.byKey(const Key('comment-row-nicoad-1')), findsOneWidget);
+        expect(find.textContaining('ギフト'), findsWidgets);
+        expect(find.textContaining('ニコニ広告'), findsWidgets);
+
+        final Container giftRow = tester.widget(
+          find.descendant(
+            of: find.byKey(const Key('comment-row-gift-1')),
+            matching: find.byType(Container),
+          ),
+        );
+        expect(giftRow.color, themeColors.giftMessageBackground);
+
+        final Container nicoadRow = tester.widget(
+          find.descendant(
+            of: find.byKey(const Key('comment-row-nicoad-1')),
+            matching: find.byType(Container),
+          ),
+        );
+        expect(nicoadRow.color, themeColors.nicoadMessageBackground);
+
+        // Leading type icons should be rendered.
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('comment-row-gift-1')),
+            matching: find.byIcon(Icons.card_giftcard),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('comment-row-nicoad-1')),
+            matching: find.byIcon(Icons.campaign),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'gift and nicoad messages render like chat when emphasize is disabled',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          _message(id: 'gift-1', type: AppMessageType.gift, content: 'ギフト'),
+          _message(
+            id: 'nicoad-1',
+            type: AppMessageType.nicoad,
+            content: 'ニコニ広告',
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            emphasizeGiftNicoadComment: false,
+          ),
+        );
+
+        expect(find.byKey(const Key('comment-row-gift-1')), findsOneWidget);
+        expect(find.byKey(const Key('comment-row-nicoad-1')), findsOneWidget);
+
+        final Container giftRow = tester.widget(
+          find.descendant(
+            of: find.byKey(const Key('comment-row-gift-1')),
+            matching: find.byType(Container),
+          ),
+        );
+        expect(giftRow.color, isNull);
+
+        final Container nicoadRow = tester.widget(
+          find.descendant(
+            of: find.byKey(const Key('comment-row-nicoad-1')),
+            matching: find.byType(Container),
+          ),
+        );
+        expect(nicoadRow.color, isNull);
+
+        // No leading type icons should be rendered when emphasis is off.
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('comment-row-gift-1')),
+            matching: find.byIcon(Icons.card_giftcard),
+          ),
+          findsNothing,
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('comment-row-nicoad-1')),
+            matching: find.byIcon(Icons.campaign),
+          ),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'enabling emphasize does not add icons to non-gift/nicoad rows',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          _message(id: 'chat-1', type: AppMessageType.chat, content: 'A'),
+          _message(
+            id: 'operator-1',
+            type: AppMessageType.operator,
+            content: 'B',
+          ),
+          _message(
+            id: 'notification-1',
+            type: AppMessageType.notification,
+            content: 'C',
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(supervisor: supervisor, messages: messages),
+        );
+
+        // Chat / operator / notification rows must not gain gift/nicoad icons.
+        expect(find.byIcon(Icons.card_giftcard), findsNothing);
+        expect(find.byIcon(Icons.campaign), findsNothing);
+
+        // Existing backgrounds should be unchanged.
+        final Container operatorRow = tester.widget(
+          find.descendant(
+            of: find.byKey(const Key('comment-row-operator-1')),
+            matching: find.byType(Container),
+          ),
+        );
+        expect(operatorRow.color, Colors.yellow.shade100);
+
+        final Container notificationRow = tester.widget(
+          find.descendant(
+            of: find.byKey(const Key('comment-row-notification-1')),
+            matching: find.byType(Container),
+          ),
+        );
+        expect(notificationRow.color, Colors.lightBlue.shade50);
+      },
+    );
 
     testWidgets('shows stop button during active connection', (
       WidgetTester tester,
@@ -1244,6 +1529,107 @@ void main() {
 
       expect(find.byKey(const Key('comment-row-chat-normal')), findsOneWidget);
     });
+
+    testWidgets(
+      'gift / nicoad messages bypass NG user filter and stay visible',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          AppMessage(
+            id: 'gift-ng-user',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'user-ng',
+            content: 'ギフト送信',
+            type: AppMessageType.gift,
+          ),
+          AppMessage(
+            id: 'nicoad-ng-user',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 1),
+            userId: 'user-ng',
+            content: 'ニコニ広告',
+            type: AppMessageType.nicoad,
+          ),
+          AppMessage(
+            id: 'chat-ng-user',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 2),
+            userId: 'user-ng',
+            content: 'NG ユーザーのチャット',
+            type: AppMessageType.chat,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            ngUserIds: const <String>{'user-ng'},
+          ),
+        );
+
+        // gift / nicoad must not be hidden even when their userId matches NG.
+        expect(
+          find.byKey(const Key('comment-row-gift-ng-user')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('comment-row-nicoad-ng-user')),
+          findsOneWidget,
+        );
+        // Regular chat from the same NG user stays filtered (regression guard).
+        expect(find.byKey(const Key('comment-row-chat-ng-user')), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'gift / nicoad messages bypass NG word filter and stay visible',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          AppMessage(
+            id: 'gift-ng-word',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'user-1',
+            content: '広告主さんからのギフト',
+            type: AppMessageType.gift,
+          ),
+          AppMessage(
+            id: 'nicoad-ng-word',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 1),
+            userId: 'user-2',
+            content: '広告主さんのニコニ広告',
+            type: AppMessageType.nicoad,
+          ),
+          AppMessage(
+            id: 'chat-ng-word',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 2),
+            userId: 'user-3',
+            content: '広告主からのメッセージ',
+            type: AppMessageType.chat,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            ngWords: const <String>['広告主'],
+          ),
+        );
+
+        // gift / nicoad must not be hidden even when their content matches an
+        // NG word (e.g. an advertiser name).
+        expect(
+          find.byKey(const Key('comment-row-gift-ng-word')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('comment-row-nicoad-ng-word')),
+          findsOneWidget,
+        );
+        // Regular chat containing the same NG word stays filtered.
+        expect(find.byKey(const Key('comment-row-chat-ng-word')), findsNothing);
+      },
+    );
 
     testWidgets('preset NG words are also applied to display filtering', (
       WidgetTester tester,
@@ -4111,6 +4497,7 @@ Widget _buildScreen({
   int totalCommentCount = 0,
   int activeUserCount = 0,
   bool starPrefixHidingEnabled = false,
+  bool emphasizeGiftNicoadComment = true,
   bool commentTwoLineEnabled = false,
   DateTime? beginAt,
   CommentLogWriter? commentLogWriter,
@@ -4170,6 +4557,7 @@ Widget _buildScreen({
         showOperatorComment: showOperatorComment,
         showSystemMessage: showSystemMessage,
         showEmotion: showEmotion,
+        emphasizeGiftNicoadComment: emphasizeGiftNicoadComment,
       ),
       logConfig: CommentLogConfig(
         commentLogWriter: commentLogWriter,

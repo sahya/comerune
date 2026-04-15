@@ -259,6 +259,7 @@ class AppSettings {
     required this.ngWordRules,
     required this.commentTwoLineEnabled,
     required this.commentZebraStripingEnabled,
+    required this.emphasizeGiftNicoadComment,
     required this.dictionaryRules,
     required this.debugMode,
     required this.showOperatorComment,
@@ -312,6 +313,7 @@ class AppSettings {
     ngWordRules: <NgWordRule>[],
     commentTwoLineEnabled: false,
     commentZebraStripingEnabled: false,
+    emphasizeGiftNicoadComment: true,
     dictionaryRules: defaultNicoDictionaryRules,
     debugMode: false,
     showOperatorComment: true,
@@ -394,6 +396,11 @@ class AppSettings {
 
   /// コメント行にゼブラストライプ（偶数/奇数で背景色交互）を適用するかどうか。
   final bool commentZebraStripingEnabled;
+
+  /// ギフト / ニコニ広告コメントを薄い網掛け背景とアイコンで強調表示するかどうか。
+  ///
+  /// false の場合は通常コメントと同じ見た目になる（ただし種別自体は表示される）。
+  final bool emphasizeGiftNicoadComment;
 
   /// 読み上げ時のテキスト置換ルール（ニコニコ用語辞書）。
   final List<ReplaceRule> dictionaryRules;
@@ -528,6 +535,7 @@ class AppSettings {
     List<NgWordRule>? ngWordRules,
     bool? commentTwoLineEnabled,
     bool? commentZebraStripingEnabled,
+    bool? emphasizeGiftNicoadComment,
     List<ReplaceRule>? dictionaryRules,
     bool? debugMode,
     bool? showOperatorComment,
@@ -587,6 +595,8 @@ class AppSettings {
           commentTwoLineEnabled ?? this.commentTwoLineEnabled,
       commentZebraStripingEnabled:
           commentZebraStripingEnabled ?? this.commentZebraStripingEnabled,
+      emphasizeGiftNicoadComment:
+          emphasizeGiftNicoadComment ?? this.emphasizeGiftNicoadComment,
       dictionaryRules: dictionaryRules ?? this.dictionaryRules,
       debugMode: debugMode ?? this.debugMode,
       showOperatorComment: showOperatorComment ?? this.showOperatorComment,
@@ -651,6 +661,7 @@ class AppSettings {
       'ngWordRules': ngWordRules.map((NgWordRule r) => r.toMap()).toList(),
       'commentTwoLineEnabled': commentTwoLineEnabled,
       'commentZebraStripingEnabled': commentZebraStripingEnabled,
+      'emphasizeGiftNicoadComment': emphasizeGiftNicoadComment,
       'dictionaryRules': dictionaryRules
           .map((ReplaceRule r) => r.toMap())
           .toList(),
@@ -775,6 +786,9 @@ class AppSettings {
       commentZebraStripingEnabled:
           json['commentZebraStripingEnabled'] as bool? ??
           d.commentZebraStripingEnabled,
+      emphasizeGiftNicoadComment:
+          json['emphasizeGiftNicoadComment'] as bool? ??
+          d.emphasizeGiftNicoadComment,
       dictionaryRules: parseDictionaryRules(),
       debugMode: json['debugMode'] as bool? ?? d.debugMode,
       showOperatorComment:

@@ -277,6 +277,35 @@ void main() {
       expect(loaded.showEmotion, isFalse);
     });
 
+    testWidgets(
+      'toggles emphasizeGiftNicoadComment and persists value (default ON)',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
+
+        // Default must be ON.
+        AppSettings loaded = await settingsStore.load();
+        expect(loaded.emphasizeGiftNicoadComment, isTrue);
+
+        await scrollToKeyInList(
+          tester,
+          _listKey,
+          const Key('emphasize-gift-nicoad-switch'),
+        );
+        await toggleSwitchByKey(
+          tester,
+          _listKey,
+          const Key('emphasize-gift-nicoad-switch'),
+        );
+
+        loaded = await settingsStore.load();
+        expect(loaded.emphasizeGiftNicoadComment, isFalse);
+      },
+    );
+
     testWidgets('disables statistics child toggles when parent toggle is off', (
       WidgetTester tester,
     ) async {

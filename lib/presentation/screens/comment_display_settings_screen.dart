@@ -261,6 +261,26 @@ class _CommentDisplaySettingsScreenState
                   ),
                   const SizedBox(height: 12),
                   SettingsSection(
+                    title: 'コメントの強調表示',
+                    children: <Widget>[
+                      SwitchListTile(
+                        key: const Key('emphasize-gift-nicoad-switch'),
+                        title: const Text('ギフト・ニコニ広告の強調表示'),
+                        subtitle: const Text('薄い網掛け背景とアイコンで種別を分かりやすく表示'),
+                        contentPadding: EdgeInsets.zero,
+                        value: settings.emphasizeGiftNicoadComment,
+                        onChanged: (bool value) {
+                          updateAndSave(
+                            settings.copyWith(
+                              emphasizeGiftNicoadComment: value,
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  SettingsSection(
                     title: '統計表示',
                     children: <Widget>[
                       SwitchListTile(

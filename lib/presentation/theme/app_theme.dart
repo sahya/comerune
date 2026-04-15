@@ -12,6 +12,8 @@ class AppThemeColors {
     required this.statusDisconnected,
     required this.operatorMessageBackground,
     required this.notificationMessageBackground,
+    required this.giftMessageBackground,
+    required this.nicoadMessageBackground,
     required this.subtleTextColor,
     required this.ngUserActiveColor,
     required this.sheetHandleColor,
@@ -33,6 +35,19 @@ class AppThemeColors {
   final Color statusDisconnected;
   final Color operatorMessageBackground;
   final Color notificationMessageBackground;
+
+  /// Subtle shaded background used to emphasize gift messages.
+  ///
+  /// Kept low-saturation and high-lightness so the normal chat text color
+  /// still meets WCAG AA (4.5:1) contrast against it.
+  final Color giftMessageBackground;
+
+  /// Subtle shaded background used to emphasize ニコニ広告 (nicoad) messages.
+  ///
+  /// Slightly different hue from [giftMessageBackground] so the two kinds of
+  /// emphasized messages remain visually distinguishable while matching each
+  /// theme's palette.
+  final Color nicoadMessageBackground;
   final Color subtleTextColor;
   final Color ngUserActiveColor;
   final Color sheetHandleColor;
@@ -86,6 +101,8 @@ class AppTheme {
     statusDisconnected: Color(0xFFF44336),
     operatorMessageBackground: Color(0xFFFFF9C4),
     notificationMessageBackground: Color(0xFFE1F5FE),
+    giftMessageBackground: Color(0xFFEDF7EE),
+    nicoadMessageBackground: Color(0xFFFCE4EC),
     subtleTextColor: Color(0xFF757575),
     ngUserActiveColor: Color(0xFFF44336),
     sheetHandleColor: Color(0xFFBDBDBD),
@@ -110,6 +127,8 @@ class AppTheme {
     statusDisconnected: Color(0xFFEF5350),
     operatorMessageBackground: Color(0xFF5D4037),
     notificationMessageBackground: Color(0xFF1565C0),
+    giftMessageBackground: Color(0xFF2E3B2E),
+    nicoadMessageBackground: Color(0xFF3E2E47),
     subtleTextColor: Color(0xFF90A4AE),
     ngUserActiveColor: Color(0xFFEF5350),
     sheetHandleColor: Color(0xFF546E7A),
@@ -142,6 +161,8 @@ class AppTheme {
     statusDisconnected: Color(0xFFE65100),
     operatorMessageBackground: Color(0xFFFFF3E0),
     notificationMessageBackground: Color(0xFFBBDEFB),
+    giftMessageBackground: Color(0xFFECEFF1),
+    nicoadMessageBackground: Color(0xFFFFF8E1),
     subtleTextColor: Color(0xFF757575),
     ngUserActiveColor: Color(0xFFE65100),
     sheetHandleColor: Color(0xFFBDBDBD),
@@ -171,6 +192,8 @@ class AppTheme {
     statusDisconnected: Color(0xFFBF360C),
     operatorMessageBackground: Color(0xFFFFF8E1),
     notificationMessageBackground: Color(0xFFD1C4E9),
+    giftMessageBackground: Color(0xFFE1F5FE),
+    nicoadMessageBackground: Color(0xFFECEFF1),
     subtleTextColor: Color(0xFF757575),
     ngUserActiveColor: Color(0xFFBF360C),
     sheetHandleColor: Color(0xFFBDBDBD),
@@ -199,6 +222,8 @@ class AppTheme {
     statusDisconnected: Color(0xFFC62828),
     operatorMessageBackground: Color(0xFFFFEBEE),
     notificationMessageBackground: Color(0xFFB2DFDB),
+    giftMessageBackground: Color(0xFFFFF3E0),
+    nicoadMessageBackground: Color(0xFFECEFF1),
     subtleTextColor: Color(0xFF757575),
     ngUserActiveColor: Color(0xFFC62828),
     sheetHandleColor: Color(0xFFBDBDBD),

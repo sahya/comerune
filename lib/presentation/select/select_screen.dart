@@ -599,6 +599,8 @@ class _SelectScreenState extends State<SelectScreen>
                 _settingsNotifier.value.starPrefixHidingEnabled,
             slashPrefixSkipEnabled:
                 _settingsNotifier.value.slashPrefixSkipEnabled,
+            emphasizeGiftNicoadComment:
+                _settingsNotifier.value.emphasizeGiftNicoadComment,
             userColorMap: _userAttrNotifier.value.colors,
             userNicknameMap: _userAttrNotifier.value.nicknames,
             showOperatorComment: _settingsNotifier.value.showOperatorComment,
