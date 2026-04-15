@@ -276,6 +276,11 @@ class _CommentScreenState extends State<CommentScreen> {
   static const double _autoScrollResumeThreshold = 50;
   static const Duration _wakelockReleaseDelay = Duration(seconds: 45);
 
+  /// Upper bound on the keyword search text length. Pasted strings longer
+  /// than this are truncated by the TextField; keeps the AppBar search UI
+  /// from ballooning and avoids degenerate O(N*M) search with giant queries.
+  static const int _kSearchMaxLength = 100;
+
   late final ScrollController _scrollController;
   late ConnectionStatus _lastStatus;
   bool _autoScrollEnabled = true;
@@ -336,10 +341,25 @@ class _CommentScreenState extends State<CommentScreen> {
   /// snackbars (the badge still increments). 10 seconds per spec.
   static const Duration _protectionSnackBarWindow = Duration(seconds: 10);
 
+  // Comment keyword search state.
+  bool _isSearching = false;
+  String _searchQuery = '';
+  // Normalized (trimmed + lowercased) form of [_searchQuery], cached so that
+  // the per-message match check stays O(L) per message instead of recomputing
+  // the normalization on every list rebuild.
+  String _normalizedSearchQuery = '';
+  late final TextEditingController _searchController;
+  final FocusNode _searchFocusNode = FocusNode();
+  // Debounces rapid typing so we do not rebuild + re-filter the whole list
+  // on every keystroke. Kept short (150ms) so the UI still feels responsive.
+  Timer? _searchDebounceTimer;
+
   @override
   void initState() {
     super.initState();
     _scrollController = ScrollController()..addListener(_handleScroll);
+    _searchController = TextEditingController()
+      ..addListener(_handleSearchTextChanged);
     _lastStatus = widget.connectionSupervisor.status;
     widget.connectionSupervisor.addListener(_handleConnectionChanged);
 
@@ -471,7 +491,11 @@ class _CommentScreenState extends State<CommentScreen> {
       );
       _processNicknameComments(oldWidget.messages, widget.messages);
       _processNgProtectionNotifications(widget.messages);
-      if (_autoScrollEnabled && !_touchActive) {
+      // While searching, the user is reading a filtered view, so avoid
+      // forcing auto-scroll to the newest comment.
+      if (_isSearching) {
+        // no-op: auto-scroll is paused during search.
+      } else if (_autoScrollEnabled && !_touchActive) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _scrollToEdge();
         });
@@ -511,6 +535,10 @@ class _CommentScreenState extends State<CommentScreen> {
     widget.connectionSupervisor.removeListener(_handleConnectionChanged);
     _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
+    _searchDebounceTimer?.cancel();
+    _searchController.removeListener(_handleSearchTextChanged);
+    _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -1229,9 +1257,21 @@ class _CommentScreenState extends State<CommentScreen> {
               .where(_shouldDisplayMessage)
               .toList(growable: false);
 
+          // Apply keyword search filter on top of the NG filter.
+          // When not searching or when the query is empty, this is a no-op.
+          final List<AppMessage> searchedMessages = _isSearching
+              ? visibleMessages
+                    .where(_matchesSearchQuery)
+                    .toList(growable: false)
+              : visibleMessages;
+
           final List<AppMessage> sortedMessages = _applySortOrder(
-            visibleMessages,
+            searchedMessages,
           );
+          final bool showSearchEmptyState =
+              _isSearching &&
+              _normalizedSearchQuery.isNotEmpty &&
+              searchedMessages.isEmpty;
           final AppThemeMode effectiveMode = AppTheme.resolveEffectiveMode(
             widget.themeMode,
             MediaQuery.platformBrightnessOf(context),
@@ -1250,75 +1290,135 @@ class _CommentScreenState extends State<CommentScreen> {
           return Scaffold(
             appBar: AppBar(
               toolbarHeight: 44,
-              title: Text(
-                widget.programInfo.broadcasterName ?? widget.programInfo.lv,
-                key: const Key('appbar-title-text'),
-                style: const TextStyle(fontSize: 15),
-                overflow: TextOverflow.ellipsis,
-              ),
-              actions: <Widget>[
-                if (widget.speechConfig.speechSettings.enabled)
-                  _SpeechStatusIcon(
-                    key: const Key('speech-status-icon'),
-                    engineState: _speechEngineState,
-                    isStarted: _speechStarted,
-                    isInitialized: _speechInitialized,
-                    isMuted: widget.speechConfig.isSpeechMuted,
-                    themeColors: themeColors,
-                    onTap: widget.callbacks.onSpeechMuteToggled,
-                  ),
-                if (widget.logConfig.commentLogWriter != null)
-                  IconButton(
-                    key: const Key('save-comment-log-button'),
-                    icon: const Icon(Icons.archive_outlined),
-                    tooltip: 'コメントログを保存',
-                    onPressed: _isSavingLog
-                        ? null
-                        : () => unawaited(_saveLogManual()),
-                  ),
-                IconButton(
-                  key: const Key('sort-toggle-button'),
-                  icon: Icon(
-                    _sortOrder == CommentSortOrder.ascending
-                        ? Icons.arrow_downward
-                        : Icons.arrow_upward,
-                  ),
-                  tooltip: _sortOrder == CommentSortOrder.ascending
-                      ? '新しい順に切替'
-                      : '古い順に切替',
-                  onPressed: _toggleSortOrder,
-                ),
-                if (widget.filterConfig.ngProtectionNotificationEnabled &&
-                    _protectedCount > 0)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Semantics(
-                      key: const Key('ng-protection-badge'),
-                      label: '保護件数 $_protectedCount 件',
-                      container: true,
-                      child: ExcludeSemantics(
-                        // Prevent Badge.count + Icon from double-announcing
-                        // (their semantics are already covered by the
-                        // parent Semantics label above).
-                        child: Badge.count(
-                          count: _protectedCount,
-                          // TODO(#244 follow-up): make this tappable to open
-                          // a protection-log screen once that feature lands.
-                          child: const Icon(Icons.shield_outlined),
+              leading: _isSearching
+                  ? IconButton(
+                      key: const Key('search-close-button'),
+                      icon: const Icon(Icons.arrow_back),
+                      tooltip: '検索を終了',
+                      onPressed: _closeSearch,
+                    )
+                  : null,
+              title: _isSearching
+                  ? TextField(
+                      key: const Key('comment-search-field'),
+                      controller: _searchController,
+                      focusNode: _searchFocusNode,
+                      autofocus: true,
+                      textInputAction: TextInputAction.search,
+                      // Cap the query to a sensible length so users cannot
+                      // paste arbitrarily large strings; hide the default
+                      // counter since the AppBar has no room for it.
+                      maxLength: _kSearchMaxLength,
+                      // Reject control characters and bidi override code
+                      // points so pasted payloads cannot smuggle hidden
+                      // whitespace / direction overrides into the query.
+                      inputFormatters: <TextInputFormatter>[
+                        FilteringTextInputFormatter.deny(
+                          RegExp(r'[\x00-\x1F\x7F\u202A-\u202E\u2066-\u2069]'),
                         ),
+                      ],
+                      style: const TextStyle(fontSize: 15),
+                      // Hint uses the subtle color so empty-state text reads
+                      // as placeholder, while the caret uses the foreground
+                      // text color so focus/caret position stays visible in
+                      // both light and dark themes.
+                      cursorColor: Theme.of(context).colorScheme.onSurface,
+                      decoration: InputDecoration(
+                        hintText: 'コメントを検索',
+                        hintStyle: TextStyle(
+                          color: themeColors.subtleTextColor,
+                        ),
+                        border: InputBorder.none,
+                        isDense: true,
+                        counterText: '',
                       ),
+                    )
+                  : Text(
+                      widget.programInfo.broadcasterName ??
+                          widget.programInfo.lv,
+                      key: const Key('appbar-title-text'),
+                      style: const TextStyle(fontSize: 15),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                if (widget.callbacks.onOpenSettings != null)
-                  IconButton(
-                    key: const Key('settings-button'),
-                    icon: const Icon(Icons.settings),
-                    tooltip: '設定',
-                    onPressed: () async {
-                      await widget.callbacks.onOpenSettings!.call();
-                    },
-                  ),
-              ],
+              actions: _isSearching
+                  ? <Widget>[
+                      if (_searchQuery.isNotEmpty)
+                        IconButton(
+                          key: const Key('search-clear-button'),
+                          icon: const Icon(Icons.close),
+                          tooltip: '検索キーワードをクリア',
+                          onPressed: _clearSearchQuery,
+                        ),
+                    ]
+                  : <Widget>[
+                      if (widget.speechConfig.speechSettings.enabled)
+                        _SpeechStatusIcon(
+                          key: const Key('speech-status-icon'),
+                          engineState: _speechEngineState,
+                          isStarted: _speechStarted,
+                          isInitialized: _speechInitialized,
+                          isMuted: widget.speechConfig.isSpeechMuted,
+                          themeColors: themeColors,
+                          onTap: widget.callbacks.onSpeechMuteToggled,
+                        ),
+                      IconButton(
+                        key: const Key('comment-search-button'),
+                        icon: const Icon(Icons.search),
+                        tooltip: 'コメントを検索',
+                        onPressed: _openSearch,
+                      ),
+                      if (widget.logConfig.commentLogWriter != null)
+                        IconButton(
+                          key: const Key('save-comment-log-button'),
+                          icon: const Icon(Icons.archive_outlined),
+                          tooltip: 'コメントログを保存',
+                          onPressed: _isSavingLog
+                              ? null
+                              : () => unawaited(_saveLogManual()),
+                        ),
+                      IconButton(
+                        key: const Key('sort-toggle-button'),
+                        icon: Icon(
+                          _sortOrder == CommentSortOrder.ascending
+                              ? Icons.arrow_downward
+                              : Icons.arrow_upward,
+                        ),
+                        tooltip: _sortOrder == CommentSortOrder.ascending
+                            ? '新しい順に切替'
+                            : '古い順に切替',
+                        onPressed: _toggleSortOrder,
+                      ),
+                      if (widget.filterConfig.ngProtectionNotificationEnabled &&
+                          _protectedCount > 0)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: Semantics(
+                            key: const Key('ng-protection-badge'),
+                            label: '保護件数 $_protectedCount 件',
+                            container: true,
+                            child: ExcludeSemantics(
+                              // Prevent Badge.count + Icon from double-announcing
+                              // (their semantics are already covered by the
+                              // parent Semantics label above).
+                              child: Badge.count(
+                                count: _protectedCount,
+                                // TODO(#244 follow-up): make this tappable to open
+                                // a protection-log screen once that feature lands.
+                                child: const Icon(Icons.shield_outlined),
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (widget.callbacks.onOpenSettings != null)
+                        IconButton(
+                          key: const Key('settings-button'),
+                          icon: const Icon(Icons.settings),
+                          tooltip: '設定',
+                          onPressed: () async {
+                            await widget.callbacks.onOpenSettings!.call();
+                          },
+                        ),
+                    ],
             ),
             body: Column(
               children: <Widget>[
@@ -1372,55 +1472,90 @@ class _CommentScreenState extends State<CommentScreen> {
                 Expanded(
                   child: Stack(
                     children: <Widget>[
-                      Listener(
-                        onPointerDown: (_) {
-                          _touchActive = true;
-                        },
-                        onPointerUp: (_) {
-                          _touchActive = false;
-                          _checkAutoScrollResume();
-                        },
-                        onPointerCancel: (_) {
-                          _touchActive = false;
-                          _checkAutoScrollResume();
-                        },
-                        child: ListView.builder(
-                          key: const Key('comment-list'),
-                          controller: _scrollController,
-                          itemCount: sortedMessages.length,
-                          itemBuilder: (BuildContext context, int index) {
-                            final AppMessage message = sortedMessages[index];
-                            final int? userColor = message.userId != null
-                                ? widget.filterConfig.userColorMap[message
-                                      .userId!]
-                                : null;
-                            return _CommentRow(
-                              message: message,
-                              themeColors: themeColors,
-                              resolvedUserName: _resolveDisplayName(message),
-                              showUserName: widget.showUserName,
-                              fontSize: widget.commentFontSize,
-                              textScaler: textScaler,
-                              starPrefixHidingEnabled:
-                                  widget.filterConfig.starPrefixHidingEnabled,
-                              commentTwoLineEnabled:
-                                  widget.commentTwoLineEnabled,
-                              zebraStripingEnabled:
-                                  widget.commentZebraStripingEnabled,
-                              emphasizeGiftNicoadComment: widget
-                                  .filterConfig
-                                  .emphasizeGiftNicoadComment,
-                              commentIndex: index,
-                              userColor: userColor != null
-                                  ? colorFromARGB32(userColor)
-                                  : null,
-                              onLongPress: () => _showCommentActions(message),
-                              onOpenUrl: _showUrlConfirmDialog,
-                              beginAt: widget.programInfo.beginAt,
+                      if (showSearchEmptyState)
+                        Builder(
+                          key: const Key('comment-search-empty'),
+                          builder: (BuildContext context) {
+                            // Show the user's query in the empty state so they
+                            // can confirm what was searched for. Truncate long
+                            // queries to keep the AppBar-below area tidy.
+                            //
+                            // Truncate by grapheme cluster (via the
+                            // `characters` package) rather than UTF-16 code
+                            // units so we never slice an emoji / surrogate
+                            // pair in half and render `\uFFFD`.
+                            final String trimmedQuery = _searchQuery.trim();
+                            final Characters queryChars =
+                                trimmedQuery.characters;
+                            final String displayQuery = queryChars.length > 20
+                                ? '${queryChars.take(20)}...'
+                                : trimmedQuery;
+                            final String emptyMessage =
+                                '"$displayQuery" は見つかりません';
+                            // The visible text keeps the quotes for visual
+                            // emphasis, but the Semantics label drops them so
+                            // screen readers (e.g. TalkBack) do not literally
+                            // announce "double quote".
+                            final String semanticsLabel =
+                                '検索結果: $displayQuery は見つかりません';
+                            return Center(
+                              child: Semantics(
+                                label: semanticsLabel,
+                                child: Text(emptyMessage),
+                              ),
                             );
                           },
+                        )
+                      else
+                        Listener(
+                          onPointerDown: (_) {
+                            _touchActive = true;
+                          },
+                          onPointerUp: (_) {
+                            _touchActive = false;
+                            _checkAutoScrollResume();
+                          },
+                          onPointerCancel: (_) {
+                            _touchActive = false;
+                            _checkAutoScrollResume();
+                          },
+                          child: ListView.builder(
+                            key: const Key('comment-list'),
+                            controller: _scrollController,
+                            itemCount: sortedMessages.length,
+                            itemBuilder: (BuildContext context, int index) {
+                              final AppMessage message = sortedMessages[index];
+                              final int? userColor = message.userId != null
+                                  ? widget.filterConfig.userColorMap[message
+                                        .userId!]
+                                  : null;
+                              return _CommentRow(
+                                message: message,
+                                themeColors: themeColors,
+                                resolvedUserName: _resolveDisplayName(message),
+                                showUserName: widget.showUserName,
+                                fontSize: widget.commentFontSize,
+                                textScaler: textScaler,
+                                starPrefixHidingEnabled:
+                                    widget.filterConfig.starPrefixHidingEnabled,
+                                commentTwoLineEnabled:
+                                    widget.commentTwoLineEnabled,
+                                zebraStripingEnabled:
+                                    widget.commentZebraStripingEnabled,
+                                emphasizeGiftNicoadComment: widget
+                                    .filterConfig
+                                    .emphasizeGiftNicoadComment,
+                                commentIndex: index,
+                                userColor: userColor != null
+                                    ? colorFromARGB32(userColor)
+                                    : null,
+                                onLongPress: () => _showCommentActions(message),
+                                onOpenUrl: _showUrlConfirmDialog,
+                                beginAt: widget.programInfo.beginAt,
+                              );
+                            },
+                          ),
                         ),
-                      ),
                       if (!_autoScrollEnabled)
                         Positioned(
                           right: 12,
@@ -2130,6 +2265,85 @@ class _CommentScreenState extends State<CommentScreen> {
     }
 
     return true;
+  }
+
+  // ---- Keyword search ----
+
+  void _openSearch() {
+    // The TextField uses `autofocus: true`, so we rely on that to raise the
+    // keyboard instead of manually calling requestFocus after the frame.
+    setState(() {
+      _isSearching = true;
+    });
+  }
+
+  void _closeSearch() {
+    _searchDebounceTimer?.cancel();
+    _searchController.clear();
+    _searchFocusNode.unfocus();
+    setState(() {
+      _isSearching = false;
+      _searchQuery = '';
+      _normalizedSearchQuery = '';
+      // Leaving search should re-arm live-tail so any subsequent new comment
+      // pulls the list back to the newest message. We deliberately do NOT
+      // force a jump-to-end here: if the user scrolled up during search to
+      // read older context, respecting their current position matters more
+      // than snapping to the tail. The existing auto-scroll logic will
+      // catch up naturally on the next incoming message.
+      _autoScrollEnabled = true;
+    });
+  }
+
+  void _clearSearchQuery() {
+    _searchDebounceTimer?.cancel();
+    _searchController.clear();
+    // Explicitly sync state here so the clear (x) button in the AppBar `actions`
+    // disappears in the same frame as the text being cleared. Relying only on
+    // the TextEditingController listener risks a one-frame flash because the
+    // listener fires after the current build completes.
+    setState(() {
+      _searchQuery = '';
+      _normalizedSearchQuery = '';
+    });
+  }
+
+  void _handleSearchTextChanged() {
+    final String next = _searchController.text;
+    if (next == _searchQuery) {
+      return;
+    }
+    // Sync `_searchQuery` inside setState so the AppBar `actions` (e.g. the
+    // clear-x button that is conditional on `_searchQuery.isNotEmpty`) update
+    // in the same frame as the text itself. The heavier normalized-query
+    // update stays inside the debounced timer below so rapid typing does not
+    // trigger O(N) filter work on every keystroke.
+    setState(() {
+      _searchQuery = next;
+    });
+    // Debounce the actual filter recomputation. 150ms feels instantaneous
+    // to users while collapsing bursts of input into a single rebuild.
+    _searchDebounceTimer?.cancel();
+    _searchDebounceTimer = Timer(const Duration(milliseconds: 150), () {
+      if (!mounted) return;
+      setState(() {
+        _normalizedSearchQuery = _searchQuery.trim().toLowerCase();
+      });
+    });
+  }
+
+  /// Returns true when [message] matches the active search query.
+  ///
+  /// Matching is case-insensitive and applied to the comment body
+  /// (`content`) only. When the query is empty, all messages match.
+  ///
+  /// Uses the pre-normalized [_normalizedSearchQuery] to avoid recomputing
+  /// `trim().toLowerCase()` on every message during list rebuilds.
+  bool _matchesSearchQuery(AppMessage message) {
+    if (_normalizedSearchQuery.isEmpty) {
+      return true;
+    }
+    return message.content.toLowerCase().contains(_normalizedSearchQuery);
   }
 
   bool _hasNewMessages(List<AppMessage> previous, List<AppMessage> current) {

@@ -4871,6 +4871,415 @@ void main() {
       expect(twoLine, '12:00:00  運営\nお知らせ');
     });
   });
+
+  group('CommentScreen keyword search (Issue #114)', () {
+    late WakelockPlusPlatformInterface previousWakelockPlatform;
+    late _FakeWakelockPlusPlatform fakeWakelock;
+
+    setUp(() {
+      previousWakelockPlatform = wakelockPlusPlatformInstance;
+      fakeWakelock = _FakeWakelockPlusPlatform();
+      wakelockPlusPlatformInstance = fakeWakelock;
+    });
+
+    tearDown(() {
+      wakelockPlusPlatformInstance = previousWakelockPlatform;
+    });
+
+    List<AppMessage> buildMessages() {
+      return <AppMessage>[
+        _message(id: 'c1', type: AppMessageType.chat, content: 'Hello world'),
+        _message(id: 'c2', type: AppMessageType.chat, content: 'こんにちは世界'),
+        _message(id: 'c3', type: AppMessageType.chat, content: 'goodbye world'),
+      ];
+    }
+
+    testWidgets('tapping search icon expands the search bar', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(supervisor: supervisor, messages: buildMessages()),
+      );
+
+      expect(find.byKey(const Key('comment-search-field')), findsNothing);
+      expect(find.byKey(const Key('comment-search-button')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('comment-search-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('comment-search-field')), findsOneWidget);
+      expect(find.byKey(const Key('appbar-title-text')), findsNothing);
+      expect(find.byKey(const Key('search-close-button')), findsOneWidget);
+    });
+
+    testWidgets('entering a keyword filters comments to matches only', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(supervisor: supervisor, messages: buildMessages()),
+      );
+
+      await tester.tap(find.byKey(const Key('comment-search-button')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('comment-search-field')),
+        'hello',
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Hello world'), findsOneWidget);
+      expect(find.textContaining('goodbye world'), findsNothing);
+      expect(find.textContaining('こんにちは世界'), findsNothing);
+    });
+
+    testWidgets('matching is case-insensitive', (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(supervisor: supervisor, messages: buildMessages()),
+      );
+
+      await tester.tap(find.byKey(const Key('comment-search-button')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('comment-search-field')),
+        'WORLD',
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Hello world'), findsOneWidget);
+      expect(find.textContaining('goodbye world'), findsOneWidget);
+      expect(find.textContaining('こんにちは世界'), findsNothing);
+    });
+
+    testWidgets('shows "見つかりません" when no comment matches', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(supervisor: supervisor, messages: buildMessages()),
+      );
+
+      await tester.tap(find.byKey(const Key('comment-search-button')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('comment-search-field')),
+        'nonexistent-keyword',
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('comment-search-empty')), findsOneWidget);
+      // The empty state now includes the user's query so they can confirm
+      // what was searched for.
+      expect(find.text('"nonexistent-keyword" は見つかりません'), findsOneWidget);
+      expect(find.byKey(const Key('comment-list')), findsNothing);
+    });
+
+    testWidgets('long search queries are truncated in the empty state', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(supervisor: supervisor, messages: buildMessages()),
+      );
+
+      await tester.tap(find.byKey(const Key('comment-search-button')));
+      await tester.pumpAndSettle();
+
+      // 30-char query; the first 20 chars should be shown with an ellipsis.
+      const String longQuery = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+      await tester.enterText(
+        find.byKey(const Key('comment-search-field')),
+        longQuery,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('comment-search-empty')), findsOneWidget);
+      expect(find.text('"${'a' * 20}..." は見つかりません'), findsOneWidget);
+    });
+
+    testWidgets(
+      'emoji-heavy query is truncated on grapheme boundaries (no U+FFFD)',
+      (WidgetTester tester) async {
+        // Regression test for PR3 review #2 MUST-FIX item 1: truncating by
+        // UTF-16 code units slices surrogate pairs and renders U+FFFD (`�`).
+        // Switching to `characters.take()` must preserve whole emoji.
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+        await tester.pumpWidget(
+          _buildScreen(supervisor: supervisor, messages: buildMessages()),
+        );
+
+        await tester.tap(find.byKey(const Key('comment-search-button')));
+        await tester.pumpAndSettle();
+
+        // 21 party-popper emoji (each a surrogate pair in UTF-16) — the
+        // truncation threshold is 20 grapheme clusters.
+        const String emojiQuery =
+            '\u{1F389}\u{1F389}\u{1F389}\u{1F389}\u{1F389}'
+            '\u{1F389}\u{1F389}\u{1F389}\u{1F389}\u{1F389}'
+            '\u{1F389}\u{1F389}\u{1F389}\u{1F389}\u{1F389}'
+            '\u{1F389}\u{1F389}\u{1F389}\u{1F389}\u{1F389}'
+            '\u{1F389}';
+        const String emoji = '\u{1F389}';
+        final String expectedDisplay = emoji * 20;
+
+        await tester.enterText(
+          find.byKey(const Key('comment-search-field')),
+          emojiQuery,
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('comment-search-empty')), findsOneWidget);
+        expect(find.text('"$expectedDisplay..." は見つかりません'), findsOneWidget);
+        // The replacement character must NOT appear — that would indicate a
+        // surrogate pair was cut in half by substring-by-code-unit.
+        expect(find.textContaining('\uFFFD'), findsNothing);
+      },
+    );
+
+    testWidgets('debounce delays query normalization until the timer fires', (
+      WidgetTester tester,
+    ) async {
+      // Regression coverage for the 150ms debounce on _normalizedSearchQuery.
+      // Prior tests relied on pumpAndSettle() which implicitly waited past
+      // the debounce; this test verifies the timing explicitly so a future
+      // debounce tweak (e.g. raising it to 500ms) would fail loudly.
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(supervisor: supervisor, messages: buildMessages()),
+      );
+
+      await tester.tap(find.byKey(const Key('comment-search-button')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('comment-search-field')),
+        'hello',
+      );
+      // Before the 150ms debounce elapses, filtering has not yet run:
+      // every comment is still visible.
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.textContaining('Hello world'), findsOneWidget);
+      expect(find.textContaining('goodbye world'), findsOneWidget);
+      expect(find.textContaining('こんにちは世界'), findsOneWidget);
+
+      // After the debounce fires (total >= 150ms), the non-matching rows
+      // disappear.
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(find.textContaining('Hello world'), findsOneWidget);
+      expect(find.textContaining('goodbye world'), findsNothing);
+      expect(find.textContaining('こんにちは世界'), findsNothing);
+    });
+
+    testWidgets('whitespace-only query shows all comments (no empty state)', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(supervisor: supervisor, messages: buildMessages()),
+      );
+
+      await tester.tap(find.byKey(const Key('comment-search-button')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('comment-search-field')),
+        '   ',
+      );
+      await tester.pumpAndSettle();
+
+      // Empty-after-trim queries should behave like "no filter", not like
+      // "no matches".
+      expect(find.byKey(const Key('comment-search-empty')), findsNothing);
+      expect(find.textContaining('Hello world'), findsOneWidget);
+      expect(find.textContaining('goodbye world'), findsOneWidget);
+      expect(find.textContaining('こんにちは世界'), findsOneWidget);
+    });
+
+    testWidgets(
+      'new messages arriving during search are filtered by the active query',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_CommentScreenHostState> hostKey =
+            GlobalKey<_CommentScreenHostState>();
+
+        await tester.pumpWidget(
+          _CommentScreenHost(
+            key: hostKey,
+            supervisor: supervisor,
+            initialLv: 'lv345678901',
+            initialMessages: buildMessages(),
+          ),
+        );
+
+        await tester.tap(find.byKey(const Key('comment-search-button')));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(
+          find.byKey(const Key('comment-search-field')),
+          'hello',
+        );
+        await tester.pumpAndSettle();
+
+        // Baseline: only "Hello world" is visible.
+        expect(find.textContaining('Hello world'), findsOneWidget);
+        expect(find.textContaining('goodbye world'), findsNothing);
+
+        // A new comment arrives that matches the query.
+        hostKey.currentState!.addMessage(
+          _message(
+            id: 'c4',
+            type: AppMessageType.chat,
+            content: 'another hello line',
+          ),
+        );
+        // A new comment arrives that does NOT match.
+        hostKey.currentState!.addMessage(
+          _message(
+            id: 'c5',
+            type: AppMessageType.chat,
+            content: 'unrelated text',
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Matching new comment appears; non-matching new comment stays hidden.
+        expect(find.textContaining('another hello line'), findsOneWidget);
+        expect(find.textContaining('unrelated text'), findsNothing);
+        // Original non-match still hidden.
+        expect(find.textContaining('goodbye world'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'pinned comments remain visible even when they do not match the search query',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          _message(id: 'msg-pin', type: AppMessageType.chat, content: 'pin me'),
+          _message(
+            id: 'msg-other',
+            type: AppMessageType.chat,
+            content: 'hello there',
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(supervisor: supervisor, messages: messages),
+        );
+
+        // Pin the first comment before entering search mode.
+        await tester.longPress(find.byKey(const Key('comment-row-msg-pin')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('action-pin-msg-pin')));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('pinned-comments-section')),
+          findsOneWidget,
+        );
+        expect(find.byKey(const Key('pinned-row-msg-pin')), findsOneWidget);
+
+        // Search for a term that does NOT match the pinned comment.
+        await tester.tap(find.byKey(const Key('comment-search-button')));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('comment-search-field')),
+          'hello',
+        );
+        await tester.pumpAndSettle();
+
+        // Pinned section stays visible regardless of the query; the pinned
+        // row is exempt from the search filter by design.
+        expect(
+          find.byKey(const Key('pinned-comments-section')),
+          findsOneWidget,
+        );
+        expect(find.byKey(const Key('pinned-row-msg-pin')), findsOneWidget);
+
+        // The pinned comment's main-list row is hidden by the active search
+        // filter (its content "pin me" does not match "hello"). Pinned
+        // rendering MUST come from the pinned section only, not duplicated
+        // in the main list.
+        expect(find.byKey(const Key('comment-row-msg-pin')), findsNothing);
+        // Sanity: the comment that actually matches the query still renders
+        // in the main list.
+        expect(find.byKey(const Key('comment-row-msg-other')), findsOneWidget);
+      },
+    );
+
+    testWidgets('clearing the query returns to full match view', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(supervisor: supervisor, messages: buildMessages()),
+      );
+
+      await tester.tap(find.byKey(const Key('comment-search-button')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('comment-search-field')),
+        'hello',
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('goodbye world'), findsNothing);
+
+      // Clear button appears only when the query is non-empty.
+      expect(find.byKey(const Key('search-clear-button')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('search-clear-button')));
+      await tester.pumpAndSettle();
+
+      // Still in search mode, but all comments visible again.
+      expect(find.byKey(const Key('comment-search-field')), findsOneWidget);
+      expect(find.textContaining('Hello world'), findsOneWidget);
+      expect(find.textContaining('goodbye world'), findsOneWidget);
+      expect(find.textContaining('こんにちは世界'), findsOneWidget);
+    });
+
+    testWidgets('closing search restores the normal AppBar', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(supervisor: supervisor, messages: buildMessages()),
+      );
+
+      await tester.tap(find.byKey(const Key('comment-search-button')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('comment-search-field')),
+        'hello',
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('search-close-button')));
+      await tester.pumpAndSettle();
+
+      // Title is back, search bar is gone, all comments visible.
+      expect(find.byKey(const Key('comment-search-field')), findsNothing);
+      expect(find.byKey(const Key('appbar-title-text')), findsOneWidget);
+      expect(find.byKey(const Key('comment-search-button')), findsOneWidget);
+      expect(find.textContaining('Hello world'), findsOneWidget);
+      expect(find.textContaining('goodbye world'), findsOneWidget);
+      expect(find.textContaining('こんにちは世界'), findsOneWidget);
+    });
+  });
 }
 
 class _NgProtectionHost extends StatefulWidget {
