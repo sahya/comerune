@@ -148,6 +148,18 @@ PR を作成する際、対応する Issue 番号がある場合は必ず PR の
 - ユーザー向けの平易な表現を使い、技術的パラメータは必要最低限にする
 - カテゴリは「新機能」「UI改善」「品質・安定性向上」等のユーザー視点で分類する
 
+## 設定項目の変更時の注意
+
+設定項目を追加・変更・削除する際は、Export/Import 設定機能との整合性を必ず確認すること。
+
+- 追加時: Export に含めるか判断し、含めるなら Import で復元できるようにする
+- 変更時: 過去の Export ファイルを Import しても壊れないか（キー名・型・デフォルト値の後方互換性）を確認する
+- 削除時: 古い Export ファイルに該当キーが残っていても安全に無視できるようにする
+
+## ライセンスページの applicationName / applicationVersion
+
+`showLicensePage` / `AboutDialog` の `applicationName` `applicationVersion` をハードコードしないこと。`pubspec.yaml` との同期漏れでバージョン表示が古くなるリスクがあるため、`package_info_plus` 等で動的取得する。`pubspec.yaml` の `version` を変更する PR では、これらの表示が正しく更新されるかも併せて確認する。
+
 ## Forbidden Behavior
 Agents must not:
 - invent major product requirements

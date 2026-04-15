@@ -199,6 +199,20 @@ Flutter SDK が見つからない場合（コマンドが存在しない、PATH 
 - **ユーザー向けの平易な表現を使う** — 技術的なパラメータ（px値、高さ等）は必要最低限にする
 - **カテゴリは「新機能」「UI改善」「品質・安定性向上」等のユーザー視点で分類する**
 
+## 設定項目の変更時の注意
+
+設定項目を追加・変更・削除する PR をレビューする際は、Export/Import 設定機能との整合性を必ず確認すること。
+
+- 追加時: Export に含めるか判断し、含めるなら Import で復元できるか
+- 変更時: 過去の Export ファイルを Import しても壊れないか（キー名・型・デフォルト値の後方互換性）
+- 削除時: 古い Export ファイルに該当キーが残っていても安全に無視できるか
+
+差分に反映されていなければ must fix として指摘する。
+
+## ライセンスページの applicationName / applicationVersion
+
+`showLicensePage` / `AboutDialog` の `applicationName` `applicationVersion` はハードコードせず、`package_info_plus` 等で動的取得する。`pubspec.yaml` との同期漏れで古いバージョンが表示され続けるリスクがあるため、新たなハードコード追加はレビューで must fix として差し戻すこと。`pubspec.yaml` の `version` を変更する PR では、ライセンスページの表示も正しく更新されるか確認する。
+
 ## オンボーディング画面のデバッグ
 
 オンボーディング画面（`OnboardingScreen`）は初回起動時のみ表示される。SharedPreferences の `onboarding.completed` フラグで制御される。
