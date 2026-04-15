@@ -109,11 +109,18 @@ class LiveCommentRepository {
   /// [programId] must be a valid program id, [userSession] must be non-empty,
   /// and [vpos] is the 1/100-second offset from the program's `beginAt`.
   /// Caller should validate [text] length before calling.
+  ///
+  /// When [isAnonymous] is `true`, the request asks the server to treat the
+  /// comment as a 184 (anonymous) post so the viewer's nickname / id is not
+  /// displayed to other clients. When `false` (the default) the request body
+  /// is byte-identical to the pre-toggle form (`{text, vpos}`), guaranteeing
+  /// zero regression for existing callers.
   Future<CommentPostResult> postNormalComment({
     required String programId,
     required String userSession,
     required String text,
     required int vpos,
+    bool isAnonymous = false,
   }) async {
     final CommentPostResult? invalid = _checkCallInputs(
       programId: programId,
@@ -128,7 +135,15 @@ class LiveCommentRepository {
       final HttpClientRequest request = await _httpClient.postUrl(uri);
       _setCommonHeaders(request, userSession);
       request.headers.set('x-frontend-id', _frontendId);
-      request.write(jsonEncode(<String, Object>{'text': text, 'vpos': vpos}));
+      request.write(
+        jsonEncode(
+          _buildNormalCommentBody(
+            text: text,
+            vpos: vpos,
+            isAnonymous: isAnonymous,
+          ),
+        ),
+      );
 
       final HttpClientResponse response = await request.close().timeout(
         _requestTimeout,
@@ -146,6 +161,44 @@ class LiveCommentRepository {
         errorMessage: e.runtimeType.toString(),
       );
     }
+  }
+
+  /// Builds the JSON body for the normal-comment endpoint.
+  ///
+  /// Two shapes are known in the wild for the anonymous flag:
+  /// - Candidate A: `{text, vpos, modifier: {isAnonymous: true}}` (same slot
+  ///   niconico uses for color/size/position modifiers).
+  /// - Candidate B: `{text, vpos, isAnonymous: true}` (top-level — the shape
+  ///   Hakumai `NicoManager.swift` and nicolivehelperxx `main.js` both send
+  ///   over the WebSocket comment stream).
+  ///
+  /// This implementation adopts **Candidate B** because both widely-used
+  /// open-source niconico clients ship it in production. The HTTP
+  /// `POST /unama/tool/v2/programs/{lv}/comments` endpoint has not been
+  /// verified end-to-end by this project yet — see Issue #463's "実機検証"
+  /// note.
+  ///
+  /// Invariants:
+  /// - When [isAnonymous] is `false` the `isAnonymous` key is omitted
+  ///   entirely. The resulting body is byte-identical to the pre-toggle
+  ///   `{text, vpos}` body so the default call path is guaranteed free of
+  ///   regressions.
+  /// - When [isAnonymous] is `true` the flag is placed at the top level.
+  ///
+  /// TODO(#463): After a live-server trial confirms which shape the HTTP
+  /// endpoint accepts, either remove this TODO (if Candidate B is correct)
+  /// or switch the `isAnonymous: true` branch to emit
+  /// `modifier: {isAnonymous: true}` instead. The switch is one-line because
+  /// the body construction is localised to this helper.
+  static Map<String, Object> _buildNormalCommentBody({
+    required String text,
+    required int vpos,
+    required bool isAnonymous,
+  }) {
+    if (!isAnonymous) {
+      return <String, Object>{'text': text, 'vpos': vpos};
+    }
+    return <String, Object>{'text': text, 'vpos': vpos, 'isAnonymous': true};
   }
 
   void _setCommonHeaders(HttpClientRequest request, String userSession) {

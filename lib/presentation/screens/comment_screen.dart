@@ -1160,6 +1160,7 @@ class _CommentScreenState extends State<CommentScreen> {
     required String text,
     required bool asOperator,
     required int maxLength,
+    required bool isAnonymous,
   }) async {
     final CommentPostController? controller = widget.commentPostController;
     if (controller == null) {
@@ -1174,6 +1175,7 @@ class _CommentScreenState extends State<CommentScreen> {
       asOperator: asOperator,
       beginAt: widget.programInfo.beginAt,
       maxLength: maxLength,
+      isAnonymous: isAnonymous,
     );
     if (!mounted) {
       return result;

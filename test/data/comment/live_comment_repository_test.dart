@@ -354,6 +354,106 @@ void main() {
         repository.dispose();
       });
 
+      test('omits isAnonymous from body when isAnonymous defaults to false '
+          '(byte-compat with pre-toggle callers)', () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseStatusCode = 200;
+        httpClient.responseBody = '';
+
+        final LiveCommentRepository repository = LiveCommentRepository(
+          httpClient: httpClient,
+        );
+
+        await repository.postNormalComment(
+          programId: 'lv345678901',
+          userSession: 'test_session',
+          text: 'hi',
+          vpos: 0,
+        );
+
+        final _CapturedRequest request = httpClient.requests.single;
+        // Must match the pre-toggle body exactly so that existing call
+        // sites retain identical wire output.
+        expect(
+          request.body,
+          jsonEncode(<String, Object>{'text': 'hi', 'vpos': 0}),
+        );
+        expect(request.body, isNot(contains('isAnonymous')));
+
+        repository.dispose();
+      });
+
+      test(
+        'omits isAnonymous from body when isAnonymous=false is explicit',
+        () async {
+          final _FakeHttpClient httpClient = _FakeHttpClient();
+          httpClient.responseStatusCode = 200;
+          httpClient.responseBody = '';
+
+          final LiveCommentRepository repository = LiveCommentRepository(
+            httpClient: httpClient,
+          );
+
+          await repository.postNormalComment(
+            programId: 'lv345678901',
+            userSession: 'test_session',
+            text: 'hi',
+            vpos: 7,
+            isAnonymous: false,
+          );
+
+          final _CapturedRequest request = httpClient.requests.single;
+          expect(
+            request.body,
+            jsonEncode(<String, Object>{'text': 'hi', 'vpos': 7}),
+          );
+          expect(request.body, isNot(contains('isAnonymous')));
+
+          repository.dispose();
+        },
+      );
+
+      test('includes top-level isAnonymous=true when isAnonymous=true '
+          '(candidate B shape)', () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseStatusCode = 200;
+        httpClient.responseBody = '';
+
+        final LiveCommentRepository repository = LiveCommentRepository(
+          httpClient: httpClient,
+        );
+
+        final CommentPostResult result = await repository.postNormalComment(
+          programId: 'lv345678901',
+          userSession: 'test_session',
+          text: '匿名テスト',
+          vpos: 99,
+          isAnonymous: true,
+        );
+        expect(result.success, isTrue);
+
+        final _CapturedRequest request = httpClient.requests.single;
+        // The current implementation adopts candidate B (top-level flag),
+        // matching Hakumai / nicolivehelperxx. Assert the exact shape so
+        // a future regression to nested `modifier.isAnonymous` is caught.
+        final Map<String, Object?> decoded =
+            jsonDecode(request.body!) as Map<String, Object?>;
+        expect(decoded['text'], '匿名テスト');
+        expect(decoded['vpos'], 99);
+        expect(decoded['isAnonymous'], isTrue);
+        expect(
+          decoded.containsKey('modifier'),
+          isFalse,
+          reason:
+              'candidate B shape does not include a modifier object; '
+              'if the live-server trial proves candidate A is needed, '
+              'this assertion and the body builder must be updated '
+              'together.',
+        );
+
+        repository.dispose();
+      });
+
       test('maps HTTP 429 to RATE_LIMITED', () async {
         final _FakeHttpClient httpClient = _FakeHttpClient();
         httpClient.responseStatusCode = 429;

@@ -325,6 +325,7 @@ void main() {
               required String text,
               required bool asOperator,
               required int maxLength,
+              required bool isAnonymous,
             }) async {
               capturedMaxLength = maxLength;
               return const CommentSendResult.posted(
@@ -418,6 +419,288 @@ void main() {
       },
     );
 
+    testWidgets('shows anonymous toggle for viewer (default 名札付き)', (
+      WidgetTester tester,
+    ) async {
+      await _pump(
+        tester,
+        isLoggedIn: true,
+        isBroadcaster: false,
+        onSend: _successSend,
+      );
+      await tester.tap(find.byKey(const Key('comment-post-fab')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('comment-post-anonymous-toggle')),
+        findsOneWidget,
+      );
+      // Default copy: 名札付き (icon: Icons.person).
+      expect(find.text('名札付き'), findsOneWidget);
+    });
+
+    testWidgets('broadcaster + 通常 mode shows anonymous toggle', (
+      WidgetTester tester,
+    ) async {
+      await _pump(
+        tester,
+        isLoggedIn: true,
+        isBroadcaster: true,
+        onSend: _successSend,
+      );
+      await tester.tap(find.byKey(const Key('comment-post-fab')));
+      await tester.pumpAndSettle();
+
+      // Default for broadcaster is 運営; flip to 通常 first.
+      await tester.tap(find.byKey(const Key('comment-post-operator-toggle')));
+      await tester.pump();
+
+      expect(
+        find.byKey(const Key('comment-post-anonymous-toggle')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('broadcaster + 運営 mode hides anonymous toggle', (
+      WidgetTester tester,
+    ) async {
+      await _pump(
+        tester,
+        isLoggedIn: true,
+        isBroadcaster: true,
+        onSend: _successSend,
+      );
+      await tester.tap(find.byKey(const Key('comment-post-fab')));
+      await tester.pumpAndSettle();
+
+      // Broadcaster defaults to 運営 mode → anonymous toggle must be hidden.
+      expect(
+        find.byKey(const Key('comment-post-anonymous-toggle')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('tapping anonymous toggle swaps label to 名札なし', (
+      WidgetTester tester,
+    ) async {
+      await _pump(
+        tester,
+        isLoggedIn: true,
+        isBroadcaster: false,
+        onSend: _successSend,
+      );
+      await tester.tap(find.byKey(const Key('comment-post-fab')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('名札付き'), findsOneWidget);
+      expect(find.text('名札なし'), findsNothing);
+
+      await tester.tap(find.byKey(const Key('comment-post-anonymous-toggle')));
+      await tester.pump();
+
+      expect(find.text('名札付き'), findsNothing);
+      expect(find.text('名札なし'), findsOneWidget);
+    });
+
+    testWidgets('send forwards isAnonymous=false by default', (
+      WidgetTester tester,
+    ) async {
+      bool? captured;
+      await _pump(
+        tester,
+        isLoggedIn: true,
+        isBroadcaster: false,
+        onSend:
+            ({
+              required String text,
+              required bool asOperator,
+              required int maxLength,
+              required bool isAnonymous,
+            }) async {
+              captured = isAnonymous;
+              return _successResult();
+            },
+      );
+      await tester.tap(find.byKey(const Key('comment-post-fab')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('comment-post-textfield')),
+        'hi',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('comment-post-send-button')));
+      await tester.pumpAndSettle();
+
+      expect(captured, isFalse);
+    });
+
+    testWidgets('send forwards isAnonymous=true when toggled on', (
+      WidgetTester tester,
+    ) async {
+      bool? captured;
+      await _pump(
+        tester,
+        isLoggedIn: true,
+        isBroadcaster: false,
+        onSend:
+            ({
+              required String text,
+              required bool asOperator,
+              required int maxLength,
+              required bool isAnonymous,
+            }) async {
+              captured = isAnonymous;
+              return _successResult();
+            },
+      );
+      await tester.tap(find.byKey(const Key('comment-post-fab')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('comment-post-anonymous-toggle')));
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(const Key('comment-post-textfield')),
+        'hi',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('comment-post-send-button')));
+      await tester.pumpAndSettle();
+
+      expect(captured, isTrue);
+    });
+
+    testWidgets(
+      'switching broadcaster to 運営 resets anonymous selection to false',
+      (WidgetTester tester) async {
+        bool? captured;
+        await _pump(
+          tester,
+          isLoggedIn: true,
+          isBroadcaster: true,
+          onSend:
+              ({
+                required String text,
+                required bool asOperator,
+                required int maxLength,
+                required bool isAnonymous,
+              }) async {
+                captured = isAnonymous;
+                return _successResult();
+              },
+        );
+        await tester.tap(find.byKey(const Key('comment-post-fab')));
+        await tester.pumpAndSettle();
+
+        // Go to 通常 mode, turn anonymous on, then go back to 運営.
+        await tester.tap(find.byKey(const Key('comment-post-operator-toggle')));
+        await tester.pump();
+        await tester.tap(
+          find.byKey(const Key('comment-post-anonymous-toggle')),
+        );
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('comment-post-operator-toggle')));
+        await tester.pump();
+
+        // Anonymous toggle must be hidden in 運営 mode.
+        expect(
+          find.byKey(const Key('comment-post-anonymous-toggle')),
+          findsNothing,
+        );
+
+        // Flip back to 通常 — anonymous must be reset to false.
+        await tester.tap(find.byKey(const Key('comment-post-operator-toggle')));
+        await tester.pump();
+        expect(find.text('名札付き'), findsOneWidget);
+        expect(find.text('名札なし'), findsNothing);
+
+        // And sending confirms it.
+        await tester.enterText(
+          find.byKey(const Key('comment-post-textfield')),
+          'hi',
+        );
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('comment-post-send-button')));
+        await tester.pumpAndSettle();
+        expect(captured, isFalse);
+      },
+    );
+
+    testWidgets('operator comment never forwards isAnonymous=true', (
+      WidgetTester tester,
+    ) async {
+      // Defence-in-depth: even if somehow the toggle state leaked, the send
+      // method must clamp isAnonymous to false for operator posts.
+      bool? captured;
+      await _pump(
+        tester,
+        isLoggedIn: true,
+        isBroadcaster: true,
+        onSend:
+            ({
+              required String text,
+              required bool asOperator,
+              required int maxLength,
+              required bool isAnonymous,
+            }) async {
+              captured = isAnonymous;
+              return _successResult();
+            },
+      );
+      await tester.tap(find.byKey(const Key('comment-post-fab')));
+      await tester.pumpAndSettle();
+      // Broadcaster defaults to 運営 mode.
+      await tester.enterText(
+        find.byKey(const Key('comment-post-textfield')),
+        'op',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('comment-post-send-button')));
+      await tester.pumpAndSettle();
+      expect(captured, isFalse);
+    });
+
+    testWidgets('anonymous toggle exposes Semantics(button, toggled)', (
+      WidgetTester tester,
+    ) async {
+      await _pump(
+        tester,
+        isLoggedIn: true,
+        isBroadcaster: false,
+        onSend: _successSend,
+      );
+      await tester.tap(find.byKey(const Key('comment-post-fab')));
+      await tester.pumpAndSettle();
+
+      final Finder toggle = find.byKey(
+        const Key('comment-post-anonymous-toggle'),
+      );
+      // Initial state: toggled=false.
+      final Finder semanticsBefore = find
+          .ancestor(
+            of: toggle,
+            matching: find.byWidgetPredicate(
+              (Widget w) => w is Semantics && (w.properties.button ?? false),
+            ),
+          )
+          .first;
+      final Semantics before = tester.widget<Semantics>(semanticsBefore);
+      expect(before.properties.button, isTrue);
+      expect(before.properties.toggled, isFalse);
+
+      await tester.tap(toggle);
+      await tester.pump();
+
+      final Finder semanticsAfter = find
+          .ancestor(
+            of: toggle,
+            matching: find.byWidgetPredicate(
+              (Widget w) => w is Semantics && (w.properties.button ?? false),
+            ),
+          )
+          .first;
+      final Semantics after = tester.widget<Semantics>(semanticsAfter);
+      expect(after.properties.toggled, isTrue);
+    });
+
     testWidgets('close button collapses without sending', (
       WidgetTester tester,
     ) async {
@@ -431,6 +714,7 @@ void main() {
               required String text,
               required bool asOperator,
               required int maxLength,
+              required bool isAnonymous,
             }) async {
               sendCount++;
               return _successResult();
@@ -622,6 +906,7 @@ Future<CommentSendResult> _successSend({
   required String text,
   required bool asOperator,
   required int maxLength,
+  required bool isAnonymous,
 }) async {
   return _successResult();
 }
@@ -630,6 +915,7 @@ Future<CommentSendResult> _failureSend({
   required String text,
   required bool asOperator,
   required int maxLength,
+  required bool isAnonymous,
 }) async {
   return const CommentSendResult.posted(
     CommentPostResult(

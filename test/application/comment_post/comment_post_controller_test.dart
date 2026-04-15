@@ -380,6 +380,77 @@ void main() {
       },
     );
 
+    test(
+      'forwards isAnonymous=true to the normal-comment endpoint body',
+      () async {
+        final _FakeHttpClient fake = _FakeHttpClient();
+        fake.responseStatusCode = 200;
+        fake.responseBody = '';
+        final CommentPostController controller = _buildController(fake);
+
+        final CommentSendResult result = await controller.postComment(
+          lv: 'lv1',
+          userSession: 'session',
+          text: 'anon',
+          asOperator: false,
+          isAnonymous: true,
+        );
+
+        expect(result.isSuccess, isTrue);
+        final _CapturedRequest request = fake.requests.single;
+        final Map<String, Object?> decoded =
+            jsonDecode(request.body!) as Map<String, Object?>;
+        expect(decoded['isAnonymous'], isTrue);
+      },
+    );
+
+    test(
+      'omits isAnonymous from the body when the UI sends the default false',
+      () async {
+        final _FakeHttpClient fake = _FakeHttpClient();
+        fake.responseStatusCode = 200;
+        fake.responseBody = '';
+        final CommentPostController controller = _buildController(fake);
+
+        await controller.postComment(
+          lv: 'lv1',
+          userSession: 'session',
+          text: 'normal',
+          asOperator: false,
+        );
+
+        final _CapturedRequest request = fake.requests.single;
+        expect(request.body, isNot(contains('isAnonymous')));
+      },
+    );
+
+    test(
+      'ignores isAnonymous for operator comments (operator body unaffected)',
+      () async {
+        final _FakeHttpClient fake = _FakeHttpClient();
+        fake.responseStatusCode = 200;
+        fake.responseBody = '';
+        final CommentPostController controller = _buildController(fake);
+
+        final CommentSendResult result = await controller.postComment(
+          lv: 'lv1',
+          userSession: 'session',
+          text: 'op',
+          asOperator: true,
+          isAnonymous: true,
+        );
+
+        expect(result.isSuccess, isTrue);
+        final _CapturedRequest request = fake.requests.single;
+        // Operator endpoint body must stay `{text, isPermCommand}` — never
+        // isAnonymous.
+        expect(request.body, isNot(contains('isAnonymous')));
+        final Map<String, Object?> decoded =
+            jsonDecode(request.body!) as Map<String, Object?>;
+        expect(decoded.keys, containsAll(<String>['text', 'isPermCommand']));
+      },
+    );
+
     test('propagates server error from repository', () async {
       final _FakeHttpClient fake = _FakeHttpClient();
       fake.responseStatusCode = 403;

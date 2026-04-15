@@ -15,6 +15,11 @@ typedef CommentSendCallback =
       /// send. Passed through to the controller's validator so client-side
       /// checks stay in sync with the UI counter (SSOT).
       required int maxLength,
+
+      /// When `true`, the viewer asked to post as 184 (anonymous: no
+      /// nickname / id shown to other clients). Ignored for operator
+      /// comments (operator posts are always labelled "運営" server-side).
+      required bool isAnonymous,
     });
 
 /// Semi-transparent floating action button that opens the comment-post
@@ -106,6 +111,14 @@ class _CommentInputBarState extends State<CommentInputBar> {
   /// issue spec). Kept on state so the selection survives draft editing.
   bool _asOperator = true;
 
+  /// Whether the viewer asked to post as 184 (anonymous). Defaults to
+  /// `false` (=名札付き) per Issue #463. Reset back to `false` whenever
+  /// the bar switches into operator mode so a stale anonymous selection
+  /// cannot leak into a subsequent normal-mode post — operator mode has
+  /// no anonymous concept, and Issue #463 prefers a simple reset policy
+  /// over restoring the previous value.
+  bool _isAnonymous = false;
+
   @override
   void initState() {
     super.initState();
@@ -135,6 +148,9 @@ class _CommentInputBarState extends State<CommentInputBar> {
       // overlay opens. Per the Issue #123 spec the broadcaster default is
       // operator mode, so flip the toggle on the transition.
       _asOperator = true;
+      // The anonymous toggle has no meaning in operator mode — reset it
+      // so the next normal-mode flip starts from the "名札付き" default.
+      _isAnonymous = false;
     }
   }
 
@@ -173,6 +189,11 @@ class _CommentInputBarState extends State<CommentInputBar> {
     }
     final String text = value.text;
     final bool asOperator = widget.isBroadcaster && _asOperator;
+    // The anonymous flag is meaningful only for normal comments. Operator
+    // comments are always labelled "運営" server-side and the operator
+    // endpoint accepts no such field, so we deliberately clamp it to
+    // `false` on the wire regardless of any residual UI state.
+    final bool isAnonymous = !asOperator && _isAnonymous;
 
     setState(() {
       _sending = true;
@@ -183,6 +204,7 @@ class _CommentInputBarState extends State<CommentInputBar> {
         text: text,
         asOperator: asOperator,
         maxLength: _maxLength,
+        isAnonymous: isAnonymous,
       );
       if (!mounted) {
         widget.onSendingChanged?.call(false);
@@ -236,6 +258,30 @@ class _CommentInputBarState extends State<CommentInputBar> {
                       onChanged: (bool value) {
                         setState(() {
                           _asOperator = value;
+                          if (value) {
+                            // Switching to operator mode drops the
+                            // anonymous selection — the operator endpoint
+                            // has no such flag and a stale `true` would
+                            // silently revive on the next normal-mode
+                            // flip, surprising the user.
+                            _isAnonymous = false;
+                          }
+                        });
+                      },
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                  // The 184 toggle is visible for viewers and for
+                  // broadcasters while the mode toggle is on "通常".
+                  // Operator mode hides it because the endpoint has no
+                  // `isAnonymous` field and operator posts are labelled
+                  // "運営" by the server.
+                  if (!(widget.isBroadcaster && _asOperator)) ...<Widget>[
+                    _AnonymousToggle(
+                      isAnonymous: _isAnonymous,
+                      onChanged: (bool value) {
+                        setState(() {
+                          _isAnonymous = value;
                         });
                       },
                     ),
@@ -324,6 +370,59 @@ class _CommentInputBarState extends State<CommentInputBar> {
                           ),
                         );
                       },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Two-state toggle that lets the viewer choose between a "名札付き"
+/// (nickname shown) post and a "名札なし" (184 anonymous) post.
+///
+/// Mirrors the look and a11y contract of [_OperatorToggle] so screen
+/// readers describe the two toggles consistently.
+class _AnonymousToggle extends StatelessWidget {
+  const _AnonymousToggle({required this.isAnonymous, required this.onChanged});
+
+  final bool isAnonymous;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    return Semantics(
+      button: true,
+      toggled: isAnonymous,
+      label: isAnonymous ? '名札なしモード（選択中）' : '名札付きモード（選択中）',
+      hint: 'タップで名札付きと名札なしを切り替え',
+      child: InkWell(
+        key: const Key('comment-post-anonymous-toggle'),
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => onChanged(!isAnonymous),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(
+                isAnonymous ? Icons.person_off : Icons.person,
+                size: 18,
+                color: isAnonymous
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                isAnonymous ? '名札なし' : '名札付き',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: isAnonymous
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ],

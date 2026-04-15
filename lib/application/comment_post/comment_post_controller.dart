@@ -201,6 +201,12 @@ class CommentPostController {
   /// Guards against concurrent sends: if a send is already in progress, this
   /// call returns a validation error `empty` (the UI disables the button, so
   /// this is mostly defensive).
+  /// [isAnonymous] requests a 184 (anonymous) post for normal comments. It
+  /// is **ignored for operator comments** since the operator endpoint has
+  /// no such flag and operator posts are rendered under the "運営" label
+  /// regardless. Defaults to `false` so existing non-toggle call sites
+  /// retain the pre-toggle behaviour (comment posted with the viewer's
+  /// nickname / id).
   Future<CommentSendResult> postComment({
     required String lv,
     required String userSession,
@@ -209,6 +215,7 @@ class CommentPostController {
     DateTime? beginAt,
     DateTime? now,
     int? maxLength,
+    bool isAnonymous = false,
   }) async {
     if (_disposed) {
       return const CommentSendResult.validation(
@@ -263,6 +270,7 @@ class CommentPostController {
           userSession: userSession,
           text: text,
           vpos: vpos,
+          isAnonymous: isAnonymous,
         );
       }
       return CommentSendResult.posted(result);
