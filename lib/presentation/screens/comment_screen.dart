@@ -79,6 +79,32 @@ void _errorLog(String message, {Object? error, StackTrace? stackTrace}) {
   );
 }
 
+/// Resolves the display name string for a comment header.
+///
+/// - Chat comments: `"<resolvedName> (<userId>)"` or `"<userId>"` when the
+///   user ID is present (existing behavior).
+/// - Operator (運営) comments: the payload's `userName` (e.g. "運営") since
+///   operator comments are normalized with `userId: null`, so the user-ID
+///   based path above would otherwise silently drop the label.
+/// - Returns `null` when no meaningful label can be rendered.
+///
+/// This is a top-level function so pinned rows, clipboard formatting and the
+/// main `_CommentRow` all share the same fallback behaviour.
+String? _displayNameForMessage(AppMessage message, {String? resolvedUserName}) {
+  if (message.type == AppMessageType.operator) {
+    final String? userName = message.userName;
+    if (userName != null && userName.isNotEmpty) {
+      return userName;
+    }
+    return null;
+  }
+  final String? userId = message.userId;
+  if (userId == null || userId.isEmpty) {
+    return null;
+  }
+  return resolvedUserName != null ? '$resolvedUserName ($userId)' : userId;
+}
+
 String _commentLineText({
   required AppMessage message,
   required bool showUserName,
@@ -94,21 +120,45 @@ String _commentLineText({
     return '$timestamp  $content';
   }
 
-  final String userId = message.userId ?? '';
+  final String? displayName = _displayNameForMessage(
+    message,
+    resolvedUserName: resolvedUserName,
+  );
 
-  if (userId.isEmpty) {
+  if (displayName == null) {
     return '$timestamp  $content';
   }
-
-  final String displayName = resolvedUserName != null
-      ? '$resolvedUserName ($userId)'
-      : userId;
 
   if (twoLine) {
     return '$timestamp  $displayName\n$content';
   }
 
   return '$timestamp  $displayName  $content';
+}
+
+/// Test-only accessor for [_commentLineText].
+///
+/// Exposed so unit tests can pin operator-message formatting (both one-line
+/// and two-line modes) without routing through widget tree inspection. The
+/// real function stays private; this wrapper is a thin delegation and must
+/// not be called from production code.
+@visibleForTesting
+String commentLineTextForTesting({
+  required AppMessage message,
+  required bool showUserName,
+  String? resolvedUserName,
+  String? contentOverride,
+  DateTime? beginAt,
+  bool twoLine = false,
+}) {
+  return _commentLineText(
+    message: message,
+    showUserName: showUserName,
+    resolvedUserName: resolvedUserName,
+    contentOverride: contentOverride,
+    beginAt: beginAt,
+    twoLine: twoLine,
+  );
 }
 
 enum CommentSortOrder { ascending, descending }
@@ -1700,8 +1750,22 @@ class _CommentScreenState extends State<CommentScreen> {
   bool _shouldDisplayMessage(AppMessage message) {
     switch (message.type) {
       case AppMessageType.chat:
-      case AppMessageType.operator:
       case AppMessageType.notification:
+        break;
+      case AppMessageType.operator:
+        if (!widget.filterConfig.showOperatorComment) {
+          return false;
+        }
+        break;
+      case AppMessageType.system:
+        if (!widget.filterConfig.showSystemMessage) {
+          return false;
+        }
+        break;
+      case AppMessageType.emotion:
+        if (!widget.filterConfig.showEmotion) {
+          return false;
+        }
         break;
       case AppMessageType.gift:
       case AppMessageType.nicoad:
@@ -2897,6 +2961,14 @@ class _PinnedCommentRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool useTwoLine = commentTwoLineEnabled && showUserName;
+    // Operator (運営) rows must keep the theme's operator text color even when
+    // pinned; the per-user [userColor] is null for operator messages because
+    // they normalize with userId=null, which previously caused the red
+    // "warning" tone to degrade to the default text color inside the pinned
+    // panel.
+    final Color? effectiveUserColor = message.type == AppMessageType.operator
+        ? themeColors.operatorTextColor
+        : userColor;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
@@ -2912,7 +2984,10 @@ class _PinnedCommentRow extends StatelessWidget {
                       resolvedUserName: resolvedUserName,
                       beginAt: beginAt,
                     ),
-                    style: TextStyle(fontSize: fontSize, color: userColor),
+                    style: TextStyle(
+                      fontSize: fontSize,
+                      color: effectiveUserColor,
+                    ),
                   ),
           ),
           SizedBox(
@@ -2938,32 +3013,57 @@ class _PinnedCommentRow extends StatelessWidget {
   /// because pinned rows don't support star-prefix hiding or hidden state.
   Widget _buildTwoLinePinned(BuildContext context) {
     final String timestamp = _formatHms(message.timestamp, beginAt: beginAt);
-    final String? userId = message.userId;
     final double metaFontSize = (fontSize * _twoLineMetaFontRatio).clamp(
       _twoLineMinMetaFontSize,
       fontSize,
     );
     final Color metaColor = themeColors.subtleTextColor;
+    // Operator rows use the theme's operator text color (typically red) for
+    // the body and the displayName label, matching _CommentRow behavior so
+    // the "warning" semantic survives the pin action.
+    final Color? effectiveUserColor = message.type == AppMessageType.operator
+        ? themeColors.operatorTextColor
+        : userColor;
 
-    final StringBuffer metaBuffer = StringBuffer(timestamp);
-    if (userId != null && userId.isNotEmpty) {
-      final String displayName = resolvedUserName != null
-          ? '$resolvedUserName ($userId)'
-          : userId;
-      metaBuffer.write('  $displayName');
+    // Use the shared display-name resolver so operator (運営) rows that
+    // normalize with userId=null still render their label.
+    final String? displayName = _displayNameForMessage(
+      message,
+      resolvedUserName: resolvedUserName,
+    );
+
+    final List<InlineSpan> metaSpans = <InlineSpan>[
+      TextSpan(
+        text: timestamp,
+        style: TextStyle(fontSize: metaFontSize, color: metaColor),
+      ),
+    ];
+    if (displayName != null) {
+      metaSpans.add(
+        TextSpan(
+          text: '  ',
+          style: TextStyle(fontSize: metaFontSize, color: metaColor),
+        ),
+      );
+      metaSpans.add(
+        TextSpan(
+          text: displayName,
+          style: TextStyle(
+            fontSize: metaFontSize,
+            color: effectiveUserColor ?? metaColor,
+          ),
+        ),
+      );
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(
-          metaBuffer.toString(),
-          style: TextStyle(fontSize: metaFontSize, color: metaColor),
-        ),
+        Text.rich(TextSpan(children: metaSpans)),
         const SizedBox(height: 2),
         Text(
           message.content,
-          style: TextStyle(fontSize: fontSize, color: userColor),
+          style: TextStyle(fontSize: fontSize, color: effectiveUserColor),
         ),
       ],
     );
@@ -3087,6 +3187,12 @@ class _CommentRowState extends State<_CommentRow> {
     final double fontSize = widget.fontSize;
     final Color timestampColor = widget.themeColors.subtleTextColor;
     final Color idColor = widget.themeColors.subtleTextColor;
+    // Operator (運営) comments are rendered in the theme's operator text color
+    // (typically red) regardless of the per-user color, so broadcaster
+    // announcements stand out. (Issue #322)
+    final Color? effectiveUserColor = message.type == AppMessageType.operator
+        ? widget.themeColors.operatorTextColor
+        : widget.userColor;
     const double minSubFontSize = 9.0;
     final double timestampFontSize = hidden
         ? fontSize
@@ -3117,6 +3223,7 @@ class _CommentRowState extends State<_CommentRow> {
         idFontSize: twoLineMetaSize,
         timestampColor: timestampColor,
         idColor: idColor,
+        effectiveUserColor: effectiveUserColor,
       );
     }
 
@@ -3132,18 +3239,15 @@ class _CommentRowState extends State<_CommentRow> {
     ];
 
     if (widget.showUserName) {
-      final String? userId = message.userId;
-      if (userId != null && userId.isNotEmpty) {
-        final String displayName = widget.resolvedUserName != null
-            ? '${widget.resolvedUserName} ($userId)'
-            : userId;
+      final String? displayName = _displayNameFor(message);
+      if (displayName != null) {
         spans.add(const TextSpan(text: '  '));
         spans.add(
           TextSpan(
             text: displayName,
             style: TextStyle(
               fontSize: idFontSize,
-              color: hidden ? Colors.grey : (widget.userColor ?? idColor),
+              color: hidden ? Colors.grey : (effectiveUserColor ?? idColor),
               fontWeight: hidden ? null : FontWeight.w500,
               fontStyle: hidden ? FontStyle.italic : null,
             ),
@@ -3154,7 +3258,7 @@ class _CommentRowState extends State<_CommentRow> {
 
     final TextStyle contentStyle = TextStyle(
       fontSize: fontSize,
-      color: hidden ? Colors.grey : widget.userColor,
+      color: hidden ? Colors.grey : effectiveUserColor,
       fontStyle: hidden ? FontStyle.italic : null,
     );
 
@@ -3171,6 +3275,17 @@ class _CommentRowState extends State<_CommentRow> {
     return Text.rich(TextSpan(children: spans));
   }
 
+  /// Resolves the display name string for the comment-row header.
+  ///
+  /// Thin instance wrapper around the top-level [_displayNameForMessage];
+  /// kept here to preserve the existing call sites inside `_CommentRowState`.
+  String? _displayNameFor(AppMessage message) {
+    return _displayNameForMessage(
+      message,
+      resolvedUserName: widget.resolvedUserName,
+    );
+  }
+
   Widget _buildTwoLineComment({
     required BuildContext context,
     required String timestamp,
@@ -3182,6 +3297,7 @@ class _CommentRowState extends State<_CommentRow> {
     required double idFontSize,
     required Color timestampColor,
     required Color idColor,
+    Color? effectiveUserColor,
   }) {
     final List<InlineSpan> metaSpans = <InlineSpan>[
       TextSpan(
@@ -3195,18 +3311,15 @@ class _CommentRowState extends State<_CommentRow> {
     ];
 
     if (widget.showUserName) {
-      final String? userId = widget.message.userId;
-      if (userId != null && userId.isNotEmpty) {
-        final String displayName = widget.resolvedUserName != null
-            ? '${widget.resolvedUserName} ($userId)'
-            : userId;
+      final String? displayName = _displayNameFor(widget.message);
+      if (displayName != null) {
         metaSpans.add(const TextSpan(text: '  '));
         metaSpans.add(
           TextSpan(
             text: displayName,
             style: TextStyle(
               fontSize: idFontSize,
-              color: hidden ? Colors.grey : (widget.userColor ?? idColor),
+              color: hidden ? Colors.grey : (effectiveUserColor ?? idColor),
               fontWeight: hidden ? null : FontWeight.w500,
               fontStyle: hidden ? FontStyle.italic : null,
             ),
@@ -3217,7 +3330,7 @@ class _CommentRowState extends State<_CommentRow> {
 
     final TextStyle contentStyle = TextStyle(
       fontSize: fontSize,
-      color: hidden ? Colors.grey : widget.userColor,
+      color: hidden ? Colors.grey : effectiveUserColor,
       fontStyle: hidden ? FontStyle.italic : null,
     );
 
@@ -3299,6 +3412,8 @@ class _CommentRowState extends State<_CommentRow> {
       case AppMessageType.operator:
         return widget.themeColors.operatorMessageBackground;
       case AppMessageType.notification:
+      case AppMessageType.system:
+      case AppMessageType.emotion:
         return widget.themeColors.notificationMessageBackground;
       case AppMessageType.chat:
       // TODO(PR#20-O1): gift/nicoad は _shouldDisplayMessage で除外済みのため

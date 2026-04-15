@@ -122,6 +122,25 @@ class CommentCallbacks {
 }
 
 /// Groups filter-related parameters for [CommentScreen].
+///
+/// This config intentionally carries two related but distinct responsibilities:
+///
+/// - **Content/user filters** — [ngUserIds], [ngWords], [presetNgWords],
+///   [starPrefixHidingEnabled]. These hide messages based on who/what sent
+///   them (blocked users, banned words, star-prefixed bodies).
+/// - **Message-type display toggles** — [showOperatorComment],
+///   [showSystemMessage], [showEmotion]. These hide entire message categories
+///   the viewer does not want to see (e.g. 運営コメント OFF).
+///
+/// Both are funneled through `_shouldDisplayMessage` in `CommentScreen` and
+/// therefore share this parameter bag. They are grouped together because the
+/// UI treats them uniformly as "things that suppress a message from the list";
+/// keep that in mind if adding new fields — if a new flag changes *rendering*
+/// rather than *visibility*, it does not belong here.
+///
+/// TODO(follow-up): consider splitting this class into two dedicated configs
+/// (content-filter vs. message-type-display-toggles) so each responsibility
+/// can evolve independently. follow-up issue: pending
 @immutable
 class CommentFilterConfig {
   const CommentFilterConfig({
@@ -132,6 +151,9 @@ class CommentFilterConfig {
     this.slashPrefixSkipEnabled = true,
     this.userColorMap = const <String, int>{},
     this.userNicknameMap = const <String, String>{},
+    this.showOperatorComment = true,
+    this.showSystemMessage = true,
+    this.showEmotion = true,
   });
 
   /// Set of user IDs marked as NG (blocked).
@@ -158,6 +180,15 @@ class CommentFilterConfig {
 
   /// Per-user nickname (コテハン) map. Keys are user IDs, values are nicknames.
   final Map<String, String> userNicknameMap;
+
+  /// Whether operator (運営) comments are displayed. Defaults to true.
+  final bool showOperatorComment;
+
+  /// Whether system messages (e.g. ichiba) are displayed. Defaults to true.
+  final bool showSystemMessage;
+
+  /// Whether emotion notifications are displayed. Defaults to true.
+  final bool showEmotion;
 }
 
 /// Groups comment-log parameters for [CommentScreen].

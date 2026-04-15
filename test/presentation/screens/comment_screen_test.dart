@@ -21,6 +21,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 // ignore: depend_on_referenced_packages
 import 'package:wakelock_plus_platform_interface/wakelock_plus_platform_interface.dart';
 
+import '../../_support/rich_text_finders.dart';
+
 void main() {
   group('CommentScreen', () {
     late WakelockPlusPlatformInterface previousWakelockPlatform;
@@ -3362,6 +3364,594 @@ void main() {
       expect(find.text('コメント統計サマリ'), findsNothing);
     });
   });
+
+  group('Message-type display toggles', () {
+    testWidgets('hides operator messages when showOperatorComment is false', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        _message(id: 'chat-vis', type: AppMessageType.chat, content: '通常'),
+        _message(
+          id: 'operator-hidden',
+          type: AppMessageType.operator,
+          content: '運営コメント',
+          userId: null,
+          userName: '運営',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          showOperatorComment: false,
+        ),
+      );
+
+      expect(find.byKey(const Key('comment-row-chat-vis')), findsOneWidget);
+      expect(
+        find.byKey(const Key('comment-row-operator-hidden')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('hides system messages when showSystemMessage is false', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        _message(id: 'chat-vis', type: AppMessageType.chat, content: '通常'),
+        _message(
+          id: 'system-hidden',
+          type: AppMessageType.system,
+          content: '市場通知',
+          userId: null,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          showSystemMessage: false,
+        ),
+      );
+
+      expect(find.byKey(const Key('comment-row-chat-vis')), findsOneWidget);
+      expect(find.byKey(const Key('comment-row-system-hidden')), findsNothing);
+    });
+
+    testWidgets('hides emotion messages when showEmotion is false', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        _message(id: 'chat-vis', type: AppMessageType.chat, content: '通常'),
+        _message(
+          id: 'emotion-hidden',
+          type: AppMessageType.emotion,
+          content: 'エモーション',
+          userId: null,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          showEmotion: false,
+        ),
+      );
+
+      expect(find.byKey(const Key('comment-row-chat-vis')), findsOneWidget);
+      expect(find.byKey(const Key('comment-row-emotion-hidden')), findsNothing);
+    });
+
+    testWidgets(
+      'operator=OFF, system=ON, emotion=OFF keeps only system + chat',
+      (WidgetTester tester) async {
+        // Combo coverage: individual-OFF tests pass independently even when
+        // the toggles are checked in isolation. This combination ensures that
+        // when two toggles are OFF at the same time, the remaining ON toggle
+        // still functions (no accidental AND/OR short-circuit in the filter).
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          _message(id: 'chat-vis', type: AppMessageType.chat, content: '通常'),
+          _message(
+            id: 'operator-hidden',
+            type: AppMessageType.operator,
+            content: '運営コメント',
+            userId: null,
+            userName: '運営',
+          ),
+          _message(
+            id: 'system-vis',
+            type: AppMessageType.system,
+            content: '市場通知',
+            userId: null,
+          ),
+          _message(
+            id: 'emotion-hidden',
+            type: AppMessageType.emotion,
+            content: 'エモーション',
+            userId: null,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            showOperatorComment: false,
+            showSystemMessage: true,
+            showEmotion: false,
+          ),
+        );
+
+        // chat and system remain; operator and emotion are suppressed.
+        expect(find.byKey(const Key('comment-row-chat-vis')), findsOneWidget);
+        expect(find.byKey(const Key('comment-row-system-vis')), findsOneWidget);
+        expect(
+          find.byKey(const Key('comment-row-operator-hidden')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('comment-row-emotion-hidden')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'all-OFF (operator=OFF, system=OFF, emotion=OFF) keeps only chat',
+      (WidgetTester tester) async {
+        // Combo coverage: when all three message-type display toggles are OFF
+        // simultaneously, only chat messages must remain. Guards against a
+        // regression where the combined filter accidentally lets a category
+        // through (e.g. short-circuit after the first false).
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          _message(id: 'chat-vis', type: AppMessageType.chat, content: '通常'),
+          _message(
+            id: 'operator-hidden',
+            type: AppMessageType.operator,
+            content: '運営コメント',
+            userId: null,
+            userName: '運営',
+          ),
+          _message(
+            id: 'system-hidden',
+            type: AppMessageType.system,
+            content: '市場通知',
+            userId: null,
+          ),
+          _message(
+            id: 'emotion-hidden',
+            type: AppMessageType.emotion,
+            content: 'エモーション',
+            userId: null,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            showOperatorComment: false,
+            showSystemMessage: false,
+            showEmotion: false,
+          ),
+        );
+
+        expect(find.byKey(const Key('comment-row-chat-vis')), findsOneWidget);
+        expect(
+          find.byKey(const Key('comment-row-operator-hidden')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('comment-row-system-hidden')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('comment-row-emotion-hidden')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets('operator message body is rendered with operatorTextColor', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      // Use distinct strings for the label and the body so this test can
+      // independently assert that the userName label span is rendered.
+      // (Previously both strings contained "運営" which made the label
+      // assertion pass from body substring alone.)
+      final List<AppMessage> messages = <AppMessage>[
+        _message(
+          id: 'operator-red',
+          type: AppMessageType.operator,
+          content: 'お知らせ',
+          userId: null,
+          userName: '公式',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(supervisor: supervisor, messages: messages),
+      );
+
+      final AppThemeColors themeColors = AppTheme.colorsFor(AppThemeMode.light);
+
+      // The body text (exact match) should be styled with operatorTextColor
+      // regardless of the default chat color.
+      final RichText bodyRichText = findRichTextContaining(tester, 'お知らせ');
+      final Color? bodyColor = findSpanColor(bodyRichText.text, 'お知らせ');
+      expect(bodyColor, themeColors.operatorTextColor);
+
+      // The operator userName label ("公式") must also render -- operator
+      // messages normalize with userId=null, so the label only appears if
+      // the renderer falls back to message.userName. We verify a span whose
+      // text EXACTLY equals the label string, to guard against false-positive
+      // substring matches from the body.
+      final RichText metaRichText = findRichTextContaining(tester, '公式');
+      final Color? labelColor = findSpanColor(metaRichText.text, '公式');
+      expect(
+        labelColor,
+        themeColors.operatorTextColor,
+        reason: 'operator userName label must render with operatorTextColor',
+      );
+    });
+
+    testWidgets(
+      'operator message without userName does not render a label span',
+      (WidgetTester tester) async {
+        // Documents the fallback: when an operator message has no userName,
+        // no label is drawn (the renderer must NOT substitute a placeholder).
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          _message(
+            id: 'operator-no-name',
+            type: AppMessageType.operator,
+            content: 'ラベルなし本文',
+            userId: null,
+            userName: null,
+          ),
+          _message(
+            id: 'operator-empty-name',
+            type: AppMessageType.operator,
+            content: '空ラベル本文',
+            userId: null,
+            userName: '',
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(supervisor: supervisor, messages: messages),
+        );
+
+        // Both rows must still render (operator toggle defaults to true).
+        expect(
+          find.byKey(const Key('comment-row-operator-no-name')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('comment-row-operator-empty-name')),
+          findsOneWidget,
+        );
+
+        // Verify no span contains the literal string "null" (i.e. the
+        // renderer did not accidentally stringify a null userName).
+        final RichText nullCaseRich = findRichTextContaining(tester, 'ラベルなし本文');
+        expect(nullCaseRich.text.toPlainText().contains('null'), isFalse);
+        // Verify the body still renders so the row is not entirely empty.
+        expect(nullCaseRich.text.toPlainText().contains('ラベルなし本文'), isTrue);
+        final RichText emptyCaseRich = findRichTextContaining(tester, '空ラベル本文');
+        expect(emptyCaseRich.text.toPlainText().contains('空ラベル本文'), isTrue);
+      },
+    );
+
+    testWidgets('operator messages are suppressed by ngUserIds', (
+      WidgetTester tester,
+    ) async {
+      // Operator + NG-user: even though operator comments have userId=null
+      // normally, if a non-null userId is present and it is NG-listed, the
+      // row must be hidden. Documents interaction of filter paths.
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        _message(
+          id: 'operator-ng-user',
+          type: AppMessageType.operator,
+          content: 'NGユーザー運営メッセージ',
+          userId: 'ng-user-1',
+          userName: '運営',
+        ),
+        _message(id: 'chat-visible', type: AppMessageType.chat, content: '通常'),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngUserIds: const <String>{'ng-user-1'},
+        ),
+      );
+
+      expect(
+        find.byKey(const Key('comment-row-operator-ng-user')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('comment-row-chat-visible')), findsOneWidget);
+    });
+
+    testWidgets('operator messages are suppressed by ngWords', (
+      WidgetTester tester,
+    ) async {
+      // Operator + NG-word: operator body matched by NG word must be hidden.
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        _message(
+          id: 'operator-ng-word',
+          type: AppMessageType.operator,
+          content: 'スパム告知',
+          userId: null,
+          userName: '運営',
+        ),
+        _message(id: 'chat-visible', type: AppMessageType.chat, content: '通常'),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          ngWords: const <String>['スパム'],
+        ),
+      );
+
+      expect(
+        find.byKey(const Key('comment-row-operator-ng-word')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('comment-row-chat-visible')), findsOneWidget);
+    });
+
+    testWidgets(
+      'pinned operator row renders userName label even when userId is null',
+      (WidgetTester tester) async {
+        // Regression: pinned rows must use the shared display-name resolver
+        // so operator (運営) rows that normalize with userId=null still show
+        // the label. Uses distinct label/body strings.
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          _message(
+            id: 'pinned-operator',
+            type: AppMessageType.operator,
+            content: '告知本文',
+            userId: null,
+            userName: '公式',
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(supervisor: supervisor, messages: messages),
+        );
+
+        // Long-press and pin the operator row.
+        await tester.longPress(
+          find.byKey(const Key('comment-row-pinned-operator')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('action-pin-pinned-operator')));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('pinned-row-pinned-operator')),
+          findsOneWidget,
+        );
+        // The pinned row's meta/body text must contain the label "公式" —
+        // if the renderer dropped it because userId is null, this fails.
+        final Finder pinnedRowFinder = find.byKey(
+          const Key('pinned-row-pinned-operator'),
+        );
+        expect(
+          find.descendant(
+            of: pinnedRowFinder,
+            matching: find.textContaining('公式'),
+          ),
+          findsWidgets,
+          reason:
+              'pinned operator row must render userName label ("公式") even when userId is null',
+        );
+
+        // Regression: the pinned (single-line) row must keep the theme's
+        // operator text color on the body. In an earlier revision
+        // `_PinnedCommentRow.build` fell back to the per-user [userColor],
+        // which is null for operator messages (they normalize with
+        // userId=null), causing the red "warning" tone to degrade to the
+        // default Text color inside the pinned panel. A plain-text
+        // `textContaining` check cannot detect that color regression.
+        final AppThemeColors themeColors = AppTheme.colorsFor(
+          AppThemeMode.light,
+        );
+        final Text pinnedBodyText = tester.widget<Text>(
+          find.descendant(
+            of: pinnedRowFinder,
+            matching: find.textContaining('告知本文'),
+          ),
+        );
+        expect(
+          pinnedBodyText.style?.color,
+          themeColors.operatorTextColor,
+          reason:
+              'pinned operator (single-line) body must render with operatorTextColor',
+        );
+      },
+    );
+
+    testWidgets(
+      'pinned operator row (two-line) keeps operatorTextColor on body and label',
+      (WidgetTester tester) async {
+        // Two-line pinned path: `_buildTwoLinePinned` renders the meta row
+        // as Text.rich where the displayName span must carry the operator
+        // red, and the body Text must also carry it. Cover both so a
+        // future tweak that only wires one side cannot pass silently.
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          _message(
+            id: 'pinned-operator-2l',
+            type: AppMessageType.operator,
+            content: '2行告知本文',
+            userId: null,
+            userName: '2行公式',
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            commentTwoLineEnabled: true,
+          ),
+        );
+
+        await tester.longPress(
+          find.byKey(const Key('comment-row-pinned-operator-2l')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const Key('action-pin-pinned-operator-2l')),
+        );
+        await tester.pumpAndSettle();
+
+        final Finder pinnedRowFinder = find.byKey(
+          const Key('pinned-row-pinned-operator-2l'),
+        );
+        expect(pinnedRowFinder, findsOneWidget);
+
+        final AppThemeColors themeColors = AppTheme.colorsFor(
+          AppThemeMode.light,
+        );
+
+        // Body Text (second line) is a plain Text widget with color set
+        // on its TextStyle.
+        final Text pinnedBodyText = tester.widget<Text>(
+          find.descendant(
+            of: pinnedRowFinder,
+            matching: find.textContaining('2行告知本文'),
+          ),
+        );
+        expect(
+          pinnedBodyText.style?.color,
+          themeColors.operatorTextColor,
+          reason:
+              'pinned operator (two-line) body must render with operatorTextColor',
+        );
+
+        // Meta row is Text.rich; walk its spans to find the displayName
+        // label span and assert its color.
+        final RichText metaRichText = findRichTextContaining(tester, '2行公式');
+        final Color? labelColor = findSpanColor(metaRichText.text, '2行公式');
+        expect(
+          labelColor,
+          themeColors.operatorTextColor,
+          reason:
+              'pinned operator (two-line) meta label must render with operatorTextColor',
+        );
+      },
+    );
+
+    testWidgets(
+      'operator message body is rendered with operatorTextColor under protanopia theme',
+      (WidgetTester tester) async {
+        // Existing operator-red assertions only cover the light theme. The
+        // color-vision-deficient themes (P/D/T) define a distinct
+        // operatorTextColor value each; verify at least one of them is wired
+        // through the renderer so that a theme-palette regression cannot
+        // silently ship with a light-only assertion suite.
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          _message(
+            id: 'operator-red-ptype',
+            type: AppMessageType.operator,
+            content: 'P告知本文',
+            userId: null,
+            userName: 'P公式',
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            themeMode: AppThemeMode.protanopia,
+          ),
+        );
+
+        final AppThemeColors themeColors = AppTheme.colorsFor(
+          AppThemeMode.protanopia,
+        );
+
+        final RichText bodyRichText = findRichTextContaining(tester, 'P告知本文');
+        final Color? bodyColor = findSpanColor(bodyRichText.text, 'P告知本文');
+        expect(
+          bodyColor,
+          themeColors.operatorTextColor,
+          reason:
+              'operator body must render with protanopia operatorTextColor (#BF360C)',
+        );
+
+        final RichText metaRichText = findRichTextContaining(tester, 'P公式');
+        final Color? labelColor = findSpanColor(metaRichText.text, 'P公式');
+        expect(
+          labelColor,
+          themeColors.operatorTextColor,
+          reason:
+              'operator userName label must also render with protanopia operatorTextColor',
+        );
+      },
+    );
+
+    test('clipboard formatting (one-line) for operator message', () {
+      // Pins the exact clipboard line format the user would copy for an
+      // operator (運営) message. The message normalizes with `userId=null`
+      // but `userName='運営'`, so the formatter must still emit the label
+      // via the shared display-name resolver (Policy A — broadcaster-supplied
+      // name is preserved verbatim).
+      final AppMessage operatorMessage = AppMessage(
+        id: 'op-clip-1',
+        timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+        userId: null,
+        userName: '運営',
+        content: 'お知らせ',
+        type: AppMessageType.operator,
+      );
+
+      final String oneLine = commentLineTextForTesting(
+        message: operatorMessage,
+        showUserName: true,
+      );
+      expect(oneLine, '12:00:00  運営  お知らせ');
+    });
+
+    test('clipboard formatting (two-line) for operator message', () {
+      final AppMessage operatorMessage = AppMessage(
+        id: 'op-clip-2',
+        timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+        userId: null,
+        userName: '運営',
+        content: 'お知らせ',
+        type: AppMessageType.operator,
+      );
+
+      final String twoLine = commentLineTextForTesting(
+        message: operatorMessage,
+        showUserName: true,
+        twoLine: true,
+      );
+      expect(twoLine, '12:00:00  運営\nお知らせ');
+    });
+  });
 }
 
 class _NicknameCommentScreenHost extends StatefulWidget {
@@ -3526,6 +4116,10 @@ Widget _buildScreen({
   CommentLogWriter? commentLogWriter,
   bool autoSaveCommentLog = false,
   String autoSaveCommentLogPath = '',
+  bool showOperatorComment = true,
+  bool showSystemMessage = true,
+  bool showEmotion = true,
+  AppThemeMode themeMode = AppThemeMode.light,
 }) {
   final UserNameResolution? userNameResolution = resolveUserName == null
       ? null
@@ -3557,7 +4151,7 @@ Widget _buildScreen({
       userNameResolution: userNameResolution,
       commentTwoLineEnabled: commentTwoLineEnabled,
       commentFontSize: commentFontSize,
-      themeMode: AppThemeMode.light,
+      themeMode: themeMode,
       statistics: CommentStatisticsConfig(
         enabled: statisticsEnabled,
         viewerCommentEnabled: statisticsViewerCommentEnabled,
@@ -3573,6 +4167,9 @@ Widget _buildScreen({
         userColorMap: userColorMap,
         userNicknameMap: userNicknameMap,
         starPrefixHidingEnabled: starPrefixHidingEnabled,
+        showOperatorComment: showOperatorComment,
+        showSystemMessage: showSystemMessage,
+        showEmotion: showEmotion,
       ),
       logConfig: CommentLogConfig(
         commentLogWriter: commentLogWriter,
@@ -3607,11 +4204,14 @@ AppMessage _message({
   required String id,
   required AppMessageType type,
   required String content,
+  String? userId = 'user-1',
+  String? userName,
 }) {
   return AppMessage(
     id: id,
     timestamp: DateTime(2026, 3, 22, 12, 0, 0),
-    userId: 'user-1',
+    userId: userId,
+    userName: userName,
     content: content,
     type: type,
   );

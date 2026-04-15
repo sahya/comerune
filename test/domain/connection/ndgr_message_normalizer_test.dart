@@ -208,6 +208,272 @@ void main() {
       expect(normalized!.userName, '  ');
     });
 
+    test('normalizes operator comment to AppMessageType.operator', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-op-1',
+        serverTimestamp: serverTime,
+        operatorComment: const NdgrOperatorComment(
+          content: '運営からのお知らせ',
+          name: '運営',
+        ),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.type, AppMessageType.operator);
+      expect(normalized.content, '運営からのお知らせ');
+      expect(normalized.userName, '運営');
+      expect(normalized.userId, isNull);
+      expect(normalized.id, 'ndgr-op-1');
+    });
+
+    test(
+      'sanitises operator name by stripping CR/LF and control characters',
+      () {
+        // Broadcaster-supplied names flow through verbatim (Policy A), BUT
+        // the client strips CR/LF + C0/C1 control characters so a crafted
+        // label cannot inject extra lines or move other UI around. This
+        // keeps printable CJK / emoji characters.
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+        final NdgrChunkedMessage source = NdgrChunkedMessage(
+          id: 'ndgr-op-sanitise',
+          serverTimestamp: serverTime,
+          operatorComment: const NdgrOperatorComment(
+            content: '告知',
+            name: '  運営\n\r\u0000公\u0007式  ',
+          ),
+        );
+
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          source,
+          receivedAt: serverTime,
+        );
+
+        expect(normalized, isNotNull);
+        expect(
+          normalized!.userName,
+          '運営公式',
+          reason:
+              'CR/LF + C0 control characters must be stripped; '
+              'surrounding whitespace trimmed; printable CJK preserved',
+        );
+      },
+    );
+
+    test('caps operator name length at 64 characters', () {
+      // A maliciously-long operator name would otherwise expand the
+      // comment row and push other UI off-screen. The normalizer caps
+      // the rendered label to a conservative ceiling.
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+      final String longName = 'A' * 500;
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-op-longname',
+        serverTimestamp: serverTime,
+        operatorComment: NdgrOperatorComment(content: '告知', name: longName),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.userName?.length, 64);
+    });
+
+    test('maps operator name to null when sanitation empties it', () {
+      // A name consisting only of CR/LF + whitespace sanitises down to
+      // an empty string; the normalizer must surface null (not '') so
+      // downstream "null = no label" logic in the renderer still works.
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-op-empty-after',
+        serverTimestamp: serverTime,
+        operatorComment: const NdgrOperatorComment(
+          content: '告知',
+          name: ' \n\r\u0000\u0007 ',
+        ),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.userName, isNull);
+    });
+
+    test('prefers operator comment over chat when both are present', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-op-2',
+        serverTimestamp: serverTime,
+        chat: const NdgrChat(content: 'fallback chat'),
+        operatorComment: const NdgrOperatorComment(content: '優先される運営'),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.type, AppMessageType.operator);
+      expect(normalized.content, '優先される運営');
+    });
+
+    test('returns null for operator comment with empty content', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        const NdgrChunkedMessage(
+          operatorComment: NdgrOperatorComment(content: ''),
+        ),
+      );
+
+      expect(normalized, isNull);
+    });
+
+    test('maps SimpleNotificationV2 ICHIBA to AppMessageType.system', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-ichiba-1',
+        serverTimestamp: serverTime,
+        simpleNotificationV2: const NdgrSimpleNotificationV2(
+          type: NdgrSimpleNotificationV2Type.ichiba,
+          message: '市場に商品が登録されました',
+        ),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.type, AppMessageType.system);
+      expect(normalized.content, '市場に商品が登録されました');
+    });
+
+    test('maps SimpleNotificationV2 EMOTION to AppMessageType.emotion', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-emotion-1',
+        serverTimestamp: serverTime,
+        simpleNotificationV2: const NdgrSimpleNotificationV2(
+          type: NdgrSimpleNotificationV2Type.emotion,
+          message: 'エモーション: 盛り上がり',
+        ),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.type, AppMessageType.emotion);
+    });
+
+    test(
+      'maps other SimpleNotificationV2 types to AppMessageType.notification',
+      () {
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+        for (final NdgrSimpleNotificationV2Type t
+            in <NdgrSimpleNotificationV2Type>[
+              NdgrSimpleNotificationV2Type.programExtended,
+              NdgrSimpleNotificationV2Type.rankingIn,
+              NdgrSimpleNotificationV2Type.supporterRegistered,
+              NdgrSimpleNotificationV2Type.userLevelUp,
+              NdgrSimpleNotificationV2Type.userFollow,
+              NdgrSimpleNotificationV2Type.visited,
+              NdgrSimpleNotificationV2Type.cruise,
+              NdgrSimpleNotificationV2Type.unknown,
+            ]) {
+          final NdgrChunkedMessage source = NdgrChunkedMessage(
+            id: 'ndgr-notif-${t.name}',
+            serverTimestamp: serverTime,
+            simpleNotificationV2: NdgrSimpleNotificationV2(
+              type: t,
+              message: 'notification: ${t.name}',
+            ),
+          );
+          final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+            source,
+            receivedAt: serverTime,
+          );
+          expect(normalized, isNotNull, reason: t.name);
+          expect(normalized!.type, AppMessageType.notification, reason: t.name);
+        }
+      },
+    );
+
+    test('prefers operator comment over simpleNotificationV2 when both are '
+        'present', () {
+      // If the chunk carries both signals, the operator comment wins:
+      // broadcaster announcements outrank market/emotion notifications.
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-op-notif',
+        serverTimestamp: serverTime,
+        operatorComment: const NdgrOperatorComment(content: '運営本文', name: '運営'),
+        simpleNotificationV2: const NdgrSimpleNotificationV2(
+          type: NdgrSimpleNotificationV2Type.ichiba,
+          message: '商品',
+        ),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.type, AppMessageType.operator);
+      expect(normalized.content, '運営本文');
+      expect(normalized.userName, '運営');
+    });
+
+    test('returns null for empty SimpleNotificationV2 message', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        const NdgrChunkedMessage(
+          simpleNotificationV2: NdgrSimpleNotificationV2(
+            type: NdgrSimpleNotificationV2Type.ichiba,
+            message: '',
+          ),
+        ),
+      );
+
+      expect(normalized, isNull);
+    });
+
     test('skips empty hashedUserId and returns null userId', () {
       final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
       final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');

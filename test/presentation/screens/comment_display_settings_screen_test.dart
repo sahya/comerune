@@ -115,12 +115,19 @@ void main() {
       AppSettings loaded = await settingsStore.load();
       expect(loaded.pastCommentFetchCount, PastCommentFetchCount.count100);
 
-      // Scroll to and open the dropdown
+      // Scroll to and open the dropdown. `ensureVisible` is called explicitly
+      // after `scrollToKeyInList` so that later additions to the list do not
+      // leave the dropdown partially clipped, which would cause the subsequent
+      // tap to miss the hit-box.
       await scrollToKeyInList(
         tester,
         _listKey,
         const Key('past-comment-count-dropdown'),
       );
+      await tester.ensureVisible(
+        find.byKey(const Key('past-comment-count-dropdown')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const Key('past-comment-count-dropdown')),
         warnIfMissed: false,
@@ -187,6 +194,87 @@ void main() {
 
       loaded = await settingsStore.load();
       expect(loaded.commentZebraStripingEnabled, isTrue);
+    });
+
+    testWidgets('toggles showOperatorComment and persists value', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      AppSettings loaded = await settingsStore.load();
+      expect(loaded.showOperatorComment, isTrue);
+
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('show-operator-comment-switch'),
+      );
+      await toggleSwitchByKey(
+        tester,
+        _listKey,
+        const Key('show-operator-comment-switch'),
+      );
+
+      loaded = await settingsStore.load();
+      expect(loaded.showOperatorComment, isFalse);
+    });
+
+    testWidgets('toggles showSystemMessage and persists value', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      AppSettings loaded = await settingsStore.load();
+      expect(loaded.showSystemMessage, isTrue);
+
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('show-system-message-switch'),
+      );
+      await toggleSwitchByKey(
+        tester,
+        _listKey,
+        const Key('show-system-message-switch'),
+      );
+
+      loaded = await settingsStore.load();
+      expect(loaded.showSystemMessage, isFalse);
+    });
+
+    testWidgets('toggles showEmotion and persists value', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      AppSettings loaded = await settingsStore.load();
+      expect(loaded.showEmotion, isTrue);
+
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('show-emotion-switch'),
+      );
+      await toggleSwitchByKey(
+        tester,
+        _listKey,
+        const Key('show-emotion-switch'),
+      );
+
+      loaded = await settingsStore.load();
+      expect(loaded.showEmotion, isFalse);
     });
 
     testWidgets('disables statistics child toggles when parent toggle is off', (

@@ -43,9 +43,21 @@ class CommentLogStats {
 
   /// Calculates statistics from the given [messages].
   ///
-  /// Only [AppMessageType.chat], [AppMessageType.operator], and
-  /// [AppMessageType.notification] messages are counted (consistent with the
-  /// display filter in CommentScreen). Gift and nicoad types are excluded.
+  /// All displayable message types are counted: [AppMessageType.chat],
+  /// [AppMessageType.operator], [AppMessageType.notification],
+  /// [AppMessageType.system], and [AppMessageType.emotion]. Gift and nicoad
+  /// types are excluded. This matches [_filterDisplayable], which drops only
+  /// gift/nicoad and NG users; the UI-level ON/OFF toggles for
+  /// operator/system/emotion are intentionally not reflected here so that
+  /// statistics reflect actual traffic, not the viewer's display preference.
+  ///
+  /// TODO(follow-up): confirm whether stats should respect the display
+  /// toggles (showOperatorComment / showSystemMessage / showEmotion). Current
+  /// behavior treats stats as "traffic truth" regardless of user display
+  /// choices, but this may cause a UX mismatch when a viewer hides a
+  /// category yet still sees it counted in the summary sheet. Pending spec
+  /// decision; keep current behavior until the maintainer files an Issue.
+  /// follow-up issue: pending
   ///
   /// [ngUserIds] excludes messages from blocked users, matching the display
   /// filter.

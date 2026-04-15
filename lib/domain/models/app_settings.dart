@@ -261,6 +261,9 @@ class AppSettings {
     required this.commentZebraStripingEnabled,
     required this.dictionaryRules,
     required this.debugMode,
+    required this.showOperatorComment,
+    required this.showSystemMessage,
+    required this.showEmotion,
   }) : assert(
          commentFontSize >= commentFontSizeMin &&
              commentFontSize <= commentFontSizeMax,
@@ -311,6 +314,9 @@ class AppSettings {
     commentZebraStripingEnabled: false,
     dictionaryRules: defaultNicoDictionaryRules,
     debugMode: false,
+    showOperatorComment: true,
+    showSystemMessage: true,
+    showEmotion: true,
   );
 
   final AppThemeMode themeMode;
@@ -393,6 +399,15 @@ class AppSettings {
   final List<ReplaceRule> dictionaryRules;
 
   final bool debugMode;
+
+  /// 運営コメント（配信者のマーキー）を表示するかどうか。既定 true。
+  final bool showOperatorComment;
+
+  /// システムメッセージ（ICHIBA 等）を表示するかどうか。既定 true。
+  final bool showSystemMessage;
+
+  /// エモーション通知を表示するかどうか。既定 true。
+  final bool showEmotion;
 
   /// Returns a list of lower-cased NG word pattern strings for filtering.
   ///
@@ -515,6 +530,9 @@ class AppSettings {
     bool? commentZebraStripingEnabled,
     List<ReplaceRule>? dictionaryRules,
     bool? debugMode,
+    bool? showOperatorComment,
+    bool? showSystemMessage,
+    bool? showEmotion,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -571,6 +589,9 @@ class AppSettings {
           commentZebraStripingEnabled ?? this.commentZebraStripingEnabled,
       dictionaryRules: dictionaryRules ?? this.dictionaryRules,
       debugMode: debugMode ?? this.debugMode,
+      showOperatorComment: showOperatorComment ?? this.showOperatorComment,
+      showSystemMessage: showSystemMessage ?? this.showSystemMessage,
+      showEmotion: showEmotion ?? this.showEmotion,
     );
   }
 
@@ -634,6 +655,9 @@ class AppSettings {
           .map((ReplaceRule r) => r.toMap())
           .toList(),
       'debugMode': debugMode,
+      'showOperatorComment': showOperatorComment,
+      'showSystemMessage': showSystemMessage,
+      'showEmotion': showEmotion,
     };
   }
 
@@ -753,6 +777,11 @@ class AppSettings {
           d.commentZebraStripingEnabled,
       dictionaryRules: parseDictionaryRules(),
       debugMode: json['debugMode'] as bool? ?? d.debugMode,
+      showOperatorComment:
+          json['showOperatorComment'] as bool? ?? d.showOperatorComment,
+      showSystemMessage:
+          json['showSystemMessage'] as bool? ?? d.showSystemMessage,
+      showEmotion: json['showEmotion'] as bool? ?? d.showEmotion,
     );
   }
 

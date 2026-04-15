@@ -160,6 +160,42 @@ void main() {
       expect(loaded.autoSaveCommentLogPath, '/custom/path/to/logs');
     });
 
+    test(
+      'showOperatorComment / showSystemMessage / showEmotion default to true '
+      'when not stored',
+      () async {
+        final SharedPreferencesSettingsStore store =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        final AppSettings loaded = await store.load();
+
+        expect(loaded.showOperatorComment, isTrue);
+        expect(loaded.showSystemMessage, isTrue);
+        expect(loaded.showEmotion, isTrue);
+      },
+    );
+
+    test(
+      'round-trips showOperatorComment / showSystemMessage / showEmotion',
+      () async {
+        final SharedPreferencesSettingsStore store =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        final AppSettings original = AppSettings.defaults.copyWith(
+          showOperatorComment: false,
+          showSystemMessage: false,
+          showEmotion: false,
+        );
+        await store.save(original);
+
+        final AppSettings loaded = await store.load();
+
+        expect(loaded.showOperatorComment, isFalse);
+        expect(loaded.showSystemMessage, isFalse);
+        expect(loaded.showEmotion, isFalse);
+      },
+    );
+
     test('autoNicknameRegistration defaults to true when not stored', () async {
       final SharedPreferencesSettingsStore store =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());

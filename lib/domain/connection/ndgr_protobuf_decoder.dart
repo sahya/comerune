@@ -37,18 +37,83 @@ class NdgrStatistics {
   final int? viewers;
 }
 
+/// Operator (broadcaster) comment delivered via `NicoliveState.marquee.display.operator_comment`.
+///
+/// Mapped to [AppMessageType.operator] by [NdgrMessageNormalizer]. See
+/// `proto/dwango/nicolive/chat/data/state.proto` (Marquee field 4) and
+/// `proto/dwango/nicolive/chat/data/atoms/*` for the canonical schema.
+class NdgrOperatorComment {
+  const NdgrOperatorComment({required this.content, this.name, this.link});
+
+  final String content;
+  final String? name;
+
+  /// Optional click-through target URL carried on the upstream operator
+  /// comment.
+  ///
+  /// UNSANITIZED: do not render as a URL without validation. The upstream
+  /// service does not guarantee this value is a well-formed, safe URL — it
+  /// may contain whitespace, control characters, or unexpected schemes
+  /// (`javascript:`, `data:`, custom schemes, etc.). Any future UI that
+  /// surfaces this field as a tappable link MUST:
+  ///   - parse the string with [Uri.tryParse] / reject malformed input
+  ///   - allow-list schemes (typically only `http` / `https`)
+  ///   - consider length / control-character sanitisation similar to the
+  ///     operator `name` handling in [NdgrMessageNormalizer]
+  final String? link;
+}
+
+/// `SimpleNotificationV2` payload from `atoms/notifications.proto`.
+///
+/// Field numbers (verified 2026-04 against upstream proto):
+///   1: NotificationType type (enum)
+///   2: string message
+///
+/// NotificationType enum values:
+///   0 UNKNOWN, 1 ICHIBA, 2 EMOTION, 3 CRUISE, 4 PROGRAM_EXTENDED,
+///   5 RANKING_IN, 6 VISITED, 7 SUPPORTER_REGISTERED, 8 USER_LEVEL_UP,
+///   9 USER_FOLLOW.
+enum NdgrSimpleNotificationV2Type {
+  unknown,
+  ichiba,
+  emotion,
+  cruise,
+  programExtended,
+  rankingIn,
+  visited,
+  supporterRegistered,
+  userLevelUp,
+  userFollow,
+}
+
+class NdgrSimpleNotificationV2 {
+  const NdgrSimpleNotificationV2({required this.type, required this.message});
+
+  final NdgrSimpleNotificationV2Type type;
+  final String message;
+}
+
 class NdgrChunkedMessage {
   const NdgrChunkedMessage({
     this.id,
     this.serverTimestamp,
     this.chat,
     this.statistics,
+    this.operatorComment,
+    this.simpleNotificationV2,
   });
 
   final String? id;
   final DateTime? serverTimestamp;
   final NdgrChat? chat;
   final NdgrStatistics? statistics;
+
+  /// Operator (運営) comment extracted from `ChunkedMessage.state.marquee`.
+  final NdgrOperatorComment? operatorComment;
+
+  /// SimpleNotificationV2 extracted from `NicoliveMessage.simple_notification_v2`.
+  /// Used to surface system/emotion/notification messages.
+  final NdgrSimpleNotificationV2? simpleNotificationV2;
 }
 
 class NdgrPackedSegment {
@@ -199,6 +264,8 @@ class NdgrProtobufDecoder {
     DateTime? serverTimestamp;
     NdgrChat? chat;
     NdgrStatistics? statistics;
+    NdgrOperatorComment? operatorComment;
+    NdgrSimpleNotificationV2? simpleNotificationV2;
 
     while (!reader.isAtEnd) {
       final int tag = reader.readVarint();
@@ -224,6 +291,24 @@ class NdgrProtobufDecoder {
             );
             chat = result.chat;
             statistics = result.statistics;
+            simpleNotificationV2 = result.simpleNotificationV2;
+          } else {
+            reader.skipField(wireType);
+          }
+          break;
+        case 4: // ChunkedMessage.state (oneof NicoliveState)
+          if (wireType == _WireType.lengthDelimited) {
+            // Isolate decode failures in the nested state payload so that a
+            // single malformed operator/marquee field does not drop other
+            // already-decoded fields in the same chunk (e.g. a valid
+            // simpleNotificationV2 from NicoliveMessage). On failure we leave
+            // [operatorComment] null and continue.
+            final Uint8List stateBytes = reader.readLengthDelimited();
+            try {
+              operatorComment = _decodeNicoliveStateOperatorComment(stateBytes);
+            } on FormatException {
+              operatorComment = null;
+            }
           } else {
             reader.skipField(wireType);
           }
@@ -238,6 +323,8 @@ class NdgrProtobufDecoder {
       serverTimestamp: serverTimestamp,
       chat: chat,
       statistics: statistics,
+      operatorComment: operatorComment,
+      simpleNotificationV2: simpleNotificationV2,
     );
   }
 
@@ -314,6 +401,7 @@ class NdgrProtobufDecoder {
 
     NdgrChat? chat;
     NdgrStatistics? statistics;
+    NdgrSimpleNotificationV2? simpleNotificationV2;
 
     while (!reader.isAtEnd) {
       final int tag = reader.readVarint();
@@ -325,14 +413,220 @@ class NdgrProtobufDecoder {
         // NicoliveMessage.chat / NicoliveMessage.overflowed_chat
         chat = _decodeChat(reader.readLengthDelimited());
       } else if (fieldNumber == 8 && wireType == _WireType.lengthDelimited) {
-        // NicoliveMessage.statistics
+        // NicoliveMessage.statistics (pre-existing behavior; upstream proto
+        // places Statistics in NicoliveState, but legacy tooling emitted it
+        // here. Preserved unchanged for backward compatibility.)
+        // TODO(follow-up): read Statistics from NicoliveState
+        // (ChunkedMessage.state) as well; the server may emit it there once
+        // the migration completes, and the current field-8 path will
+        // silently stop populating viewers. Issue number to be filed by the
+        // maintainer and attached here (TODO(#N)).
+        // follow-up issue: pending
         statistics = _decodeStatistics(reader.readLengthDelimited());
+      } else if (fieldNumber == 23 && wireType == _WireType.lengthDelimited) {
+        // NicoliveMessage.simple_notification_v2 (atoms.SimpleNotificationV2)
+        simpleNotificationV2 = _decodeSimpleNotificationV2(
+          reader.readLengthDelimited(),
+        );
       } else {
         reader.skipField(wireType);
       }
     }
 
-    return _NicoliveMessageResult(chat: chat, statistics: statistics);
+    return _NicoliveMessageResult(
+      chat: chat,
+      statistics: statistics,
+      simpleNotificationV2: simpleNotificationV2,
+    );
+  }
+
+  /// Extracts `OperatorComment` from `NicoliveState.marquee.display.operator_comment`.
+  ///
+  /// Schema (verified against upstream proto, 2026-04):
+  ///   NicoliveState.marquee = field 4 (Marquee)
+  ///   Marquee.display       = field 1 (Marquee.Display)
+  ///   Display.operator_comment = field 1 (OperatorComment)
+  ///   OperatorComment.content  = field 1 (string)
+  ///   OperatorComment.name     = field 2 (optional string)
+  ///   OperatorComment.link     = field 4 (optional string)
+  NdgrOperatorComment? _decodeNicoliveStateOperatorComment(Uint8List bytes) {
+    final _ProtoReader reader = _ProtoReader(bytes);
+
+    NdgrOperatorComment? result;
+
+    while (!reader.isAtEnd) {
+      final int tag = reader.readVarint();
+      final int fieldNumber = tag >> 3;
+      final int wireType = tag & 0x07;
+
+      if (fieldNumber == 4 && wireType == _WireType.lengthDelimited) {
+        result = _decodeMarquee(reader.readLengthDelimited());
+      } else {
+        reader.skipField(wireType);
+      }
+    }
+
+    return result;
+  }
+
+  NdgrOperatorComment? _decodeMarquee(Uint8List bytes) {
+    final _ProtoReader reader = _ProtoReader(bytes);
+
+    NdgrOperatorComment? result;
+
+    while (!reader.isAtEnd) {
+      final int tag = reader.readVarint();
+      final int fieldNumber = tag >> 3;
+      final int wireType = tag & 0x07;
+
+      // Marquee.display = field 1
+      if (fieldNumber == 1 && wireType == _WireType.lengthDelimited) {
+        result = _decodeMarqueeDisplay(reader.readLengthDelimited());
+      } else {
+        reader.skipField(wireType);
+      }
+    }
+
+    return result;
+  }
+
+  NdgrOperatorComment? _decodeMarqueeDisplay(Uint8List bytes) {
+    final _ProtoReader reader = _ProtoReader(bytes);
+
+    NdgrOperatorComment? result;
+
+    while (!reader.isAtEnd) {
+      final int tag = reader.readVarint();
+      final int fieldNumber = tag >> 3;
+      final int wireType = tag & 0x07;
+
+      // Display.operator_comment = field 1
+      if (fieldNumber == 1 && wireType == _WireType.lengthDelimited) {
+        result = _decodeOperatorComment(reader.readLengthDelimited());
+      } else {
+        reader.skipField(wireType);
+      }
+    }
+
+    return result;
+  }
+
+  NdgrOperatorComment _decodeOperatorComment(Uint8List bytes) {
+    final _ProtoReader reader = _ProtoReader(bytes);
+
+    String content = '';
+    String? name;
+    // `link` is decoded and carried on [NdgrOperatorComment] for schema
+    // parity with the upstream proto, but it is not currently surfaced in
+    // the UI. Kept here so future work (clickable operator link support)
+    // can consume it without re-introducing a protobuf change.
+    String? link;
+
+    while (!reader.isAtEnd) {
+      final int tag = reader.readVarint();
+      final int fieldNumber = tag >> 3;
+      final int wireType = tag & 0x07;
+
+      switch (fieldNumber) {
+        case 1: // content
+          if (wireType == _WireType.lengthDelimited) {
+            content = reader.readString();
+          } else {
+            reader.skipField(wireType);
+          }
+          break;
+        case 2: // name
+          if (wireType == _WireType.lengthDelimited) {
+            name = reader.readString();
+          } else {
+            reader.skipField(wireType);
+          }
+          break;
+        case 4: // link
+          if (wireType == _WireType.lengthDelimited) {
+            link = reader.readString();
+          } else {
+            reader.skipField(wireType);
+          }
+          break;
+        default:
+          reader.skipField(wireType);
+      }
+    }
+
+    return NdgrOperatorComment(
+      content: content,
+      name: name != null && name.isNotEmpty ? name : null,
+      link: link != null && link.isNotEmpty ? link : null,
+    );
+  }
+
+  /// Decodes `atoms.SimpleNotificationV2`.
+  ///
+  /// Schema (verified against upstream proto, 2026-04):
+  ///   field 1: NotificationType type (enum / varint)
+  ///   field 2: string message
+  NdgrSimpleNotificationV2 _decodeSimpleNotificationV2(Uint8List bytes) {
+    final _ProtoReader reader = _ProtoReader(bytes);
+
+    int rawType = 0;
+    String message = '';
+
+    while (!reader.isAtEnd) {
+      final int tag = reader.readVarint();
+      final int fieldNumber = tag >> 3;
+      final int wireType = tag & 0x07;
+
+      switch (fieldNumber) {
+        case 1:
+          if (wireType == _WireType.varint) {
+            rawType = reader.readVarint();
+          } else {
+            reader.skipField(wireType);
+          }
+          break;
+        case 2:
+          if (wireType == _WireType.lengthDelimited) {
+            message = reader.readString();
+          } else {
+            reader.skipField(wireType);
+          }
+          break;
+        default:
+          reader.skipField(wireType);
+      }
+    }
+
+    return NdgrSimpleNotificationV2(
+      type: _simpleNotificationV2TypeFromInt(rawType),
+      message: message,
+    );
+  }
+
+  NdgrSimpleNotificationV2Type _simpleNotificationV2TypeFromInt(int raw) {
+    switch (raw) {
+      case 1:
+        return NdgrSimpleNotificationV2Type.ichiba;
+      case 2:
+        return NdgrSimpleNotificationV2Type.emotion;
+      case 3:
+        return NdgrSimpleNotificationV2Type.cruise;
+      case 4:
+        return NdgrSimpleNotificationV2Type.programExtended;
+      case 5:
+        return NdgrSimpleNotificationV2Type.rankingIn;
+      case 6:
+        return NdgrSimpleNotificationV2Type.visited;
+      case 7:
+        return NdgrSimpleNotificationV2Type.supporterRegistered;
+      case 8:
+        return NdgrSimpleNotificationV2Type.userLevelUp;
+      case 9:
+        return NdgrSimpleNotificationV2Type.userFollow;
+      case 0:
+      default:
+        return NdgrSimpleNotificationV2Type.unknown;
+    }
   }
 
   NdgrStatistics _decodeStatistics(Uint8List bytes) {
@@ -637,10 +931,15 @@ class _ChunkedMessageMeta {
 }
 
 class _NicoliveMessageResult {
-  const _NicoliveMessageResult({this.chat, this.statistics});
+  const _NicoliveMessageResult({
+    this.chat,
+    this.statistics,
+    this.simpleNotificationV2,
+  });
 
   final NdgrChat? chat;
   final NdgrStatistics? statistics;
+  final NdgrSimpleNotificationV2? simpleNotificationV2;
 }
 
 class _VarintReadResult {

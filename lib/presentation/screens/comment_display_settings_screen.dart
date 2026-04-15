@@ -115,6 +115,65 @@ class _CommentDisplaySettingsScreenState
                           );
                         },
                       ),
+                      // Group the three message-type display toggles
+                      // (operator / system / emotion) under a dedicated
+                      // subheader so they read as a related cluster rather
+                      // than as loose switches mixed in with unrelated
+                      // display/layout options above. The Card-based
+                      // `SettingsSection` already provides the outer
+                      // container; we just introduce a divider + label
+                      // inside it (consistent with how sections visually
+                      // break inside a grouped list on Material surfaces).
+                      const Divider(
+                        key: Key('message-type-display-divider'),
+                        height: 24,
+                      ),
+                      Padding(
+                        key: const Key('message-type-display-header'),
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text(
+                          '表示するメッセージ種別',
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                      ),
+                      SwitchListTile(
+                        key: const Key('show-operator-comment-switch'),
+                        title: const Text('運営コメントを表示'),
+                        subtitle: const Text('配信者の運営コメント（マーキー）をコメント一覧に表示'),
+                        contentPadding: EdgeInsets.zero,
+                        value: settings.showOperatorComment,
+                        onChanged: (bool value) {
+                          updateAndSave(
+                            settings.copyWith(showOperatorComment: value),
+                          );
+                        },
+                      ),
+                      SwitchListTile(
+                        key: const Key('show-system-message-switch'),
+                        title: const Text('システムメッセージを表示'),
+                        subtitle: const Text('ニコニコ市場などのシステム通知を表示'),
+                        contentPadding: EdgeInsets.zero,
+                        value: settings.showSystemMessage,
+                        onChanged: (bool value) {
+                          updateAndSave(
+                            settings.copyWith(showSystemMessage: value),
+                          );
+                        },
+                      ),
+                      SwitchListTile(
+                        key: const Key('show-emotion-switch'),
+                        title: const Text('エモーションを表示'),
+                        subtitle: const Text('視聴者のエモーション通知を表示'),
+                        contentPadding: EdgeInsets.zero,
+                        value: settings.showEmotion,
+                        onChanged: (bool value) {
+                          updateAndSave(settings.copyWith(showEmotion: value));
+                        },
+                      ),
+                      const Divider(
+                        key: Key('message-type-display-divider-end'),
+                        height: 24,
+                      ),
                       SwitchListTile(
                         key: const Key('auto-save-comment-log-switch'),
                         title: const Text('コメントログ自動保存'),

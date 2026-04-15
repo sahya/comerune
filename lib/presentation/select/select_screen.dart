@@ -601,6 +601,9 @@ class _SelectScreenState extends State<SelectScreen>
                 _settingsNotifier.value.slashPrefixSkipEnabled,
             userColorMap: _userAttrNotifier.value.colors,
             userNicknameMap: _userAttrNotifier.value.nicknames,
+            showOperatorComment: _settingsNotifier.value.showOperatorComment,
+            showSystemMessage: _settingsNotifier.value.showSystemMessage,
+            showEmotion: _settingsNotifier.value.showEmotion,
           ),
           logConfig: CommentLogConfig(
             commentLogWriter: widget.commentLogWriter,

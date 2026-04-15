@@ -84,6 +84,8 @@ void main() {
       AppMessageType.chat,
       AppMessageType.operator,
       AppMessageType.notification,
+      AppMessageType.system,
+      AppMessageType.emotion,
       AppMessageType.gift,
       AppMessageType.nicoad,
     ]);

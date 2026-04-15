@@ -190,6 +190,244 @@ void main() {
       expect(message.statistics!.viewers, 100);
     });
 
+    test('decodes operator comment from ChunkedMessage.state.marquee', () {
+      final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+      // OperatorComment: content(1), name(2)
+      final List<int> operatorComment = <int>[
+        ..._stringField(1, '運営コメント本文'),
+        ..._stringField(2, '配信者'),
+      ];
+      // Marquee.Display: operator_comment(1)
+      final List<int> display = <int>[..._bytesField(1, operatorComment)];
+      // Marquee: display(1)
+      final List<int> marquee = <int>[..._bytesField(1, display)];
+      // NicoliveState: marquee(4)
+      final List<int> state = <int>[..._bytesField(4, marquee)];
+      // ChunkedMessage: state(4)
+      final Uint8List bytes = Uint8List.fromList(<int>[
+        ..._bytesField(4, state),
+      ]);
+
+      final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+      expect(message.operatorComment, isNotNull);
+      expect(message.operatorComment!.content, '運営コメント本文');
+      expect(message.operatorComment!.name, '配信者');
+      expect(message.chat, isNull);
+    });
+
+    test('ignores operator marquee without display payload', () {
+      final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+      // Empty marquee message (no display).
+      final List<int> marquee = <int>[];
+      final List<int> state = <int>[..._bytesField(4, marquee)];
+      final Uint8List bytes = Uint8List.fromList(<int>[
+        ..._bytesField(4, state),
+      ]);
+
+      final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+      expect(message.operatorComment, isNull);
+    });
+
+    test(
+      'decodes SimpleNotificationV2 ICHIBA from NicoliveMessage field 23',
+      () {
+        final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+        final List<int> notification = <int>[
+          ..._varintField(1, 1), // ICHIBA
+          ..._stringField(2, '商品登録'),
+        ];
+        final List<int> nicoliveMessage = <int>[
+          ..._bytesField(23, notification),
+        ];
+        final Uint8List bytes = Uint8List.fromList(<int>[
+          ..._bytesField(2, nicoliveMessage),
+        ]);
+
+        final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+        expect(message.simpleNotificationV2, isNotNull);
+        expect(
+          message.simpleNotificationV2!.type,
+          NdgrSimpleNotificationV2Type.ichiba,
+        );
+        expect(message.simpleNotificationV2!.message, '商品登録');
+      },
+    );
+
+    test(
+      'decodes SimpleNotificationV2 EMOTION from NicoliveMessage field 23',
+      () {
+        final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+        final List<int> notification = <int>[
+          ..._varintField(1, 2), // EMOTION
+          ..._stringField(2, 'エモーション'),
+        ];
+        final List<int> nicoliveMessage = <int>[
+          ..._bytesField(23, notification),
+        ];
+        final Uint8List bytes = Uint8List.fromList(<int>[
+          ..._bytesField(2, nicoliveMessage),
+        ]);
+
+        final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+        expect(
+          message.simpleNotificationV2!.type,
+          NdgrSimpleNotificationV2Type.emotion,
+        );
+      },
+    );
+
+    test(
+      'falls back to unknown type for unrecognised NotificationType enum',
+      () {
+        final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+        // Use enum value 99 (not defined in schema).
+        final List<int> notification = <int>[
+          ..._varintField(1, 99),
+          ..._stringField(2, '未知種別'),
+        ];
+        final List<int> nicoliveMessage = <int>[
+          ..._bytesField(23, notification),
+        ];
+        final Uint8List bytes = Uint8List.fromList(<int>[
+          ..._bytesField(2, nicoliveMessage),
+        ]);
+
+        final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+        expect(
+          message.simpleNotificationV2!.type,
+          NdgrSimpleNotificationV2Type.unknown,
+        );
+        expect(message.simpleNotificationV2!.message, '未知種別');
+      },
+    );
+
+    test('falls back to unknown type for NotificationType raw=0 (UNKNOWN)', () {
+      final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+      // Explicit raw=0 exercises the `case 0:` path of the enum mapper.
+      final List<int> notification = <int>[
+        ..._varintField(1, 0),
+        ..._stringField(2, '未知'),
+      ];
+      final List<int> nicoliveMessage = <int>[..._bytesField(23, notification)];
+      final Uint8List bytes = Uint8List.fromList(<int>[
+        ..._bytesField(2, nicoliveMessage),
+      ]);
+
+      final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+      expect(
+        message.simpleNotificationV2!.type,
+        NdgrSimpleNotificationV2Type.unknown,
+      );
+      expect(message.simpleNotificationV2!.message, '未知');
+    });
+
+    test(
+      'decodes operator comment and simpleNotificationV2 from the same chunk',
+      () {
+        // Both signals coexist on the wire. The decoder must not drop either.
+        // Priority between them is the normalizer's concern (see
+        // ndgr_message_normalizer_test.dart).
+        final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+        // OperatorComment → NicoliveState.marquee.display.
+        final List<int> operatorComment = <int>[
+          ..._stringField(1, '運営'),
+          ..._stringField(2, '配信者'),
+        ];
+        final List<int> display = <int>[..._bytesField(1, operatorComment)];
+        final List<int> marquee = <int>[..._bytesField(1, display)];
+        final List<int> state = <int>[..._bytesField(4, marquee)];
+
+        // SimpleNotificationV2 → NicoliveMessage field 23.
+        final List<int> notification = <int>[
+          ..._varintField(1, 2), // EMOTION
+          ..._stringField(2, 'エモ'),
+        ];
+        final List<int> nicoliveMessage = <int>[
+          ..._bytesField(23, notification),
+        ];
+
+        final Uint8List bytes = Uint8List.fromList(<int>[
+          ..._bytesField(2, nicoliveMessage),
+          ..._bytesField(4, state),
+        ]);
+
+        final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+        expect(message.operatorComment, isNotNull);
+        expect(message.operatorComment!.content, '運営');
+        expect(message.simpleNotificationV2, isNotNull);
+        expect(
+          message.simpleNotificationV2!.type,
+          NdgrSimpleNotificationV2Type.emotion,
+        );
+        expect(message.simpleNotificationV2!.message, 'エモ');
+      },
+    );
+
+    test(
+      'malformed operator state bytes do not drop valid simpleNotificationV2',
+      () {
+        // Inverse failure test: when the NicoliveState (field 4) payload is
+        // malformed, the decoder must still surface the valid
+        // simpleNotificationV2 carried in NicoliveMessage (field 2) of the
+        // SAME chunk. Regression guard: before the isolation, an exception
+        // in state parsing aborted the whole chunk decode and dropped the
+        // notification.
+        final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+        // A deliberately malformed NicoliveState payload: the outer bytes
+        // encode a lengthDelimited tag whose declared length overruns the
+        // buffer, forcing readLengthDelimited() to throw.
+        final List<int> malformedState = <int>[
+          // Tag for field 4 (marquee), wire type 2 (length-delimited).
+          (4 << 3) | 2,
+          // Declared length 0x7F (127) but payload contains only 1 byte ->
+          // EOF when the reader tries to consume it.
+          0x7F,
+          0x00,
+        ];
+
+        // Valid SimpleNotificationV2 → NicoliveMessage field 23.
+        final List<int> notification = <int>[
+          ..._varintField(1, 1), // ICHIBA
+          ..._stringField(2, '商品登録'),
+        ];
+        final List<int> nicoliveMessage = <int>[
+          ..._bytesField(23, notification),
+        ];
+
+        final Uint8List bytes = Uint8List.fromList(<int>[
+          ..._bytesField(2, nicoliveMessage),
+          ..._bytesField(4, malformedState),
+        ]);
+
+        final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+        // Operator comment is dropped (null) because the state was malformed.
+        expect(message.operatorComment, isNull);
+        // But the valid notification from the same chunk must survive.
+        expect(message.simpleNotificationV2, isNotNull);
+        expect(
+          message.simpleNotificationV2!.type,
+          NdgrSimpleNotificationV2Type.ichiba,
+        );
+        expect(message.simpleNotificationV2!.message, '商品登録');
+      },
+    );
+
     test('decodes packed segment messages and next uri', () {
       final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
 
