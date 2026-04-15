@@ -281,6 +281,37 @@ class _CommentDisplaySettingsScreenState
                   ),
                   const SizedBox(height: 12),
                   SettingsSection(
+                    title: '保護通知',
+                    children: <Widget>[
+                      SwitchListTile(
+                        key: const Key(
+                          'ng-protection-notification-enabled-switch',
+                        ),
+                        title: const Text('保護通知を有効化'),
+                        subtitle: const Text(
+                          'NGワード/NGユーザーでコメントをフィルタした時にスナックバーとバッジで通知します',
+                        ),
+                        contentPadding: EdgeInsets.zero,
+                        value: settings.ngProtectionNotificationEnabled,
+                        onChanged: (bool value) {
+                          updateAndSave(
+                            settings.copyWith(
+                              ngProtectionNotificationEnabled: value,
+                            ),
+                          );
+                        },
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4, bottom: 4),
+                        child: Text(
+                          '配信画面に映り込むリスクがあります。配信しながら使う場合はご注意ください。',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  SettingsSection(
                     title: '統計表示',
                     children: <Widget>[
                       SwitchListTile(

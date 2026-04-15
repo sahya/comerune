@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -310,6 +311,31 @@ class _CommentScreenState extends State<CommentScreen> {
   List<String> _effectivePresetNgWords = const <String>[];
   List<String> _normalizedEffectiveNgWords = const <String>[];
 
+  // ---------------------------------------------------------------------------
+  // NG protection notification state (Issue #244)
+  //
+  // Tracked only when [CommentFilterConfig.ngProtectionNotificationEnabled]
+  // is true. Keeps a running badge count (never throttled) and a throttled
+  // snackbar window so that bursts of filtered comments don't spam the UI.
+  // ---------------------------------------------------------------------------
+
+  /// Cumulative count of comments hidden by NG filtering while the screen
+  /// is alive. Shown as an AppBar badge when > 0. Reset on dispose via
+  /// widget teardown; there is no manual clear in this PR.
+  int _protectedCount = 0;
+
+  /// Timestamp of the most recent protection snackbar. Used to throttle
+  /// subsequent snackbars to at most one per [_protectionSnackBarWindow].
+  DateTime? _lastProtectionNotificationAt;
+
+  /// The ID of the last message inspected for NG protection. New messages
+  /// are only evaluated once, even if the widget rebuilds with the same list.
+  String? _lastProtectionInspectedMessageId;
+
+  /// Window during which additional NG detections do not trigger new
+  /// snackbars (the badge still increments). 10 seconds per spec.
+  static const Duration _protectionSnackBarWindow = Duration(seconds: 10);
+
   @override
   void initState() {
     super.initState();
@@ -324,6 +350,13 @@ class _CommentScreenState extends State<CommentScreen> {
     _requestUserNameResolution(widget.messages);
     _effectivePresetNgWords = widget.filterConfig.presetNgWords;
     _refreshNormalizedNgWords();
+
+    // Seed the NG-protection cursor with the current tail so that messages
+    // already in the list (e.g. past-comment backfill) are not announced
+    // retroactively when the broadcaster opens the screen.
+    if (widget.messages.isNotEmpty) {
+      _lastProtectionInspectedMessageId = widget.messages.last.id;
+    }
     if (widget.filterConfig.presetNgWords.isEmpty) {
       unawaited(_loadPresetNgWordsFromAsset());
     }
@@ -437,6 +470,7 @@ class _CommentScreenState extends State<CommentScreen> {
         widget.messages,
       );
       _processNicknameComments(oldWidget.messages, widget.messages);
+      _processNgProtectionNotifications(widget.messages);
       if (_autoScrollEnabled && !_touchActive) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _scrollToEdge();
@@ -854,12 +888,11 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   /// Returns `true` when [content] contains any configured NG word.
+  ///
+  /// Delegates to [_matchedNgWord] so that normalization is done once per
+  /// message (mirrors [AppSettings.containsNgWord] / [AppSettings.matchedNgWord]).
   bool _containsNgWord(String content) {
-    if (_normalizedEffectiveNgWords.isEmpty) {
-      return false;
-    }
-    final String normalizedContent = _normalizeNgWordText(content);
-    return _normalizedEffectiveNgWords.any(normalizedContent.contains);
+    return _matchedNgWord(content) != null;
   }
 
   Future<void> _handleTeachCommand(AppMessage message) async {
@@ -955,6 +988,232 @@ class _CommentScreenState extends State<CommentScreen> {
     }
   }
 
+  /// Announces NG-filter protection for comments appended since the last
+  /// call. The badge counter always increases on every NG hit, while the
+  /// snackbar is throttled to at most one per [_protectionSnackBarWindow].
+  ///
+  /// No-op when [CommentFilterConfig.ngProtectionNotificationEnabled] is
+  /// false (existing silent behavior is preserved).
+  void _processNgProtectionNotifications(List<AppMessage> newMessages) {
+    if (!widget.filterConfig.ngProtectionNotificationEnabled) {
+      // Keep the cursor advancing so that toggling ON later does not
+      // retroactively announce historical NG hits.
+      if (newMessages.isNotEmpty) {
+        _lastProtectionInspectedMessageId = newMessages.last.id;
+      }
+      return;
+    }
+
+    // Locate the slice of messages appended since we last inspected.
+    //
+    // The message list behaves as a ring buffer at the data layer: when it
+    // fills up, the oldest messages are dropped. If the cursor ID can no
+    // longer be found in [newMessages] (it was evicted during rotation),
+    // we fall back to inspecting the full tail so that NG hits occurring
+    // while the buffer rotated are still announced. This trades off a
+    // possible one-shot over-count for never silently losing a hit.
+    int start = 0;
+    final String? cursor = _lastProtectionInspectedMessageId;
+    if (cursor != null && newMessages.isNotEmpty) {
+      bool found = false;
+      for (int i = newMessages.length - 1; i >= 0; i--) {
+        if (newMessages[i].id == cursor) {
+          start = i + 1;
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        // Cursor rotated out of the ring buffer — process the full tail so
+        // that we do not silently swallow NG hits during eviction.
+        start = 0;
+      }
+    }
+
+    int newHits = 0;
+    String? latestSnackBarMessage;
+    for (int i = start; i < newMessages.length; i++) {
+      final AppMessage message = newMessages[i];
+      switch (message.type) {
+        case AppMessageType.gift:
+        case AppMessageType.nicoad:
+          continue;
+        case AppMessageType.chat:
+        case AppMessageType.operator:
+        case AppMessageType.notification:
+        case AppMessageType.system:
+        case AppMessageType.emotion:
+          break;
+      }
+      if (_isSystemBroadcastEndedMessage(message)) {
+        continue;
+      }
+
+      final String? userId = message.userId;
+      final bool isNgUser =
+          userId != null && widget.filterConfig.ngUserIds.contains(userId);
+      final String? matchedWord = _matchedNgWord(message.content);
+      if (!isNgUser && matchedWord == null) {
+        continue;
+      }
+
+      newHits += 1;
+      // NG word takes priority when both match (design note: more actionable
+      // for the broadcaster than a userId string).
+      if (matchedWord != null) {
+        latestSnackBarMessage = _buildNgWordProtectionMessage(matchedWord);
+      } else {
+        latestSnackBarMessage = _buildNgUserProtectionMessage(message);
+      }
+    }
+
+    if (newMessages.isNotEmpty) {
+      _lastProtectionInspectedMessageId = newMessages.last.id;
+    }
+
+    if (newHits == 0) {
+      return;
+    }
+
+    final DateTime now = DateTime.now();
+    final DateTime? last = _lastProtectionNotificationAt;
+    // Guard against wall-clock skew (NTP sync, manual clock change): if
+    // [elapsed] is negative the throttle window would otherwise stay closed
+    // indefinitely. Treat a backwards clock as "fire now and reset".
+    final bool windowElapsed;
+    if (last == null) {
+      windowElapsed = true;
+    } else {
+      final Duration elapsed = now.difference(last);
+      windowElapsed =
+          elapsed.isNegative || elapsed >= _protectionSnackBarWindow;
+    }
+
+    setState(() {
+      _protectedCount += newHits;
+    });
+
+    if (windowElapsed && latestSnackBarMessage != null) {
+      _lastProtectionNotificationAt = now;
+      final String snackBarText = latestSnackBarMessage;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 2),
+              content: Row(
+                children: <Widget>[
+                  const Icon(Icons.shield_outlined, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      snackBarText,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+      });
+    }
+  }
+
+  /// Test-only: rewinds [_lastProtectionNotificationAt] by [offset] so that
+  /// the throttle window appears to have elapsed. Exposed via the top-level
+  /// [debugRewindProtectionNotificationClock] helper.
+  ///
+  /// Asserts that the throttle has fired at least once; otherwise calling
+  /// this helper is almost certainly a test-ordering bug (the test tried to
+  /// rewind a clock that was never started) and a silent no-op would mask
+  /// the real issue.
+  void _debugRewindProtectionNotificationClock(Duration offset) {
+    assert(
+      _lastProtectionNotificationAt != null,
+      'debugRewindProtectionNotificationClock called before any NG '
+      'protection snackbar was fired; rewinding a null timestamp is a '
+      'no-op and usually indicates a test-setup mistake.',
+    );
+    final DateTime? last = _lastProtectionNotificationAt;
+    if (last == null) {
+      return;
+    }
+    _lastProtectionNotificationAt = last.subtract(offset);
+  }
+
+  /// Returns the matched NG word pattern in [content] (normalized, as used
+  /// by [_containsNgWord]), or `null` when nothing matches.
+  String? _matchedNgWord(String content) {
+    if (_normalizedEffectiveNgWords.isEmpty) {
+      return null;
+    }
+    final String normalizedContent = _normalizeNgWordText(content);
+    for (final String word in _normalizedEffectiveNgWords) {
+      if (normalizedContent.contains(word)) {
+        return word;
+      }
+    }
+    return null;
+  }
+
+  String _buildNgWordProtectionMessage(String ngWord) {
+    final String sanitized = _sanitizeSingleLine(ngWord);
+    if (sanitized.isEmpty) {
+      // Fall back to a generic phrase when the NG word sanitizes to the
+      // empty string (would otherwise render as "「」を含む..."). This
+      // happens when the rule consists only of control/invisible chars.
+      return 'コメントを保護しました';
+    }
+    return '「$sanitized」を含むコメントを保護しました';
+  }
+
+  String _buildNgUserProtectionMessage(AppMessage message) {
+    final String? resolved = _resolveDisplayName(message);
+    final String identifier = (resolved != null && resolved.isNotEmpty)
+        ? resolved
+        : (message.userId ?? '');
+    final String sanitized = _sanitizeSingleLine(identifier);
+    if (sanitized.isEmpty) {
+      // Fall back to a generic phrase when neither a display name nor a
+      // userId is available (would otherwise render as "ユーザー「」の…").
+      return 'ユーザーのコメントを保護しました';
+    }
+    return 'ユーザー「$sanitized」のコメントを保護しました';
+  }
+
+  /// Collapses newlines and control characters so the snackbar label does
+  /// not break layout if a malformed NG rule or resolved name contains
+  /// unexpected whitespace, and strips invisible/bidi-control characters
+  /// that could otherwise reorder the snackbar text.
+  ///
+  /// Truncation is grapheme-cluster aware via [Characters] so that emoji
+  /// (including surrogate pairs and ZWJ sequences) are not split mid-codepoint.
+  /// Only used for display; does not affect filtering.
+  String _sanitizeSingleLine(String value) {
+    // Strip C0/C1 controls, zero-width characters, and bidi / tag
+    // controls that could otherwise spoof or reorder the snackbar text.
+    // All such categories are centralized in [_removeControlAndInvisible].
+    final String withoutControls = _removeControlAndInvisible(value);
+    final String collapsed = withoutControls
+        .replaceAll(RegExp(r'[\r\n\t]+'), ' ')
+        .trim();
+    // Limit length so the snackbar does not overflow on narrow screens.
+    // Counting grapheme clusters (user-perceived characters) instead of
+    // UTF-16 code units avoids breaking emoji across truncate boundary.
+    final Characters chars = Characters(collapsed);
+    if (chars.length > 40) {
+      return '${chars.take(40)}…';
+    }
+    return collapsed;
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -1029,6 +1288,27 @@ class _CommentScreenState extends State<CommentScreen> {
                       : '古い順に切替',
                   onPressed: _toggleSortOrder,
                 ),
+                if (widget.filterConfig.ngProtectionNotificationEnabled &&
+                    _protectedCount > 0)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Semantics(
+                      key: const Key('ng-protection-badge'),
+                      label: '保護件数 $_protectedCount 件',
+                      container: true,
+                      child: ExcludeSemantics(
+                        // Prevent Badge.count + Icon from double-announcing
+                        // (their semantics are already covered by the
+                        // parent Semantics label above).
+                        child: Badge.count(
+                          count: _protectedCount,
+                          // TODO(#244 follow-up): make this tappable to open
+                          // a protection-log screen once that feature lands.
+                          child: const Icon(Icons.shield_outlined),
+                        ),
+                      ),
+                    ),
+                  ),
                 if (widget.callbacks.onOpenSettings != null)
                   IconButton(
                     key: const Key('settings-button'),
@@ -2107,17 +2387,38 @@ class _CommentScreenState extends State<CommentScreen> {
     return sb.toString();
   }
 
+  /// Strips characters that would corrupt UI rendering or allow spoofing
+  /// of displayed text, while preserving characters that are semantically
+  /// part of user-perceived glyphs.
+  ///
+  /// Removed:
+  ///  - C0 / C1 control characters (except space)
+  ///  - Zero-width joiners that are *not* ZWJ (U+200B, U+200C, U+FEFF, U+00AD)
+  ///  - Bidi override / isolate controls that could reorder display text:
+  ///    - U+061C (Arabic Letter Mark)
+  ///    - U+180E (Mongolian Vowel Separator)
+  ///    - U+202A-U+202E (LRE/RLE/PDF/LRO/RLO)
+  ///    - U+2066-U+2069 (LRI/RLI/FSI/PDI)
+  ///    - U+E0000-U+E007F (Tag Characters; Trojan Source defense)
+  ///
+  /// Preserved:
+  ///  - ZWJ (U+200D): required to keep ZWJ-composed emoji sequences
+  ///    (family, profession, flag, etc.) as a single glyph in display.
+  ///  - Variation selectors (U+FE00-U+FE0F, U+E0100-U+E01EF): required
+  ///    to keep emoji presentation selectors intact.
   String _removeControlAndInvisible(String text) {
     final StringBuffer sb = StringBuffer();
     for (final int cp in text.runes) {
       final bool invisible =
           cp == 0x200B ||
           cp == 0x200C ||
-          cp == 0x200D ||
           cp == 0xFEFF ||
           cp == 0x00AD ||
-          (cp >= 0xFE00 && cp <= 0xFE0F) ||
-          (cp >= 0xE0100 && cp <= 0xE01EF) ||
+          cp == 0x061C ||
+          cp == 0x180E ||
+          (cp >= 0x202A && cp <= 0x202E) ||
+          (cp >= 0x2066 && cp <= 0x2069) ||
+          (cp >= 0xE0000 && cp <= 0xE007F) ||
           ((cp >= 0x0000 && cp <= 0x001F) && cp != 0x0020) ||
           (cp >= 0x007F && cp <= 0x009F);
       if (!invisible) {
@@ -3811,4 +4112,51 @@ class _SpeechStatusIcon extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Test-only helper: rewinds the NG-protection snackbar throttle timestamp
+/// of the [CommentScreen] hosting [element] by [offset]. Used to verify the
+/// re-fire behavior without sleeping for the full window in wall-clock time.
+///
+/// Asserts that the throttle has already fired at least once; calling this
+/// before the first snackbar is a test-ordering bug rather than a silent
+/// no-op.
+///
+/// In addition to the `@visibleForTesting` static check, this helper is
+/// gated on [kDebugMode] at runtime: release builds refuse to run it so
+/// that accidental callers cannot manipulate user-visible throttle state
+/// in production.
+@visibleForTesting
+void debugRewindProtectionNotificationClock(Element element, Duration offset) {
+  assert(
+    kDebugMode,
+    'debugRewindProtectionNotificationClock must only be invoked from '
+    'tests / debug builds.',
+  );
+  if (!kDebugMode) {
+    return;
+  }
+  _CommentScreenState? found;
+  void visit(Element el) {
+    if (found != null) {
+      return;
+    }
+    if (el is StatefulElement && el.state is _CommentScreenState) {
+      found = el.state as _CommentScreenState;
+      return;
+    }
+    el.visitChildren(visit);
+  }
+
+  if (element is StatefulElement && element.state is _CommentScreenState) {
+    found = element.state as _CommentScreenState;
+  } else {
+    element.visitChildren(visit);
+  }
+  if (found == null) {
+    throw StateError(
+      'debugRewindProtectionNotificationClock: no CommentScreen state found under element',
+    );
+  }
+  found!._debugRewindProtectionNotificationClock(offset);
 }

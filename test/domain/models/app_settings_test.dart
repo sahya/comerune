@@ -262,6 +262,51 @@ void main() {
     );
   });
 
+  group('ngProtectionNotificationEnabled', () {
+    test('defaults to false', () {
+      expect(AppSettings.defaults.ngProtectionNotificationEnabled, isFalse);
+    });
+
+    test('copyWith updates ngProtectionNotificationEnabled', () {
+      final AppSettings updated = AppSettings.defaults.copyWith(
+        ngProtectionNotificationEnabled: true,
+      );
+      expect(updated.ngProtectionNotificationEnabled, isTrue);
+    });
+
+    test(
+      'copyWith preserves ngProtectionNotificationEnabled when not specified',
+      () {
+        final AppSettings initial = AppSettings.defaults.copyWith(
+          ngProtectionNotificationEnabled: true,
+        );
+        final AppSettings updated = initial.copyWith(debugMode: true);
+        expect(updated.ngProtectionNotificationEnabled, isTrue);
+      },
+    );
+  });
+
+  group('matchedNgWord', () {
+    test('returns the first matched pattern from the list', () {
+      final AppSettings settings = AppSettings.defaults.copyWith(
+        ngWords: 'spam\n広告',
+      );
+      expect(settings.matchedNgWord('hello spam world'), 'spam');
+      expect(settings.matchedNgWord('この広告'), '広告');
+    });
+
+    test('returns null when content does not match', () {
+      final AppSettings settings = AppSettings.defaults.copyWith(
+        ngWords: 'spam',
+      );
+      expect(settings.matchedNgWord('clean content'), isNull);
+    });
+
+    test('returns null when no NG words are configured', () {
+      expect(AppSettings.defaults.matchedNgWord('anything'), isNull);
+    });
+  });
+
   group('dictionaryRules', () {
     test('defaults include nico dictionary rules', () {
       expect(AppSettings.defaults.dictionaryRules, defaultNicoDictionaryRules);

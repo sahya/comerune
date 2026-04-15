@@ -111,6 +111,32 @@ void main() {
       expect(loaded.commentFontSize, 14.5);
     });
 
+    test(
+      'ngProtectionNotificationEnabled defaults to false when not stored',
+      () async {
+        final SharedPreferencesSettingsStore store =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        final AppSettings loaded = await store.load();
+
+        expect(loaded.ngProtectionNotificationEnabled, isFalse);
+      },
+    );
+
+    test('round-trips ngProtectionNotificationEnabled value', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        ngProtectionNotificationEnabled: true,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.ngProtectionNotificationEnabled, isTrue);
+    });
+
     test('autoSaveCommentLog defaults to false when not stored', () async {
       final SharedPreferencesSettingsStore store =
           SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());

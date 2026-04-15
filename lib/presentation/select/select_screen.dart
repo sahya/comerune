@@ -606,6 +606,8 @@ class _SelectScreenState extends State<SelectScreen>
             showOperatorComment: _settingsNotifier.value.showOperatorComment,
             showSystemMessage: _settingsNotifier.value.showSystemMessage,
             showEmotion: _settingsNotifier.value.showEmotion,
+            ngProtectionNotificationEnabled:
+                _settingsNotifier.value.ngProtectionNotificationEnabled,
           ),
           logConfig: CommentLogConfig(
             commentLogWriter: widget.commentLogWriter,

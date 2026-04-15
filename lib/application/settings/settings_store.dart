@@ -114,6 +114,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       'settings.comment.emphasizeGiftNicoad';
   static const String _kDictionaryRules = 'settings.speech.dictionaryRules';
   static const String _kDebugMode = 'settings.debugMode';
+  static const String _kNgProtectionNotificationEnabled =
+      'settings.ngFilter.protectionNotification';
   static const String _kPreMuteVolume = 'settings.voicevox.preMuteVolume';
 
   @override
@@ -218,6 +220,9 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       showSystemMessage:
           _prefs.getBool(_kShowSystemMessage) ?? defaults.showSystemMessage,
       showEmotion: _prefs.getBool(_kShowEmotion) ?? defaults.showEmotion,
+      ngProtectionNotificationEnabled:
+          _prefs.getBool(_kNgProtectionNotificationEnabled) ??
+          defaults.ngProtectionNotificationEnabled,
     );
   }
 
@@ -317,6 +322,10 @@ class SharedPreferencesSettingsStore implements SettingsStore {
     await _prefs.setBool(_kShowOperatorComment, settings.showOperatorComment);
     await _prefs.setBool(_kShowSystemMessage, settings.showSystemMessage);
     await _prefs.setBool(_kShowEmotion, settings.showEmotion);
+    await _prefs.setBool(
+      _kNgProtectionNotificationEnabled,
+      settings.ngProtectionNotificationEnabled,
+    );
     await _prefs.setString(
       _kNgWordRules,
       jsonEncode(

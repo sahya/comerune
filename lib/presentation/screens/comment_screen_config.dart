@@ -155,6 +155,7 @@ class CommentFilterConfig {
     this.showOperatorComment = true,
     this.showSystemMessage = true,
     this.showEmotion = true,
+    this.ngProtectionNotificationEnabled = false,
   });
 
   /// Set of user IDs marked as NG (blocked).
@@ -198,6 +199,12 @@ class CommentFilterConfig {
 
   /// Whether emotion notifications are displayed. Defaults to true.
   final bool showEmotion;
+
+  /// When true, the comment screen announces via snackbar + AppBar badge
+  /// every time a comment is hidden by NG word or NG user filtering.
+  ///
+  /// When false (default), filtering stays silent.
+  final bool ngProtectionNotificationEnabled;
 }
 
 /// Groups comment-log parameters for [CommentScreen].

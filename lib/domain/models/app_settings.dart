@@ -265,6 +265,7 @@ class AppSettings {
     required this.showOperatorComment,
     required this.showSystemMessage,
     required this.showEmotion,
+    required this.ngProtectionNotificationEnabled,
   }) : assert(
          commentFontSize >= commentFontSizeMin &&
              commentFontSize <= commentFontSizeMax,
@@ -319,6 +320,7 @@ class AppSettings {
     showOperatorComment: true,
     showSystemMessage: true,
     showEmotion: true,
+    ngProtectionNotificationEnabled: false,
   );
 
   final AppThemeMode themeMode;
@@ -416,6 +418,14 @@ class AppSettings {
   /// エモーション通知を表示するかどうか。既定 true。
   final bool showEmotion;
 
+  /// When true, the comment screen shows a snackbar + AppBar badge
+  /// whenever a comment is hidden by NG word or NG user filtering.
+  ///
+  /// Defaults to `false` so that filtering stays silent — matching the
+  /// historical behavior — and only announces itself when the broadcaster
+  /// opts in. Off means both snackbar and badge are suppressed.
+  final bool ngProtectionNotificationEnabled;
+
   /// Returns a list of lower-cased NG word pattern strings for filtering.
   ///
   /// When [ngWordRules] is populated (post-migration), only **enabled** rules
@@ -435,12 +445,26 @@ class AppSettings {
   ///
   /// Matching is case-insensitive and uses plain substring search.
   bool containsNgWord(String content) {
+    return matchedNgWord(content) != null;
+  }
+
+  /// Returns the first NG word pattern matched in [content], or `null`
+  /// when no configured NG word matches.
+  ///
+  /// Returned string is the lower-cased pattern from [ngWordList]
+  /// (same source as [containsNgWord]). Matching is case-insensitive.
+  String? matchedNgWord(String content) {
     final List<String> words = ngWordList;
     if (words.isEmpty) {
-      return false;
+      return null;
     }
     final String lowerContent = content.toLowerCase();
-    return words.any((String word) => lowerContent.contains(word));
+    for (final String word in words) {
+      if (lowerContent.contains(word)) {
+        return word;
+      }
+    }
+    return null;
   }
 
   Set<String> get ngUserIdSet {
@@ -541,6 +565,7 @@ class AppSettings {
     bool? showOperatorComment,
     bool? showSystemMessage,
     bool? showEmotion,
+    bool? ngProtectionNotificationEnabled,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -602,6 +627,9 @@ class AppSettings {
       showOperatorComment: showOperatorComment ?? this.showOperatorComment,
       showSystemMessage: showSystemMessage ?? this.showSystemMessage,
       showEmotion: showEmotion ?? this.showEmotion,
+      ngProtectionNotificationEnabled:
+          ngProtectionNotificationEnabled ??
+          this.ngProtectionNotificationEnabled,
     );
   }
 
@@ -669,6 +697,7 @@ class AppSettings {
       'showOperatorComment': showOperatorComment,
       'showSystemMessage': showSystemMessage,
       'showEmotion': showEmotion,
+      'ngProtectionNotificationEnabled': ngProtectionNotificationEnabled,
     };
   }
 
@@ -796,6 +825,9 @@ class AppSettings {
       showSystemMessage:
           json['showSystemMessage'] as bool? ?? d.showSystemMessage,
       showEmotion: json['showEmotion'] as bool? ?? d.showEmotion,
+      ngProtectionNotificationEnabled:
+          json['ngProtectionNotificationEnabled'] as bool? ??
+          d.ngProtectionNotificationEnabled,
     );
   }
 

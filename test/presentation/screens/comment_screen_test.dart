@@ -3749,6 +3749,539 @@ void main() {
 
       expect(find.text('コメント統計サマリ'), findsNothing);
     });
+
+    group('NG protection notification', () {
+      testWidgets(
+        'does not show snackbar or badge when setting is OFF (default)',
+        (WidgetTester tester) async {
+          final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+          final GlobalKey<_NgProtectionHostState> hostKey =
+              GlobalKey<_NgProtectionHostState>();
+
+          await tester.pumpWidget(
+            _NgProtectionHost(
+              key: hostKey,
+              supervisor: supervisor,
+              ngWords: const <String>['spam'],
+              notificationEnabled: false,
+            ),
+          );
+          await tester.pump();
+
+          hostKey.currentState!.addMessage(
+            AppMessage(
+              id: 'ng-1',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+              userId: 'user-x',
+              content: 'this is spam',
+              type: AppMessageType.chat,
+            ),
+          );
+          await tester.pump();
+
+          expect(find.byType(SnackBar), findsNothing);
+          expect(find.byKey(const Key('ng-protection-badge')), findsNothing);
+        },
+      );
+
+      testWidgets('shows snackbar and badge on NG word match when ON', (
+        WidgetTester tester,
+      ) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_NgProtectionHostState> hostKey =
+            GlobalKey<_NgProtectionHostState>();
+
+        await tester.pumpWidget(
+          _NgProtectionHost(
+            key: hostKey,
+            supervisor: supervisor,
+            ngWords: const <String>['spam'],
+            notificationEnabled: true,
+          ),
+        );
+        await tester.pump();
+
+        hostKey.currentState!.addMessage(
+          AppMessage(
+            id: 'ng-1',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'user-x',
+            content: 'hey spam here',
+            type: AppMessageType.chat,
+          ),
+        );
+        // First pump applies setState + schedules post-frame snackbar.
+        await tester.pump();
+        // Second pump flushes the post-frame callback.
+        await tester.pump();
+
+        expect(find.byType(SnackBar), findsOneWidget);
+        expect(find.textContaining('「spam」'), findsOneWidget);
+        expect(find.byKey(const Key('ng-protection-badge')), findsOneWidget);
+      });
+
+      testWidgets('shows snackbar and badge on NG user match when ON', (
+        WidgetTester tester,
+      ) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_NgProtectionHostState> hostKey =
+            GlobalKey<_NgProtectionHostState>();
+
+        await tester.pumpWidget(
+          _NgProtectionHost(
+            key: hostKey,
+            supervisor: supervisor,
+            ngUserIds: const <String>{'blocked-user'},
+            notificationEnabled: true,
+          ),
+        );
+        await tester.pump();
+
+        hostKey.currentState!.addMessage(
+          AppMessage(
+            id: 'ng-user-1',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'blocked-user',
+            content: 'any text',
+            type: AppMessageType.chat,
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        expect(find.byType(SnackBar), findsOneWidget);
+        expect(find.textContaining('ユーザー'), findsOneWidget);
+        expect(find.byKey(const Key('ng-protection-badge')), findsOneWidget);
+      });
+
+      testWidgets(
+        'second NG hit within 10 seconds keeps badge increasing but snackbar is not re-fired',
+        (WidgetTester tester) async {
+          final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+          final GlobalKey<_NgProtectionHostState> hostKey =
+              GlobalKey<_NgProtectionHostState>();
+
+          await tester.pumpWidget(
+            _NgProtectionHost(
+              key: hostKey,
+              supervisor: supervisor,
+              ngWords: const <String>['spam'],
+              notificationEnabled: true,
+            ),
+          );
+          await tester.pump();
+
+          hostKey.currentState!.addMessage(
+            AppMessage(
+              id: 'ng-1',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+              userId: 'user-a',
+              content: 'first spam',
+              type: AppMessageType.chat,
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+          expect(find.byType(SnackBar), findsOneWidget);
+
+          // Dismiss the current snackbar so that any subsequent showSnackBar
+          // call would be clearly observable.
+          ScaffoldMessenger.of(
+            tester.element(find.byType(CommentScreen)),
+          ).hideCurrentSnackBar();
+          await tester.pump(const Duration(seconds: 1));
+
+          hostKey.currentState!.addMessage(
+            AppMessage(
+              id: 'ng-2',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 1),
+              userId: 'user-b',
+              content: 'second spam',
+              type: AppMessageType.chat,
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+
+          // Badge should reflect 2 hits, but snackbar should not re-appear
+          // because we are still within the 10-second throttle window.
+          expect(find.byType(SnackBar), findsNothing);
+          expect(find.byKey(const Key('ng-protection-badge')), findsOneWidget);
+          expect(find.text('2'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'snackbar re-fires for a hit more than 10 seconds after the last',
+        (WidgetTester tester) async {
+          final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+          final GlobalKey<_NgProtectionHostState> hostKey =
+              GlobalKey<_NgProtectionHostState>();
+
+          await tester.pumpWidget(
+            _NgProtectionHost(
+              key: hostKey,
+              supervisor: supervisor,
+              ngWords: const <String>['spam'],
+              notificationEnabled: true,
+            ),
+          );
+          await tester.pump();
+
+          hostKey.currentState!.addMessage(
+            AppMessage(
+              id: 'ng-1',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+              userId: 'user-a',
+              content: 'first spam',
+              type: AppMessageType.chat,
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+          expect(find.byType(SnackBar), findsOneWidget);
+
+          // Rewind the internal throttle timestamp past the 10-second
+          // window. The throttle uses wall-clock DateTime.now(), so
+          // tester.pump(Duration) alone does not advance it; we expose
+          // a @visibleForTesting hook instead of sleeping for 11 seconds.
+          debugRewindProtectionNotificationClock(
+            tester.element(find.byType(CommentScreen)),
+            const Duration(seconds: 11),
+          );
+
+          // Dismiss the current snackbar so a re-fire is clearly observable.
+          ScaffoldMessenger.of(
+            tester.element(find.byType(CommentScreen)),
+          ).hideCurrentSnackBar();
+          await tester.pump();
+
+          hostKey.currentState!.addMessage(
+            AppMessage(
+              id: 'ng-2',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 11),
+              userId: 'user-b',
+              content: 'later spam',
+              type: AppMessageType.chat,
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+
+          // Beyond the throttle window, the snackbar must fire again.
+          expect(find.byType(SnackBar), findsOneWidget);
+          expect(find.text('2'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'sanitizes NG word containing emoji, newlines and zero-width chars without breaking surrogate pairs',
+        (WidgetTester tester) async {
+          final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+          final GlobalKey<_NgProtectionHostState> hostKey =
+              GlobalKey<_NgProtectionHostState>();
+
+          // 21 face-with-tears-of-joy emoji (U+1F602, each is a surrogate
+          // pair in UTF-16). UTF-16 length is 42 > 40, which would have
+          // broken the previous substring-based truncate.
+          final String emojiNgWord = '\u{1F602}' * 21;
+          final String ngWordWithNoise = 'a\nb\tc\u200Bd\u202Ee$emojiNgWord';
+
+          await tester.pumpWidget(
+            _NgProtectionHost(
+              key: hostKey,
+              supervisor: supervisor,
+              ngWords: <String>[ngWordWithNoise],
+              notificationEnabled: true,
+            ),
+          );
+          await tester.pump();
+
+          hostKey.currentState!.addMessage(
+            AppMessage(
+              id: 'ng-emoji-1',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+              userId: 'user-a',
+              content: 'hit: $ngWordWithNoise',
+              type: AppMessageType.chat,
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+
+          expect(find.byType(SnackBar), findsOneWidget);
+
+          // Extract the rendered snackbar text and verify:
+          //  - no U+FFFD replacement character (would indicate a broken
+          //    surrogate pair from substring slicing)
+          //  - no newline/tab characters
+          //  - no bidi override / zero-width characters
+          final Iterable<Text> texts = tester.widgetList<Text>(
+            find.descendant(
+              of: find.byType(SnackBar),
+              matching: find.byType(Text),
+            ),
+          );
+          final String combined = texts.map((Text t) => t.data ?? '').join();
+          expect(
+            combined.contains('\uFFFD'),
+            isFalse,
+            reason: 'truncate split a surrogate pair',
+          );
+          expect(combined.contains('\n'), isFalse);
+          expect(combined.contains('\t'), isFalse);
+          expect(combined.contains('\u200B'), isFalse);
+          expect(combined.contains('\u202E'), isFalse);
+        },
+      );
+
+      testWidgets(
+        'preserves ZWJ-composed emoji in the NG-user snackbar so family sequences are not split',
+        (WidgetTester tester) async {
+          final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+          final GlobalKey<_NgProtectionHostState> hostKey =
+              GlobalKey<_NgProtectionHostState>();
+
+          // Family (man+woman+girl+boy) joined with ZWJ (U+200D). Must
+          // render as a single grapheme; stripping ZWJ would split it
+          // into four separate people in the snackbar.
+          const String family =
+              '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}'
+              '\u200D\u{1F466}';
+          // Variation selector (U+FE0F) on a base glyph (heart) verifies
+          // VS15/16 is preserved alongside ZWJ.
+          const String heart = '\u2764\uFE0F';
+          final String ngUserId = 'user-$family$heart';
+
+          await tester.pumpWidget(
+            _NgProtectionHost(
+              key: hostKey,
+              supervisor: supervisor,
+              ngUserIds: <String>{ngUserId},
+              notificationEnabled: true,
+            ),
+          );
+          await tester.pump();
+
+          hostKey.currentState!.addMessage(
+            AppMessage(
+              id: 'ng-zwj-user-1',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+              userId: ngUserId,
+              content: 'any text',
+              type: AppMessageType.chat,
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+
+          expect(find.byType(SnackBar), findsOneWidget);
+
+          final Iterable<Text> texts = tester.widgetList<Text>(
+            find.descendant(
+              of: find.byType(SnackBar),
+              matching: find.byType(Text),
+            ),
+          );
+          final String combined = texts.map((Text t) => t.data ?? '').join();
+
+          // ZWJ and VS16 must survive so the composed glyphs remain intact.
+          expect(
+            combined.contains('\u200D'),
+            isTrue,
+            reason: 'ZWJ (U+200D) must be preserved for family emoji',
+          );
+          expect(
+            combined.contains('\uFE0F'),
+            isTrue,
+            reason: 'VS16 (U+FE0F) must be preserved for heart emoji',
+          );
+          expect(
+            combined.contains(family),
+            isTrue,
+            reason: 'ZWJ-composed family must appear as a whole sequence',
+          );
+        },
+      );
+
+      testWidgets(
+        'strips tag characters and additional bidi controls from the NG-user snackbar label',
+        (WidgetTester tester) async {
+          final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+          final GlobalKey<_NgProtectionHostState> hostKey =
+              GlobalKey<_NgProtectionHostState>();
+
+          // U+061C (Arabic Letter Mark), U+180E (Mongolian Vowel Separator),
+          // and U+E0041 (a Tag Character) are all invisible/spoofing chars
+          // that must never leak into the snackbar label.
+          const String alm = '\u061C';
+          const String mvs = '\u180E';
+          const String tagA = '\u{E0041}';
+          final String spoofyUserId = 'alice${alm}admin${mvs}x$tagA';
+
+          await tester.pumpWidget(
+            _NgProtectionHost(
+              key: hostKey,
+              supervisor: supervisor,
+              ngUserIds: <String>{spoofyUserId},
+              notificationEnabled: true,
+            ),
+          );
+          await tester.pump();
+
+          hostKey.currentState!.addMessage(
+            AppMessage(
+              id: 'ng-spoof-1',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+              userId: spoofyUserId,
+              content: 'any text',
+              type: AppMessageType.chat,
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+
+          expect(find.byType(SnackBar), findsOneWidget);
+
+          final Iterable<Text> texts = tester.widgetList<Text>(
+            find.descendant(
+              of: find.byType(SnackBar),
+              matching: find.byType(Text),
+            ),
+          );
+          final String combined = texts.map((Text t) => t.data ?? '').join();
+
+          expect(
+            combined.contains(alm),
+            isFalse,
+            reason: 'Arabic Letter Mark must be stripped from display',
+          );
+          expect(
+            combined.contains(mvs),
+            isFalse,
+            reason: 'Mongolian Vowel Separator must be stripped from display',
+          );
+          expect(
+            combined.contains(tagA),
+            isFalse,
+            reason: 'Tag characters must be stripped (Trojan Source defense)',
+          );
+        },
+      );
+
+      testWidgets(
+        'does not retroactively announce historical NG hits when notification is toggled ON later',
+        (WidgetTester tester) async {
+          final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+          final GlobalKey<_NgProtectionHostState> hostKey =
+              GlobalKey<_NgProtectionHostState>();
+
+          // Start with notification OFF and add an NG comment.
+          await tester.pumpWidget(
+            _NgProtectionHost(
+              key: hostKey,
+              supervisor: supervisor,
+              ngWords: const <String>['spam'],
+              notificationEnabled: false,
+            ),
+          );
+          await tester.pump();
+
+          hostKey.currentState!.addMessage(
+            AppMessage(
+              id: 'past-ng',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+              userId: 'user-a',
+              content: 'old spam',
+              type: AppMessageType.chat,
+            ),
+          );
+          await tester.pump();
+
+          // No snackbar / badge while OFF.
+          expect(find.byType(SnackBar), findsNothing);
+          expect(find.byKey(const Key('ng-protection-badge')), findsNothing);
+
+          // Toggle ON by rebuilding with notificationEnabled = true.
+          await tester.pumpWidget(
+            _NgProtectionHost(
+              key: hostKey,
+              supervisor: supervisor,
+              ngWords: const <String>['spam'],
+              notificationEnabled: true,
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+
+          // The historical NG comment must not trigger a retroactive
+          // snackbar or badge increment.
+          expect(find.byType(SnackBar), findsNothing);
+          expect(find.byKey(const Key('ng-protection-badge')), findsNothing);
+        },
+      );
+
+      testWidgets(
+        'processes full tail when the cursor message was evicted by ring-buffer rotation',
+        (WidgetTester tester) async {
+          final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+          final GlobalKey<_NgProtectionHostState> hostKey =
+              GlobalKey<_NgProtectionHostState>();
+
+          await tester.pumpWidget(
+            _NgProtectionHost(
+              key: hostKey,
+              supervisor: supervisor,
+              ngWords: const <String>['spam'],
+              notificationEnabled: true,
+            ),
+          );
+          await tester.pump();
+
+          // First, establish a cursor by pushing a benign message.
+          hostKey.currentState!.addMessage(
+            AppMessage(
+              id: 'keep-1',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+              userId: 'user-a',
+              content: 'hello',
+              type: AppMessageType.chat,
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+
+          // Now replace the message list entirely with a fresh set that
+          // does NOT contain the previous cursor ID ('keep-1'), simulating
+          // ring-buffer rotation. The first of the new messages contains
+          // an NG word.
+          hostKey.currentState!.replaceAll(<AppMessage>[
+            AppMessage(
+              id: 'rotated-1',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 5),
+              userId: 'user-b',
+              content: 'rotated spam here',
+              type: AppMessageType.chat,
+            ),
+            AppMessage(
+              id: 'rotated-2',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 6),
+              userId: 'user-c',
+              content: 'benign',
+              type: AppMessageType.chat,
+            ),
+          ]);
+          await tester.pump();
+          await tester.pump();
+
+          // Because the cursor was evicted, the fallback path must process
+          // the full tail and announce the NG hit (otherwise it would be
+          // silently swallowed).
+          expect(find.byKey(const Key('ng-protection-badge')), findsOneWidget);
+          expect(find.text('1'), findsOneWidget);
+        },
+      );
+    });
   });
 
   group('Message-type display toggles', () {
@@ -4340,6 +4873,62 @@ void main() {
   });
 }
 
+class _NgProtectionHost extends StatefulWidget {
+  const _NgProtectionHost({
+    super.key,
+    required this.supervisor,
+    required this.notificationEnabled,
+    this.ngWords = const <String>[],
+    this.ngUserIds = const <String>{},
+  });
+
+  final ConnectionSupervisor supervisor;
+  final bool notificationEnabled;
+  final List<String> ngWords;
+  final Set<String> ngUserIds;
+
+  @override
+  State<_NgProtectionHost> createState() => _NgProtectionHostState();
+}
+
+class _NgProtectionHostState extends State<_NgProtectionHost> {
+  List<AppMessage> _messages = const <AppMessage>[];
+
+  void addMessage(AppMessage message) {
+    setState(() {
+      _messages = List<AppMessage>.from(_messages)..add(message);
+    });
+  }
+
+  void replaceAll(List<AppMessage> messages) {
+    setState(() {
+      _messages = List<AppMessage>.from(messages);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: CommentScreen(
+        programInfo: const CommentProgramInfo(lv: 'lv-ng-protection'),
+        connectionSupervisor: widget.supervisor,
+        messages: _messages,
+        callbacks: CommentCallbacks(
+          onStopAllConnections: () async {},
+          onReconnectSameLv: () async {},
+          onDifferentLvConnected: (_, _) async {},
+        ),
+        themeMode: AppThemeMode.light,
+        filterConfig: CommentFilterConfig(
+          ngWords: widget.ngWords,
+          ngUserIds: widget.ngUserIds,
+          ngProtectionNotificationEnabled: widget.notificationEnabled,
+        ),
+      ),
+    );
+  }
+}
+
 class _NicknameCommentScreenHost extends StatefulWidget {
   const _NicknameCommentScreenHost({
     super.key,
@@ -4507,6 +5096,7 @@ Widget _buildScreen({
   bool showSystemMessage = true,
   bool showEmotion = true,
   AppThemeMode themeMode = AppThemeMode.light,
+  bool ngProtectionNotificationEnabled = false,
 }) {
   final UserNameResolution? userNameResolution = resolveUserName == null
       ? null
@@ -4558,6 +5148,7 @@ Widget _buildScreen({
         showSystemMessage: showSystemMessage,
         showEmotion: showEmotion,
         emphasizeGiftNicoadComment: emphasizeGiftNicoadComment,
+        ngProtectionNotificationEnabled: ngProtectionNotificationEnabled,
       ),
       logConfig: CommentLogConfig(
         commentLogWriter: commentLogWriter,
