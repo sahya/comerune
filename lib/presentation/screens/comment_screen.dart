@@ -110,6 +110,113 @@ String? _displayNameForMessage(AppMessage message, {String? resolvedUserName}) {
   return resolvedUserName != null ? '$resolvedUserName ($userId)' : userId;
 }
 
+/// Builds the timestamp + optional user-ID display-name spans shared by the
+/// pinned two-line layout, the single-line URL-aware layout, and the
+/// two-line main comment layout.
+///
+/// The caller is responsible for:
+/// - resolving [displayName] via [_displayNameForMessage] (the operator vs.
+///   chat fallback logic is not duplicated here).
+/// - computing font sizes and colors so that this helper stays a pure UI
+///   builder and never reads `Theme.of(context)`.
+///
+/// [hidden] maps the star-prefix "spoiler hidden" state in the regular row
+/// (always `false` for pinned rows, which don't support star-prefix hiding):
+/// it forces grey text, italic, and drops [idFontWeight].
+///
+/// [idFontWeight] is the weight applied to the display-name span when not
+/// hidden. Pinned rows pass `null` to keep the existing pre-refactor look;
+/// the regular row passes `FontWeight.w500`.
+///
+/// Returns the spans in order: `[timestamp, ('  ', displayName)?]`. No
+/// trailing whitespace span or content span is appended — the caller owns
+/// the transition into the comment body so URL-aware vs plain paths stay
+/// separated.
+List<InlineSpan> _buildMetaSpans({
+  required String timestamp,
+  required bool showUserName,
+  String? displayName,
+  required double timestampFontSize,
+  required double idFontSize,
+  required Color timestampColor,
+  required Color idColor,
+  Color? effectiveUserColor,
+  required bool hidden,
+  FontWeight? idFontWeight,
+}) {
+  final List<InlineSpan> spans = <InlineSpan>[
+    TextSpan(
+      text: timestamp,
+      style: TextStyle(
+        fontSize: timestampFontSize,
+        color: hidden ? Colors.grey : timestampColor,
+        fontStyle: hidden ? FontStyle.italic : null,
+      ),
+    ),
+  ];
+  if (showUserName && displayName != null) {
+    // Explicitly size the whitespace separator so an inherited
+    // DefaultTextStyle (typically ~14px body text) cannot inflate the meta
+    // line height beyond the adjacent spans. Pre-refactor, the pinned row
+    // styled this separator with the metaFontSize; keeping the separator
+    // bounded to the larger of the two meta spans preserves that line
+    // height for every call site.
+    final double separatorFontSize = timestampFontSize > idFontSize
+        ? timestampFontSize
+        : idFontSize;
+    spans.add(
+      TextSpan(
+        text: '  ',
+        style: TextStyle(fontSize: separatorFontSize),
+      ),
+    );
+    spans.add(
+      TextSpan(
+        text: displayName,
+        style: TextStyle(
+          fontSize: idFontSize,
+          color: hidden ? Colors.grey : (effectiveUserColor ?? idColor),
+          fontWeight: hidden ? null : idFontWeight,
+          fontStyle: hidden ? FontStyle.italic : null,
+        ),
+      ),
+    );
+  }
+  return spans;
+}
+
+/// Test-only accessor for [_buildMetaSpans].
+///
+/// Exposed so widget-free unit tests can pin the timestamp + display-name
+/// span construction without rendering a comment row. The real helper stays
+/// private to this library.
+@visibleForTesting
+List<InlineSpan> buildMetaSpansForTesting({
+  required String timestamp,
+  required bool showUserName,
+  String? displayName,
+  required double timestampFontSize,
+  required double idFontSize,
+  required Color timestampColor,
+  required Color idColor,
+  Color? effectiveUserColor,
+  required bool hidden,
+  FontWeight? idFontWeight,
+}) {
+  return _buildMetaSpans(
+    timestamp: timestamp,
+    showUserName: showUserName,
+    displayName: displayName,
+    timestampFontSize: timestampFontSize,
+    idFontSize: idFontSize,
+    timestampColor: timestampColor,
+    idColor: idColor,
+    effectiveUserColor: effectiveUserColor,
+    hidden: hidden,
+    idFontWeight: idFontWeight,
+  );
+}
+
 String _commentLineText({
   required AppMessage message,
   required bool showUserName,
@@ -4147,29 +4254,17 @@ class _PinnedCommentRow extends StatelessWidget {
       resolvedUserName: resolvedUserName,
     );
 
-    final List<InlineSpan> metaSpans = <InlineSpan>[
-      TextSpan(
-        text: timestamp,
-        style: TextStyle(fontSize: metaFontSize, color: metaColor),
-      ),
-    ];
-    if (displayName != null) {
-      metaSpans.add(
-        TextSpan(
-          text: '  ',
-          style: TextStyle(fontSize: metaFontSize, color: metaColor),
-        ),
-      );
-      metaSpans.add(
-        TextSpan(
-          text: displayName,
-          style: TextStyle(
-            fontSize: metaFontSize,
-            color: effectiveUserColor ?? metaColor,
-          ),
-        ),
-      );
-    }
+    final List<InlineSpan> metaSpans = _buildMetaSpans(
+      timestamp: timestamp,
+      showUserName: true,
+      displayName: displayName,
+      timestampFontSize: metaFontSize,
+      idFontSize: metaFontSize,
+      timestampColor: metaColor,
+      idColor: metaColor,
+      effectiveUserColor: effectiveUserColor,
+      hidden: false,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -4363,34 +4458,20 @@ class _CommentRowState extends State<_CommentRow> {
       spans.add(leadingIconSpan);
       spans.add(const TextSpan(text: ' '));
     }
-    spans.add(
-      TextSpan(
-        text: timestamp,
-        style: TextStyle(
-          fontSize: timestampFontSize,
-          color: hidden ? Colors.grey : timestampColor,
-          fontStyle: hidden ? FontStyle.italic : null,
-        ),
+    spans.addAll(
+      _buildMetaSpans(
+        timestamp: timestamp,
+        showUserName: widget.showUserName,
+        displayName: widget.showUserName ? _displayNameFor(message) : null,
+        timestampFontSize: timestampFontSize,
+        idFontSize: idFontSize,
+        timestampColor: timestampColor,
+        idColor: idColor,
+        effectiveUserColor: effectiveUserColor,
+        hidden: hidden,
+        idFontWeight: FontWeight.w500,
       ),
     );
-
-    if (widget.showUserName) {
-      final String? displayName = _displayNameFor(message);
-      if (displayName != null) {
-        spans.add(const TextSpan(text: '  '));
-        spans.add(
-          TextSpan(
-            text: displayName,
-            style: TextStyle(
-              fontSize: idFontSize,
-              color: hidden ? Colors.grey : (effectiveUserColor ?? idColor),
-              fontWeight: hidden ? null : FontWeight.w500,
-              fontStyle: hidden ? FontStyle.italic : null,
-            ),
-          ),
-        );
-      }
-    }
 
     final TextStyle contentStyle = TextStyle(
       fontSize: fontSize,
@@ -4503,34 +4584,22 @@ class _CommentRowState extends State<_CommentRow> {
       metaSpans.add(leadingIconSpan);
       metaSpans.add(const TextSpan(text: ' '));
     }
-    metaSpans.add(
-      TextSpan(
-        text: timestamp,
-        style: TextStyle(
-          fontSize: timestampFontSize,
-          color: hidden ? Colors.grey : timestampColor,
-          fontStyle: hidden ? FontStyle.italic : null,
-        ),
+    metaSpans.addAll(
+      _buildMetaSpans(
+        timestamp: timestamp,
+        showUserName: widget.showUserName,
+        displayName: widget.showUserName
+            ? _displayNameFor(widget.message)
+            : null,
+        timestampFontSize: timestampFontSize,
+        idFontSize: idFontSize,
+        timestampColor: timestampColor,
+        idColor: idColor,
+        effectiveUserColor: effectiveUserColor,
+        hidden: hidden,
+        idFontWeight: FontWeight.w500,
       ),
     );
-
-    if (widget.showUserName) {
-      final String? displayName = _displayNameFor(widget.message);
-      if (displayName != null) {
-        metaSpans.add(const TextSpan(text: '  '));
-        metaSpans.add(
-          TextSpan(
-            text: displayName,
-            style: TextStyle(
-              fontSize: idFontSize,
-              color: hidden ? Colors.grey : (effectiveUserColor ?? idColor),
-              fontWeight: hidden ? null : FontWeight.w500,
-              fontStyle: hidden ? FontStyle.italic : null,
-            ),
-          ),
-        );
-      }
-    }
 
     final TextStyle contentStyle = TextStyle(
       fontSize: fontSize,

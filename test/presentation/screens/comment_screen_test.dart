@@ -5208,6 +5208,168 @@ void main() {
     });
 
     // ------------------------------------------------------------------
+    // _buildMetaSpans helper tests (Issue #444).
+    //
+    // Pins the timestamp + user-ID span construction that all three comment
+    // layouts (pinned two-line, main single-line URL-aware, main two-line)
+    // share. The goal is to detect visual regressions that dart analyze
+    // cannot catch: missing user-id span, wrong color, wrong font weight,
+    // or wrong italic/grey treatment when the spoiler-hidden state is on.
+    // ------------------------------------------------------------------
+    group('_buildMetaSpans', () {
+      test('emits timestamp + separator + displayName when shown', () {
+        final List<InlineSpan> spans = buildMetaSpansForTesting(
+          timestamp: '12:34:56',
+          showUserName: true,
+          displayName: 'alice (u123)',
+          timestampFontSize: 11,
+          idFontSize: 12,
+          timestampColor: const Color(0xFF808080),
+          idColor: const Color(0xFF808080),
+          hidden: false,
+          idFontWeight: FontWeight.w500,
+        );
+        expect(spans.length, 3);
+
+        final TextSpan ts = spans[0] as TextSpan;
+        expect(ts.text, '12:34:56');
+        expect(ts.style?.fontSize, 11);
+        expect(ts.style?.color, const Color(0xFF808080));
+        expect(ts.style?.fontStyle, isNull);
+
+        final TextSpan sep = spans[1] as TextSpan;
+        expect(sep.text, '  ');
+        // Separator font size is pinned to the larger of timestamp/id sizes
+        // so an inherited DefaultTextStyle cannot inflate the meta line
+        // height beyond the adjacent spans.
+        expect(sep.style?.fontSize, 12);
+
+        final TextSpan id = spans[2] as TextSpan;
+        expect(id.text, 'alice (u123)');
+        expect(id.style?.fontSize, 12);
+        expect(id.style?.fontWeight, FontWeight.w500);
+        expect(id.style?.color, const Color(0xFF808080));
+      });
+
+      test('omits displayName span when showUserName is false', () {
+        final List<InlineSpan> spans = buildMetaSpansForTesting(
+          timestamp: '12:34:56',
+          showUserName: false,
+          displayName: 'alice',
+          timestampFontSize: 11,
+          idFontSize: 12,
+          timestampColor: const Color(0xFF808080),
+          idColor: const Color(0xFF808080),
+          hidden: false,
+        );
+        expect(spans.length, 1);
+        expect((spans.single as TextSpan).text, '12:34:56');
+      });
+
+      test('omits displayName span when displayName is null', () {
+        final List<InlineSpan> spans = buildMetaSpansForTesting(
+          timestamp: '12:34:56',
+          showUserName: true,
+          displayName: null,
+          timestampFontSize: 11,
+          idFontSize: 12,
+          timestampColor: const Color(0xFF808080),
+          idColor: const Color(0xFF808080),
+          hidden: false,
+        );
+        expect(spans.length, 1);
+        expect((spans.single as TextSpan).text, '12:34:56');
+      });
+
+      test('effectiveUserColor overrides idColor on the displayName span', () {
+        final List<InlineSpan> spans = buildMetaSpansForTesting(
+          timestamp: '00:00:00',
+          showUserName: true,
+          displayName: 'bob',
+          timestampFontSize: 11,
+          idFontSize: 12,
+          timestampColor: const Color(0xFF808080),
+          idColor: const Color(0xFF808080),
+          effectiveUserColor: const Color(0xFFBF360C),
+          hidden: false,
+          idFontWeight: FontWeight.w500,
+        );
+        final TextSpan id = spans[2] as TextSpan;
+        expect(id.style?.color, const Color(0xFFBF360C));
+      });
+
+      test(
+        'hidden state forces grey + italic and drops the id font weight',
+        () {
+          final List<InlineSpan> spans = buildMetaSpansForTesting(
+            timestamp: '12:34:56',
+            showUserName: true,
+            displayName: 'alice',
+            timestampFontSize: 14,
+            idFontSize: 14,
+            timestampColor: const Color(0xFF808080),
+            idColor: const Color(0xFF808080),
+            effectiveUserColor: const Color(0xFFBF360C),
+            hidden: true,
+            idFontWeight: FontWeight.w500,
+          );
+          final TextSpan ts = spans[0] as TextSpan;
+          expect(ts.style?.color, Colors.grey);
+          expect(ts.style?.fontStyle, FontStyle.italic);
+
+          final TextSpan id = spans[2] as TextSpan;
+          expect(id.style?.color, Colors.grey);
+          expect(id.style?.fontStyle, FontStyle.italic);
+          // w500 must not leak through when hidden, otherwise the spoiler
+          // placeholder looks louder than the rest of the row.
+          expect(id.style?.fontWeight, isNull);
+        },
+      );
+
+      test(
+        'pinned-style call (idFontWeight: null) does not bold the displayName',
+        () {
+          final List<InlineSpan> spans = buildMetaSpansForTesting(
+            timestamp: '12:34:56',
+            showUserName: true,
+            displayName: 'alice',
+            timestampFontSize: 10,
+            idFontSize: 10,
+            timestampColor: const Color(0xFF808080),
+            idColor: const Color(0xFF808080),
+            hidden: false,
+            idFontWeight: null,
+          );
+          final TextSpan id = spans[2] as TextSpan;
+          expect(id.style?.fontWeight, isNull);
+          // Pinned layout passes equal timestamp/id sizes; the separator
+          // must match so the pinned meta line height stays at metaFontSize
+          // (pre-refactor behavior).
+          final TextSpan sep = spans[1] as TextSpan;
+          expect(sep.style?.fontSize, 10);
+        },
+      );
+
+      test('hidden with timestamp-only (no user name) still greys out', () {
+        final List<InlineSpan> spans = buildMetaSpansForTesting(
+          timestamp: '12:34:56',
+          showUserName: false,
+          displayName: 'alice',
+          timestampFontSize: 11,
+          idFontSize: 12,
+          timestampColor: const Color(0xFF808080),
+          idColor: const Color(0xFF808080),
+          hidden: true,
+        );
+        expect(spans.length, 1);
+        final TextSpan ts = spans.single as TextSpan;
+        expect(ts.text, '12:34:56');
+        expect(ts.style?.color, Colors.grey);
+        expect(ts.style?.fontStyle, FontStyle.italic);
+      });
+    });
+
+    // ------------------------------------------------------------------
     // Operator long-body / overflow boundary tests (Issue #477).
     //
     // Operator (運営) comments are broadcaster announcements that may carry
