@@ -508,6 +508,15 @@ class _CommentScreenState extends State<CommentScreen> {
   /// snackbars (the badge still increments). 10 seconds per spec.
   static const Duration _protectionSnackBarWindow = Duration(seconds: 10);
 
+  /// Cached pattern used by [_sanitizeSingleLine] to collapse any residual
+  /// CR / LF / TAB runs into a single space.  Defensive: the shared
+  /// [removeControlAndInvisibleChars] already strips these C0 controls,
+  /// but keeping the replacement guards against a future refactor that
+  /// preserves them.  `static final` avoids recompiling the pattern on
+  /// every snackbar label build, matching the style of the whitespace
+  /// pattern in [ndgr_message_normalizer.dart].
+  static final RegExp _singleLineWhitespacePattern = RegExp(r'[\r\n\t]+');
+
   // Comment keyword search state.
   bool _isSearching = false;
   String _searchQuery = '';
@@ -1544,38 +1553,20 @@ class _CommentScreenState extends State<CommentScreen> {
     String? latestSnackBarMessage;
     for (int i = start; i < newMessages.length; i++) {
       final AppMessage message = newMessages[i];
-      // Skip message types that are excluded from NG filtering by design
-      // (gift / nicoad are never silenced; see [_shouldDisplayMessage]).
-      //
-      // Additionally, honor the per-type visibility toggles (operator /
-      // system / emotion). A message that the user has explicitly hidden
-      // must not also trigger a "protection" notification — announcing a
-      // protection event for something the user asked not to see is a
-      // semantic contradiction and produces confusing snackbars / badge
-      // counts. Gift / nicoad already `continue` above so they are not
-      // affected by this additional guard.
-      switch (message.type) {
-        case AppMessageType.gift:
-        case AppMessageType.nicoad:
-          continue;
-        case AppMessageType.operator:
-          if (!widget.messageTypeVisibility.showOperatorComment) {
-            continue;
-          }
-          break;
-        case AppMessageType.system:
-          if (!widget.messageTypeVisibility.showSystemMessage) {
-            continue;
-          }
-          break;
-        case AppMessageType.emotion:
-          if (!widget.messageTypeVisibility.showEmotion) {
-            continue;
-          }
-          break;
-        case AppMessageType.chat:
-        case AppMessageType.notification:
-          break;
+      // Gift / nicoad are excluded from NG filtering by design (they are
+      // never silenced; see [_shouldDisplayMessage]).
+      if (message.type == AppMessageType.gift ||
+          message.type == AppMessageType.nicoad) {
+        continue;
+      }
+      // Honor per-type visibility toggles (operator / system / emotion).
+      // A message the user has explicitly hidden must not also trigger a
+      // protection notification — announcing protection for something the
+      // user asked not to see is a semantic contradiction.  Delegated to
+      // [_isTypeVisible] (single source of truth shared with
+      // [_shouldDisplayMessage]).
+      if (!_isTypeVisible(message.type)) {
+        continue;
       }
       if (_isSystemBroadcastEndedMessage(message)) {
         continue;
@@ -1638,6 +1629,12 @@ class _CommentScreenState extends State<CommentScreen> {
     // some iOS layouts). The badge still increments, so no NG hit is lost —
     // the user can read the count once they close the search bar. The
     // existing Semantics on the badge announces the count for TalkBack.
+    //
+    // Design note: this early return intentionally does NOT update
+    // [_lastProtectionNotificationAt], so the throttle window does not
+    // advance during search. When the user closes the search bar, the
+    // first subsequent NG hit fires the snackbar immediately (the window
+    // has already elapsed from the pre-search timestamp).
     if (_isSearching) {
       return;
     }
@@ -1726,10 +1723,10 @@ class _CommentScreenState extends State<CommentScreen> {
   String _sanitizeSingleLine(String value) {
     // Strip C0/C1 controls, zero-width characters, and bidi / tag
     // controls that could otherwise spoof or reorder the snackbar text.
-    // All such categories are centralized in [_removeControlAndInvisible].
-    final String withoutControls = _removeControlAndInvisible(value);
+    // All such categories are centralized in [removeControlAndInvisibleChars].
+    final String withoutControls = removeControlAndInvisibleChars(value);
     final String collapsed = withoutControls
-        .replaceAll(RegExp(r'[\r\n\t]+'), ' ')
+        .replaceAll(_singleLineWhitespacePattern, ' ')
         .trim();
     // Limit length so the snackbar does not overflow on narrow screens.
     // Counting grapheme clusters (user-perceived characters) instead of
@@ -2719,6 +2716,32 @@ class _CommentScreenState extends State<CommentScreen> {
     }
   }
 
+  /// Returns whether the per-type visibility toggle allows the message to
+  /// be processed.  Covers the three types (operator / system / emotion)
+  /// whose toggles are shared between display filtering
+  /// ([_shouldDisplayMessage]) and NG-protection notification
+  /// ([_processNgProtectionNotifications]).
+  ///
+  /// Gift / nicoad are intentionally excluded and always return `true`:
+  /// they have different policies in [_shouldDisplayMessage] (own toggle)
+  /// vs [_processNgProtectionNotifications] (always skip), so each caller
+  /// handles them independently.
+  bool _isTypeVisible(AppMessageType type) {
+    switch (type) {
+      case AppMessageType.operator:
+        return widget.messageTypeVisibility.showOperatorComment;
+      case AppMessageType.system:
+        return widget.messageTypeVisibility.showSystemMessage;
+      case AppMessageType.emotion:
+        return widget.messageTypeVisibility.showEmotion;
+      case AppMessageType.chat:
+      case AppMessageType.notification:
+      case AppMessageType.gift:
+      case AppMessageType.nicoad:
+        return true;
+    }
+  }
+
   /// Decides whether [message] should be rendered in the comment list.
   ///
   /// Responsibilities (combined here by design):
@@ -2736,11 +2759,10 @@ class _CommentScreenState extends State<CommentScreen> {
   /// be hidden by NG filters. See also `_shouldIncludeInStatsAndLogs`, which
   /// keeps them out of stats and saved comment logs.
   bool _shouldDisplayMessage(AppMessage message) {
-    // Type-based visibility toggles (operator / system / emotion /
-    // gift / nicoad). When a gift/nicoad toggle is OFF, the message is
-    // suppressed entirely from the list. When ON, emphasis styling is
-    // separately controlled by `contentFilter.emphasizeGiftNicoadComment`
-    // at render time.
+    // Type-based visibility toggles.  Operator / system / emotion share
+    // the same toggle semantics with [_processNgProtectionNotifications]
+    // and are delegated to [_isTypeVisible] (single source of truth).
+    // Gift / nicoad have their own toggles that only apply to display.
     switch (message.type) {
       case AppMessageType.chat:
       case AppMessageType.notification:
@@ -2756,17 +2778,9 @@ class _CommentScreenState extends State<CommentScreen> {
         }
         break;
       case AppMessageType.operator:
-        if (!widget.messageTypeVisibility.showOperatorComment) {
-          return false;
-        }
-        break;
       case AppMessageType.system:
-        if (!widget.messageTypeVisibility.showSystemMessage) {
-          return false;
-        }
-        break;
       case AppMessageType.emotion:
-        if (!widget.messageTypeVisibility.showEmotion) {
+        if (!_isTypeVisible(message.type)) {
           return false;
         }
         break;
@@ -3091,7 +3105,7 @@ class _CommentScreenState extends State<CommentScreen> {
     String result = text;
     result = _normalizeFullWidthAscii(result);
     result = _normalizeHalfWidthKatakana(result);
-    result = _removeControlAndInvisible(result);
+    result = removeControlAndInvisibleChars(result);
     result = _applyLookAlikeTable(result);
     result = _katakanaToHiragana(result);
     result = result.toLowerCase();
@@ -3237,17 +3251,6 @@ class _CommentScreenState extends State<CommentScreen> {
       i++;
     }
     return sb.toString();
-  }
-
-  /// Strips characters that would corrupt UI rendering or allow spoofing
-  /// of displayed text, while preserving characters that are semantically
-  /// part of user-perceived glyphs. See [removeControlAndInvisibleChars]
-  /// for the full list of stripped / preserved categories.
-  String _removeControlAndInvisible(String text) {
-    // Delegated to the shared helper so this sanitiser and the operator
-    // userName sanitiser in `ndgr_message_normalizer.dart` strip the exact
-    // same category of control / bidi / Tag characters.
-    return removeControlAndInvisibleChars(text);
   }
 
   String _applyLookAlikeTable(String text) {

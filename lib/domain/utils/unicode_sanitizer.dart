@@ -28,12 +28,23 @@ String removeControlAndInvisibleChars(String text) {
 }
 
 bool _isInvisibleOrControl(int cp) {
-  // C0 controls (U+0000-U+001F) — includes CR / LF / TAB. The caller is
-  // responsible for re-inserting whitespace (e.g. collapse to single space)
-  // when it needs to preserve word boundaries for display.
+  // C0 controls (U+0000-U+001F) — includes CR / LF / TAB. U+0020 (SPACE)
+  // is *not* in this range (it starts at 0x0021 in the Basic Latin printable
+  // block) and is therefore preserved. The caller is responsible for
+  // re-inserting whitespace (e.g. collapse to single space) when it needs
+  // to preserve word boundaries for display.
   if (cp >= 0x0000 && cp <= 0x001F) return true;
   // DEL + C1 controls (U+007F-U+009F)
   if (cp >= 0x007F && cp <= 0x009F) return true;
+
+  // Non-breaking / fixed-width spaces that can inject invisible gaps into
+  // display names and cause display-spoofing (e.g. "運営<NBSP>偽" looks
+  // like "運営 偽" but is a different string). These are safe to strip
+  // because the caller collapses whitespace runs separately; the only
+  // purpose of these code points in this context is to evade comparison.
+  if (cp == 0x00A0) return true; // NO-BREAK SPACE
+  if (cp == 0x2007) return true; // FIGURE SPACE
+  if (cp == 0x202F) return true; // NARROW NO-BREAK SPACE
 
   // Zero-width / format characters that can hide payload.
   if (cp == 0x00AD) return true; // SOFT HYPHEN

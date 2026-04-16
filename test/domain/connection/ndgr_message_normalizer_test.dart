@@ -455,6 +455,66 @@ void main() {
       expect(normalized, isNull);
     });
 
+    test(
+      'sanitises operator content by stripping bidi / Tag / zero-width characters',
+      () {
+        // Trojan Source / display-spoofing defence for operator.content:
+        // the broadcaster-supplied content body is sanitised symmetrically
+        // with the operator name so that invisible payloads cannot be
+        // smuggled into the rendered message bubble.  Printable CJK text
+        // must survive verbatim.
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+        // Interleave: bidi override + NBSP + zero-width space + Tag char
+        const String attack = '運営\u202E\u00A0からの\u200B\u{E0001}お知らせ';
+
+        final NdgrChunkedMessage source = NdgrChunkedMessage(
+          id: 'ndgr-op-content-sanitise',
+          serverTimestamp: serverTime,
+          operatorComment: NdgrOperatorComment(content: attack, name: '運営'),
+        );
+
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          source,
+          receivedAt: serverTime,
+        );
+
+        expect(normalized, isNotNull);
+        expect(
+          normalized!.content,
+          '運営からのお知らせ',
+          reason:
+              'bidi override / NBSP / ZWSP / Tag Character must be '
+              'stripped; printable CJK preserved',
+        );
+      },
+    );
+
+    test(
+      'returns null for operator comment with content that sanitises to empty',
+      () {
+        // Edge case: operator.content is non-empty per isNotEmpty (passes
+        // the early guard) but consists entirely of invisible characters
+        // (e.g. ZWSP + bidi override).  The sanitised content becomes
+        // empty, and the normalizer must drop the whole message rather
+        // than emit a visibly-empty operator bubble.
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          const NdgrChunkedMessage(
+            operatorComment: NdgrOperatorComment(
+              // U+200B (ZWSP) + U+202E (RLO) + U+FEFF (BOM) — all
+              // invisible; isNotEmpty = true before sanitisation.
+              content: '\u200B\u202E\uFEFF',
+            ),
+          ),
+        );
+
+        expect(normalized, isNull);
+      },
+    );
+
     test('maps SimpleNotificationV2 ICHIBA to AppMessageType.system', () {
       final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
       final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');

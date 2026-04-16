@@ -479,6 +479,15 @@ class NdgrProtobufDecoder {
       if ((fieldNumber == 1 || fieldNumber == 20) &&
           wireType == _WireType.lengthDelimited) {
         // NicoliveMessage.chat / NicoliveMessage.overflowed_chat
+        //
+        // Design decision: chat is NOT wrapped in try/catch (unlike
+        // simpleNotificationV2 below).  Chat is the primary payload of
+        // the NicoliveMessage — if it is malformed, the entire message
+        // is semantically broken and should propagate as a decode
+        // failure rather than silently producing a null chat while
+        // statistics / notification data is preserved.  Silently
+        // swallowing a chat decode error would hide protocol drift from
+        // the maintainer and leave the user with no visible comment.
         chat = _decodeChat(reader.readLengthDelimited());
       } else if (fieldNumber == 8 && wireType == _WireType.lengthDelimited) {
         // NicoliveMessage.statistics (legacy path). Upstream proto is

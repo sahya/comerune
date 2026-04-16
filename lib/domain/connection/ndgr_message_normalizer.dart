@@ -35,6 +35,10 @@ const String _kNdgrChatFallbackTimestampPrefix = 'ndgr-';
 /// vertically or horizontally and push other UI off-screen.
 const int _kOperatorUserNameMaxLength = 64;
 
+/// Cached pattern for collapsing consecutive ASCII spaces and full-width
+/// spaces into a single space during operator-name sanitisation.
+final RegExp _kWhitespaceRunPattern = RegExp(r'[ \u3000]+');
+
 /// Sanitises an operator-comment name (broadcaster-supplied) for safe
 /// rendering as a label:
 ///   - strips CR / LF, line/paragraph separators (U+2028/2029) so the label
@@ -70,7 +74,7 @@ String? _sanitizeOperatorUserName(String? raw) {
   // `_removeControlAndInvisible` previously dropped the TAB silently.
   final String controlFree = removeControlAndInvisibleChars(raw);
   final String cleaned = controlFree
-      .replaceAll(RegExp(r'[ \u3000]+'), ' ')
+      .replaceAll(_kWhitespaceRunPattern, ' ')
       .trim();
   if (cleaned.isEmpty) {
     return null;
@@ -119,8 +123,37 @@ class NdgrMessageNormalizer {
     //   If a future issue needs stronger visual attribution (fixed "運営"
     //   label or a badge), switch to Policy B/C and update the renderer; do
     //   not patch the field here.
+    //
+    //   Defense-in-depth for both `name` and `content`:
+    //   While Policy A preserves broadcaster-authored *printable* text
+    //   verbatim, we still strip CR / LF / C0 controls / bidi overrides /
+    //   Tag Characters from both fields.  These code points are never
+    //   part of a legitimate label or message body, but they CAN inject
+    //   additional UI rows (CR / LF), reverse the reading direction
+    //   (bidi overrides → Trojan Source), or smuggle invisible payloads
+    //   (Tag Characters).  Stripping them is a client-side rendering
+    //   concern, not an override of the broadcaster's intent.
     final NdgrOperatorComment? operatorComment = source.operatorComment;
     if (operatorComment != null && operatorComment.content.isNotEmpty) {
+      // Sanitise the content body symmetrically with the name: strip
+      // bidi overrides, Tag Characters, and other invisible controls
+      // that could produce Trojan Source style visual spoofing inside
+      // the operator-comment bubble.  Operator comments are single-line
+      // marquee messages in practice (CR/LF falls in the C0 block and
+      // is stripped by the shared helper).
+      //
+      // Drop the whole message when the sanitised content is empty — an
+      // operator-comment body that was *non-empty but consists only of
+      // invisible characters* is either malformed or deliberately crafted
+      // to inject an invisible payload; rendering an empty bubble would
+      // leak a row of UI without any user value.  Mirrors the chat path
+      // below which also returns null on empty content.
+      final String sanitizedContent = removeControlAndInvisibleChars(
+        operatorComment.content,
+      );
+      if (sanitizedContent.isEmpty) {
+        return null;
+      }
       return AppMessage(
         id: _buildNdgrId(kNdgrOperatorIdPrefix, source.id, null, timestamp),
         timestamp: timestamp,
@@ -131,7 +164,7 @@ class NdgrMessageNormalizer {
         // push other UI off-screen. Policy A is still honored — we keep any
         // legitimate printable label verbatim (including CJK / emoji).
         userName: _sanitizeOperatorUserName(operatorComment.name),
-        content: operatorComment.content,
+        content: sanitizedContent,
         type: AppMessageType.operator,
         raw: source,
       );

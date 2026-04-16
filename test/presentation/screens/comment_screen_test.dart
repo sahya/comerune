@@ -6434,6 +6434,13 @@ void main() {
         // fallback (`start = 0`) would have replayed every historical NG
         // hit on the first ON pass. Toggling OFF→ON must re-seed the
         // cursor to the current tail.
+        //
+        // Implementation dependency note: this assertion relies on the
+        // fact that the OFF path in _processNgProtectionNotifications
+        // does NOT increment _protectedCount (it only advances the
+        // cursor). If a future change starts accumulating the count while
+        // OFF (e.g. "count but suppress snackbar"), the badge expectation
+        // below (findsNothing) would need to be updated accordingly.
         final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
         final GlobalKey<_IntegrationHostState> hostKey =
             GlobalKey<_IntegrationHostState>();
@@ -6502,6 +6509,195 @@ void main() {
     );
 
     testWidgets(
+      'system NG hit is suppressed from protection when showSystemMessage is OFF',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_IntegrationHostState> hostKey =
+            GlobalKey<_IntegrationHostState>();
+
+        await tester.pumpWidget(
+          _IntegrationHost(
+            key: hostKey,
+            supervisor: supervisor,
+            initialMessages: const <AppMessage>[],
+            ngWords: const <String>['重要'],
+            notificationEnabled: true,
+            showSystemMessage: false,
+          ),
+        );
+        await tester.pump();
+
+        hostKey.currentState!.addMessage(
+          _message(
+            id: 'sys-ng',
+            type: AppMessageType.system,
+            content: '重要なお知らせ',
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        expect(find.byKey(const Key('comment-row-sys-ng')), findsNothing);
+        expect(find.byType(SnackBar), findsNothing);
+        expect(find.byKey(const Key('ng-protection-badge')), findsNothing);
+
+        // Sanity: a chat NG hit in the same session still fires.
+        hostKey.currentState!.addMessage(
+          _message(
+            id: 'chat-ng-sys',
+            type: AppMessageType.chat,
+            content: '重要なコメント',
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        expect(find.byKey(const Key('ng-protection-badge')), findsOneWidget);
+        expect(find.byType(SnackBar), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'emotion NG hit is suppressed from protection when showEmotion is OFF',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_IntegrationHostState> hostKey =
+            GlobalKey<_IntegrationHostState>();
+
+        await tester.pumpWidget(
+          _IntegrationHost(
+            key: hostKey,
+            supervisor: supervisor,
+            initialMessages: const <AppMessage>[],
+            ngWords: const <String>['嬉しい'],
+            notificationEnabled: true,
+            showEmotion: false,
+          ),
+        );
+        await tester.pump();
+
+        hostKey.currentState!.addMessage(
+          _message(
+            id: 'emo-ng',
+            type: AppMessageType.emotion,
+            content: '嬉しい気持ち',
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        expect(find.byKey(const Key('comment-row-emo-ng')), findsNothing);
+        expect(find.byType(SnackBar), findsNothing);
+        expect(find.byKey(const Key('ng-protection-badge')), findsNothing);
+
+        // Sanity: a chat NG hit in the same session still fires.
+        hostKey.currentState!.addMessage(
+          _message(
+            id: 'chat-ng-emo',
+            type: AppMessageType.chat,
+            content: '嬉しいコメント',
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        expect(find.byKey(const Key('ng-protection-badge')), findsOneWidget);
+        expect(find.byType(SnackBar), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'throttle window does not advance during search — first post-search NG hit fires immediately',
+      (WidgetTester tester) async {
+        // Verifies that _isSearching return in _processNgProtectionNotifications
+        // does not update _lastProtectionNotificationAt. When search ends,
+        // the throttle window is still at its pre-search value, so the next
+        // NG hit fires the snackbar immediately (window already elapsed).
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_IntegrationHostState> hostKey =
+            GlobalKey<_IntegrationHostState>();
+
+        // Virtual clock so we can step past the 10-second throttle window
+        // without sleeping on the wall clock (#499 Clock injection).
+        DateTime virtualNow = DateTime.utc(2026, 3, 22, 12, 0, 0);
+        final Clock testClock = Clock(() => virtualNow);
+
+        await tester.pumpWidget(
+          _IntegrationHost(
+            key: hostKey,
+            supervisor: supervisor,
+            initialMessages: const <AppMessage>[],
+            ngWords: const <String>['spam'],
+            notificationEnabled: true,
+            clock: testClock,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Fire the first NG hit to start the throttle window.
+        hostKey.currentState!.addMessage(
+          _message(id: 'pre-1', type: AppMessageType.chat, content: 'pre spam'),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(find.byType(SnackBar), findsOneWidget);
+
+        // Advance the virtual clock past the throttle window so a fresh
+        // NG hit *would* re-fire the snackbar under normal conditions.
+        virtualNow = virtualNow.add(const Duration(seconds: 11));
+        ScaffoldMessenger.of(
+          tester.element(find.byType(CommentScreen)),
+        ).hideCurrentSnackBar();
+        await tester.pumpAndSettle();
+
+        // Enter search mode.
+        await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('comment-search-button')));
+        await tester.pumpAndSettle();
+
+        // NG hit during search — suppressed (no snackbar, but badge updates).
+        hostKey.currentState!.addMessage(
+          _message(
+            id: 'search-ng',
+            type: AppMessageType.chat,
+            content: 'search spam',
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.byType(SnackBar),
+          findsNothing,
+          reason: 'snackbar suppressed during search',
+        );
+
+        // Exit search mode.
+        await tester.tap(find.byKey(const Key('search-close-button')));
+        await tester.pumpAndSettle();
+
+        // The first NG hit after search should fire immediately because
+        // the throttle window was not advanced during search.
+        hostKey.currentState!.addMessage(
+          _message(
+            id: 'post-search-ng',
+            type: AppMessageType.chat,
+            content: 'post spam',
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.byType(SnackBar),
+          findsOneWidget,
+          reason:
+              'throttle did not advance during search, so the '
+              'first post-search hit fires immediately',
+        );
+      },
+    );
+
+    testWidgets(
       'AppBar renders speech + sort + badge + overflow menu at 360dp without errors',
       (WidgetTester tester) async {
         // Layout smoke-test: at a typical narrow phone width (360dp), the
@@ -6561,6 +6757,9 @@ class _IntegrationHost extends StatefulWidget {
     this.ngWords = const <String>[],
     this.notificationEnabled = false,
     this.showOperatorComment = true,
+    this.showSystemMessage = true,
+    this.showEmotion = true,
+    this.clock,
   });
 
   final ConnectionSupervisor supervisor;
@@ -6568,6 +6767,9 @@ class _IntegrationHost extends StatefulWidget {
   final List<String> ngWords;
   final bool notificationEnabled;
   final bool showOperatorComment;
+  final bool showSystemMessage;
+  final bool showEmotion;
+  final Clock? clock;
 
   @override
   State<_IntegrationHost> createState() => _IntegrationHostState();
@@ -6621,7 +6823,10 @@ class _IntegrationHostState extends State<_IntegrationHost> {
         ),
         messageTypeVisibility: MessageTypeVisibilityConfig(
           showOperatorComment: widget.showOperatorComment,
+          showSystemMessage: widget.showSystemMessage,
+          showEmotion: widget.showEmotion,
         ),
+        clock: widget.clock,
       ),
     );
   }
