@@ -31,7 +31,8 @@ enum AppMessageType {
   ///
   /// Emitted by: NDGR normalizer from
   /// `NicoliveState.marquee.display.operator_comment`. Its visibility in
-  /// the list is controlled by `CommentFilterConfig.showOperatorComment`.
+  /// the list is controlled by
+  /// `MessageTypeVisibilityConfig.showOperatorComment`.
   operator,
 
   /// Generic client-side or protocol notification that does not fit the
@@ -46,14 +47,14 @@ enum AppMessageType {
   /// `type == ICHIBA` (市場).
   ///
   /// Visibility in the list is controlled by
-  /// `CommentFilterConfig.showSystemMessage`.
+  /// `MessageTypeVisibilityConfig.showSystemMessage`.
   system,
 
   /// Viewer-sent emotion originating from NDGR SimpleNotificationV2 with
   /// `type == EMOTION`.
   ///
   /// Visibility in the list is controlled by
-  /// `CommentFilterConfig.showEmotion`.
+  /// `MessageTypeVisibilityConfig.showEmotion`.
   emotion,
 
   /// Gift (ギフト) message. Reserved for future NDGR protobuf support;
