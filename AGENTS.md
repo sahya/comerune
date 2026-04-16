@@ -160,6 +160,18 @@ PR を作成する際、対応する Issue 番号がある場合は必ず PR の
 
 `showLicensePage` / `AboutDialog` の `applicationName` `applicationVersion` をハードコードしないこと。`pubspec.yaml` との同期漏れでバージョン表示が古くなるリスクがあるため、`package_info_plus` 等で動的取得する。`pubspec.yaml` の `version` を変更する PR では、これらの表示が正しく更新されるかも併せて確認する。
 
+## UI 文字列の追加（i18n 対応準備）
+
+UI に新たに日本語文字列を追加する際は、原則として `lib/presentation/strings/app_strings.dart` の `AppStrings` 配下にまとめてから参照すること。将来の多言語対応時に一括で差し替えやすくするための準備。
+
+追加手順:
+1. 対象画面のスコープに合う `XxxStrings` ネストクラス（無ければ新設）に `camelCase` の getter を追加する
+2. 引数を含む文字列（例: `'$count件'`）は `String` を返すメソッドとして追加する（`const` 展開による文法崩れを避ける）
+3. API 応答・例外テキストなど**動的**なメッセージは UI 定数ではないため、ここには入れない
+4. 既定ロケール（日本語）の表示がバイト単位で変わらないよう、既存 widget テストと `test/presentation/strings/app_strings_test.dart` を併せて確認する
+
+スコープ（Issue #476 Phase 1 時点）: `SettingsScreen`（設定画面ルート）のみ集約済み。下位画面（コメント表示設定・読み上げ設定・ユーザー管理設定）、コメント画面系、ダイアログ・SnackBar は継続課題として段階的に追加する。
+
 ## Forbidden Behavior
 Agents must not:
 - invent major product requirements

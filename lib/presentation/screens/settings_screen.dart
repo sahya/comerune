@@ -15,6 +15,7 @@ import '../../domain/models/app_settings.dart';
 import '../../domain/models/user_name_resolution.dart';
 import '../../data/user/user_attribute_store.dart';
 import '../mixins/settings_screen_mixin.dart';
+import '../strings/app_strings.dart';
 import '../widgets/settings_widgets.dart';
 import 'comment_display_settings_screen.dart';
 import 'login_screen.dart';
@@ -117,16 +118,16 @@ class _SettingsScreenState extends State<SettingsScreen>
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          title: const Text('ログアウト'),
-          content: const Text('ログアウトしますか？再度ログインが必要になります。'),
+          title: Text(AppStrings.settings.logoutDialogTitle),
+          content: Text(AppStrings.settings.logoutDialogMessage),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('キャンセル'),
+              child: Text(AppStrings.settings.logoutDialogCancel),
             ),
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('ログアウト'),
+              child: Text(AppStrings.settings.logoutDialogConfirm),
             ),
           ],
         );
@@ -146,7 +147,9 @@ class _SettingsScreenState extends State<SettingsScreen>
       });
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('ログアウトしました')));
+        ..showSnackBar(
+          SnackBar(content: Text(AppStrings.settings.logoutSnackBar)),
+        );
     }
   }
 
@@ -163,14 +166,19 @@ class _SettingsScreenState extends State<SettingsScreen>
     try {
       final String json = await widget.settingsStore.exportAsJson();
       await SharePlus.instance.share(
-        ShareParams(text: json, subject: 'comerune-settings.json'),
+        ShareParams(
+          text: json,
+          subject: AppStrings.settings.exportShareSubject,
+        ),
       );
     } on Exception catch (e) {
       developer.log('Failed to export settings: $e', name: 'SettingsScreen');
       if (mounted) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(content: Text('設定のエクスポートに失敗しました')));
+          ..showSnackBar(
+            SnackBar(content: Text(AppStrings.settings.exportFailedSnackBar)),
+          );
       }
     }
   }
@@ -198,16 +206,16 @@ class _SettingsScreenState extends State<SettingsScreen>
         context: context,
         builder: (BuildContext dialogContext) {
           return AlertDialog(
-            title: const Text('設定のインポート'),
-            content: const Text('現在の設定がインポートしたデータで上書きされます。よろしいですか？'),
+            title: Text(AppStrings.settings.importDialogTitle),
+            content: Text(AppStrings.settings.importDialogMessage),
             actions: <Widget>[
               TextButton(
                 onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: const Text('キャンセル'),
+                child: Text(AppStrings.settings.importDialogCancel),
               ),
               TextButton(
                 onPressed: () => Navigator.of(dialogContext).pop(true),
-                child: const Text('インポート'),
+                child: Text(AppStrings.settings.importDialogConfirm),
               ),
             ],
           );
@@ -237,20 +245,28 @@ class _SettingsScreenState extends State<SettingsScreen>
 
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('設定をインポートしました')));
+        ..showSnackBar(
+          SnackBar(content: Text(AppStrings.settings.importSuccessSnackBar)),
+        );
     } on FormatException catch (e) {
       developer.log('Invalid settings file: $e', name: 'SettingsScreen');
       if (mounted) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(content: Text('無効な設定ファイルです')));
+          ..showSnackBar(
+            SnackBar(
+              content: Text(AppStrings.settings.importInvalidFileSnackBar),
+            ),
+          );
       }
     } on Exception catch (e) {
       developer.log('Failed to import settings: $e', name: 'SettingsScreen');
       if (mounted) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(content: Text('設定のインポートに失敗しました')));
+          ..showSnackBar(
+            SnackBar(content: Text(AppStrings.settings.importFailedSnackBar)),
+          );
       }
     }
   }
@@ -260,7 +276,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     final AppSettings? settings = this.settings;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('設定')),
+      appBar: AppBar(title: Text(AppStrings.settings.title)),
       body: settingsError != null
           ? buildSettingsError(context)
           : settings == null
@@ -295,7 +311,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   Widget _buildAccountSection(BuildContext context) {
     return SettingsSection(
-      title: 'ニコニコアカウント',
+      title: AppStrings.settings.accountSectionTitle,
       children: <Widget>[
         if (_isLoggedIn) ...<Widget>[
           Row(
@@ -305,7 +321,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 color: Theme.of(context).colorScheme.primary,
               ),
               const SizedBox(width: 8),
-              const Text('ログイン済み'),
+              Text(AppStrings.settings.accountLoggedInLabel),
             ],
           ),
           const SizedBox(height: 8),
@@ -314,11 +330,11 @@ class _SettingsScreenState extends State<SettingsScreen>
             child: OutlinedButton(
               key: const Key('logout-button'),
               onPressed: _logout,
-              child: const Text('ログアウト'),
+              child: Text(AppStrings.settings.accountLogoutButton),
             ),
           ),
         ] else ...<Widget>[
-          const Text('コメント取得にはログインが必要です'),
+          Text(AppStrings.settings.accountLoginRequired),
           const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
@@ -328,7 +344,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   ? _openLoginScreen
                   : null,
               icon: const Icon(Icons.login),
-              label: const Text('ニコニコにログイン'),
+              label: Text(AppStrings.settings.accountLoginButton),
             ),
           ),
         ],
@@ -338,14 +354,14 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   Widget _buildThemeSection(BuildContext context, AppSettings settings) {
     return SettingsSection(
-      title: 'テーマ',
+      title: AppStrings.settings.themeSectionTitle,
       children: <Widget>[
         DropdownButtonFormField<AppThemeMode>(
           key: const Key('theme-mode-dropdown'),
           initialValue: settings.themeMode,
-          decoration: const InputDecoration(
-            labelText: '配色テーマ',
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            labelText: AppStrings.settings.themeDropdownLabel,
+            border: const OutlineInputBorder(),
           ),
           items: AppThemeMode.values
               .map(
@@ -364,8 +380,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         ),
         const SizedBox(height: 8),
         Text(
-          'ダークモードは夜間の視認性を向上します。\n'
-          '色覚テーマは色の区別が難しい方に配慮した配色です。',
+          AppStrings.settings.themeDescription,
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ],
@@ -377,8 +392,12 @@ class _SettingsScreenState extends State<SettingsScreen>
       child: ListTile(
         key: const Key('comment-display-settings-tile'),
         leading: const Icon(Icons.chat_bubble_outline),
-        title: const Text('コメント表示設定'),
-        subtitle: Text('フォントサイズ: ${settings.commentFontSize.round()}px'),
+        title: Text(AppStrings.settings.commentDisplayTileTitle),
+        subtitle: Text(
+          AppStrings.settings.commentFontSizeSubtitle(
+            settings.commentFontSize.round(),
+          ),
+        ),
         trailing: const Icon(Icons.chevron_right),
         onTap: () async {
           final bool? changed = await Navigator.of(context).push<bool>(
@@ -402,8 +421,12 @@ class _SettingsScreenState extends State<SettingsScreen>
       child: ListTile(
         key: const Key('tts-settings-tile'),
         leading: const Icon(Icons.record_voice_over),
-        title: const Text('読み上げ設定'),
-        subtitle: Text(settings.autoReadEnabled ? '自動読み上げ: ON' : '自動読み上げ: OFF'),
+        title: Text(AppStrings.settings.ttsTileTitle),
+        subtitle: Text(
+          AppStrings.settings.ttsAutoReadSubtitle(
+            enabled: settings.autoReadEnabled,
+          ),
+        ),
         trailing: const Icon(Icons.chevron_right),
         onTap: () async {
           final bool? changed = await Navigator.of(context).push<bool>(
@@ -428,8 +451,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       child: ListTile(
         key: const Key('user-management-settings-tile'),
         leading: const Icon(Icons.people_outline),
-        title: const Text('ユーザー管理'),
-        subtitle: const Text('お気に入り・コテハン'),
+        title: Text(AppStrings.settings.userManagementTileTitle),
+        subtitle: Text(AppStrings.settings.userManagementTileSubtitle),
         trailing: const Icon(Icons.chevron_right),
         onTap: () async {
           final bool? changed = await Navigator.of(context).push<bool>(
@@ -453,7 +476,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   Widget _buildDataManagementSection(BuildContext context) {
     return SettingsSection(
-      title: 'データ管理',
+      title: AppStrings.settings.dataManagementSectionTitle,
       children: <Widget>[
         SizedBox(
           width: double.infinity,
@@ -461,7 +484,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             key: const Key('export-settings-button'),
             onPressed: _exportSettings,
             icon: const Icon(Icons.upload),
-            label: const Text('設定をエクスポート'),
+            label: Text(AppStrings.settings.exportSettingsButton),
           ),
         ),
         const SizedBox(height: 8),
@@ -471,12 +494,12 @@ class _SettingsScreenState extends State<SettingsScreen>
             key: const Key('import-settings-button'),
             onPressed: _importSettings,
             icon: const Icon(Icons.download),
-            label: const Text('設定をインポート'),
+            label: Text(AppStrings.settings.importSettingsButton),
           ),
         ),
         const SizedBox(height: 4),
         Text(
-          'JSON形式で設定のバックアップ・復元ができます。',
+          AppStrings.settings.dataManagementDescription,
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ],
@@ -488,8 +511,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       child: ListTile(
         key: const Key('license-tile'),
         leading: const Icon(Icons.description_outlined),
-        title: const Text('ライセンス'),
-        subtitle: const Text('第三者ライブラリのライセンス情報'),
+        title: Text(AppStrings.settings.licenseTileTitle),
+        subtitle: Text(AppStrings.settings.licenseTileSubtitle),
         trailing: const Icon(Icons.chevron_right),
         onTap: () => _openLicensePage(context),
       ),
@@ -532,18 +555,18 @@ class _SettingsScreenState extends State<SettingsScreen>
 
     showLicensePage(
       context: context,
-      applicationName: 'comerune',
+      applicationName: AppStrings.settings.licenseApplicationName,
       applicationVersion: applicationVersion,
     );
   }
 
   Widget _buildDebugSection(BuildContext context, AppSettings settings) {
     return SettingsSection(
-      title: 'デバッグ',
+      title: AppStrings.settings.debugSectionTitle,
       children: <Widget>[
         SwitchListTile(
           key: const Key('debug-mode-switch'),
-          title: const Text('デバッグモード'),
+          title: Text(AppStrings.settings.debugModeSwitchTitle),
           contentPadding: EdgeInsets.zero,
           value: settings.debugMode,
           onChanged: (bool value) {
