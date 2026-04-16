@@ -36,17 +36,22 @@ class AppThemeColors {
   final Color operatorMessageBackground;
   final Color notificationMessageBackground;
 
-  /// Subtle shaded background used to emphasize gift messages.
+  /// Shaded background used to emphasize gift messages.
   ///
-  /// Kept low-saturation and high-lightness so the normal chat text color
-  /// still meets WCAG AA (4.5:1) contrast against it.
+  /// This color is only applied when the user's
+  /// `emphasizeGiftNicoadComment` setting is ON — opting IN to emphasis is
+  /// an explicit user intent, so the tint is noticeably stronger than the
+  /// always-on operator / notification backgrounds. Still kept low enough
+  /// in saturation that the normal chat text color meets WCAG AA (4.5:1)
+  /// against it.
   final Color giftMessageBackground;
 
-  /// Subtle shaded background used to emphasize ニコニ広告 (nicoad) messages.
+  /// Shaded background used to emphasize ニコニ広告 (nicoad) messages.
   ///
-  /// Slightly different hue from [giftMessageBackground] so the two kinds of
-  /// emphasized messages remain visually distinguishable while matching each
-  /// theme's palette.
+  /// Same user-intent story as [giftMessageBackground]: rendered only when
+  /// the user turns emphasis ON. Uses a different hue from
+  /// [giftMessageBackground] so the two emphasized message kinds stay
+  /// visually distinguishable within each theme.
   final Color nicoadMessageBackground;
   final Color subtleTextColor;
   final Color ngUserActiveColor;
@@ -115,9 +120,11 @@ class AppTheme {
     operatorMessageBackground: Color(0xFFFFF4E0),
     // Near-neutral cool-gray; holds the "info" hue at very low saturation.
     notificationMessageBackground: Color(0xFFEEF2F6),
-    giftMessageBackground: Color(0xFFECF1EC),
+    // Gift / nicoad are shown only when the user turns emphasis ON (see
+    // field docs), so a stronger-than-neutral tint is appropriate.
+    giftMessageBackground: Color(0xFFE8F3E9),
     // Kept distinct from giftMessageBackground by hue, not luminance.
-    nicoadMessageBackground: Color(0xFFF3EDF0),
+    nicoadMessageBackground: Color(0xFFF5E6EE),
     subtleTextColor: Color(0xFF757575),
     ngUserActiveColor: Color(0xFFF44336),
     sheetHandleColor: Color(0xFFBDBDBD),
@@ -148,10 +155,11 @@ class AppTheme {
     // dark scheme) is enforced by
     // `test/presentation/theme/notification_contrast_test.dart`.
     notificationMessageBackground: Color(0xFF282A2E),
-    // Dark gray with a faint green whisper.
-    giftMessageBackground: Color(0xFF272B27),
-    // Dark gray with a faint magenta whisper.
-    nicoadMessageBackground: Color(0xFF2C272C),
+    // Gift / nicoad are shown only when the user turns emphasis ON (see
+    // field docs), so the green / magenta tints run slightly stronger than
+    // the always-on notification background.
+    giftMessageBackground: Color(0xFF2A322A),
+    nicoadMessageBackground: Color(0xFF332831),
     subtleTextColor: Color(0xFF90A4AE),
     ngUserActiveColor: Color(0xFFEF5350),
     sheetHandleColor: Color(0xFF546E7A),
@@ -179,8 +187,10 @@ class AppTheme {
     // distinguish. Contrast enforced by the theme contrast tests.
     operatorMessageBackground: Color(0xFFF5EEE4),
     notificationMessageBackground: Color(0xFFECEFF3),
-    giftMessageBackground: Color(0xFFEDEFEC),
-    nicoadMessageBackground: Color(0xFFF0EDEF),
+    // Gift / nicoad use slightly stronger tints than notification because
+    // they are only rendered when the user opts IN to emphasis.
+    giftMessageBackground: Color(0xFFEDEFE8),
+    nicoadMessageBackground: Color(0xFFEEEAF3),
     subtleTextColor: Color(0xFF757575),
     ngUserActiveColor: Color(0xFFE65100),
     sheetHandleColor: Color(0xFFBDBDBD),
@@ -211,8 +221,10 @@ class AppTheme {
     // notification so the purple semantic survives for deuteranope users.
     operatorMessageBackground: Color(0xFFF6F0E2),
     notificationMessageBackground: Color(0xFFEDE9F1),
-    giftMessageBackground: Color(0xFFECEEF0),
-    nicoadMessageBackground: Color(0xFFF0EAEE),
+    // Gift / nicoad use slightly stronger tints than notification because
+    // they are only rendered when the user opts IN to emphasis.
+    giftMessageBackground: Color(0xFFECEFE8),
+    nicoadMessageBackground: Color(0xFFEFEAF2),
     subtleTextColor: Color(0xFF757575),
     ngUserActiveColor: Color(0xFFBF360C),
     sheetHandleColor: Color(0xFFBDBDBD),
@@ -242,8 +254,13 @@ class AppTheme {
     // distinguish well: warm-pink operator, teal-tinted notification.
     operatorMessageBackground: Color(0xFFF8ECEC),
     notificationMessageBackground: Color(0xFFE8EFEF),
-    giftMessageBackground: Color(0xFFEFECEC),
-    nicoadMessageBackground: Color(0xFFF3EAEE),
+    // Gift / nicoad use slightly stronger tints than notification because
+    // they are only rendered when the user opts IN to emphasis.
+    // For tritanopia specifically, gift picks a slightly cooler teal (away
+    // from the green–yellow band tritanopes confuse) and nicoad picks a
+    // warm pink, so gift ≠ nicoad remains readable on the red/cyan axis.
+    giftMessageBackground: Color(0xFFE8F1EE),
+    nicoadMessageBackground: Color(0xFFF3E8E8),
     subtleTextColor: Color(0xFF757575),
     ngUserActiveColor: Color(0xFFC62828),
     sheetHandleColor: Color(0xFFBDBDBD),
