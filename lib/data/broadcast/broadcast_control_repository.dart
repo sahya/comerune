@@ -76,12 +76,12 @@ class BroadcastControlRepository extends NiconicoAuthedHttpClient {
     required String userSession,
     int minutes = 30,
   }) async {
-    if (programId.isEmpty || userSession.trim().isEmpty) {
-      return const BroadcastControlResult(
-        success: false,
-        errorCode: 'INVALID_PARAMS',
-        errorMessage: 'programId and userSession are required',
-      );
+    final BroadcastControlResult? invalid = _checkCallInputs(
+      programId: programId,
+      userSession: userSession,
+    );
+    if (invalid != null) {
+      return invalid;
     }
 
     HttpClientRequest? request;
@@ -108,12 +108,12 @@ class BroadcastControlRepository extends NiconicoAuthedHttpClient {
     required String state,
     required String operationName,
   }) async {
-    if (programId.isEmpty || userSession.trim().isEmpty) {
-      return const BroadcastControlResult(
-        success: false,
-        errorCode: 'INVALID_PARAMS',
-        errorMessage: 'programId and userSession are required',
-      );
+    final BroadcastControlResult? invalid = _checkCallInputs(
+      programId: programId,
+      userSession: userSession,
+    );
+    if (invalid != null) {
+      return invalid;
     }
 
     HttpClientRequest? request;
@@ -182,7 +182,7 @@ class BroadcastControlRepository extends NiconicoAuthedHttpClient {
     final String body = await response
         .transform(utf8.decoder)
         .join()
-        .timeout(_requestTimeout);
+        .timeout(requestTimeout);
 
     if (response.statusCode == 200) {
       return _parseSuccessBody(body, operationName);
@@ -221,5 +221,47 @@ class BroadcastControlRepository extends NiconicoAuthedHttpClient {
       startTime: data['start_time'] as int?,
       endTime: data['end_time'] as int?,
     );
+  }
+
+  /// Combined entry-guard for all broadcast control methods. Returns a
+  /// failure [BroadcastControlResult] when the inputs are rejected, or
+  /// `null` when the call may proceed.
+  ///
+  /// Mirrors `LiveCommentRepository._checkCallInputs` to keep the two
+  /// repositories in lock step on defensive input validation. The shared
+  /// `isValidAuthHeaderValue` / `isValidLv` validators live on the base
+  /// class [NiconicoAuthedHttpClient] so both repositories apply identical
+  /// CRLF / NUL / lv path-injection filtering.
+  ///
+  /// The emptiness check runs before the malformed-value check so callers
+  /// get the more specific "required" error message when a field is missing.
+  BroadcastControlResult? _checkCallInputs({
+    required String programId,
+    required String userSession,
+  }) {
+    if (programId.isEmpty || userSession.trim().isEmpty) {
+      return const BroadcastControlResult(
+        success: false,
+        errorCode: 'INVALID_PARAMS',
+        errorMessage: 'programId and userSession are required',
+      );
+    }
+    final bool sessionOk = NiconicoAuthedHttpClient.isValidAuthHeaderValue(
+      userSession,
+    );
+    final bool lvOk = NiconicoAuthedHttpClient.isValidLv(programId);
+    if (!sessionOk || !lvOk) {
+      appDebugLogLazy(
+        () =>
+            '[$_logName] input rejected: '
+            'session=${sessionOk ? 'ok' : 'bad'} lv=${lvOk ? 'ok' : 'bad'}',
+      );
+      return const BroadcastControlResult(
+        success: false,
+        errorCode: 'INVALID_PARAMS',
+        errorMessage: 'userSession or programId contains invalid characters',
+      );
+    }
+    return null;
   }
 }

@@ -49,6 +49,15 @@ class _TestClient extends NiconicoAuthedHttpClient {
     String operationName,
     String logName,
   ) => handleException(e, operationName, logName);
+
+  // Static pass-throughs for the protected validators so tests in this file
+  // (which are not themselves subclasses of NiconicoAuthedHttpClient) do not
+  // trigger `invalid_use_of_protected_member` analyzer warnings.
+  static bool publicIsValidAuthHeaderValue(String value) =>
+      NiconicoAuthedHttpClient.isValidAuthHeaderValue(value);
+
+  static bool publicIsValidLv(String lv) =>
+      NiconicoAuthedHttpClient.isValidLv(lv);
 }
 
 void main() {
@@ -319,6 +328,106 @@ void main() {
         expect(httpClient.isClosed, isFalse);
         client.dispose();
         expect(httpClient.isClosed, isTrue);
+      });
+    });
+
+    group('isValidAuthHeaderValue', () {
+      test('accepts a normal URL-safe session token', () {
+        expect(
+          _TestClient.publicIsValidAuthHeaderValue('abc123_=-xyz'),
+          isTrue,
+        );
+      });
+
+      test('accepts an empty string (emptiness is caller concern)', () {
+        // Empty-string check is the caller's responsibility; this validator
+        // only rejects the three header-splitting control characters.
+        expect(_TestClient.publicIsValidAuthHeaderValue(''), isTrue);
+      });
+
+      test('rejects a value containing CR (0x0D)', () {
+        expect(_TestClient.publicIsValidAuthHeaderValue('valid\r'), isFalse);
+      });
+
+      test('rejects a value containing LF (0x0A)', () {
+        expect(_TestClient.publicIsValidAuthHeaderValue('valid\nfoo'), isFalse);
+      });
+
+      test('rejects a value containing CRLF (classic injection)', () {
+        expect(
+          _TestClient.publicIsValidAuthHeaderValue('valid\r\nX-Injected: 1'),
+          isFalse,
+        );
+      });
+
+      test('rejects a value containing NUL (0x00)', () {
+        expect(
+          _TestClient.publicIsValidAuthHeaderValue('bad\u0000byte'),
+          isFalse,
+        );
+      });
+
+      test('rejects mid-string injection variants', () {
+        for (final String poison in <String>[
+          'a\rb',
+          'a\nb',
+          'a\u0000b',
+          '\r',
+          '\n',
+          '\u0000',
+          '\r\n',
+        ]) {
+          expect(
+            _TestClient.publicIsValidAuthHeaderValue(poison),
+            isFalse,
+            reason:
+                'expected rejection for code units '
+                '${poison.codeUnits.map((int c) => '0x${c.toRadixString(16)}').toList()}',
+          );
+        }
+      });
+    });
+
+    group('isValidLv', () {
+      test('accepts well-formed lv ids', () {
+        expect(_TestClient.publicIsValidLv('lv123'), isTrue);
+        expect(_TestClient.publicIsValidLv('lv345678901'), isTrue);
+        expect(_TestClient.publicIsValidLv('lv0'), isTrue);
+      });
+
+      test('rejects a bare "lv" prefix with no digits', () {
+        expect(_TestClient.publicIsValidLv('lv'), isFalse);
+      });
+
+      test('rejects empty string', () {
+        expect(_TestClient.publicIsValidLv(''), isFalse);
+      });
+
+      test('rejects non-digit trailing characters', () {
+        expect(_TestClient.publicIsValidLv('lv1a'), isFalse);
+        expect(_TestClient.publicIsValidLv('lv-123'), isFalse);
+        expect(_TestClient.publicIsValidLv('lv 123'), isFalse);
+      });
+
+      test('rejects path-injection attempts', () {
+        expect(_TestClient.publicIsValidLv('lv123/../admin'), isFalse);
+      });
+
+      test('rejects query / fragment splitters', () {
+        expect(_TestClient.publicIsValidLv('lv123?foo=bar'), isFalse);
+        expect(_TestClient.publicIsValidLv('lv123#frag'), isFalse);
+      });
+
+      test('rejects uppercase LV prefix', () {
+        expect(_TestClient.publicIsValidLv('LV123'), isFalse);
+      });
+
+      test('rejects pure numeric string without lv prefix', () {
+        expect(_TestClient.publicIsValidLv('123'), isFalse);
+      });
+
+      test('rejects full-width digits', () {
+        expect(_TestClient.publicIsValidLv('lv１２３'), isFalse);
       });
     });
 

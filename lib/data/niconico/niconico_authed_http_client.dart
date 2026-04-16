@@ -199,4 +199,53 @@ abstract class NiconicoAuthedHttpClient {
   void dispose() {
     httpClient.close();
   }
+
+  /// Defensive check: reject values containing CR (0x0D), LF (0x0A), or NUL
+  /// (0x00) which could otherwise split the `Cookie` / `X-Niconico-Session`
+  /// headers and inject arbitrary request headers.
+  ///
+  /// Scope is intentionally limited to the three ASCII control characters
+  /// that classic CRLF-injection advisories cite: `HttpHeaders.set` does not
+  /// sanitise the value, but niconico's `user_session` is URL-safe in
+  /// practice, so stricter filtering (e.g. U+0085 / U+2028 / U+2029 or all
+  /// C0 controls) would risk rejecting otherwise valid sessions for no
+  /// additional protection in a niconico-only context.
+  ///
+  /// Shared by [BroadcastControlRepository] and [LiveCommentRepository] via
+  /// their own entry-guards.
+  @protected
+  static bool isValidAuthHeaderValue(String value) {
+    for (int i = 0; i < value.length; i++) {
+      final int c = value.codeUnitAt(i);
+      if (c == 0x00 || c == 0x0A || c == 0x0D) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// niconico live program IDs are of the form `lv` + decimal digits. Reject
+  /// anything else so a malformed program id cannot inject extra URL path
+  /// segments (e.g. `lv123/../admin`), query strings (`lv123?foo=bar`) or
+  /// fragments (`lv123#frag`) when interpolated into a request URL.
+  ///
+  /// Only ASCII `0`–`9` are accepted — full-width (`１２３`), Arabic-Indic
+  /// digits and other Unicode decimal numerals are rejected because the
+  /// niconico API normalises ids as ASCII decimals.
+  ///
+  /// Shared by [BroadcastControlRepository] and [LiveCommentRepository] via
+  /// their own entry-guards.
+  @protected
+  static bool isValidLv(String lv) {
+    if (lv.length < 3 || !lv.startsWith('lv')) {
+      return false;
+    }
+    for (int i = 2; i < lv.length; i++) {
+      final int c = lv.codeUnitAt(i);
+      if (c < 0x30 || c > 0x39) {
+        return false;
+      }
+    }
+    return true;
+  }
 }

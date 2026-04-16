@@ -373,6 +373,119 @@ void main() {
       });
     });
 
+    group('defensive input validation', () {
+      test(
+        'rejects user_session containing CR / LF / NUL (header injection)',
+        () async {
+          for (final String poison in <String>[
+            'valid\r\nX-Injected: 1',
+            'valid\nfoo',
+            'valid\r',
+            'bad\u0000byte',
+          ]) {
+            final _FakeHttpClient httpClient = _FakeHttpClient();
+            final BroadcastControlRepository repository =
+                BroadcastControlRepository(httpClient: httpClient);
+
+            final String caseLabel =
+                'poisoned session: '
+                '${poison.codeUnits.map((int c) => '0x${c.toRadixString(16)}').toList()}';
+
+            final BroadcastControlResult startResult = await repository
+                .startBroadcast(programId: 'lv123', userSession: poison);
+            expect(startResult.success, isFalse, reason: caseLabel);
+            expect(startResult.errorCode, 'INVALID_PARAMS', reason: caseLabel);
+
+            final BroadcastControlResult endResult = await repository
+                .endBroadcast(programId: 'lv123', userSession: poison);
+            expect(endResult.success, isFalse, reason: caseLabel);
+            expect(endResult.errorCode, 'INVALID_PARAMS', reason: caseLabel);
+
+            final BroadcastControlResult extendResult = await repository
+                .extendBroadcast(
+                  programId: 'lv123',
+                  userSession: poison,
+                  minutes: 30,
+                );
+            expect(extendResult.success, isFalse, reason: caseLabel);
+            expect(extendResult.errorCode, 'INVALID_PARAMS', reason: caseLabel);
+
+            // No HTTP request should reach the fake client.
+            expect(httpClient.requests, isEmpty, reason: caseLabel);
+
+            repository.dispose();
+          }
+        },
+      );
+
+      test('rejects malformed programId values (path injection)', () async {
+        for (final String malformed in <String>[
+          'lv',
+          'lv1a',
+          'lv123/../admin',
+          '123',
+          'LV123',
+          'lv 123',
+          'lv-123',
+          'lv123?foo=bar',
+          'lv123#frag',
+          'lv１２３',
+        ]) {
+          final _FakeHttpClient httpClient = _FakeHttpClient();
+          final BroadcastControlRepository repository =
+              BroadcastControlRepository(httpClient: httpClient);
+
+          final String caseLabel = 'malformed lv: <$malformed>';
+
+          final BroadcastControlResult startResult = await repository
+              .startBroadcast(
+                programId: malformed,
+                userSession: 'valid_session',
+              );
+          expect(startResult.success, isFalse, reason: caseLabel);
+          expect(startResult.errorCode, 'INVALID_PARAMS', reason: caseLabel);
+
+          final BroadcastControlResult endResult = await repository
+              .endBroadcast(programId: malformed, userSession: 'valid_session');
+          expect(endResult.success, isFalse, reason: caseLabel);
+          expect(endResult.errorCode, 'INVALID_PARAMS', reason: caseLabel);
+
+          final BroadcastControlResult extendResult = await repository
+              .extendBroadcast(
+                programId: malformed,
+                userSession: 'valid_session',
+                minutes: 30,
+              );
+          expect(extendResult.success, isFalse, reason: caseLabel);
+          expect(extendResult.errorCode, 'INVALID_PARAMS', reason: caseLabel);
+
+          expect(httpClient.requests, isEmpty, reason: caseLabel);
+
+          repository.dispose();
+        }
+      });
+
+      test('accepts normal well-formed programId', () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseStatusCode = 200;
+        httpClient.responseBody = jsonEncode(<String, Object?>{
+          'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        });
+
+        final BroadcastControlRepository repository =
+            BroadcastControlRepository(httpClient: httpClient);
+
+        final BroadcastControlResult result = await repository.startBroadcast(
+          programId: 'lv345678901',
+          userSession: 'session',
+        );
+        expect(result.success, isTrue);
+        expect(httpClient.requests, hasLength(1));
+
+        repository.dispose();
+      });
+    });
+
     group('response parsing', () {
       test('handles HTTP 204 as success', () async {
         final _FakeHttpClient httpClient = _FakeHttpClient();
