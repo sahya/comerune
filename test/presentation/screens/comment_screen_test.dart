@@ -5661,6 +5661,449 @@ void main() {
       expect(find.textContaining('こんにちは世界'), findsOneWidget);
     });
   });
+
+  // Integration tests covering the interaction of the five comment-screen
+  // features that landed together (type-visibility toggles, gift/nicoad
+  // emphasis, NG protection notification, keyword search, new protobuf
+  // message types). Individual features are already covered in depth by
+  // their own groups; these tests focus on *cross-feature* behavior that
+  // was not guarded at merge time.
+  //
+  // See Issue #492 (M2).
+  group('Five-feature integration', () {
+    late WakelockPlusPlatformInterface previousWakelockPlatform;
+    late _FakeWakelockPlusPlatform fakeWakelock;
+
+    setUp(() {
+      previousWakelockPlatform = wakelockPlusPlatformInstance;
+      fakeWakelock = _FakeWakelockPlusPlatform();
+      wakelockPlusPlatformInstance = fakeWakelock;
+    });
+
+    tearDown(() {
+      wakelockPlusPlatformInstance = previousWakelockPlatform;
+    });
+
+    testWidgets(
+      'all types render when every visibility flag is ON and NG protection is ON',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_IntegrationHostState> hostKey =
+            GlobalKey<_IntegrationHostState>();
+
+        // Mixed stream: chat / operator / system / emotion / notification /
+        // gift / nicoad all present. The 'spam' NG word matches chat only so
+        // we can verify that the protection path fires for an allowed type
+        // while leaving everything else visible.
+        final List<AppMessage> initialMessages = <AppMessage>[
+          _message(
+            id: 'm-chat',
+            type: AppMessageType.chat,
+            content: 'chat-body',
+          ),
+          _message(
+            id: 'm-operator',
+            type: AppMessageType.operator,
+            content: 'operator-body',
+          ),
+          _message(
+            id: 'm-system',
+            type: AppMessageType.system,
+            content: 'system-body',
+          ),
+          _message(
+            id: 'm-emotion',
+            type: AppMessageType.emotion,
+            content: 'emotion-body',
+          ),
+          _message(
+            id: 'm-notification',
+            type: AppMessageType.notification,
+            content: 'notification-body',
+          ),
+          _message(
+            id: 'm-gift',
+            type: AppMessageType.gift,
+            content: 'gift-body',
+          ),
+          _message(
+            id: 'm-nicoad',
+            type: AppMessageType.nicoad,
+            content: 'nicoad-body',
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _IntegrationHost(
+            key: hostKey,
+            supervisor: supervisor,
+            initialMessages: initialMessages,
+            ngWords: const <String>['spam'],
+            notificationEnabled: true,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // All seven rows must be visible — every type renders when the
+        // corresponding show-flag is ON (default for this host).
+        expect(find.byKey(const Key('comment-row-m-chat')), findsOneWidget);
+        expect(find.byKey(const Key('comment-row-m-operator')), findsOneWidget);
+        expect(find.byKey(const Key('comment-row-m-system')), findsOneWidget);
+        expect(find.byKey(const Key('comment-row-m-emotion')), findsOneWidget);
+        expect(
+          find.byKey(const Key('comment-row-m-notification')),
+          findsOneWidget,
+        );
+        expect(find.byKey(const Key('comment-row-m-gift')), findsOneWidget);
+        expect(find.byKey(const Key('comment-row-m-nicoad')), findsOneWidget);
+
+        // Feed a chat NG hit and verify the protection path still fires.
+        hostKey.currentState!.addMessage(
+          _message(
+            id: 'm-spam',
+            type: AppMessageType.chat,
+            content: 'bad spam',
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        expect(find.byKey(const Key('ng-protection-badge')), findsOneWidget);
+        expect(find.byType(SnackBar), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'operator NG hit is suppressed from protection when showOperatorComment is OFF',
+      (WidgetTester tester) async {
+        // Regression guard for M1 (#489): if the user has explicitly hidden
+        // a type, NG protection must not announce "protection" events for
+        // messages of that type. Announcing protection for a message the
+        // user cannot see is a semantic contradiction.
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_IntegrationHostState> hostKey =
+            GlobalKey<_IntegrationHostState>();
+
+        await tester.pumpWidget(
+          _IntegrationHost(
+            key: hostKey,
+            supervisor: supervisor,
+            initialMessages: const <AppMessage>[],
+            ngWords: const <String>['重要'],
+            notificationEnabled: true,
+            showOperatorComment: false,
+          ),
+        );
+        await tester.pump();
+
+        hostKey.currentState!.addMessage(
+          _message(
+            id: 'op-ng',
+            type: AppMessageType.operator,
+            content: '重要なお知らせ',
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        // Operator row is hidden by the visibility toggle (existing
+        // behavior) AND the NG protection must not fire.
+        expect(find.byKey(const Key('comment-row-op-ng')), findsNothing);
+        expect(find.byType(SnackBar), findsNothing);
+        expect(find.byKey(const Key('ng-protection-badge')), findsNothing);
+
+        // Sanity check: a chat NG hit in the same session still fires, so
+        // protection is otherwise wired up correctly.
+        hostKey.currentState!.addMessage(
+          _message(
+            id: 'chat-ng',
+            type: AppMessageType.chat,
+            content: '重要な spam',
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(find.byKey(const Key('ng-protection-badge')), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'search mode keeps badge updating but suppresses the snackbar',
+      (WidgetTester tester) async {
+        // Regression guard for S4 (#494): when the user is typing in the
+        // search bar, the IME keyboard is visible and a floating SnackBar
+        // competes with it for screen space. The badge must still reflect
+        // the NG hit so no information is lost.
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_IntegrationHostState> hostKey =
+            GlobalKey<_IntegrationHostState>();
+
+        await tester.pumpWidget(
+          _IntegrationHost(
+            key: hostKey,
+            supervisor: supervisor,
+            initialMessages: const <AppMessage>[],
+            ngWords: const <String>['spam'],
+            notificationEnabled: true,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Enter search mode via the overflow menu → search button path.
+        await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('comment-search-button')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('comment-search-field')), findsOneWidget);
+
+        // A fresh NG hit while in search mode must increment the protected
+        // count (state) but must NOT schedule a snackbar (would collide
+        // with the IME keyboard). The badge widget itself is not rendered
+        // in the AppBar actions while search is active — the AppBar only
+        // shows the search clear button in that state — so we verify the
+        // stored count indirectly by closing search and then inspecting
+        // the now-visible badge.
+        hostKey.currentState!.addMessage(
+          _message(
+            id: 'ng-search-1',
+            type: AppMessageType.chat,
+            content: 'hi spam',
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        expect(
+          find.byType(SnackBar),
+          findsNothing,
+          reason: 'snackbar must be suppressed while searching',
+        );
+
+        // Leaving search mode must expose the accumulated badge value and
+        // restore the normal snackbar path for subsequent NG hits.
+        await tester.tap(find.byKey(const Key('search-close-button')));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('ng-protection-badge')),
+          findsOneWidget,
+          reason:
+              'badge must reflect the hit that arrived while searching '
+              '(no information loss)',
+        );
+        expect(find.text('1'), findsOneWidget);
+
+        hostKey.currentState!.addMessage(
+          _message(
+            id: 'ng-search-2',
+            type: AppMessageType.chat,
+            content: 'more spam',
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(find.byType(SnackBar), findsOneWidget);
+        expect(find.text('2'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'OFF→ON toggle after ring-buffer rotation does not replay historical NG hits',
+      (WidgetTester tester) async {
+        // Regression guard for N1 (#493): cursor advance continues while
+        // OFF, so if the ring buffer rotates the tracked ID out, the
+        // fallback (`start = 0`) would have replayed every historical NG
+        // hit on the first ON pass. Toggling OFF→ON must re-seed the
+        // cursor to the current tail.
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_IntegrationHostState> hostKey =
+            GlobalKey<_IntegrationHostState>();
+
+        // Start OFF with several historical NG hits already present.
+        await tester.pumpWidget(
+          _IntegrationHost(
+            key: hostKey,
+            supervisor: supervisor,
+            initialMessages: <AppMessage>[
+              _message(
+                id: 'old-ng-1',
+                type: AppMessageType.chat,
+                content: 'first spam',
+              ),
+              _message(
+                id: 'old-ng-2',
+                type: AppMessageType.chat,
+                content: 'second spam',
+              ),
+            ],
+            ngWords: const <String>['spam'],
+            notificationEnabled: false,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Simulate ring-buffer rotation: replace the messages entirely so
+        // the OFF-path cursor ID ('old-ng-2') is no longer present.
+        hostKey.currentState!.replaceAll(<AppMessage>[
+          _message(
+            id: 'rot-1',
+            type: AppMessageType.chat,
+            content: 'rotated spam here',
+          ),
+          _message(id: 'rot-2', type: AppMessageType.chat, content: 'neutral'),
+        ]);
+        await tester.pumpAndSettle();
+
+        // Badge is still absent (OFF).
+        expect(find.byKey(const Key('ng-protection-badge')), findsNothing);
+
+        // Toggle ON — with the fix, didUpdateWidget re-seeds the cursor to
+        // the current tail so the pre-existing 'rotated spam here' does not
+        // replay. Without the fix, badge would jump to 1 (or higher).
+        hostKey.currentState!.setNotificationEnabled(true);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('ng-protection-badge')), findsNothing);
+        expect(find.byType(SnackBar), findsNothing);
+
+        // But a fresh NG hit arriving *after* the toggle must still fire
+        // the protection path — otherwise we would have over-corrected.
+        hostKey.currentState!.addMessage(
+          _message(
+            id: 'fresh-ng',
+            type: AppMessageType.chat,
+            content: 'fresh spam',
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(find.byKey(const Key('ng-protection-badge')), findsOneWidget);
+        expect(find.text('1'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'AppBar renders speech + sort + badge + overflow menu at 360dp without errors',
+      (WidgetTester tester) async {
+        // Layout smoke-test: at a typical narrow phone width (360dp), the
+        // four trailing AppBar actions plus the leading title must render
+        // without layout exceptions. Search / save-log / settings are now
+        // inside the overflow menu (PR #487), so the direct actions are
+        // the four below.
+        tester.view.physicalSize = const Size(360 * 3, 640 * 3);
+        tester.view.devicePixelRatio = 3.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_IntegrationHostState> hostKey =
+            GlobalKey<_IntegrationHostState>();
+
+        await tester.pumpWidget(
+          _IntegrationHost(
+            key: hostKey,
+            supervisor: supervisor,
+            initialMessages: const <AppMessage>[],
+            ngWords: const <String>['spam'],
+            notificationEnabled: true,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Trigger an NG hit so the badge is actually rendered.
+        hostKey.currentState!.addMessage(
+          _message(
+            id: 'layout-ng',
+            type: AppMessageType.chat,
+            content: 'just spam',
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        expect(tester.takeException(), isNull);
+        expect(find.byKey(const Key('sort-toggle-button')), findsOneWidget);
+        expect(find.byKey(const Key('ng-protection-badge')), findsOneWidget);
+        expect(find.byKey(const Key('appbar-overflow-menu')), findsOneWidget);
+      },
+    );
+  });
+}
+
+/// Reactive host that exposes every feature flag required by the
+/// five-feature integration tests. Kept separate from [_NgProtectionHost]
+/// so the narrower host used by the existing NG-protection group does not
+/// grow another dozen optional parameters.
+class _IntegrationHost extends StatefulWidget {
+  const _IntegrationHost({
+    super.key,
+    required this.supervisor,
+    required this.initialMessages,
+    this.ngWords = const <String>[],
+    this.notificationEnabled = false,
+    this.showOperatorComment = true,
+  });
+
+  final ConnectionSupervisor supervisor;
+  final List<AppMessage> initialMessages;
+  final List<String> ngWords;
+  final bool notificationEnabled;
+  final bool showOperatorComment;
+
+  @override
+  State<_IntegrationHost> createState() => _IntegrationHostState();
+}
+
+class _IntegrationHostState extends State<_IntegrationHost> {
+  late List<AppMessage> _messages;
+  late bool _notificationEnabled;
+
+  @override
+  void initState() {
+    super.initState();
+    _messages = List<AppMessage>.from(widget.initialMessages);
+    _notificationEnabled = widget.notificationEnabled;
+  }
+
+  void addMessage(AppMessage message) {
+    setState(() {
+      _messages = List<AppMessage>.from(_messages)..add(message);
+    });
+  }
+
+  void replaceAll(List<AppMessage> messages) {
+    setState(() {
+      _messages = List<AppMessage>.from(messages);
+    });
+  }
+
+  void setNotificationEnabled(bool value) {
+    setState(() {
+      _notificationEnabled = value;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: CommentScreen(
+        programInfo: const CommentProgramInfo(lv: 'lv-integration'),
+        connectionSupervisor: widget.supervisor,
+        messages: _messages,
+        callbacks: CommentCallbacks(
+          onStopAllConnections: () async {},
+          onReconnectSameLv: () async {},
+          onDifferentLvConnected: (_, _) async {},
+        ),
+        themeMode: AppThemeMode.light,
+        filterConfig: CommentFilterConfig(
+          ngWords: widget.ngWords,
+          ngProtectionNotificationEnabled: _notificationEnabled,
+          showOperatorComment: widget.showOperatorComment,
+        ),
+      ),
+    );
+  }
 }
 
 class _NgProtectionHost extends StatefulWidget {

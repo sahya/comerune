@@ -1,4 +1,7 @@
+import 'package:characters/characters.dart';
+
 import '../models/app_message.dart';
+import '../utils/unicode_sanitizer.dart';
 import 'ndgr_protobuf_decoder.dart';
 
 /// Fallback ID prefix for operator (運営) comments that do not carry a
@@ -34,44 +37,52 @@ const int _kOperatorUserNameMaxLength = 64;
 
 /// Sanitises an operator-comment name (broadcaster-supplied) for safe
 /// rendering as a label:
-///   - strips CR / LF so the label cannot inject additional rows
-///   - collapses any remaining control characters (U+0000..U+001F, U+007F)
+///   - strips CR / LF, line/paragraph separators (U+2028/2029) so the label
+///     cannot inject additional rows
+///   - strips C0/C1 control characters (U+0000..U+001F, U+007F..U+009F)
+///   - strips bidi overrides / isolate controls / Arabic Letter Mark /
+///     Mongolian Vowel Separator / Tag Characters so the label cannot spoof
+///     its own direction (RTL / Trojan Source)
 ///   - trims surrounding whitespace
 ///   - caps length at [_kOperatorUserNameMaxLength]
+///
+/// Preserves ZWJ (U+200D) and Variation Selectors (U+FE00-U+FE0F,
+/// U+E0100-U+E01EF) so ZWJ-composed emoji and presentation selectors
+/// continue to render correctly.
 ///
 /// Returns `null` when the input is null or becomes empty after sanitation,
 /// matching the existing "null = no label" convention used by
 /// `_displayNameForMessage`.
+///
+/// Kept symmetric with the snackbar sanitiser in `comment_screen.dart`
+/// (`_sanitizeSingleLine`) — both delegate to
+/// [removeControlAndInvisibleChars]. See `domain/utils/unicode_sanitizer.dart`
+/// for the rationale behind the preserved / stripped categories.
 String? _sanitizeOperatorUserName(String? raw) {
   if (raw == null) {
     return null;
   }
-  // Strip CR/LF and other C0/C1 control characters. We intentionally keep
-  // normal Unicode printable characters so CJK / emoji labels survive.
-  //
-  // `raw.runes` yields Unicode code points (not UTF-16 code units), and
-  // `StringBuffer.writeCharCode` accepts code points up to U+10FFFF and emits
-  // the appropriate UTF-16 surrogate pair when needed. So multi-code-unit
-  // characters (emoji, supplementary CJK) round-trip correctly without manual
-  // surrogate handling.
-  final StringBuffer buffer = StringBuffer();
-  for (final int codePoint in raw.runes) {
-    if (codePoint == 0x0A || codePoint == 0x0D) {
-      // Drop newline / carriage return explicitly.
-      continue;
-    }
-    if (codePoint < 0x20 || codePoint == 0x7F) {
-      // Drop other C0 control characters + DEL.
-      continue;
-    }
-    buffer.writeCharCode(codePoint);
-  }
-  String cleaned = buffer.toString().trim();
+  // Delegate to the shared helper so the operator label and the snackbar
+  // label strip the same category of spoofing / layout-breaking characters.
+  // TAB (U+0009) is stripped by the C0 block inside the helper; collapse
+  // any remaining intra-label whitespace run into a single space so the
+  // label does not end up with "前<TAB>後" → "前後" artifacts when
+  // `_removeControlAndInvisible` previously dropped the TAB silently.
+  final String controlFree = removeControlAndInvisibleChars(raw);
+  final String cleaned = controlFree
+      .replaceAll(RegExp(r'[ \u3000]+'), ' ')
+      .trim();
   if (cleaned.isEmpty) {
     return null;
   }
-  if (cleaned.length > _kOperatorUserNameMaxLength) {
-    cleaned = cleaned.substring(0, _kOperatorUserNameMaxLength);
+  // Count grapheme clusters (user-perceived characters) so the cap never
+  // slices a surrogate pair or a ZWJ-composed emoji cluster in half.
+  // `String.length` counts UTF-16 code units, so a naive
+  // `substring(0, _kOperatorUserNameMaxLength)` could leave a dangling
+  // surrogate at the boundary and produce U+FFFD on the next render.
+  final Characters chars = Characters(cleaned);
+  if (chars.length > _kOperatorUserNameMaxLength) {
+    return chars.take(_kOperatorUserNameMaxLength).toString();
   }
   return cleaned;
 }

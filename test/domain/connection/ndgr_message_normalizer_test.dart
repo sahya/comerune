@@ -293,6 +293,110 @@ void main() {
       expect(normalized!.userName?.length, 64);
     });
 
+    test(
+      'caps operator name at 64 grapheme clusters without splitting surrogate pairs',
+      () {
+        // Regression guard for the `substring(0, 64)` → dangling surrogate
+        // bug flagged in post-merge sage review: `String.length` counts
+        // UTF-16 code units, so a naive substring cap at UTF-16 boundary
+        // 64 would leave a lone high surrogate at position 63 when the
+        // clusters around the boundary are outside the BMP.
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+        // 40 × face-with-tears-of-joy (U+1F602) — each is 2 UTF-16 code
+        // units, so the string has length 80 but 40 grapheme clusters.
+        // With the cap at 64 grapheme clusters the input fits entirely;
+        // we then prepend 25 ASCII chars so the total is 65 grapheme
+        // clusters, crossing the boundary inside an emoji.
+        final String heading = 'a' * 25;
+        final String emojis = '\u{1F602}' * 40;
+        final String crafted = heading + emojis;
+
+        final NdgrChunkedMessage source = NdgrChunkedMessage(
+          id: 'ndgr-op-surrogate-cap',
+          serverTimestamp: serverTime,
+          operatorComment: NdgrOperatorComment(content: '告知', name: crafted),
+        );
+
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          source,
+          receivedAt: serverTime,
+        );
+
+        expect(normalized, isNotNull);
+        final String userName = normalized!.userName!;
+        // The sanitised name must not contain a U+FFFD replacement
+        // character (which would indicate a broken surrogate pair).
+        expect(
+          userName.contains('\uFFFD'),
+          isFalse,
+          reason: 'cap must not split a surrogate pair into a lone surrogate',
+        );
+        // All UTF-16 code units must still pair up: every high surrogate
+        // must be followed by a low surrogate and vice versa.
+        for (int i = 0; i < userName.length; i++) {
+          final int unit = userName.codeUnitAt(i);
+          final bool isHighSurrogate = unit >= 0xD800 && unit <= 0xDBFF;
+          final bool isLowSurrogate = unit >= 0xDC00 && unit <= 0xDFFF;
+          if (isHighSurrogate) {
+            expect(
+              i + 1 < userName.length,
+              isTrue,
+              reason: 'trailing high surrogate at offset $i',
+            );
+            final int next = userName.codeUnitAt(i + 1);
+            expect(next >= 0xDC00 && next <= 0xDFFF, isTrue);
+            i++; // skip the paired low surrogate
+          } else {
+            expect(
+              isLowSurrogate,
+              isFalse,
+              reason: 'lone low surrogate at offset $i',
+            );
+          }
+        }
+      },
+    );
+
+    test(
+      'operator name sanitisation removes additional invisible code points',
+      () {
+        // Defence-in-depth for U+2060 WORD JOINER / U+3164 HANGUL FILLER
+        // / U+FFF9-FFFB (interlinear annotation) et al that were missing
+        // from the initial sanitiser. Each of these can render as an
+        // invisible character used for display spoofing.
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+        // Interleave invisible code points with printable "運営" so we can
+        // assert the visible characters survive.
+        const String wordJoiner = '\u2060';
+        const String invisibleTimes = '\u2062';
+        const String hangulFiller = '\u3164';
+        const String interlinearAnchor = '\uFFF9';
+        final String craftedName =
+            '運$wordJoiner営$invisibleTimes$hangulFiller$interlinearAnchor';
+
+        final NdgrChunkedMessage source = NdgrChunkedMessage(
+          id: 'ndgr-op-invisible',
+          serverTimestamp: serverTime,
+          operatorComment: NdgrOperatorComment(
+            content: '告知',
+            name: craftedName,
+          ),
+        );
+
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          source,
+          receivedAt: serverTime,
+        );
+
+        expect(normalized, isNotNull);
+        expect(normalized!.userName, '運営');
+      },
+    );
+
     test('maps operator name to null when sanitation empties it', () {
       // A name consisting only of CR/LF + whitespace sanitises down to
       // an empty string; the normalizer must surface null (not '') so

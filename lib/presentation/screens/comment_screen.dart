@@ -20,6 +20,7 @@ import '../../domain/comment_log/comment_log_stats.dart';
 import '../../domain/models/teach_command.dart';
 import '../../domain/models/teach_command_handler.dart';
 import '../../domain/utils/elapsed_formatter.dart';
+import '../../domain/utils/unicode_sanitizer.dart';
 import '../../domain/utils/url_extractor.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
@@ -473,6 +474,21 @@ class _CommentScreenState extends State<CommentScreen> {
       } else {
         _refreshNormalizedNgWords();
       }
+    }
+
+    // NG protection notification OFF→ON transition: re-seed the cursor so
+    // that only NG hits *after* the user toggles the feature on contribute
+    // to the badge / snackbar. Without this, if the ring buffer rotated out
+    // the stale cursor during OFF, the fallback path (start = 0) would
+    // replay the entire tail on the first ON pass and produce a sudden
+    // spike in the badge count from historical messages the user never
+    // intended to be "protected". ON→OFF leaves the cursor where it is so
+    // that re-enabling later still picks up from the current tail.
+    if (!oldWidget.filterConfig.ngProtectionNotificationEnabled &&
+        widget.filterConfig.ngProtectionNotificationEnabled) {
+      _lastProtectionInspectedMessageId = widget.messages.isNotEmpty
+          ? widget.messages.last.id
+          : null;
     }
 
     if (oldWidget.programInfo.lv != widget.programInfo.lv) {
@@ -1386,15 +1402,37 @@ class _CommentScreenState extends State<CommentScreen> {
     String? latestSnackBarMessage;
     for (int i = start; i < newMessages.length; i++) {
       final AppMessage message = newMessages[i];
+      // Skip message types that are excluded from NG filtering by design
+      // (gift / nicoad are never silenced; see [_shouldDisplayMessage]).
+      //
+      // Additionally, honor the per-type visibility toggles (operator /
+      // system / emotion). A message that the user has explicitly hidden
+      // must not also trigger a "protection" notification — announcing a
+      // protection event for something the user asked not to see is a
+      // semantic contradiction and produces confusing snackbars / badge
+      // counts. Gift / nicoad already `continue` above so they are not
+      // affected by this additional guard.
       switch (message.type) {
         case AppMessageType.gift:
         case AppMessageType.nicoad:
           continue;
-        case AppMessageType.chat:
         case AppMessageType.operator:
-        case AppMessageType.notification:
+          if (!widget.filterConfig.showOperatorComment) {
+            continue;
+          }
+          break;
         case AppMessageType.system:
+          if (!widget.filterConfig.showSystemMessage) {
+            continue;
+          }
+          break;
         case AppMessageType.emotion:
+          if (!widget.filterConfig.showEmotion) {
+            continue;
+          }
+          break;
+        case AppMessageType.chat:
+        case AppMessageType.notification:
           break;
       }
       if (_isSystemBroadcastEndedMessage(message)) {
@@ -1445,6 +1483,16 @@ class _CommentScreenState extends State<CommentScreen> {
       _protectedCount += newHits;
     });
 
+    // Suppress the snackbar while the user is in comment-search mode so it
+    // does not fight with the IME keyboard (SnackBarBehavior.floating would
+    // otherwise overlap / hide behind the keyboard on narrow screens and
+    // some iOS layouts). The badge still increments, so no NG hit is lost —
+    // the user can read the count once they close the search bar. The
+    // existing Semantics on the badge announces the count for TalkBack.
+    if (_isSearching) {
+      return;
+    }
+
     if (windowElapsed && latestSnackBarMessage != null) {
       _lastProtectionNotificationAt = now;
       final String snackBarText = latestSnackBarMessage;
@@ -1482,11 +1530,23 @@ class _CommentScreenState extends State<CommentScreen> {
   /// the throttle window appears to have elapsed. Exposed via the top-level
   /// [debugRewindProtectionNotificationClock] helper.
   ///
+  /// Defence-in-depth: the top-level helper already asserts + early-returns
+  /// on [kDebugMode], but we repeat the guard here so that any accidental
+  /// caller (e.g. someone bypassing the public helper via
+  /// `@visibleForTesting` escape hatches) still gets the same protection.
   /// Asserts that the throttle has fired at least once; otherwise calling
   /// this helper is almost certainly a test-ordering bug (the test tried to
   /// rewind a clock that was never started) and a silent no-op would mask
   /// the real issue.
   void _debugRewindProtectionNotificationClock(Duration offset) {
+    assert(
+      kDebugMode,
+      '_debugRewindProtectionNotificationClock must only be invoked from '
+      'tests / debug builds.',
+    );
+    if (!kDebugMode) {
+      return;
+    }
     assert(
       _lastProtectionNotificationAt != null,
       'debugRewindProtectionNotificationClock called before any NG '
@@ -3028,43 +3088,13 @@ class _CommentScreenState extends State<CommentScreen> {
 
   /// Strips characters that would corrupt UI rendering or allow spoofing
   /// of displayed text, while preserving characters that are semantically
-  /// part of user-perceived glyphs.
-  ///
-  /// Removed:
-  ///  - C0 / C1 control characters (except space)
-  ///  - Zero-width joiners that are *not* ZWJ (U+200B, U+200C, U+FEFF, U+00AD)
-  ///  - Bidi override / isolate controls that could reorder display text:
-  ///    - U+061C (Arabic Letter Mark)
-  ///    - U+180E (Mongolian Vowel Separator)
-  ///    - U+202A-U+202E (LRE/RLE/PDF/LRO/RLO)
-  ///    - U+2066-U+2069 (LRI/RLI/FSI/PDI)
-  ///    - U+E0000-U+E007F (Tag Characters; Trojan Source defense)
-  ///
-  /// Preserved:
-  ///  - ZWJ (U+200D): required to keep ZWJ-composed emoji sequences
-  ///    (family, profession, flag, etc.) as a single glyph in display.
-  ///  - Variation selectors (U+FE00-U+FE0F, U+E0100-U+E01EF): required
-  ///    to keep emoji presentation selectors intact.
+  /// part of user-perceived glyphs. See [removeControlAndInvisibleChars]
+  /// for the full list of stripped / preserved categories.
   String _removeControlAndInvisible(String text) {
-    final StringBuffer sb = StringBuffer();
-    for (final int cp in text.runes) {
-      final bool invisible =
-          cp == 0x200B ||
-          cp == 0x200C ||
-          cp == 0xFEFF ||
-          cp == 0x00AD ||
-          cp == 0x061C ||
-          cp == 0x180E ||
-          (cp >= 0x202A && cp <= 0x202E) ||
-          (cp >= 0x2066 && cp <= 0x2069) ||
-          (cp >= 0xE0000 && cp <= 0xE007F) ||
-          ((cp >= 0x0000 && cp <= 0x001F) && cp != 0x0020) ||
-          (cp >= 0x007F && cp <= 0x009F);
-      if (!invisible) {
-        sb.writeCharCode(cp);
-      }
-    }
-    return sb.toString();
+    // Delegated to the shared helper so this sanitiser and the operator
+    // userName sanitiser in `ndgr_message_normalizer.dart` strip the exact
+    // same category of control / bidi / Tag characters.
+    return removeControlAndInvisibleChars(text);
   }
 
   String _applyLookAlikeTable(String text) {

@@ -1,5 +1,7 @@
 import 'dart:convert';
-import 'dart:typed_data';
+import 'dart:developer' as developer;
+
+import 'package:flutter/foundation.dart';
 
 class NdgrChunkedEntry {
   const NdgrChunkedEntry({
@@ -275,23 +277,44 @@ class NdgrProtobufDecoder {
       switch (fieldNumber) {
         case 1: // ChunkedMessage.meta
           if (wireType == _WireType.lengthDelimited) {
-            final _ChunkedMessageMeta meta = _decodeChunkedMessageMeta(
-              reader.readLengthDelimited(),
-            );
-            id = meta.id;
-            serverTimestamp = meta.serverTimestamp;
+            // Isolate meta decode failures so that a single malformed
+            // timestamp / id does not drop the other fields (chat /
+            // statistics / operator / simpleNotificationV2) in the same
+            // chunk. Symmetry with case 2 / case 4.
+            final Uint8List metaBytes = reader.readLengthDelimited();
+            try {
+              final _ChunkedMessageMeta meta = _decodeChunkedMessageMeta(
+                metaBytes,
+              );
+              id = meta.id;
+              serverTimestamp = meta.serverTimestamp;
+            } on FormatException {
+              // Leave id / serverTimestamp null; downstream normalisation
+              // will synthesise a fallback id based on timestamp + sequence.
+            }
           } else {
             reader.skipField(wireType);
           }
           break;
         case 2: // ChunkedMessage.message (oneof NicoliveMessage)
           if (wireType == _WireType.lengthDelimited) {
-            final _NicoliveMessageResult result = _decodeNicoliveMessage(
-              reader.readLengthDelimited(),
-            );
-            chat = result.chat;
-            statistics = result.statistics;
-            simpleNotificationV2 = result.simpleNotificationV2;
+            // Isolate NicoliveMessage decode failures so that a malformed
+            // chat / statistics / simpleNotificationV2 payload does not
+            // drop the meta or operator fields in the same chunk. Symmetry
+            // with case 1 / case 4.
+            final Uint8List messageBytes = reader.readLengthDelimited();
+            try {
+              final _NicoliveMessageResult result = _decodeNicoliveMessage(
+                messageBytes,
+              );
+              chat = result.chat;
+              statistics = result.statistics;
+              simpleNotificationV2 = result.simpleNotificationV2;
+            } on FormatException {
+              chat = null;
+              statistics = null;
+              simpleNotificationV2 = null;
+            }
           } else {
             reader.skipField(wireType);
           }
@@ -342,7 +365,16 @@ class NdgrProtobufDecoder {
       switch (fieldNumber) {
         case 1: // PackedSegment.messages (repeated ChunkedMessage)
           if (wireType == _WireType.lengthDelimited) {
-            messages.add(decodeChunkedMessage(reader.readLengthDelimited()));
+            // Isolate decode failures per ChunkedMessage so a single
+            // malformed message in the segment does not drop every
+            // subsequent (valid) message in the same batch.
+            final Uint8List chunkBytes = reader.readLengthDelimited();
+            try {
+              messages.add(decodeChunkedMessage(chunkBytes));
+            } on FormatException {
+              // Skip the malformed chunk and continue reading the rest of
+              // the segment.
+            }
           } else {
             reader.skipField(wireType);
           }
@@ -453,9 +485,24 @@ class NdgrProtobufDecoder {
         statistics = _decodeStatistics(reader.readLengthDelimited());
       } else if (fieldNumber == 23 && wireType == _WireType.lengthDelimited) {
         // NicoliveMessage.simple_notification_v2 (atoms.SimpleNotificationV2)
-        simpleNotificationV2 = _decodeSimpleNotificationV2(
-          reader.readLengthDelimited(),
-        );
+        //
+        // Isolate decode failures so that a single malformed
+        // SimpleNotificationV2 payload does not drop other already-decoded
+        // fields in the same NicoliveMessage (chat / statistics). Mirrors
+        // the try/catch around NicoliveState.operator_comment in
+        // [decodeChunkedMessage] so both nested fields are equally robust
+        // to protocol drift.
+        //
+        // Reading the length-delimited bytes first, then decoding inside
+        // the try, keeps the outer reader advanced even when decode fails
+        // — otherwise the malformed bytes would be re-parsed as the next
+        // tag on the following loop iteration.
+        final Uint8List notificationBytes = reader.readLengthDelimited();
+        try {
+          simpleNotificationV2 = _decodeSimpleNotificationV2(notificationBytes);
+        } on FormatException {
+          simpleNotificationV2 = null;
+        }
       } else {
         reader.skipField(wireType);
       }
@@ -613,7 +660,17 @@ class NdgrProtobufDecoder {
       case 9:
         return NdgrSimpleNotificationV2Type.userFollow;
       case 0:
+        return NdgrSimpleNotificationV2Type.unknown;
       default:
+        // Log once per unexpected value in debug builds so that upstream
+        // enum drift (new NotificationType) is observable during
+        // development. Gated on [kDebugMode] so release builds stay silent.
+        if (kDebugMode) {
+          developer.log(
+            'Unknown SimpleNotificationV2 type rawType=$raw',
+            name: 'NdgrProtobufDecoder',
+          );
+        }
         return NdgrSimpleNotificationV2Type.unknown;
     }
   }

@@ -428,6 +428,52 @@ void main() {
       },
     );
 
+    test(
+      'malformed NicoliveMessage does not drop a valid operator comment in the same chunk',
+      () {
+        // Symmetry check for the case 2 try/catch isolation: when the
+        // NicoliveMessage (field 2) payload is malformed, the decoder must
+        // still surface the valid operator comment carried in
+        // NicoliveState (field 4) of the SAME chunk.
+        final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+        final List<int> malformedMessage = <int>[
+          // Tag for field 1 (chat), wire type 2 (length-delimited).
+          (1 << 3) | 2,
+          // Declared length 0x7F (127) but payload contains only 1 byte ->
+          // EOF when the reader tries to consume it.
+          0x7F,
+          0x00,
+        ];
+
+        final List<int> operatorComment = <int>[
+          ..._stringField(1, '運営本文'),
+          ..._stringField(2, '運営'),
+        ];
+        final List<int> marqueeDisplay = <int>[
+          ..._bytesField(1, operatorComment),
+        ];
+        final List<int> marquee = <int>[..._bytesField(1, marqueeDisplay)];
+        final List<int> state = <int>[..._bytesField(4, marquee)];
+
+        final Uint8List bytes = Uint8List.fromList(<int>[
+          ..._bytesField(2, malformedMessage),
+          ..._bytesField(4, state),
+        ]);
+
+        final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+        // Chat / statistics / simpleNotificationV2 are dropped because the
+        // NicoliveMessage decode failed.
+        expect(message.chat, isNull);
+        expect(message.statistics, isNull);
+        expect(message.simpleNotificationV2, isNull);
+        // But the valid operator comment from the same chunk must survive.
+        expect(message.operatorComment, isNotNull);
+        expect(message.operatorComment!.content, '運営本文');
+      },
+    );
+
     // --- _readSingleFieldLD consolidation guard ---
     //
     // The refactor replaced three hand-rolled "scan for one nested
@@ -472,6 +518,57 @@ void main() {
         expect(message.operatorComment, isNotNull);
         expect(message.operatorComment!.content, 'body');
         expect(message.operatorComment!.name, 'name');
+      },
+    );
+
+    test(
+      'one malformed ChunkedMessage in a packed segment does not drop the others',
+      () {
+        // The PackedSegment loop must isolate per-message failures so a
+        // single bad entry does not silently discard the remaining valid
+        // messages in the batch.
+        final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+        // Build a valid chunked message with id "ok-1".
+        final List<int> validMeta = <int>[..._stringField(1, 'ok-1')];
+        final List<int> validChat = <int>[..._stringField(1, 'hello')];
+        final List<int> validMessage = <int>[..._bytesField(1, validChat)];
+        final List<int> validChunk = <int>[
+          ..._bytesField(1, validMeta),
+          ..._bytesField(2, validMessage),
+        ];
+
+        // Build a malformed chunked message: declares a length-delimited
+        // meta field that overruns the payload.
+        final List<int> malformedChunk = <int>[
+          (1 << 3) | 2, // field 1 (meta), wire type 2
+          0x7F, // declared length 127
+          0x00, // only 1 byte actually present
+        ];
+
+        // Build a second valid chunked message with id "ok-2" so we can
+        // assert that messages BEFORE and AFTER the malformed one survive.
+        final List<int> validMeta2 = <int>[..._stringField(1, 'ok-2')];
+        final List<int> validChat2 = <int>[..._stringField(1, 'bye')];
+        final List<int> validMessage2 = <int>[..._bytesField(1, validChat2)];
+        final List<int> validChunk2 = <int>[
+          ..._bytesField(1, validMeta2),
+          ..._bytesField(2, validMessage2),
+        ];
+
+        final Uint8List packed = Uint8List.fromList(<int>[
+          ..._bytesField(1, validChunk),
+          ..._bytesField(1, malformedChunk),
+          ..._bytesField(1, validChunk2),
+        ]);
+
+        final NdgrPackedSegment decoded = decoder.decodePackedSegment(packed);
+
+        // The two valid chunks survive; the malformed one is silently
+        // dropped so downstream code never sees partial / corrupt state.
+        expect(decoded.messages.length, 2);
+        expect(decoded.messages[0].id, 'ok-1');
+        expect(decoded.messages[1].id, 'ok-2');
       },
     );
 
