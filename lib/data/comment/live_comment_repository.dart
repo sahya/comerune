@@ -4,6 +4,7 @@ import 'dart:io';
 
 import '../../app_logging.dart';
 import '../../domain/models/comment_post_result.dart';
+import '../niconico/niconico_authed_http_client.dart';
 
 /// Re-exports [CommentPostResult] from the domain layer.
 ///
@@ -19,28 +20,16 @@ export '../../domain/models/comment_post_result.dart';
 ///   with `{ "text": "...", "isPermCommand": false }`.
 /// - Normal comment:   `POST /unama/tool/v2/programs/{programId}/comments`
 ///   with `{ "text": "...", "vpos": N }` and the `x-frontend-id: 134` header.
-class LiveCommentRepository {
+class LiveCommentRepository extends NiconicoAuthedHttpClient {
   LiveCommentRepository({
     HttpClient? httpClient,
-    String userAgent = _defaultUserAgent,
+    String userAgent = NiconicoAuthedHttpClient.defaultUserAgent,
     Duration requestTimeout = const Duration(seconds: 10),
-  }) : _httpClient = httpClient ?? HttpClient(),
-       _userAgent = userAgent,
-       _requestTimeout = requestTimeout {
-    _httpClient.connectionTimeout = const Duration(seconds: 10);
-  }
-
-  /// Deadline for the full request/response roundtrip after the TCP
-  /// connection has been established. `HttpClient.connectionTimeout` only
-  /// guards the initial connect; without this guard a stalled server keeps
-  /// the send button spinning indefinitely. Mirrors the same-named field on
-  /// [BroadcastControlRepository] so the two repositories can be unified in
-  /// the future.
-  final Duration _requestTimeout;
-
-  static const String _defaultUserAgent =
-      'Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 '
-      '(KHTML, like Gecko) Chrome Mobile Safari/537.36';
+  }) : super(
+         httpClient: httpClient,
+         userAgent: userAgent,
+         requestTimeout: requestTimeout,
+       );
 
   static const String _operatorBaseUrl = 'https://live2.nicovideo.jp/watch';
   static const String _normalBaseUrl =
@@ -51,8 +40,8 @@ class LiveCommentRepository {
   /// the request.
   static const String _frontendId = '134';
 
-  final HttpClient _httpClient;
-  final String _userAgent;
+  /// Log tag used for error / debug logging in this repository.
+  static const String _logName = 'LiveCommentRepository';
 
   /// Posts an operator comment (broadcaster only).
   ///
@@ -81,8 +70,8 @@ class LiveCommentRepository {
       final Uri uri = Uri.parse(
         '$_operatorBaseUrl/$programId/operator_comment',
       );
-      request = await _httpClient.putUrl(uri);
-      _setCommonHeaders(request, userSession);
+      request = await httpClient.putUrl(uri);
+      setAuthHeaders(request, userSession);
       request.write(
         jsonEncode(<String, Object>{
           'text': text,
@@ -91,13 +80,13 @@ class LiveCommentRepository {
       );
 
       final HttpClientResponse response = await request.close().timeout(
-        _requestTimeout,
+        requestTimeout,
       );
       return await _parseResponse(response, 'postOperatorComment');
     } on TimeoutException catch (e) {
-      return _handleTimeout(request, e, 'postOperatorComment');
+      return _toTimeoutResult(request, e, 'postOperatorComment');
     } on Exception catch (e) {
-      return _handleException(e, 'postOperatorComment');
+      return _toExceptionResult(e, 'postOperatorComment');
     }
   }
 
@@ -130,8 +119,8 @@ class LiveCommentRepository {
     HttpClientRequest? request;
     try {
       final Uri uri = Uri.parse('$_normalBaseUrl/$programId/comments');
-      request = await _httpClient.postUrl(uri);
-      _setCommonHeaders(request, userSession);
+      request = await httpClient.postUrl(uri);
+      setAuthHeaders(request, userSession);
       request.headers.set('x-frontend-id', _frontendId);
       request.write(
         jsonEncode(
@@ -144,63 +133,39 @@ class LiveCommentRepository {
       );
 
       final HttpClientResponse response = await request.close().timeout(
-        _requestTimeout,
+        requestTimeout,
       );
       return await _parseResponse(response, 'postNormalComment');
     } on TimeoutException catch (e) {
-      return _handleTimeout(request, e, 'postNormalComment');
+      return _toTimeoutResult(request, e, 'postNormalComment');
     } on Exception catch (e) {
-      return _handleException(e, 'postNormalComment');
+      return _toExceptionResult(e, 'postNormalComment');
     }
   }
 
-  /// Shared timeout handler: aborts the stalled request so its underlying
-  /// socket is returned to the OS (preventing fd / connection-pool leaks on
-  /// long-running sessions — #485) and maps the failure to
-  /// [CommentPostErrorCode.networkError].
-  ///
-  /// `abort()` is idempotent per the Dart SDK, so it is safe even if the
-  /// request has already completed by the time we enter the handler.
-  ///
-  /// Mirrored byte-for-byte by [BroadcastControlRepository]; both copies are
-  /// expected to be lifted into a shared base class by #464.
-  CommentPostResult _handleTimeout(
+  /// Maps a timeout into a [CommentPostResult] failure, delegating the
+  /// abort + logging to the base class.
+  CommentPostResult _toTimeoutResult(
     HttpClientRequest? request,
     TimeoutException e,
     String operationName,
   ) {
-    request?.abort();
-    appErrorLog(
-      name: 'LiveCommentRepository',
-      message: 'Timeout in $operationName',
-      error: e,
-    );
-    // Use `e.toString()` here (rather than `e.runtimeType.toString()`) so the
-    // failure message preserves the configured timeout duration, aiding
-    // incident triage without leaking any user / session data.
+    final String message = handleTimeout(request, e, operationName, _logName);
     return CommentPostResult(
       success: false,
       errorCode: CommentPostErrorCode.networkError,
-      errorMessage: e.toString(),
+      errorMessage: message,
     );
   }
 
-  /// Shared fallback handler for non-timeout exceptions (SocketException,
-  /// HandshakeException, etc.). Keeps the error message to the runtime type
-  /// only to avoid inadvertently leaking socket-level details.
-  ///
-  /// Mirrored byte-for-byte by [BroadcastControlRepository]; both copies are
-  /// expected to be lifted into a shared base class by #464.
-  CommentPostResult _handleException(Exception e, String operationName) {
-    appErrorLog(
-      name: 'LiveCommentRepository',
-      message: 'Error in $operationName',
-      error: e,
-    );
+  /// Maps a non-timeout exception into a [CommentPostResult] failure,
+  /// delegating the logging to the base class.
+  CommentPostResult _toExceptionResult(Exception e, String operationName) {
+    final String message = handleException(e, operationName, _logName);
     return CommentPostResult(
       success: false,
       errorCode: CommentPostErrorCode.networkError,
-      errorMessage: e.runtimeType.toString(),
+      errorMessage: message,
     );
   }
 
@@ -242,17 +207,6 @@ class LiveCommentRepository {
     return <String, Object>{'text': text, 'vpos': vpos, 'isAnonymous': true};
   }
 
-  void _setCommonHeaders(HttpClientRequest request, String userSession) {
-    request.headers.set('Cookie', 'user_session=$userSession');
-    request.headers.set('X-Niconico-Session', userSession);
-    request.headers.set('User-Agent', _userAgent);
-    request.headers.set('Content-Type', 'application/json');
-    // Ensure CDN / WAF does not return an HTML error page — the parser
-    // treats HTML as non-JSON body and could silently accept HTTP 200 as
-    // success without an Accept filter.
-    request.headers.set('Accept', 'application/json');
-  }
-
   Future<CommentPostResult> _parseResponse(
     HttpClientResponse response,
     String operationName,
@@ -266,7 +220,7 @@ class LiveCommentRepository {
     final String body = await response
         .transform(utf8.decoder)
         .join()
-        .timeout(_requestTimeout);
+        .timeout(requestTimeout);
 
     if (response.statusCode == 200) {
       // N Air's `WrappedResult` treats `meta.status != 200` (or a non-"OK"
@@ -285,7 +239,17 @@ class LiveCommentRepository {
       return const CommentPostResult(success: true);
     }
 
-    return _parseErrorBody(body, response.statusCode, operationName);
+    final NiconicoErrorFields error = parseErrorBody(
+      body,
+      response.statusCode,
+      operationName,
+      _logName,
+    );
+    return CommentPostResult(
+      success: false,
+      errorCode: error.errorCode,
+      errorMessage: error.errorMessage,
+    );
   }
 
   /// Returns a failure [CommentPostResult] when the response body advertises
@@ -355,44 +319,14 @@ class LiveCommentRepository {
     );
   }
 
-  CommentPostResult _parseErrorBody(
-    String body,
-    int statusCode,
-    String operationName,
-  ) {
-    appDebugLogLazy(
-      () => '[LiveCommentRepository] $operationName failed: HTTP $statusCode',
-    );
-
-    String? errorCode;
-    String? errorMessage;
-
-    try {
-      final Object? decoded = jsonDecode(body);
-      if (decoded is Map<String, dynamic>) {
-        final Object? meta = decoded['meta'];
-        if (meta is Map<String, dynamic>) {
-          errorCode = meta['errorCode'] as String?;
-          errorMessage = meta['errorMessage'] as String?;
-        }
-        if (errorMessage == null) {
-          final Object? data = decoded['data'];
-          if (data is Map<String, dynamic>) {
-            errorMessage = data['message'] as String?;
-          }
-        }
-      }
-    } on FormatException {
-      // Non-JSON error body — fall through to status-code mapping.
+  /// Overrides the base mapping to include HTTP 429 (rate-limiting),
+  /// which is specific to comment endpoints.
+  @override
+  String httpStatusToErrorCode(int statusCode) {
+    if (statusCode == 429) {
+      return CommentPostErrorCode.rateLimited;
     }
-
-    errorCode ??= _httpStatusToErrorCode(statusCode);
-
-    return CommentPostResult(
-      success: false,
-      errorCode: errorCode,
-      errorMessage: errorMessage,
-    );
+    return super.httpStatusToErrorCode(statusCode);
   }
 
   /// Combined entry-guard for both post methods. Returns a failure
@@ -467,28 +401,5 @@ class LiveCommentRepository {
       }
     }
     return true;
-  }
-
-  static String _httpStatusToErrorCode(int statusCode) {
-    switch (statusCode) {
-      case 400:
-        return CommentPostErrorCode.badRequest;
-      case 401:
-        return CommentPostErrorCode.unauthorized;
-      case 403:
-        return CommentPostErrorCode.forbidden;
-      case 404:
-        return CommentPostErrorCode.notFound;
-      case 409:
-        return CommentPostErrorCode.conflict;
-      case 429:
-        return CommentPostErrorCode.rateLimited;
-      default:
-        return 'HTTP_$statusCode';
-    }
-  }
-
-  void dispose() {
-    _httpClient.close();
   }
 }
