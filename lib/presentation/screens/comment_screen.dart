@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -217,6 +217,7 @@ class CommentScreen extends StatefulWidget {
     this.speechConfig = const CommentSpeechConfig(),
     this.commentPostController,
     this.userSessionLoader,
+    this.clock,
   });
 
   /// Program-level metadata (lv, title, broadcaster info, etc.).
@@ -285,6 +286,15 @@ class CommentScreen extends StatefulWidget {
   /// Loads the current niconico `user_session`. When it resolves to a
   /// non-empty string the comment-post FAB is shown.
   final Future<String> Function()? userSessionLoader;
+
+  /// Clock abstraction used for the NG-protection snackbar throttle window.
+  ///
+  /// In production this is `null` and the implementation falls back to the
+  /// top-level [clock] getter from `package:clock`, which delegates to
+  /// `DateTime.now()`. Tests can inject a fixed or fake clock (for example
+  /// via `withClock`) to verify the 10-second throttle without sleeping on
+  /// the wall clock.
+  final Clock? clock;
 
   @override
   State<CommentScreen> createState() => _CommentScreenState();
@@ -1465,7 +1475,14 @@ class _CommentScreenState extends State<CommentScreen> {
       return;
     }
 
-    final DateTime now = DateTime.now();
+    // Resolve the clock seam:
+    //   - [widget.clock] when the caller injects an explicit Clock.
+    //   - The top-level `clock` getter from `package:clock` otherwise. This
+    //     delegates to [DateTime.now()] in production but is observable by
+    //     `withClock(...)` in tests, so test scopes can freeze time without
+    //     rebuilding the widget.
+    final Clock activeClock = widget.clock ?? clock;
+    final DateTime now = activeClock.now();
     final DateTime? last = _lastProtectionNotificationAt;
     // Guard against wall-clock skew (NTP sync, manual clock change): if
     // [elapsed] is negative the throttle window would otherwise stay closed
@@ -1524,40 +1541,6 @@ class _CommentScreenState extends State<CommentScreen> {
           );
       });
     }
-  }
-
-  /// Test-only: rewinds [_lastProtectionNotificationAt] by [offset] so that
-  /// the throttle window appears to have elapsed. Exposed via the top-level
-  /// [debugRewindProtectionNotificationClock] helper.
-  ///
-  /// Defence-in-depth: the top-level helper already asserts + early-returns
-  /// on [kDebugMode], but we repeat the guard here so that any accidental
-  /// caller (e.g. someone bypassing the public helper via
-  /// `@visibleForTesting` escape hatches) still gets the same protection.
-  /// Asserts that the throttle has fired at least once; otherwise calling
-  /// this helper is almost certainly a test-ordering bug (the test tried to
-  /// rewind a clock that was never started) and a silent no-op would mask
-  /// the real issue.
-  void _debugRewindProtectionNotificationClock(Duration offset) {
-    assert(
-      kDebugMode,
-      '_debugRewindProtectionNotificationClock must only be invoked from '
-      'tests / debug builds.',
-    );
-    if (!kDebugMode) {
-      return;
-    }
-    assert(
-      _lastProtectionNotificationAt != null,
-      'debugRewindProtectionNotificationClock called before any NG '
-      'protection snackbar was fired; rewinding a null timestamp is a '
-      'no-op and usually indicates a test-setup mistake.',
-    );
-    final DateTime? last = _lastProtectionNotificationAt;
-    if (last == null) {
-      return;
-    }
-    _lastProtectionNotificationAt = last.subtract(offset);
   }
 
   /// Returns the matched NG word pattern in [content] (normalized, as used
@@ -4830,51 +4813,4 @@ class _SpeechStatusIcon extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Test-only helper: rewinds the NG-protection snackbar throttle timestamp
-/// of the [CommentScreen] hosting [element] by [offset]. Used to verify the
-/// re-fire behavior without sleeping for the full window in wall-clock time.
-///
-/// Asserts that the throttle has already fired at least once; calling this
-/// before the first snackbar is a test-ordering bug rather than a silent
-/// no-op.
-///
-/// In addition to the `@visibleForTesting` static check, this helper is
-/// gated on [kDebugMode] at runtime: release builds refuse to run it so
-/// that accidental callers cannot manipulate user-visible throttle state
-/// in production.
-@visibleForTesting
-void debugRewindProtectionNotificationClock(Element element, Duration offset) {
-  assert(
-    kDebugMode,
-    'debugRewindProtectionNotificationClock must only be invoked from '
-    'tests / debug builds.',
-  );
-  if (!kDebugMode) {
-    return;
-  }
-  _CommentScreenState? found;
-  void visit(Element el) {
-    if (found != null) {
-      return;
-    }
-    if (el is StatefulElement && el.state is _CommentScreenState) {
-      found = el.state as _CommentScreenState;
-      return;
-    }
-    el.visitChildren(visit);
-  }
-
-  if (element is StatefulElement && element.state is _CommentScreenState) {
-    found = element.state as _CommentScreenState;
-  } else {
-    element.visitChildren(visit);
-  }
-  if (found == null) {
-    throw StateError(
-      'debugRewindProtectionNotificationClock: no CommentScreen state found under element',
-    );
-  }
-  found!._debugRewindProtectionNotificationClock(offset);
 }

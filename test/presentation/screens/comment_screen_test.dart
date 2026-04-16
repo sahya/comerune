@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -3940,12 +3941,20 @@ void main() {
           final GlobalKey<_NgProtectionHostState> hostKey =
               GlobalKey<_NgProtectionHostState>();
 
+          // Drive the NG-protection throttle window from a mutable "virtual
+          // now" so the test can step past the 10-second window without
+          // sleeping on the wall clock. The injected Clock reads this value
+          // at each [_processNgProtectionNotifications] call.
+          DateTime virtualNow = DateTime.utc(2026, 3, 22, 12, 0, 0);
+          final Clock testClock = Clock(() => virtualNow);
+
           await tester.pumpWidget(
             _NgProtectionHost(
               key: hostKey,
               supervisor: supervisor,
               ngWords: const <String>['spam'],
               notificationEnabled: true,
+              clock: testClock,
             ),
           );
           await tester.pump();
@@ -3963,14 +3972,8 @@ void main() {
           await tester.pump();
           expect(find.byType(SnackBar), findsOneWidget);
 
-          // Rewind the internal throttle timestamp past the 10-second
-          // window. The throttle uses wall-clock DateTime.now(), so
-          // tester.pump(Duration) alone does not advance it; we expose
-          // a @visibleForTesting hook instead of sleeping for 11 seconds.
-          debugRewindProtectionNotificationClock(
-            tester.element(find.byType(CommentScreen)),
-            const Duration(seconds: 11),
-          );
+          // Advance the virtual clock past the 10-second throttle window.
+          virtualNow = virtualNow.add(const Duration(seconds: 11));
 
           // Dismiss the current snackbar so a re-fire is clearly observable.
           ScaffoldMessenger.of(
@@ -3991,6 +3994,195 @@ void main() {
           await tester.pump();
 
           // Beyond the throttle window, the snackbar must fire again.
+          expect(find.byType(SnackBar), findsOneWidget);
+          expect(find.text('2'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'snackbar does not re-fire when the clock advances exactly to the '
+        'throttle boundary minus one tick (<10s stays throttled)',
+        (WidgetTester tester) async {
+          // Regression guard for the boundary condition: elapsed >=
+          // _protectionSnackBarWindow must be a closed boundary. Advancing
+          // the clock to one microsecond before the window end must keep
+          // the throttle engaged.
+          final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+          final GlobalKey<_NgProtectionHostState> hostKey =
+              GlobalKey<_NgProtectionHostState>();
+
+          DateTime virtualNow = DateTime.utc(2026, 3, 22, 12, 0, 0);
+          final Clock testClock = Clock(() => virtualNow);
+
+          await tester.pumpWidget(
+            _NgProtectionHost(
+              key: hostKey,
+              supervisor: supervisor,
+              ngWords: const <String>['spam'],
+              notificationEnabled: true,
+              clock: testClock,
+            ),
+          );
+          await tester.pump();
+
+          hostKey.currentState!.addMessage(
+            AppMessage(
+              id: 'ng-1',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+              userId: 'user-a',
+              content: 'first spam',
+              type: AppMessageType.chat,
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+          expect(find.byType(SnackBar), findsOneWidget);
+
+          ScaffoldMessenger.of(
+            tester.element(find.byType(CommentScreen)),
+          ).hideCurrentSnackBar();
+          await tester.pump();
+
+          // Advance to exactly one microsecond short of the 10-second
+          // window: throttle must still be engaged, no re-fire.
+          virtualNow = virtualNow.add(
+            const Duration(seconds: 10) - const Duration(microseconds: 1),
+          );
+
+          hostKey.currentState!.addMessage(
+            AppMessage(
+              id: 'ng-2',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 9),
+              userId: 'user-b',
+              content: 'near-boundary spam',
+              type: AppMessageType.chat,
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+          expect(find.byType(SnackBar), findsNothing);
+          expect(find.text('2'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'snackbar re-fires exactly at the 10-second boundary (>=10s)',
+        (WidgetTester tester) async {
+          // Complementary boundary test: at exactly 10 seconds elapsed the
+          // throttle window has elapsed (elapsed >= window) and the
+          // snackbar must re-fire.
+          final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+          final GlobalKey<_NgProtectionHostState> hostKey =
+              GlobalKey<_NgProtectionHostState>();
+
+          DateTime virtualNow = DateTime.utc(2026, 3, 22, 12, 0, 0);
+          final Clock testClock = Clock(() => virtualNow);
+
+          await tester.pumpWidget(
+            _NgProtectionHost(
+              key: hostKey,
+              supervisor: supervisor,
+              ngWords: const <String>['spam'],
+              notificationEnabled: true,
+              clock: testClock,
+            ),
+          );
+          await tester.pump();
+
+          hostKey.currentState!.addMessage(
+            AppMessage(
+              id: 'ng-1',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+              userId: 'user-a',
+              content: 'first spam',
+              type: AppMessageType.chat,
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+          expect(find.byType(SnackBar), findsOneWidget);
+
+          ScaffoldMessenger.of(
+            tester.element(find.byType(CommentScreen)),
+          ).hideCurrentSnackBar();
+          await tester.pump();
+
+          virtualNow = virtualNow.add(const Duration(seconds: 10));
+
+          hostKey.currentState!.addMessage(
+            AppMessage(
+              id: 'ng-2',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 10),
+              userId: 'user-b',
+              content: 'boundary spam',
+              type: AppMessageType.chat,
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+          expect(find.byType(SnackBar), findsOneWidget);
+          expect(find.text('2'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'wall-clock rewind (NTP sync etc.) re-fires the snackbar rather than '
+        'locking the throttle indefinitely',
+        (WidgetTester tester) async {
+          // Regression guard: the throttle must treat a negative elapsed
+          // value as "fire now and reset" so that a backwards wall-clock
+          // jump does not silence notifications forever.
+          final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+          final GlobalKey<_NgProtectionHostState> hostKey =
+              GlobalKey<_NgProtectionHostState>();
+
+          DateTime virtualNow = DateTime.utc(2026, 3, 22, 12, 0, 0);
+          final Clock testClock = Clock(() => virtualNow);
+
+          await tester.pumpWidget(
+            _NgProtectionHost(
+              key: hostKey,
+              supervisor: supervisor,
+              ngWords: const <String>['spam'],
+              notificationEnabled: true,
+              clock: testClock,
+            ),
+          );
+          await tester.pump();
+
+          hostKey.currentState!.addMessage(
+            AppMessage(
+              id: 'ng-1',
+              timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+              userId: 'user-a',
+              content: 'first spam',
+              type: AppMessageType.chat,
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+          expect(find.byType(SnackBar), findsOneWidget);
+
+          ScaffoldMessenger.of(
+            tester.element(find.byType(CommentScreen)),
+          ).hideCurrentSnackBar();
+          await tester.pump();
+
+          // Jump the clock backwards by 5 minutes to simulate an NTP or
+          // manual wall-clock adjustment. Elapsed becomes negative.
+          virtualNow = virtualNow.subtract(const Duration(minutes: 5));
+
+          hostKey.currentState!.addMessage(
+            AppMessage(
+              id: 'ng-2',
+              timestamp: DateTime(2026, 3, 22, 11, 55, 0),
+              userId: 'user-b',
+              content: 'after rewind spam',
+              type: AppMessageType.chat,
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
           expect(find.byType(SnackBar), findsOneWidget);
           expect(find.text('2'), findsOneWidget);
         },
@@ -6113,12 +6305,14 @@ class _NgProtectionHost extends StatefulWidget {
     required this.notificationEnabled,
     this.ngWords = const <String>[],
     this.ngUserIds = const <String>{},
+    this.clock,
   });
 
   final ConnectionSupervisor supervisor;
   final bool notificationEnabled;
   final List<String> ngWords;
   final Set<String> ngUserIds;
+  final Clock? clock;
 
   @override
   State<_NgProtectionHost> createState() => _NgProtectionHostState();
@@ -6157,6 +6351,7 @@ class _NgProtectionHostState extends State<_NgProtectionHost> {
           ngUserIds: widget.ngUserIds,
           ngProtectionNotificationEnabled: widget.notificationEnabled,
         ),
+        clock: widget.clock,
       ),
     );
   }
