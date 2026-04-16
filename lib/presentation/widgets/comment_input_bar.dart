@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../application/comment_post/comment_post_controller.dart';
 
@@ -36,15 +37,56 @@ class CommentPostFab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    return FloatingActionButton(
-      key: const Key('comment-post-fab'),
-      onPressed: onPressed,
-      tooltip: 'コメントを投稿',
-      // Slightly lower opacity so underlying comments remain legible through
-      // the FAB, per the Issue spec ("高めの透過度").
-      backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.55),
-      foregroundColor: theme.colorScheme.onPrimary,
-      child: const Icon(Icons.chat_bubble_outline),
+    // Hand-rolled FAB: Flutter's built-in FloatingActionButton does not
+    // expose `surfaceTintColor`, so Material-3's elevation-based tint is
+    // always blended into `backgroundColor`, which silently fills in the
+    // alpha we set. Using a Material widget directly lets us force
+    // `surfaceTintColor: Colors.transparent` and keep the alpha visible.
+    //
+    // TODO(upstream): when a future Flutter version exposes
+    // `FloatingActionButton.surfaceTintColor`, revert this hand-rolled
+    // version back to `FloatingActionButton.small` and pass
+    // `surfaceTintColor: Colors.transparent` to it directly.
+    const double visualSize = 40;
+    const double tapTargetSize = 48;
+    return Semantics(
+      button: true,
+      container: true,
+      label: 'コメントを投稿',
+      child: Tooltip(
+        message: 'コメントを投稿',
+        child: SizedBox(
+          width: tapTargetSize,
+          height: tapTargetSize,
+          child: Center(
+            child: SizedBox(
+              width: visualSize,
+              height: visualSize,
+              child: Material(
+                // Alpha 0.55 keeps underlying comments legible through
+                // the FAB (Issue #123 spec: "高めの透過度").
+                color: theme.colorScheme.primary.withValues(alpha: 0.55),
+                surfaceTintColor: Colors.transparent,
+                shape: const CircleBorder(),
+                elevation: 6,
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  key: const Key('comment-post-fab'),
+                  onTap: onPressed,
+                  customBorder: const CircleBorder(),
+                  child: Center(
+                    child: Icon(
+                      Icons.edit_outlined,
+                      size: 22,
+                      color: theme.colorScheme.onPrimary,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -104,7 +146,7 @@ class CommentInputBar extends StatefulWidget {
 
 class _CommentInputBarState extends State<CommentInputBar> {
   final TextEditingController _textController = TextEditingController();
-  final FocusNode _focusNode = FocusNode();
+  late final FocusNode _focusNode;
   bool _sending = false;
 
   /// Current selection: when user is broadcaster, defaults to operator (per
@@ -122,6 +164,10 @@ class _CommentInputBarState extends State<CommentInputBar> {
   @override
   void initState() {
     super.initState();
+    // Hardware-keyboard Enter submits; Shift+Enter falls through to the
+    // TextField to insert a newline. The mobile soft-keyboard "send" button
+    // is handled separately by the TextField's onSubmitted callback.
+    _focusNode = FocusNode(onKeyEvent: _handleKeyEvent);
     // Broadcaster status can change from the parent; start in a mode that
     // matches the current flag.
     _asOperator = widget.isBroadcaster;
@@ -132,6 +178,39 @@ class _CommentInputBarState extends State<CommentInputBar> {
         _focusNode.requestFocus();
       }
     });
+  }
+
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    // Key shortcut contract (pinned by widget tests):
+    //   - Enter / NumpadEnter   → submit (if the draft is valid)
+    //   - Shift+Enter           → newline (fall through to TextField)
+    //   - Ctrl / Alt / Meta + Enter → submit (treated identically to plain
+    //     Enter so chat-app muscle memory "Ctrl+Enter to send" still works)
+    //
+    // Fires only for hardware-keyboard events. Key events consumed by an
+    // active IME (e.g. Japanese 変換確定 Enter) are delivered to the IME
+    // first and do not reach this handler, so Enter-to-confirm during IME
+    // composition is not hijacked as a submit.
+    if (event is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey != LogicalKeyboardKey.enter &&
+        event.logicalKey != LogicalKeyboardKey.numpadEnter) {
+      return KeyEventResult.ignored;
+    }
+    // Shift+Enter = newline (let the TextField handle it).
+    if (HardwareKeyboard.instance.isShiftPressed) {
+      return KeyEventResult.ignored;
+    }
+    if (!_canSendForValue(_textController.value)) {
+      // Swallow plain-Enter even when the draft is invalid (or a previous
+      // send is still in-flight) so the user does not accidentally add a
+      // newline when trying to submit, and so that re-pressing Enter while
+      // _sending=true cannot trigger a second request.
+      return KeyEventResult.handled;
+    }
+    _send();
+    return KeyEventResult.handled;
   }
 
   @override
@@ -276,7 +355,7 @@ class _CommentInputBarState extends State<CommentInputBar> {
                   // Operator mode hides it because the endpoint has no
                   // `isAnonymous` field and operator posts are labelled
                   // "運営" by the server.
-                  if (!(widget.isBroadcaster && _asOperator)) ...<Widget>[
+                  if (!(widget.isBroadcaster && _asOperator))
                     _AnonymousToggle(
                       isAnonymous: _isAnonymous,
                       onChanged: (bool value) {
@@ -285,8 +364,6 @@ class _CommentInputBarState extends State<CommentInputBar> {
                         });
                       },
                     ),
-                    const SizedBox(width: 4),
-                  ],
                   Expanded(
                     child: TextField(
                       key: const Key('comment-post-textfield'),
@@ -309,11 +386,16 @@ class _CommentInputBarState extends State<CommentInputBar> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 4),
                   IconButton(
                     key: const Key('comment-post-close-button'),
-                    icon: const Icon(Icons.close),
+                    icon: const Icon(Icons.close, size: 20),
                     tooltip: '閉じる',
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.all(6),
+                    constraints: const BoxConstraints(
+                      minWidth: 36,
+                      minHeight: 36,
+                    ),
                     onPressed: _sending ? null : _handleClose,
                   ),
                   // Send button and counter react only to text changes without
@@ -330,14 +412,20 @@ class _CommentInputBarState extends State<CommentInputBar> {
                             key: const Key('comment-post-send-button'),
                             icon: _sending
                                 ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
+                                    width: 16,
+                                    height: 16,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
                                     ),
                                   )
-                                : const Icon(Icons.send),
-                            tooltip: '送信',
+                                : const Icon(Icons.send, size: 20),
+                            tooltip: '送信 (Enter / Shift+Enter で改行)',
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.all(6),
+                            constraints: const BoxConstraints(
+                              minWidth: 36,
+                              minHeight: 36,
+                            ),
                             onPressed: _canSendForValue(value) ? _send : null,
                           );
                         },
@@ -380,11 +468,10 @@ class _CommentInputBarState extends State<CommentInputBar> {
   }
 }
 
-/// Two-state toggle that lets the viewer choose between a "名札付き"
-/// (nickname shown) post and a "名札なし" (184 anonymous) post.
-///
-/// Mirrors the look and a11y contract of [_OperatorToggle] so screen
-/// readers describe the two toggles consistently.
+/// Icon-only two-state toggle that switches between 名札付き (nickname
+/// shown) and 名札なし (184 anonymous). The text label was removed to make
+/// room for the input field; the mode is conveyed by the icon + its
+/// active/inactive color and by the tooltip/semantics for accessibility.
 class _AnonymousToggle extends StatelessWidget {
   const _AnonymousToggle({required this.isAnonymous, required this.onChanged});
 
@@ -399,33 +486,23 @@ class _AnonymousToggle extends StatelessWidget {
       toggled: isAnonymous,
       label: isAnonymous ? '名札なしモード（選択中）' : '名札付きモード（選択中）',
       hint: 'タップで名札付きと名札なしを切り替え',
-      child: InkWell(
-        key: const Key('comment-post-anonymous-toggle'),
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => onChanged(!isAnonymous),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Icon(
-                isAnonymous ? Icons.person_off : Icons.person,
-                size: 18,
-                color: isAnonymous
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                isAnonymous ? '名札なし' : '名札付き',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: isAnonymous
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
+      child: Tooltip(
+        message: isAnonymous ? '名札なし（タップで名札付きに）' : '名札付き（タップで名札なしに）',
+        child: InkWell(
+          key: const Key('comment-post-anonymous-toggle'),
+          borderRadius: BorderRadius.circular(20),
+          onTap: () => onChanged(!isAnonymous),
+          child: Padding(
+            // 8+20+8 = 36pt: matches the compact-density send/close buttons
+            // and stays within the Material minimum tap target guidance.
+            padding: const EdgeInsets.all(8),
+            child: Icon(
+              isAnonymous ? Icons.person_off : Icons.person,
+              size: 20,
+              color: isAnonymous
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
       ),
