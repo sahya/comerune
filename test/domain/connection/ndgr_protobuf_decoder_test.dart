@@ -284,32 +284,58 @@ void main() {
       },
     );
 
-    test(
-      'falls back to unknown type for unrecognised NotificationType enum',
-      () {
-        final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+    test('falls back to unknown type and does NOT throw when '
+        'NotificationType raw is outside the known range (Issue #478)', () {
+      // The debug-build-only `assert(() { ... return true; }())` in
+      // `_simpleNotificationV2TypeFromInt` logs a `debugPrint` warning
+      // for drift but must NOT throw — throwing would tear down the
+      // streaming decode pipeline for any contributor running a debug
+      // build against a live server the moment upstream ships a new
+      // NotificationType. Release builds strip the assert entirely.
+      final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
 
-        // Use enum value 99 (not defined in schema).
-        final List<int> notification = <int>[
-          ..._varintField(1, 99),
-          ..._stringField(2, '未知種別'),
-        ];
-        final List<int> nicoliveMessage = <int>[
-          ..._bytesField(23, notification),
-        ];
-        final Uint8List bytes = Uint8List.fromList(<int>[
-          ..._bytesField(2, nicoliveMessage),
-        ]);
+      // Use enum value 99 (beyond current known max = 9).
+      final List<int> notification = <int>[
+        ..._varintField(1, 99),
+        ..._stringField(2, '未知種別'),
+      ];
+      final List<int> nicoliveMessage = <int>[..._bytesField(23, notification)];
+      final Uint8List bytes = Uint8List.fromList(<int>[
+        ..._bytesField(2, nicoliveMessage),
+      ]);
 
-        final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+      final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
 
-        expect(
-          message.simpleNotificationV2!.type,
-          NdgrSimpleNotificationV2Type.unknown,
-        );
-        expect(message.simpleNotificationV2!.message, '未知種別');
-      },
-    );
+      expect(
+        message.simpleNotificationV2!.type,
+        NdgrSimpleNotificationV2Type.unknown,
+      );
+      expect(message.simpleNotificationV2!.message, '未知種別');
+    });
+
+    test('NotificationType raw=9 (USER_FOLLOW) maps to userFollow — upper '
+        'boundary of known range (Issue #478)', () {
+      // Locks down the case 9 branch so a one-off in the switch
+      // (e.g. accidentally dropping the USER_FOLLOW case when
+      // extending the enum for drift) would fail fast in CI.
+      final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+      final List<int> notification = <int>[
+        ..._varintField(1, 9),
+        ..._stringField(2, 'フォロー'),
+      ];
+      final List<int> nicoliveMessage = <int>[..._bytesField(23, notification)];
+      final Uint8List bytes = Uint8List.fromList(<int>[
+        ..._bytesField(2, nicoliveMessage),
+      ]);
+
+      final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+      expect(
+        message.simpleNotificationV2!.type,
+        NdgrSimpleNotificationV2Type.userFollow,
+      );
+    });
 
     test('falls back to unknown type for NotificationType raw=0 (UNKNOWN)', () {
       final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
@@ -473,6 +499,42 @@ void main() {
         expect(message.operatorComment!.content, '運営本文');
       },
     );
+
+    group('NicoliveMessage.statistics vs NicoliveState (Issue #461)', () {
+      test('legacy NicoliveMessage.field=8 still populates viewers when '
+          'a NicoliveState payload coexists in the same chunk', () {
+        // Regression lock for Issue #461 follow-up: while the
+        // `NicoliveState.statistics` fallback is staged (not yet
+        // wired because upstream field numbers need confirmation),
+        // the decoder must still read viewers from the legacy
+        // `NicoliveMessage.statistics` (field 8) even when the same
+        // chunk carries an unrelated NicoliveState payload. This
+        // exercises the "state body parsed but does not stomp over
+        // legacy statistics" code path in `decodeChunkedMessage`.
+        final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+        final List<int> legacyStats = <int>[..._varintField(1, 42)];
+        final List<int> nicoliveMessage = <int>[..._bytesField(8, legacyStats)];
+
+        // Arbitrary NicoliveState payload carrying only a marquee so
+        // the state decoder has real work to do.
+        final List<int> operatorComment = <int>[..._stringField(1, '運営')];
+        final List<int> display = <int>[..._bytesField(1, operatorComment)];
+        final List<int> marquee = <int>[..._bytesField(1, display)];
+        final List<int> state = <int>[..._bytesField(4, marquee)];
+
+        final Uint8List bytes = Uint8List.fromList(<int>[
+          ..._bytesField(2, nicoliveMessage),
+          ..._bytesField(4, state),
+        ]);
+
+        final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+        expect(message.statistics, isNotNull);
+        expect(message.statistics!.viewers, 42);
+        expect(message.operatorComment, isNotNull);
+      });
+    });
 
     // --- _readSingleFieldLD consolidation guard ---
     //

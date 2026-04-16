@@ -328,7 +328,15 @@ class NdgrProtobufDecoder {
             // [operatorComment] null and continue.
             final Uint8List stateBytes = reader.readLengthDelimited();
             try {
-              operatorComment = _decodeNicoliveStateOperatorComment(stateBytes);
+              final _NicoliveStateResult stateResult = _decodeNicoliveState(
+                stateBytes,
+              );
+              operatorComment = stateResult.operatorComment;
+              // Statistics fallback from `NicoliveState.statistics` is
+              // not wired in yet — see Issue #461 and the doc comment
+              // on [_decodeNicoliveState]. Once upstream proto is
+              // verified, populate `_NicoliveStateResult.statistics`
+              // there and assign it to [statistics] here.
             } on FormatException {
               operatorComment = null;
             }
@@ -473,15 +481,14 @@ class NdgrProtobufDecoder {
         // NicoliveMessage.chat / NicoliveMessage.overflowed_chat
         chat = _decodeChat(reader.readLengthDelimited());
       } else if (fieldNumber == 8 && wireType == _WireType.lengthDelimited) {
-        // NicoliveMessage.statistics (pre-existing behavior; upstream proto
-        // places Statistics in NicoliveState, but legacy tooling emitted it
-        // here. Preserved unchanged for backward compatibility.)
-        // TODO(follow-up): read Statistics from NicoliveState
-        // (ChunkedMessage.state) as well; the server may emit it there once
-        // the migration completes, and the current field-8 path will
-        // silently stop populating viewers. Issue number to be filed by the
-        // maintainer and attached here (TODO(#N)).
-        // follow-up issue: pending
+        // NicoliveMessage.statistics (legacy path). Upstream proto is
+        // migrating Statistics into NicoliveState (see
+        // [_decodeNicoliveState] / Issue #461 for the fallback path that
+        // reads NicoliveState.statistics). We keep this branch so that any
+        // server still emitting the legacy layout continues to populate
+        // viewers safely; the NicoliveState path will overwrite this value
+        // when both are present (upstream is considered authoritative once
+        // it ships the migration).
         statistics = _decodeStatistics(reader.readLengthDelimited());
       } else if (fieldNumber == 23 && wireType == _WireType.lengthDelimited) {
         // NicoliveMessage.simple_notification_v2 (atoms.SimpleNotificationV2)
@@ -515,18 +522,50 @@ class NdgrProtobufDecoder {
     );
   }
 
-  /// Extracts `OperatorComment` from `NicoliveState.marquee.display.operator_comment`.
+  /// Extracts the parts of `NicoliveState` the app currently consumes.
+  ///
+  /// Today this is only `operatorComment` (from
+  /// `state.marquee.display.operator_comment`). The return type is kept
+  /// as [_NicoliveStateResult] so that adding
+  /// [_NicoliveStateResult.statistics] later — when upstream proto field
+  /// numbers are confirmed (see Issue #461) — is a strictly additive
+  /// change with no further refactor at the caller.
   ///
   /// Schema (verified against upstream proto, 2026-04):
-  ///   NicoliveState.marquee = field 4 (Marquee)
-  ///   Marquee.display       = field 1 (Marquee.Display)
+  ///   NicoliveState.marquee    = field 4 (Marquee)
+  ///   Marquee.display          = field 1 (Marquee.Display)
   ///   Display.operator_comment = field 1 (OperatorComment)
   ///   OperatorComment.content  = field 1 (string)
   ///   OperatorComment.name     = field 2 (optional string)
   ///   OperatorComment.link     = field 4 (optional string)
-  NdgrOperatorComment? _decodeNicoliveStateOperatorComment(Uint8List bytes) {
-    // NicoliveState.marquee = field 4 (Marquee)
-    return _readSingleFieldLD<NdgrOperatorComment?>(bytes, 4, _decodeMarquee);
+  ///
+  /// Statistics fallback (Issue #461) is intentionally NOT implemented
+  /// here yet: the upstream field number for `NicoliveState.statistics`
+  /// is not yet independently verified against the current proto, and
+  /// blindly decoding an unrelated sub-message as Statistics would
+  /// produce silently-wrong viewer counts (worse than today's "null
+  /// viewers"). The legacy `NicoliveMessage.statistics` (field 8) path
+  /// is preserved unchanged so existing deployments keep working. Once
+  /// upstream is confirmed, the fallback can be added by populating
+  /// [_NicoliveStateResult.statistics] inside this loop.
+  _NicoliveStateResult _decodeNicoliveState(Uint8List bytes) {
+    final _ProtoReader reader = _ProtoReader(bytes);
+
+    NdgrOperatorComment? operatorComment;
+
+    while (!reader.isAtEnd) {
+      final int tag = reader.readVarint();
+      final int fieldNumber = tag >> 3;
+      final int wireType = tag & 0x07;
+
+      if (fieldNumber == 4 && wireType == _WireType.lengthDelimited) {
+        operatorComment = _decodeMarquee(reader.readLengthDelimited());
+      } else {
+        reader.skipField(wireType);
+      }
+    }
+
+    return _NicoliveStateResult(operatorComment: operatorComment);
   }
 
   NdgrOperatorComment? _decodeMarquee(Uint8List bytes) {
@@ -639,7 +678,38 @@ class NdgrProtobufDecoder {
     );
   }
 
+  /// Highest `NotificationType` enum value the decoder currently knows about
+  /// (verified 2026-04 against upstream proto: 0 UNKNOWN … 9 USER_FOLLOW).
+  ///
+  /// When the upstream proto adds a new enum value, the
+  /// [_simpleNotificationV2TypeFromInt] `assert` below will fire in debug
+  /// builds so developers notice the drift instead of silently falling back
+  /// to [NdgrSimpleNotificationV2Type.unknown]. Bump this constant (and add
+  /// the new `case` branch) whenever upstream ships a new value.
+  static const int _kMaxKnownNotificationTypeRaw = 9;
+
   NdgrSimpleNotificationV2Type _simpleNotificationV2TypeFromInt(int raw) {
+    // Debug-build only: upstream proto may have added a new enum value that
+    // this decoder does not map yet. We DO NOT throw on drift — doing so
+    // would take the streaming decode pipeline down for any contributor
+    // running a debug build against a live server the moment upstream
+    // ships a new NotificationType. Instead we surface a debug log so the
+    // developer notices, and we keep the existing `unknown` fallback so
+    // the rest of the chunk (chat body, statistics, operator comment)
+    // still decodes safely. Release builds strip the `assert` entirely.
+    // See Issue #478.
+    assert(() {
+      if (raw < 0 || raw > _kMaxKnownNotificationTypeRaw) {
+        debugPrint(
+          'NdgrProtobufDecoder: unexpected SimpleNotificationV2 type '
+          'raw=$raw (known max=$_kMaxKnownNotificationTypeRaw). '
+          'Upstream proto may have added a new enum value — extend the '
+          'switch in _simpleNotificationV2TypeFromInt and bump '
+          '_kMaxKnownNotificationTypeRaw.',
+        );
+      }
+      return true;
+    }());
     switch (raw) {
       case 1:
         return NdgrSimpleNotificationV2Type.ichiba;
@@ -983,6 +1053,17 @@ class _NicoliveMessageResult {
   final NdgrChat? chat;
   final NdgrStatistics? statistics;
   final NdgrSimpleNotificationV2? simpleNotificationV2;
+}
+
+class _NicoliveStateResult {
+  const _NicoliveStateResult({this.operatorComment});
+
+  final NdgrOperatorComment? operatorComment;
+
+  // NOTE(Issue #461): a future `NicoliveStatistics? statistics` field
+  // will live here once upstream proto field numbers are confirmed.
+  // Adding it is strictly additive and requires no caller refactor —
+  // see the doc comment on [_decodeNicoliveState] for details.
 }
 
 class _VarintReadResult {

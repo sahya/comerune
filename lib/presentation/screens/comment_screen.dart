@@ -20,6 +20,7 @@ import '../../domain/comment_log/comment_log_stats.dart';
 import '../../domain/models/teach_command.dart';
 import '../../domain/models/teach_command_handler.dart';
 import '../../domain/utils/elapsed_formatter.dart';
+import '../../domain/utils/search_normalizer.dart';
 import '../../domain/utils/unicode_sanitizer.dart';
 import '../../domain/utils/url_extractor.dart';
 import '../../domain/connection/connection_method.dart';
@@ -510,10 +511,24 @@ class _CommentScreenState extends State<CommentScreen> {
   // Comment keyword search state.
   bool _isSearching = false;
   String _searchQuery = '';
-  // Normalized (trimmed + lowercased) form of [_searchQuery], cached so that
-  // the per-message match check stays O(L) per message instead of recomputing
-  // the normalization on every list rebuild.
+  // Normalized form of [_searchQuery] (trim + NFKC-style fold via
+  // [normalizeForSearch]), cached so that the per-message match check
+  // stays O(L) per message instead of recomputing normalization on every
+  // list rebuild. See Issue #472.
   String _normalizedSearchQuery = '';
+
+  // Memoized normalized message content (Issue #472 perf note).
+  //
+  // The issue explicitly flagged per-message normalization on every
+  // rebuild as a perf concern. We keep a bounded LRU-style cache keyed
+  // by the message id (AppMessage.id is immutable once constructed, so
+  // entries never need invalidation). The ceiling prevents unbounded
+  // growth on very long sessions; when exceeded we drop the whole
+  // cache (cheapest approach — normalization itself is O(L) so the
+  // worst-case repopulation cost is acceptable vs. the complexity of
+  // a real LRU).
+  static const int _kNormalizedContentCacheCeiling = 4096;
+  final Map<String, String> _normalizedContentCache = <String, String>{};
   late final TextEditingController _searchController;
   final FocusNode _searchFocusNode = FocusNode();
   // Debounces rapid typing so we do not rebuild + re-filter the whole list
@@ -607,8 +622,8 @@ class _CommentScreenState extends State<CommentScreen> {
     // spike in the badge count from historical messages the user never
     // intended to be "protected". ON→OFF leaves the cursor where it is so
     // that re-enabling later still picks up from the current tail.
-    if (!oldWidget.filterConfig.ngProtectionNotificationEnabled &&
-        widget.filterConfig.ngProtectionNotificationEnabled) {
+    if (!oldWidget.contentFilter.ngProtectionNotificationEnabled &&
+        widget.contentFilter.ngProtectionNotificationEnabled) {
       _lastProtectionInspectedMessageId = widget.messages.isNotEmpty
           ? widget.messages.last.id
           : null;
@@ -738,6 +753,10 @@ class _CommentScreenState extends State<CommentScreen> {
     _searchController.removeListener(_handleSearchTextChanged);
     _searchController.dispose();
     _searchFocusNode.dispose();
+    // Release memoization cache eagerly on tear-down. GC would reclaim
+    // the map anyway, but explicit clear avoids holding onto potentially
+    // many String entries until the next GC cycle.
+    _normalizedContentCache.clear();
     super.dispose();
   }
 
@@ -1540,17 +1559,17 @@ class _CommentScreenState extends State<CommentScreen> {
         case AppMessageType.nicoad:
           continue;
         case AppMessageType.operator:
-          if (!widget.filterConfig.showOperatorComment) {
+          if (!widget.messageTypeVisibility.showOperatorComment) {
             continue;
           }
           break;
         case AppMessageType.system:
-          if (!widget.filterConfig.showSystemMessage) {
+          if (!widget.messageTypeVisibility.showSystemMessage) {
             continue;
           }
           break;
         case AppMessageType.emotion:
-          if (!widget.filterConfig.showEmotion) {
+          if (!widget.messageTypeVisibility.showEmotion) {
             continue;
           }
           break;
@@ -2865,6 +2884,10 @@ class _CommentScreenState extends State<CommentScreen> {
     _searchDebounceTimer?.cancel();
     _searchController.clear();
     _searchFocusNode.unfocus();
+    // Release normalized-content cache memory when search is dismissed.
+    // The cache is only useful while search is active; keeping it alive
+    // between search sessions wastes memory for no benefit.
+    _normalizedContentCache.clear();
     setState(() {
       _isSearching = false;
       _searchQuery = '';
@@ -2886,6 +2909,13 @@ class _CommentScreenState extends State<CommentScreen> {
     // disappears in the same frame as the text being cleared. Relying only on
     // the TextEditingController listener risks a one-frame flash because the
     // listener fires after the current build completes.
+    //
+    // Note: we intentionally do NOT clear [_normalizedContentCache] here.
+    // The user is still in the search UI (only the query string was
+    // reset), so keeping the per-message normalized content around means
+    // typing a new query reuses the already-paid normalization cost.
+    // The cache is cleared on [_closeSearch] (full search dismissal)
+    // and on [dispose] (state teardown).
     setState(() {
       _searchQuery = '';
       _normalizedSearchQuery = '';
@@ -2911,7 +2941,10 @@ class _CommentScreenState extends State<CommentScreen> {
     _searchDebounceTimer = Timer(const Duration(milliseconds: 150), () {
       if (!mounted) return;
       setState(() {
-        _normalizedSearchQuery = _searchQuery.trim().toLowerCase();
+        // Issue #472: normalize query with NFKC-style fold so that
+        // "ｱｲｳ" / "アイウ" / "あいう" and "ＡＢＣ" / "abc" all match
+        // consistently. [normalizeForSearch] already lowercases ASCII.
+        _normalizedSearchQuery = normalizeForSearch(_searchQuery.trim());
       });
     });
   }
@@ -2919,15 +2952,36 @@ class _CommentScreenState extends State<CommentScreen> {
   /// Returns true when [message] matches the active search query.
   ///
   /// Matching is case-insensitive and applied to the comment body
-  /// (`content`) only. When the query is empty, all messages match.
+  /// (`content`) only. Query and body are both folded via
+  /// [normalizeForSearch] (NFKC-style full/half-width + hira↔kata) so
+  /// that small script / width differences do not break matches.
+  /// When the query is empty, all messages match.
   ///
-  /// Uses the pre-normalized [_normalizedSearchQuery] to avoid recomputing
-  /// `trim().toLowerCase()` on every message during list rebuilds.
+  /// Uses the pre-normalized [_normalizedSearchQuery] on the query side
+  /// and a bounded memoization cache (`_normalizedContentCache`) on the
+  /// message side to avoid recomputing the fold on every list rebuild.
   bool _matchesSearchQuery(AppMessage message) {
     if (_normalizedSearchQuery.isEmpty) {
       return true;
     }
-    return message.content.toLowerCase().contains(_normalizedSearchQuery);
+    final String cached =
+        _normalizedContentCache[message.id] ??
+        _rememberNormalizedContent(message);
+    return cached.contains(_normalizedSearchQuery);
+  }
+
+  /// Normalizes [message.content] for search and stores it in
+  /// [_normalizedContentCache]. The cache is cleared wholesale when it
+  /// grows past [_kNormalizedContentCacheCeiling]; this is simpler than
+  /// a true LRU and acceptable because a full repopulation is at worst
+  /// the same cost as the non-cached baseline.
+  String _rememberNormalizedContent(AppMessage message) {
+    if (_normalizedContentCache.length >= _kNormalizedContentCacheCeiling) {
+      _normalizedContentCache.clear();
+    }
+    final String normalized = normalizeForSearch(message.content);
+    _normalizedContentCache[message.id] = normalized;
+    return normalized;
   }
 
   bool _hasNewMessages(List<AppMessage> previous, List<AppMessage> current) {

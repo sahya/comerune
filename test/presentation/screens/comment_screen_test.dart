@@ -5650,6 +5650,171 @@ void main() {
       expect(find.textContaining('こんにちは世界'), findsNothing);
     });
 
+    testWidgets('NFKC-style normalization: halfwidth kana finds fullwidth kana '
+        '(Issue #472)', (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: <AppMessage>[
+            _message(id: 'k1', type: AppMessageType.chat, content: 'アイウエオ'),
+            _message(
+              id: 'k2',
+              type: AppMessageType.chat,
+              content: 'hello world',
+            ),
+          ],
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('comment-search-button')));
+      await tester.pumpAndSettle();
+
+      // Halfwidth katakana query must find fullwidth katakana body.
+      await tester.enterText(
+        find.byKey(const Key('comment-search-field')),
+        'ｱｲｳ',
+      );
+      await tester.pumpAndSettle(const Duration(milliseconds: 200));
+
+      expect(find.textContaining('アイウエオ'), findsOneWidget);
+      expect(find.textContaining('hello world'), findsNothing);
+    });
+
+    testWidgets('NFKC-style normalization: fullwidth alphanumerics fold to '
+        'halfwidth (Issue #472)', (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: <AppMessage>[
+            _message(
+              id: 'a1',
+              type: AppMessageType.chat,
+              content: 'code ABC123',
+            ),
+            _message(
+              id: 'a2',
+              type: AppMessageType.chat,
+              content: 'hello world',
+            ),
+          ],
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('comment-search-button')));
+      await tester.pumpAndSettle();
+
+      // Fullwidth query ＡＢＣ must match halfwidth "ABC".
+      await tester.enterText(
+        find.byKey(const Key('comment-search-field')),
+        'ＡＢＣ',
+      );
+      await tester.pumpAndSettle(const Duration(milliseconds: 200));
+
+      expect(find.textContaining('code ABC123'), findsOneWidget);
+      expect(find.textContaining('hello world'), findsNothing);
+    });
+
+    testWidgets('NFKC-style normalization: hiragana query finds katakana body '
+        '(Issue #472 仕様判断 A)', (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      // Use a distinctive katakana body that is unlikely to collide
+      // with any surrounding AppBar / placeholder text the screen
+      // renders (e.g. "コメント").
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: <AppMessage>[
+            _message(id: 'h1', type: AppMessageType.chat, content: 'タカハシさん'),
+            _message(
+              id: 'h2',
+              type: AppMessageType.chat,
+              content: 'hello world',
+            ),
+          ],
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('comment-search-button')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('comment-search-field')),
+        'たかはし',
+      );
+      await tester.pumpAndSettle(const Duration(milliseconds: 200));
+
+      expect(find.textContaining('タカハシさん'), findsOneWidget);
+      expect(find.textContaining('hello world'), findsNothing);
+    });
+
+    testWidgets(
+      'search still works correctly after close and re-open (cache reset '
+      'does not break subsequent search) (Issue #472 follow-up)',
+      (WidgetTester tester) async {
+        // Regression guard for the `_normalizedContentCache.clear()` in
+        // `_closeSearch`. After dismissing search, re-opening it and
+        // typing the same query must still filter correctly — the cache
+        // must be repopulated lazily, not left stale or missing entries.
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: <AppMessage>[
+              _message(id: 'c1', type: AppMessageType.chat, content: 'アイウ'),
+              _message(id: 'c2', type: AppMessageType.chat, content: 'hello'),
+            ],
+          ),
+        );
+
+        // First open: type query, verify match
+        await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('comment-search-button')));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('comment-search-field')),
+          'ｱｲｳ',
+        );
+        await tester.pumpAndSettle(const Duration(milliseconds: 200));
+        expect(find.textContaining('アイウ'), findsOneWidget);
+        expect(find.textContaining('hello'), findsNothing);
+
+        // Close search via close button.
+        await tester.tap(find.byKey(const Key('search-close-button')));
+        await tester.pumpAndSettle();
+
+        // Both messages visible again (search closed).
+        expect(find.textContaining('アイウ'), findsOneWidget);
+        expect(find.textContaining('hello'), findsOneWidget);
+
+        // Re-open search, same query, verify it still filters correctly
+        // (i.e. the cache was cleared on close and is being repopulated).
+        await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('comment-search-button')));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('comment-search-field')),
+          'ｱｲｳ',
+        );
+        await tester.pumpAndSettle(const Duration(milliseconds: 200));
+        expect(find.textContaining('アイウ'), findsOneWidget);
+        expect(find.textContaining('hello'), findsNothing);
+      },
+    );
+
     testWidgets('matching is case-insensitive', (WidgetTester tester) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
 
@@ -6450,9 +6615,11 @@ class _IntegrationHostState extends State<_IntegrationHost> {
           onDifferentLvConnected: (_, _) async {},
         ),
         themeMode: AppThemeMode.light,
-        filterConfig: CommentFilterConfig(
+        contentFilter: ContentFilterConfig(
           ngWords: widget.ngWords,
           ngProtectionNotificationEnabled: _notificationEnabled,
+        ),
+        messageTypeVisibility: MessageTypeVisibilityConfig(
           showOperatorComment: widget.showOperatorComment,
         ),
       ),
