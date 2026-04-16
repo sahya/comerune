@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -32,7 +33,9 @@ class LiveCommentRepository {
   /// Deadline for the full request/response roundtrip after the TCP
   /// connection has been established. `HttpClient.connectionTimeout` only
   /// guards the initial connect; without this guard a stalled server keeps
-  /// the send button spinning indefinitely.
+  /// the send button spinning indefinitely. Mirrors the same-named field on
+  /// [BroadcastControlRepository] so the two repositories can be unified in
+  /// the future.
   final Duration _requestTimeout;
 
   static const String _defaultUserAgent =
@@ -73,11 +76,12 @@ class LiveCommentRepository {
       return invalid;
     }
 
+    HttpClientRequest? request;
     try {
       final Uri uri = Uri.parse(
         '$_operatorBaseUrl/$programId/operator_comment',
       );
-      final HttpClientRequest request = await _httpClient.putUrl(uri);
+      request = await _httpClient.putUrl(uri);
       _setCommonHeaders(request, userSession);
       request.write(
         jsonEncode(<String, Object>{
@@ -89,18 +93,11 @@ class LiveCommentRepository {
       final HttpClientResponse response = await request.close().timeout(
         _requestTimeout,
       );
-      return _parseResponse(response, 'postOperatorComment');
+      return await _parseResponse(response, 'postOperatorComment');
+    } on TimeoutException catch (e) {
+      return _handleTimeout(request, e, 'postOperatorComment');
     } on Exception catch (e) {
-      appErrorLog(
-        name: 'LiveCommentRepository',
-        message: 'Error in postOperatorComment',
-        error: e,
-      );
-      return CommentPostResult(
-        success: false,
-        errorCode: CommentPostErrorCode.networkError,
-        errorMessage: e.runtimeType.toString(),
-      );
+      return _handleException(e, 'postOperatorComment');
     }
   }
 
@@ -130,9 +127,10 @@ class LiveCommentRepository {
       return invalid;
     }
 
+    HttpClientRequest? request;
     try {
       final Uri uri = Uri.parse('$_normalBaseUrl/$programId/comments');
-      final HttpClientRequest request = await _httpClient.postUrl(uri);
+      request = await _httpClient.postUrl(uri);
       _setCommonHeaders(request, userSession);
       request.headers.set('x-frontend-id', _frontendId);
       request.write(
@@ -148,19 +146,62 @@ class LiveCommentRepository {
       final HttpClientResponse response = await request.close().timeout(
         _requestTimeout,
       );
-      return _parseResponse(response, 'postNormalComment');
+      return await _parseResponse(response, 'postNormalComment');
+    } on TimeoutException catch (e) {
+      return _handleTimeout(request, e, 'postNormalComment');
     } on Exception catch (e) {
-      appErrorLog(
-        name: 'LiveCommentRepository',
-        message: 'Error in postNormalComment',
-        error: e,
-      );
-      return CommentPostResult(
-        success: false,
-        errorCode: CommentPostErrorCode.networkError,
-        errorMessage: e.runtimeType.toString(),
-      );
+      return _handleException(e, 'postNormalComment');
     }
+  }
+
+  /// Shared timeout handler: aborts the stalled request so its underlying
+  /// socket is returned to the OS (preventing fd / connection-pool leaks on
+  /// long-running sessions — #485) and maps the failure to
+  /// [CommentPostErrorCode.networkError].
+  ///
+  /// `abort()` is idempotent per the Dart SDK, so it is safe even if the
+  /// request has already completed by the time we enter the handler.
+  ///
+  /// Mirrored byte-for-byte by [BroadcastControlRepository]; both copies are
+  /// expected to be lifted into a shared base class by #464.
+  CommentPostResult _handleTimeout(
+    HttpClientRequest? request,
+    TimeoutException e,
+    String operationName,
+  ) {
+    request?.abort();
+    appErrorLog(
+      name: 'LiveCommentRepository',
+      message: 'Timeout in $operationName',
+      error: e,
+    );
+    // Use `e.toString()` here (rather than `e.runtimeType.toString()`) so the
+    // failure message preserves the configured timeout duration, aiding
+    // incident triage without leaking any user / session data.
+    return CommentPostResult(
+      success: false,
+      errorCode: CommentPostErrorCode.networkError,
+      errorMessage: e.toString(),
+    );
+  }
+
+  /// Shared fallback handler for non-timeout exceptions (SocketException,
+  /// HandshakeException, etc.). Keeps the error message to the runtime type
+  /// only to avoid inadvertently leaking socket-level details.
+  ///
+  /// Mirrored byte-for-byte by [BroadcastControlRepository]; both copies are
+  /// expected to be lifted into a shared base class by #464.
+  CommentPostResult _handleException(Exception e, String operationName) {
+    appErrorLog(
+      name: 'LiveCommentRepository',
+      message: 'Error in $operationName',
+      error: e,
+    );
+    return CommentPostResult(
+      success: false,
+      errorCode: CommentPostErrorCode.networkError,
+      errorMessage: e.runtimeType.toString(),
+    );
   }
 
   /// Builds the JSON body for the normal-comment endpoint.

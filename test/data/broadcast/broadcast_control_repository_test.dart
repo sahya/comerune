@@ -215,6 +215,120 @@ void main() {
       });
     });
 
+    group('request timeout (#485)', () {
+      test('returns NETWORK_ERROR and aborts the request when startBroadcast '
+          'stalls beyond timeout', () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.pendingCompleter = Completer<void>();
+        httpClient.responseStatusCode = 200;
+        httpClient.responseBody = '';
+
+        final BroadcastControlRepository repository =
+            BroadcastControlRepository(
+              httpClient: httpClient,
+              requestTimeout: const Duration(milliseconds: 50),
+            );
+
+        final BroadcastControlResult result = await repository.startBroadcast(
+          programId: 'lv345678901',
+          userSession: 'test_session',
+        );
+
+        expect(result.success, isFalse);
+        expect(result.errorCode, 'NETWORK_ERROR');
+        expect(httpClient.requests.single.request.isAborted, isTrue);
+
+        httpClient.pendingCompleter!.complete();
+        repository.dispose();
+      });
+
+      // Billing-critical: endBroadcast controls when a paid slot is released.
+      // A leaked connection here could leave a programme running (and billing)
+      // indefinitely.
+      test('aborts the request on timeout for endBroadcast as well', () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.pendingCompleter = Completer<void>();
+        httpClient.responseStatusCode = 200;
+        httpClient.responseBody = '';
+
+        final BroadcastControlRepository repository =
+            BroadcastControlRepository(
+              httpClient: httpClient,
+              requestTimeout: const Duration(milliseconds: 50),
+            );
+
+        final BroadcastControlResult result = await repository.endBroadcast(
+          programId: 'lv345678901',
+          userSession: 'test_session',
+        );
+
+        expect(result.success, isFalse);
+        expect(result.errorCode, 'NETWORK_ERROR');
+        expect(httpClient.requests.single.request.isAborted, isTrue);
+
+        httpClient.pendingCompleter!.complete();
+        repository.dispose();
+      });
+
+      test(
+        'aborts the request on timeout for extendBroadcast as well',
+        () async {
+          final _FakeHttpClient httpClient = _FakeHttpClient();
+          httpClient.pendingCompleter = Completer<void>();
+          httpClient.responseStatusCode = 200;
+          httpClient.responseBody = '';
+
+          final BroadcastControlRepository repository =
+              BroadcastControlRepository(
+                httpClient: httpClient,
+                requestTimeout: const Duration(milliseconds: 50),
+              );
+
+          final BroadcastControlResult result = await repository
+              .extendBroadcast(
+                programId: 'lv345678901',
+                userSession: 'test_session',
+                minutes: 30,
+              );
+
+          expect(result.success, isFalse);
+          expect(result.errorCode, 'NETWORK_ERROR');
+          expect(result.errorMessage, contains('TimeoutException'));
+          expect(result.errorMessage, contains('0:00:00.050'));
+          expect(httpClient.requests.single.request.isAborted, isTrue);
+
+          httpClient.pendingCompleter!.complete();
+          repository.dispose();
+        },
+      );
+
+      test('does NOT abort the request for non-timeout failures', () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseStatusCode = 500;
+        httpClient.responseBody = 'boom';
+
+        final BroadcastControlRepository repository =
+            BroadcastControlRepository(
+              httpClient: httpClient,
+              requestTimeout: const Duration(milliseconds: 50),
+            );
+
+        final BroadcastControlResult result = await repository.startBroadcast(
+          programId: 'lv345678901',
+          userSession: 'test_session',
+        );
+
+        expect(result.success, isFalse);
+        expect(
+          httpClient.requests.single.request.isAborted,
+          isFalse,
+          reason: 'abort() should only be called on timeout, not HTTP errors',
+        );
+
+        repository.dispose();
+      });
+    });
+
     group('response parsing', () {
       test('handles HTTP 204 as success', () async {
         final _FakeHttpClient httpClient = _FakeHttpClient();
@@ -322,12 +436,14 @@ class _CapturedRequest {
     required this.method,
     required this.uri,
     required this.headers,
+    required this.request,
     this.body,
   });
 
   final String method;
   final Uri uri;
   final Map<String, String> headers;
+  final _FakeHttpClientRequest request;
   final String? body;
 }
 
@@ -336,6 +452,11 @@ class _FakeHttpClient implements HttpClient {
   int responseStatusCode = 200;
   bool shouldThrowOnRequest = false;
   final List<_CapturedRequest> requests = <_CapturedRequest>[];
+
+  /// When set, each request's `close()` awaits this completer before
+  /// returning a response — used to simulate a stalled server for timeout
+  /// coverage.
+  Completer<void>? pendingCompleter;
 
   @override
   Future<HttpClientRequest> putUrl(Uri url) async {
@@ -388,6 +509,13 @@ class _FakeHttpClientRequest implements HttpClientRequest {
   final _FakeHttpHeaders _headers = _FakeHttpHeaders();
   final StringBuffer _body = StringBuffer();
 
+  bool isAborted = false;
+
+  @override
+  void abort([Object? exception, StackTrace? stackTrace]) {
+    isAborted = true;
+  }
+
   @override
   HttpHeaders get headers => _headers;
 
@@ -410,9 +538,15 @@ class _FakeHttpClientRequest implements HttpClientRequest {
         method: method,
         uri: uri,
         headers: headerMap,
+        request: this,
         body: _body.isNotEmpty ? _body.toString() : null,
       ),
     );
+
+    final Completer<void>? gate = client.pendingCompleter;
+    if (gate != null && !gate.isCompleted) {
+      await gate.future;
+    }
 
     return _FakeHttpClientResponse(
       statusCode: client.responseStatusCode,

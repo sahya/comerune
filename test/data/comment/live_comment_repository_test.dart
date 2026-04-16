@@ -743,11 +743,67 @@ void main() {
         repository.dispose();
       });
 
+      test('returns NETWORK_ERROR and aborts the request when the response '
+          'stalls beyond timeout', () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.pendingCompleter = Completer<void>();
+        httpClient.responseStatusCode = 200;
+        httpClient.responseBody = '';
+
+        final LiveCommentRepository repository = LiveCommentRepository(
+          httpClient: httpClient,
+          requestTimeout: const Duration(milliseconds: 50),
+        );
+
+        final CommentPostResult result = await repository.postOperatorComment(
+          programId: 'lv1',
+          userSession: 'test_session',
+          text: 'hi',
+        );
+
+        expect(result.success, isFalse);
+        expect(result.errorCode, 'NETWORK_ERROR');
+        expect(httpClient.requests.single.request.isAborted, isTrue);
+
+        // Release the stalled response so the fake HttpClient can shut down.
+        httpClient.pendingCompleter!.complete();
+        repository.dispose();
+      });
+
       test(
-        'returns NETWORK_ERROR when the response stalls beyond timeout',
+        'aborts the request on timeout for postNormalComment as well',
         () async {
           final _FakeHttpClient httpClient = _FakeHttpClient();
           httpClient.pendingCompleter = Completer<void>();
+          httpClient.responseStatusCode = 200;
+          httpClient.responseBody = '';
+
+          final LiveCommentRepository repository = LiveCommentRepository(
+            httpClient: httpClient,
+            requestTimeout: const Duration(milliseconds: 50),
+          );
+
+          final CommentPostResult result = await repository.postNormalComment(
+            programId: 'lv345678901',
+            userSession: 'test_session',
+            text: 'hi',
+            vpos: 0,
+          );
+
+          expect(result.success, isFalse);
+          expect(result.errorCode, 'NETWORK_ERROR');
+          expect(httpClient.requests.single.request.isAborted, isTrue);
+
+          httpClient.pendingCompleter!.complete();
+          repository.dispose();
+        },
+      );
+
+      test(
+        'aborts the request when the response body stalls beyond timeout',
+        () async {
+          final _FakeHttpClient httpClient = _FakeHttpClient();
+          httpClient.bodyStallCompleter = Completer<void>();
           httpClient.responseStatusCode = 200;
           httpClient.responseBody = '';
 
@@ -764,12 +820,40 @@ void main() {
 
           expect(result.success, isFalse);
           expect(result.errorCode, 'NETWORK_ERROR');
+          expect(result.errorMessage, contains('TimeoutException'));
+          expect(result.errorMessage, contains('0:00:00.050'));
+          expect(httpClient.requests.single.request.isAborted, isTrue);
 
-          // Release the stalled response so the fake HttpClient can shut down.
-          httpClient.pendingCompleter!.complete();
+          httpClient.bodyStallCompleter!.complete();
           repository.dispose();
         },
       );
+
+      test('does NOT abort the request for non-timeout exceptions', () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseStatusCode = 500;
+        httpClient.responseBody = 'boom';
+
+        final LiveCommentRepository repository = LiveCommentRepository(
+          httpClient: httpClient,
+          requestTimeout: const Duration(milliseconds: 50),
+        );
+
+        final CommentPostResult result = await repository.postOperatorComment(
+          programId: 'lv1',
+          userSession: 'test_session',
+          text: 'hi',
+        );
+
+        expect(result.success, isFalse);
+        expect(
+          httpClient.requests.single.request.isAborted,
+          isFalse,
+          reason: 'abort() should only be called on timeout, not HTTP errors',
+        );
+
+        repository.dispose();
+      });
 
       test('accepts meta.status as a string "200" plus errorCode OK', () async {
         final _FakeHttpClient httpClient = _FakeHttpClient();
@@ -801,12 +885,14 @@ class _CapturedRequest {
     required this.method,
     required this.uri,
     required this.headers,
+    required this.request,
     this.body,
   });
 
   final String method;
   final Uri uri;
   final Map<String, String> headers;
+  final _FakeHttpClientRequest request;
   final String? body;
 }
 
@@ -820,6 +906,11 @@ class _FakeHttpClient implements HttpClient {
   /// returning a response — used to simulate a stalled server for timeout
   /// coverage.
   Completer<void>? pendingCompleter;
+
+  /// When set, the response body stream awaits this completer before
+  /// emitting data — used to simulate a stalled response body for timeout
+  /// coverage.
+  Completer<void>? bodyStallCompleter;
 
   @override
   Future<HttpClientRequest> putUrl(Uri url) async {
@@ -872,6 +963,13 @@ class _FakeHttpClientRequest implements HttpClientRequest {
   final _FakeHttpHeaders _headers = _FakeHttpHeaders();
   final StringBuffer _body = StringBuffer();
 
+  bool isAborted = false;
+
+  @override
+  void abort([Object? exception, StackTrace? stackTrace]) {
+    isAborted = true;
+  }
+
   @override
   HttpHeaders get headers => _headers;
 
@@ -894,6 +992,7 @@ class _FakeHttpClientRequest implements HttpClientRequest {
         method: method,
         uri: uri,
         headers: headerMap,
+        request: this,
         body: _body.isNotEmpty ? _body.toString() : null,
       ),
     );
@@ -906,6 +1005,7 @@ class _FakeHttpClientRequest implements HttpClientRequest {
     return _FakeHttpClientResponse(
       statusCode: client.responseStatusCode,
       body: client.responseBody,
+      bodyStallCompleter: client.bodyStallCompleter,
     );
   }
 
@@ -941,12 +1041,16 @@ class _FakeHttpHeaders implements HttpHeaders {
 
 class _FakeHttpClientResponse extends Stream<List<int>>
     implements HttpClientResponse {
-  _FakeHttpClientResponse({required this.statusCode, required String body})
-    : _body = body;
+  _FakeHttpClientResponse({
+    required this.statusCode,
+    required String body,
+    this.bodyStallCompleter,
+  }) : _body = body;
 
   @override
   final int statusCode;
   final String _body;
+  final Completer<void>? bodyStallCompleter;
 
   @override
   StreamSubscription<List<int>> listen(
@@ -955,6 +1059,20 @@ class _FakeHttpClientResponse extends Stream<List<int>>
     void Function()? onDone,
     bool? cancelOnError,
   }) {
+    final Completer<void>? stall = bodyStallCompleter;
+    if (stall != null && !stall.isCompleted) {
+      // Simulate a response whose body never arrives until the completer
+      // fires — used to test body-read timeout.
+      final Stream<List<int>> delayed = stall.future
+          .then<List<int>>((_) => utf8.encode(_body))
+          .asStream();
+      return delayed.listen(
+        onData,
+        onError: onError,
+        onDone: onDone,
+        cancelOnError: cancelOnError,
+      );
+    }
     return Stream<List<int>>.value(utf8.encode(_body)).listen(
       onData,
       onError: onError,

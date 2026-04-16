@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -21,8 +22,10 @@ class BroadcastControlRepository {
   BroadcastControlRepository({
     HttpClient? httpClient,
     String userAgent = _defaultUserAgent,
+    Duration requestTimeout = const Duration(seconds: 10),
   }) : _httpClient = httpClient ?? HttpClient(),
-       _userAgent = userAgent {
+       _userAgent = userAgent,
+       _requestTimeout = requestTimeout {
     _httpClient.connectionTimeout = const Duration(seconds: 10);
   }
 
@@ -34,6 +37,14 @@ class BroadcastControlRepository {
 
   final HttpClient _httpClient;
   final String _userAgent;
+
+  /// Deadline for the full request/response roundtrip after the TCP
+  /// connection has been established. `HttpClient.connectionTimeout` only
+  /// guards the initial connect; without this guard a stalled server keeps
+  /// the broadcast-control call hanging indefinitely. Mirrors the pattern in
+  /// [LiveCommentRepository] so the two repositories can be unified in the
+  /// future.
+  final Duration _requestTimeout;
 
   /// Starts a broadcast (transitions to on-air state).
   ///
@@ -84,25 +95,21 @@ class BroadcastControlRepository {
       );
     }
 
+    HttpClientRequest? request;
     try {
       final Uri uri = Uri.parse('$_baseUrl/$programId/extension');
-      final HttpClientRequest request = await _httpClient.postUrl(uri);
+      request = await _httpClient.postUrl(uri);
       _setHeaders(request, userSession);
       request.write(jsonEncode(<String, int>{'minutes': minutes}));
 
-      final HttpClientResponse response = await request.close();
-      return _parseResponse(response, 'extendBroadcast');
+      final HttpClientResponse response = await request.close().timeout(
+        _requestTimeout,
+      );
+      return await _parseResponse(response, 'extendBroadcast');
+    } on TimeoutException catch (e) {
+      return _handleTimeout(request, e, 'extendBroadcast');
     } on Exception catch (e) {
-      appErrorLog(
-        name: 'BroadcastControlRepository',
-        message: 'Error in extendBroadcast',
-        error: e,
-      );
-      return BroadcastControlResult(
-        success: false,
-        errorCode: 'NETWORK_ERROR',
-        errorMessage: e.runtimeType.toString(),
-      );
+      return _handleException(e, 'extendBroadcast');
     }
   }
 
@@ -120,26 +127,72 @@ class BroadcastControlRepository {
       );
     }
 
+    HttpClientRequest? request;
     try {
       final Uri uri = Uri.parse('$_baseUrl/$programId/segment');
-      final HttpClientRequest request = await _httpClient.putUrl(uri);
+      request = await _httpClient.putUrl(uri);
       _setHeaders(request, userSession);
       request.write(jsonEncode(<String, String>{'state': state}));
 
-      final HttpClientResponse response = await request.close();
-      return _parseResponse(response, operationName);
+      final HttpClientResponse response = await request.close().timeout(
+        _requestTimeout,
+      );
+      return await _parseResponse(response, operationName);
+    } on TimeoutException catch (e) {
+      return _handleTimeout(request, e, operationName);
     } on Exception catch (e) {
-      appErrorLog(
-        name: 'BroadcastControlRepository',
-        message: 'Error in $operationName',
-        error: e,
-      );
-      return BroadcastControlResult(
-        success: false,
-        errorCode: 'NETWORK_ERROR',
-        errorMessage: e.runtimeType.toString(),
-      );
+      return _handleException(e, operationName);
     }
+  }
+
+  /// Shared timeout handler: aborts the stalled request so its underlying
+  /// socket is returned to the OS (preventing fd / connection-pool leaks on
+  /// long-running broadcaster sessions — #485) and maps the failure to the
+  /// `NETWORK_ERROR` code.
+  ///
+  /// `abort()` is idempotent per the Dart SDK, so it is safe even if the
+  /// request has already completed by the time we enter the handler.
+  ///
+  /// Mirrored byte-for-byte by [LiveCommentRepository]; both copies are
+  /// expected to be lifted into a shared base class by #464.
+  BroadcastControlResult _handleTimeout(
+    HttpClientRequest? request,
+    TimeoutException e,
+    String operationName,
+  ) {
+    request?.abort();
+    appErrorLog(
+      name: 'BroadcastControlRepository',
+      message: 'Timeout in $operationName',
+      error: e,
+    );
+    // Use `e.toString()` here (rather than `e.runtimeType.toString()`) so the
+    // failure message preserves the configured timeout duration, aiding
+    // incident triage without leaking any user / session data.
+    return BroadcastControlResult(
+      success: false,
+      errorCode: 'NETWORK_ERROR',
+      errorMessage: e.toString(),
+    );
+  }
+
+  /// Shared fallback handler for non-timeout exceptions (SocketException,
+  /// HandshakeException, etc.). Keeps the error message to the runtime type
+  /// only to avoid inadvertently leaking socket-level details.
+  ///
+  /// Mirrored byte-for-byte by [LiveCommentRepository]; both copies are
+  /// expected to be lifted into a shared base class by #464.
+  BroadcastControlResult _handleException(Exception e, String operationName) {
+    appErrorLog(
+      name: 'BroadcastControlRepository',
+      message: 'Error in $operationName',
+      error: e,
+    );
+    return BroadcastControlResult(
+      success: false,
+      errorCode: 'NETWORK_ERROR',
+      errorMessage: e.runtimeType.toString(),
+    );
   }
 
   void _setHeaders(HttpClientRequest request, String userSession) {
