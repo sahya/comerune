@@ -327,6 +327,50 @@ void main() {
 
         repository.dispose();
       });
+
+      test('aborts the request when the response body stalls beyond timeout '
+          '(Issue #466 follow-up)', () async {
+        // Regression lock for the body-read timeout consistency fix:
+        // [LiveCommentRepository._parseResponse] already wraps its
+        // `response.transform(utf8.decoder).join()` with
+        // `.timeout(_requestTimeout)`, but [BroadcastControlRepository]
+        // was missing the same guard. A stalled body would otherwise
+        // hang the broadcast Start/End/Extend call indefinitely even
+        // though `request.close()` itself returned. With the fix in
+        // place, the [TimeoutException] thrown from the body-read
+        // propagates back to the catch block which aborts the
+        // underlying request.
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.bodyStallCompleter = Completer<void>();
+        httpClient.responseStatusCode = 200;
+        httpClient.responseBody = '';
+
+        final BroadcastControlRepository repository =
+            BroadcastControlRepository(
+              httpClient: httpClient,
+              requestTimeout: const Duration(milliseconds: 50),
+            );
+
+        final BroadcastControlResult result = await repository.startBroadcast(
+          programId: 'lv345678901',
+          userSession: 'test_session',
+        );
+
+        expect(result.success, isFalse);
+        expect(result.errorCode, 'NETWORK_ERROR');
+        expect(result.errorMessage, contains('TimeoutException'));
+        // Mirror LiveCommentRepository's body-stall assertion pattern:
+        // the configured duration (50ms) is preserved in the error
+        // message via `_handleTimeout`'s `e.toString()` so incident
+        // triage can see how long we waited. Using a partial match
+        // tolerates both the ms (`0:00:00.050`) and microseconds
+        // (`0:00:00.050000`) formatting variants.
+        expect(result.errorMessage, contains('0:00:00.050'));
+        expect(httpClient.requests.single.request.isAborted, isTrue);
+
+        httpClient.bodyStallCompleter!.complete();
+        repository.dispose();
+      });
     });
 
     group('response parsing', () {
@@ -458,6 +502,12 @@ class _FakeHttpClient implements HttpClient {
   /// coverage.
   Completer<void>? pendingCompleter;
 
+  /// When set, the response body stream awaits this completer before
+  /// emitting data — used to simulate a server that returns headers
+  /// quickly but stalls while streaming the body. Drives the body-read
+  /// `_requestTimeout` regression test added by Issue #466 sage review.
+  Completer<void>? bodyStallCompleter;
+
   @override
   Future<HttpClientRequest> putUrl(Uri url) async {
     if (shouldThrowOnRequest) {
@@ -551,6 +601,7 @@ class _FakeHttpClientRequest implements HttpClientRequest {
     return _FakeHttpClientResponse(
       statusCode: client.responseStatusCode,
       body: client.responseBody,
+      bodyStallCompleter: client.bodyStallCompleter,
     );
   }
 
@@ -586,12 +637,21 @@ class _FakeHttpHeaders implements HttpHeaders {
 
 class _FakeHttpClientResponse extends Stream<List<int>>
     implements HttpClientResponse {
-  _FakeHttpClientResponse({required this.statusCode, required String body})
-    : _body = body;
+  _FakeHttpClientResponse({
+    required this.statusCode,
+    required String body,
+    this.bodyStallCompleter,
+  }) : _body = body;
 
   @override
   final int statusCode;
   final String _body;
+
+  /// When set, the response body stream awaits this completer before
+  /// emitting data — used to simulate a stalled response body for
+  /// body-read timeout coverage. Mirrors the same hook already in
+  /// place on [LiveCommentRepository]'s test fake.
+  final Completer<void>? bodyStallCompleter;
 
   @override
   StreamSubscription<List<int>> listen(
@@ -600,6 +660,18 @@ class _FakeHttpClientResponse extends Stream<List<int>>
     void Function()? onDone,
     bool? cancelOnError,
   }) {
+    final Completer<void>? stall = bodyStallCompleter;
+    if (stall != null && !stall.isCompleted) {
+      final Stream<List<int>> delayed = stall.future
+          .then<List<int>>((_) => utf8.encode(_body))
+          .asStream();
+      return delayed.listen(
+        onData,
+        onError: onError,
+        onDone: onDone,
+        cancelOnError: cancelOnError,
+      );
+    }
     return Stream<List<int>>.value(utf8.encode(_body)).listen(
       onData,
       onError: onError,

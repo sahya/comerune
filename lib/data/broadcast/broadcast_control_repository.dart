@@ -212,7 +212,19 @@ class BroadcastControlRepository {
       return const BroadcastControlResult(success: true);
     }
 
-    final String body = await response.transform(utf8.decoder).join();
+    // Apply the same response-wait timeout to the body-read phase as we do
+    // around `request.close()`. Without this guard, a server that
+    // responds with headers quickly but then stalls while streaming the
+    // body would leave the broadcast-control call hanging indefinitely
+    // (and mirrors the pattern already in place on
+    // [LiveCommentRepository._parseResponse]). The surrounding callers
+    // catch any [TimeoutException] thrown here and route it through
+    // [_handleTimeout] so the underlying request is aborted and the UI
+    // surfaces NETWORK_ERROR.
+    final String body = await response
+        .transform(utf8.decoder)
+        .join()
+        .timeout(_requestTimeout);
 
     if (response.statusCode == 200) {
       return _parseSuccessBody(body, operationName);
