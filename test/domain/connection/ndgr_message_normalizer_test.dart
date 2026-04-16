@@ -492,5 +492,180 @@ void main() {
       expect(normalized, isNotNull);
       expect(normalized!.userId, isNull);
     });
+
+    // --- Fallback id shape tests (refactor guard) ---
+    //
+    // These lock in the exact id shape produced by `_buildNdgrId` per
+    // NDGR message variant so that the refactor (consolidating three
+    // per-type `_resolve*Id` helpers into a single prefix-parameterised
+    // helper) does not silently change persisted / dedup-critical ids.
+    //
+    // The fallback sequence counter is per-normalizer so these tests
+    // construct a fresh normalizer for each case and always exercise
+    // sequence value `1`.
+
+    test('chat falls back to ndgr-chat-\${no} when source id is missing', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        serverTimestamp: serverTime,
+        chat: const NdgrChat(content: 'hi', no: 77),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(source);
+      expect(normalized, isNotNull);
+      expect(normalized!.id, 'ndgr-chat-77');
+    });
+
+    test(
+      'chat falls back to ndgr-\${ts}-\${seq} when both source id and no are missing',
+      () {
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+        final NdgrChunkedMessage source = NdgrChunkedMessage(
+          serverTimestamp: serverTime,
+          chat: const NdgrChat(content: 'hi'),
+        );
+
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          source,
+        );
+        expect(normalized, isNotNull);
+        expect(normalized!.id, 'ndgr-${serverTime.microsecondsSinceEpoch}-1');
+      },
+    );
+
+    test(
+      'operator comment falls back to ndgr-operator-\${ts}-\${seq} when source id is missing',
+      () {
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+        final NdgrChunkedMessage source = NdgrChunkedMessage(
+          serverTimestamp: serverTime,
+          operatorComment: const NdgrOperatorComment(content: '運営本文'),
+        );
+
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          source,
+        );
+        expect(normalized, isNotNull);
+        expect(
+          normalized!.id,
+          '$kNdgrOperatorIdPrefix${serverTime.microsecondsSinceEpoch}-1',
+        );
+      },
+    );
+
+    test(
+      'notification falls back to ndgr-notify-\${ts}-\${seq} when source id is missing',
+      () {
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+        final NdgrChunkedMessage source = NdgrChunkedMessage(
+          serverTimestamp: serverTime,
+          simpleNotificationV2: const NdgrSimpleNotificationV2(
+            type: NdgrSimpleNotificationV2Type.cruise,
+            message: 'cruise notice',
+          ),
+        );
+
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          source,
+        );
+        expect(normalized, isNotNull);
+        expect(
+          normalized!.id,
+          '$kNdgrNotifyIdPrefix${serverTime.microsecondsSinceEpoch}-1',
+        );
+      },
+    );
+
+    test(
+      'fallback sequence is monotonically increasing within one normalizer',
+      () {
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+        final NdgrChunkedMessage chatSource = NdgrChunkedMessage(
+          serverTimestamp: serverTime,
+          chat: const NdgrChat(content: 'hi'),
+        );
+        final NdgrChunkedMessage operatorSource = NdgrChunkedMessage(
+          serverTimestamp: serverTime,
+          operatorComment: const NdgrOperatorComment(content: '運営'),
+        );
+        final NdgrChunkedMessage notifySource = NdgrChunkedMessage(
+          serverTimestamp: serverTime,
+          simpleNotificationV2: const NdgrSimpleNotificationV2(
+            type: NdgrSimpleNotificationV2Type.emotion,
+            message: 'w',
+          ),
+        );
+
+        final String id1 = normalizer.normalizeChunkedMessage(chatSource)!.id;
+        final String id2 = normalizer
+            .normalizeChunkedMessage(operatorSource)!
+            .id;
+        final String id3 = normalizer.normalizeChunkedMessage(notifySource)!.id;
+
+        expect(id1.endsWith('-1'), isTrue, reason: 'chat fallback seq=1');
+        expect(id2.endsWith('-2'), isTrue, reason: 'operator fallback seq=2');
+        expect(id3.endsWith('-3'), isTrue, reason: 'notify fallback seq=3');
+      },
+    );
+
+    test('source id wins over all fallbacks, across all variants', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+      final AppMessage chat = normalizer.normalizeChunkedMessage(
+        NdgrChunkedMessage(
+          id: 'upstream-chat-id',
+          serverTimestamp: serverTime,
+          chat: const NdgrChat(content: 'hi', no: 1),
+        ),
+      )!;
+      final AppMessage op = normalizer.normalizeChunkedMessage(
+        NdgrChunkedMessage(
+          id: 'upstream-op-id',
+          serverTimestamp: serverTime,
+          operatorComment: const NdgrOperatorComment(content: '運営'),
+        ),
+      )!;
+      final AppMessage notify = normalizer.normalizeChunkedMessage(
+        NdgrChunkedMessage(
+          id: 'upstream-notify-id',
+          serverTimestamp: serverTime,
+          simpleNotificationV2: const NdgrSimpleNotificationV2(
+            type: NdgrSimpleNotificationV2Type.ichiba,
+            message: 'm',
+          ),
+        ),
+      )!;
+
+      expect(chat.id, 'upstream-chat-id');
+      expect(op.id, 'upstream-op-id');
+      expect(notify.id, 'upstream-notify-id');
+    });
+
+    test('empty source id triggers fallback, not passthrough', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+      final AppMessage op = normalizer.normalizeChunkedMessage(
+        NdgrChunkedMessage(
+          id: '',
+          serverTimestamp: serverTime,
+          operatorComment: const NdgrOperatorComment(content: '運営'),
+        ),
+      )!;
+
+      expect(op.id.startsWith(kNdgrOperatorIdPrefix), isTrue);
+      expect(op.id, isNot('')); // definitely not the empty id
+    });
   });
 }

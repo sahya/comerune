@@ -12,6 +12,19 @@ const String kNdgrOperatorIdPrefix = 'ndgr-operator-';
 /// emotion / notification) that do not carry a source ID.
 const String kNdgrNotifyIdPrefix = 'ndgr-notify-';
 
+/// Prefix for chat ids that fall back to `${prefix}${chat.no}` when the
+/// upstream ChunkedMessageMeta.id is missing but the chat carries a
+/// comment number. Library-private so the refactor does not widen the
+/// public surface of this file — the prior behaviour inlined this literal.
+const String _kNdgrChatNoIdPrefix = 'ndgr-chat-';
+
+/// Prefix for chat ids that cannot resolve to either a source id or a
+/// comment number and must use a local-sequence fallback. Intentionally
+/// shorter than [_kNdgrChatNoIdPrefix] to match the historical
+/// `ndgr-${microsecondsSinceEpoch}-${seq}` shape emitted before the
+/// refactor so persisted ids round-trip across restarts.
+const String _kNdgrChatFallbackTimestampPrefix = 'ndgr-';
+
 /// Upper bound on the length of an operator-comment `name` label after
 /// sanitisation. Operator labels are typically short ("運営", "公式", etc.);
 /// cap the rendered label to a conservative ceiling so a malformed or
@@ -98,7 +111,7 @@ class NdgrMessageNormalizer {
     final NdgrOperatorComment? operatorComment = source.operatorComment;
     if (operatorComment != null && operatorComment.content.isNotEmpty) {
       return AppMessage(
-        id: _resolveOperatorId(source.id, timestamp),
+        id: _buildNdgrId(kNdgrOperatorIdPrefix, source.id, null, timestamp),
         timestamp: timestamp,
         userId: null,
         // Sanitise the broadcaster-supplied name before rendering: strip
@@ -117,7 +130,7 @@ class NdgrMessageNormalizer {
     final NdgrSimpleNotificationV2? notification = source.simpleNotificationV2;
     if (notification != null && notification.message.isNotEmpty) {
       return AppMessage(
-        id: _resolveNotificationId(source.id, timestamp),
+        id: _buildNdgrId(kNdgrNotifyIdPrefix, source.id, null, timestamp),
         timestamp: timestamp,
         userId: null,
         userName: null,
@@ -135,7 +148,13 @@ class NdgrMessageNormalizer {
       return null;
     }
 
-    final String id = _resolveId(source.id, chat, timestamp);
+    final String id = _buildNdgrId(
+      _kNdgrChatNoIdPrefix,
+      source.id,
+      chat.no,
+      timestamp,
+      timestampPrefix: _kNdgrChatFallbackTimestampPrefix,
+    );
 
     return AppMessage(
       id: id,
@@ -173,33 +192,32 @@ class NdgrMessageNormalizer {
     }
   }
 
-  String _resolveId(String? sourceId, NdgrChat chat, DateTime timestamp) {
+  /// Builds a stable id for a normalized NDGR message, consolidating the
+  /// pre-refactor per-type `_resolveId` / `_resolveOperatorId` /
+  /// `_resolveNotificationId` helpers. Resolution order:
+  ///   1. non-empty [sourceId] verbatim (upstream ChunkedMessageMeta.id),
+  ///   2. `${prefix}${no}` when [no] is non-null (chat path only),
+  ///   3. `${timestampPrefix ?? prefix}${microsecondsSinceEpoch}-${seq}`.
+  ///
+  /// [timestampPrefix] is separate from [prefix] so the chat path can
+  /// keep its historical `ndgr-${ts}-${seq}` fallback shape alongside the
+  /// `ndgr-chat-${no}` no-path. Fallback sequence is per-normalizer.
+  String _buildNdgrId(
+    String prefix,
+    String? sourceId,
+    int? no,
+    DateTime timestamp, {
+    String? timestampPrefix,
+  }) {
     if (sourceId != null && sourceId.isNotEmpty) {
       return sourceId;
     }
-
-    if (chat.no != null) {
-      return 'ndgr-chat-${chat.no}';
-    }
-
-    _fallbackSequence += 1;
-    return 'ndgr-${timestamp.microsecondsSinceEpoch}-$_fallbackSequence';
-  }
-
-  String _resolveOperatorId(String? sourceId, DateTime timestamp) {
-    if (sourceId != null && sourceId.isNotEmpty) {
-      return sourceId;
+    if (no != null) {
+      return '$prefix$no';
     }
     _fallbackSequence += 1;
-    return '$kNdgrOperatorIdPrefix${timestamp.microsecondsSinceEpoch}-$_fallbackSequence';
-  }
-
-  String _resolveNotificationId(String? sourceId, DateTime timestamp) {
-    if (sourceId != null && sourceId.isNotEmpty) {
-      return sourceId;
-    }
-    _fallbackSequence += 1;
-    return '$kNdgrNotifyIdPrefix${timestamp.microsecondsSinceEpoch}-$_fallbackSequence';
+    final String tsPrefix = timestampPrefix ?? prefix;
+    return '$tsPrefix${timestamp.microsecondsSinceEpoch}-$_fallbackSequence';
   }
 
   String? _resolveUserId(NdgrChat chat) {

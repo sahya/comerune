@@ -396,6 +396,34 @@ class NdgrProtobufDecoder {
     return _ChunkedMessageMeta(id: id, serverTimestamp: serverTimestamp);
   }
 
+  /// Scans `bytes` for length-delimited fields matching [fieldNumber] and
+  /// returns [decoder] applied to the payload of the last match (or `null`
+  /// when absent). Sibling fields are skipped. Consolidates the
+  /// "read one nested message, ignore the rest" NDGR wrapper layers
+  /// (see `_decodeMarquee` and friends).
+  T? _readSingleFieldLD<T>(
+    Uint8List bytes,
+    int fieldNumber,
+    T Function(Uint8List) decoder,
+  ) {
+    final _ProtoReader reader = _ProtoReader(bytes);
+    T? result;
+
+    while (!reader.isAtEnd) {
+      final int tag = reader.readVarint();
+      final int number = tag >> 3;
+      final int wireType = tag & 0x07;
+
+      if (number == fieldNumber && wireType == _WireType.lengthDelimited) {
+        result = decoder(reader.readLengthDelimited());
+      } else {
+        reader.skipField(wireType);
+      }
+    }
+
+    return result;
+  }
+
   _NicoliveMessageResult _decodeNicoliveMessage(Uint8List bytes) {
     final _ProtoReader reader = _ProtoReader(bytes);
 
@@ -450,65 +478,26 @@ class NdgrProtobufDecoder {
   ///   OperatorComment.name     = field 2 (optional string)
   ///   OperatorComment.link     = field 4 (optional string)
   NdgrOperatorComment? _decodeNicoliveStateOperatorComment(Uint8List bytes) {
-    final _ProtoReader reader = _ProtoReader(bytes);
-
-    NdgrOperatorComment? result;
-
-    while (!reader.isAtEnd) {
-      final int tag = reader.readVarint();
-      final int fieldNumber = tag >> 3;
-      final int wireType = tag & 0x07;
-
-      if (fieldNumber == 4 && wireType == _WireType.lengthDelimited) {
-        result = _decodeMarquee(reader.readLengthDelimited());
-      } else {
-        reader.skipField(wireType);
-      }
-    }
-
-    return result;
+    // NicoliveState.marquee = field 4 (Marquee)
+    return _readSingleFieldLD<NdgrOperatorComment?>(bytes, 4, _decodeMarquee);
   }
 
   NdgrOperatorComment? _decodeMarquee(Uint8List bytes) {
-    final _ProtoReader reader = _ProtoReader(bytes);
-
-    NdgrOperatorComment? result;
-
-    while (!reader.isAtEnd) {
-      final int tag = reader.readVarint();
-      final int fieldNumber = tag >> 3;
-      final int wireType = tag & 0x07;
-
-      // Marquee.display = field 1
-      if (fieldNumber == 1 && wireType == _WireType.lengthDelimited) {
-        result = _decodeMarqueeDisplay(reader.readLengthDelimited());
-      } else {
-        reader.skipField(wireType);
-      }
-    }
-
-    return result;
+    // Marquee.display = field 1 (Marquee.Display)
+    return _readSingleFieldLD<NdgrOperatorComment?>(
+      bytes,
+      1,
+      _decodeMarqueeDisplay,
+    );
   }
 
   NdgrOperatorComment? _decodeMarqueeDisplay(Uint8List bytes) {
-    final _ProtoReader reader = _ProtoReader(bytes);
-
-    NdgrOperatorComment? result;
-
-    while (!reader.isAtEnd) {
-      final int tag = reader.readVarint();
-      final int fieldNumber = tag >> 3;
-      final int wireType = tag & 0x07;
-
-      // Display.operator_comment = field 1
-      if (fieldNumber == 1 && wireType == _WireType.lengthDelimited) {
-        result = _decodeOperatorComment(reader.readLengthDelimited());
-      } else {
-        reader.skipField(wireType);
-      }
-    }
-
-    return result;
+    // Display.operator_comment = field 1 (OperatorComment)
+    return _readSingleFieldLD<NdgrOperatorComment>(
+      bytes,
+      1,
+      _decodeOperatorComment,
+    );
   }
 
   NdgrOperatorComment _decodeOperatorComment(Uint8List bytes) {
@@ -740,21 +729,18 @@ class NdgrProtobufDecoder {
   }
 
   String? _decodeBackwardSegmentUri(Uint8List bytes) {
-    final _ProtoReader reader = _ProtoReader(bytes);
-
-    while (!reader.isAtEnd) {
-      final int tag = reader.readVarint();
-      final int fieldNumber = tag >> 3;
-      final int wireType = tag & 0x07;
-
-      if (fieldNumber == 2 && wireType == _WireType.lengthDelimited) {
-        return _decodePackedSegmentNextUri(reader.readLengthDelimited());
-      }
-
-      reader.skipField(wireType);
-    }
-
-    return null;
+    // BackwardSegment.segment = field 2. Semantics note:
+    // `_readSingleFieldLD` is last-match-wins; the pre-refactor loop was
+    // first-match-wins. Equivalent for singular proto fields (current
+    // case) per the protobuf spec ("last value wins for singular fields").
+    //
+    // If the upstream schema ever promotes `BackwardSegment.segment` to
+    // `repeated`, this path will silently shift from "first segment URI"
+    // to "last segment URI". At that point, replace this helper with a
+    // first-match-wins or a repeated-aware reader and update the
+    // corresponding test. Searching for the string literal
+    // `_decodeBackwardSegmentUri` will locate every affected site.
+    return _readSingleFieldLD<String?>(bytes, 2, _decodePackedSegmentNextUri);
   }
 
   String? _decodePackedSegmentNextUri(Uint8List bytes) {

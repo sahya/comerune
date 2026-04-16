@@ -428,6 +428,113 @@ void main() {
       },
     );
 
+    // --- _readSingleFieldLD consolidation guard ---
+    //
+    // The refactor replaced three hand-rolled "scan for one nested
+    // length-delimited field" loops with a shared helper. These tests
+    // exercise each wrapper layer of the Marquee chain with interleaved
+    // sibling fields and with the target field absent, so that a
+    // regression in the helper would surface here instead of in one of
+    // the wrapper sites.
+
+    test(
+      'operator comment decoder skips unknown sibling fields in every wrapper layer',
+      () {
+        final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+        // OperatorComment: content(1), name(2), link(4)
+        final List<int> operatorComment = <int>[
+          ..._stringField(1, 'body'),
+          ..._stringField(2, 'name'),
+        ];
+        // Marquee.Display: sibling varint field 99 before operator_comment(1)
+        final List<int> display = <int>[
+          ..._varintField(99, 12345),
+          ..._bytesField(1, operatorComment),
+        ];
+        // Marquee: sibling string field 7 before display(1)
+        final List<int> marquee = <int>[
+          ..._stringField(7, 'sibling'),
+          ..._bytesField(1, display),
+        ];
+        // NicoliveState: sibling varint field 2 before marquee(4)
+        final List<int> state = <int>[
+          ..._varintField(2, 1),
+          ..._bytesField(4, marquee),
+        ];
+
+        final Uint8List bytes = Uint8List.fromList(<int>[
+          ..._bytesField(4, state),
+        ]);
+
+        final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+        expect(message.operatorComment, isNotNull);
+        expect(message.operatorComment!.content, 'body');
+        expect(message.operatorComment!.name, 'name');
+      },
+    );
+
+    test(
+      'operator comment decoder returns null when Marquee.display is absent',
+      () {
+        final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+        // Marquee with only sibling fields, no display(1).
+        final List<int> marquee = <int>[..._varintField(5, 1)];
+        final List<int> state = <int>[..._bytesField(4, marquee)];
+
+        final Uint8List bytes = Uint8List.fromList(<int>[
+          ..._bytesField(4, state),
+        ]);
+
+        final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+        expect(message.operatorComment, isNull);
+      },
+    );
+
+    test(
+      'operator comment decoder returns null when NicoliveState.marquee is absent',
+      () {
+        final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+        // NicoliveState with only sibling fields, no marquee(4).
+        final List<int> state = <int>[..._varintField(1, 9)];
+
+        final Uint8List bytes = Uint8List.fromList(<int>[
+          ..._bytesField(4, state),
+        ]);
+
+        final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+        expect(message.operatorComment, isNull);
+      },
+    );
+
+    test('decodes backward segment uri with interleaved sibling fields', () {
+      final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+      // PackedSegmentNext-like wrapper: field 1 (string).
+      final List<int> packedSegmentNext = _stringField(
+        1,
+        'https://example.com/backward-sibling',
+      );
+      // BackwardSegment: sibling varint field 5 before segment(2).
+      final List<int> backward = <int>[
+        ..._varintField(5, 7),
+        ..._bytesField(2, packedSegmentNext),
+      ];
+
+      final Uint8List bytes = Uint8List.fromList(<int>[
+        ..._bytesField(2, backward),
+      ]);
+
+      final NdgrChunkedEntry entry = decoder.decodeChunkedEntry(bytes);
+
+      expect(entry.backwardSegmentUri, 'https://example.com/backward-sibling');
+    });
+
     test('decodes packed segment messages and next uri', () {
       final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
 
