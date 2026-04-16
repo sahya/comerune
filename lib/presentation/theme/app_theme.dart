@@ -91,16 +91,33 @@ class AppThemeColors {
 class AppTheme {
   const AppTheme._();
 
+  // Comment-row backgrounds are intentionally kept close to the surface color
+  // so that user (chat) comments are the visual "main character" and special
+  // types (operator / system / emotion / gift / nicoad) recede. Each special
+  // type still carries a faint hue whisper so reviewers can tell them apart:
+  //
+  //   warm      -> operator (運営・注意喚起)
+  //   cool      -> notification / system / emotion
+  //   green     -> gift
+  //   magenta   -> nicoad (ニコニ広告)
+  //
+  // The hue-to-meaning mapping is preserved across all 5 themes. CVD palettes
+  // swap to hue axes the user can actually distinguish (P: blue/orange, D:
+  // purple/amber, T: red/cyan). Contrast vs `colorScheme.onSurface` is
+  // enforced by `test/presentation/theme/*_contrast_test.dart`.
   static const AppThemeColors _lightColors = AppThemeColors(
     programTitleBarBackground: Color(0xFFE8EAF6),
     broadcasterNameColor: Color(0xFF616161),
     statusBarBackground: Color(0xFFEEEEEE),
     statusConnected: Color(0xFF388E3C),
     statusDisconnected: Color(0xFFF44336),
-    operatorMessageBackground: Color(0xFFFFF9C4),
-    notificationMessageBackground: Color(0xFFE1F5FE),
-    giftMessageBackground: Color(0xFFEDF7EE),
-    nicoadMessageBackground: Color(0xFFFCE4EC),
+    // Barely-warm near-white; the red operatorTextColor carries the warning.
+    operatorMessageBackground: Color(0xFFFFF4E0),
+    // Near-neutral cool-gray; holds the "info" hue at very low saturation.
+    notificationMessageBackground: Color(0xFFEEF2F6),
+    giftMessageBackground: Color(0xFFECF1EC),
+    // Kept distinct from giftMessageBackground by hue, not luminance.
+    nicoadMessageBackground: Color(0xFFF3EDF0),
     subtleTextColor: Color(0xFF757575),
     ngUserActiveColor: Color(0xFFF44336),
     sheetHandleColor: Color(0xFFBDBDBD),
@@ -112,9 +129,9 @@ class AppTheme {
     loginBannerWarningIcon: Color(0xFFE65100),
     pinnedMessageBackground: Color(0xFFFFF8E1),
     broadcastEndedBackground: Color(0xFFECEFF1),
-    // operatorTextColor (#D32F2F) on operatorMessageBackground (#FFF9C4):
-    // contrast ratio 4.65:1 -> passes WCAG AA for normal text (>= 4.5:1).
-    operatorTextColor: Color(0xFFD32F2F),
+    // WCAG AA (>= 4.5:1) vs operatorMessageBackground is enforced by
+    // `test/presentation/theme/operator_contrast_test.dart`.
+    operatorTextColor: Color(0xFFC62828),
   );
 
   static const AppThemeColors _darkColors = AppThemeColors(
@@ -123,17 +140,18 @@ class AppTheme {
     statusBarBackground: Color(0xFF263238),
     statusConnected: Color(0xFF66BB6A),
     statusDisconnected: Color(0xFFEF5350),
-    operatorMessageBackground: Color(0xFF5D4037),
-    // Darkened from #1565C0 to satisfy WCAG AA (>= 4.5:1) against the actual
-    // dark-mode chat foreground. The previous value (#1565C0) gave only
-    // 4.445:1 on Material 3's tinted `onSurface` (~#E4E1E9 for the indigo
-    // dark scheme) — the doc comment that claimed 6.36:1 assumed pure white,
-    // which Material 3 does not use. #0D47A1 (Material blue 900) gives
-    // ~6.37:1 against the same `onSurface`, leaving comfortable headroom.
-    // Verified by `test/presentation/theme/notification_contrast_test.dart`.
-    notificationMessageBackground: Color(0xFF0D47A1),
-    giftMessageBackground: Color(0xFF2E3B2E),
-    nicoadMessageBackground: Color(0xFF3E2E47),
+    // Dark warm-gray; the red operatorTextColor carries the warning semantic.
+    operatorMessageBackground: Color(0xFF332B26),
+    // Near-neutral dark gray with only a small cool nudge, so the system /
+    // emotion row reads as "muted info" rather than a saturated blue label.
+    // Contrast vs Material 3's tinted `onSurface` (~#E4E1E9 for the indigo
+    // dark scheme) is enforced by
+    // `test/presentation/theme/notification_contrast_test.dart`.
+    notificationMessageBackground: Color(0xFF282A2E),
+    // Dark gray with a faint green whisper.
+    giftMessageBackground: Color(0xFF272B27),
+    // Dark gray with a faint magenta whisper.
+    nicoadMessageBackground: Color(0xFF2C272C),
     subtleTextColor: Color(0xFF90A4AE),
     ngUserActiveColor: Color(0xFFEF5350),
     sheetHandleColor: Color(0xFF546E7A),
@@ -145,16 +163,9 @@ class AppTheme {
     loginBannerWarningIcon: Color(0xFFFFB74D),
     pinnedMessageBackground: Color(0xFF4E342E),
     broadcastEndedBackground: Color(0xFF37474F),
-    // operatorTextColor on operatorMessageBackground (#5D4037) must satisfy
-    // WCAG AA (>= 4.5:1). History of this value:
-    //   - #FF6B6B -> 3.36:1 (fail)
-    //   - #FFB4B4 -> 5.52:1 (pass, reviewers felt too pastel)
-    //   - #FFA0A0 -> ~4.79:1 (pass, but on the AA lower bound — any
-    //     background tweak could regress below 4.5:1)
-    // Current value #FFAAAA keeps the red / warning hue while giving
-    // ~5.14:1 on #5D4037, leaving comfortable headroom above the WCAG AA
-    // 4.5:1 floor for normal text.
-    operatorTextColor: Color(0xFFFFAAAA),
+    // WCAG AA (>= 4.5:1) vs operatorMessageBackground is enforced by
+    // `test/presentation/theme/operator_contrast_test.dart`.
+    operatorTextColor: Color(0xFFFF8A80),
   );
 
   /// P-type: avoids red-green confusion. Uses blue/orange contrast.
@@ -164,10 +175,12 @@ class AppTheme {
     statusBarBackground: Color(0xFFEEEEEE),
     statusConnected: Color(0xFF1565C0),
     statusDisconnected: Color(0xFFE65100),
-    operatorMessageBackground: Color(0xFFFFF3E0),
-    notificationMessageBackground: Color(0xFFBBDEFB),
-    giftMessageBackground: Color(0xFFECEFF1),
-    nicoadMessageBackground: Color(0xFFFFF8E1),
+    // Low-saturation palette on a cool/warm/neutral axis that protanopes can
+    // distinguish. Contrast enforced by the theme contrast tests.
+    operatorMessageBackground: Color(0xFFF5EEE4),
+    notificationMessageBackground: Color(0xFFECEFF3),
+    giftMessageBackground: Color(0xFFEDEFEC),
+    nicoadMessageBackground: Color(0xFFF0EDEF),
     subtleTextColor: Color(0xFF757575),
     ngUserActiveColor: Color(0xFFE65100),
     sheetHandleColor: Color(0xFFBDBDBD),
@@ -179,11 +192,10 @@ class AppTheme {
     loginBannerWarningIcon: Color(0xFFE65100),
     pinnedMessageBackground: Color(0xFFFFF8E1),
     broadcastEndedBackground: Color(0xFFEFEBE9),
-    // P-type: the "red / warning" semantic uses the deep-orange family so it
-    // stays distinguishable for protanopia users (red is confused with green;
-    // orange is not). The original #E65100 on #FFF3E0 gave only 3.46:1
-    // (below WCAG AA 4.5:1); darkened to #BF360C -> 5.11:1. Still a deep
-    // orange, not brown.
+    // P-type: the "red / warning" semantic uses the deep-orange family so
+    // protanopia users still perceive it (red confuses with green; orange
+    // does not). WCAG AA vs operatorMessageBackground is enforced by
+    // `test/presentation/theme/operator_contrast_test.dart`.
     operatorTextColor: Color(0xFFBF360C),
   );
 
@@ -195,10 +207,12 @@ class AppTheme {
     statusBarBackground: Color(0xFFEEEEEE),
     statusConnected: Color(0xFF4527A0),
     statusDisconnected: Color(0xFFBF360C),
-    operatorMessageBackground: Color(0xFFFFF8E1),
-    notificationMessageBackground: Color(0xFFD1C4E9),
-    giftMessageBackground: Color(0xFFE1F5FE),
-    nicoadMessageBackground: Color(0xFFECEFF1),
+    // Low-saturation palette. Warm cream for operator, lavender for
+    // notification so the purple semantic survives for deuteranope users.
+    operatorMessageBackground: Color(0xFFF6F0E2),
+    notificationMessageBackground: Color(0xFFEDE9F1),
+    giftMessageBackground: Color(0xFFECEEF0),
+    nicoadMessageBackground: Color(0xFFF0EAEE),
     subtleTextColor: Color(0xFF757575),
     ngUserActiveColor: Color(0xFFBF360C),
     sheetHandleColor: Color(0xFFBDBDBD),
@@ -210,11 +224,10 @@ class AppTheme {
     loginBannerWarningIcon: Color(0xFFBF360C),
     pinnedMessageBackground: Color(0xFFFFF8E1),
     broadcastEndedBackground: Color(0xFFF3E5F5),
-    // D-type: use a deep red-orange that remains visible for deuteranopia
-    // users. Differentiated from the P-type palette (#BF360C on #FFF3E0) so
-    // users switching themes get a visually distinct tone rather than an
-    // identical swatch.
-    // #B23A0A on #FFF8E1 -> ~5.65:1 contrast (passes WCAG AA >= 4.5:1).
+    // D-type: deep red-orange that remains visible for deuteranopia users,
+    // differentiated from the P-type palette so theme switching yields a
+    // visually distinct tone. WCAG AA vs operatorMessageBackground is
+    // enforced by `test/presentation/theme/operator_contrast_test.dart`.
     operatorTextColor: Color(0xFFB23A0A),
   );
 
@@ -225,10 +238,12 @@ class AppTheme {
     statusBarBackground: Color(0xFFEEEEEE),
     statusConnected: Color(0xFF00695C),
     statusDisconnected: Color(0xFFC62828),
-    operatorMessageBackground: Color(0xFFFFEBEE),
-    notificationMessageBackground: Color(0xFFB2DFDB),
-    giftMessageBackground: Color(0xFFFFF3E0),
-    nicoadMessageBackground: Color(0xFFECEFF1),
+    // Low-saturation palette on the red/cyan hue axis that tritanopes
+    // distinguish well: warm-pink operator, teal-tinted notification.
+    operatorMessageBackground: Color(0xFFF8ECEC),
+    notificationMessageBackground: Color(0xFFE8EFEF),
+    giftMessageBackground: Color(0xFFEFECEC),
+    nicoadMessageBackground: Color(0xFFF3EAEE),
     subtleTextColor: Color(0xFF757575),
     ngUserActiveColor: Color(0xFFC62828),
     sheetHandleColor: Color(0xFFBDBDBD),
@@ -240,8 +255,9 @@ class AppTheme {
     loginBannerWarningIcon: Color(0xFFC62828),
     pinnedMessageBackground: Color(0xFFFFEBEE),
     broadcastEndedBackground: Color(0xFFE0E0E0),
-    // T-type: red/cyan contrast is preserved; use the existing red.
-    // #C62828 on #FFEBEE -> 4.92:1 contrast (passes WCAG AA).
+    // T-type: red/cyan contrast is preserved using the standard red. WCAG
+    // AA vs operatorMessageBackground is enforced by
+    // `test/presentation/theme/operator_contrast_test.dart`.
     operatorTextColor: Color(0xFFC62828),
   );
 

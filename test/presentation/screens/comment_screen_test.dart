@@ -96,6 +96,7 @@ void main() {
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final AppThemeColors themeColors = AppTheme.colorsFor(AppThemeMode.light);
       final List<AppMessage> messages = <AppMessage>[
         _message(id: 'chat-1', type: AppMessageType.chat, content: '通常コメント'),
         _message(
@@ -125,7 +126,7 @@ void main() {
           matching: find.byType(Container),
         ),
       );
-      expect(operatorRow.color, Colors.yellow.shade100);
+      expect(operatorRow.color, themeColors.operatorMessageBackground);
 
       final Container notificationRow = tester.widget(
         find.descendant(
@@ -133,7 +134,7 @@ void main() {
           matching: find.byType(Container),
         ),
       );
-      expect(notificationRow.color, Colors.lightBlue.shade50);
+      expect(notificationRow.color, themeColors.notificationMessageBackground);
 
       final Container legacyRow = tester.widget(
         find.descendant(
@@ -141,12 +142,61 @@ void main() {
           matching: find.byType(Container),
         ),
       );
-      expect(legacyRow.color, Colors.lightBlue.shade50);
+      expect(legacyRow.color, themeColors.notificationMessageBackground);
       expect(
         find.textContaining(kLegacyUnsupportedFormatMessage),
         findsOneWidget,
       );
     });
+
+    // Dark-mode regression lock: the largest palette shift in the "soften
+    // comment-row backgrounds" change lives in dark mode (notification
+    // #0D47A1 -> #282A2E). A light-only UI test would silently pass even if
+    // the dark palette or its renderer path regressed, so cover dark here.
+    testWidgets(
+      'comment row colors use dark-theme palette when themeMode=dark',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final AppThemeColors darkColors = AppTheme.colorsFor(AppThemeMode.dark);
+        final List<AppMessage> messages = <AppMessage>[
+          _message(id: 'chat-1', type: AppMessageType.chat, content: '通常'),
+          _message(
+            id: 'operator-1',
+            type: AppMessageType.operator,
+            content: '運営',
+          ),
+          _message(
+            id: 'notification-1',
+            type: AppMessageType.notification,
+            content: '通知',
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            themeMode: AppThemeMode.dark,
+          ),
+        );
+
+        final Container operatorRow = tester.widget(
+          find.descendant(
+            of: find.byKey(const Key('comment-row-operator-1')),
+            matching: find.byType(Container),
+          ),
+        );
+        expect(operatorRow.color, darkColors.operatorMessageBackground);
+
+        final Container notificationRow = tester.widget(
+          find.descendant(
+            of: find.byKey(const Key('comment-row-notification-1')),
+            matching: find.byType(Container),
+          ),
+        );
+        expect(notificationRow.color, darkColors.notificationMessageBackground);
+      },
+    );
 
     testWidgets('broadcast ended system message bypasses NG filters', (
       WidgetTester tester,
@@ -540,6 +590,9 @@ void main() {
       'enabling emphasize does not add icons to non-gift/nicoad rows',
       (WidgetTester tester) async {
         final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final AppThemeColors themeColors = AppTheme.colorsFor(
+          AppThemeMode.light,
+        );
         final List<AppMessage> messages = <AppMessage>[
           _message(id: 'chat-1', type: AppMessageType.chat, content: 'A'),
           _message(
@@ -569,7 +622,7 @@ void main() {
             matching: find.byType(Container),
           ),
         );
-        expect(operatorRow.color, Colors.yellow.shade100);
+        expect(operatorRow.color, themeColors.operatorMessageBackground);
 
         final Container notificationRow = tester.widget(
           find.descendant(
@@ -577,7 +630,10 @@ void main() {
             matching: find.byType(Container),
           ),
         );
-        expect(notificationRow.color, Colors.lightBlue.shade50);
+        expect(
+          notificationRow.color,
+          themeColors.notificationMessageBackground,
+        );
       },
     );
 
