@@ -1492,6 +1492,10 @@ class _CommentScreenState extends State<CommentScreen> {
       case CommentPostErrorCode.invalidParams:
       case CommentPostErrorCode.unauthorized:
         return 'ログインが必要です';
+      case CommentPostErrorCode.malformedInput:
+        // Non-empty but structurally bad input: prompting re-login would
+        // mislead the user (symmetric with the broadcast-side mapping).
+        return '入力に使用できない文字が含まれています。ログインし直してお試しください';
       case CommentPostErrorCode.forbidden:
         return 'コメントの投稿権限がありません';
       case CommentPostErrorCode.notFound:

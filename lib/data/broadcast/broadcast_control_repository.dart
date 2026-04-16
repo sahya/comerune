@@ -71,17 +71,34 @@ class BroadcastControlRepository extends NiconicoAuthedHttpClient {
   ///
   /// The [programId] must be a valid program ID (e.g. "lv348712105").
   /// Requires a valid [userSession] for authentication.
+  ///
+  /// [minutes] must be strictly positive. Non-positive values are rejected
+  /// client-side with [BroadcastControlErrorCode.invalidParams] so an
+  /// obviously wrong parameter does not round-trip to the niconico API.
+  /// The upper bound is intentionally not enforced client-side — server
+  /// policy is authoritative — so future extension-window changes do not
+  /// require a client release to unblock users.
   Future<BroadcastControlResult> extendBroadcast({
     required String programId,
     required String userSession,
     int minutes = 30,
   }) async {
+    // Validate ID fields first so a caller with both a missing programId AND
+    // a bad `minutes` hears about the more fundamental problem (missing
+    // session / program) before the payload complaint.
     final BroadcastControlResult? invalid = _checkCallInputs(
       programId: programId,
       userSession: userSession,
     );
     if (invalid != null) {
       return invalid;
+    }
+    if (minutes <= 0) {
+      return const BroadcastControlResult(
+        success: false,
+        errorCode: BroadcastControlErrorCode.invalidParams,
+        errorMessage: 'minutes must be strictly positive',
+      );
     }
 
     HttpClientRequest? request;
@@ -144,7 +161,7 @@ class BroadcastControlRepository extends NiconicoAuthedHttpClient {
     final String message = handleTimeout(request, e, operationName, _logName);
     return BroadcastControlResult(
       success: false,
-      errorCode: 'NETWORK_ERROR',
+      errorCode: BroadcastControlErrorCode.networkError,
       errorMessage: message,
     );
   }
@@ -155,7 +172,7 @@ class BroadcastControlRepository extends NiconicoAuthedHttpClient {
     final String message = handleException(e, operationName, _logName);
     return BroadcastControlResult(
       success: false,
-      errorCode: 'NETWORK_ERROR',
+      errorCode: BroadcastControlErrorCode.networkError,
       errorMessage: message,
     );
   }
@@ -223,45 +240,34 @@ class BroadcastControlRepository extends NiconicoAuthedHttpClient {
     );
   }
 
-  /// Combined entry-guard for all broadcast control methods. Returns a
-  /// failure [BroadcastControlResult] when the inputs are rejected, or
-  /// `null` when the call may proceed.
-  ///
-  /// Mirrors `LiveCommentRepository._checkCallInputs` to keep the two
-  /// repositories in lock step on defensive input validation. The shared
-  /// `isValidAuthHeaderValue` / `isValidLv` validators live on the base
-  /// class [NiconicoAuthedHttpClient] so both repositories apply identical
-  /// CRLF / NUL / lv path-injection filtering.
-  ///
-  /// The emptiness check runs before the malformed-value check so callers
-  /// get the more specific "required" error message when a field is missing.
+  /// Thin wrapper around [NiconicoAuthedHttpClient.validateCallInputs]
+  /// that maps the shared validation outcome to a
+  /// [BroadcastControlResult] failure, or returns `null` when the call
+  /// may proceed. See the base-class method for validation semantics.
   BroadcastControlResult? _checkCallInputs({
     required String programId,
     required String userSession,
   }) {
-    if (programId.isEmpty || userSession.trim().isEmpty) {
-      return const BroadcastControlResult(
-        success: false,
-        errorCode: 'INVALID_PARAMS',
-        errorMessage: 'programId and userSession are required',
-      );
-    }
-    final bool sessionOk = NiconicoAuthedHttpClient.isValidAuthHeaderValue(
-      userSession,
+    final NiconicoInputValidationStatus status = validateCallInputs(
+      programId: programId,
+      userSession: userSession,
+      logName: _logName,
     );
-    final bool lvOk = NiconicoAuthedHttpClient.isValidLv(programId);
-    if (!sessionOk || !lvOk) {
-      appDebugLogLazy(
-        () =>
-            '[$_logName] input rejected: '
-            'session=${sessionOk ? 'ok' : 'bad'} lv=${lvOk ? 'ok' : 'bad'}',
-      );
-      return const BroadcastControlResult(
-        success: false,
-        errorCode: 'INVALID_PARAMS',
-        errorMessage: 'userSession or programId contains invalid characters',
-      );
+    switch (status) {
+      case NiconicoInputValidationStatus.ok:
+        return null;
+      case NiconicoInputValidationStatus.empty:
+        return const BroadcastControlResult(
+          success: false,
+          errorCode: BroadcastControlErrorCode.invalidParams,
+          errorMessage: 'programId and userSession are required',
+        );
+      case NiconicoInputValidationStatus.malformed:
+        return const BroadcastControlResult(
+          success: false,
+          errorCode: BroadcastControlErrorCode.malformedInput,
+          errorMessage: 'userSession or programId contains invalid characters',
+        );
     }
-    return null;
   }
 }

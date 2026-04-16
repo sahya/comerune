@@ -252,7 +252,7 @@ void main() {
               program: program,
               onStart: () async => const BroadcastControlResult(
                 success: false,
-                errorCode: 'INVALID_PARAMS',
+                errorCode: BroadcastControlErrorCode.invalidParams,
               ),
               onEnd: () async => const BroadcastControlResult(success: true),
             ),
@@ -336,16 +336,38 @@ void main() {
   });
 
   group('userFacingBroadcastError', () {
-    test('returns login message for INVALID_PARAMS', () {
+    test('returns login message for INVALID_PARAMS (empty-input case)', () {
       expect(
         userFacingBroadcastError(
           '開始',
           const BroadcastControlResult(
             success: false,
-            errorCode: 'INVALID_PARAMS',
+            errorCode: BroadcastControlErrorCode.invalidParams,
           ),
         ),
         'ログインが必要です',
+      );
+    });
+
+    test('returns malformed-input message for MALFORMED_INPUT '
+        '(not misleading sign-in prompt)', () {
+      // Regression lock for Issue #518 MUST FIX: MALFORMED_INPUT must NOT
+      // collapse into the same sign-in prompt as INVALID_PARAMS /
+      // UNAUTHORIZED. Surfacing "please sign in" for a non-empty but
+      // structurally bad input misleads the user into an unhelpful
+      // re-login loop.
+      final String message = userFacingBroadcastError(
+        '開始',
+        const BroadcastControlResult(
+          success: false,
+          errorCode: BroadcastControlErrorCode.malformedInput,
+        ),
+      );
+      expect(message, '入力に使用できない文字が含まれています。ログインし直してお試しください');
+      expect(
+        message,
+        isNot('ログインが必要です'),
+        reason: 'MALFORMED_INPUT must not collapse into sign-in prompt',
       );
     });
 
@@ -355,7 +377,7 @@ void main() {
           '終了',
           const BroadcastControlResult(
             success: false,
-            errorCode: 'UNAUTHORIZED',
+            errorCode: BroadcastControlErrorCode.unauthorized,
           ),
         ),
         'ログインが必要です',
@@ -366,7 +388,10 @@ void main() {
       expect(
         userFacingBroadcastError(
           '開始',
-          const BroadcastControlResult(success: false, errorCode: 'FORBIDDEN'),
+          const BroadcastControlResult(
+            success: false,
+            errorCode: BroadcastControlErrorCode.forbidden,
+          ),
         ),
         '放送の開始権限がありません',
       );
@@ -376,7 +401,10 @@ void main() {
       expect(
         userFacingBroadcastError(
           '終了',
-          const BroadcastControlResult(success: false, errorCode: 'NOT_FOUND'),
+          const BroadcastControlResult(
+            success: false,
+            errorCode: BroadcastControlErrorCode.notFound,
+          ),
         ),
         '番組が見つかりません',
       );
@@ -388,7 +416,7 @@ void main() {
           '開始',
           const BroadcastControlResult(
             success: false,
-            errorCode: 'NETWORK_ERROR',
+            errorCode: BroadcastControlErrorCode.networkError,
           ),
         ),
         'ネットワークエラーが発生しました',
@@ -408,11 +436,17 @@ void main() {
     test('uses operation name in FORBIDDEN and default messages', () {
       final String startForbidden = userFacingBroadcastError(
         '開始',
-        const BroadcastControlResult(success: false, errorCode: 'FORBIDDEN'),
+        const BroadcastControlResult(
+          success: false,
+          errorCode: BroadcastControlErrorCode.forbidden,
+        ),
       );
       final String endForbidden = userFacingBroadcastError(
         '終了',
-        const BroadcastControlResult(success: false, errorCode: 'FORBIDDEN'),
+        const BroadcastControlResult(
+          success: false,
+          errorCode: BroadcastControlErrorCode.forbidden,
+        ),
       );
       expect(startForbidden, contains('開始'));
       expect(endForbidden, contains('終了'));

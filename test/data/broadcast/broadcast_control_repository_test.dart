@@ -75,7 +75,7 @@ void main() {
         );
 
         expect(result.success, isFalse);
-        expect(result.errorCode, 'INVALID_PARAMS');
+        expect(result.errorCode, BroadcastControlErrorCode.invalidParams);
         expect(httpClient.requests, isEmpty);
 
         repository.dispose();
@@ -92,7 +92,7 @@ void main() {
         );
 
         expect(result.success, isFalse);
-        expect(result.errorCode, 'INVALID_PARAMS');
+        expect(result.errorCode, BroadcastControlErrorCode.invalidParams);
         expect(httpClient.requests, isEmpty);
 
         repository.dispose();
@@ -111,7 +111,7 @@ void main() {
         );
 
         expect(result.success, isFalse);
-        expect(result.errorCode, 'NETWORK_ERROR');
+        expect(result.errorCode, BroadcastControlErrorCode.networkError);
 
         repository.dispose();
       });
@@ -209,7 +209,90 @@ void main() {
         );
 
         expect(result.success, isFalse);
-        expect(result.errorCode, 'INVALID_PARAMS');
+        expect(result.errorCode, BroadcastControlErrorCode.invalidParams);
+
+        repository.dispose();
+      });
+
+      test('rejects empty programId before non-positive minutes so the caller '
+          "hears 'required' first", () async {
+        // Regression lock: the validation order is "ID fields first, payload
+        // second". If the order ever flips back (minutes-first), this test
+        // catches it — the error message would switch to
+        // 'minutes must be strictly positive'.
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        final BroadcastControlRepository repository =
+            BroadcastControlRepository(httpClient: httpClient);
+
+        final BroadcastControlResult result = await repository.extendBroadcast(
+          programId: '',
+          userSession: 'test_session',
+          minutes: -1,
+        );
+
+        expect(result.success, isFalse);
+        expect(result.errorCode, BroadcastControlErrorCode.invalidParams);
+        expect(
+          result.errorMessage,
+          'programId and userSession are required',
+          reason:
+              'ID-field rejection must take priority over payload '
+              'rejection when both are bad',
+        );
+        expect(httpClient.requests, isEmpty);
+
+        repository.dispose();
+      });
+
+      test('rejects non-positive minutes values', () async {
+        for (final int bad in <int>[0, -1, -30, -2147483648]) {
+          final _FakeHttpClient httpClient = _FakeHttpClient();
+          final BroadcastControlRepository repository =
+              BroadcastControlRepository(httpClient: httpClient);
+
+          final BroadcastControlResult result = await repository
+              .extendBroadcast(
+                programId: 'lv345678901',
+                userSession: 'test_session',
+                minutes: bad,
+              );
+
+          expect(result.success, isFalse, reason: 'minutes=$bad');
+          expect(
+            result.errorCode,
+            BroadcastControlErrorCode.invalidParams,
+            reason: 'minutes=$bad',
+          );
+          // No HTTP traffic should leave the client for a client-side
+          // rejection.
+          expect(httpClient.requests, isEmpty, reason: 'minutes=$bad');
+
+          repository.dispose();
+        }
+      });
+
+      test('accepts arbitrary positive minutes without client-side upper '
+          'bound (server decides)', () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseBody = jsonEncode(<String, Object?>{
+          'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+          'data': <String, Object?>{'end_time': 1711903600},
+        });
+
+        final BroadcastControlRepository repository =
+            BroadcastControlRepository(httpClient: httpClient);
+
+        // 720 minutes (12h) is unrealistic for niconico today but the client
+        // deliberately leaves the ceiling to the server so a server-side
+        // policy change does not require a client release.
+        final BroadcastControlResult result = await repository.extendBroadcast(
+          programId: 'lv345678901',
+          userSession: 'test_session',
+          minutes: 720,
+        );
+
+        expect(result.success, isTrue);
+        expect(httpClient.requests.single.body, contains('720'));
 
         repository.dispose();
       });
@@ -235,7 +318,7 @@ void main() {
         );
 
         expect(result.success, isFalse);
-        expect(result.errorCode, 'NETWORK_ERROR');
+        expect(result.errorCode, BroadcastControlErrorCode.networkError);
         expect(httpClient.requests.single.request.isAborted, isTrue);
 
         httpClient.pendingCompleter!.complete();
@@ -263,7 +346,7 @@ void main() {
         );
 
         expect(result.success, isFalse);
-        expect(result.errorCode, 'NETWORK_ERROR');
+        expect(result.errorCode, BroadcastControlErrorCode.networkError);
         expect(httpClient.requests.single.request.isAborted, isTrue);
 
         httpClient.pendingCompleter!.complete();
@@ -292,7 +375,7 @@ void main() {
               );
 
           expect(result.success, isFalse);
-          expect(result.errorCode, 'NETWORK_ERROR');
+          expect(result.errorCode, BroadcastControlErrorCode.networkError);
           expect(result.errorMessage, contains('TimeoutException'));
           expect(result.errorMessage, contains('0:00:00.050'));
           expect(httpClient.requests.single.request.isAborted, isTrue);
@@ -357,7 +440,7 @@ void main() {
         );
 
         expect(result.success, isFalse);
-        expect(result.errorCode, 'NETWORK_ERROR');
+        expect(result.errorCode, BroadcastControlErrorCode.networkError);
         expect(result.errorMessage, contains('TimeoutException'));
         // Mirror LiveCommentRepository's body-stall assertion pattern:
         // the configured duration (50ms) is preserved in the error
@@ -394,12 +477,20 @@ void main() {
             final BroadcastControlResult startResult = await repository
                 .startBroadcast(programId: 'lv123', userSession: poison);
             expect(startResult.success, isFalse, reason: caseLabel);
-            expect(startResult.errorCode, 'INVALID_PARAMS', reason: caseLabel);
+            expect(
+              startResult.errorCode,
+              BroadcastControlErrorCode.malformedInput,
+              reason: caseLabel,
+            );
 
             final BroadcastControlResult endResult = await repository
                 .endBroadcast(programId: 'lv123', userSession: poison);
             expect(endResult.success, isFalse, reason: caseLabel);
-            expect(endResult.errorCode, 'INVALID_PARAMS', reason: caseLabel);
+            expect(
+              endResult.errorCode,
+              BroadcastControlErrorCode.malformedInput,
+              reason: caseLabel,
+            );
 
             final BroadcastControlResult extendResult = await repository
                 .extendBroadcast(
@@ -408,7 +499,11 @@ void main() {
                   minutes: 30,
                 );
             expect(extendResult.success, isFalse, reason: caseLabel);
-            expect(extendResult.errorCode, 'INVALID_PARAMS', reason: caseLabel);
+            expect(
+              extendResult.errorCode,
+              BroadcastControlErrorCode.malformedInput,
+              reason: caseLabel,
+            );
 
             // No HTTP request should reach the fake client.
             expect(httpClient.requests, isEmpty, reason: caseLabel);
@@ -443,12 +538,20 @@ void main() {
                 userSession: 'valid_session',
               );
           expect(startResult.success, isFalse, reason: caseLabel);
-          expect(startResult.errorCode, 'INVALID_PARAMS', reason: caseLabel);
+          expect(
+            startResult.errorCode,
+            BroadcastControlErrorCode.malformedInput,
+            reason: caseLabel,
+          );
 
           final BroadcastControlResult endResult = await repository
               .endBroadcast(programId: malformed, userSession: 'valid_session');
           expect(endResult.success, isFalse, reason: caseLabel);
-          expect(endResult.errorCode, 'INVALID_PARAMS', reason: caseLabel);
+          expect(
+            endResult.errorCode,
+            BroadcastControlErrorCode.malformedInput,
+            reason: caseLabel,
+          );
 
           final BroadcastControlResult extendResult = await repository
               .extendBroadcast(
@@ -457,7 +560,11 @@ void main() {
                 minutes: 30,
               );
           expect(extendResult.success, isFalse, reason: caseLabel);
-          expect(extendResult.errorCode, 'INVALID_PARAMS', reason: caseLabel);
+          expect(
+            extendResult.errorCode,
+            BroadcastControlErrorCode.malformedInput,
+            reason: caseLabel,
+          );
 
           expect(httpClient.requests, isEmpty, reason: caseLabel);
 
@@ -573,7 +680,7 @@ void main() {
     test('isAlreadyEnded returns true for CONFLICT', () {
       const BroadcastControlResult result = BroadcastControlResult(
         success: false,
-        errorCode: 'CONFLICT',
+        errorCode: BroadcastControlErrorCode.conflict,
       );
       expect(result.isAlreadyEnded, isTrue);
     });
@@ -581,10 +688,27 @@ void main() {
     test('isAlreadyEnded returns false for other errors', () {
       const BroadcastControlResult result = BroadcastControlResult(
         success: false,
-        errorCode: 'FORBIDDEN',
+        errorCode: BroadcastControlErrorCode.forbidden,
       );
       expect(result.isAlreadyEnded, isFalse);
     });
+  });
+
+  group('BroadcastControlErrorCode', () {
+    test(
+      'exposes distinct wire values for invalidParams vs malformedInput',
+      () {
+        // Regression lock: these codes must stay distinct so the UI can map
+        // them to different messages (`ログインが必要です` vs
+        // `入力に使用できない文字が含まれています`).
+        expect(
+          BroadcastControlErrorCode.invalidParams,
+          isNot(BroadcastControlErrorCode.malformedInput),
+        );
+        expect(BroadcastControlErrorCode.invalidParams, 'INVALID_PARAMS');
+        expect(BroadcastControlErrorCode.malformedInput, 'MALFORMED_INPUT');
+      },
+    );
   });
 }
 

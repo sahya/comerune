@@ -50,14 +50,15 @@ class _TestClient extends NiconicoAuthedHttpClient {
     String logName,
   ) => handleException(e, operationName, logName);
 
-  // Static pass-throughs for the protected validators so tests in this file
-  // (which are not themselves subclasses of NiconicoAuthedHttpClient) do not
-  // trigger `invalid_use_of_protected_member` analyzer warnings.
-  static bool publicIsValidAuthHeaderValue(String value) =>
-      NiconicoAuthedHttpClient.isValidAuthHeaderValue(value);
-
-  static bool publicIsValidLv(String lv) =>
-      NiconicoAuthedHttpClient.isValidLv(lv);
+  NiconicoInputValidationStatus publicValidateCallInputs({
+    required String programId,
+    required String userSession,
+    required String logName,
+  }) => validateCallInputs(
+    programId: programId,
+    userSession: userSession,
+    logName: logName,
+  );
 }
 
 void main() {
@@ -334,7 +335,7 @@ void main() {
     group('isValidAuthHeaderValue', () {
       test('accepts a normal URL-safe session token', () {
         expect(
-          _TestClient.publicIsValidAuthHeaderValue('abc123_=-xyz'),
+          NiconicoAuthedHttpClient.isValidAuthHeaderValue('abc123_=-xyz'),
           isTrue,
         );
       });
@@ -342,27 +343,35 @@ void main() {
       test('accepts an empty string (emptiness is caller concern)', () {
         // Empty-string check is the caller's responsibility; this validator
         // only rejects the three header-splitting control characters.
-        expect(_TestClient.publicIsValidAuthHeaderValue(''), isTrue);
+        expect(NiconicoAuthedHttpClient.isValidAuthHeaderValue(''), isTrue);
       });
 
       test('rejects a value containing CR (0x0D)', () {
-        expect(_TestClient.publicIsValidAuthHeaderValue('valid\r'), isFalse);
+        expect(
+          NiconicoAuthedHttpClient.isValidAuthHeaderValue('valid\r'),
+          isFalse,
+        );
       });
 
       test('rejects a value containing LF (0x0A)', () {
-        expect(_TestClient.publicIsValidAuthHeaderValue('valid\nfoo'), isFalse);
+        expect(
+          NiconicoAuthedHttpClient.isValidAuthHeaderValue('valid\nfoo'),
+          isFalse,
+        );
       });
 
       test('rejects a value containing CRLF (classic injection)', () {
         expect(
-          _TestClient.publicIsValidAuthHeaderValue('valid\r\nX-Injected: 1'),
+          NiconicoAuthedHttpClient.isValidAuthHeaderValue(
+            'valid\r\nX-Injected: 1',
+          ),
           isFalse,
         );
       });
 
       test('rejects a value containing NUL (0x00)', () {
         expect(
-          _TestClient.publicIsValidAuthHeaderValue('bad\u0000byte'),
+          NiconicoAuthedHttpClient.isValidAuthHeaderValue('bad\u0000byte'),
           isFalse,
         );
       });
@@ -378,7 +387,7 @@ void main() {
           '\r\n',
         ]) {
           expect(
-            _TestClient.publicIsValidAuthHeaderValue(poison),
+            NiconicoAuthedHttpClient.isValidAuthHeaderValue(poison),
             isFalse,
             reason:
                 'expected rejection for code units '
@@ -390,44 +399,170 @@ void main() {
 
     group('isValidLv', () {
       test('accepts well-formed lv ids', () {
-        expect(_TestClient.publicIsValidLv('lv123'), isTrue);
-        expect(_TestClient.publicIsValidLv('lv345678901'), isTrue);
-        expect(_TestClient.publicIsValidLv('lv0'), isTrue);
+        expect(NiconicoAuthedHttpClient.isValidLv('lv123'), isTrue);
+        expect(NiconicoAuthedHttpClient.isValidLv('lv345678901'), isTrue);
+        expect(NiconicoAuthedHttpClient.isValidLv('lv0'), isTrue);
       });
 
       test('rejects a bare "lv" prefix with no digits', () {
-        expect(_TestClient.publicIsValidLv('lv'), isFalse);
+        expect(NiconicoAuthedHttpClient.isValidLv('lv'), isFalse);
       });
 
       test('rejects empty string', () {
-        expect(_TestClient.publicIsValidLv(''), isFalse);
+        expect(NiconicoAuthedHttpClient.isValidLv(''), isFalse);
       });
 
       test('rejects non-digit trailing characters', () {
-        expect(_TestClient.publicIsValidLv('lv1a'), isFalse);
-        expect(_TestClient.publicIsValidLv('lv-123'), isFalse);
-        expect(_TestClient.publicIsValidLv('lv 123'), isFalse);
+        expect(NiconicoAuthedHttpClient.isValidLv('lv1a'), isFalse);
+        expect(NiconicoAuthedHttpClient.isValidLv('lv-123'), isFalse);
+        expect(NiconicoAuthedHttpClient.isValidLv('lv 123'), isFalse);
       });
 
       test('rejects path-injection attempts', () {
-        expect(_TestClient.publicIsValidLv('lv123/../admin'), isFalse);
+        expect(NiconicoAuthedHttpClient.isValidLv('lv123/../admin'), isFalse);
       });
 
       test('rejects query / fragment splitters', () {
-        expect(_TestClient.publicIsValidLv('lv123?foo=bar'), isFalse);
-        expect(_TestClient.publicIsValidLv('lv123#frag'), isFalse);
+        expect(NiconicoAuthedHttpClient.isValidLv('lv123?foo=bar'), isFalse);
+        expect(NiconicoAuthedHttpClient.isValidLv('lv123#frag'), isFalse);
       });
 
       test('rejects uppercase LV prefix', () {
-        expect(_TestClient.publicIsValidLv('LV123'), isFalse);
+        expect(NiconicoAuthedHttpClient.isValidLv('LV123'), isFalse);
       });
 
       test('rejects pure numeric string without lv prefix', () {
-        expect(_TestClient.publicIsValidLv('123'), isFalse);
+        expect(NiconicoAuthedHttpClient.isValidLv('123'), isFalse);
       });
 
       test('rejects full-width digits', () {
-        expect(_TestClient.publicIsValidLv('lv１２３'), isFalse);
+        expect(NiconicoAuthedHttpClient.isValidLv('lv１２３'), isFalse);
+      });
+    });
+
+    group('validateCallInputs', () {
+      test('returns ok for well-formed inputs', () {
+        final _TestClient client = _TestClient();
+        expect(
+          client.publicValidateCallInputs(
+            programId: 'lv123',
+            userSession: 'abc_session',
+            logName: 'Test',
+          ),
+          NiconicoInputValidationStatus.ok,
+        );
+        client.dispose();
+      });
+
+      test('returns empty when programId is empty', () {
+        final _TestClient client = _TestClient();
+        expect(
+          client.publicValidateCallInputs(
+            programId: '',
+            userSession: 'abc_session',
+            logName: 'Test',
+          ),
+          NiconicoInputValidationStatus.empty,
+        );
+        client.dispose();
+      });
+
+      test('returns empty when userSession is empty or whitespace-only', () {
+        final _TestClient client = _TestClient();
+        expect(
+          client.publicValidateCallInputs(
+            programId: 'lv123',
+            userSession: '',
+            logName: 'Test',
+          ),
+          NiconicoInputValidationStatus.empty,
+        );
+        expect(
+          client.publicValidateCallInputs(
+            programId: 'lv123',
+            userSession: '   ',
+            logName: 'Test',
+          ),
+          NiconicoInputValidationStatus.empty,
+          reason: 'whitespace-only session must be treated as empty',
+        );
+        client.dispose();
+      });
+
+      test('returns malformed when userSession carries CR / LF / NUL', () {
+        final _TestClient client = _TestClient();
+        for (final String poison in <String>[
+          'valid\r\nX-Injected: 1',
+          'valid\nfoo',
+          'valid\r',
+          'bad\u0000byte',
+        ]) {
+          expect(
+            client.publicValidateCallInputs(
+              programId: 'lv123',
+              userSession: poison,
+              logName: 'Test',
+            ),
+            NiconicoInputValidationStatus.malformed,
+            reason:
+                'poisoned session: '
+                '${poison.codeUnits.map((int c) => '0x${c.toRadixString(16)}').toList()}',
+          );
+        }
+        client.dispose();
+      });
+
+      test('returns malformed when programId violates lv format', () {
+        final _TestClient client = _TestClient();
+        for (final String bad in <String>[
+          'lv',
+          'lv1a',
+          'lv123/../admin',
+          '123',
+          'LV123',
+          'lv 123',
+          'lv-123',
+          'lv123?foo=bar',
+          'lv123#frag',
+          'lv１２３',
+        ]) {
+          expect(
+            client.publicValidateCallInputs(
+              programId: bad,
+              userSession: 'valid_session',
+              logName: 'Test',
+            ),
+            NiconicoInputValidationStatus.malformed,
+            reason: 'malformed lv: <$bad>',
+          );
+        }
+        client.dispose();
+      });
+
+      test('emptiness check takes priority over malformed check so callers can '
+          'report the more specific "required" message', () {
+        final _TestClient client = _TestClient();
+        // programId is empty AND userSession is structurally bad. Empty
+        // check runs first, so the outcome is `empty` not `malformed`.
+        expect(
+          client.publicValidateCallInputs(
+            programId: '',
+            userSession: 'bad\rsession',
+            logName: 'Test',
+          ),
+          NiconicoInputValidationStatus.empty,
+        );
+        // Symmetric case: malformed programId AND empty userSession —
+        // still `empty` because the combined emptiness check fires first.
+        expect(
+          client.publicValidateCallInputs(
+            programId: 'lv123/../admin',
+            userSession: '',
+            logName: 'Test',
+          ),
+          NiconicoInputValidationStatus.empty,
+        );
+        client.dispose();
       });
     });
 

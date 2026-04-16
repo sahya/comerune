@@ -211,9 +211,19 @@ abstract class NiconicoAuthedHttpClient {
   /// C0 controls) would risk rejecting otherwise valid sessions for no
   /// additional protection in a niconico-only context.
   ///
+  /// Other C0 controls (VT `0x0B`, FF `0x0C`) are **not** filtered: Dart's
+  /// `HttpHeaders.set` treats the header value as an opaque string and does
+  /// not interpret VT / FF as line separators when emitting bytes on the
+  /// wire, so they do not enable header injection in this code path.
+  /// Filtering them would only add opportunity for false-positive rejection
+  /// of unusual-but-legitimate session tokens.
+  ///
+  /// Contract: never throws. Returns `false` for any value containing a
+  /// filtered character; `true` (including for empty string — emptiness is
+  /// the caller's concern via the entry-guard) otherwise.
+  ///
   /// Shared by [BroadcastControlRepository] and [LiveCommentRepository] via
-  /// their own entry-guards.
-  @protected
+  /// the shared [validateCallInputs] entry-guard.
   static bool isValidAuthHeaderValue(String value) {
     for (int i = 0; i < value.length; i++) {
       final int c = value.codeUnitAt(i);
@@ -233,9 +243,12 @@ abstract class NiconicoAuthedHttpClient {
   /// digits and other Unicode decimal numerals are rejected because the
   /// niconico API normalises ids as ASCII decimals.
   ///
+  /// Contract: never throws. Returns `false` for any structurally invalid
+  /// value; `true` only when the input is exactly `lv` + one or more ASCII
+  /// decimal digits.
+  ///
   /// Shared by [BroadcastControlRepository] and [LiveCommentRepository] via
-  /// their own entry-guards.
-  @protected
+  /// the shared [validateCallInputs] entry-guard.
   static bool isValidLv(String lv) {
     if (lv.length < 3 || !lv.startsWith('lv')) {
       return false;
@@ -248,4 +261,64 @@ abstract class NiconicoAuthedHttpClient {
     }
     return true;
   }
+
+  /// Shared entry-guard for repository call inputs.
+  ///
+  /// Centralises the previously duplicated empty / malformed-value checks
+  /// so `BroadcastControlRepository` and `LiveCommentRepository` apply
+  /// identical CRLF / NUL / lv path-injection filtering and emit a single
+  /// audit-log entry per rejection.
+  ///
+  /// Returns:
+  /// - [NiconicoInputValidationStatus.ok] when the call may proceed.
+  /// - [NiconicoInputValidationStatus.empty] when either field is empty
+  ///   (`userSession` is checked after `trim()` to reject whitespace-only
+  ///   sessions).
+  /// - [NiconicoInputValidationStatus.malformed] when either field contains
+  ///   characters that would violate [isValidAuthHeaderValue] /
+  ///   [isValidLv]. A debug log line is emitted in this case, tagged with
+  ///   [logName], so audit trails survive even though callers map both
+  ///   rejection causes to domain-specific failure results.
+  ///
+  /// Contract: never throws. The emptiness check runs before the malformed
+  /// check so callers can report the more specific "required" message.
+  @protected
+  NiconicoInputValidationStatus validateCallInputs({
+    required String programId,
+    required String userSession,
+    required String logName,
+  }) {
+    if (programId.isEmpty || userSession.trim().isEmpty) {
+      return NiconicoInputValidationStatus.empty;
+    }
+    final bool sessionOk = isValidAuthHeaderValue(userSession);
+    final bool lvOk = isValidLv(programId);
+    if (!sessionOk || !lvOk) {
+      appDebugLogLazy(
+        () =>
+            '[$logName] input rejected: '
+            'session=${sessionOk ? 'ok' : 'bad'} lv=${lvOk ? 'ok' : 'bad'}',
+      );
+      return NiconicoInputValidationStatus.malformed;
+    }
+    return NiconicoInputValidationStatus.ok;
+  }
+}
+
+/// Outcome of [NiconicoAuthedHttpClient.validateCallInputs].
+///
+/// Each repository maps these cases to its own domain-specific failure
+/// result (e.g. `BroadcastControlResult`, `CommentPostResult`) rather than
+/// the base class doing the mapping, so the base stays free of
+/// presentation-layer error-code vocabulary.
+enum NiconicoInputValidationStatus {
+  /// Inputs pass all checks; the caller may proceed with the HTTP request.
+  ok,
+
+  /// `programId` or `userSession` was empty / whitespace-only.
+  empty,
+
+  /// `programId` or `userSession` contained characters that could be used
+  /// for CRLF header injection or lv path injection.
+  malformed,
 }

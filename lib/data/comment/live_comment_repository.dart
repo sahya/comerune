@@ -329,38 +329,34 @@ class LiveCommentRepository extends NiconicoAuthedHttpClient {
     return super.httpStatusToErrorCode(statusCode);
   }
 
-  /// Combined entry-guard for both post methods. Returns a failure
-  /// [CommentPostResult] when the inputs are rejected, or `null` when the
-  /// call may proceed. Centralises the previously duplicated empty /
-  /// malformed-value checks so the two post methods stay in lock step and
-  /// a single audit-log call covers both.
+  /// Thin wrapper around [NiconicoAuthedHttpClient.validateCallInputs]
+  /// that maps the shared validation outcome to a [CommentPostResult]
+  /// failure, or returns `null` when the call may proceed. See the
+  /// base-class method for validation semantics.
   CommentPostResult? _checkCallInputs({
     required String programId,
     required String userSession,
   }) {
-    if (programId.isEmpty || userSession.trim().isEmpty) {
-      return const CommentPostResult(
-        success: false,
-        errorCode: CommentPostErrorCode.invalidParams,
-        errorMessage: 'programId and userSession are required',
-      );
-    }
-    final bool sessionOk = NiconicoAuthedHttpClient.isValidAuthHeaderValue(
-      userSession,
+    final NiconicoInputValidationStatus status = validateCallInputs(
+      programId: programId,
+      userSession: userSession,
+      logName: _logName,
     );
-    final bool lvOk = NiconicoAuthedHttpClient.isValidLv(programId);
-    if (!sessionOk || !lvOk) {
-      appDebugLogLazy(
-        () =>
-            '[LiveCommentRepository] input rejected: '
-            'session=${sessionOk ? 'ok' : 'bad'} lv=${lvOk ? 'ok' : 'bad'}',
-      );
-      return const CommentPostResult(
-        success: false,
-        errorCode: CommentPostErrorCode.invalidParams,
-        errorMessage: 'userSession or programId contains invalid characters',
-      );
+    switch (status) {
+      case NiconicoInputValidationStatus.ok:
+        return null;
+      case NiconicoInputValidationStatus.empty:
+        return const CommentPostResult(
+          success: false,
+          errorCode: CommentPostErrorCode.invalidParams,
+          errorMessage: 'programId and userSession are required',
+        );
+      case NiconicoInputValidationStatus.malformed:
+        return const CommentPostResult(
+          success: false,
+          errorCode: CommentPostErrorCode.malformedInput,
+          errorMessage: 'userSession or programId contains invalid characters',
+        );
     }
-    return null;
   }
 }

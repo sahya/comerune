@@ -421,14 +421,20 @@ String userFacingBroadcastError(
   BroadcastControlResult result,
 ) {
   switch (result.errorCode) {
-    case 'INVALID_PARAMS':
-    case 'UNAUTHORIZED':
+    case BroadcastControlErrorCode.invalidParams:
+    case BroadcastControlErrorCode.unauthorized:
       return 'ログインが必要です';
-    case 'FORBIDDEN':
+    case BroadcastControlErrorCode.malformedInput:
+      // Non-empty but structurally bad input: prompting re-login would
+      // mislead the user (their session may be fine). Surface a distinct
+      // diagnostic that hints at the next step (re-login to refresh the
+      // session token, which is by far the most common real-world cause).
+      return '入力に使用できない文字が含まれています。ログインし直してお試しください';
+    case BroadcastControlErrorCode.forbidden:
       return '放送の$operation権限がありません';
-    case 'NOT_FOUND':
+    case BroadcastControlErrorCode.notFound:
       return '番組が見つかりません';
-    case 'NETWORK_ERROR':
+    case BroadcastControlErrorCode.networkError:
       return 'ネットワークエラーが発生しました';
     default:
       return '放送の$operationに失敗しました';

@@ -137,7 +137,7 @@ void main() {
         );
 
         expect(result.success, isFalse);
-        expect(result.errorCode, 'INVALID_PARAMS');
+        expect(result.errorCode, CommentPostErrorCode.invalidParams);
         expect(httpClient.requests, isEmpty);
 
         repository.dispose();
@@ -156,7 +156,7 @@ void main() {
         );
 
         expect(result.success, isFalse);
-        expect(result.errorCode, 'INVALID_PARAMS');
+        expect(result.errorCode, CommentPostErrorCode.invalidParams);
         expect(httpClient.requests, isEmpty);
 
         repository.dispose();
@@ -177,7 +177,7 @@ void main() {
         );
 
         expect(result.success, isFalse);
-        expect(result.errorCode, 'NETWORK_ERROR');
+        expect(result.errorCode, CommentPostErrorCode.networkError);
 
         repository.dispose();
       });
@@ -307,7 +307,7 @@ void main() {
         );
 
         expect(result.success, isFalse);
-        expect(result.errorCode, 'INVALID_PARAMS');
+        expect(result.errorCode, CommentPostErrorCode.invalidParams);
         expect(httpClient.requests, isEmpty);
 
         repository.dispose();
@@ -327,7 +327,7 @@ void main() {
         );
 
         expect(result.success, isFalse);
-        expect(result.errorCode, 'INVALID_PARAMS');
+        expect(result.errorCode, CommentPostErrorCode.invalidParams);
         expect(httpClient.requests, isEmpty);
 
         repository.dispose();
@@ -349,7 +349,7 @@ void main() {
         );
 
         expect(result.success, isFalse);
-        expect(result.errorCode, 'NETWORK_ERROR');
+        expect(result.errorCode, CommentPostErrorCode.networkError);
 
         repository.dispose();
       });
@@ -503,7 +503,11 @@ void main() {
                   text: 'hi',
                 );
             expect(opResult.success, isFalse, reason: caseLabel);
-            expect(opResult.errorCode, 'INVALID_PARAMS', reason: caseLabel);
+            expect(
+              opResult.errorCode,
+              CommentPostErrorCode.malformedInput,
+              reason: caseLabel,
+            );
 
             final CommentPostResult normalResult = await repository
                 .postNormalComment(
@@ -513,7 +517,11 @@ void main() {
                   vpos: 0,
                 );
             expect(normalResult.success, isFalse, reason: caseLabel);
-            expect(normalResult.errorCode, 'INVALID_PARAMS', reason: caseLabel);
+            expect(
+              normalResult.errorCode,
+              CommentPostErrorCode.malformedInput,
+              reason: caseLabel,
+            );
 
             // No HTTP request should reach the fake client.
             expect(httpClient.requests, isEmpty, reason: caseLabel);
@@ -553,7 +561,11 @@ void main() {
                 text: 'hi',
               );
           expect(opResult.success, isFalse, reason: caseLabel);
-          expect(opResult.errorCode, 'INVALID_PARAMS', reason: caseLabel);
+          expect(
+            opResult.errorCode,
+            CommentPostErrorCode.malformedInput,
+            reason: caseLabel,
+          );
 
           final CommentPostResult normalResult = await repository
               .postNormalComment(
@@ -563,7 +575,11 @@ void main() {
                 vpos: 0,
               );
           expect(normalResult.success, isFalse, reason: caseLabel);
-          expect(normalResult.errorCode, 'INVALID_PARAMS', reason: caseLabel);
+          expect(
+            normalResult.errorCode,
+            CommentPostErrorCode.malformedInput,
+            reason: caseLabel,
+          );
 
           expect(httpClient.requests, isEmpty, reason: caseLabel);
 
@@ -589,6 +605,24 @@ void main() {
 
         repository.dispose();
       });
+    });
+
+    group('CommentPostErrorCode', () {
+      test(
+        'exposes distinct wire values for invalidParams vs malformedInput',
+        () {
+          // Regression lock symmetric with BroadcastControlErrorCode: the two
+          // rejection causes must stay as distinct wire strings so any
+          // future UI consumer can map them to different messages rather
+          // than collapsing malformed input into a sign-in prompt.
+          expect(
+            CommentPostErrorCode.invalidParams,
+            isNot(CommentPostErrorCode.malformedInput),
+          );
+          expect(CommentPostErrorCode.invalidParams, 'INVALID_PARAMS');
+          expect(CommentPostErrorCode.malformedInput, 'MALFORMED_INPUT');
+        },
+      );
     });
 
     group('HTTP 200 + meta body error (false-success protection)', () {
@@ -762,7 +796,7 @@ void main() {
         );
 
         expect(result.success, isFalse);
-        expect(result.errorCode, 'NETWORK_ERROR');
+        expect(result.errorCode, CommentPostErrorCode.networkError);
         expect(httpClient.requests.single.request.isAborted, isTrue);
 
         // Release the stalled response so the fake HttpClient can shut down.
@@ -791,7 +825,7 @@ void main() {
           );
 
           expect(result.success, isFalse);
-          expect(result.errorCode, 'NETWORK_ERROR');
+          expect(result.errorCode, CommentPostErrorCode.networkError);
           expect(httpClient.requests.single.request.isAborted, isTrue);
 
           httpClient.pendingCompleter!.complete();
@@ -819,7 +853,7 @@ void main() {
           );
 
           expect(result.success, isFalse);
-          expect(result.errorCode, 'NETWORK_ERROR');
+          expect(result.errorCode, CommentPostErrorCode.networkError);
           expect(result.errorMessage, contains('TimeoutException'));
           expect(result.errorMessage, contains('0:00:00.050'));
           expect(httpClient.requests.single.request.isAborted, isTrue);

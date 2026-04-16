@@ -28,7 +28,21 @@ class CommentPostErrorCode {
   const CommentPostErrorCode._();
 
   /// Client-side rejection: `programId` or `userSession` was empty.
+  ///
+  /// Distinguished from [malformedInput] so the UI can surface a
+  /// sign-in prompt only in the truly-empty case.
   static const String invalidParams = 'INVALID_PARAMS';
+
+  /// Client-side rejection: `programId` or `userSession` contained
+  /// characters that could be used for CRLF header injection or lv path
+  /// injection (see
+  /// `NiconicoAuthedHttpClient.isValidAuthHeaderValue` /
+  /// `NiconicoAuthedHttpClient.isValidLv`).
+  ///
+  /// Distinguished from [invalidParams] so the UI can surface a
+  /// "malformed input" message instead of a misleading sign-in prompt
+  /// when the fields are non-empty but structurally bad.
+  static const String malformedInput = 'MALFORMED_INPUT';
 
   /// HTTP 400 — malformed request (e.g. text too long on the server side).
   static const String badRequest = 'BAD_REQUEST';
