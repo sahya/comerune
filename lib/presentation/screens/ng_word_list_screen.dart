@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../application/settings/settings_store.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/ng_word_rule.dart';
+import '../widgets/ng_local_notice.dart';
 import '../widgets/text_input_dialog.dart';
 
 /// Screen that displays and manages the list of NG word rules.
@@ -159,49 +160,58 @@ class _NgWordListScreenState extends State<NgWordListScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _rules.isEmpty
-          ? const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  key: Key('ng-word-list-empty'),
-                  'NGワードは登録されていません',
-                  style: TextStyle(fontSize: 14),
-                ),
-              ),
-            )
-          : ListView.separated(
-              key: const Key('ng-word-list'),
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: _rules.length,
-              separatorBuilder: (_, _) => const Divider(height: 1),
-              itemBuilder: (BuildContext context, int index) {
-                final NgWordRule rule = _rules[index];
-                return ListTile(
-                  key: Key('ng-word-tile-$index'),
-                  leading: Switch(
-                    key: Key('ng-word-toggle-$index'),
-                    value: rule.enabled,
-                    onChanged: (_) => _toggleRule(index),
-                  ),
-                  title: Text(
-                    rule.pattern,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: rule.enabled ? null : Colors.grey,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          const NgLocalNotice(key: Key('ng-word-local-notice')),
+          const Divider(height: 1),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _rules.isEmpty
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text(
+                        key: Key('ng-word-list-empty'),
+                        'NGワードは登録されていません',
+                        style: TextStyle(fontSize: 14),
+                      ),
                     ),
+                  )
+                : ListView.separated(
+                    key: const Key('ng-word-list'),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: _rules.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (BuildContext context, int index) {
+                      final NgWordRule rule = _rules[index];
+                      return ListTile(
+                        key: Key('ng-word-tile-$index'),
+                        leading: Switch(
+                          key: Key('ng-word-toggle-$index'),
+                          value: rule.enabled,
+                          onChanged: (_) => _toggleRule(index),
+                        ),
+                        title: Text(
+                          rule.pattern,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: rule.enabled ? null : Colors.grey,
+                          ),
+                        ),
+                        trailing: IconButton(
+                          key: Key('ng-word-delete-$index'),
+                          icon: const Icon(Icons.delete_outline),
+                          tooltip: '削除',
+                          onPressed: () => _deleteRule(index),
+                        ),
+                      );
+                    },
                   ),
-                  trailing: IconButton(
-                    key: Key('ng-word-delete-$index'),
-                    icon: const Icon(Icons.delete_outline),
-                    tooltip: '削除',
-                    onPressed: () => _deleteRule(index),
-                  ),
-                );
-              },
-            ),
+          ),
+        ],
+      ),
     );
   }
 }

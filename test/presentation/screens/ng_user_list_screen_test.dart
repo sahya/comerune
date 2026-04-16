@@ -23,6 +23,37 @@ void main() {
       expect(find.text('NGユーザーIDは登録されていません'), findsOneWidget);
     });
 
+    testWidgets('shows local-only settings notice after load', (
+      WidgetTester tester,
+    ) async {
+      final SettingsStore store = SharedPreferencesSettingsStore(
+        prefs: InMemorySharedPreferences(),
+      );
+
+      await tester.pumpWidget(_buildScreen(store));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('ng-user-local-notice')), findsOneWidget);
+      expect(find.textContaining('ニコニコのサービスとは連携していません'), findsOneWidget);
+    });
+
+    testWidgets('shows local-only settings notice while loading', (
+      WidgetTester tester,
+    ) async {
+      final SettingsStore store = SharedPreferencesSettingsStore(
+        prefs: InMemorySharedPreferences(),
+      );
+
+      await tester.pumpWidget(_buildScreen(store));
+      // Do NOT pumpAndSettle: the notice must be visible even before the
+      // settings load completes.
+      expect(find.byKey(const Key('ng-user-local-notice')), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      // Drain the pending load so the widget tree is idle on teardown.
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('displays registered NG user IDs as list', (
       WidgetTester tester,
     ) async {
