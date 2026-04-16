@@ -16,6 +16,7 @@ class CommentProgramInfo {
     this.broadcasterUserId,
     this.broadcasterIconUrl,
     this.beginAt,
+    this.vposBaseAt,
     this.connectionMethod,
   });
 
@@ -36,6 +37,16 @@ class CommentProgramInfo {
 
   /// When the broadcast started.
   final DateTime? beginAt;
+
+  /// Authoritative vpos base time from
+  /// `data.programSchedule.vposBaseTime` (Issue #465). When non-null
+  /// this takes precedence over [beginAt] for comment vpos calculation;
+  /// when null the existing [beginAt] fallback keeps the previous
+  /// behaviour. Extended / rehearsal broadcasts can have
+  /// [vposBaseAt] drift from [beginAt] by several seconds, which
+  /// otherwise shows up as this client's comments being mis-ordered
+  /// against other viewers server-side.
+  final DateTime? vposBaseAt;
 
   /// The connection method used to connect to the program.
   final ConnectionMethod? connectionMethod;

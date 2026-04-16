@@ -743,6 +743,7 @@ void main() {
       WidgetTester tester, {
       required List<FollowProgram> programs,
       ValueNotifier<DateTime?>? beginAtNotifier,
+      ValueNotifier<DateTime?>? vposBaseAtNotifier,
     }) async {
       final ConnectionSupervisor supervisor = ConnectionSupervisor();
       final SettingsStore settingsStore = SharedPreferencesSettingsStore(
@@ -763,6 +764,7 @@ void main() {
             userSessionStore: userSessionStore,
             followProgramRepository: repository,
             beginAtNotifier: beginAtNotifier,
+            vposBaseAtNotifier: vposBaseAtNotifier,
           ),
         ),
       );
@@ -904,6 +906,42 @@ void main() {
           find.byType(CommentScreen),
         );
         expect(commentScreen.programInfo.beginAt, notifierBeginAt);
+      },
+    );
+
+    testWidgets(
+      'forwards vposBaseAtNotifier value to CommentScreen.programInfo.vposBaseAt '
+      '(Issue #465 plumbing)',
+      (WidgetTester tester) async {
+        // Locks the main.dart → SelectScreen → CommentProgramInfo plumbing
+        // chain so a future refactor cannot silently drop vposBaseAt from
+        // the CommentScreen entry point. Without this test, the per-unit
+        // resolver + controller tests would still pass even if the UI
+        // stopped forwarding the value.
+        final DateTime notifierVposBaseAt = DateTime.utc(2026, 1, 1, 10);
+        final ValueNotifier<DateTime?> vposBaseAtNotifier =
+            ValueNotifier<DateTime?>(notifierVposBaseAt);
+        addTearDown(vposBaseAtNotifier.dispose);
+
+        await pumpWithFollowPrograms(
+          tester,
+          programs: <FollowProgram>[
+            FollowProgram(
+              programId: 'lv465000001',
+              title: 'vposBaseAt plumbing test',
+              providerName: 'tester',
+            ),
+          ],
+          vposBaseAtNotifier: vposBaseAtNotifier,
+        );
+
+        await tester.tap(find.text('vposBaseAt plumbing test'));
+        await tester.pumpAndSettle();
+
+        final CommentScreen commentScreen = tester.widget<CommentScreen>(
+          find.byType(CommentScreen),
+        );
+        expect(commentScreen.programInfo.vposBaseAt, notifierVposBaseAt);
       },
     );
 

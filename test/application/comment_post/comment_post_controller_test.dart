@@ -101,6 +101,71 @@ void main() {
       final DateTime before = begin.subtract(const Duration(seconds: 5));
       expect(CommentPostController.computeVpos(beginAt: begin, now: before), 0);
     });
+
+    test('vposBaseAt takes precedence over beginAt when both are set '
+        '(Issue #465)', () {
+      // Simulate the real-world gap: beginAt is the 開場時刻 and
+      // vposBaseAt (= programSchedule.vposBaseTime) is the 配信開始時刻,
+      // 30 seconds later. N Air's server-side ordering uses the
+      // latter, so using beginAt would put this client's comments
+      // 3000 vpos ahead of other viewers'.
+      final DateTime begin = DateTime.utc(2026, 1, 1, 10);
+      final DateTime vposBase = begin.add(const Duration(seconds: 30));
+      final DateTime now = begin.add(const Duration(seconds: 45));
+
+      expect(
+        CommentPostController.computeVpos(
+          beginAt: begin,
+          vposBaseAt: vposBase,
+          now: now,
+        ),
+        1500, // (45s - 30s) = 15s = 1500 1/100-seconds
+        reason:
+            'when vposBaseAt is provided the reference must be vposBaseAt, '
+            'not beginAt',
+      );
+    });
+
+    test('falls back to beginAt when vposBaseAt is null (Issue #465 '
+        'backward compat)', () {
+      final DateTime begin = DateTime.utc(2026, 1, 1, 10);
+      final DateTime now = begin.add(const Duration(milliseconds: 5000));
+      expect(
+        CommentPostController.computeVpos(
+          beginAt: begin,
+          vposBaseAt: null,
+          now: now,
+        ),
+        500,
+      );
+    });
+
+    test('returns 0 when both references are null (Issue #465)', () {
+      expect(
+        CommentPostController.computeVpos(
+          beginAt: null,
+          vposBaseAt: null,
+          now: DateTime.utc(2026, 1, 1, 10),
+        ),
+        0,
+      );
+    });
+
+    test('clamps to 0 when now is before vposBaseAt (Issue #465)', () {
+      final DateTime vposBase = DateTime.utc(2026, 1, 1, 10);
+      final DateTime before = vposBase.subtract(const Duration(seconds: 5));
+      // beginAt is earlier than `before` to confirm the clamp triggers
+      // on vposBaseAt (the authoritative reference), not on beginAt.
+      final DateTime begin = before.subtract(const Duration(seconds: 5));
+      expect(
+        CommentPostController.computeVpos(
+          beginAt: begin,
+          vposBaseAt: vposBase,
+          now: before,
+        ),
+        0,
+      );
+    });
   });
 
   group('CommentPostController.ensureBroadcasterStatus', () {
@@ -327,6 +392,42 @@ void main() {
       expect(
         request.body,
         jsonEncode(<String, Object>{'text': 'hi', 'vpos': 0}),
+      );
+    });
+
+    test('postComment forwards vposBaseAt so the server-bound vpos is '
+        'computed against the authoritative reference, not beginAt '
+        '(Issue #465)', () async {
+      // Guards the integration between postComment and computeVpos.
+      // Without this, a refactor could silently drop `vposBaseAt` from
+      // the call inside postComment and the static computeVpos tests
+      // would still pass.
+      final _FakeHttpClient fake = _FakeHttpClient();
+      fake.responseStatusCode = 200;
+      fake.responseBody = '';
+      final CommentPostController controller = _buildController(fake);
+
+      final DateTime begin = DateTime.utc(2026, 1, 1, 10);
+      final DateTime vposBase = begin.add(const Duration(seconds: 30));
+      final DateTime now = begin.add(const Duration(seconds: 45));
+
+      final CommentSendResult result = await controller.postComment(
+        lv: 'lv1',
+        userSession: 'session',
+        text: 'hello',
+        asOperator: false,
+        beginAt: begin,
+        vposBaseAt: vposBase,
+        now: now,
+      );
+
+      expect(result.isSuccess, isTrue);
+      final _CapturedRequest request = fake.requests.last;
+      // vpos = (now - vposBaseAt) / 10ms = 15s / 10ms = 1500
+      // (not 4500 which would be (now - beginAt) / 10ms)
+      expect(
+        request.body,
+        jsonEncode(<String, Object>{'text': 'hello', 'vpos': 1500}),
       );
     });
 

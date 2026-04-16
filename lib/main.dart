@@ -152,6 +152,13 @@ class _ComeruneAppState extends State<ComeruneApp> {
   final ValueNotifier<DateTime?> _beginAtNotifier = ValueNotifier<DateTime?>(
     null,
   );
+  // Issue #465: separate from _beginAtNotifier so the vpos reference can
+  // differ from the display-time reference (N Air uses
+  // programSchedule.vposBaseTime for vpos calculation, which can drift
+  // from beginAt on extended / rehearsal broadcasts).
+  final ValueNotifier<DateTime?> _vposBaseAtNotifier = ValueNotifier<DateTime?>(
+    null,
+  );
   late final ValueNotifier<AppThemeMode> _themeModeNotifier;
   late final UserNameResolver _userNameResolver;
   late final FollowProgramRepository _followProgramRepository;
@@ -211,6 +218,9 @@ class _ComeruneAppState extends State<ComeruneApp> {
       },
       onBeginAtResolved: (DateTime beginAt) {
         _beginAtNotifier.value = beginAt;
+      },
+      onVposBaseAtResolved: (DateTime vposBaseAt) {
+        _vposBaseAtNotifier.value = vposBaseAt;
       },
     );
     _ndgrClient = _NdgrClientAdapter(
@@ -279,6 +289,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _broadcasterNameNotifier.dispose();
     _supplierUserIdNotifier.dispose();
     _beginAtNotifier.dispose();
+    _vposBaseAtNotifier.dispose();
     _themeModeNotifier
       ..removeListener(_onThemeModeChanged)
       ..dispose();
@@ -295,6 +306,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _broadcasterNameNotifier.value = null;
     _supplierUserIdNotifier.value = null;
     _beginAtNotifier.value = null;
+    _vposBaseAtNotifier.value = null;
     _ndgrHistoryCount = settings.pastCommentFetchCount.historyCount;
     _timelineStore.setCapacity(_ndgrHistoryCount);
     _statisticsStore.reset();
@@ -331,6 +343,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
           broadcasterNameNotifier: _broadcasterNameNotifier,
           supplierUserIdNotifier: _supplierUserIdNotifier,
           beginAtNotifier: _beginAtNotifier,
+          vposBaseAtNotifier: _vposBaseAtNotifier,
           commentLogWriter: widget.commentLogWriter,
           themeModeNotifier: _themeModeNotifier,
           followProgramRepository: _followProgramRepository,
@@ -353,13 +366,15 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     void Function(String userId)? onSupplierUserIdResolved,
     void Function(String? userId, String name)? onBroadcasterNameResolved,
     void Function(DateTime beginAt)? onBeginAtResolved,
+    void Function(DateTime vposBaseAt)? onVposBaseAtResolved,
   }) : _lvProvider = lvProvider,
        _userSessionProvider = userSessionProvider,
        _programInfoResolver = programInfoResolver,
        _onProgramTitleResolved = onProgramTitleResolved,
        _onSupplierUserIdResolved = onSupplierUserIdResolved,
        _onBroadcasterNameResolved = onBroadcasterNameResolved,
-       _onBeginAtResolved = onBeginAtResolved;
+       _onBeginAtResolved = onBeginAtResolved,
+       _onVposBaseAtResolved = onVposBaseAtResolved;
 
   final String Function() _lvProvider;
   final Future<String> Function() _userSessionProvider;
@@ -368,6 +383,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
   final void Function(String userId)? _onSupplierUserIdResolved;
   final void Function(String? userId, String name)? _onBroadcasterNameResolved;
   final void Function(DateTime beginAt)? _onBeginAtResolved;
+  final void Function(DateTime vposBaseAt)? _onVposBaseAtResolved;
   final StreamController<reconnect.SessionWsEvent> _eventsController =
       StreamController<reconnect.SessionWsEvent>.broadcast();
 
@@ -403,17 +419,24 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       //   1. title — no dependencies, shown first in the UI header.
       //   2. beginAt — no dependencies, enables elapsed-time display
       //      as soon as comments start arriving.
-      //   3. broadcasterName — emitted even when supplierUserId is absent.
+      //   3. vposBaseAt — no dependencies; authoritative reference for
+      //      comment vpos (Issue #465). Emitted adjacent to beginAt so
+      //      the comment-post pipeline sees both at once and does not
+      //      fall back to beginAt for a frame when both are available.
+      //   4. broadcasterName — emitted even when supplierUserId is absent.
       //      If supplierUserId exists, this also seeds the name cache so
       //      the subsequent supplierUserId callback can skip a redundant
       //      HTTP resolve.
-      //   4. supplierUserId — triggers name resolution; the cache is
+      //   5. supplierUserId — triggers name resolution; the cache is
       //      already warm if broadcasterName was available.
       if (programInfo.title != null) {
         _onProgramTitleResolved?.call(programInfo.title!);
       }
       if (programInfo.beginAt != null) {
         _onBeginAtResolved?.call(programInfo.beginAt!);
+      }
+      if (programInfo.vposBaseAt != null) {
+        _onVposBaseAtResolved?.call(programInfo.vposBaseAt!);
       }
       if (programInfo.broadcasterName != null) {
         _onBroadcasterNameResolved?.call(

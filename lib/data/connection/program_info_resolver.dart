@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 import '../utils/begin_at_parser.dart';
 
 /// Resolves the NDGR view URI from the niconico programinfo API.
@@ -151,19 +153,69 @@ class ProgramInfoResolver {
     // instead of wall-clock time for each comment.
     final DateTime? beginAt = parseBeginAt(data);
 
+    // Extract the vpos base time (Issue #465). N Air uses
+    // `programSchedule.vposBaseTime` as the authoritative reference for
+    // computing comment `vpos`, which can differ from `beginAt`
+    // (開場時刻 vs 配信開始時刻) by several seconds. When this field is
+    // present callers should prefer it over `beginAt`; when absent, the
+    // existing `beginAt` fallback keeps the previous behaviour intact.
+    final DateTime? vposBaseAt = _extractVposBaseAt(data);
+
     log(
       'Resolved NDGR viewUri for $lv via programinfo'
       ' (broadcaster: ${broadcasterInfo.name ?? 'null'}'
-      ', userId: ${broadcasterInfo.userId ?? 'null'})',
+      ', userId: ${broadcasterInfo.userId ?? 'null'}'
+      ', beginAt: ${beginAt?.toIso8601String() ?? 'null'}'
+      ', vposBaseAt: ${vposBaseAt?.toIso8601String() ?? 'null'})',
       name: 'ProgramInfoResolver',
     );
+    // Mirror to debugPrint in debug builds so the vposBaseAt extraction is
+    // visible in `adb logcat` / `flutter logs` (which do not forward
+    // `dart:developer.log` reliably). Stripped in release by kDebugMode.
+    if (kDebugMode) {
+      debugPrint(
+        '[ProgramInfoResolver] Resolved NDGR viewUri for $lv '
+        '(beginAt: ${beginAt?.toIso8601String() ?? 'null'}, '
+        'vposBaseAt: ${vposBaseAt?.toIso8601String() ?? 'null'})',
+      );
+    }
     return ProgramInfo(
       viewUri: parsed,
       title: title,
       supplierUserId: broadcasterInfo.userId,
       broadcasterName: broadcasterInfo.name,
       beginAt: beginAt,
+      vposBaseAt: vposBaseAt,
     );
+  }
+
+  /// Extracts `vposBaseAt` from the programinfo response (Issue #465).
+  ///
+  /// Tries, in order:
+  ///   1. `data.programSchedule.vposBaseTime` — N Air's documented path.
+  ///   2. `data.vposBaseAt` — flatter shape observed on some related APIs.
+  ///
+  /// Both paths are parsed via [parseDateTimeFlexible] so ISO 8601 strings,
+  /// seconds-epoch ints and milliseconds-epoch ints are all accepted. Any
+  /// other shape (float, map, list, non-parseable string) returns `null`
+  /// so the caller falls back to `beginAt`. This conservative path keeps
+  /// viewer-visible timestamps safe even if upstream ever renames the
+  /// field: at worst we revert to today's `beginAt`-based vpos rather
+  /// than decoding something unrelated as a timestamp.
+  static DateTime? _extractVposBaseAt(Map<String, dynamic> data) {
+    // Candidate A: nested under `programSchedule`.
+    final Object? programSchedule = data['programSchedule'];
+    if (programSchedule is Map<String, dynamic>) {
+      final DateTime? fromSchedule = parseDateTimeFlexible(
+        programSchedule['vposBaseTime'],
+      );
+      if (fromSchedule != null) {
+        return fromSchedule;
+      }
+    }
+
+    // Candidate B: top-level fallback.
+    return parseDateTimeFlexible(data['vposBaseAt']);
   }
 
   /// Extracts the broadcaster user ID and display name from the programinfo
@@ -273,6 +325,7 @@ class ProgramInfo {
     this.supplierUserId,
     this.broadcasterName,
     this.beginAt,
+    this.vposBaseAt,
   });
 
   /// The NDGR view URI extracted from `data.rooms[0].viewUri`.
@@ -292,6 +345,18 @@ class ProgramInfo {
   /// The program start time from `data.beginAt`, used to display elapsed
   /// time for comments. `null` when the field is absent or unparseable.
   final DateTime? beginAt;
+
+  /// Authoritative vpos base time (Issue #465), extracted from
+  /// `data.programSchedule.vposBaseTime` (primary) or `data.vposBaseAt`
+  /// (fallback).
+  ///
+  /// This is the reference N Air uses for comment `vpos` calculation.
+  /// It can differ from [beginAt] by several seconds (開場 vs 配信開始)
+  /// on extended / rehearsal broadcasts. Callers that compute a `vpos`
+  /// for comment posting should prefer this value when non-null and
+  /// fall back to [beginAt] otherwise — using `beginAt` as a fallback
+  /// keeps behaviour identical to the pre-Issue-#465 code path.
+  final DateTime? vposBaseAt;
 }
 
 class ProgramInfoResolveException implements Exception {

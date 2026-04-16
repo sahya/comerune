@@ -1418,6 +1418,7 @@ class _CommentScreenState extends State<CommentScreen> {
       text: text,
       asOperator: asOperator,
       beginAt: widget.programInfo.beginAt,
+      vposBaseAt: widget.programInfo.vposBaseAt,
       maxLength: maxLength,
       isAnonymous: isAnonymous,
     );

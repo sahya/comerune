@@ -124,16 +124,31 @@ class CommentPostController {
     return null;
   }
 
-  /// Computes a vpos (1/100-second offset from [beginAt]).
+  /// Computes a vpos (1/100-second offset from the authoritative vpos
+  /// reference time).
   ///
-  /// Returns `0` (with no error) when [beginAt] is null. A negative
-  /// difference is clamped to 0 as well; the API rejects negative vpos.
-  static int computeVpos({required DateTime? beginAt, DateTime? now}) {
-    if (beginAt == null) {
+  /// [vposBaseAt] is the programinfo-provided `vposBaseTime` (Issue #465)
+  /// and, when non-null, takes precedence over [beginAt]. This matches
+  /// N Air's reference implementation: the two values can differ by
+  /// several seconds on extended / rehearsal broadcasts (開場時刻 vs
+  /// 配信開始時刻), and using the wrong one would drift the server-side
+  /// ordering of this client's comments relative to other viewers.
+  ///
+  /// When both [vposBaseAt] and [beginAt] are null the function returns
+  /// `0` — the legacy behaviour — so callers that have not yet plumbed
+  /// through `vposBaseAt` keep working. A negative difference is clamped
+  /// to `0` as well because the API rejects negative vpos.
+  static int computeVpos({
+    required DateTime? beginAt,
+    DateTime? vposBaseAt,
+    DateTime? now,
+  }) {
+    final DateTime? reference = vposBaseAt ?? beginAt;
+    if (reference == null) {
       return 0;
     }
-    final DateTime reference = now ?? DateTime.now();
-    final int ms = reference.difference(beginAt).inMilliseconds;
+    final DateTime clock = now ?? DateTime.now();
+    final int ms = clock.difference(reference).inMilliseconds;
     if (ms <= 0) {
       return 0;
     }
@@ -188,8 +203,11 @@ class CommentPostController {
   /// Sends a comment. Validates [text] client-side first; on success calls
   /// the appropriate repository method.
   ///
-  /// [beginAt] is used to compute vpos for normal comments. It is ignored
-  /// for operator comments.
+  /// [beginAt] is the programinfo `beginAt`, used as the legacy / fallback
+  /// vpos reference. [vposBaseAt] (Issue #465) is the authoritative vpos
+  /// base time from `data.programSchedule.vposBaseTime` and takes
+  /// precedence over [beginAt] when non-null. Both are ignored for
+  /// operator comments.
   ///
   /// [maxLength] must mirror the value the UI enforced for its counter.
   /// **Do not pass the module constant directly** — always pipe in the
@@ -213,6 +231,7 @@ class CommentPostController {
     required String text,
     required bool asOperator,
     DateTime? beginAt,
+    DateTime? vposBaseAt,
     DateTime? now,
     int? maxLength,
     bool isAnonymous = false,
@@ -264,7 +283,11 @@ class CommentPostController {
           text: text,
         );
       } else {
-        final int vpos = computeVpos(beginAt: beginAt, now: now);
+        final int vpos = computeVpos(
+          beginAt: beginAt,
+          vposBaseAt: vposBaseAt,
+          now: now,
+        );
         result = await _liveCommentRepository.postNormalComment(
           programId: lv,
           userSession: userSession,

@@ -546,6 +546,255 @@ void main() {
       resolver.dispose();
     });
 
+    group('vposBaseAt (Issue #465)', () {
+      test('extracts vposBaseAt from programSchedule.vposBaseTime '
+          '(seconds epoch)', () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseBody = jsonEncode(<String, Object?>{
+          'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+          'data': <String, Object?>{
+            'title': 'vpos test',
+            'rooms': <Object?>[
+              <String, Object?>{
+                'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/V1',
+              },
+            ],
+            'programSchedule': <String, Object?>{
+              'vposBaseTime': 1719828060, // 2024-07-01 10:01:00Z
+            },
+          },
+        });
+
+        final ProgramInfoResolver resolver = ProgramInfoResolver(
+          httpClient: httpClient,
+        );
+
+        final ProgramInfo result = await resolver.resolve(
+          lv: 'lv100',
+          userSession: 'session',
+        );
+
+        expect(result.vposBaseAt, isNotNull);
+        expect(result.vposBaseAt!.toUtc(), DateTime.utc(2024, 7, 1, 10, 1, 0));
+
+        resolver.dispose();
+      });
+
+      test('extracts vposBaseAt from programSchedule.vposBaseTime '
+          '(ISO 8601 string)', () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseBody = jsonEncode(<String, Object?>{
+          'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+          'data': <String, Object?>{
+            'rooms': <Object?>[
+              <String, Object?>{
+                'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/V2',
+              },
+            ],
+            'programSchedule': <String, Object?>{
+              'vposBaseTime': '2025-07-01T12:00:00+09:00',
+            },
+          },
+        });
+
+        final ProgramInfoResolver resolver = ProgramInfoResolver(
+          httpClient: httpClient,
+        );
+
+        final ProgramInfo result = await resolver.resolve(
+          lv: 'lv101',
+          userSession: 'session',
+        );
+
+        expect(result.vposBaseAt, isNotNull);
+        expect(result.vposBaseAt!.toUtc(), DateTime.utc(2025, 7, 1, 3, 0, 0));
+
+        resolver.dispose();
+      });
+
+      test('extracts vposBaseAt from programSchedule.vposBaseTime '
+          '(milliseconds epoch)', () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        // 1719828060000 == 2024-07-01T10:01:00Z (milliseconds since epoch).
+        // Locks the 13+-digit branch of parseDateTimeFlexible against
+        // regressions where the threshold is moved or removed.
+        httpClient.responseBody = jsonEncode(<String, Object?>{
+          'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+          'data': <String, Object?>{
+            'rooms': <Object?>[
+              <String, Object?>{
+                'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/V1ms',
+              },
+            ],
+            'programSchedule': <String, Object?>{'vposBaseTime': 1719828060000},
+          },
+        });
+
+        final ProgramInfoResolver resolver = ProgramInfoResolver(
+          httpClient: httpClient,
+        );
+
+        final ProgramInfo result = await resolver.resolve(
+          lv: 'lv100ms',
+          userSession: 'session',
+        );
+
+        expect(result.vposBaseAt, isNotNull);
+        expect(result.vposBaseAt!.toUtc(), DateTime.utc(2024, 7, 1, 10, 1, 0));
+
+        resolver.dispose();
+      });
+
+      test('falls back to top-level data.vposBaseAt when programSchedule '
+          'is absent', () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseBody = jsonEncode(<String, Object?>{
+          'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+          'data': <String, Object?>{
+            'rooms': <Object?>[
+              <String, Object?>{
+                'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/V3',
+              },
+            ],
+            'vposBaseAt': 1719828120, // 2024-07-01 10:02:00Z
+          },
+        });
+
+        final ProgramInfoResolver resolver = ProgramInfoResolver(
+          httpClient: httpClient,
+        );
+
+        final ProgramInfo result = await resolver.resolve(
+          lv: 'lv102',
+          userSession: 'session',
+        );
+
+        expect(result.vposBaseAt, isNotNull);
+        expect(result.vposBaseAt!.toUtc(), DateTime.utc(2024, 7, 1, 10, 2, 0));
+
+        resolver.dispose();
+      });
+
+      test('vposBaseAt is null when neither programSchedule nor top-level '
+          'field is present — beginAt fallback preserved', () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseBody = jsonEncode(<String, Object?>{
+          'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+          'data': <String, Object?>{
+            'rooms': <Object?>[
+              <String, Object?>{
+                'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/V4',
+              },
+            ],
+            'beginAt': 1719828000,
+          },
+        });
+
+        final ProgramInfoResolver resolver = ProgramInfoResolver(
+          httpClient: httpClient,
+        );
+
+        final ProgramInfo result = await resolver.resolve(
+          lv: 'lv103',
+          userSession: 'session',
+        );
+
+        expect(
+          result.vposBaseAt,
+          isNull,
+          reason:
+              'no vpos base field is present; caller falls back to '
+              'beginAt via computeVpos()',
+        );
+        expect(result.beginAt, isNotNull);
+
+        resolver.dispose();
+      });
+
+      test('invalid vposBaseTime shapes (float / bool / empty string) are '
+          'rejected and vposBaseAt stays null', () async {
+        // Three shapes that would yield a garbage DateTime if accepted
+        // uncritically. Run them sequentially against the same resolver
+        // instance (distinct responses) to lock the strict parsing.
+        const List<Object?> badShapes = <Object?>[
+          1719828000.5, // float
+          true, // bool
+          '', // empty string
+          'not-a-date', // unparseable string
+          <String>[], // list
+          <String, Object?>{}, // nested map
+        ];
+
+        for (final Object? bad in badShapes) {
+          final _FakeHttpClient httpClient = _FakeHttpClient();
+          httpClient.responseBody = jsonEncode(<String, Object?>{
+            'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+            'data': <String, Object?>{
+              'rooms': <Object?>[
+                <String, Object?>{
+                  'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/V5',
+                },
+              ],
+              'programSchedule': <String, Object?>{'vposBaseTime': bad},
+            },
+          });
+
+          final ProgramInfoResolver resolver = ProgramInfoResolver(
+            httpClient: httpClient,
+          );
+
+          final ProgramInfo result = await resolver.resolve(
+            lv: 'lv104',
+            userSession: 'session',
+          );
+
+          expect(
+            result.vposBaseAt,
+            isNull,
+            reason:
+                'bad shape ${bad.runtimeType} ($bad) must be rejected so '
+                'comment vpos stays on the safe beginAt fallback rather '
+                'than decoding garbage timestamps.',
+          );
+
+          resolver.dispose();
+        }
+      });
+
+      test('programSchedule.vposBaseTime takes precedence over the '
+          'top-level vposBaseAt fallback when both are present', () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseBody = jsonEncode(<String, Object?>{
+          'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+          'data': <String, Object?>{
+            'rooms': <Object?>[
+              <String, Object?>{
+                'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/V6',
+              },
+            ],
+            // Primary path: programSchedule.vposBaseTime → 10:03:00Z.
+            'programSchedule': <String, Object?>{'vposBaseTime': 1719828180},
+            // Fallback path: data.vposBaseAt → 10:04:00Z. Must be
+            // ignored because the primary path is populated.
+            'vposBaseAt': 1719828240,
+          },
+        });
+
+        final ProgramInfoResolver resolver = ProgramInfoResolver(
+          httpClient: httpClient,
+        );
+
+        final ProgramInfo result = await resolver.resolve(
+          lv: 'lv105',
+          userSession: 'session',
+        );
+
+        expect(result.vposBaseAt!.toUtc(), DateTime.utc(2024, 7, 1, 10, 3, 0));
+
+        resolver.dispose();
+      });
+    });
+
     test(
       'sends request without auth headers when user_session is empty',
       () async {

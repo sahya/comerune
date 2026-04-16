@@ -53,6 +53,7 @@ class SelectScreen extends StatefulWidget {
     this.broadcasterNameNotifier,
     this.supplierUserIdNotifier,
     this.beginAtNotifier,
+    this.vposBaseAtNotifier,
     this.commentLogWriter,
     this.themeModeNotifier,
     this.followProgramRepository,
@@ -78,6 +79,12 @@ class SelectScreen extends StatefulWidget {
   final ValueNotifier<String?>? broadcasterNameNotifier;
   final ValueNotifier<String?>? supplierUserIdNotifier;
   final ValueNotifier<DateTime?>? beginAtNotifier;
+
+  /// Notifier carrying `programSchedule.vposBaseTime` (Issue #465). When
+  /// present this is the authoritative reference for computing comment
+  /// `vpos`; when absent or null the existing [beginAtNotifier] fallback
+  /// preserves the pre-Issue-#465 behaviour.
+  final ValueNotifier<DateTime?>? vposBaseAtNotifier;
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
   final FollowProgramRepository? followProgramRepository;
   final MyProgramRepository? myProgramRepository;
@@ -494,6 +501,7 @@ class _SelectScreenState extends State<SelectScreen>
         widget.broadcasterNameNotifier!,
       if (widget.supplierUserIdNotifier != null) widget.supplierUserIdNotifier!,
       if (widget.beginAtNotifier != null) widget.beginAtNotifier!,
+      if (widget.vposBaseAtNotifier != null) widget.vposBaseAtNotifier!,
     ];
 
     return ListenableBuilder(
@@ -528,6 +536,10 @@ class _SelectScreenState extends State<SelectScreen>
             broadcasterUserId: supplierUserId,
             broadcasterIconUrl: broadcasterIconUrl,
             beginAt: beginAt,
+            // vposBaseAt is sourced only from programinfo (there is no
+            // follow-list equivalent), so unlike beginAt it does not need
+            // a dual-source _resolveCommentBeginAt-style helper.
+            vposBaseAt: widget.vposBaseAtNotifier?.value,
             connectionMethod: _connectionMethod,
           ),
           connectionSupervisor: widget.connectionSupervisor,
