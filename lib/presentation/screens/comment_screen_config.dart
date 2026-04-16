@@ -121,29 +121,20 @@ class CommentCallbacks {
   final void Function(String userId)? onNicknameRemoved;
 }
 
-/// Groups filter-related parameters for [CommentScreen].
+/// Content-based filtering and per-user rendering attributes for
+/// [CommentScreen].
 ///
-/// This config intentionally carries two related but distinct responsibilities:
+/// Responsible for hiding messages based on *who/what* sent them (blocked
+/// users, banned words, star-prefixed bodies, slash-prefixed speech skip) and
+/// for carrying per-user display attributes (color / nickname) plus the
+/// "emphasize gift/nicoad" rendering toggle.
 ///
-/// - **Content/user filters** — [ngUserIds], [ngWords], [presetNgWords],
-///   [starPrefixHidingEnabled]. These hide messages based on who/what sent
-///   them (blocked users, banned words, star-prefixed bodies).
-/// - **Message-type display toggles** — [showOperatorComment],
-///   [showSystemMessage], [showEmotion]. These hide entire message categories
-///   the viewer does not want to see (e.g. 運営コメント OFF).
-///
-/// Both are funneled through `_shouldDisplayMessage` in `CommentScreen` and
-/// therefore share this parameter bag. They are grouped together because the
-/// UI treats them uniformly as "things that suppress a message from the list";
-/// keep that in mind if adding new fields — if a new flag changes *rendering*
-/// rather than *visibility*, it does not belong here.
-///
-/// TODO(follow-up): consider splitting this class into two dedicated configs
-/// (content-filter vs. message-type-display-toggles) so each responsibility
-/// can evolve independently. follow-up issue: pending
+/// Sibling class: [MessageTypeVisibilityConfig] handles message *category* toggles
+/// (運営 / system / emotion / gift / nicoad list visibility). Kept separate so
+/// each responsibility can evolve independently. See issue #457.
 @immutable
-class CommentFilterConfig {
-  const CommentFilterConfig({
+class ContentFilterConfig {
+  const ContentFilterConfig({
     this.ngUserIds = const <String>{},
     this.ngWords = const <String>[],
     this.presetNgWords = const <String>[],
@@ -152,11 +143,6 @@ class CommentFilterConfig {
     this.emphasizeGiftNicoadComment = true,
     this.userColorMap = const <String, int>{},
     this.userNicknameMap = const <String, String>{},
-    this.showOperatorComment = true,
-    this.showSystemMessage = true,
-    this.showEmotion = true,
-    this.showGiftComment = true,
-    this.showNicoadComment = true,
     this.ngProtectionNotificationEnabled = false,
   });
 
@@ -183,8 +169,8 @@ class CommentFilterConfig {
   /// subtle shaded background and a leading type icon. When false, they are
   /// displayed with the default chat styling.
   ///
-  /// This only affects rendering; gift/nicoad messages are always shown in
-  /// the comment list regardless of this flag.
+  /// This only affects rendering; gift/nicoad list visibility is governed by
+  /// [MessageTypeVisibilityConfig.showGiftComment] / [MessageTypeVisibilityConfig.showNicoadComment].
   final bool emphasizeGiftNicoadComment;
 
   /// Per-user comment color map. Keys are user IDs, values are ARGB32 ints.
@@ -192,6 +178,28 @@ class CommentFilterConfig {
 
   /// Per-user nickname (コテハン) map. Keys are user IDs, values are nicknames.
   final Map<String, String> userNicknameMap;
+
+  /// When true, the comment screen announces via snackbar + AppBar badge
+  /// every time a comment is hidden by NG word or NG user filtering.
+  ///
+  /// When false (default), filtering stays silent.
+  final bool ngProtectionNotificationEnabled;
+}
+
+/// Message-type visibility toggles for [CommentScreen].
+///
+/// Controls whether entire message categories (運営 / system / emotion /
+/// gift / nicoad) are shown in the comment list. See sibling class
+/// [ContentFilterConfig] for content-based filtering. See issue #457.
+@immutable
+class MessageTypeVisibilityConfig {
+  const MessageTypeVisibilityConfig({
+    this.showOperatorComment = true,
+    this.showSystemMessage = true,
+    this.showEmotion = true,
+    this.showGiftComment = true,
+    this.showNicoadComment = true,
+  });
 
   /// Whether operator (運営) comments are displayed. Defaults to true.
   final bool showOperatorComment;
@@ -216,12 +224,6 @@ class CommentFilterConfig {
   /// This does not affect the TTS read-aloud pipeline, which is governed
   /// separately by `CommentSpeechConfig.readNicoadComment`.
   final bool showNicoadComment;
-
-  /// When true, the comment screen announces via snackbar + AppBar badge
-  /// every time a comment is hidden by NG word or NG user filtering.
-  ///
-  /// When false (default), filtering stays silent.
-  final bool ngProtectionNotificationEnabled;
 }
 
 /// Groups comment-log parameters for [CommentScreen].
@@ -266,7 +268,7 @@ class CommentSpeechConfig {
   ///
   /// Only the message body (`message.content`) is spoken — no additional
   /// formatting or user-name prefixing is applied. This is independent of
-  /// [CommentFilterConfig.showGiftComment], which controls list visibility.
+  /// [MessageTypeVisibilityConfig.showGiftComment], which controls list visibility.
   final bool readGiftComment;
 
   /// When true, ニコニ広告 (nicoad) messages are read aloud by TTS.
@@ -274,7 +276,7 @@ class CommentSpeechConfig {
   ///
   /// Only the message body (`message.content`) is spoken — no additional
   /// formatting or user-name prefixing is applied. This is independent of
-  /// [CommentFilterConfig.showNicoadComment], which controls list visibility.
+  /// [MessageTypeVisibilityConfig.showNicoadComment], which controls list visibility.
   final bool readNicoadComment;
 
   /// Settings store for persisting teach command dictionary changes.

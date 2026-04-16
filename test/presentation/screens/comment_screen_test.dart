@@ -6508,7 +6508,7 @@ class _NgProtectionHostState extends State<_NgProtectionHost> {
           onDifferentLvConnected: (_, _) async {},
         ),
         themeMode: AppThemeMode.light,
-        filterConfig: CommentFilterConfig(
+        contentFilter: ContentFilterConfig(
           ngWords: widget.ngWords,
           ngUserIds: widget.ngUserIds,
           ngProtectionNotificationEnabled: widget.notificationEnabled,
@@ -6641,7 +6641,7 @@ class _CommentScreenHostState extends State<_CommentScreenHost> {
             nextLv = next;
           },
         ),
-        filterConfig: CommentFilterConfig(
+        contentFilter: ContentFilterConfig(
           starPrefixHidingEnabled: widget.starPrefixHidingEnabled,
         ),
         themeMode: AppThemeMode.light,
@@ -6729,20 +6729,22 @@ Widget _buildScreen({
         totalCommentCount: totalCommentCount,
         activeUserCount: activeUserCount,
       ),
-      filterConfig: CommentFilterConfig(
+      contentFilter: ContentFilterConfig(
         ngUserIds: ngUserIds,
         ngWords: ngWords,
         presetNgWords: presetNgWords,
         userColorMap: userColorMap,
         userNicknameMap: userNicknameMap,
         starPrefixHidingEnabled: starPrefixHidingEnabled,
+        emphasizeGiftNicoadComment: emphasizeGiftNicoadComment,
+        ngProtectionNotificationEnabled: ngProtectionNotificationEnabled,
+      ),
+      messageTypeVisibility: MessageTypeVisibilityConfig(
         showOperatorComment: showOperatorComment,
         showSystemMessage: showSystemMessage,
         showEmotion: showEmotion,
         showGiftComment: showGiftComment,
         showNicoadComment: showNicoadComment,
-        emphasizeGiftNicoadComment: emphasizeGiftNicoadComment,
-        ngProtectionNotificationEnabled: ngProtectionNotificationEnabled,
       ),
       logConfig: CommentLogConfig(
         commentLogWriter: commentLogWriter,

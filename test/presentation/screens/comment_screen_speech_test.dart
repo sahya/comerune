@@ -1574,7 +1574,7 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
       themeMode: AppThemeMode.light,
       showUserName: widget.showUserName,
       userNameResolution: userNameResolution,
-      filterConfig: CommentFilterConfig(
+      contentFilter: ContentFilterConfig(
         ngUserIds: _ngUserIds,
         ngWords: widget.ngWords,
         starPrefixHidingEnabled: widget.starPrefixHidingEnabled,

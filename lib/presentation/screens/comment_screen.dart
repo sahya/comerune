@@ -319,7 +319,8 @@ class CommentScreen extends StatefulWidget {
     this.autoNicknameRegistration = true,
     required this.themeMode,
     this.statistics = const CommentStatisticsConfig(),
-    this.filterConfig = const CommentFilterConfig(),
+    this.contentFilter = const ContentFilterConfig(),
+    this.messageTypeVisibility = const MessageTypeVisibilityConfig(),
     this.logConfig = const CommentLogConfig(),
     this.speechConfig = const CommentSpeechConfig(),
     this.commentPostController,
@@ -377,8 +378,13 @@ class CommentScreen extends StatefulWidget {
   /// Statistics display configuration and live data.
   final CommentStatisticsConfig statistics;
 
-  /// Grouped filter parameters (NG users, NG words, colors, nicknames).
-  final CommentFilterConfig filterConfig;
+  /// Content-based filters + per-user rendering attributes
+  /// (NG users, NG words, colors, nicknames, prefix toggles, emphasis).
+  final ContentFilterConfig contentFilter;
+
+  /// Message-type visibility toggles
+  /// (運営 / system / emotion / gift / nicoad list visibility).
+  final MessageTypeVisibilityConfig messageTypeVisibility;
 
   /// Grouped comment-log parameters.
   final CommentLogConfig logConfig;
@@ -479,7 +485,7 @@ class _CommentScreenState extends State<CommentScreen> {
   // ---------------------------------------------------------------------------
   // NG protection notification state (Issue #244)
   //
-  // Tracked only when [CommentFilterConfig.ngProtectionNotificationEnabled]
+  // Tracked only when [ContentFilterConfig.ngProtectionNotificationEnabled]
   // is true. Keeps a running badge count (never throttled) and a throttled
   // snackbar window so that bursts of filtered comments don't spam the UI.
   // ---------------------------------------------------------------------------
@@ -529,7 +535,7 @@ class _CommentScreenState extends State<CommentScreen> {
     _syncWakelockForStatus(_lastStatus);
 
     _requestUserNameResolution(widget.messages);
-    _effectivePresetNgWords = widget.filterConfig.presetNgWords;
+    _effectivePresetNgWords = widget.contentFilter.presetNgWords;
     _refreshNormalizedNgWords();
 
     // Seed the NG-protection cursor with the current tail so that messages
@@ -538,7 +544,7 @@ class _CommentScreenState extends State<CommentScreen> {
     if (widget.messages.isNotEmpty) {
       _lastProtectionInspectedMessageId = widget.messages.last.id;
     }
-    if (widget.filterConfig.presetNgWords.isEmpty) {
+    if (widget.contentFilter.presetNgWords.isEmpty) {
       unawaited(_loadPresetNgWordsFromAsset());
     }
 
@@ -573,18 +579,18 @@ class _CommentScreenState extends State<CommentScreen> {
     }
 
     if (!_listEqualsShallow(
-          oldWidget.filterConfig.ngWords,
-          widget.filterConfig.ngWords,
+          oldWidget.contentFilter.ngWords,
+          widget.contentFilter.ngWords,
         ) ||
         !_listEqualsShallow(
-          oldWidget.filterConfig.presetNgWords,
-          widget.filterConfig.presetNgWords,
+          oldWidget.contentFilter.presetNgWords,
+          widget.contentFilter.presetNgWords,
         )) {
-      if (widget.filterConfig.presetNgWords.isNotEmpty) {
-        _effectivePresetNgWords = widget.filterConfig.presetNgWords;
+      if (widget.contentFilter.presetNgWords.isNotEmpty) {
+        _effectivePresetNgWords = widget.contentFilter.presetNgWords;
         _refreshNormalizedNgWords();
-      } else if (oldWidget.filterConfig.presetNgWords.isNotEmpty &&
-          widget.filterConfig.presetNgWords.isEmpty) {
+      } else if (oldWidget.contentFilter.presetNgWords.isNotEmpty &&
+          widget.contentFilter.presetNgWords.isEmpty) {
         _effectivePresetNgWords = const <String>[];
         _refreshNormalizedNgWords();
         unawaited(_loadPresetNgWordsFromAsset());
@@ -1088,14 +1094,14 @@ class _CommentScreenState extends State<CommentScreen> {
       }
       // Skip NG users.
       final String? userId = message.userId;
-      if (userId != null && widget.filterConfig.ngUserIds.contains(userId)) {
+      if (userId != null && widget.contentFilter.ngUserIds.contains(userId)) {
         _debugLogLazy(
           () => '[CommentScreen] submitComment: SKIP NG user=$userId',
         );
         continue;
       }
       // Skip star-prefix hidden comments.
-      if (widget.filterConfig.starPrefixHidingEnabled &&
+      if (widget.contentFilter.starPrefixHidingEnabled &&
           message.content.startsWith('☆')) {
         _debugLog('[CommentScreen] submitComment: SKIP star-prefix');
         continue;
@@ -1111,7 +1117,7 @@ class _CommentScreenState extends State<CommentScreen> {
         continue;
       }
       // Skip slash-prefix comments (shown in the list, but not read aloud).
-      if (widget.filterConfig.slashPrefixSkipEnabled &&
+      if (widget.contentFilter.slashPrefixSkipEnabled &&
           message.content.startsWith('/')) {
         _debugLog('[CommentScreen] submitComment: SKIP slash-prefix');
         continue;
@@ -1477,10 +1483,10 @@ class _CommentScreenState extends State<CommentScreen> {
   /// call. The badge counter always increases on every NG hit, while the
   /// snackbar is throttled to at most one per [_protectionSnackBarWindow].
   ///
-  /// No-op when [CommentFilterConfig.ngProtectionNotificationEnabled] is
+  /// No-op when [ContentFilterConfig.ngProtectionNotificationEnabled] is
   /// false (existing silent behavior is preserved).
   void _processNgProtectionNotifications(List<AppMessage> newMessages) {
-    if (!widget.filterConfig.ngProtectionNotificationEnabled) {
+    if (!widget.contentFilter.ngProtectionNotificationEnabled) {
       // Keep the cursor advancing so that toggling ON later does not
       // retroactively announce historical NG hits.
       if (newMessages.isNotEmpty) {
@@ -1558,7 +1564,7 @@ class _CommentScreenState extends State<CommentScreen> {
 
       final String? userId = message.userId;
       final bool isNgUser =
-          userId != null && widget.filterConfig.ngUserIds.contains(userId);
+          userId != null && widget.contentFilter.ngUserIds.contains(userId);
       final String? matchedWord = _matchedNgWord(message.content);
       if (!isNgUser && matchedWord == null) {
         continue;
@@ -1847,7 +1853,9 @@ class _CommentScreenState extends State<CommentScreen> {
                             : '古い順に切替',
                         onPressed: _toggleSortOrder,
                       ),
-                      if (widget.filterConfig.ngProtectionNotificationEnabled &&
+                      if (widget
+                              .contentFilter
+                              .ngProtectionNotificationEnabled &&
                           _protectedCount > 0)
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -1913,7 +1921,7 @@ class _CommentScreenState extends State<CommentScreen> {
                     showUserName: widget.showUserName,
                     fontSize: widget.commentFontSize,
                     resolveDisplayName: _resolveDisplayName,
-                    userColorMap: widget.filterConfig.userColorMap,
+                    userColorMap: widget.contentFilter.userColorMap,
                     onUnpin: _unpinMessage,
                     beginAt: widget.programInfo.beginAt,
                     commentTwoLineEnabled: widget.commentTwoLineEnabled,
@@ -1982,7 +1990,7 @@ class _CommentScreenState extends State<CommentScreen> {
                             itemBuilder: (BuildContext context, int index) {
                               final AppMessage message = sortedMessages[index];
                               final int? userColor = message.userId != null
-                                  ? widget.filterConfig.userColorMap[message
+                                  ? widget.contentFilter.userColorMap[message
                                         .userId!]
                                   : null;
                               return _CommentRow(
@@ -1992,14 +2000,15 @@ class _CommentScreenState extends State<CommentScreen> {
                                 showUserName: widget.showUserName,
                                 fontSize: widget.commentFontSize,
                                 textScaler: textScaler,
-                                starPrefixHidingEnabled:
-                                    widget.filterConfig.starPrefixHidingEnabled,
+                                starPrefixHidingEnabled: widget
+                                    .contentFilter
+                                    .starPrefixHidingEnabled,
                                 commentTwoLineEnabled:
                                     widget.commentTwoLineEnabled,
                                 zebraStripingEnabled:
                                     widget.commentZebraStripingEnabled,
                                 emphasizeGiftNicoadComment: widget
-                                    .filterConfig
+                                    .contentFilter
                                     .emphasizeGiftNicoadComment,
                                 commentIndex: index,
                                 userColor: userColor != null
@@ -2091,7 +2100,7 @@ class _CommentScreenState extends State<CommentScreen> {
       context: context,
       isScrollControlled: true,
       builder: (BuildContext sheetContext) {
-        final bool isNg = widget.filterConfig.ngUserIds.contains(userId);
+        final bool isNg = widget.contentFilter.ngUserIds.contains(userId);
         return UserDetailSheet(
           userId: userId,
           resolvedUserName: _resolveDisplayName(message),
@@ -2099,7 +2108,7 @@ class _CommentScreenState extends State<CommentScreen> {
           isNgUser: isNg,
           themeMode: widget.themeMode,
           beginAt: widget.programInfo.beginAt,
-          currentColorValue: widget.filterConfig.userColorMap[userId],
+          currentColorValue: widget.contentFilter.userColorMap[userId],
           onColorChanged: widget.callbacks.onUserColorChanged != null
               ? (int colorValue) {
                   widget.callbacks.onUserColorChanged!.call(userId, colorValue);
@@ -2112,7 +2121,7 @@ class _CommentScreenState extends State<CommentScreen> {
                   Navigator.of(sheetContext).pop();
                 }
               : null,
-          nickname: widget.filterConfig.userNicknameMap[userId],
+          nickname: widget.contentFilter.userNicknameMap[userId],
           onNicknameChanged: widget.callbacks.onNicknameChanged != null
               ? (String nickname) {
                   widget.callbacks.onNicknameChanged!.call(userId, nickname);
@@ -2386,7 +2395,7 @@ class _CommentScreenState extends State<CommentScreen> {
     final String? userId = message.userId;
     // Nickname (コテハン) takes highest priority.
     if (userId != null && userId.isNotEmpty) {
-      final String? nickname = widget.filterConfig.userNicknameMap[userId];
+      final String? nickname = widget.contentFilter.userNicknameMap[userId];
       if (nickname != null && nickname.isNotEmpty) {
         return nickname;
       }
@@ -2411,7 +2420,7 @@ class _CommentScreenState extends State<CommentScreen> {
   String? _resolveSpeechDisplayName(AppMessage message) {
     final String? userId = message.userId;
     if (userId != null && userId.isNotEmpty) {
-      final String? nickname = widget.filterConfig.userNicknameMap[userId];
+      final String? nickname = widget.contentFilter.userNicknameMap[userId];
       if (nickname != null && nickname.isNotEmpty) {
         return nickname;
       }
@@ -2699,7 +2708,7 @@ class _CommentScreenState extends State<CommentScreen> {
   ///     they are never accidentally silenced by a matching NG word (e.g. an
   ///     advertiser name). Their visual emphasis (shaded background + leading
   ///     icon) is controlled separately by
-  ///     `filterConfig.emphasizeGiftNicoadComment` at render time.
+  ///     `contentFilter.emphasizeGiftNicoadComment` at render time.
   ///   * NG user / NG word filtering for chat / operator / notification.
   ///
   /// NOTE: `AppMessageType.gift` / `.nicoad` are not produced by the current
@@ -2711,34 +2720,34 @@ class _CommentScreenState extends State<CommentScreen> {
     // Type-based visibility toggles (operator / system / emotion /
     // gift / nicoad). When a gift/nicoad toggle is OFF, the message is
     // suppressed entirely from the list. When ON, emphasis styling is
-    // separately controlled by `filterConfig.emphasizeGiftNicoadComment`
+    // separately controlled by `contentFilter.emphasizeGiftNicoadComment`
     // at render time.
     switch (message.type) {
       case AppMessageType.chat:
       case AppMessageType.notification:
         break;
       case AppMessageType.gift:
-        if (!widget.filterConfig.showGiftComment) {
+        if (!widget.messageTypeVisibility.showGiftComment) {
           return false;
         }
         break;
       case AppMessageType.nicoad:
-        if (!widget.filterConfig.showNicoadComment) {
+        if (!widget.messageTypeVisibility.showNicoadComment) {
           return false;
         }
         break;
       case AppMessageType.operator:
-        if (!widget.filterConfig.showOperatorComment) {
+        if (!widget.messageTypeVisibility.showOperatorComment) {
           return false;
         }
         break;
       case AppMessageType.system:
-        if (!widget.filterConfig.showSystemMessage) {
+        if (!widget.messageTypeVisibility.showSystemMessage) {
           return false;
         }
         break;
       case AppMessageType.emotion:
-        if (!widget.filterConfig.showEmotion) {
+        if (!widget.messageTypeVisibility.showEmotion) {
           return false;
         }
         break;
@@ -2762,7 +2771,7 @@ class _CommentScreenState extends State<CommentScreen> {
     }
 
     final String? userId = message.userId;
-    if (userId != null && widget.filterConfig.ngUserIds.contains(userId)) {
+    if (userId != null && widget.contentFilter.ngUserIds.contains(userId)) {
       return false;
     }
 
@@ -2984,7 +2993,7 @@ class _CommentScreenState extends State<CommentScreen> {
           }
         }
       }
-      if (!mounted || widget.filterConfig.presetNgWords.isNotEmpty) {
+      if (!mounted || widget.contentFilter.presetNgWords.isNotEmpty) {
         return;
       }
       _effectivePresetNgWords = words;
@@ -2998,7 +3007,7 @@ class _CommentScreenState extends State<CommentScreen> {
   void _refreshNormalizedNgWords() {
     final List<String> source = <String>[
       ..._effectivePresetNgWords,
-      ...widget.filterConfig.ngWords,
+      ...widget.contentFilter.ngWords,
     ];
     final List<String> normalized = source
         .where((String word) => word.trim().isNotEmpty)
@@ -3382,7 +3391,7 @@ class _CommentScreenState extends State<CommentScreen> {
 
     final CommentLogStats stats = CommentLogStats.fromMessages(
       messagesForStatsAndLogs,
-      ngUserIds: widget.filterConfig.ngUserIds,
+      ngUserIds: widget.contentFilter.ngUserIds,
     );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -3400,7 +3409,7 @@ class _CommentScreenState extends State<CommentScreen> {
             lv: widget.programInfo.lv,
             highlightPickupEnabled: widget.statistics.highlightPickupEnabled,
             messages: messagesForStatsAndLogs,
-            ngUserIds: widget.filterConfig.ngUserIds,
+            ngUserIds: widget.contentFilter.ngUserIds,
             onBarTapped: (int minuteOffset) {
               Navigator.of(sheetContext).pop();
               _scrollToMinuteOffset(minuteOffset);
@@ -3605,7 +3614,7 @@ class _CommentScreenState extends State<CommentScreen> {
     }
     // Step 3: NG user.
     final String? userId = message.userId;
-    if (userId != null && widget.filterConfig.ngUserIds.contains(userId)) {
+    if (userId != null && widget.contentFilter.ngUserIds.contains(userId)) {
       return false;
     }
     // Step 4: NG word. Stricter than `_filterDisplayable`, which does not

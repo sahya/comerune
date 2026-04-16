@@ -683,8 +683,8 @@ void main() {
     final CommentScreen updated = tester.widget<CommentScreen>(
       find.byType(CommentScreen),
     );
-    expect(updated.filterConfig.userColorMap, isEmpty);
-    expect(updated.filterConfig.userNicknameMap, isEmpty);
+    expect(updated.contentFilter.userColorMap, isEmpty);
+    expect(updated.contentFilter.userNicknameMap, isEmpty);
 
     expect(find.byKey(const Key('comment-row-msg-1')), findsNothing);
     expect(find.textContaining('初期コテハン (user-1)'), findsNothing);

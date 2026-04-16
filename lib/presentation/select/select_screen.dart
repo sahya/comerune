@@ -595,7 +595,7 @@ class _SelectScreenState extends State<SelectScreen>
             totalCommentCount: widget.statisticsStore?.totalCommentCount ?? 0,
             activeUserCount: widget.statisticsStore?.activeUserCount ?? 0,
           ),
-          filterConfig: CommentFilterConfig(
+          contentFilter: ContentFilterConfig(
             ngUserIds: _settingsNotifier.value.ngUserIdSet,
             ngWords: _settingsNotifier.value.ngWordList,
             starPrefixHidingEnabled:
@@ -606,13 +606,15 @@ class _SelectScreenState extends State<SelectScreen>
                 _settingsNotifier.value.emphasizeGiftNicoadComment,
             userColorMap: _userAttrNotifier.value.colors,
             userNicknameMap: _userAttrNotifier.value.nicknames,
+            ngProtectionNotificationEnabled:
+                _settingsNotifier.value.ngProtectionNotificationEnabled,
+          ),
+          messageTypeVisibility: MessageTypeVisibilityConfig(
             showOperatorComment: _settingsNotifier.value.showOperatorComment,
             showSystemMessage: _settingsNotifier.value.showSystemMessage,
             showEmotion: _settingsNotifier.value.showEmotion,
             showGiftComment: _settingsNotifier.value.showGiftComment,
             showNicoadComment: _settingsNotifier.value.showNicoadComment,
-            ngProtectionNotificationEnabled:
-                _settingsNotifier.value.ngProtectionNotificationEnabled,
           ),
           logConfig: CommentLogConfig(
             commentLogWriter: widget.commentLogWriter,
