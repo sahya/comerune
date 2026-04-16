@@ -638,6 +638,124 @@ void main() {
       expect(normalized, isNull);
     });
 
+    test('sanitises simpleNotificationV2.message by stripping bidi / Tag / '
+        'zero-width characters', () {
+      // Trojan Source / display-spoofing defence for
+      // simpleNotificationV2.message, symmetric with the operator.content
+      // sanitisation above: the broadcaster/system-supplied notification
+      // body must have invisible payloads stripped so a Trojan Source
+      // style attack cannot be smuggled into the system / emotion /
+      // notification bubble.  Printable CJK text must survive verbatim.
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+      // Interleave: bidi override + NBSP + zero-width space + Tag char
+      const String attack = '市場\u202E\u00A0に商品が\u200B\u{E0001}登録されました';
+
+      // Cover ichiba (→ AppMessageType.system).
+      final NdgrChunkedMessage ichibaSource = NdgrChunkedMessage(
+        id: 'ndgr-notif-sanitise-ichiba',
+        serverTimestamp: serverTime,
+        simpleNotificationV2: const NdgrSimpleNotificationV2(
+          type: NdgrSimpleNotificationV2Type.ichiba,
+          message: attack,
+        ),
+      );
+
+      final AppMessage? ichibaNormalized = normalizer.normalizeChunkedMessage(
+        ichibaSource,
+        receivedAt: serverTime,
+      );
+
+      expect(ichibaNormalized, isNotNull);
+      expect(ichibaNormalized!.type, AppMessageType.system);
+      expect(
+        ichibaNormalized.content,
+        '市場に商品が登録されました',
+        reason:
+            'bidi override / NBSP / ZWSP / Tag Character must be '
+            'stripped from ichiba notification body; printable CJK '
+            'preserved',
+      );
+
+      // Cover emotion (→ AppMessageType.emotion).
+      final NdgrChunkedMessage emotionSource = NdgrChunkedMessage(
+        id: 'ndgr-notif-sanitise-emotion',
+        serverTimestamp: serverTime,
+        simpleNotificationV2: const NdgrSimpleNotificationV2(
+          type: NdgrSimpleNotificationV2Type.emotion,
+          message: attack,
+        ),
+      );
+
+      final AppMessage? emotionNormalized = normalizer.normalizeChunkedMessage(
+        emotionSource,
+        receivedAt: serverTime,
+      );
+
+      expect(emotionNormalized, isNotNull);
+      expect(emotionNormalized!.type, AppMessageType.emotion);
+      expect(
+        emotionNormalized.content,
+        '市場に商品が登録されました',
+        reason:
+            'sanitisation applies regardless of notification type '
+            '(emotion path must match ichiba path)',
+      );
+
+      // Cover userFollow (→ AppMessageType.notification) so that the
+      // defensive coverage spans all three downstream AppMessageType
+      // values produced by _notificationTypeToAppMessageType. The
+      // sanitisation is type-agnostic; this pin guards against a future
+      // refactor that accidentally moves the sanitiser behind a
+      // type-specific branch.
+      final NdgrChunkedMessage notificationSource = NdgrChunkedMessage(
+        id: 'ndgr-notif-sanitise-userfollow',
+        serverTimestamp: serverTime,
+        simpleNotificationV2: const NdgrSimpleNotificationV2(
+          type: NdgrSimpleNotificationV2Type.userFollow,
+          message: attack,
+        ),
+      );
+
+      final AppMessage? notificationNormalized = normalizer
+          .normalizeChunkedMessage(notificationSource, receivedAt: serverTime);
+
+      expect(notificationNormalized, isNotNull);
+      expect(notificationNormalized!.type, AppMessageType.notification);
+      expect(
+        notificationNormalized.content,
+        '市場に商品が登録されました',
+        reason:
+            'sanitisation applies to notification-type variants too '
+            '(userFollow path must match ichiba / emotion paths)',
+      );
+    });
+
+    test('returns null for simpleNotificationV2 with message that sanitises to '
+        'empty', () {
+      // Edge case: simpleNotificationV2.message is non-empty per
+      // isNotEmpty (passes the early guard) but consists entirely of
+      // invisible characters (ZWSP + bidi override + BOM).  The
+      // sanitised content becomes empty, and the normalizer must drop
+      // the whole message rather than emit a visibly-empty notification
+      // bubble — mirrors the operator-comment edge case above.
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        const NdgrChunkedMessage(
+          simpleNotificationV2: NdgrSimpleNotificationV2(
+            type: NdgrSimpleNotificationV2Type.ichiba,
+            // U+200B (ZWSP) + U+202E (RLO) + U+FEFF (BOM) — all
+            // invisible; isNotEmpty = true before sanitisation.
+            message: '\u200B\u202E\uFEFF',
+          ),
+        ),
+      );
+
+      expect(normalized, isNull);
+    });
+
     test('skips empty hashedUserId and returns null userId', () {
       final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
       final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');

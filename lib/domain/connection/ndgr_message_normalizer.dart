@@ -173,12 +173,28 @@ class NdgrMessageNormalizer {
     // SimpleNotificationV2 — system/emotion/generic notification.
     final NdgrSimpleNotificationV2? notification = source.simpleNotificationV2;
     if (notification != null && notification.message.isNotEmpty) {
+      // Sanitise the notification body symmetrically with the operator
+      // comment content above: strip bidi overrides / Tag Characters /
+      // other invisible controls so a Trojan Source style payload cannot
+      // be smuggled into the rendered system / emotion / notification
+      // bubble.
+      //
+      // Drop the whole message when the sanitised content is empty —
+      // mirrors the operator-comment branch: an invisible-only payload
+      // passes the `isNotEmpty` guard but would render an empty
+      // notification bubble, leaking a UI row without any user value.
+      final String sanitizedContent = removeControlAndInvisibleChars(
+        notification.message,
+      );
+      if (sanitizedContent.isEmpty) {
+        return null;
+      }
       return AppMessage(
         id: _buildNdgrId(kNdgrNotifyIdPrefix, source.id, null, timestamp),
         timestamp: timestamp,
         userId: null,
         userName: null,
-        content: notification.message,
+        content: sanitizedContent,
         type: _notificationTypeToAppMessageType(notification.type),
         raw: source,
       );
