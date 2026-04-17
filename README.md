@@ -69,6 +69,8 @@ comeruneはMITライセンスのオープンソースです。「こんな機能
 開発には Flutter SDK 3.22.0 以上（Dart SDK 3.4.0 以上）と Android SDK が必要です。
 ビルド方法や Makefile の使い方は [docs/build-guide.md](docs/build-guide.md) を参照してください。
 
+直接プルリクエストを送る場合のルールは [CONTRIBUTING.md](CONTRIBUTING.md) にまとめています。セキュリティ上の問題を見つけた場合は [SECURITY.md](SECURITY.md) の方法でご報告ください。
+
 ---
 
 ## ライセンス
