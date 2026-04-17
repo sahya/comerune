@@ -21,6 +21,7 @@ import com.example.comerune.speech.domain.model.ReplaceRule
 import com.example.comerune.speech.domain.model.SpeechRuntimeStatus
 import com.example.comerune.speech.domain.model.SpeechSettings
 import com.example.comerune.speech.domain.model.SubmitResult
+import com.example.comerune.speech.domain.model.EngineType
 import com.example.comerune.speech.domain.model.SynthesisMode
 import com.example.comerune.speech.domain.model.VoicevoxModelManifest
 import com.example.comerune.speech.domain.normalizer.DefaultCommentNormalizer
@@ -30,6 +31,7 @@ import com.example.comerune.speech.domain.repository.VoicevoxModelRepository
 import com.example.comerune.speech.domain.settings.InMemorySettingsRepository
 import com.example.comerune.speech.infrastructure.engine.VoicevoxEngineImpl
 import com.example.comerune.speech.infrastructure.event.FlutterSpeechEventEmitter
+import com.example.comerune.speech.infrastructure.player.AndroidTtsSpeaker
 import com.example.comerune.speech.infrastructure.player.SwitchableWavPlayer
 import com.example.comerune.speech.infrastructure.repository.VoicevoxModelRepositoryImpl
 
@@ -52,6 +54,7 @@ class CommentSpeechPlugin :
     private var modelRepository: VoicevoxModelRepository? = null
     private var engine: VoicevoxEngine? = null
     private var switchablePlayer: SwitchableWavPlayer? = null
+    private var androidTtsSpeaker: AndroidTtsSpeaker? = null
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         val messenger = binding.binaryMessenger
@@ -75,6 +78,9 @@ class CommentSpeechPlugin :
         val player = SwitchableWavPlayer(context)
         switchablePlayer = player
 
+        val ttsSpeaker = AndroidTtsSpeaker(context)
+        androidTtsSpeaker = ttsSpeaker
+
         eventEmitter = emitter
         engine = voicevoxEngine
 
@@ -88,7 +94,8 @@ class CommentSpeechPlugin :
             player = player,
             settingsRepository = settingsRepository,
             eventEmitter = emitter,
-            duplicateDetector = duplicateDetector
+            duplicateDetector = duplicateDetector,
+            ttsSpeaker = ttsSpeaker
         )
 
         pluginScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -113,6 +120,7 @@ class CommentSpeechPlugin :
         modelRepository = null
         engine = null
         switchablePlayer = null
+        androidTtsSpeaker = null
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -147,6 +155,14 @@ class CommentSpeechPlugin :
                                     }
                                 }
                             }
+                        }
+                    }
+                    // Initialize Android TTS after VOICEVOX (best-effort).
+                    val ttsSpeaker = androidTtsSpeaker
+                    if (ttsSpeaker != null && !ttsSpeaker.isReady()) {
+                        val ttsResult = ttsSpeaker.initialize()
+                        if (ttsResult.isFailure) {
+                            Log.w(TAG, "Android TTS init failed: ${ttsResult.exceptionOrNull()?.message}")
                         }
                     }
                     initResult
@@ -458,6 +474,7 @@ class CommentSpeechPlugin :
 
         return SpeechSettings(
             enabled = call.argument<Boolean>("enabled") ?: true,
+            engineType = EngineType.fromString(call.argument<String>("engineType")),
             synthesisMode = SynthesisMode.fromString(call.argument<String>("synthesisMode")),
             speakerId = call.argument<Number>("speakerId")?.toInt() ?: 10000,
             speedScale = call.argument<Number>("speedScale")?.toFloat() ?: 1.15f,
@@ -475,7 +492,10 @@ class CommentSpeechPlugin :
             trimLongTextSuffix = call.argument<String>("trimLongTextSuffix") ?: "、以下省略",
             dictionaryRules = dictionaryRules,
             ngWords = ngWords,
-            playerType = call.argument<String>("playerType") ?: "audio_track"
+            playerType = call.argument<String>("playerType") ?: "audio_track",
+            androidTtsSpeed = call.argument<Number>("androidTtsSpeed")?.toFloat() ?: 1.0f,
+            androidTtsPitch = call.argument<Number>("androidTtsPitch")?.toFloat() ?: 1.0f,
+            androidTtsVolume = call.argument<Number>("androidTtsVolume")?.toFloat() ?: 1.0f
         )
     }
 

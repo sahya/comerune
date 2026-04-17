@@ -7,7 +7,7 @@ import '../utils/newline_parser.dart';
 import 'ng_word_rule.dart';
 
 export '../../comment_speech/src/models/speech_settings.dart'
-    show SynthesisMode;
+    show SpeechEngineType, SynthesisMode;
 
 enum AppThemeMode { system, light, dark, protanopia, deuteranopia, tritanopia }
 
@@ -74,7 +74,7 @@ extension AppThemeModeValue on AppThemeMode {
 // TODO(#13): 棒読みちゃん(bouyomi)はUIから非表示。サーバー管理しない方針のため、
 // 今後削除するか再実装するかは未定。bouyomi の enum 値・設定フィールドは
 // 後方互換のため残している。
-enum SpeechEngine { bouyomi, voicevox }
+enum SpeechEngine { bouyomi, voicevox, androidTts }
 
 /// 音声再生方式。
 enum VoicevoxPlayerType {
@@ -270,6 +270,9 @@ class AppSettings {
     required this.readGiftComment,
     required this.readNicoadComment,
     required this.ngProtectionNotificationEnabled,
+    required this.androidTtsSpeed,
+    required this.androidTtsPitch,
+    required this.androidTtsVolume,
   }) : assert(
          commentFontSize >= commentFontSizeMin &&
              commentFontSize <= commentFontSizeMax,
@@ -329,6 +332,9 @@ class AppSettings {
     readGiftComment: false,
     readNicoadComment: false,
     ngProtectionNotificationEnabled: false,
+    androidTtsSpeed: 1.0,
+    androidTtsPitch: 1.0,
+    androidTtsVolume: 1.0,
   );
 
   final AppThemeMode themeMode;
@@ -451,6 +457,15 @@ class AppSettings {
   /// historical behavior — and only announces itself when the broadcaster
   /// opts in. Off means both snackbar and badge are suppressed.
   final bool ngProtectionNotificationEnabled;
+
+  /// Android標準TTS の話速。0.5〜2.0、デフォルト 1.0。
+  final double androidTtsSpeed;
+
+  /// Android標準TTS の音高。0.5〜2.0、デフォ���ト 1.0。
+  final double androidTtsPitch;
+
+  /// Android標準TTS の音量。0.0〜1.0、デフォルト 1.0。
+  final double androidTtsVolume;
 
   /// Returns a list of lower-cased NG word pattern strings for filtering.
   ///
@@ -596,6 +611,9 @@ class AppSettings {
     bool? readGiftComment,
     bool? readNicoadComment,
     bool? ngProtectionNotificationEnabled,
+    double? androidTtsSpeed,
+    double? androidTtsPitch,
+    double? androidTtsVolume,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -664,6 +682,9 @@ class AppSettings {
       ngProtectionNotificationEnabled:
           ngProtectionNotificationEnabled ??
           this.ngProtectionNotificationEnabled,
+      androidTtsSpeed: androidTtsSpeed ?? this.androidTtsSpeed,
+      androidTtsPitch: androidTtsPitch ?? this.androidTtsPitch,
+      androidTtsVolume: androidTtsVolume ?? this.androidTtsVolume,
     );
   }
 
@@ -681,9 +702,7 @@ class AppSettings {
       '_version': settingsVersion,
       'themeMode': themeMode.storageValue,
       'autoReadEnabled': autoReadEnabled,
-      'speechEngine': speechEngine == SpeechEngine.voicevox
-          ? 'voicevox'
-          : 'bouyomi',
+      'speechEngine': speechEngine.name,
       'bouyomiHost': bouyomiHost,
       'bouyomiSpeed': bouyomiSpeed,
       'bouyomiTone': bouyomiTone,
@@ -736,6 +755,9 @@ class AppSettings {
       'readGiftComment': readGiftComment,
       'readNicoadComment': readNicoadComment,
       'ngProtectionNotificationEnabled': ngProtectionNotificationEnabled,
+      'androidTtsSpeed': androidTtsSpeed,
+      'androidTtsPitch': androidTtsPitch,
+      'androidTtsVolume': androidTtsVolume,
     };
   }
 
@@ -784,9 +806,7 @@ class AppSettings {
         json['themeMode'] as String?,
       ),
       autoReadEnabled: json['autoReadEnabled'] as bool? ?? d.autoReadEnabled,
-      speechEngine: (json['speechEngine'] as String?) == 'bouyomi'
-          ? SpeechEngine.bouyomi
-          : SpeechEngine.voicevox,
+      speechEngine: _parseSpeechEngine(json['speechEngine'] as String?),
       bouyomiHost: json['bouyomiHost'] as String? ?? d.bouyomiHost,
       bouyomiSpeed: json['bouyomiSpeed'] as int? ?? d.bouyomiSpeed,
       bouyomiTone: json['bouyomiTone'] as int? ?? d.bouyomiTone,
@@ -872,6 +892,12 @@ class AppSettings {
       ngProtectionNotificationEnabled:
           json['ngProtectionNotificationEnabled'] as bool? ??
           d.ngProtectionNotificationEnabled,
+      androidTtsSpeed:
+          (json['androidTtsSpeed'] as num?)?.toDouble() ?? d.androidTtsSpeed,
+      androidTtsPitch:
+          (json['androidTtsPitch'] as num?)?.toDouble() ?? d.androidTtsPitch,
+      androidTtsVolume:
+          (json['androidTtsVolume'] as num?)?.toDouble() ?? d.androidTtsVolume,
     );
   }
 
@@ -891,7 +917,13 @@ class AppSettings {
 
   /// Convert to [SpeechSettings] for the platform speech engine.
   SpeechSettings toSpeechSettings() => SpeechSettings(
-    enabled: autoReadEnabled && speechEngine == SpeechEngine.voicevox,
+    enabled:
+        autoReadEnabled &&
+        (speechEngine == SpeechEngine.voicevox ||
+            speechEngine == SpeechEngine.androidTts),
+    engineType: speechEngine == SpeechEngine.androidTts
+        ? SpeechEngineType.androidTts
+        : SpeechEngineType.voicevox,
     synthesisMode: voicevoxSynthesisMode,
     speakerId: voicevoxSpeaker,
     speedScale: voicevoxSpeed,
@@ -904,5 +936,20 @@ class AppSettings {
     playerType: voicevoxPlayerType == VoicevoxPlayerType.mediaPlayer
         ? 'media_player'
         : 'audio_track',
+    androidTtsSpeed: androidTtsSpeed,
+    androidTtsPitch: androidTtsPitch,
+    androidTtsVolume: androidTtsVolume,
   );
+}
+
+SpeechEngine _parseSpeechEngine(String? raw) {
+  switch (raw) {
+    case 'bouyomi':
+      return SpeechEngine.bouyomi;
+    case 'androidTts':
+      return SpeechEngine.androidTts;
+    case 'voicevox':
+    default:
+      return SpeechEngine.voicevox;
+  }
 }

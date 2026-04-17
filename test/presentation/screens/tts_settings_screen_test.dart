@@ -1945,6 +1945,369 @@ void main() {
     });
   });
 
+  group('engine selector', () {
+    testWidgets('shows SegmentedButton with VOICEVOX and Android TTS options', (
+      WidgetTester tester,
+    ) async {
+      final SettingsStore settingsStore = SharedPreferencesSettingsStore(
+        prefs: InMemorySharedPreferences(),
+      );
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('speech-engine-selector'),
+      );
+      expect(
+        find.byKey(const Key('speech-engine-selector'), skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(find.text('VOICEVOX', skipOffstage: false), findsAtLeast(1));
+      expect(find.text('Android標準', skipOffstage: false), findsOneWidget);
+    });
+
+    testWidgets(
+      'switching to androidTts hides VOICEVOX section and shows Android TTS section',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
+
+        // Initially VOICEVOX section should be visible.
+        expect(
+          find.byKey(const Key('voicevox-section'), skipOffstage: false),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('android-tts-section'), skipOffstage: false),
+          findsNothing,
+        );
+
+        // Switch to Android TTS.
+        await scrollToKeyInList(
+          tester,
+          _listKey,
+          const Key('speech-engine-selector'),
+        );
+        final SegmentedButton<SpeechEngine> segmented = tester
+            .widget<SegmentedButton<SpeechEngine>>(
+              find.byKey(
+                const Key('speech-engine-selector'),
+                skipOffstage: false,
+              ),
+            );
+        segmented.onSelectionChanged!(<SpeechEngine>{SpeechEngine.androidTts});
+        await tester.pumpAndSettle();
+
+        // VOICEVOX section should be hidden.
+        expect(
+          find.byKey(const Key('voicevox-section'), skipOffstage: false),
+          findsNothing,
+        );
+        // Android TTS section should be visible.
+        expect(
+          find.byKey(const Key('android-tts-section'), skipOffstage: false),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('switching to androidTts persists speechEngine value', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('speech-engine-selector'),
+      );
+      final SegmentedButton<SpeechEngine> segmented = tester
+          .widget<SegmentedButton<SpeechEngine>>(
+            find.byKey(
+              const Key('speech-engine-selector'),
+              skipOffstage: false,
+            ),
+          );
+      segmented.onSelectionChanged!(<SpeechEngine>{SpeechEngine.androidTts});
+      await tester.pumpAndSettle();
+
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.speechEngine, SpeechEngine.androidTts);
+    });
+
+    testWidgets(
+      'switching back to voicevox hides Android TTS section and shows VOICEVOX section',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        // Start with Android TTS selected.
+        await settingsStore.save(
+          AppSettings.defaults.copyWith(speechEngine: SpeechEngine.androidTts),
+        );
+
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
+
+        // Android TTS section should be visible.
+        expect(
+          find.byKey(const Key('android-tts-section'), skipOffstage: false),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('voicevox-section'), skipOffstage: false),
+          findsNothing,
+        );
+
+        // Switch back to VOICEVOX.
+        await scrollToKeyInList(
+          tester,
+          _listKey,
+          const Key('speech-engine-selector'),
+        );
+        final SegmentedButton<SpeechEngine> segmented = tester
+            .widget<SegmentedButton<SpeechEngine>>(
+              find.byKey(
+                const Key('speech-engine-selector'),
+                skipOffstage: false,
+              ),
+            );
+        segmented.onSelectionChanged!(<SpeechEngine>{SpeechEngine.voicevox});
+        await tester.pumpAndSettle();
+
+        // VOICEVOX section should be visible again.
+        expect(
+          find.byKey(const Key('voicevox-section'), skipOffstage: false),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('android-tts-section'), skipOffstage: false),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets('engine selector pushes updated SpeechSettings to platform', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeCommentSpeechPlatform fakePlatform =
+          FakeCommentSpeechPlatform();
+
+      await tester.pumpWidget(
+        _buildScreenWithPlatform(settingsStore, fakePlatform),
+      );
+      await tester.pumpAndSettle();
+
+      fakePlatform.lastUpdatedSettings = null;
+
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('speech-engine-selector'),
+      );
+      final SegmentedButton<SpeechEngine> segmented = tester
+          .widget<SegmentedButton<SpeechEngine>>(
+            find.byKey(
+              const Key('speech-engine-selector'),
+              skipOffstage: false,
+            ),
+          );
+      segmented.onSelectionChanged!(<SpeechEngine>{SpeechEngine.androidTts});
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.lastUpdatedSettings, isNotNull);
+      expect(
+        fakePlatform.lastUpdatedSettings!.engineType,
+        SpeechEngineType.androidTts,
+      );
+    });
+  });
+
+  group('Android TTS sliders', () {
+    testWidgets('Android TTS speed slider change persists value', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      await settingsStore.save(
+        AppSettings.defaults.copyWith(speechEngine: SpeechEngine.androidTts),
+      );
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('android-tts-speed-slider'),
+      );
+
+      final Finder sliderFinder = find.byKey(
+        const Key('android-tts-speed-slider'),
+        skipOffstage: false,
+      );
+      final Finder innerSlider = find.descendant(
+        of: sliderFinder,
+        matching: find.byType(Slider),
+      );
+      expect(innerSlider, findsOneWidget);
+
+      final Slider slider = tester.widget<Slider>(innerSlider);
+      slider.onChanged!(1.5);
+      await tester.pumpAndSettle();
+
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.androidTtsSpeed, 1.5);
+    });
+
+    testWidgets('Android TTS pitch slider change persists value', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      await settingsStore.save(
+        AppSettings.defaults.copyWith(speechEngine: SpeechEngine.androidTts),
+      );
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('android-tts-pitch-slider'),
+      );
+
+      final Finder sliderFinder = find.byKey(
+        const Key('android-tts-pitch-slider'),
+        skipOffstage: false,
+      );
+      final Finder innerSlider = find.descendant(
+        of: sliderFinder,
+        matching: find.byType(Slider),
+      );
+      expect(innerSlider, findsOneWidget);
+
+      final Slider slider = tester.widget<Slider>(innerSlider);
+      slider.onChanged!(0.8);
+      await tester.pumpAndSettle();
+
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.androidTtsPitch, 0.8);
+    });
+
+    testWidgets('Android TTS volume slider change persists value', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      await settingsStore.save(
+        AppSettings.defaults.copyWith(speechEngine: SpeechEngine.androidTts),
+      );
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('android-tts-volume-slider'),
+      );
+
+      final Finder sliderFinder = find.byKey(
+        const Key('android-tts-volume-slider'),
+        skipOffstage: false,
+      );
+      final Finder innerSlider = find.descendant(
+        of: sliderFinder,
+        matching: find.byType(Slider),
+      );
+      expect(innerSlider, findsOneWidget);
+
+      final Slider slider = tester.widget<Slider>(innerSlider);
+      slider.onChanged!(0.4);
+      await tester.pumpAndSettle();
+
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.androidTtsVolume, 0.4);
+    });
+
+    testWidgets(
+      'Android TTS slider pushes updated SpeechSettings to platform',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        await settingsStore.save(
+          AppSettings.defaults.copyWith(speechEngine: SpeechEngine.androidTts),
+        );
+        final FakeCommentSpeechPlatform fakePlatform =
+            FakeCommentSpeechPlatform();
+
+        await tester.pumpWidget(
+          _buildScreenWithPlatform(settingsStore, fakePlatform),
+        );
+        await tester.pumpAndSettle();
+
+        fakePlatform.lastUpdatedSettings = null;
+
+        await scrollToKeyInList(
+          tester,
+          _listKey,
+          const Key('android-tts-speed-slider'),
+        );
+
+        final Finder sliderFinder = find.byKey(
+          const Key('android-tts-speed-slider'),
+          skipOffstage: false,
+        );
+        final Finder innerSlider = find.descendant(
+          of: sliderFinder,
+          matching: find.byType(Slider),
+        );
+        final Slider slider = tester.widget<Slider>(innerSlider);
+        slider.onChanged!(1.8);
+        await tester.pumpAndSettle();
+
+        expect(fakePlatform.lastUpdatedSettings, isNotNull);
+        expect(fakePlatform.lastUpdatedSettings!.androidTtsSpeed, 1.8);
+      },
+    );
+
+    testWidgets('Android TTS sliders not visible when VOICEVOX is selected', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('android-tts-speed-slider'), skipOffstage: false),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('android-tts-pitch-slider'), skipOffstage: false),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('android-tts-volume-slider'), skipOffstage: false),
+        findsNothing,
+      );
+    });
+  });
+
   group('mute indicator', () {
     testWidgets('shows volume_off icon and label when preMuteVolume is set', (
       WidgetTester tester,

@@ -40,9 +40,15 @@ enum SynthesisMode {
   }
 }
 
+abstract class SpeechEngineType {
+  static const String voicevox = 'voicevox';
+  static const String androidTts = 'android_tts';
+}
+
 /// Configuration for the speech engine. Defaults match the Kotlin side.
 class SpeechSettings {
   final bool enabled;
+  final String engineType;
   final SynthesisMode synthesisMode;
   final int speakerId;
   final double speedScale;
@@ -61,9 +67,13 @@ class SpeechSettings {
   final List<ReplaceRule> dictionaryRules;
   final List<String> ngWords;
   final String playerType;
+  final double androidTtsSpeed;
+  final double androidTtsPitch;
+  final double androidTtsVolume;
 
   const SpeechSettings({
     this.enabled = true,
+    this.engineType = 'voicevox',
     this.synthesisMode = SynthesisMode.audioQuery,
     this.speakerId = 10004, // VOICEVOX Nemo・女声3（UI の voicevoxSpeaker と同期）
     this.speedScale = 1.15,
@@ -82,10 +92,14 @@ class SpeechSettings {
     this.dictionaryRules = const [],
     this.ngWords = const [],
     this.playerType = 'audio_track',
+    this.androidTtsSpeed = 1.0,
+    this.androidTtsPitch = 1.0,
+    this.androidTtsVolume = 1.0,
   });
 
   Map<String, dynamic> toMap() => {
     'enabled': enabled,
+    'engineType': engineType,
     'synthesisMode': synthesisMode.storageValue,
     'speakerId': speakerId,
     'speedScale': speedScale,
@@ -104,6 +118,9 @@ class SpeechSettings {
     'dictionaryRules': dictionaryRules.map((r) => r.toMap()).toList(),
     'ngWords': ngWords,
     'playerType': playerType,
+    'androidTtsSpeed': androidTtsSpeed,
+    'androidTtsPitch': androidTtsPitch,
+    'androidTtsVolume': androidTtsVolume,
   };
 
   @override
@@ -111,6 +128,7 @@ class SpeechSettings {
       identical(this, other) ||
       other is SpeechSettings &&
           enabled == other.enabled &&
+          engineType == other.engineType &&
           synthesisMode == other.synthesisMode &&
           speakerId == other.speakerId &&
           speedScale == other.speedScale &&
@@ -128,11 +146,15 @@ class SpeechSettings {
           trimLongTextSuffix == other.trimLongTextSuffix &&
           listEquals(dictionaryRules, other.dictionaryRules) &&
           listEquals(ngWords, other.ngWords) &&
-          playerType == other.playerType;
+          playerType == other.playerType &&
+          androidTtsSpeed == other.androidTtsSpeed &&
+          androidTtsPitch == other.androidTtsPitch &&
+          androidTtsVolume == other.androidTtsVolume;
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     enabled,
+    engineType,
     synthesisMode,
     speakerId,
     speedScale,
@@ -151,5 +173,8 @@ class SpeechSettings {
     Object.hashAll(dictionaryRules),
     Object.hashAll(ngWords),
     playerType,
-  );
+    androidTtsSpeed,
+    androidTtsPitch,
+    androidTtsVolume,
+  ]);
 }

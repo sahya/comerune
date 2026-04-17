@@ -121,14 +121,23 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   static const String _kNgProtectionNotificationEnabled =
       'settings.ngFilter.protectionNotification';
   static const String _kPreMuteVolume = 'settings.voicevox.preMuteVolume';
+  static const String _kAndroidTtsSpeed = 'settings.androidTts.speed';
+  static const String _kAndroidTtsPitch = 'settings.androidTts.pitch';
+  static const String _kAndroidTtsVolume = 'settings.androidTts.volume';
 
   @override
   Future<AppSettings> load() async {
     const AppSettings defaults = AppSettings.defaults;
     final String? engineValue = _prefs.getString(_kSpeechEngine);
-    final SpeechEngine speechEngine = engineValue == 'bouyomi'
-        ? SpeechEngine.bouyomi
-        : SpeechEngine.voicevox;
+    final SpeechEngine speechEngine;
+    switch (engineValue) {
+      case 'bouyomi':
+        speechEngine = SpeechEngine.bouyomi;
+      case 'androidTts':
+        speechEngine = SpeechEngine.androidTts;
+      default:
+        speechEngine = SpeechEngine.voicevox;
+    }
 
     return AppSettings(
       themeMode: AppThemeModeValue.fromStorageValue(
@@ -235,6 +244,12 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       ngProtectionNotificationEnabled:
           _prefs.getBool(_kNgProtectionNotificationEnabled) ??
           defaults.ngProtectionNotificationEnabled,
+      androidTtsSpeed:
+          _prefs.getDouble(_kAndroidTtsSpeed) ?? defaults.androidTtsSpeed,
+      androidTtsPitch:
+          _prefs.getDouble(_kAndroidTtsPitch) ?? defaults.androidTtsPitch,
+      androidTtsVolume:
+          _prefs.getDouble(_kAndroidTtsVolume) ?? defaults.androidTtsVolume,
     );
   }
 
@@ -242,10 +257,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   Future<void> save(AppSettings settings) async {
     await _prefs.setString(_kThemeMode, settings.themeMode.storageValue);
     await _prefs.setBool(_kAutoReadEnabled, settings.autoReadEnabled);
-    await _prefs.setString(
-      _kSpeechEngine,
-      settings.speechEngine == SpeechEngine.voicevox ? 'voicevox' : 'bouyomi',
-    );
+    await _prefs.setString(_kSpeechEngine, settings.speechEngine.name);
     await _prefs.setString(_kBouyomiHost, settings.bouyomiHost);
     await _prefs.setInt(_kBouyomiSpeed, settings.bouyomiSpeed);
     await _prefs.setInt(_kBouyomiTone, settings.bouyomiTone);
@@ -354,6 +366,9 @@ class SharedPreferencesSettingsStore implements SettingsStore {
         settings.dictionaryRules.map((ReplaceRule r) => r.toMap()).toList(),
       ),
     );
+    await _prefs.setDouble(_kAndroidTtsSpeed, settings.androidTtsSpeed);
+    await _prefs.setDouble(_kAndroidTtsPitch, settings.androidTtsPitch);
+    await _prefs.setDouble(_kAndroidTtsVolume, settings.androidTtsVolume);
   }
 
   List<NgWordRule> _loadNgWordRules() {

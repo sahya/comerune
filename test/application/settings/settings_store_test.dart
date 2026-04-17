@@ -549,5 +549,202 @@ void main() {
         expect(loaded.dictionaryRules, defaultNicoDictionaryRules);
       },
     );
+
+    // --- Android TTS engine tests ---
+
+    test('androidTts fields default correctly when not stored', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.speechEngine, SpeechEngine.voicevox);
+      expect(loaded.androidTtsSpeed, 1.0);
+      expect(loaded.androidTtsPitch, 1.0);
+      expect(loaded.androidTtsVolume, 1.0);
+    });
+
+    test('round-trips speechEngine=androidTts', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        speechEngine: SpeechEngine.androidTts,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.speechEngine, SpeechEngine.androidTts);
+    });
+
+    test('round-trips androidTtsSpeed value', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        androidTtsSpeed: 1.5,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.androidTtsSpeed, 1.5);
+    });
+
+    test('round-trips androidTtsPitch value', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        androidTtsPitch: 0.8,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.androidTtsPitch, 0.8);
+    });
+
+    test('round-trips androidTtsVolume value', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        androidTtsVolume: 0.3,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.androidTtsVolume, 0.3);
+    });
+
+    test('round-trips all androidTts parameters together', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        speechEngine: SpeechEngine.androidTts,
+        androidTtsSpeed: 1.8,
+        androidTtsPitch: 0.6,
+        androidTtsVolume: 0.5,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.speechEngine, SpeechEngine.androidTts);
+      expect(loaded.androidTtsSpeed, 1.8);
+      expect(loaded.androidTtsPitch, 0.6);
+      expect(loaded.androidTtsVolume, 0.5);
+    });
+
+    test(
+      'speechEngine load falls back to voicevox for unknown stored value',
+      () async {
+        final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+        final SharedPreferencesSettingsStore store =
+            SharedPreferencesSettingsStore(prefs: prefs);
+
+        await prefs.setString('settings.speechEngine', 'unknownEngine');
+
+        final AppSettings loaded = await store.load();
+
+        expect(loaded.speechEngine, SpeechEngine.voicevox);
+      },
+    );
+
+    test('speechEngine round-trips all three engine values', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      for (final SpeechEngine engine in SpeechEngine.values) {
+        final AppSettings original = AppSettings.defaults.copyWith(
+          speechEngine: engine,
+        );
+        await store.save(original);
+
+        final AppSettings loaded = await store.load();
+
+        expect(
+          loaded.speechEngine,
+          engine,
+          reason: '${engine.name} should round-trip',
+        );
+      }
+    });
+
+    test('androidTts boundary: speed at min (0.5) and max (2.0)', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings atMin = AppSettings.defaults.copyWith(
+        androidTtsSpeed: 0.5,
+      );
+      await store.save(atMin);
+      AppSettings loaded = await store.load();
+      expect(loaded.androidTtsSpeed, 0.5);
+
+      final AppSettings atMax = AppSettings.defaults.copyWith(
+        androidTtsSpeed: 2.0,
+      );
+      await store.save(atMax);
+      loaded = await store.load();
+      expect(loaded.androidTtsSpeed, 2.0);
+    });
+
+    test('androidTts boundary: pitch at min (0.5) and max (2.0)', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings atMin = AppSettings.defaults.copyWith(
+        androidTtsPitch: 0.5,
+      );
+      await store.save(atMin);
+      AppSettings loaded = await store.load();
+      expect(loaded.androidTtsPitch, 0.5);
+
+      final AppSettings atMax = AppSettings.defaults.copyWith(
+        androidTtsPitch: 2.0,
+      );
+      await store.save(atMax);
+      loaded = await store.load();
+      expect(loaded.androidTtsPitch, 2.0);
+    });
+
+    test('androidTts boundary: volume at min (0.0) and max (1.0)', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings atMin = AppSettings.defaults.copyWith(
+        androidTtsVolume: 0.0,
+      );
+      await store.save(atMin);
+      AppSettings loaded = await store.load();
+      expect(loaded.androidTtsVolume, 0.0);
+
+      final AppSettings atMax = AppSettings.defaults.copyWith(
+        androidTtsVolume: 1.0,
+      );
+      await store.save(atMax);
+      loaded = await store.load();
+      expect(loaded.androidTtsVolume, 1.0);
+    });
+
+    test(
+      'speechEngine load preserves bouyomi for backward compatibility',
+      () async {
+        final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+        final SharedPreferencesSettingsStore store =
+            SharedPreferencesSettingsStore(prefs: prefs);
+
+        await prefs.setString('settings.speechEngine', 'bouyomi');
+
+        final AppSettings loaded = await store.load();
+
+        expect(loaded.speechEngine, SpeechEngine.bouyomi);
+      },
+    );
   });
 }

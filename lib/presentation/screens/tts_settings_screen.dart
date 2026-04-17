@@ -1024,6 +1024,55 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     );
   }
 
+  Widget _buildAndroidTtsSection(AppSettings settings) {
+    return SettingsSection(
+      key: const Key('android-tts-section'),
+      title: 'Android標準TTS',
+      children: <Widget>[
+        Text(
+          '端末の「設定 > システム > 言語と入力 > テキスト読み上げ」で日本語音声データがインストールされている必要があります。',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.outline,
+          ),
+        ),
+        const SizedBox(height: 12),
+        SettingsDoubleSliderField(
+          key: const Key('android-tts-speed-slider'),
+          label: '話速',
+          min: 0.5,
+          max: 2.0,
+          divisions: 15,
+          value: settings.androidTtsSpeed,
+          onChanged: (double value) {
+            updateAndSave(settings.copyWith(androidTtsSpeed: value));
+          },
+        ),
+        SettingsDoubleSliderField(
+          key: const Key('android-tts-pitch-slider'),
+          label: '音高',
+          min: 0.5,
+          max: 2.0,
+          divisions: 15,
+          value: settings.androidTtsPitch,
+          onChanged: (double value) {
+            updateAndSave(settings.copyWith(androidTtsPitch: value));
+          },
+        ),
+        SettingsDoubleSliderField(
+          key: const Key('android-tts-volume-slider'),
+          label: '音量',
+          min: 0.0,
+          max: 1.0,
+          divisions: 10,
+          value: settings.androidTtsVolume,
+          onChanged: (double value) {
+            updateAndSave(settings.copyWith(androidTtsVolume: value));
+          },
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final AppSettings? settings = this.settings;
@@ -1097,138 +1146,179 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                   ),
                   const SizedBox(height: 12),
                   SettingsSection(
-                    key: const Key('voicevox-section'),
-                    title: 'VOICEVOX',
+                    title: '読み上げエンジン',
                     children: <Widget>[
-                      _buildVoicevoxSpeakerDropdown(settings),
-                      if (widget.platform != null) ...[
-                        const SizedBox(height: 8),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: OutlinedButton.icon(
-                            key: const Key('voicevox-add-speaker-btn'),
-                            onPressed: () async {
-                              await Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => VoiceLibraryScreen(
-                                    platform: widget.platform!,
-                                    settingsStore: widget.settingsStore,
-                                  ),
-                                ),
-                              );
-                              await _refreshVoicevoxModels();
-                            },
-                            icon: const Icon(Icons.add),
-                            label: const Text('話者を追加'),
+                      SegmentedButton<SpeechEngine>(
+                        key: const Key('speech-engine-selector'),
+                        segments: const <ButtonSegment<SpeechEngine>>[
+                          ButtonSegment<SpeechEngine>(
+                            value: SpeechEngine.voicevox,
+                            label: Text('VOICEVOX'),
                           ),
-                        ),
-                      ],
-                      if (_isNemoPresetVisible(settings)) ...[
-                        const SizedBox(height: 8),
-                        _buildNemoStyleDropdown(settings),
-                      ],
-                      const SizedBox(height: 16),
-                      _buildPerformanceSection(settings),
-                      const SizedBox(height: 16),
-                      Text(
-                        '声の調整',
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                      const SizedBox(height: 8),
-                      if (settings.voicevoxSynthesisMode ==
-                          SynthesisMode.audioQuery) ...[
-                        SettingsDoubleSliderField(
-                          key: const Key('voicevox-speed-slider'),
-                          label: '話速',
-                          min: 0.5,
-                          max: 2.0,
-                          divisions: 15,
-                          value: settings.voicevoxSpeed,
-                          onChanged: (double value) {
-                            updateAndSave(
-                              settings.copyWith(voicevoxSpeed: value),
-                            );
-                          },
-                        ),
-                        SettingsDoubleSliderField(
-                          key: const Key('voicevox-pitch-slider'),
-                          label: '音高',
-                          min: -0.15,
-                          max: 0.15,
-                          divisions: 30,
-                          value: settings.voicevoxPitch,
-                          onChanged: (double value) {
-                            updateAndSave(
-                              settings.copyWith(voicevoxPitch: value),
-                            );
-                          },
-                        ),
-                        SettingsDoubleSliderField(
-                          key: const Key('voicevox-intonation-slider'),
-                          label: '抑揚',
-                          min: 0.0,
-                          max: 2.0,
-                          divisions: 20,
-                          value: settings.voicevoxIntonation,
-                          onChanged: (double value) {
-                            updateAndSave(
-                              settings.copyWith(voicevoxIntonation: value),
-                            );
-                          },
-                        ),
-                      ],
-                      SettingsDoubleSliderField(
-                        key: const Key('voicevox-volume-slider'),
-                        label: '音量',
-                        min: 0.0,
-                        max: 2.0,
-                        divisions: 20,
-                        value: settings.voicevoxVolume,
-                        onChanged: (double value) {
+                          ButtonSegment<SpeechEngine>(
+                            value: SpeechEngine.androidTts,
+                            label: Text('Android標準'),
+                          ),
+                        ],
+                        selected: <SpeechEngine>{settings.speechEngine},
+                        onSelectionChanged: (Set<SpeechEngine> selected) {
                           updateAndSave(
-                            settings.copyWith(voicevoxVolume: value),
+                            settings.copyWith(speechEngine: selected.first),
                           );
-                          // Clear pre-mute volume when user manually
-                          // changes volume, so mute icon stays in sync.
-                          if (value > 0) {
-                            unawaited(
-                              widget.settingsStore.savePreMuteVolume(null),
-                            );
-                          }
                         },
                       ),
-                      if (widget.settingsStore.loadPreMuteVolume() != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.volume_off,
-                                size: 16,
-                                color: Theme.of(context).colorScheme.outline,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                'コメント画面でミュート中です',
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.outline,
-                                    ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 4),
                       Text(
-                        _buildCreditText(settings.voicevoxSpeaker),
+                        settings.speechEngine == SpeechEngine.androidTts
+                            ? '端末標準のTTSエンジンを使用します。低遅延・低負荷ですが、音声の表現力はVOICEVOXより劣ります。'
+                            : 'VOICEVOX Core による高品質な音声合成を使用します。',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.outline,
                         ),
                       ),
                     ],
                   ),
+                  if (settings.speechEngine == SpeechEngine.androidTts) ...[
+                    const SizedBox(height: 12),
+                    _buildAndroidTtsSection(settings),
+                  ],
+                  if (settings.speechEngine == SpeechEngine.voicevox) ...[
+                    const SizedBox(height: 12),
+                    SettingsSection(
+                      key: const Key('voicevox-section'),
+                      title: 'VOICEVOX',
+                      children: <Widget>[
+                        _buildVoicevoxSpeakerDropdown(settings),
+                        if (widget.platform != null) ...[
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: OutlinedButton.icon(
+                              key: const Key('voicevox-add-speaker-btn'),
+                              onPressed: () async {
+                                await Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => VoiceLibraryScreen(
+                                      platform: widget.platform!,
+                                      settingsStore: widget.settingsStore,
+                                    ),
+                                  ),
+                                );
+                                await _refreshVoicevoxModels();
+                              },
+                              icon: const Icon(Icons.add),
+                              label: const Text('話者を追加'),
+                            ),
+                          ),
+                        ],
+                        if (_isNemoPresetVisible(settings)) ...[
+                          const SizedBox(height: 8),
+                          _buildNemoStyleDropdown(settings),
+                        ],
+                        const SizedBox(height: 16),
+                        _buildPerformanceSection(settings),
+                        const SizedBox(height: 16),
+                        Text(
+                          '声の調整',
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                        const SizedBox(height: 8),
+                        if (settings.voicevoxSynthesisMode ==
+                            SynthesisMode.audioQuery) ...[
+                          SettingsDoubleSliderField(
+                            key: const Key('voicevox-speed-slider'),
+                            label: '話速',
+                            min: 0.5,
+                            max: 2.0,
+                            divisions: 15,
+                            value: settings.voicevoxSpeed,
+                            onChanged: (double value) {
+                              updateAndSave(
+                                settings.copyWith(voicevoxSpeed: value),
+                              );
+                            },
+                          ),
+                          SettingsDoubleSliderField(
+                            key: const Key('voicevox-pitch-slider'),
+                            label: '音高',
+                            min: -0.15,
+                            max: 0.15,
+                            divisions: 30,
+                            value: settings.voicevoxPitch,
+                            onChanged: (double value) {
+                              updateAndSave(
+                                settings.copyWith(voicevoxPitch: value),
+                              );
+                            },
+                          ),
+                          SettingsDoubleSliderField(
+                            key: const Key('voicevox-intonation-slider'),
+                            label: '抑揚',
+                            min: 0.0,
+                            max: 2.0,
+                            divisions: 20,
+                            value: settings.voicevoxIntonation,
+                            onChanged: (double value) {
+                              updateAndSave(
+                                settings.copyWith(voicevoxIntonation: value),
+                              );
+                            },
+                          ),
+                        ],
+                        SettingsDoubleSliderField(
+                          key: const Key('voicevox-volume-slider'),
+                          label: '音量',
+                          min: 0.0,
+                          max: 2.0,
+                          divisions: 20,
+                          value: settings.voicevoxVolume,
+                          onChanged: (double value) {
+                            updateAndSave(
+                              settings.copyWith(voicevoxVolume: value),
+                            );
+                            // Clear pre-mute volume when user manually
+                            // changes volume, so mute icon stays in sync.
+                            if (value > 0) {
+                              unawaited(
+                                widget.settingsStore.savePreMuteVolume(null),
+                              );
+                            }
+                          },
+                        ),
+                        if (widget.settingsStore.loadPreMuteVolume() != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.volume_off,
+                                  size: 16,
+                                  color: Theme.of(context).colorScheme.outline,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'コメント画面でミュート中です',
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.outline,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        const SizedBox(height: 12),
+                        Text(
+                          _buildCreditText(settings.voicevoxSpeaker),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.outline,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ], // end of if (speechEngine == voicevox)
                   const SizedBox(height: 12),
                   SettingsSection(
                     title: '読み上げキュー',

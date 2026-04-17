@@ -3,6 +3,7 @@ package com.example.comerune.speech.domain.controller
 import com.example.comerune.speech.domain.engine.VoicevoxEngine
 import com.example.comerune.speech.domain.event.SpeechEventEmitter
 import com.example.comerune.speech.domain.event.SpeechEvents
+import com.example.comerune.speech.domain.model.EngineType
 import com.example.comerune.speech.domain.model.RawComment
 import com.example.comerune.speech.domain.model.SpeechQueueItem
 import com.example.comerune.speech.domain.model.SpeechRequest
@@ -13,6 +14,7 @@ import com.example.comerune.speech.domain.model.TtsEngineState
 import com.example.comerune.speech.domain.model.WavSynthesisResult
 import com.example.comerune.speech.domain.normalizer.CommentNormalizer
 import com.example.comerune.speech.domain.normalizer.DuplicateDetector
+import com.example.comerune.speech.domain.player.TtsSpeaker
 import com.example.comerune.speech.domain.player.WavPlayer
 import com.example.comerune.speech.domain.queue.SpeechQueueManager
 import com.example.comerune.speech.domain.settings.SettingsRepository
@@ -46,7 +48,8 @@ class SpeechControllerImpl(
     synthesisDispatcher: CoroutineDispatcher? = null,
     private val timeProvider: () -> Long = System::currentTimeMillis,
     private val duplicateDetector: DuplicateDetector? = null,
-    private val textSplitter: TextSplitter = JapaneseTextSplitter()
+    private val textSplitter: TextSplitter = JapaneseTextSplitter(),
+    private val ttsSpeaker: TtsSpeaker? = null
 ) : SpeechController {
 
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
@@ -78,6 +81,13 @@ class SpeechControllerImpl(
 
     @Volatile
     private var currentText: String? = null
+
+    @Volatile
+    private var lastAndroidTtsSpeed: Float? = null
+    @Volatile
+    private var lastAndroidTtsPitch: Float? = null
+    @Volatile
+    private var lastAndroidTtsVolume: Float? = null
 
     private var workerJob: Job? = null
 
@@ -113,6 +123,7 @@ class SpeechControllerImpl(
         }
         started = false
         player.stop()
+        ttsSpeaker?.stop()
         activePrefetchJob?.cancel()
         activePrefetchJob = null
         prefetched = null
@@ -131,6 +142,7 @@ class SpeechControllerImpl(
         activePrefetchJob = null
         prefetched = null
         player.stop()
+        ttsSpeaker?.stop()
         return Result.success(Unit)
     }
 
@@ -289,6 +301,11 @@ class SpeechControllerImpl(
         } catch (_: Exception) {
             // Best-effort
         }
+        try {
+            ttsSpeaker?.release()
+        } catch (_: Exception) {
+            // Best-effort
+        }
         if (ownsSynthDispatcher) {
             (synthDispatcher as? CloseableCoroutineDispatcher)?.close()
         }
@@ -358,16 +375,61 @@ class SpeechControllerImpl(
         eventEmitter.emit(SpeechEvents.speechStarted(item.commentId, item.text))
 
         val settings = settingsRepository.get()
-        val chunks = textSplitter.split(item.text)
 
-        if (chunks.size == 1) {
-            processSingleChunk(item, settings)
+        if (settings.engineType == EngineType.ANDROID_TTS) {
+            processWithAndroidTts(item, settings)
         } else {
-            processChunkedPipeline(item.commentId, chunks, settings)
+            val chunks = textSplitter.split(item.text)
+            if (chunks.size == 1) {
+                processSingleChunk(item, settings)
+            } else {
+                processChunkedPipeline(item.commentId, chunks, settings)
+            }
         }
 
         currentCommentId = null
         currentText = null
+    }
+
+    private suspend fun processWithAndroidTts(
+        item: SpeechQueueItem,
+        settings: SpeechSettings
+    ) {
+        val speaker = ttsSpeaker
+        if (speaker == null || !speaker.isReady()) {
+            eventEmitter.emit(
+                SpeechEvents.speechFailed(item.commentId, "android_tts_not_ready")
+            )
+            return
+        }
+
+        if (lastAndroidTtsSpeed != settings.androidTtsSpeed) {
+            speaker.setSpeechRate(settings.androidTtsSpeed)
+            lastAndroidTtsSpeed = settings.androidTtsSpeed
+        }
+        if (lastAndroidTtsPitch != settings.androidTtsPitch) {
+            speaker.setPitch(settings.androidTtsPitch)
+            lastAndroidTtsPitch = settings.androidTtsPitch
+        }
+        if (lastAndroidTtsVolume != settings.androidTtsVolume) {
+            speaker.setVolume(settings.androidTtsVolume)
+            lastAndroidTtsVolume = settings.androidTtsVolume
+        }
+
+        val result = try {
+            speaker.speak(item.text, item.commentId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+
+        if (result.isFailure) {
+            val errorMessage = result.exceptionOrNull()?.message ?: "android_tts_failed"
+            eventEmitter.emit(SpeechEvents.speechFailed(item.commentId, errorMessage))
+        } else {
+            eventEmitter.emit(SpeechEvents.speechCompleted(item.commentId))
+        }
     }
 
     /**

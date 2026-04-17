@@ -94,6 +94,10 @@ void main() {
       expect(settings.trimLongTextSuffix, '、以下省略');
       expect(settings.dictionaryRules, isEmpty);
       expect(settings.ngWords, isEmpty);
+      expect(settings.engineType, 'voicevox');
+      expect(settings.androidTtsSpeed, 1.0);
+      expect(settings.androidTtsPitch, 1.0);
+      expect(settings.androidTtsVolume, 1.0);
     });
 
     test('SynthesisMode round-trip via storageValue', () {
@@ -113,7 +117,7 @@ void main() {
     test('toMap includes all fields with defaults', () {
       const settings = SpeechSettings();
       final map = settings.toMap();
-      expect(map.length, 19);
+      expect(map.length, 23);
       expect(map['enabled'], true);
       expect(map['synthesisMode'], 'AUDIO_QUERY');
       expect(map['speedScale'], 1.15);
@@ -134,6 +138,56 @@ void main() {
       expect(rules.length, 1);
       expect((rules[0] as Map)['pattern'], 'w{2,}');
       expect(map['ngWords'], ['badword']);
+    });
+
+    test('toMap includes engineType and androidTts fields', () {
+      const settings = SpeechSettings(
+        engineType: SpeechEngineType.androidTts,
+        androidTtsSpeed: 1.5,
+        androidTtsPitch: 0.8,
+        androidTtsVolume: 0.6,
+      );
+      final map = settings.toMap();
+      expect(map['engineType'], SpeechEngineType.androidTts);
+      expect(map['androidTtsSpeed'], 1.5);
+      expect(map['androidTtsPitch'], 0.8);
+      expect(map['androidTtsVolume'], 0.6);
+    });
+
+    test('equality distinguishes engineType', () {
+      const voicevox = SpeechSettings(engineType: SpeechEngineType.voicevox);
+      const androidTts = SpeechSettings(
+        engineType: SpeechEngineType.androidTts,
+      );
+      expect(voicevox, isNot(equals(androidTts)));
+    });
+
+    test('equality distinguishes androidTts parameters', () {
+      const base = SpeechSettings(androidTtsSpeed: 1.0);
+      const modified = SpeechSettings(androidTtsSpeed: 1.5);
+      expect(base, isNot(equals(modified)));
+
+      const basePitch = SpeechSettings(androidTtsPitch: 1.0);
+      const modifiedPitch = SpeechSettings(androidTtsPitch: 0.5);
+      expect(basePitch, isNot(equals(modifiedPitch)));
+
+      const baseVolume = SpeechSettings(androidTtsVolume: 1.0);
+      const modifiedVolume = SpeechSettings(androidTtsVolume: 0.3);
+      expect(baseVolume, isNot(equals(modifiedVolume)));
+    });
+
+    test('hashCode differs for different engineType', () {
+      const voicevox = SpeechSettings(engineType: SpeechEngineType.voicevox);
+      const androidTts = SpeechSettings(
+        engineType: SpeechEngineType.androidTts,
+      );
+      // Not guaranteed by contract, but highly likely for well-distributed hash.
+      expect(voicevox.hashCode, isNot(equals(androidTts.hashCode)));
+    });
+
+    test('SpeechEngineType constants match Kotlin strings', () {
+      expect(SpeechEngineType.voicevox, 'voicevox');
+      expect(SpeechEngineType.androidTts, 'android_tts');
     });
   });
 

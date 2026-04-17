@@ -876,7 +876,11 @@ class _CommentScreenState extends State<CommentScreen> {
     }
 
     // Show setup dialog for first-time download & initialization.
-    if (!_speechInitialized) {
+    // Android TTS does not require VOICEVOX assets, so skip the dialog.
+    final bool isAndroidTts =
+        widget.speechConfig.speechSettings.engineType ==
+        SpeechEngineType.androidTts;
+    if (!_speechInitialized && !isAndroidTts) {
       _debugLog('[CommentScreen] initSpeech: showing SetupDialog...');
       if (!mounted) {
         _speechInitializing = false;
@@ -890,6 +894,9 @@ class _CommentScreenState extends State<CommentScreen> {
         _speechInitializing = false;
         return;
       }
+      _speechInitialized = true;
+    } else if (!_speechInitialized && isAndroidTts) {
+      _debugLog('[CommentScreen] initSpeech: Android TTS, skip setup dialog');
       _speechInitialized = true;
     }
 

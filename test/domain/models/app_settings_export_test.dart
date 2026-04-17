@@ -72,6 +72,130 @@ void main() {
       expect(restored.dictionaryRules.first.pattern, 'test');
     });
 
+    test('roundtrip with androidTts engine and parameters', () {
+      final AppSettings original = AppSettings.defaults.copyWith(
+        speechEngine: SpeechEngine.androidTts,
+        androidTtsSpeed: 1.5,
+        androidTtsPitch: 0.8,
+        androidTtsVolume: 0.6,
+      );
+
+      final Map<String, dynamic> json = original.toJson();
+      final AppSettings restored = AppSettings.fromJson(json);
+
+      expect(restored.speechEngine, SpeechEngine.androidTts);
+      expect(restored.androidTtsSpeed, 1.5);
+      expect(restored.androidTtsPitch, 0.8);
+      expect(restored.androidTtsVolume, 0.6);
+    });
+
+    test('import with missing androidTts fields uses defaults', () {
+      final AppSettings result = AppSettings.fromJson(<String, dynamic>{
+        'speechEngine': 'androidTts',
+      });
+
+      expect(result.speechEngine, SpeechEngine.androidTts);
+      expect(result.androidTtsSpeed, AppSettings.defaults.androidTtsSpeed);
+      expect(result.androidTtsPitch, AppSettings.defaults.androidTtsPitch);
+      expect(result.androidTtsVolume, AppSettings.defaults.androidTtsVolume);
+    });
+
+    test('toSpeechSettings with androidTts engine sets correct engineType', () {
+      final AppSettings settings = AppSettings.defaults.copyWith(
+        autoReadEnabled: true,
+        speechEngine: SpeechEngine.androidTts,
+        androidTtsSpeed: 1.3,
+        androidTtsPitch: 0.9,
+        androidTtsVolume: 0.7,
+      );
+
+      final speechSettings = settings.toSpeechSettings();
+
+      expect(speechSettings.enabled, isTrue);
+      expect(speechSettings.engineType, SpeechEngineType.androidTts);
+      expect(speechSettings.androidTtsSpeed, 1.3);
+      expect(speechSettings.androidTtsPitch, 0.9);
+      expect(speechSettings.androidTtsVolume, 0.7);
+    });
+
+    test('toSpeechSettings with voicevox engine sets correct engineType', () {
+      final AppSettings settings = AppSettings.defaults.copyWith(
+        autoReadEnabled: true,
+        speechEngine: SpeechEngine.voicevox,
+      );
+
+      final speechSettings = settings.toSpeechSettings();
+
+      expect(speechSettings.enabled, isTrue);
+      expect(speechSettings.engineType, SpeechEngineType.voicevox);
+    });
+
+    test('toSpeechSettings with bouyomi engine is disabled', () {
+      final AppSettings settings = AppSettings.defaults.copyWith(
+        autoReadEnabled: true,
+        speechEngine: SpeechEngine.bouyomi,
+      );
+
+      final speechSettings = settings.toSpeechSettings();
+
+      expect(speechSettings.enabled, isFalse);
+    });
+
+    test(
+      'import with old two-engine format defaults androidTts to voicevox',
+      () {
+        // Simulate an old export file that only knew "voicevox" and "bouyomi".
+        final AppSettings result = AppSettings.fromJson(<String, dynamic>{
+          'speechEngine': 'voicevox',
+        });
+        expect(result.speechEngine, SpeechEngine.voicevox);
+
+        final AppSettings bouyomi = AppSettings.fromJson(<String, dynamic>{
+          'speechEngine': 'bouyomi',
+        });
+        expect(bouyomi.speechEngine, SpeechEngine.bouyomi);
+      },
+    );
+
+    test('import with unknown speechEngine string defaults to voicevox', () {
+      final AppSettings result = AppSettings.fromJson(<String, dynamic>{
+        'speechEngine': 'unknownEngine',
+      });
+      expect(result.speechEngine, SpeechEngine.voicevox);
+    });
+
+    test('import with null speechEngine defaults to voicevox', () {
+      final AppSettings result = AppSettings.fromJson(<String, dynamic>{
+        'speechEngine': null,
+      });
+      expect(result.speechEngine, SpeechEngine.voicevox);
+    });
+
+    test('toJson serializes androidTts engine as "androidTts"', () {
+      final AppSettings settings = AppSettings.defaults.copyWith(
+        speechEngine: SpeechEngine.androidTts,
+      );
+      final Map<String, dynamic> json = settings.toJson();
+      expect(json['speechEngine'], 'androidTts');
+    });
+
+    test(
+      'toSpeechSettings with autoReadEnabled=false disables all engines',
+      () {
+        final AppSettings androidTts = AppSettings.defaults.copyWith(
+          autoReadEnabled: false,
+          speechEngine: SpeechEngine.androidTts,
+        );
+        expect(androidTts.toSpeechSettings().enabled, isFalse);
+
+        final AppSettings voicevox = AppSettings.defaults.copyWith(
+          autoReadEnabled: false,
+          speechEngine: SpeechEngine.voicevox,
+        );
+        expect(voicevox.toSpeechSettings().enabled, isFalse);
+      },
+    );
+
     test('roundtrip via JSON string', () {
       const AppSettings original = AppSettings.defaults;
       final String jsonString = const JsonEncoder.withIndent(

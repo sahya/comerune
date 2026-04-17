@@ -22,6 +22,25 @@ enum class SynthesisMode {
 }
 
 /**
+ * Identifies which TTS engine to use for speech synthesis/playback.
+ *
+ * - [VOICEVOX]: On-device neural TTS via VOICEVOX Core (synthesize to WAV → play).
+ * - [ANDROID_TTS]: Android platform TextToSpeech API (direct speak, no WAV step).
+ */
+enum class EngineType {
+    VOICEVOX,
+    ANDROID_TTS;
+
+    companion object {
+        fun fromString(value: String?): EngineType =
+            when (value?.lowercase()) {
+                "android_tts" -> ANDROID_TTS
+                else -> VOICEVOX
+            }
+    }
+}
+
+/**
  * User-configurable speech settings.
  *
  * In [SynthesisMode.AUDIO_QUERY] mode, the audio parameters (speed, pitch,
@@ -31,6 +50,7 @@ enum class SynthesisMode {
  */
 data class SpeechSettings(
     val enabled: Boolean = true,
+    val engineType: EngineType = EngineType.VOICEVOX,
     val synthesisMode: SynthesisMode = SynthesisMode.AUDIO_QUERY,
     val speakerId: Int = 10004, // VOICEVOX Nemo・女声3（AppSettings.voicevoxSpeaker と同期）
     val speedScale: Float = 1.15f,
@@ -48,7 +68,10 @@ data class SpeechSettings(
     val trimLongTextSuffix: String = "、以下省略",
     val dictionaryRules: List<ReplaceRule> = emptyList(),
     val ngWords: List<String> = emptyList(),
-    val playerType: String = "audio_track"
+    val playerType: String = "audio_track",
+    val androidTtsSpeed: Float = 1.0f,
+    val androidTtsPitch: Float = 1.0f,
+    val androidTtsVolume: Float = 1.0f
 )
 
 data class ReplaceRule(
