@@ -2778,70 +2778,96 @@ class _CommentScreenState extends State<CommentScreen> {
   // ---- AppBar overflow menu ----
 
   /// Build the AppBar overflow menu that groups low-frequency actions
-  /// (search / save-log / settings). Extracted from the main [build] method
-  /// to keep the AppBar `actions` list readable; behavior is identical to an
-  /// inline `PopupMenuButton` and stays bound to this State so that
-  /// `_isSavingLog` / `setState` interactions remain local.
+  /// (search / save-log / settings). Kept as a dedicated method so it stays
+  /// bound to this State — `_isSavingLog` / `setState` interactions remain
+  /// local and do not leak into the parent [build].
+  ///
+  /// Uses `IconButton` + `showMenu()` instead of `PopupMenuButton` so the
+  /// trigger's ripple shape and padding match the adjacent `IconButton`
+  /// actions in the AppBar (e.g. the sort toggle). The `Builder` exists
+  /// solely to obtain the button's `BuildContext` for positioning the menu.
   Widget _buildOverflowMenuButton() {
-    return PopupMenuButton<_AppBarMenuAction>(
-      key: const Key('appbar-overflow-menu'),
-      icon: const Icon(Icons.more_vert),
-      tooltip: 'メニュー',
-      onSelected: (_AppBarMenuAction action) {
-        switch (action) {
-          case _AppBarMenuAction.search:
-            _openSearch();
-          case _AppBarMenuAction.saveLog:
-            // `enabled: !_isSavingLog` on the menu item already prevents a
-            // disabled tap from reaching here; the guard is a belt-and-
-            // suspenders check in case the underlying material state
-            // flips between menu open and selection.
-            if (!_isSavingLog) {
-              unawaited(_saveLogManual());
-            }
-          case _AppBarMenuAction.settings:
-            final Future<void> Function()? onOpen =
-                widget.callbacks.onOpenSettings;
-            if (onOpen != null) {
-              unawaited(onOpen());
-            }
-        }
-      },
-      itemBuilder: (BuildContext context) {
-        final bool hasLogWriter = widget.logConfig.commentLogWriter != null;
-        final bool hasSettings = widget.callbacks.onOpenSettings != null;
-        // Only insert a divider between action-group items (search /
-        // save-log) and the navigation item (settings) when settings is
-        // visible. Search is always present, so the divider never becomes
-        // the first entry of the menu.
-        final bool showDividerBeforeSettings = hasSettings;
-        return <PopupMenuEntry<_AppBarMenuAction>>[
-          PopupMenuItem<_AppBarMenuAction>(
-            key: const Key('comment-search-button'),
-            value: _AppBarMenuAction.search,
-            child: const _OverflowMenuRow(icon: Icons.search, label: 'コメントを検索'),
-          ),
-          if (hasLogWriter)
-            PopupMenuItem<_AppBarMenuAction>(
-              key: const Key('save-comment-log-button'),
-              value: _AppBarMenuAction.saveLog,
-              enabled: !_isSavingLog,
-              child: _OverflowMenuRow(
-                icon: Icons.archive_outlined,
-                label: 'コメントログを保存',
-                enabled: !_isSavingLog,
-              ),
-            ),
-          if (showDividerBeforeSettings) const PopupMenuDivider(),
-          if (hasSettings)
-            PopupMenuItem<_AppBarMenuAction>(
-              key: const Key('settings-button'),
-              value: _AppBarMenuAction.settings,
-              child: const _OverflowMenuRow(icon: Icons.settings, label: '設定'),
-            ),
-        ];
+    return Builder(
+      builder: (BuildContext buttonContext) {
+        return IconButton(
+          key: const Key('appbar-overflow-menu'),
+          icon: const Icon(Icons.more_vert),
+          tooltip: 'メニュー',
+          onPressed: () => _showOverflowMenu(buttonContext),
+        );
       },
     );
+  }
+
+  Future<void> _showOverflowMenu(BuildContext buttonContext) async {
+    // Anchor the menu to the button's on-screen bounds, expressed relative to
+    // the Navigator overlay (the coordinate space `showMenu` expects).
+    final RenderBox button = buttonContext.findRenderObject()! as RenderBox;
+    final RenderBox overlay =
+        Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
+    final RelativeRect position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(Offset.zero, ancestor: overlay),
+        button.localToGlobal(
+          button.size.bottomRight(Offset.zero),
+          ancestor: overlay,
+        ),
+      ),
+      Offset.zero & overlay.size,
+    );
+
+    final bool hasLogWriter = widget.logConfig.commentLogWriter != null;
+    final bool hasSettings = widget.callbacks.onOpenSettings != null;
+    final bool showDividerBeforeSettings = hasSettings;
+
+    final _AppBarMenuAction? action = await showMenu<_AppBarMenuAction>(
+      context: context,
+      position: position,
+      items: <PopupMenuEntry<_AppBarMenuAction>>[
+        const PopupMenuItem<_AppBarMenuAction>(
+          key: Key('comment-search-button'),
+          value: _AppBarMenuAction.search,
+          child: _OverflowMenuRow(icon: Icons.search, label: 'コメントを検索'),
+        ),
+        if (hasLogWriter)
+          PopupMenuItem<_AppBarMenuAction>(
+            key: const Key('save-comment-log-button'),
+            value: _AppBarMenuAction.saveLog,
+            enabled: !_isSavingLog,
+            child: _OverflowMenuRow(
+              icon: Icons.archive_outlined,
+              label: 'コメントログを保存',
+              enabled: !_isSavingLog,
+            ),
+          ),
+        if (showDividerBeforeSettings) const PopupMenuDivider(),
+        if (hasSettings)
+          const PopupMenuItem<_AppBarMenuAction>(
+            key: Key('settings-button'),
+            value: _AppBarMenuAction.settings,
+            child: _OverflowMenuRow(icon: Icons.settings, label: '設定'),
+          ),
+      ],
+    );
+
+    if (!mounted || action == null) return;
+
+    switch (action) {
+      case _AppBarMenuAction.search:
+        _openSearch();
+      case _AppBarMenuAction.saveLog:
+        // `_isSavingLog` may have flipped to true between menu open and
+        // selection (e.g. a prior save completed then another started),
+        // so re-check here on top of the `enabled:` guard on the menu item.
+        if (!_isSavingLog) {
+          unawaited(_saveLogManual());
+        }
+      case _AppBarMenuAction.settings:
+        final Future<void> Function()? onOpen = widget.callbacks.onOpenSettings;
+        if (onOpen != null) {
+          unawaited(onOpen());
+        }
+    }
   }
 
   // ---- Keyword search ----

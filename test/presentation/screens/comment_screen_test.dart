@@ -5681,6 +5681,34 @@ void main() {
       expect(find.byKey(const Key('appbar-overflow-menu')), findsNothing);
     });
 
+    testWidgets(
+      'dismissing the overflow menu without selection leaves screen stable',
+      (WidgetTester tester) async {
+        // Regression guard for the IconButton + showMenu() implementation of
+        // the AppBar overflow menu: when the user taps outside the menu to
+        // dismiss it, `showMenu` resolves with `null` and the handler must
+        // no-op cleanly (no crash, no navigation, no search mode).
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+        await tester.pumpWidget(
+          _buildScreen(supervisor: supervisor, messages: buildMessages()),
+        );
+
+        await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('comment-search-button')), findsOneWidget);
+
+        // Tap outside the menu (the barrier) to dismiss without selecting.
+        await tester.tapAt(const Offset(10, 10));
+        await tester.pumpAndSettle();
+
+        // Menu is gone, screen is still on the normal (non-search) AppBar.
+        expect(find.byKey(const Key('comment-search-button')), findsNothing);
+        expect(find.byKey(const Key('appbar-overflow-menu')), findsOneWidget);
+        expect(find.byKey(const Key('comment-search-field')), findsNothing);
+      },
+    );
+
     testWidgets('entering a keyword filters comments to matches only', (
       WidgetTester tester,
     ) async {
