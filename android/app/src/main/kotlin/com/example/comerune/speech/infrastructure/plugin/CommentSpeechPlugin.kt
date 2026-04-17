@@ -55,6 +55,7 @@ class CommentSpeechPlugin :
     private var engine: VoicevoxEngine? = null
     private var switchablePlayer: SwitchableWavPlayer? = null
     private var androidTtsSpeaker: AndroidTtsSpeaker? = null
+    private var applicationContext: Context? = null
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         val messenger = binding.binaryMessenger
@@ -67,6 +68,7 @@ class CommentSpeechPlugin :
         }
 
         val context = binding.applicationContext
+        applicationContext = context
         val presetNgWords = loadPresetNgWords(context)
         val duplicateDetector = InMemoryDuplicateDetector()
         val normalizer = DefaultCommentNormalizer(duplicateDetector, presetNgWords = presetNgWords)
@@ -121,6 +123,7 @@ class CommentSpeechPlugin :
         engine = null
         switchablePlayer = null
         androidTtsSpeaker = null
+        applicationContext = null
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -399,6 +402,29 @@ class CommentSpeechPlugin :
                 }
                 repo.cancelDownload(modelId)
                 result.success(mapOf("ok" to true))
+            }
+            "checkAndroidTtsAvailability" -> {
+                val speaker = androidTtsSpeaker
+                if (speaker == null) {
+                    result.success(mapOf("available" to false, "error" to "not_initialized"))
+                } else {
+                    result.success(mapOf("available" to speaker.isReady()))
+                }
+            }
+            "openAndroidTtsSettings" -> {
+                val ctx = applicationContext
+                if (ctx == null) {
+                    result.error("NOT_INITIALIZED", "Context not available", null)
+                    return
+                }
+                try {
+                    val intent = android.content.Intent("com.android.settings.TTS_SETTINGS")
+                    intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                    ctx.startActivity(intent)
+                    result.success(mapOf("ok" to true))
+                } catch (e: Exception) {
+                    result.error("SETTINGS_ERROR", e.message ?: "Failed to open TTS settings", null)
+                }
             }
             else -> result.notImplemented()
         }

@@ -2352,6 +2352,252 @@ void main() {
       expect(find.text('コメント画面でミュート中です', skipOffstage: false), findsNothing);
     });
   });
+
+  group('Android TTS availability warning', () {
+    testWidgets(
+      'shows warning card when Android TTS is unavailable on engine switch',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final FakeCommentSpeechPlatform fakePlatform =
+            FakeCommentSpeechPlatform();
+        fakePlatform.androidTtsAvailableToReturn = false;
+
+        await tester.pumpWidget(
+          _buildScreenWithPlatform(settingsStore, fakePlatform),
+        );
+        await tester.pumpAndSettle();
+
+        // Switch to Android TTS.
+        await scrollToKeyInList(
+          tester,
+          _listKey,
+          const Key('speech-engine-selector'),
+        );
+        final SegmentedButton<SpeechEngine> segmented = tester
+            .widget<SegmentedButton<SpeechEngine>>(
+              find.byKey(
+                const Key('speech-engine-selector'),
+                skipOffstage: false,
+              ),
+            );
+        segmented.onSelectionChanged!(<SpeechEngine>{SpeechEngine.androidTts});
+        await tester.pumpAndSettle();
+
+        // Warning card should be visible.
+        expect(
+          find.byKey(const Key('android-tts-warning'), skipOffstage: false),
+          findsOneWidget,
+        );
+        expect(
+          find.text('日本語の音声データが利用できません', skipOffstage: false),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('open-tts-settings-btn'), skipOffstage: false),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('does not show warning card when Android TTS is available', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeCommentSpeechPlatform fakePlatform =
+          FakeCommentSpeechPlatform();
+      fakePlatform.androidTtsAvailableToReturn = true;
+
+      await tester.pumpWidget(
+        _buildScreenWithPlatform(settingsStore, fakePlatform),
+      );
+      await tester.pumpAndSettle();
+
+      // Switch to Android TTS.
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('speech-engine-selector'),
+      );
+      final SegmentedButton<SpeechEngine> segmented = tester
+          .widget<SegmentedButton<SpeechEngine>>(
+            find.byKey(
+              const Key('speech-engine-selector'),
+              skipOffstage: false,
+            ),
+          );
+      segmented.onSelectionChanged!(<SpeechEngine>{SpeechEngine.androidTts});
+      await tester.pumpAndSettle();
+
+      // Warning card should NOT be visible.
+      expect(
+        find.byKey(const Key('android-tts-warning'), skipOffstage: false),
+        findsNothing,
+      );
+    });
+
+    testWidgets(
+      'shows warning card when settings load with Android TTS engine and TTS unavailable',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        await settingsStore.save(
+          AppSettings.defaults.copyWith(speechEngine: SpeechEngine.androidTts),
+        );
+        final FakeCommentSpeechPlatform fakePlatform =
+            FakeCommentSpeechPlatform();
+        fakePlatform.androidTtsAvailableToReturn = false;
+
+        await tester.pumpWidget(
+          _buildScreenWithPlatform(settingsStore, fakePlatform),
+        );
+        await tester.pumpAndSettle();
+
+        // Warning card should be visible because settings loaded with
+        // Android TTS and the check returned false.
+        await scrollToKeyInList(
+          tester,
+          _listKey,
+          const Key('android-tts-warning'),
+        );
+        expect(
+          find.byKey(const Key('android-tts-warning'), skipOffstage: false),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('warning card disappears when switching back to VOICEVOX', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeCommentSpeechPlatform fakePlatform =
+          FakeCommentSpeechPlatform();
+      fakePlatform.androidTtsAvailableToReturn = false;
+
+      await tester.pumpWidget(
+        _buildScreenWithPlatform(settingsStore, fakePlatform),
+      );
+      await tester.pumpAndSettle();
+
+      // Switch to Android TTS.
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('speech-engine-selector'),
+      );
+      final SegmentedButton<SpeechEngine> segmented = tester
+          .widget<SegmentedButton<SpeechEngine>>(
+            find.byKey(
+              const Key('speech-engine-selector'),
+              skipOffstage: false,
+            ),
+          );
+      segmented.onSelectionChanged!(<SpeechEngine>{SpeechEngine.androidTts});
+      await tester.pumpAndSettle();
+
+      // Warning should be visible.
+      expect(
+        find.byKey(const Key('android-tts-warning'), skipOffstage: false),
+        findsOneWidget,
+      );
+
+      // Switch back to VOICEVOX.
+      segmented.onSelectionChanged!(<SpeechEngine>{SpeechEngine.voicevox});
+      await tester.pumpAndSettle();
+
+      // Warning should be gone (Android TTS section is hidden).
+      expect(
+        find.byKey(const Key('android-tts-warning'), skipOffstage: false),
+        findsNothing,
+      );
+    });
+
+    testWidgets(
+      'open TTS settings button calls platform.openAndroidTtsSettings',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final FakeCommentSpeechPlatform fakePlatform =
+            FakeCommentSpeechPlatform();
+        fakePlatform.androidTtsAvailableToReturn = false;
+
+        await tester.pumpWidget(
+          _buildScreenWithPlatform(settingsStore, fakePlatform),
+        );
+        await tester.pumpAndSettle();
+
+        // Switch to Android TTS.
+        await scrollToKeyInList(
+          tester,
+          _listKey,
+          const Key('speech-engine-selector'),
+        );
+        final SegmentedButton<SpeechEngine> segmented = tester
+            .widget<SegmentedButton<SpeechEngine>>(
+              find.byKey(
+                const Key('speech-engine-selector'),
+                skipOffstage: false,
+              ),
+            );
+        segmented.onSelectionChanged!(<SpeechEngine>{SpeechEngine.androidTts});
+        await tester.pumpAndSettle();
+
+        // Tap the open TTS settings button.
+        final Finder btnFinder = find.byKey(
+          const Key('open-tts-settings-btn'),
+          skipOffstage: false,
+        );
+        await tester.ensureVisible(btnFinder);
+        await tester.pumpAndSettle();
+        await tester.tap(btnFinder);
+        await tester.pumpAndSettle();
+
+        expect(fakePlatform.openAndroidTtsSettingsCalled, isTrue);
+      },
+    );
+
+    testWidgets('shows warning when checkAndroidTtsAvailability throws', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeCommentSpeechPlatform fakePlatform =
+          FakeCommentSpeechPlatform();
+      fakePlatform.checkAndroidTtsAvailabilityError = Exception(
+        'platform error',
+      );
+
+      await tester.pumpWidget(
+        _buildScreenWithPlatform(settingsStore, fakePlatform),
+      );
+      await tester.pumpAndSettle();
+
+      // Switch to Android TTS.
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('speech-engine-selector'),
+      );
+      final SegmentedButton<SpeechEngine> segmented = tester
+          .widget<SegmentedButton<SpeechEngine>>(
+            find.byKey(
+              const Key('speech-engine-selector'),
+              skipOffstage: false,
+            ),
+          );
+      segmented.onSelectionChanged!(<SpeechEngine>{SpeechEngine.androidTts});
+      await tester.pumpAndSettle();
+
+      // Warning should show (error treated as unavailable).
+      expect(
+        find.byKey(const Key('android-tts-warning'), skipOffstage: false),
+        findsOneWidget,
+      );
+    });
+  });
 }
 
 Widget _buildScreen(SettingsStore settingsStore) {

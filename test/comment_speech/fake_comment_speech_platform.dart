@@ -197,6 +197,28 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
     }
   }
 
+  /// Value returned by [checkAndroidTtsAvailability].
+  bool androidTtsAvailableToReturn = true;
+
+  /// If non-null, [checkAndroidTtsAvailability] will throw this.
+  Object? checkAndroidTtsAvailabilityError;
+
+  /// Tracks whether [openAndroidTtsSettings] was called.
+  bool openAndroidTtsSettingsCalled = false;
+
+  @override
+  Future<bool> checkAndroidTtsAvailability() async {
+    if (checkAndroidTtsAvailabilityError != null) {
+      throw checkAndroidTtsAvailabilityError!;
+    }
+    return androidTtsAvailableToReturn;
+  }
+
+  @override
+  Future<void> openAndroidTtsSettings() async {
+    openAndroidTtsSettingsCalled = true;
+  }
+
   /// Emit a speech event for testing.
   void emitEvent(SpeechEvent event) {
     _eventController.add(event);

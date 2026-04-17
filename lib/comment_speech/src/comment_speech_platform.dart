@@ -26,4 +26,15 @@ abstract class CommentSpeechPlatform {
   Future<List<String>> getDownloadedModels();
   Future<void> loadModel(String modelId);
   Future<void> cancelDownload(String modelId);
+
+  /// Checks whether Android's built-in TTS engine can speak Japanese.
+  ///
+  /// Returns `true` when the engine is initialized and Japanese language data
+  /// is available. Android-only — other platforms should return `false`.
+  Future<bool> checkAndroidTtsAvailability();
+
+  /// Opens the device's TTS settings screen (Android only).
+  ///
+  /// On non-Android platforms this is a no-op.
+  Future<void> openAndroidTtsSettings();
 }

@@ -82,6 +82,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   String? _queueLimitError;
   String? _maxDelayError;
   bool _isLoadingModel = false;
+  bool? _androidTtsAvailable;
 
   /// Model IDs allowed in the speaker dropdown.
   /// Uses the shared constant from voicevox_model_info.dart.
@@ -145,6 +146,9 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   void onSettingsLoaded(AppSettings loaded) {
     _queueLimitController.text = loaded.queueLimit.toString();
     _maxDelayController.text = loaded.maxDelaySeconds.toString();
+    if (loaded.speechEngine == SpeechEngine.androidTts) {
+      unawaited(_checkAndroidTtsAvailability());
+    }
   }
 
   @override
@@ -457,6 +461,22 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         _errorLog('[TtsSettings] pushSettings FAILED', error: e);
       }),
     );
+  }
+
+  Future<void> _checkAndroidTtsAvailability() async {
+    final platform = widget.platform;
+    if (platform == null) {
+      setState(() => _androidTtsAvailable = null);
+      return;
+    }
+    try {
+      final available = await platform.checkAndroidTtsAvailability();
+      if (!mounted) return;
+      setState(() => _androidTtsAvailable = available);
+    } on Object {
+      if (!mounted) return;
+      setState(() => _androidTtsAvailable = false);
+    }
   }
 
   void _applyVoicevoxPreset(
@@ -1029,12 +1049,72 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
       key: const Key('android-tts-section'),
       title: 'Android標準TTS',
       children: <Widget>[
-        Text(
-          '端末の「設定 > システム > 言語と入力 > テキスト読み上げ」で日本語音声データがインストールされている必要があります。',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.outline,
+        if (_androidTtsAvailable == false) ...[
+          Card(
+            key: const Key('android-tts-warning'),
+            color: Theme.of(context).colorScheme.errorContainer,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        color: Theme.of(context).colorScheme.onErrorContainer,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '日本語の音声データが利用できません',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onErrorContainer,
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '端末の設定から日本語の音声データをインストールしてください。',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onErrorContainer,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: OutlinedButton.icon(
+                      key: const Key('open-tts-settings-btn'),
+                      onPressed: () async {
+                        try {
+                          await widget.platform?.openAndroidTtsSettings();
+                        } on Object catch (e) {
+                          _errorLog('Failed to open TTS settings', error: e);
+                        }
+                      },
+                      icon: const Icon(Icons.open_in_new, size: 16),
+                      label: const Text('端末のTTS設定を開く'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
+          const SizedBox(height: 8),
+        ],
+        if (_androidTtsAvailable != false)
+          Text(
+            '端末の「設定 > システム > 言語と入力 > テキスト読み上げ」で日本語音声データがインストールされている必要があります。',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.outline,
+            ),
+          ),
         const SizedBox(height: 12),
         SettingsDoubleSliderField(
           key: const Key('android-tts-speed-slider'),
@@ -1165,6 +1245,11 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                           updateAndSave(
                             settings.copyWith(speechEngine: selected.first),
                           );
+                          if (selected.first == SpeechEngine.androidTts) {
+                            unawaited(_checkAndroidTtsAvailability());
+                          } else {
+                            setState(() => _androidTtsAvailable = null);
+                          }
                         },
                       ),
                       const SizedBox(height: 4),

@@ -181,4 +181,24 @@ class MethodChannelCommentSpeech implements CommentSpeechPlatform {
     });
     _debugLog('[MethodChannel] ← cancelDownload() done modelId=$modelId');
   }
+
+  @override
+  Future<bool> checkAndroidTtsAvailability() async {
+    _debugLog('[MethodChannel] → checkAndroidTtsAvailability()');
+    final result = await _methodChannel.invokeMapMethod<String, dynamic>(
+      'checkAndroidTtsAvailability',
+    );
+    final available = result?['available'] as bool? ?? false;
+    _debugLog(
+      '[MethodChannel] ← checkAndroidTtsAvailability: available=$available',
+    );
+    return available;
+  }
+
+  @override
+  Future<void> openAndroidTtsSettings() async {
+    _debugLog('[MethodChannel] → openAndroidTtsSettings()');
+    await _methodChannel.invokeMethod<void>('openAndroidTtsSettings');
+    _debugLog('[MethodChannel] ← openAndroidTtsSettings() done');
+  }
 }
