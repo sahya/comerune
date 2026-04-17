@@ -1,0 +1,5 @@
+# Copy this file to app_id.properties and set your own applicationId.
+# app_id.properties is gitignored so that forks do not inherit the
+# production identifier.  If the file is absent, the build falls back
+# to com.example.comerune (development placeholder).
+applicationId=com.example.yourapp
