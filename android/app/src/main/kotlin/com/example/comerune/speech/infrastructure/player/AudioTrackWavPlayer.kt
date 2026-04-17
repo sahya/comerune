@@ -174,7 +174,8 @@ class AudioTrackWavPlayer(private val context: Context) : WavPlayer {
                 pauseInternal()
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-                // Allow ducking; continue playback at reduced volume managed by the system
+                // willPauseWhenDucked=true により通常は AUDIOFOCUS_LOSS_TRANSIENT として
+                // 通知されるため、この分岐には到達しない。防御的に残している。
             }
             AudioManager.AUDIOFOCUS_GAIN -> {
                 resumeInternal()
@@ -183,8 +184,9 @@ class AudioTrackWavPlayer(private val context: Context) : WavPlayer {
     }
 
     private val audioFocusRequest: AudioFocusRequest by lazy {
-        AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+        AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
             .setAudioAttributes(audioAttributes)
+            .setWillPauseWhenDucked(true)
             .setOnAudioFocusChangeListener(focusChangeListener)
             .build()
     }
