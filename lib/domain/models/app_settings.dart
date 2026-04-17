@@ -71,10 +71,7 @@ extension AppThemeModeValue on AppThemeMode {
   }
 }
 
-// TODO(#13): 棒読みちゃん(bouyomi)はUIから非表示。サーバー管理しない方針のため、
-// 今後削除するか再実装するかは未定。bouyomi の enum 値・設定フィールドは
-// 後方互換のため残している。
-enum SpeechEngine { bouyomi, voicevox, androidTts }
+enum SpeechEngine { voicevox, androidTts }
 
 /// 音声再生方式。
 enum VoicevoxPlayerType {
@@ -222,11 +219,6 @@ class AppSettings {
     required this.themeMode,
     required this.autoReadEnabled,
     required this.speechEngine,
-    required this.bouyomiHost,
-    required this.bouyomiSpeed,
-    required this.bouyomiTone,
-    required this.bouyomiVolume,
-    required this.bouyomiVoice,
     required this.voicevoxSpeaker,
     required this.voicevoxSpeed,
     required this.voicevoxPitch,
@@ -284,11 +276,6 @@ class AppSettings {
     themeMode: AppThemeMode.light,
     autoReadEnabled: false,
     speechEngine: SpeechEngine.voicevox,
-    bouyomiHost: '',
-    bouyomiSpeed: -1,
-    bouyomiTone: -1,
-    bouyomiVolume: -1,
-    bouyomiVoice: 0,
     voicevoxSpeaker: 10004, // VOICEVOX Nemo・女声3
     voicevoxSpeed: 1.0,
     voicevoxPitch: 0.0,
@@ -340,11 +327,6 @@ class AppSettings {
   final AppThemeMode themeMode;
   final bool autoReadEnabled;
   final SpeechEngine speechEngine;
-  final String bouyomiHost;
-  final int bouyomiSpeed;
-  final int bouyomiTone;
-  final int bouyomiVolume;
-  final int bouyomiVoice;
   final int voicevoxSpeaker;
   final double voicevoxSpeed;
   final double voicevoxPitch;
@@ -563,11 +545,6 @@ class AppSettings {
     AppThemeMode? themeMode,
     bool? autoReadEnabled,
     SpeechEngine? speechEngine,
-    String? bouyomiHost,
-    int? bouyomiSpeed,
-    int? bouyomiTone,
-    int? bouyomiVolume,
-    int? bouyomiVoice,
     int? voicevoxSpeaker,
     double? voicevoxSpeed,
     double? voicevoxPitch,
@@ -619,11 +596,6 @@ class AppSettings {
       themeMode: themeMode ?? this.themeMode,
       autoReadEnabled: autoReadEnabled ?? this.autoReadEnabled,
       speechEngine: speechEngine ?? this.speechEngine,
-      bouyomiHost: bouyomiHost ?? this.bouyomiHost,
-      bouyomiSpeed: bouyomiSpeed ?? this.bouyomiSpeed,
-      bouyomiTone: bouyomiTone ?? this.bouyomiTone,
-      bouyomiVolume: bouyomiVolume ?? this.bouyomiVolume,
-      bouyomiVoice: bouyomiVoice ?? this.bouyomiVoice,
       voicevoxSpeaker: voicevoxSpeaker ?? this.voicevoxSpeaker,
       voicevoxSpeed: voicevoxSpeed ?? this.voicevoxSpeed,
       voicevoxPitch: voicevoxPitch ?? this.voicevoxPitch,
@@ -703,11 +675,6 @@ class AppSettings {
       'themeMode': themeMode.storageValue,
       'autoReadEnabled': autoReadEnabled,
       'speechEngine': speechEngine.name,
-      'bouyomiHost': bouyomiHost,
-      'bouyomiSpeed': bouyomiSpeed,
-      'bouyomiTone': bouyomiTone,
-      'bouyomiVolume': bouyomiVolume,
-      'bouyomiVoice': bouyomiVoice,
       'voicevoxSpeaker': voicevoxSpeaker,
       'voicevoxSpeed': voicevoxSpeed,
       'voicevoxPitch': voicevoxPitch,
@@ -807,11 +774,6 @@ class AppSettings {
       ),
       autoReadEnabled: json['autoReadEnabled'] as bool? ?? d.autoReadEnabled,
       speechEngine: _parseSpeechEngine(json['speechEngine'] as String?),
-      bouyomiHost: json['bouyomiHost'] as String? ?? d.bouyomiHost,
-      bouyomiSpeed: json['bouyomiSpeed'] as int? ?? d.bouyomiSpeed,
-      bouyomiTone: json['bouyomiTone'] as int? ?? d.bouyomiTone,
-      bouyomiVolume: json['bouyomiVolume'] as int? ?? d.bouyomiVolume,
-      bouyomiVoice: json['bouyomiVoice'] as int? ?? d.bouyomiVoice,
       voicevoxSpeaker: json['voicevoxSpeaker'] as int? ?? d.voicevoxSpeaker,
       voicevoxSpeed:
           (json['voicevoxSpeed'] as num?)?.toDouble() ?? d.voicevoxSpeed,
@@ -917,10 +879,7 @@ class AppSettings {
 
   /// Convert to [SpeechSettings] for the platform speech engine.
   SpeechSettings toSpeechSettings() => SpeechSettings(
-    enabled:
-        autoReadEnabled &&
-        (speechEngine == SpeechEngine.voicevox ||
-            speechEngine == SpeechEngine.androidTts),
+    enabled: autoReadEnabled,
     engineType: speechEngine == SpeechEngine.androidTts
         ? SpeechEngineType.androidTts
         : SpeechEngineType.voicevox,
@@ -944,8 +903,6 @@ class AppSettings {
 
 SpeechEngine _parseSpeechEngine(String? raw) {
   switch (raw) {
-    case 'bouyomi':
-      return SpeechEngine.bouyomi;
     case 'androidTts':
       return SpeechEngine.androidTts;
     case 'voicevox':

@@ -25,7 +25,6 @@ enum ConnectionErrorCode {
   endpointResolveFailed,
   ndgrStreamFailed,
   legacyWsFailed,
-  speechBouyomiFailed,
   speechVoicevoxFailed,
   userStopped,
   broadcastEnded,
@@ -89,8 +88,6 @@ extension ConnectionErrorCodeExtension on ConnectionErrorCode {
         return 'NDGR_STREAM_FAILED';
       case ConnectionErrorCode.legacyWsFailed:
         return 'LEGACY_WS_FAILED';
-      case ConnectionErrorCode.speechBouyomiFailed:
-        return 'SPEECH_BOUYOMI_FAILED';
       case ConnectionErrorCode.speechVoicevoxFailed:
         return 'SPEECH_VOICEVOX_FAILED';
       case ConnectionErrorCode.userStopped:

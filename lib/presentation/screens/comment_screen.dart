@@ -2612,7 +2612,6 @@ class _CommentScreenState extends State<CommentScreen> {
         return 'コメント受信に失敗しました';
       case ConnectionErrorCode.lvParseFailed:
         return '放送IDが見つかりません';
-      case ConnectionErrorCode.speechBouyomiFailed:
       case ConnectionErrorCode.speechVoicevoxFailed:
       case ConnectionErrorCode.userStopped:
       case null:

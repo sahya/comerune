@@ -28,9 +28,6 @@ void _errorLog(String message, {Object? error, StackTrace? stackTrace}) {
   );
 }
 
-// TODO(#13): 棒読みちゃん対応は UIから非表示とした。サーバーを管理しない方針のため、
-// 今後削除するか再実装するかは未定。万が一機会があれば再検討する。
-// 棒読みちゃん関連のドメインモデル・設定ストアのフィールドは後方互換のため残している。
 class TtsSettingsScreen extends StatefulWidget {
   const TtsSettingsScreen({
     super.key,

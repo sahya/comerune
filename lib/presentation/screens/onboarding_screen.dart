@@ -246,7 +246,7 @@ class _SpeechPage extends StatelessWidget {
       iconColor: const Color(0xFF66BB6A),
       title: 'コメントを声で届ける',
       body:
-          '棒読みちゃんや VOICEVOX と連携して、\n'
+          'VOICEVOX や Android 標準 TTS と連携して、\n'
           'コメントを音声で読み上げます。\n\n'
           '画面から目を離しているときでも\n'
           'リスナーの声を逃さず受け取れます。\n'

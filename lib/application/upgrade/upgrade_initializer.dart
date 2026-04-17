@@ -34,7 +34,7 @@ enum StorageKeyCategory {
 /// ## 保持されるキー（persistent）
 ///
 /// - `settings.*`（[ephemeralKeys] に含まれるものを除く）
-///   - 読み上げ設定（speechEngine, voicevox.*, bouyomi.*）
+///   - 読み上げ設定（speechEngine, voicevox.*）
 ///   - コメント設定（showUserName, fontSize, twoLine 等）
 ///   - フィルタ設定（ngWords, ngWordRules, ngUserIds, omitUrl 等）
 ///   - お気に入りユーザー（favoriteUserIds）

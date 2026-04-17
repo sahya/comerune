@@ -733,7 +733,7 @@ void main() {
     });
 
     test(
-      'speechEngine load preserves bouyomi for backward compatibility',
+      'speechEngine load falls back to voicevox for removed bouyomi value',
       () async {
         final InMemorySharedPreferences prefs = InMemorySharedPreferences();
         final SharedPreferencesSettingsStore store =
@@ -743,7 +743,7 @@ void main() {
 
         final AppSettings loaded = await store.load();
 
-        expect(loaded.speechEngine, SpeechEngine.bouyomi);
+        expect(loaded.speechEngine, SpeechEngine.voicevox);
       },
     );
   });

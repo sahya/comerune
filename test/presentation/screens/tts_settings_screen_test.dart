@@ -65,15 +65,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(const Key('engine-bouyomi-radio'), skipOffstage: false),
-        findsNothing,
-      );
-      expect(
         find.byKey(const Key('engine-voicevox-radio'), skipOffstage: false),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const Key('bouyomi-section'), skipOffstage: false),
         findsNothing,
       );
     });

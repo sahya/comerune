@@ -34,7 +34,6 @@ void main() {
           'ENDPOINT_RESOLVE_FAILED',
           'NDGR_STREAM_FAILED',
           'LEGACY_WS_FAILED',
-          'SPEECH_BOUYOMI_FAILED',
           'SPEECH_VOICEVOX_FAILED',
           'USER_STOPPED',
           'BROADCAST_ENDED',

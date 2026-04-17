@@ -16,7 +16,6 @@ void main() {
       expect(restored.themeMode, original.themeMode);
       expect(restored.autoReadEnabled, original.autoReadEnabled);
       expect(restored.speechEngine, original.speechEngine);
-      expect(restored.bouyomiHost, original.bouyomiHost);
       expect(restored.voicevoxSpeaker, original.voicevoxSpeaker);
       expect(restored.voicevoxSpeed, original.voicevoxSpeed);
       expect(restored.voicevoxPitch, original.voicevoxPitch);
@@ -130,32 +129,12 @@ void main() {
       expect(speechSettings.engineType, SpeechEngineType.voicevox);
     });
 
-    test('toSpeechSettings with bouyomi engine is disabled', () {
-      final AppSettings settings = AppSettings.defaults.copyWith(
-        autoReadEnabled: true,
-        speechEngine: SpeechEngine.bouyomi,
-      );
-
-      final speechSettings = settings.toSpeechSettings();
-
-      expect(speechSettings.enabled, isFalse);
+    test('import with old bouyomi engine falls back to voicevox', () {
+      final AppSettings fromBouyomi = AppSettings.fromJson(<String, dynamic>{
+        'speechEngine': 'bouyomi',
+      });
+      expect(fromBouyomi.speechEngine, SpeechEngine.voicevox);
     });
-
-    test(
-      'import with old two-engine format defaults androidTts to voicevox',
-      () {
-        // Simulate an old export file that only knew "voicevox" and "bouyomi".
-        final AppSettings result = AppSettings.fromJson(<String, dynamic>{
-          'speechEngine': 'voicevox',
-        });
-        expect(result.speechEngine, SpeechEngine.voicevox);
-
-        final AppSettings bouyomi = AppSettings.fromJson(<String, dynamic>{
-          'speechEngine': 'bouyomi',
-        });
-        expect(bouyomi.speechEngine, SpeechEngine.bouyomi);
-      },
-    );
 
     test('import with unknown speechEngine string defaults to voicevox', () {
       final AppSettings result = AppSettings.fromJson(<String, dynamic>{

@@ -58,11 +58,6 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   static const String _kThemeMode = 'settings.themeMode';
   static const String _kAutoReadEnabled = 'settings.autoReadEnabled';
   static const String _kSpeechEngine = 'settings.speechEngine';
-  static const String _kBouyomiHost = 'settings.bouyomi.host';
-  static const String _kBouyomiSpeed = 'settings.bouyomi.speed';
-  static const String _kBouyomiTone = 'settings.bouyomi.tone';
-  static const String _kBouyomiVolume = 'settings.bouyomi.volume';
-  static const String _kBouyomiVoice = 'settings.bouyomi.voice';
   static const String _kVoicevoxSpeaker = 'settings.voicevox.speaker';
   static const String _kVoicevoxSpeed = 'settings.voicevox.speedScale';
   static const String _kVoicevoxPitch = 'settings.voicevox.pitchScale';
@@ -131,8 +126,6 @@ class SharedPreferencesSettingsStore implements SettingsStore {
     final String? engineValue = _prefs.getString(_kSpeechEngine);
     final SpeechEngine speechEngine;
     switch (engineValue) {
-      case 'bouyomi':
-        speechEngine = SpeechEngine.bouyomi;
       case 'androidTts':
         speechEngine = SpeechEngine.androidTts;
       default:
@@ -146,11 +139,6 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       autoReadEnabled:
           _prefs.getBool(_kAutoReadEnabled) ?? defaults.autoReadEnabled,
       speechEngine: speechEngine,
-      bouyomiHost: _prefs.getString(_kBouyomiHost) ?? defaults.bouyomiHost,
-      bouyomiSpeed: _prefs.getInt(_kBouyomiSpeed) ?? defaults.bouyomiSpeed,
-      bouyomiTone: _prefs.getInt(_kBouyomiTone) ?? defaults.bouyomiTone,
-      bouyomiVolume: _prefs.getInt(_kBouyomiVolume) ?? defaults.bouyomiVolume,
-      bouyomiVoice: _prefs.getInt(_kBouyomiVoice) ?? defaults.bouyomiVoice,
       voicevoxSpeaker:
           _prefs.getInt(_kVoicevoxSpeaker) ?? defaults.voicevoxSpeaker,
       voicevoxSpeed:
@@ -258,11 +246,6 @@ class SharedPreferencesSettingsStore implements SettingsStore {
     await _prefs.setString(_kThemeMode, settings.themeMode.storageValue);
     await _prefs.setBool(_kAutoReadEnabled, settings.autoReadEnabled);
     await _prefs.setString(_kSpeechEngine, settings.speechEngine.name);
-    await _prefs.setString(_kBouyomiHost, settings.bouyomiHost);
-    await _prefs.setInt(_kBouyomiSpeed, settings.bouyomiSpeed);
-    await _prefs.setInt(_kBouyomiTone, settings.bouyomiTone);
-    await _prefs.setInt(_kBouyomiVolume, settings.bouyomiVolume);
-    await _prefs.setInt(_kBouyomiVoice, settings.bouyomiVoice);
     await _prefs.setInt(_kVoicevoxSpeaker, settings.voicevoxSpeaker);
     await _prefs.setDouble(_kVoicevoxSpeed, settings.voicevoxSpeed);
     await _prefs.setDouble(_kVoicevoxPitch, settings.voicevoxPitch);
