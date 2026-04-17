@@ -26,6 +26,17 @@ void main() {
       );
     });
 
+    test('invisibleOnly -> invisible-only characters message', () {
+      expect(
+        commentPostErrorMessage(
+          const CommentSendResult.validation(
+            CommentValidationError.invisibleOnly,
+          ),
+        ),
+        'コメントに使用できない文字のみが含まれています',
+      );
+    });
+
     test('tooLong -> length limit message', () {
       expect(
         commentPostErrorMessage(

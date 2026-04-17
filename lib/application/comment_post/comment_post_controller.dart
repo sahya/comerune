@@ -1,6 +1,7 @@
 import '../../data/comment/live_comment_repository.dart';
 import '../../data/follow/follow_program.dart';
 import '../../data/follow/my_program_repository.dart';
+import '../../domain/utils/unicode_sanitizer.dart';
 
 /// Maximum length of a normal (viewer) comment.
 const int kNormalCommentMaxLength = 75;
@@ -34,6 +35,13 @@ enum BroadcasterCheckOutcome {
 /// Reason why a pre-send validation rejected a comment.
 enum CommentValidationError {
   empty,
+
+  /// The input is non-empty but consists entirely of invisible / control
+  /// characters that would be stripped by [removeControlAndInvisibleChars].
+  /// Distinct from [empty] (which fires on blank / whitespace-only input)
+  /// so the snackbar can surface a more specific diagnostic.
+  invisibleOnly,
+
   tooLong,
   missingSession,
   missingProgram,
@@ -116,6 +124,9 @@ class CommentPostController {
     final String trimmed = text.trim();
     if (trimmed.isEmpty) {
       return CommentValidationError.empty;
+    }
+    if (removeControlAndInvisibleChars(trimmed).isEmpty) {
+      return CommentValidationError.invisibleOnly;
     }
     if (text.length >
         maxLengthFor(asOperator: asOperator, maxLength: maxLength)) {

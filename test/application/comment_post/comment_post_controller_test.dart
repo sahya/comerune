@@ -20,6 +20,55 @@ void main() {
       );
     });
 
+    test('returns invisibleOnly for input that sanitises to empty', () {
+      expect(
+        CommentPostController.validateText(
+          text: '\u200B\u202E\uFEFF',
+          asOperator: false,
+        ),
+        CommentValidationError.invisibleOnly,
+      );
+    });
+
+    test('returns invisibleOnly for ZWSP-only input (not empty)', () {
+      expect(
+        CommentPostController.validateText(text: '\u200B', asOperator: true),
+        CommentValidationError.invisibleOnly,
+      );
+    });
+
+    test('returns empty for NBSP-only input (Dart trim strips NBSP)', () {
+      expect(
+        CommentPostController.validateText(text: '\u00A0', asOperator: false),
+        CommentValidationError.empty,
+      );
+    });
+
+    test(
+      'returns invisibleOnly for NBSP mixed with visible-length invisible chars',
+      () {
+        // ZWSP passes trim() (not considered whitespace) but is stripped by
+        // removeControlAndInvisibleChars, producing an invisibleOnly result.
+        expect(
+          CommentPostController.validateText(
+            text: '\u200B\u00AD',
+            asOperator: false,
+          ),
+          CommentValidationError.invisibleOnly,
+        );
+      },
+    );
+
+    test('returns null for input with visible chars after sanitisation', () {
+      expect(
+        CommentPostController.validateText(
+          text: 'hello\u200B',
+          asOperator: false,
+        ),
+        isNull,
+      );
+    });
+
     test('returns tooLong when normal comment exceeds 75 chars', () {
       final String text = 'a' * 76;
       expect(
@@ -282,6 +331,21 @@ void main() {
       );
 
       expect(result.validationError, CommentValidationError.empty);
+      expect(fake.requests, isEmpty);
+    });
+
+    test('returns invisibleOnly error for invisible-only text', () async {
+      final _FakeHttpClient fake = _FakeHttpClient();
+      final CommentPostController controller = _buildController(fake);
+
+      final CommentSendResult result = await controller.postComment(
+        lv: 'lv1',
+        userSession: 'session',
+        text: '\u200B\u202E',
+        asOperator: false,
+      );
+
+      expect(result.validationError, CommentValidationError.invisibleOnly);
       expect(fake.requests, isEmpty);
     });
 

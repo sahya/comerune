@@ -60,6 +60,8 @@ String commentPostErrorMessage(CommentSendResult result) {
     switch (validation) {
       case CommentValidationError.empty:
         return 'コメントを入力してください';
+      case CommentValidationError.invisibleOnly:
+        return 'コメントに使用できない文字のみが含まれています';
       case CommentValidationError.tooLong:
         return '文字数が上限を超えています';
       case CommentValidationError.missingSession:
