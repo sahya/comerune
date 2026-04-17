@@ -59,7 +59,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   static const String _loginUrl = 'https://account.nicovideo.jp/login';
   static const MethodChannel _cookieChannel = MethodChannel(
-    'app.spectacles_software.comerune/cookies',
+    'com.example.comerune/cookies',
   );
 
   // Domain allowlist is defined in the top-level [_allowedLoginHosts]

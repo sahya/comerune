@@ -99,7 +99,7 @@ void main() {
       // Locate the project root by walking up from the test file.
       final testDir = Directory.current.path;
       final ktFile = File(
-        '$testDir/android/app/src/main/kotlin/app/spectacles_software/comerune/'
+        '$testDir/android/app/src/main/kotlin/com/example/comerune/'
         'speech/domain/model/VoicevoxModelManifest.kt',
       );
       if (!ktFile.existsSync()) {
