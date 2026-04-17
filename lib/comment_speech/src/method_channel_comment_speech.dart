@@ -12,10 +12,10 @@ import 'models/submit_result.dart';
 /// EventChannel that delegates to the Android Kotlin plugin.
 class MethodChannelCommentSpeech implements CommentSpeechPlatform {
   static const _methodChannel = MethodChannel(
-    'com.example.comerune.speech/methods',
+    'app.spectacles_software.comerune.speech/methods',
   );
   static const _eventChannel = EventChannel(
-    'com.example.comerune.speech/events',
+    'app.spectacles_software.comerune.speech/events',
   );
   // Progress events are emitted very frequently during downloads and can
   // flood logs. Keep lifecycle/state events visible, but suppress these.

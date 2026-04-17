@@ -32,6 +32,9 @@ doc/api/
 android/local.properties
 android/**/GeneratedPluginRegistrant.java
 
+# Application ID (fork-protected — see android/app_id.properties.example)
+android/app_id.properties
+
 # IDE files
 .idea/
 *.iml

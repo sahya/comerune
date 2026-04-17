@@ -5,8 +5,23 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val appIdPropsFile = rootProject.file("app_id.properties")
+val appIdProps = java.util.Properties().apply {
+    if (appIdPropsFile.exists()) {
+        appIdPropsFile.inputStream().use { load(it) }
+    }
+}
+val configuredAppId: String = appIdProps.getProperty("applicationId", "com.example.comerune")
+
+if (appIdPropsFile.exists() && configuredAppId == "com.example.comerune") {
+    logger.warn("app_id.properties exists but applicationId is still the default placeholder.")
+}
+if (!appIdPropsFile.exists()) {
+    logger.warn("app_id.properties not found — using fallback applicationId. See app_id.properties.example.")
+}
+
 android {
-    namespace = "com.example.comerune"
+    namespace = "app.spectacles_software.comerune"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -26,8 +41,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.comerune"
+        applicationId = configuredAppId
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

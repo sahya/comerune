@@ -9,4 +9,4 @@
 -keep class com.it_nomads.fluttersecurestorage.** { *; }
 
 # VOICEVOX JNI bridge (native methods must not be renamed)
--keep class com.example.comerune.speech.infrastructure.engine.NativeVoicevoxBridge { *; }
+-keep class app.spectacles_software.comerune.speech.infrastructure.engine.NativeVoicevoxBridge { *; }
