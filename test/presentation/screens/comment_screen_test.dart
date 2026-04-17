@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:comerune/domain/connection/connection_method.dart';
 import 'package:comerune/domain/connection/connection_supervisor.dart';
 import 'package:comerune/data/comment_log/comment_log_writer.dart';
 import 'package:comerune/domain/models/app_message.dart';
@@ -75,15 +74,11 @@ void main() {
           messages: const <AppMessage>[],
           lv: 'lv777',
           debugMode: true,
-          connectionMethod: ConnectionMethod.ndgr,
         ),
       );
 
       expect(find.text('lv: lv777'), findsOneWidget);
       expect(find.text('再接続: 1回'), findsOneWidget);
-      expect(find.text('エラー: NDGR_STREAM_FAILED'), findsOneWidget);
-      expect(find.text('方式: NDGR'), findsOneWidget);
-      expect(find.text('フェーズ: RECONNECTING'), findsOneWidget);
 
       final Text lastReceived = tester.widget(
         find.byKey(const Key('status-last-received')),
@@ -932,7 +927,7 @@ void main() {
       expect(find.text('コメントサーバーの取得に失敗しました 再接続ボタンで再試行できます。'), findsOneWidget);
     });
 
-    testWidgets('shows failure detail in snackbar and debug status bar', (
+    testWidgets('shows failure detail in snackbar', (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
@@ -963,8 +958,6 @@ void main() {
         find.textContaining('原因: HandshakeException: 401 Unauthorized'),
         findsOneWidget,
       );
-      expect(find.byKey(const Key('status-last-error-detail')), findsOneWidget);
-      expect(find.textContaining('エラー詳細: HandshakeException'), findsOneWidget);
     });
 
     testWidgets('shows reconnect button on FAILED and allows retry tap', (
@@ -1096,9 +1089,6 @@ void main() {
       // Program title bar shows the title with broadcaster icon.
       expect(find.byKey(const Key('program-title-bar')), findsOneWidget);
       expect(find.text('テスト番組'), findsOneWidget);
-
-      // Status bar also shows the broadcaster name.
-      expect(find.byKey(const Key('status-broadcaster-name')), findsOneWidget);
     });
 
     testWidgets('shows lv only in AppBar when broadcasterName is null', (
@@ -1120,12 +1110,68 @@ void main() {
 
       expect(find.byKey(const Key('program-title-bar')), findsOneWidget);
       expect(find.text('タイトルのみ'), findsOneWidget);
-
-      // Status bar does not show broadcaster name when null.
-      expect(find.byKey(const Key('status-broadcaster-name')), findsNothing);
     });
 
-    testWidgets('shows broadcaster user ID in expanded status bar', (
+    testWidgets(
+      'shows broadcaster user ID in expanded status bar (debug mode)',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: const <AppMessage>[],
+            broadcasterName: '配信者テスト',
+            broadcasterUserId: '12345678',
+            debugMode: true,
+          ),
+        );
+        expect(
+          find.byKey(const Key('status-broadcaster-user-id')),
+          findsOneWidget,
+        );
+        expect(find.text('放送者ID: 12345678'), findsOneWidget);
+      },
+    );
+
+    testWidgets('hides broadcaster user ID when null (debug mode)', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          broadcasterName: '配信者テスト',
+          debugMode: true,
+        ),
+      );
+      expect(find.byKey(const Key('status-broadcaster-user-id')), findsNothing);
+    });
+
+    testWidgets('broadcaster user ID hidden after auto-collapse (debug mode)', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          broadcasterName: '配信者X',
+          broadcasterUserId: '99999',
+          debugMode: true,
+        ),
+      );
+      // Initially visible (status bar starts expanded).
+      expect(
+        find.byKey(const Key('status-broadcaster-user-id')),
+        findsOneWidget,
+      );
+      // After auto-collapse timer fires, user ID should be hidden.
+      await tester.pump(const Duration(seconds: 2));
+      expect(find.byKey(const Key('status-broadcaster-user-id')), findsNothing);
+    });
+
+    testWidgets('debug info hidden in normal mode', (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
@@ -1137,47 +1183,10 @@ void main() {
           broadcasterUserId: '12345678',
         ),
       );
-      expect(
-        find.byKey(const Key('status-broadcaster-user-id')),
-        findsOneWidget,
-      );
-      expect(find.text('放送者ID: 12345678'), findsOneWidget);
-    });
-
-    testWidgets('hides broadcaster user ID when null', (
-      WidgetTester tester,
-    ) async {
-      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-      await tester.pumpWidget(
-        _buildScreen(
-          supervisor: supervisor,
-          messages: const <AppMessage>[],
-          broadcasterName: '配信者テスト',
-        ),
-      );
+      expect(find.byKey(const Key('status-last-received')), findsNothing);
+      expect(find.byKey(const Key('status-reconnect-count')), findsNothing);
       expect(find.byKey(const Key('status-broadcaster-user-id')), findsNothing);
-    });
-
-    testWidgets('broadcaster user ID hidden after auto-collapse', (
-      WidgetTester tester,
-    ) async {
-      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-      await tester.pumpWidget(
-        _buildScreen(
-          supervisor: supervisor,
-          messages: const <AppMessage>[],
-          broadcasterName: '配信者X',
-          broadcasterUserId: '99999',
-        ),
-      );
-      // Initially visible (status bar starts expanded).
-      expect(
-        find.byKey(const Key('status-broadcaster-user-id')),
-        findsOneWidget,
-      );
-      // After auto-collapse timer fires, user ID should be hidden.
-      await tester.pump(const Duration(seconds: 2));
-      expect(find.byKey(const Key('status-broadcaster-user-id')), findsNothing);
+      expect(find.text('放送者ID: 12345678'), findsNothing);
     });
 
     testWidgets('hides program title bar when title is null', (
@@ -7114,7 +7123,6 @@ Widget _buildScreen({
   Future<void> Function()? onReconnectSameLv,
   Future<void> Function()? onOpenSettings,
   bool debugMode = false,
-  ConnectionMethod? connectionMethod,
   String? programTitle,
   String? broadcasterName,
   String? broadcasterUserId,
@@ -7162,7 +7170,6 @@ Widget _buildScreen({
         broadcasterName: broadcasterName,
         broadcasterUserId: broadcasterUserId,
         beginAt: beginAt,
-        connectionMethod: connectionMethod,
       ),
       connectionSupervisor: supervisor,
       messages: messages,

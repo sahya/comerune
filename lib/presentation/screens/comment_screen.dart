@@ -22,7 +22,6 @@ import '../../domain/utils/elapsed_formatter.dart';
 import '../../domain/utils/search_normalizer.dart';
 import '../../domain/utils/unicode_sanitizer.dart';
 import '../../domain/utils/url_extractor.dart';
-import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
@@ -1874,10 +1873,7 @@ class _CommentScreenState extends State<CommentScreen> {
                   lv: widget.programInfo.lv,
                   supervisor: widget.connectionSupervisor,
                   debugMode: widget.debugMode,
-                  connectionMethod: widget.programInfo.connectionMethod,
-                  broadcasterName: widget.programInfo.broadcasterName,
                   broadcasterUserId: widget.programInfo.broadcasterUserId,
-                  broadcasterIconUrl: widget.programInfo.broadcasterIconUrl,
                   beginAt: widget.programInfo.beginAt,
                   themeColors: themeColors,
                   statisticsEnabled: widget.statistics.enabled,
@@ -3803,10 +3799,7 @@ class _StatusBar extends StatefulWidget {
     required this.lv,
     required this.supervisor,
     required this.debugMode,
-    required this.connectionMethod,
-    this.broadcasterName,
     this.broadcasterUserId,
-    this.broadcasterIconUrl,
     this.beginAt,
     required this.themeColors,
     this.statisticsEnabled = false,
@@ -3820,10 +3813,7 @@ class _StatusBar extends StatefulWidget {
   final String lv;
   final ConnectionSupervisor supervisor;
   final bool debugMode;
-  final ConnectionMethod? connectionMethod;
-  final String? broadcasterName;
   final String? broadcasterUserId;
-  final String? broadcasterIconUrl;
   final DateTime? beginAt;
   final AppThemeColors themeColors;
   final bool statisticsEnabled;
@@ -3923,28 +3913,6 @@ class _StatusBarState extends State<_StatusBar> {
                       color: wifiColor,
                     ),
                     const SizedBox(width: 8),
-                    if (widget.broadcasterName != null) ...<Widget>[
-                      if (widget.broadcasterIconUrl != null &&
-                          widget.broadcasterIconUrl!.isNotEmpty) ...<Widget>[
-                        _BroadcasterIcon(
-                          url: widget.broadcasterIconUrl,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 4),
-                      ],
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 120),
-                        child: Text(
-                          widget.broadcasterName!,
-                          key: const Key('status-broadcaster-name'),
-                          style: TextStyle(
-                            color: widget.themeColors.statusConnected,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
                     Flexible(
                       child: Text(
                         'lv: ${widget.lv}',
@@ -3974,36 +3942,6 @@ class _StatusBarState extends State<_StatusBar> {
                   ],
                 ),
                 if (!_collapsed) ...<Widget>[
-                  if (widget.broadcasterUserId != null) ...<Widget>[
-                    const SizedBox(height: 4),
-                    Text(
-                      '放送者ID: ${widget.broadcasterUserId}',
-                      key: const Key('status-broadcaster-user-id'),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: widget.themeColors.subtleTextColor,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 4),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 4,
-                    children: <Widget>[
-                      Text(
-                        '最終受信: ${_formatHmsOrDash(widget.supervisor.lastReceivedAt)}',
-                        key: const Key('status-last-received'),
-                      ),
-                      Text(
-                        '再接続: ${widget.supervisor.reconnectCount}回',
-                        key: const Key('status-reconnect-count'),
-                      ),
-                      Text(
-                        'エラー: ${_errorLabel(widget.supervisor.lastError)}',
-                        key: const Key('status-last-error'),
-                      ),
-                    ],
-                  ),
                   if (widget.statisticsEnabled) ...<Widget>[
                     const SizedBox(height: 4),
                     Wrap(
@@ -4030,24 +3968,28 @@ class _StatusBarState extends State<_StatusBar> {
                   ],
                   if (widget.debugMode) ...<Widget>[
                     const SizedBox(height: 4),
+                    if (widget.broadcasterUserId != null)
+                      Text(
+                        '放送者ID: ${widget.broadcasterUserId}',
+                        key: const Key('status-broadcaster-user-id'),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: widget.themeColors.subtleTextColor,
+                        ),
+                      ),
+                    const SizedBox(height: 4),
                     Wrap(
                       spacing: 12,
                       runSpacing: 4,
                       children: <Widget>[
                         Text(
-                          '方式: ${_connectionMethodLabel(widget.connectionMethod)}',
-                          key: const Key('status-connection-method'),
+                          '最終受信: ${_formatHmsOrDash(widget.supervisor.lastReceivedAt)}',
+                          key: const Key('status-last-received'),
                         ),
                         Text(
-                          'フェーズ: ${widget.supervisor.status.code}',
-                          key: const Key('status-phase'),
+                          '再接続: ${widget.supervisor.reconnectCount}回',
+                          key: const Key('status-reconnect-count'),
                         ),
-                        if ((widget.supervisor.lastErrorDetail ?? '')
-                            .isNotEmpty)
-                          Text(
-                            'エラー詳細: ${widget.supervisor.lastErrorDetail}',
-                            key: const Key('status-last-error-detail'),
-                          ),
                       ],
                     ),
                   ],
@@ -4058,37 +4000,6 @@ class _StatusBarState extends State<_StatusBar> {
         ),
       ),
     );
-  }
-
-  String _connectionMethodLabel(ConnectionMethod? method) {
-    switch (method) {
-      case ConnectionMethod.ndgr:
-        return 'NDGR';
-      case ConnectionMethod.legacy:
-        return 'legacy';
-      case null:
-        return '-';
-    }
-  }
-
-  String _errorLabel(ConnectionErrorCode? code) {
-    switch (code) {
-      case ConnectionErrorCode.broadcastEnded:
-        return '放送終了';
-      case ConnectionErrorCode.userStopped:
-        return 'ユーザー停止';
-      case null:
-        return '-';
-      case ConnectionErrorCode.lvParseFailed:
-      case ConnectionErrorCode.sessionWsConnectFailed:
-      case ConnectionErrorCode.sessionWsTimeout:
-      case ConnectionErrorCode.endpointResolveFailed:
-      case ConnectionErrorCode.ndgrStreamFailed:
-      case ConnectionErrorCode.legacyWsFailed:
-      case ConnectionErrorCode.speechBouyomiFailed:
-      case ConnectionErrorCode.speechVoicevoxFailed:
-        return code.code;
-    }
   }
 }
 
