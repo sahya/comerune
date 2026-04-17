@@ -91,6 +91,28 @@ String? _sanitizeOperatorUserName(String? raw) {
   return cleaned;
 }
 
+/// Applies [removeControlAndInvisibleChars] to a message body and returns
+/// the sanitised string, or `null` when sanitisation empties it.
+///
+/// Shared by the three [NdgrChunkedMessage] branches that forward a
+/// broadcaster- or viewer-authored body into [AppMessage.content]
+/// (operator comment, simpleNotificationV2, chat). Centralising the
+/// sanitise → drop-on-empty policy keeps the three branches in
+/// lock-step: if the stripped categories or the drop-on-empty policy
+/// ever needs to change, it now happens in exactly one place.
+///
+/// Callers are expected to have already verified the raw body was
+/// non-empty (each branch's early `isNotEmpty` guard). The `null`
+/// return here specifically marks the "non-empty but invisible-only
+/// payload" case. A non-null return is guaranteed to be non-empty.
+String? _sanitizeMessageContent(String rawContent) {
+  final String sanitized = removeControlAndInvisibleChars(rawContent);
+  if (sanitized.isEmpty) {
+    return null;
+  }
+  return sanitized;
+}
+
 class NdgrMessageNormalizer {
   int _fallbackSequence = 0;
 
@@ -142,16 +164,13 @@ class NdgrMessageNormalizer {
       // marquee messages in practice (CR/LF falls in the C0 block and
       // is stripped by the shared helper).
       //
-      // Drop the whole message when the sanitised content is empty — an
-      // operator-comment body that was *non-empty but consists only of
-      // invisible characters* is either malformed or deliberately crafted
-      // to inject an invisible payload; rendering an empty bubble would
-      // leak a row of UI without any user value.  Mirrors the chat path
-      // below which also returns null on empty content.
-      final String sanitizedContent = removeControlAndInvisibleChars(
+      // Dropping when sanitisation empties the body is handled inside
+      // [_sanitizeMessageContent] (shared with the simpleNotificationV2
+      // and chat branches below).
+      final String? sanitizedContent = _sanitizeMessageContent(
         operatorComment.content,
       );
-      if (sanitizedContent.isEmpty) {
+      if (sanitizedContent == null) {
         return null;
       }
       return AppMessage(
@@ -177,16 +196,11 @@ class NdgrMessageNormalizer {
       // comment content above: strip bidi overrides / Tag Characters /
       // other invisible controls so a Trojan Source style payload cannot
       // be smuggled into the rendered system / emotion / notification
-      // bubble.
-      //
-      // Drop the whole message when the sanitised content is empty —
-      // mirrors the operator-comment branch: an invisible-only payload
-      // passes the `isNotEmpty` guard but would render an empty
-      // notification bubble, leaking a UI row without any user value.
-      final String sanitizedContent = removeControlAndInvisibleChars(
+      // bubble. Drop-on-empty policy lives in [_sanitizeMessageContent].
+      final String? sanitizedContent = _sanitizeMessageContent(
         notification.message,
       );
-      if (sanitizedContent.isEmpty) {
+      if (sanitizedContent == null) {
         return null;
       }
       return AppMessage(
@@ -208,6 +222,37 @@ class NdgrMessageNormalizer {
       return null;
     }
 
+    // Defense-in-depth for user-authored chat content.
+    //
+    // Unlike the operator branch (broadcaster-authenticated upstream by the
+    // service) or the simpleNotificationV2 branch (system / broadcaster
+    // originated), `chat.content` is arbitrary user input from any viewer
+    // and therefore carries the widest attack surface in this pipeline:
+    //   - Trojan Source / bidi overrides (U+202A-U+202E, U+2066-U+2069):
+    //     flip the reading direction of a visible message to spoof what
+    //     other users see.
+    //   - Tag Characters (U+E0000-U+E007F): smuggle invisible payloads
+    //     inside otherwise ordinary-looking text.
+    //   - Zero-width / invisible spaces (NBSP, ZWSP, BOM, WORD JOINER,
+    //     HANGUL FILLER, interlinear annotation anchors, etc.):
+    //     break homoglyph comparisons and inject invisible gaps used for
+    //     display spoofing ("user<ZWSP>name" vs "username").
+    //   - C0 / C1 controls + LINE / PARAGRAPH SEPARATOR: inject extra
+    //     rendered rows into the comment stream.
+    //
+    // The [removeControlAndInvisibleChars] helper intentionally preserves
+    // ZWJ (U+200D) and Variation Selectors (U+FE00-U+FE0F, U+E0100-U+E01EF)
+    // so ZWJ-composed emoji (family / profession / flag) and VS-16
+    // presentation selectors keep rendering as single glyphs.
+    //
+    // Drop-on-empty policy (invisible-only payloads) lives in the shared
+    // [_sanitizeMessageContent] helper, symmetric with the operator and
+    // simpleNotificationV2 branches above.
+    final String? sanitizedContent = _sanitizeMessageContent(chat.content);
+    if (sanitizedContent == null) {
+      return null;
+    }
+
     final String id = _buildNdgrId(
       _kNdgrChatNoIdPrefix,
       source.id,
@@ -221,7 +266,7 @@ class NdgrMessageNormalizer {
       timestamp: timestamp,
       userId: _resolveUserId(chat),
       userName: chat.name != null && chat.name!.isNotEmpty ? chat.name : null,
-      content: chat.content,
+      content: sanitizedContent,
       type: AppMessageType.chat,
       raw: source,
     );

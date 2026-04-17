@@ -122,6 +122,133 @@ void main() {
       expect(normalized, isNull);
     });
 
+    test(
+      'sanitises chat.content by stripping bidi / Tag / zero-width characters',
+      () {
+        // Trojan Source / display-spoofing defence for chat.content:
+        // user-authored comments are the widest attack surface in this
+        // pipeline (arbitrary viewer input, unlike broadcaster-authenticated
+        // operator.content or broadcaster/system-sourced notifications).
+        // Invisible payloads (bidi overrides / NBSP / ZWSP / Tag Characters)
+        // must be stripped; printable text must survive verbatim.
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+        // Interleave: bidi override + NBSP + zero-width space + Tag char
+        const String attack = 'こんにちは\u202E\u00A0世界\u200B\u{E0001}です';
+
+        final NdgrChunkedMessage source = NdgrChunkedMessage(
+          id: 'ndgr-chat-content-sanitise',
+          serverTimestamp: serverTime,
+          chat: const NdgrChat(content: attack, rawUserId: 1, no: 1),
+        );
+
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          source,
+          receivedAt: serverTime,
+        );
+
+        expect(normalized, isNotNull);
+        expect(normalized!.type, AppMessageType.chat);
+        expect(
+          normalized.content,
+          'こんにちは世界です',
+          reason:
+              'bidi override / NBSP / ZWSP / Tag Character must be '
+              'stripped from chat content; printable CJK preserved',
+        );
+      },
+    );
+
+    test('returns null for chat with content that sanitises to empty', () {
+      // Edge case: chat.content is non-empty per isNotEmpty (passes the
+      // early guard) but consists entirely of invisible characters
+      // (ZWSP + bidi override + BOM). The sanitised content becomes
+      // empty, and the normalizer must drop the whole message rather
+      // than emit a visibly-empty chat row — mirrors the operator-comment
+      // and simpleNotificationV2 edge cases above.
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        const NdgrChunkedMessage(
+          // U+200B (ZWSP) + U+202E (RLO) + U+FEFF (BOM) — all invisible;
+          // isNotEmpty = true before sanitisation.
+          chat: NdgrChat(content: '\u200B\u202E\uFEFF'),
+        ),
+      );
+
+      expect(normalized, isNull);
+    });
+
+    test('preserves ZWJ-composed emoji in chat.content', () {
+      // Regression guard: removeControlAndInvisibleChars intentionally
+      // keeps ZWJ (U+200D) so ZWJ-composed emoji (family, profession,
+      // flag, etc.) render as a single grapheme cluster. If a future
+      // refactor ever strips ZWJ, every family emoji in chat would
+      // decompose into separate glyphs.
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+      // man + ZWJ + woman + ZWJ + girl (family emoji).
+      const String family = '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}';
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-chat-zwj',
+        serverTimestamp: serverTime,
+        chat: const NdgrChat(content: family, rawUserId: 1, no: 2),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(
+        normalized!.content,
+        family,
+        reason:
+            'ZWJ (U+200D) must be preserved so ZWJ-composed emoji '
+            'continue to render as a single glyph',
+      );
+      // Explicitly assert ZWJ survived — protects against an accidental
+      // regression that drops ZWJ but happens to leave other code points.
+      expect(normalized.content.contains('\u200D'), isTrue);
+    });
+
+    test('preserves Variation Selectors in chat.content', () {
+      // Regression guard: VS-16 (U+FE0F) is the emoji presentation
+      // selector. Stripping it would downgrade emoji like U+2764
+      // (HEAVY BLACK HEART) to its text presentation in some renderers.
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+      // Heart + VS-16 (emoji presentation selector).
+      const String heart = '\u2764\uFE0F';
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-chat-vs',
+        serverTimestamp: serverTime,
+        chat: const NdgrChat(content: heart, rawUserId: 1, no: 3),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(
+        normalized!.content,
+        heart,
+        reason:
+            'Variation Selectors (U+FE00-U+FE0F) must be preserved so '
+            'emoji presentation selectors keep rendering correctly',
+      );
+      // Explicitly assert VS-16 survived.
+      expect(normalized.content.contains('\uFE0F'), isTrue);
+    });
+
     test('normalizes null chat.name to null userName', () {
       final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
       final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
