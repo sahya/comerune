@@ -16,13 +16,27 @@
 ///
 /// Input is processed in Unicode code points via [String.runes] so that
 /// surrogate pairs are never split mid-codepoint.
+///
+/// Short-circuits when no code points match the removal set, avoiding a
+/// [StringBuffer] allocation for the common case (clean text).
 String removeControlAndInvisibleChars(String text) {
-  final StringBuffer sb = StringBuffer();
   for (final int cp in text.runes) {
     if (_isInvisibleOrControl(cp)) {
-      continue;
+      return _filterInvisibleChars(text);
     }
-    sb.writeCharCode(cp);
+  }
+  return text;
+}
+
+/// Builds a new string with all invisible / control code points removed.
+/// Called only when the pre-scan in [removeControlAndInvisibleChars] has
+/// already confirmed that at least one such code point exists.
+String _filterInvisibleChars(String text) {
+  final StringBuffer sb = StringBuffer();
+  for (final int cp in text.runes) {
+    if (!_isInvisibleOrControl(cp)) {
+      sb.writeCharCode(cp);
+    }
   }
   return sb.toString();
 }

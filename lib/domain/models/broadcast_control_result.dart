@@ -25,7 +25,7 @@ class BroadcastControlResult {
   /// Human-readable error description.
   ///
   /// Used for logging / debugging. The presentation layer maps user-visible
-  /// messages from [errorCode] via `userFacingBroadcastError`, so the raw
+  /// messages from [errorCode] via `broadcastControlErrorMessage`, so the raw
   /// `errorMessage` does not need to be localised.
   final String? errorMessage;
 

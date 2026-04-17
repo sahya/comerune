@@ -101,7 +101,7 @@ class _StartBroadcastButtonState extends State<_StartBroadcastButton> {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
-            SnackBar(content: Text(userFacingBroadcastError('開始', result))),
+            SnackBar(content: Text(broadcastControlErrorMessage('開始', result))),
           );
       }
     } finally {
@@ -300,7 +300,7 @@ class _SlideToEndBroadcastState extends State<_SlideToEndBroadcast> {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
-            SnackBar(content: Text(userFacingBroadcastError('終了', result))),
+            SnackBar(content: Text(broadcastControlErrorMessage('終了', result))),
           );
       }
     } finally {

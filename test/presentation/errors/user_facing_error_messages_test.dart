@@ -31,13 +31,14 @@ void main() {
           ),
         ),
       );
-      final String broadcastLoginForInvalidParams = userFacingBroadcastError(
-        '開始',
-        const BroadcastControlResult(
-          success: false,
-          errorCode: BroadcastControlErrorCode.invalidParams,
-        ),
-      );
+      final String broadcastLoginForInvalidParams =
+          broadcastControlErrorMessage(
+            '開始',
+            const BroadcastControlResult(
+              success: false,
+              errorCode: BroadcastControlErrorCode.invalidParams,
+            ),
+          );
       expect(
         commentLoginForInvalidParams,
         broadcastLoginForInvalidParams,
@@ -54,7 +55,7 @@ void main() {
           ),
         ),
       );
-      final String broadcastLoginForUnauthorized = userFacingBroadcastError(
+      final String broadcastLoginForUnauthorized = broadcastControlErrorMessage(
         '終了',
         const BroadcastControlResult(
           success: false,
@@ -74,7 +75,7 @@ void main() {
           ),
         ),
       );
-      final String broadcast = userFacingBroadcastError(
+      final String broadcast = broadcastControlErrorMessage(
         '開始',
         const BroadcastControlResult(
           success: false,
@@ -99,7 +100,7 @@ void main() {
           ),
         ),
       );
-      final String broadcast = userFacingBroadcastError(
+      final String broadcast = broadcastControlErrorMessage(
         '終了',
         const BroadcastControlResult(
           success: false,
@@ -124,7 +125,7 @@ void main() {
           ),
         ),
       );
-      final String broadcast = userFacingBroadcastError(
+      final String broadcast = broadcastControlErrorMessage(
         '開始',
         const BroadcastControlResult(
           success: false,

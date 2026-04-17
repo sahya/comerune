@@ -336,10 +336,10 @@ void main() {
     });
   });
 
-  group('userFacingBroadcastError', () {
+  group('broadcastControlErrorMessage', () {
     test('returns login message for INVALID_PARAMS (empty-input case)', () {
       expect(
-        userFacingBroadcastError(
+        broadcastControlErrorMessage(
           '開始',
           const BroadcastControlResult(
             success: false,
@@ -357,7 +357,7 @@ void main() {
       // UNAUTHORIZED. Surfacing "please sign in" for a non-empty but
       // structurally bad input misleads the user into an unhelpful
       // re-login loop.
-      final String message = userFacingBroadcastError(
+      final String message = broadcastControlErrorMessage(
         '開始',
         const BroadcastControlResult(
           success: false,
@@ -374,7 +374,7 @@ void main() {
 
     test('returns login message for UNAUTHORIZED', () {
       expect(
-        userFacingBroadcastError(
+        broadcastControlErrorMessage(
           '終了',
           const BroadcastControlResult(
             success: false,
@@ -387,7 +387,7 @@ void main() {
 
     test('returns permission message for FORBIDDEN', () {
       expect(
-        userFacingBroadcastError(
+        broadcastControlErrorMessage(
           '開始',
           const BroadcastControlResult(
             success: false,
@@ -400,7 +400,7 @@ void main() {
 
     test('returns not-found message for NOT_FOUND', () {
       expect(
-        userFacingBroadcastError(
+        broadcastControlErrorMessage(
           '終了',
           const BroadcastControlResult(
             success: false,
@@ -413,7 +413,7 @@ void main() {
 
     test('returns network message for NETWORK_ERROR', () {
       expect(
-        userFacingBroadcastError(
+        broadcastControlErrorMessage(
           '開始',
           const BroadcastControlResult(
             success: false,
@@ -426,7 +426,7 @@ void main() {
 
     test('returns generic message for unknown error code', () {
       expect(
-        userFacingBroadcastError(
+        broadcastControlErrorMessage(
           '終了',
           const BroadcastControlResult(success: false, errorCode: 'HTTP_500'),
         ),
@@ -435,14 +435,14 @@ void main() {
     });
 
     test('uses operation name in FORBIDDEN and default messages', () {
-      final String startForbidden = userFacingBroadcastError(
+      final String startForbidden = broadcastControlErrorMessage(
         '開始',
         const BroadcastControlResult(
           success: false,
           errorCode: BroadcastControlErrorCode.forbidden,
         ),
       );
-      final String endForbidden = userFacingBroadcastError(
+      final String endForbidden = broadcastControlErrorMessage(
         '終了',
         const BroadcastControlResult(
           success: false,

@@ -1,7 +1,7 @@
 // Shared user-facing error-message helpers.
 //
 // The comment-post UI ([commentPostErrorMessage]) and the broadcast-control
-// UI ([userFacingBroadcastError]) both map backend error codes onto a
+// UI ([broadcastControlErrorMessage]) both map backend error codes onto a
 // snackbar string. Several branches produce semantically equivalent wording
 // ("ログインが必要です" for auth failure, "ネットワークエラーが発生しました"
 // for network failure, etc.) and must stay in sync so users see a
@@ -30,7 +30,7 @@ import '../../domain/models/comment_post_result.dart';
 // Shared wording constants
 // ---------------------------------------------------------------------------
 // These strings appear in BOTH [commentPostErrorMessage] and
-// [userFacingBroadcastError]. Edit here to update both call sites at once.
+// [broadcastControlErrorMessage]. Edit here to update both call sites at once.
 
 const String _kLoginRequiredMessage = 'ログインが必要です';
 const String _kMalformedInputMessage = '入力に使用できない文字が含まれています。ログインし直してお試しください';
@@ -43,7 +43,7 @@ const String _kProgramNotFoundMessage = '番組が見つかりません';
 
 /// Maps a [CommentSendResult] failure to a user-facing snackbar message.
 ///
-/// Symmetric with [userFacingBroadcastError] on the broadcast-side: both
+/// Symmetric with [broadcastControlErrorMessage] on the broadcast-side: both
 /// helpers live together in this module so UI-to-message mappings stay in
 /// sync and can be pinned by widget-free unit tests. Keep the wording here
 /// in sync (where semantically equivalent) with the broadcast mapping to
@@ -120,7 +120,7 @@ String commentPostErrorMessage(CommentSendResult result) {
 /// [BroadcastControlResult] domain. Do not reuse this function for
 /// unrelated UI contexts — route those through their own mapping or add
 /// a new top-level helper in this module.
-String userFacingBroadcastError(
+String broadcastControlErrorMessage(
   String operation,
   BroadcastControlResult result,
 ) {

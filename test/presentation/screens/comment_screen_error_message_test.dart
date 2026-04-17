@@ -10,7 +10,7 @@ import 'package:comerune/presentation/errors/user_facing_error_messages.dart';
 /// (`_commentPostErrorMessage`) on `_CommentScreenState`, which made it
 /// impossible to unit-test without spinning up the whole widget. It has been
 /// extracted as a top-level `@visibleForTesting` function mirroring the
-/// broadcast-side precedent [userFacingBroadcastError] (see
+/// broadcast-side precedent [broadcastControlErrorMessage] (see
 /// `broadcast_control_panel_test.dart`).
 ///
 /// These tests pin every branch of the switch so a future edit cannot
