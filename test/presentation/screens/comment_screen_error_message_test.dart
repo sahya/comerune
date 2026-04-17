@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/application/comment_post/comment_post_controller.dart';
 import 'package:comerune/domain/models/comment_post_result.dart';
-import 'package:comerune/presentation/screens/comment_screen.dart';
+import 'package:comerune/presentation/errors/user_facing_error_messages.dart';
 
 /// Regression-lock tests for [commentPostErrorMessage] (issue #521).
 ///

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:comerune/domain/models/broadcast_control_result.dart';
 import 'package:comerune/domain/models/follow_program.dart';
+import 'package:comerune/presentation/errors/user_facing_error_messages.dart';
 import 'package:comerune/presentation/widgets/broadcast_control_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

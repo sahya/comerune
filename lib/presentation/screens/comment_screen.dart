@@ -13,7 +13,6 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../app_logging.dart';
 import '../../application/comment_post/comment_post_controller.dart';
 import '../../application/settings/settings_store.dart';
-import '../../domain/models/comment_post_result.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/comment_log/comment_log_stats.dart';
@@ -28,6 +27,7 @@ import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/user_name_resolution.dart';
+import '../errors/user_facing_error_messages.dart';
 import '../theme/app_theme.dart';
 import '../widgets/comment_input_bar.dart';
 import 'comment_log_stats_sheet.dart';
@@ -4933,67 +4933,5 @@ class _SpeechStatusIcon extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Shared helpers
-// ---------------------------------------------------------------------------
-
-/// Maps a [CommentSendResult] failure to a user-facing snackbar message.
-///
-/// Symmetric with [userFacingBroadcastError] on the broadcast-side: the two
-/// helpers are kept as top-level `@visibleForTesting` functions so UI-to-
-/// message mappings can be pinned by widget-free unit tests. Keep the
-/// wording here in sync (where semantically equivalent) with the broadcast
-/// mapping to avoid drift between the two code paths.
-@visibleForTesting
-String commentPostErrorMessage(CommentSendResult result) {
-  final CommentValidationError? validation = result.validationError;
-  if (validation != null) {
-    switch (validation) {
-      case CommentValidationError.empty:
-        return 'コメントを入力してください';
-      case CommentValidationError.tooLong:
-        return '文字数が上限を超えています';
-      case CommentValidationError.missingSession:
-        return 'ログインが必要です';
-      case CommentValidationError.missingProgram:
-        return '番組情報が取得できません';
-      case CommentValidationError.inFlight:
-        // Unreachable in the UI because the send button is disabled while
-        // sending; included for switch exhaustiveness.
-        return '送信中です';
-    }
-  }
-  final CommentPostResult? post = result.postResult;
-  if (post == null) {
-    // Defensive fallback: `CommentSendResult` only exposes two constructors
-    // (`.validation` sets `postResult=null`, `.posted` sets it non-null),
-    // so this branch is unreachable as long as the validation guard above
-    // consumed the `.validation` case. Kept as a safety net in case a new
-    // constructor is added without updating this mapping.
-    return 'コメントの送信に失敗しました';
-  }
-  switch (post.errorCode) {
-    case CommentPostErrorCode.invalidParams:
-    case CommentPostErrorCode.unauthorized:
-      return 'ログインが必要です';
-    case CommentPostErrorCode.malformedInput:
-      // Non-empty but structurally bad input: prompting re-login would
-      // mislead the user (symmetric with the broadcast-side mapping).
-      return '入力に使用できない文字が含まれています。ログインし直してお試しください';
-    case CommentPostErrorCode.forbidden:
-      return 'コメントの投稿権限がありません';
-    case CommentPostErrorCode.notFound:
-      return '番組が見つかりません';
-    case CommentPostErrorCode.conflict:
-      return '放送は終了しています';
-    case CommentPostErrorCode.rateLimited:
-      return 'しばらく待ってから再送信してください';
-    case CommentPostErrorCode.networkError:
-      return 'ネットワークエラーが発生しました';
-    default:
-      return 'コメントの送信に失敗しました';
   }
 }

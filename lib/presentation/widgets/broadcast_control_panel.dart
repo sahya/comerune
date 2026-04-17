@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../domain/models/broadcast_control_result.dart';
 import '../../domain/models/follow_program.dart';
+import '../errors/user_facing_error_messages.dart';
 
 /// Callback for broadcast control operations.
 ///
@@ -407,37 +408,6 @@ class _SlideToEndBroadcastState extends State<_SlideToEndBroadcast> {
         ),
       ),
     );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Shared helpers
-// ---------------------------------------------------------------------------
-
-/// Maps a [BroadcastControlResult] error to a user-friendly message.
-@visibleForTesting
-String userFacingBroadcastError(
-  String operation,
-  BroadcastControlResult result,
-) {
-  switch (result.errorCode) {
-    case BroadcastControlErrorCode.invalidParams:
-    case BroadcastControlErrorCode.unauthorized:
-      return 'ログインが必要です';
-    case BroadcastControlErrorCode.malformedInput:
-      // Non-empty but structurally bad input: prompting re-login would
-      // mislead the user (their session may be fine). Surface a distinct
-      // diagnostic that hints at the next step (re-login to refresh the
-      // session token, which is by far the most common real-world cause).
-      return '入力に使用できない文字が含まれています。ログインし直してお試しください';
-    case BroadcastControlErrorCode.forbidden:
-      return '放送の$operation権限がありません';
-    case BroadcastControlErrorCode.notFound:
-      return '番組が見つかりません';
-    case BroadcastControlErrorCode.networkError:
-      return 'ネットワークエラーが発生しました';
-    default:
-      return '放送の$operationに失敗しました';
   }
 }
 
