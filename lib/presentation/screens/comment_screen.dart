@@ -2586,20 +2586,17 @@ class _CommentScreenState extends State<CommentScreen> {
     final ConnectionErrorCode? errorCode =
         widget.connectionSupervisor.lastError;
     final String base = _failedMessage(errorCode);
-    final String detail = widget.connectionSupervisor.lastErrorDetail ?? '';
-    final String compactDetail = detail.isEmpty
-        ? '-'
-        : _compactSingleLine(detail);
 
     if (widget.debugMode) {
+      final String detail = widget.connectionSupervisor.lastErrorDetail ?? '';
+      final String compactDetail = detail.isEmpty
+          ? '-'
+          : _compactSingleLine(detail);
       final String code = errorCode?.code ?? 'UNKNOWN_ERROR';
       return '$base [code: $code] 原因: $compactDetail 再接続ボタンで再試行できます。';
     }
 
-    final String detailSuffix = detail.isEmpty
-        ? ''
-        : ' 原因: ${_compactSingleLine(detail)}';
-    return '$base$detailSuffix 再接続ボタンで再試行できます。';
+    return '$base 再接続ボタンで再試行できます。';
   }
 
   String _failedMessage(ConnectionErrorCode? errorCode) {
