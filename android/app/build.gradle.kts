@@ -1,3 +1,6 @@
+import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -6,7 +9,7 @@ plugins {
 }
 
 val appIdPropsFile = rootProject.file("app_id.properties")
-val appIdProps = java.util.Properties().apply {
+val appIdProps = Properties().apply {
     if (appIdPropsFile.exists()) {
         appIdPropsFile.inputStream().use { load(it) }
     }
@@ -28,10 +31,6 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
     externalNativeBuild {
@@ -95,6 +94,12 @@ android {
                 abiFilters += "arm64-v8a"
             }
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 
