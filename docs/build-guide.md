@@ -5,6 +5,30 @@
 - Flutter SDK 3.22.0 以上（Dart SDK 3.4.0 以上）
 - Android SDK
 
+## Application ID の設定
+
+Android の `applicationId` は `android/app_id.properties` から読み込まれます。
+このファイルはリポジトリに含まれないため（フォーク保護のため `.gitignore` 対象）、ローカルで作成する必要があります。
+
+```bash
+# テンプレートをコピー
+cp android/app_id.properties.example android/app_id.properties
+
+# applicationId を編集
+# applicationId=app.spectacles_software.comerune  ← 本番用
+```
+
+ファイルが存在しない場合、`com.example.comerune`（開発用プレースホルダー）が使用されます。
+ビルドログに警告が表示されるため、リリースビルド前に正しく設定されていることを確認してください。
+
+### CI/CD での設定
+
+GitHub Actions のリリースワークフローでは、Repository Secret `ANDROID_APPLICATION_ID` から自動的にファイルが生成されます。
+
+**設定手順:**
+1. GitHub リポジトリの Settings → Secrets and variables → Actions を開く
+2. Repository secret `ANDROID_APPLICATION_ID` を追加し、本番の applicationId を設定する
+
 ## 基本手順
 
 ```bash

@@ -61,6 +61,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
+      - name: Configure application ID
+        env:
+          ANDROID_APPLICATION_ID: ${{ secrets.ANDROID_APPLICATION_ID }}
+        run: |
+          set +x
+          if [ -z "$ANDROID_APPLICATION_ID" ]; then
+            echo "::error::Repository secret ANDROID_APPLICATION_ID is not set. See docs/build-guide.md."
+            exit 1
+          fi
+          printf 'applicationId=%s\n' "$ANDROID_APPLICATION_ID" > android/app_id.properties
+
       - name: Set up Java
         uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
         with:
