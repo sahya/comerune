@@ -309,7 +309,7 @@ void main() {
       },
     );
 
-    test('preserves whitespace-only chat.name as userName', () {
+    test('sanitises whitespace-only chat.name to null', () {
       final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
       final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
 
@@ -330,9 +330,192 @@ void main() {
       );
 
       expect(normalized, isNotNull);
-      // Whitespace-only is not empty per isNotEmpty, so it passes through.
-      // This documents current behavior; trimming is outside this fix scope.
-      expect(normalized!.userName, '  ');
+      expect(
+        normalized!.userName,
+        isNull,
+        reason:
+            'whitespace-only chat.name must sanitise to null (trim + empty)',
+      );
+    });
+
+    test(
+      'sanitises chat.name by stripping bidi / Tag / zero-width characters',
+      () {
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+        const String attack = 'ユーザー\u202E\u00A0名\u200B\u{E0001}前';
+
+        final NdgrChunkedMessage source = NdgrChunkedMessage(
+          id: 'ndgr-chat-name-sanitise',
+          serverTimestamp: serverTime,
+          chat: const NdgrChat(
+            content: 'hello',
+            name: attack,
+            rawUserId: 1,
+            no: 1,
+          ),
+        );
+
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          source,
+          receivedAt: serverTime,
+        );
+
+        expect(normalized, isNotNull);
+        expect(
+          normalized!.userName,
+          'ユーザー名前',
+          reason:
+              'bidi override / NBSP / ZWSP / Tag Character must be '
+              'stripped from chat.name; printable CJK preserved',
+        );
+      },
+    );
+
+    test('sanitises invisible-only chat.name to null', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-chat-name-invisible',
+        serverTimestamp: serverTime,
+        chat: const NdgrChat(
+          content: 'hello',
+          name: '\u200B\u202E\uFEFF',
+          rawUserId: 1,
+          no: 1,
+        ),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(
+        normalized!.userName,
+        isNull,
+        reason:
+            'invisible-only chat.name must sanitise to null '
+            '(= no label)',
+      );
+    });
+
+    test('caps chat.name at 64 grapheme clusters', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+      final String longName = 'A' * 500;
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-chat-name-long',
+        serverTimestamp: serverTime,
+        chat: NdgrChat(content: 'hello', name: longName, rawUserId: 1, no: 1),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.userName?.length, 64);
+    });
+
+    test(
+      'caps chat.name at grapheme cluster boundary without splitting surrogates',
+      () {
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+        final String heading = 'a' * 25;
+        final String emojis = '\u{1F602}' * 40;
+        final String crafted = heading + emojis;
+
+        final NdgrChunkedMessage source = NdgrChunkedMessage(
+          id: 'ndgr-chat-name-surrogate-cap',
+          serverTimestamp: serverTime,
+          chat: NdgrChat(content: 'hello', name: crafted, rawUserId: 1, no: 1),
+        );
+
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          source,
+          receivedAt: serverTime,
+        );
+
+        expect(normalized, isNotNull);
+        final String userName = normalized!.userName!;
+        expect(
+          userName.contains('\uFFFD'),
+          isFalse,
+          reason: 'chat.name cap must not split a surrogate pair',
+        );
+      },
+    );
+
+    test('preserves ZWJ-composed emoji in chat.name', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+      const String family = '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}';
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-chat-name-zwj',
+        serverTimestamp: serverTime,
+        chat: const NdgrChat(
+          content: 'hello',
+          name: family,
+          rawUserId: 1,
+          no: 1,
+        ),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(
+        normalized!.userName,
+        family,
+        reason:
+            'ZWJ (U+200D) must be preserved in chat.name so '
+            'ZWJ-composed emoji render as a single glyph',
+      );
+      expect(normalized.userName!.contains('\u200D'), isTrue);
+    });
+
+    test('collapses whitespace runs in chat.name', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-03-22T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-chat-name-ws',
+        serverTimestamp: serverTime,
+        chat: const NdgrChat(
+          content: 'hello',
+          name: '  ユーザー  名前  ',
+          rawUserId: 1,
+          no: 1,
+        ),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(
+        normalized!.userName,
+        'ユーザー 名前',
+        reason:
+            'leading/trailing whitespace must be trimmed and '
+            'internal whitespace runs collapsed to a single space',
+      );
     });
 
     test('normalizes operator comment to AppMessageType.operator', () {

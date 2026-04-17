@@ -35,43 +35,37 @@ const String _kNdgrChatFallbackTimestampPrefix = 'ndgr-';
 /// vertically or horizontally and push other UI off-screen.
 const int _kOperatorUserNameMaxLength = 64;
 
+/// Upper bound on the length of a chat (viewer) user name after
+/// sanitisation. Same ceiling as the operator label: viewer nicknames are
+/// typically short, and the operator cap has proven conservative enough
+/// in practice. A separate constant keeps the two policies independently
+/// tunable if a future issue needs to tighten chat names without affecting
+/// the operator label.
+const int _kChatUserNameMaxLength = 64;
+
 /// Cached pattern for collapsing consecutive ASCII spaces and full-width
-/// spaces into a single space during operator-name sanitisation.
+/// spaces into a single space during user-name sanitisation.
 final RegExp _kWhitespaceRunPattern = RegExp(r'[ \u3000]+');
 
-/// Sanitises an operator-comment name (broadcaster-supplied) for safe
-/// rendering as a label:
-///   - strips CR / LF, line/paragraph separators (U+2028/2029) so the label
-///     cannot inject additional rows
-///   - strips C0/C1 control characters (U+0000..U+001F, U+007F..U+009F)
-///   - strips bidi overrides / isolate controls / Arabic Letter Mark /
-///     Mongolian Vowel Separator / Tag Characters so the label cannot spoof
-///     its own direction (RTL / Trojan Source)
-///   - trims surrounding whitespace
-///   - caps length at [_kOperatorUserNameMaxLength]
+/// Shared sanitisation pipeline for user-name labels (operator and chat).
 ///
-/// Preserves ZWJ (U+200D) and Variation Selectors (U+FE00-U+FE0F,
-/// U+E0100-U+E01EF) so ZWJ-composed emoji and presentation selectors
-/// continue to render correctly.
+/// Steps:
+///   1. strip invisible / control code points via [removeControlAndInvisibleChars]
+///   2. collapse whitespace runs (ASCII + full-width space) into a single space
+///   3. trim surrounding whitespace
+///   4. cap at [maxLength] grapheme clusters (safe split via [Characters])
+///   5. return `null` when the result is empty (= "no label")
 ///
-/// Returns `null` when the input is null or becomes empty after sanitation,
-/// matching the existing "null = no label" convention used by
-/// `_displayNameForMessage`.
+/// Preserves ZWJ (U+200D) and Variation Selectors so ZWJ-composed emoji
+/// and presentation selectors continue to render correctly.
 ///
-/// Kept symmetric with the snackbar sanitiser in `comment_screen.dart`
-/// (`_sanitizeSingleLine`) — both delegate to
-/// [removeControlAndInvisibleChars]. See `domain/utils/unicode_sanitizer.dart`
-/// for the rationale behind the preserved / stripped categories.
-String? _sanitizeOperatorUserName(String? raw) {
+/// Callers ([_sanitizeOperatorUserName], [_sanitizeChatUserName]) forward
+/// a trust-model-specific [maxLength] so the two name fields can diverge
+/// independently in the future without duplicating the pipeline.
+String? _sanitizeUserName(String? raw, int maxLength) {
   if (raw == null) {
     return null;
   }
-  // Delegate to the shared helper so the operator label and the snackbar
-  // label strip the same category of spoofing / layout-breaking characters.
-  // TAB (U+0009) is stripped by the C0 block inside the helper; collapse
-  // any remaining intra-label whitespace run into a single space so the
-  // label does not end up with "前<TAB>後" → "前後" artifacts when
-  // `_removeControlAndInvisible` previously dropped the TAB silently.
   final String controlFree = removeControlAndInvisibleChars(raw);
   final String cleaned = controlFree
       .replaceAll(_kWhitespaceRunPattern, ' ')
@@ -79,17 +73,30 @@ String? _sanitizeOperatorUserName(String? raw) {
   if (cleaned.isEmpty) {
     return null;
   }
-  // Count grapheme clusters (user-perceived characters) so the cap never
-  // slices a surrogate pair or a ZWJ-composed emoji cluster in half.
-  // `String.length` counts UTF-16 code units, so a naive
-  // `substring(0, _kOperatorUserNameMaxLength)` could leave a dangling
-  // surrogate at the boundary and produce U+FFFD on the next render.
   final Characters chars = Characters(cleaned);
-  if (chars.length > _kOperatorUserNameMaxLength) {
-    return chars.take(_kOperatorUserNameMaxLength).toString();
+  if (chars.length > maxLength) {
+    return chars.take(maxLength).toString();
   }
   return cleaned;
 }
+
+/// Sanitises an operator-comment name (broadcaster-supplied) for safe
+/// rendering. The operator channel is broadcaster-authenticated upstream,
+/// so the trust level is higher than chat names, but defence-in-depth
+/// still strips CR/LF, bidi overrides, Tag Characters, and other
+/// invisible controls. See [_sanitizeUserName] for the shared pipeline
+/// and `domain/utils/unicode_sanitizer.dart` for the stripped categories.
+String? _sanitizeOperatorUserName(String? raw) =>
+    _sanitizeUserName(raw, _kOperatorUserNameMaxLength);
+
+/// Sanitises a chat (viewer-supplied) user name for safe rendering.
+/// Chat names originate from arbitrary viewer input with no upstream
+/// authentication — the lowest-trust name field in the pipeline.
+/// Uses the same shared pipeline as [_sanitizeOperatorUserName] via
+/// [_sanitizeUserName] but with a separate length constant so the two
+/// policies can diverge independently.
+String? _sanitizeChatUserName(String? raw) =>
+    _sanitizeUserName(raw, _kChatUserNameMaxLength);
 
 /// Applies [removeControlAndInvisibleChars] to a message body and returns
 /// the sanitised string, or `null` when sanitisation empties it.
@@ -265,7 +272,7 @@ class NdgrMessageNormalizer {
       id: id,
       timestamp: timestamp,
       userId: _resolveUserId(chat),
-      userName: chat.name != null && chat.name!.isNotEmpty ? chat.name : null,
+      userName: _sanitizeChatUserName(chat.name),
       content: sanitizedContent,
       type: AppMessageType.chat,
       raw: source,
