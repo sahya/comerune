@@ -155,46 +155,58 @@ class _SweetSpotSlider extends StatelessWidget {
         final double left = sliderPadding + trackWidth * leftFraction;
         final double width = trackWidth * (rightFraction - leftFraction);
 
-        return Stack(
-          clipBehavior: Clip.none,
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Positioned(
-              left: left,
-              top: 16,
-              width: width,
-              height: 20,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(4),
+            Stack(
+              children: <Widget>[
+                Positioned(
+                  left: left,
+                  top: 16,
+                  width: width,
+                  height: 20,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            Slider(
-              min: min.toDouble(),
-              max: max.toDouble(),
-              divisions: divisions,
-              value: value.toDouble(),
-              semanticFormatterCallback: suffix.isNotEmpty
-                  ? (double v) => '${v.round()}$suffix'
-                  : null,
-              onChanged: (double next) {
-                onChanged(next.round());
-              },
+                Slider(
+                  min: min.toDouble(),
+                  max: max.toDouble(),
+                  divisions: divisions,
+                  value: value.toDouble(),
+                  semanticFormatterCallback: suffix.isNotEmpty
+                      ? (double v) => '${v.round()}$suffix'
+                      : null,
+                  onChanged: (double next) {
+                    onChanged(next.round());
+                  },
+                ),
+              ],
             ),
             if (sweetSpotLabel != null)
-              Positioned(
-                left: left,
-                top: 40,
-                width: width,
-                child: Text(
-                  sweetSpotLabel!,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+              Padding(
+                padding: EdgeInsets.only(
+                  left: left,
+                  right: (constraints.maxWidth - left - width).clamp(
+                    0,
+                    double.infinity,
+                  ),
+                ),
+                child: SizedBox(
+                  width: width,
+                  child: Text(
+                    sweetSpotLabel!,
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ),

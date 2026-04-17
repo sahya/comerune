@@ -208,15 +208,15 @@ void main() {
       AppSettings loaded = await settingsStore.load();
       expect(loaded.showOperatorComment, isTrue);
 
-      await scrollToKeyInList(
+      await expandExpansionTileByKey(
         tester,
         _listKey,
-        const Key('show-operator-comment-switch'),
+        const Key('message-type-expansion-tile'),
       );
-      await toggleSwitchByKey(
+      await toggleFilterChipByKey(
         tester,
         _listKey,
-        const Key('show-operator-comment-switch'),
+        const Key('show-operator-comment-chip'),
       );
 
       loaded = await settingsStore.load();
@@ -235,15 +235,15 @@ void main() {
       AppSettings loaded = await settingsStore.load();
       expect(loaded.showSystemMessage, isTrue);
 
-      await scrollToKeyInList(
+      await expandExpansionTileByKey(
         tester,
         _listKey,
-        const Key('show-system-message-switch'),
+        const Key('message-type-expansion-tile'),
       );
-      await toggleSwitchByKey(
+      await toggleFilterChipByKey(
         tester,
         _listKey,
-        const Key('show-system-message-switch'),
+        const Key('show-system-message-chip'),
       );
 
       loaded = await settingsStore.load();
@@ -262,15 +262,15 @@ void main() {
       AppSettings loaded = await settingsStore.load();
       expect(loaded.showEmotion, isTrue);
 
-      await scrollToKeyInList(
+      await expandExpansionTileByKey(
         tester,
         _listKey,
-        const Key('show-emotion-switch'),
+        const Key('message-type-expansion-tile'),
       );
-      await toggleSwitchByKey(
+      await toggleFilterChipByKey(
         tester,
         _listKey,
-        const Key('show-emotion-switch'),
+        const Key('show-emotion-chip'),
       );
 
       loaded = await settingsStore.load();
@@ -289,15 +289,15 @@ void main() {
       AppSettings loaded = await settingsStore.load();
       expect(loaded.showGiftComment, isTrue);
 
-      await scrollToKeyInList(
+      await expandExpansionTileByKey(
         tester,
         _listKey,
-        const Key('show-gift-comment-switch'),
+        const Key('message-type-expansion-tile'),
       );
-      await toggleSwitchByKey(
+      await toggleFilterChipByKey(
         tester,
         _listKey,
-        const Key('show-gift-comment-switch'),
+        const Key('show-gift-comment-chip'),
       );
 
       loaded = await settingsStore.load();
@@ -316,20 +316,52 @@ void main() {
       AppSettings loaded = await settingsStore.load();
       expect(loaded.showNicoadComment, isTrue);
 
-      await scrollToKeyInList(
+      await expandExpansionTileByKey(
         tester,
         _listKey,
-        const Key('show-nicoad-comment-switch'),
+        const Key('message-type-expansion-tile'),
       );
-      await toggleSwitchByKey(
+      await toggleFilterChipByKey(
         tester,
         _listKey,
-        const Key('show-nicoad-comment-switch'),
+        const Key('show-nicoad-comment-chip'),
       );
 
       loaded = await settingsStore.load();
       expect(loaded.showNicoadComment, isFalse);
     });
+
+    testWidgets(
+      'message type subtitle shows enabled count and updates on toggle',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
+
+        await scrollToKeyInList(
+          tester,
+          _listKey,
+          const Key('message-type-expansion-tile'),
+        );
+
+        expect(find.text('5 / 5 表示中'), findsOneWidget);
+
+        await expandExpansionTileByKey(
+          tester,
+          _listKey,
+          const Key('message-type-expansion-tile'),
+        );
+        await toggleFilterChipByKey(
+          tester,
+          _listKey,
+          const Key('show-operator-comment-chip'),
+        );
+
+        expect(find.text('4 / 5 表示中'), findsOneWidget);
+      },
+    );
 
     testWidgets(
       'toggles emphasizeGiftNicoadComment and persists value (default ON)',

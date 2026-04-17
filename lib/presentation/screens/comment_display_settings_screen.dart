@@ -6,6 +6,21 @@ import '../../domain/models/app_settings.dart';
 import '../mixins/settings_screen_mixin.dart';
 import '../widgets/settings_widgets.dart';
 
+final List<bool Function(AppSettings)> _messageTypeGetters =
+    <bool Function(AppSettings)>[
+      (AppSettings s) => s.showOperatorComment,
+      (AppSettings s) => s.showSystemMessage,
+      (AppSettings s) => s.showEmotion,
+      (AppSettings s) => s.showGiftComment,
+      (AppSettings s) => s.showNicoadComment,
+    ];
+
+int _enabledMessageTypeCount(AppSettings settings) {
+  return _messageTypeGetters
+      .where((bool Function(AppSettings) g) => g(settings))
+      .length;
+}
+
 class CommentDisplaySettingsScreen extends StatefulWidget {
   const CommentDisplaySettingsScreen({
     super.key,
@@ -89,6 +104,28 @@ class _CommentDisplaySettingsScreenState
                           );
                         },
                       ),
+                      const SizedBox(height: 12),
+                      SettingsIntSliderField(
+                        key: const Key('comment-font-size-slider'),
+                        label: 'コメント文字サイズ',
+                        value: settings.commentFontSize.round(),
+                        min: commentFontSizeMin.round(),
+                        max: commentFontSizeMax.round(),
+                        divisions: (commentFontSizeMax - commentFontSizeMin)
+                            .round(),
+                        suffix: 'px',
+                        sweetSpotMin: 12,
+                        sweetSpotMax: 18,
+                        sweetSpotLabel: 'おすすめ',
+                        onChanged: (int value) {
+                          updateAndSave(
+                            settings.copyWith(
+                              commentFontSize: value.toDouble(),
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 8),
                       SwitchListTile(
                         key: const Key('comment-two-line-switch'),
                         title: const Text('コメント二段表示'),
@@ -115,88 +152,106 @@ class _CommentDisplaySettingsScreenState
                           );
                         },
                       ),
-                      // Group the three message-type display toggles
-                      // (operator / system / emotion) under a dedicated
-                      // subheader so they read as a related cluster rather
-                      // than as loose switches mixed in with unrelated
-                      // display/layout options above. The Card-based
-                      // `SettingsSection` already provides the outer
-                      // container; we just introduce a divider + label
-                      // inside it (consistent with how sections visually
-                      // break inside a grouped list on Material surfaces).
-                      const Divider(
-                        key: Key('message-type-display-divider'),
-                        height: 24,
-                      ),
-                      Padding(
-                        key: const Key('message-type-display-header'),
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Text(
-                          '表示するメッセージ種別',
-                          style: Theme.of(context).textTheme.titleSmall,
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<PastCommentFetchCount>(
+                        key: const Key('past-comment-count-dropdown'),
+                        initialValue: settings.pastCommentFetchCount,
+                        decoration: const InputDecoration(
+                          labelText: '過去コメント取得件数',
+                          border: OutlineInputBorder(),
                         ),
-                      ),
-                      SwitchListTile(
-                        key: const Key('show-operator-comment-switch'),
-                        title: const Text('運営コメントを表示'),
-                        subtitle: const Text('配信者の運営コメント（マーキー）をコメント一覧に表示'),
-                        contentPadding: EdgeInsets.zero,
-                        value: settings.showOperatorComment,
-                        onChanged: (bool value) {
+                        items: PastCommentFetchCount.values
+                            .map(
+                              (PastCommentFetchCount value) =>
+                                  DropdownMenuItem<PastCommentFetchCount>(
+                                    value: value,
+                                    child: Text(value.label),
+                                  ),
+                            )
+                            .toList(),
+                        onChanged: (PastCommentFetchCount? value) {
+                          if (value == null) {
+                            return;
+                          }
                           updateAndSave(
-                            settings.copyWith(showOperatorComment: value),
+                            settings.copyWith(pastCommentFetchCount: value),
                           );
                         },
                       ),
-                      SwitchListTile(
-                        key: const Key('show-system-message-switch'),
-                        title: const Text('システムメッセージを表示'),
-                        subtitle: const Text('ニコニコ市場などのシステム通知を表示'),
-                        contentPadding: EdgeInsets.zero,
-                        value: settings.showSystemMessage,
-                        onChanged: (bool value) {
-                          updateAndSave(
-                            settings.copyWith(showSystemMessage: value),
-                          );
-                        },
-                      ),
-                      SwitchListTile(
-                        key: const Key('show-emotion-switch'),
-                        title: const Text('エモーションを表示'),
-                        subtitle: const Text('視聴者のエモーション通知を表示'),
-                        contentPadding: EdgeInsets.zero,
-                        value: settings.showEmotion,
-                        onChanged: (bool value) {
-                          updateAndSave(settings.copyWith(showEmotion: value));
-                        },
-                      ),
-                      SwitchListTile(
-                        key: const Key('show-gift-comment-switch'),
-                        title: const Text('ギフトコメントを表示'),
-                        subtitle: const Text('視聴者からのギフト通知を表示'),
-                        contentPadding: EdgeInsets.zero,
-                        value: settings.showGiftComment,
-                        onChanged: (bool value) {
-                          updateAndSave(
-                            settings.copyWith(showGiftComment: value),
-                          );
-                        },
-                      ),
-                      SwitchListTile(
-                        key: const Key('show-nicoad-comment-switch'),
-                        title: const Text('ニコニ広告コメントを表示'),
-                        subtitle: const Text('ニコニ広告の通知コメントを表示'),
-                        contentPadding: EdgeInsets.zero,
-                        value: settings.showNicoadComment,
-                        onChanged: (bool value) {
-                          updateAndSave(
-                            settings.copyWith(showNicoadComment: value),
-                          );
-                        },
-                      ),
-                      const Divider(
-                        key: Key('message-type-display-divider-end'),
-                        height: 24,
+                      ExpansionTile(
+                        key: const Key('message-type-expansion-tile'),
+                        title: const Text('表示するメッセージ種別'),
+                        subtitle: Text(
+                          '${_enabledMessageTypeCount(settings)} / ${_messageTypeGetters.length} 表示中',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        tilePadding: EdgeInsets.zero,
+                        childrenPadding: const EdgeInsets.only(
+                          left: 16,
+                          top: 8,
+                          bottom: 8,
+                        ),
+                        initiallyExpanded: false,
+                        children: <Widget>[
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
+                            children: <Widget>[
+                              FilterChip(
+                                key: const Key('show-operator-comment-chip'),
+                                label: const Text('運営'),
+                                selected: settings.showOperatorComment,
+                                onSelected: (bool value) {
+                                  updateAndSave(
+                                    settings.copyWith(
+                                      showOperatorComment: value,
+                                    ),
+                                  );
+                                },
+                              ),
+                              FilterChip(
+                                key: const Key('show-system-message-chip'),
+                                label: const Text('システム'),
+                                selected: settings.showSystemMessage,
+                                onSelected: (bool value) {
+                                  updateAndSave(
+                                    settings.copyWith(showSystemMessage: value),
+                                  );
+                                },
+                              ),
+                              FilterChip(
+                                key: const Key('show-emotion-chip'),
+                                label: const Text('エモーション'),
+                                selected: settings.showEmotion,
+                                onSelected: (bool value) {
+                                  updateAndSave(
+                                    settings.copyWith(showEmotion: value),
+                                  );
+                                },
+                              ),
+                              FilterChip(
+                                key: const Key('show-gift-comment-chip'),
+                                label: const Text('ギフト'),
+                                selected: settings.showGiftComment,
+                                onSelected: (bool value) {
+                                  updateAndSave(
+                                    settings.copyWith(showGiftComment: value),
+                                  );
+                                },
+                              ),
+                              FilterChip(
+                                key: const Key('show-nicoad-comment-chip'),
+                                label: const Text('ニコニ広告'),
+                                selected: settings.showNicoadComment,
+                                onSelected: (bool value) {
+                                  updateAndSave(
+                                    settings.copyWith(showNicoadComment: value),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                       SwitchListTile(
                         key: const Key('auto-save-comment-log-switch'),
@@ -234,53 +289,6 @@ class _CommentDisplaySettingsScreenState
                             maxLines: 1,
                           ),
                         ),
-                      const SizedBox(height: 8),
-                      SettingsIntSliderField(
-                        key: const Key('comment-font-size-slider'),
-                        label: 'コメント文字サイズ',
-                        value: settings.commentFontSize.round(),
-                        min: commentFontSizeMin.round(),
-                        max: commentFontSizeMax.round(),
-                        divisions: (commentFontSizeMax - commentFontSizeMin)
-                            .round(),
-                        suffix: 'px',
-                        sweetSpotMin: 12,
-                        sweetSpotMax: 18,
-                        sweetSpotLabel: 'おすすめ',
-                        onChanged: (int value) {
-                          updateAndSave(
-                            settings.copyWith(
-                              commentFontSize: value.toDouble(),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 8),
-                      DropdownButtonFormField<PastCommentFetchCount>(
-                        key: const Key('past-comment-count-dropdown'),
-                        initialValue: settings.pastCommentFetchCount,
-                        decoration: const InputDecoration(
-                          labelText: '過去コメント取得件数',
-                          border: OutlineInputBorder(),
-                        ),
-                        items: PastCommentFetchCount.values
-                            .map(
-                              (PastCommentFetchCount value) =>
-                                  DropdownMenuItem<PastCommentFetchCount>(
-                                    value: value,
-                                    child: Text(value.label),
-                                  ),
-                            )
-                            .toList(),
-                        onChanged: (PastCommentFetchCount? value) {
-                          if (value == null) {
-                            return;
-                          }
-                          updateAndSave(
-                            settings.copyWith(pastCommentFetchCount: value),
-                          );
-                        },
-                      ),
                     ],
                   ),
                   const SizedBox(height: 12),
