@@ -7,6 +7,7 @@ import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import com.example.comerune.speech.domain.model.PlayerState
 import com.example.comerune.speech.domain.player.TtsSpeaker
+import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
@@ -38,6 +39,9 @@ class AndroidTtsSpeaker(private val context: Context) : TtsSpeaker {
 
     @Volatile
     private var volume = 1.0f
+
+    @Volatile
+    private var currentContinuation: CancellableContinuation<Result<Unit>>? = null
 
     override suspend fun initialize(): Result<Unit> =
         suspendCancellableCoroutine { cont ->
@@ -73,6 +77,56 @@ class AndroidTtsSpeaker(private val context: Context) : TtsSpeaker {
                     currentEngine.setPitch(pitch)
                     ready = true
                     state = PlayerState.IDLE
+                    currentEngine.setOnUtteranceProgressListener(
+                        object : UtteranceProgressListener() {
+                            override fun onStart(id: String?) {
+                                speaking = true
+                                state = PlayerState.PLAYING
+                            }
+
+                            override fun onDone(id: String?) {
+                                speaking = false
+                                state = PlayerState.IDLE
+                                currentContinuation?.let { c ->
+                                    if (c.isActive) c.resume(Result.success(Unit))
+                                }
+                                currentContinuation = null
+                            }
+
+                            @Deprecated("Deprecated in API")
+                            override fun onError(id: String?) {
+                                speaking = false
+                                state = PlayerState.ERROR
+                                currentContinuation?.let { c ->
+                                    if (c.isActive) {
+                                        c.resume(
+                                            Result.failure(
+                                                RuntimeException("TTS error for $id")
+                                            )
+                                        )
+                                    }
+                                }
+                                currentContinuation = null
+                            }
+
+                            override fun onError(id: String?, errorCode: Int) {
+                                speaking = false
+                                state = PlayerState.ERROR
+                                currentContinuation?.let { c ->
+                                    if (c.isActive) {
+                                        c.resume(
+                                            Result.failure(
+                                                RuntimeException(
+                                                    "TTS error code=$errorCode for $id"
+                                                )
+                                            )
+                                        )
+                                    }
+                                }
+                                currentContinuation = null
+                            }
+                        }
+                    )
                     Log.i(TAG, "Initialized successfully")
                     if (cont.isActive) {
                         cont.resume(Result.success(Unit))
@@ -110,62 +164,31 @@ class AndroidTtsSpeaker(private val context: Context) : TtsSpeaker {
 
         val result = withTimeoutOrNull(SPEAK_TIMEOUT_MS) {
             suspendCancellableCoroutine { cont ->
-                engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                    override fun onStart(id: String?) {
-                        speaking = true
-                        state = PlayerState.PLAYING
-                    }
-
-                    override fun onDone(id: String?) {
-                        speaking = false
-                        state = PlayerState.IDLE
-                        if (cont.isActive) {
-                            cont.resume(Result.success(Unit))
-                        }
-                    }
-
-                    @Deprecated("Deprecated in API")
-                    override fun onError(id: String?) {
-                        speaking = false
-                        state = PlayerState.ERROR
-                        if (cont.isActive) {
-                            cont.resume(
-                                Result.failure(RuntimeException("TTS error for $id"))
-                            )
-                        }
-                    }
-
-                    override fun onError(id: String?, errorCode: Int) {
-                        speaking = false
-                        state = PlayerState.ERROR
-                        if (cont.isActive) {
-                            cont.resume(
-                                Result.failure(
-                                    RuntimeException("TTS error code=$errorCode for $id")
-                                )
-                            )
-                        }
-                    }
-                })
+                currentContinuation = cont
 
                 val params = Bundle().apply {
                     putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, volume)
                 }
 
-                val speakResult = engine.speak(text, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
+                val speakResult =
+                    engine.speak(text, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
                 if (speakResult != TextToSpeech.SUCCESS) {
+                    currentContinuation = null
                     speaking = false
                     state = PlayerState.ERROR
                     if (cont.isActive) {
                         cont.resume(
                             Result.failure(
-                                RuntimeException("TTS speak() returned error: $speakResult")
+                                RuntimeException(
+                                    "TTS speak() returned error: $speakResult"
+                                )
                             )
                         )
                     }
                 }
 
                 cont.invokeOnCancellation {
+                    currentContinuation = null
                     engine.stop()
                     speaking = false
                     state = PlayerState.STOPPED
@@ -174,6 +197,7 @@ class AndroidTtsSpeaker(private val context: Context) : TtsSpeaker {
         }
 
         if (result == null) {
+            currentContinuation = null
             engine.stop()
             speaking = false
             state = PlayerState.ERROR
@@ -185,6 +209,7 @@ class AndroidTtsSpeaker(private val context: Context) : TtsSpeaker {
     }
 
     override suspend fun stop(): Result<Unit> {
+        currentContinuation = null
         engine?.stop()
         speaking = false
         state = PlayerState.STOPPED
@@ -212,6 +237,7 @@ class AndroidTtsSpeaker(private val context: Context) : TtsSpeaker {
     }
 
     override fun release() {
+        currentContinuation = null
         ready = false
         speaking = false
         state = PlayerState.IDLE
