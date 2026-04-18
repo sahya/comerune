@@ -45,12 +45,26 @@ class AndroidTtsSpeaker(private val context: Context) : TtsSpeaker {
     @Volatile
     private var currentContinuation: CancellableContinuation<Result<Unit>>? = null
 
+    // Signals to an in-flight initialize() that the caller has released the
+    // speaker and any freshly-constructed TextToSpeech must be shut down
+    // instead of reported as ready. release() is not suspend, so it cannot
+    // take `initMutex`; this flag closes the initialize()/release() race
+    // without requiring release() to block.
+    @Volatile
+    private var released = false
+
     // Serializes initialize() so concurrent callers (e.g. eager VOICEVOX init +
     // availability check from the settings screen) do not spawn multiple
     // TextToSpeech instances and leak the first one.
     private val initMutex = Mutex()
 
     override suspend fun initialize(): Result<Unit> = initMutex.withLock {
+        // Clear the released flag so a release()-then-initialize() sequence
+        // can succeed. We only observe `released` inside this mutex or the
+        // single-threaded TTS init callback, so the reset does not race with
+        // a concurrent release() that raced our lock acquisition — such a
+        // release() simply sets the flag back to true before we touch TTS.
+        released = false
         if (ready) return@withLock Result.success(Unit)
         doInitialize()
     }
@@ -70,6 +84,14 @@ class AndroidTtsSpeaker(private val context: Context) : TtsSpeaker {
                 tts = null
             }
             val newEngine = TextToSpeech(context) { status ->
+                // If release() fired while the native TTS was initializing,
+                // drop the fresh instance instead of leaking it. Without this
+                // check, the engine silently becomes ready-to-go even though
+                // the caller has already asked us to release.
+                if (released) {
+                    abortInitDueToRelease(newEngine, cont)
+                    return@TextToSpeech
+                }
                 val currentEngine = tts
                 if (currentEngine == null) {
                     if (cont.isActive) {
@@ -170,12 +192,50 @@ class AndroidTtsSpeaker(private val context: Context) : TtsSpeaker {
             }
             tts = newEngine
 
+            // Close the window between `tts = newEngine` and the init
+            // callback firing: if release() ran during the TextToSpeech
+            // constructor or this stash, the callback may still claim the
+            // engine is ready. Shut it down here so no live native instance
+            // outlives release().
+            if (released) {
+                abortInitDueToRelease(newEngine, cont)
+                return@suspendCancellableCoroutine
+            }
+
             cont.invokeOnCancellation {
                 newEngine.shutdown()
                 tts = null
                 ready = false
             }
         }
+
+    // Shared cleanup for the two doInitialize() spots where a concurrent
+    // release() can invalidate the freshly-constructed TextToSpeech: both
+    // call sites must shutdown newEngine, clear `tts` only if it still
+    // points to newEngine, and fail the init continuation with the same
+    // message. Extracting this avoids two copies of the cleanup drifting
+    // apart over time (noted by the Round 1 "保守性仙人" review).
+    private fun abortInitDueToRelease(
+        newEngine: TextToSpeech,
+        cont: CancellableContinuation<Result<Unit>>,
+    ) {
+        try {
+            newEngine.shutdown()
+        } catch (e: Exception) {
+            Log.w(TAG, "Error shutting down TTS during release race: ${e.message}")
+        }
+        if (tts === newEngine) {
+            tts = null
+        }
+        ready = false
+        if (cont.isActive) {
+            cont.resume(
+                Result.failure(
+                    IllegalStateException("TTS engine released during init")
+                )
+            )
+        }
+    }
 
     private val engine: TextToSpeech?
         get() = tts
@@ -261,6 +321,13 @@ class AndroidTtsSpeaker(private val context: Context) : TtsSpeaker {
     }
 
     override fun release() {
+        // Set `released` first so that any initialize() coroutine still
+        // racing with us observes the flag before it finishes wiring up a
+        // fresh TextToSpeech instance. The follow-up shutdown of the
+        // currently-stashed engine is a best-effort: initialize() also
+        // checks `released` after storing newEngine and will clean up the
+        // instance we could not see yet.
+        released = true
         currentContinuation = null
         ready = false
         speaking = false

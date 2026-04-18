@@ -20,6 +20,12 @@ interface TtsSpeaker {
      *   engine instances.
      * - Retry-safe: if a previous call failed, the next call may recreate the
      *   engine without leaking native resources from the failed attempt.
+     * - Release-safe: if [release] is called while [initialize] is in flight,
+     *   the implementation must shut down any freshly-created native engine
+     *   and return a failure, rather than leaving a live instance behind.
+     * - Re-init-safe: calling [initialize] after a successful [release] is
+     *   valid and must construct a fresh native engine. The implementation
+     *   must not permanently latch into a "released" state.
      *
      * Implementations should enforce this contract internally so callers
      * (e.g. UI availability checks + background init paths) can invoke it
@@ -34,5 +40,15 @@ interface TtsSpeaker {
     fun setSpeechRate(rate: Float)
     fun setPitch(pitch: Float)
     fun setVolume(volume: Float)
+
+    /**
+     * Releases all native resources associated with the speaker.
+     *
+     * Contract:
+     * - May be called concurrently with [initialize]. The implementation must
+     *   prevent the in-flight init from leaking a `TextToSpeech` instance.
+     * - After [release] returns, [isReady] must report `false` until a new
+     *   [initialize] succeeds.
+     */
     fun release()
 }
