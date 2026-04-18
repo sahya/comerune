@@ -717,22 +717,95 @@ class _SelectScreenState extends State<SelectScreen>
     }
   }
 
-  Future<void> _loadUserAttributes(String? broadcasterId) async {
+  /// Loads user attributes from persistent storage and updates the notifier.
+  ///
+  /// When [mergeInMemory] is true (the default), the loaded data is merged
+  /// with the current in-memory state so that unsaved changes accumulated
+  /// before the broadcaster ID was known are preserved.  Pass `false` when
+  /// the caller knows the disk data is authoritative (e.g. after returning
+  /// from the settings screen where the user may have edited nicknames
+  /// directly).
+  Future<void> _loadUserAttributes(
+    String? broadcasterId, {
+    bool mergeInMemory = true,
+  }) async {
     if (broadcasterId == null ||
         broadcasterId == _currentBroadcasterId ||
         widget.userAttributeStore == null) {
       return;
     }
     _currentBroadcasterId = broadcasterId;
-    final Map<String, int> colors = await widget.userAttributeStore!.loadColors(
-      broadcasterId,
-    );
-    final Map<String, String> nicknames = await widget.userAttributeStore!
+    final Map<String, int> diskColors = await widget.userAttributeStore!
+        .loadColors(broadcasterId);
+    final Map<String, String> diskNicknames = await widget.userAttributeStore!
         .loadNicknames(broadcasterId);
     if (!mounted || _currentBroadcasterId != broadcasterId) {
       return;
     }
-    _userAttrNotifier.value = (colors: colors, nicknames: nicknames);
+
+    if (!mergeInMemory) {
+      _userAttrNotifier.value = (colors: diskColors, nicknames: diskNicknames);
+      return;
+    }
+
+    // Merge disk data with the current in-memory state so that changes
+    // accumulated before the broadcaster ID was known (e.g. auto-nickname
+    // registration from historical messages) are not lost.  In-memory
+    // values take priority because they may contain unsaved edits.
+    final ({Map<String, int> colors, Map<String, String> nicknames}) current =
+        _userAttrNotifier.value;
+    final Map<String, int> mergedColors = <String, int>{
+      ...diskColors,
+      ...current.colors,
+    };
+    final Map<String, String> mergedNicknames = <String, String>{
+      ...diskNicknames,
+      ...current.nicknames,
+    };
+
+    _userAttrNotifier.value = (
+      colors: mergedColors,
+      nicknames: mergedNicknames,
+    );
+
+    // Flush in-memory changes that could not be persisted earlier.
+    _flushPendingAttributes(broadcasterId, current, diskColors, diskNicknames);
+  }
+
+  void _flushPendingAttributes(
+    String broadcasterId,
+    ({Map<String, int> colors, Map<String, String> nicknames}) inMemorySnapshot,
+    Map<String, int> diskColors,
+    Map<String, String> diskNicknames,
+  ) {
+    final UserAttributeStore? store = widget.userAttributeStore;
+    if (store == null) {
+      return;
+    }
+    for (final MapEntry<String, int> e in inMemorySnapshot.colors.entries) {
+      if (!diskColors.containsKey(e.key) || diskColors[e.key] != e.value) {
+        unawaited(
+          store.setColor(
+            broadcasterId: broadcasterId,
+            userId: e.key,
+            colorValue: e.value,
+          ),
+        );
+      }
+    }
+    for (final MapEntry<String, String> e
+        in inMemorySnapshot.nicknames.entries) {
+      if (!diskNicknames.containsKey(e.key) ||
+          diskNicknames[e.key] != e.value) {
+        unawaited(
+          store.setNickname(
+            broadcasterId: broadcasterId,
+            userId: e.key,
+            nickname: e.value,
+          ),
+        );
+      }
+    }
   }
 
   void _onUserColorChanged(String userId, int colorValue) {
@@ -882,7 +955,7 @@ class _SelectScreenState extends State<SelectScreen>
         _currentBroadcasterId ?? widget.supplierUserIdNotifier?.value;
     if (activeBroadcasterId != null) {
       _currentBroadcasterId = null;
-      await _loadUserAttributes(activeBroadcasterId);
+      await _loadUserAttributes(activeBroadcasterId, mergeInMemory: false);
     }
   }
 

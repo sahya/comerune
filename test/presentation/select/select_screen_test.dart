@@ -1184,6 +1184,207 @@ void main() {
         expect(cContent.style?.color, isNotNull);
       },
     );
+
+    testWidgets(
+      'in-memory nickname set before supplierUserId resolves persists after load',
+      (WidgetTester tester) async {
+        await pumpAndNavigate(tester);
+
+        // Simulate auto-nickname registration arriving before broadcaster
+        // ID is known (e.g. from historical messages).
+        final CommentScreen screen = tester.widget<CommentScreen>(
+          find.byType(CommentScreen),
+        );
+        screen.callbacks.onNicknameChanged!('user-1', '事前ニックネーム');
+        await tester.pump();
+
+        // Verify nickname appears in UI.
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('comment-row-msg-1')),
+            matching: find.textContaining('事前ニックネーム'),
+          ),
+          findsOneWidget,
+        );
+
+        // Now resolve broadcaster → triggers _loadUserAttributes with merge.
+        supplierUserIdNotifier.value = 'broadcaster-1';
+        await tester.pumpAndSettle();
+
+        // Nickname must still be visible (merged, not overwritten).
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('comment-row-msg-1')),
+            matching: find.textContaining('事前ニックネーム'),
+          ),
+          findsOneWidget,
+        );
+
+        // Verify it was flushed to persistent storage.
+        final Map<String, String> stored = await userAttributeStore
+            .loadNicknames('broadcaster-1');
+        expect(stored['user-1'], '事前ニックネーム');
+      },
+    );
+
+    testWidgets(
+      'in-memory color set before supplierUserId resolves persists after load',
+      (WidgetTester tester) async {
+        await pumpAndNavigate(tester);
+
+        // Simulate a color change before broadcaster ID is known.
+        final CommentScreen screen = tester.widget<CommentScreen>(
+          find.byType(CommentScreen),
+        );
+        screen.callbacks.onUserColorChanged!('user-1', 0xFFE53935);
+        await tester.pump();
+
+        // Resolve broadcaster.
+        supplierUserIdNotifier.value = 'broadcaster-1';
+        await tester.pumpAndSettle();
+
+        // Color must survive the merge.
+        final CommentScreen after = tester.widget<CommentScreen>(
+          find.byType(CommentScreen),
+        );
+        expect(after.contentFilter.userColorMap['user-1'], 0xFFE53935);
+
+        // Verify it was flushed to persistent storage.
+        final Map<String, int> stored = await userAttributeStore.loadColors(
+          'broadcaster-1',
+        );
+        expect(stored['user-1'], 0xFFE53935);
+      },
+    );
+
+    testWidgets(
+      'disk data is merged with in-memory data when broadcaster resolves',
+      (WidgetTester tester) async {
+        // Pre-seed disk data for a different user.
+        await userAttributeStore.setNickname(
+          broadcasterId: 'broadcaster-1',
+          userId: 'user-disk',
+          nickname: 'ディスクユーザー',
+        );
+        await userAttributeStore.setColor(
+          broadcasterId: 'broadcaster-1',
+          userId: 'user-disk',
+          colorValue: 0xFF1E88E5,
+        );
+
+        await pumpAndNavigate(tester);
+
+        // Set in-memory data before broadcaster resolves.
+        final CommentScreen screen = tester.widget<CommentScreen>(
+          find.byType(CommentScreen),
+        );
+        screen.callbacks.onNicknameChanged!('user-1', 'メモリユーザー');
+        await tester.pump();
+
+        // Resolve broadcaster.
+        supplierUserIdNotifier.value = 'broadcaster-1';
+        await tester.pumpAndSettle();
+
+        // Both disk and in-memory data must be present.
+        final CommentScreen after = tester.widget<CommentScreen>(
+          find.byType(CommentScreen),
+        );
+        expect(after.contentFilter.userNicknameMap['user-1'], 'メモリユーザー');
+        expect(after.contentFilter.userNicknameMap['user-disk'], 'ディスクユーザー');
+        expect(after.contentFilter.userColorMap['user-disk'], 0xFF1E88E5);
+      },
+    );
+
+    testWidgets('flush skips entries that already match disk data', (
+      WidgetTester tester,
+    ) async {
+      // Pre-seed disk with exact same data that will be in memory.
+      await userAttributeStore.setColor(
+        broadcasterId: 'broadcaster-1',
+        userId: 'user-1',
+        colorValue: 0xFFE53935,
+      );
+
+      await pumpAndNavigate(tester);
+
+      // Set the same value in memory before broadcaster resolves.
+      final CommentScreen screen = tester.widget<CommentScreen>(
+        find.byType(CommentScreen),
+      );
+      screen.callbacks.onUserColorChanged!('user-1', 0xFFE53935);
+      await tester.pump();
+
+      // Resolve broadcaster.
+      supplierUserIdNotifier.value = 'broadcaster-1';
+      await tester.pumpAndSettle();
+
+      // Color must be present (merged).
+      final CommentScreen after = tester.widget<CommentScreen>(
+        find.byType(CommentScreen),
+      );
+      expect(after.contentFilter.userColorMap['user-1'], 0xFFE53935);
+
+      // Disk still has original value (no redundant write).
+      final Map<String, int> stored = await userAttributeStore.loadColors(
+        'broadcaster-1',
+      );
+      expect(stored['user-1'], 0xFFE53935);
+    });
+
+    testWidgets(
+      'disk change is picked up after lv switch clears in-memory state',
+      (WidgetTester tester) async {
+        await pumpAndNavigate(tester);
+
+        // Resolve broadcaster and load initial data.
+        supplierUserIdNotifier.value = 'broadcaster-1';
+        await tester.pumpAndSettle();
+
+        // Set a nickname via callback (simulates user action).
+        tester
+            .widget<CommentScreen>(find.byType(CommentScreen))
+            .callbacks
+            .onNicknameChanged!('user-1', '古いニックネーム');
+        await tester.pumpAndSettle();
+
+        // Re-fetch widget after rebuild to verify.
+        expect(
+          tester
+              .widget<CommentScreen>(find.byType(CommentScreen))
+              .contentFilter
+              .userNicknameMap['user-1'],
+          '古いニックネーム',
+        );
+
+        // Simulate what _openSettings does after settings screen returns:
+        // write a new value directly to the store, then force reload by
+        // switching to a different broadcaster and back (resets
+        // _currentBroadcasterId so _loadUserAttributes runs again).
+        await userAttributeStore.setNickname(
+          broadcasterId: 'broadcaster-1',
+          userId: 'user-1',
+          nickname: '設定画面で変更',
+        );
+
+        // Reset _currentBroadcasterId so _loadUserAttributes will run again.
+        await tester
+            .widget<CommentScreen>(find.byType(CommentScreen))
+            .callbacks
+            .onDifferentLvConnected('lv345678901', 'lv999999999');
+        await tester.pump();
+
+        // Clear then re-set supplierUserIdNotifier so ValueNotifier fires.
+        supplierUserIdNotifier.value = null;
+        await tester.pump();
+        supplierUserIdNotifier.value = 'broadcaster-1';
+        await tester.pumpAndSettle();
+
+        final CommentScreen after = tester.widget<CommentScreen>(
+          find.byType(CommentScreen),
+        );
+        expect(after.contentFilter.userNicknameMap['user-1'], '設定画面で変更');
+      },
+    );
   });
 
   group('favorite user section', () {
