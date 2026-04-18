@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:clock/clock.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/application/settings/settings_store.dart';
@@ -225,27 +226,121 @@ void main() {
       expect(nested.existsSync(), isTrue);
     });
 
-    test('overwrites the previous file on repeated export', () async {
-      final String firstPath = await store.writeExportToTempFile();
+    test(
+      'uses a timestamped file name so repeated exports do not collide',
+      () async {
+        await withClock(Clock.fixed(DateTime(2026, 4, 18, 0, 1, 23)), () async {
+          final String path = await store.writeExportToTempFile();
+          final String name = path.split(Platform.pathSeparator).last;
 
-      final AppSettings changed = AppSettings.defaults.copyWith(
-        debugMode: true,
+          expect(name, 'comerune-settings_20260418_000123.json');
+          expect(
+            SettingsExport.timestampedFileNamePattern.hasMatch(name),
+            isTrue,
+            reason: 'generated file name must match timestampedFileNamePattern',
+          );
+        });
+      },
+    );
+
+    test(
+      'removes previous timestamped exports in the temp directory on next export',
+      () async {
+        // 複数の stale タイムスタンプ付きファイルを並べて、cleanup が
+        // 全てを削除することを確認する。
+        final List<File> strays = <File>[
+          File(
+            '${tempDir.path}${Platform.pathSeparator}'
+            'comerune-settings_20250101_120000.json',
+          ),
+          File(
+            '${tempDir.path}${Platform.pathSeparator}'
+            'comerune-settings_20251231_235959.json',
+          ),
+          File(
+            '${tempDir.path}${Platform.pathSeparator}'
+            'comerune-settings_20260101_000000.json',
+          ),
+        ];
+        for (final File f in strays) {
+          await f.writeAsString('{"stale": true}');
+          expect(f.existsSync(), isTrue);
+        }
+
+        // 無関係な他ファイルは消されないことも確認する。
+        final File unrelated = File(
+          '${tempDir.path}${Platform.pathSeparator}other-file.json',
+        );
+        await unrelated.writeAsString('{"keep": true}');
+
+        // 新しいタイムスタンプで書き出す。
+        await withClock(Clock.fixed(DateTime(2026, 4, 18, 0, 1, 23)), () async {
+          await store.writeExportToTempFile();
+        });
+
+        final List<String> names = tempDir
+            .listSync()
+            .whereType<File>()
+            .map((File f) => f.uri.pathSegments.last)
+            .toList();
+
+        expect(
+          names.where(SettingsExport.timestampedFileNamePattern.hasMatch),
+          <String>['comerune-settings_20260418_000123.json'],
+        );
+        for (final File f in strays) {
+          expect(
+            f.existsSync(),
+            isFalse,
+            reason: '${f.path} should be removed',
+          );
+        }
+        expect(unrelated.existsSync(), isTrue);
+      },
+    );
+
+    test(
+      'writes a new timestamped file even when a previous one exists',
+      () async {
+        await withClock(Clock.fixed(DateTime(2026, 4, 18, 0, 1, 23)), () async {
+          await store.writeExportToTempFile();
+        });
+
+        final AppSettings changed = AppSettings.defaults.copyWith(
+          debugMode: true,
+        );
+        await store.save(changed);
+
+        String? secondPath;
+        await withClock(Clock.fixed(DateTime(2026, 4, 18, 0, 2, 45)), () async {
+          secondPath = await store.writeExportToTempFile();
+        });
+
+        expect(
+          secondPath!.endsWith('comerune-settings_20260418_000245.json'),
+          isTrue,
+        );
+        final Map<String, dynamic> decoded =
+            jsonDecode(await File(secondPath!).readAsString())
+                as Map<String, dynamic>;
+        expect(decoded['debugMode'], isTrue);
+      },
+    );
+  });
+
+  group('SettingsExport.timestampedFileName', () {
+    test('pads every component with leading zeros', () {
+      expect(
+        SettingsExport.timestampedFileName(DateTime(2026, 1, 2, 3, 4, 5)),
+        'comerune-settings_20260102_030405.json',
       );
-      await store.save(changed);
-
-      final String secondPath = await store.writeExportToTempFile();
-
-      // Same logical destination (no timestamp suffix) — overwrite semantics.
-      expect(firstPath, secondPath);
-      final Map<String, dynamic> decoded =
-          jsonDecode(await File(secondPath).readAsString())
-              as Map<String, dynamic>;
-      expect(decoded['debugMode'], isTrue);
     });
 
-    test('uses SettingsExport.fileName as the canonical file name', () async {
-      final String path = await store.writeExportToTempFile();
-      expect(path.endsWith('/${SettingsExport.fileName}'), isTrue);
+    test('matches timestampedFileNamePattern', () {
+      final String name = SettingsExport.timestampedFileName(
+        DateTime(2026, 12, 31, 23, 59, 59),
+      );
+      expect(SettingsExport.timestampedFileNamePattern.hasMatch(name), isTrue);
     });
   });
 }

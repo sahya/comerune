@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io';
 
+import 'package:clock/clock.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../comment_speech/src/models/replace_rule.dart';
@@ -46,12 +47,45 @@ abstract class SettingsStore {
 class SettingsExport {
   const SettingsExport._();
 
-  /// File name used for the temp file.  Kept in sync with
-  /// `AppStrings.exportShareSubject`.
+  /// Canonical base file name (no timestamp).  Used as the share sheet
+  /// subject and kept in sync with `AppStrings.exportShareSubject` so that
+  /// UI labels do not drift.  The actual file written to disk uses
+  /// [timestampedFileName] to avoid collisions when users stack multiple
+  /// backups in Drive etc.
   static const String fileName = 'comerune-settings.json';
+
+  /// File name prefix used for timestamped exports.  Also used to match
+  /// previously-written temp files for cleanup.
+  static const String _fileNamePrefix = 'comerune-settings_';
+
+  /// File extension for the exported file.
+  static const String _fileExtension = '.json';
 
   /// MIME type of the exported file.  Passed to `XFile` when sharing.
   static const String mimeType = 'application/json';
+
+  /// Regex matching timestamped export file names produced by
+  /// [timestampedFileName].  Exposed for tests and cleanup logic.
+  /// Derived from [_fileNamePrefix] / [_fileExtension] so the prefix and
+  /// extension have a single source of truth.
+  static final RegExp timestampedFileNamePattern = RegExp(
+    '^${RegExp.escape(_fileNamePrefix)}'
+    r'\d{8}_\d{6}'
+    '${RegExp.escape(_fileExtension)}\$',
+  );
+
+  /// Builds a timestamped file name based on local time [now].
+  ///
+  /// Example: `comerune-settings_20260418_000123.json`.
+  static String timestampedFileName(DateTime now) {
+    final DateTime local = now.toLocal();
+    String pad2(int v) => v.toString().padLeft(2, '0');
+    final String timestamp =
+        '${local.year.toString().padLeft(4, '0')}'
+        '${pad2(local.month)}${pad2(local.day)}'
+        '_${pad2(local.hour)}${pad2(local.minute)}${pad2(local.second)}';
+    return '$_fileNamePrefix$timestamp$_fileExtension';
+  }
 }
 
 /// SharedPreferences API のうち本画面で利用する最小セット。
@@ -454,10 +488,44 @@ class SharedPreferencesSettingsStore implements SettingsStore {
     if (!dir.existsSync()) {
       await dir.create(recursive: true);
     }
+    await _removePreviousTimestampedExports(dir);
     final String json = await exportAsJson();
-    final File file = File('${dir.path}/${SettingsExport.fileName}');
+    final String name = SettingsExport.timestampedFileName(clock.now());
+    final File file = File('${dir.path}/$name');
     await file.writeAsString(json, flush: true);
     return file.path;
+  }
+
+  /// Removes previously-written timestamped export files in [dir] so the
+  /// temp directory does not accumulate stale copies across repeated
+  /// exports.  Failures are logged and swallowed — stale temp files are
+  /// harmless and must not block a fresh export.
+  Future<void> _removePreviousTimestampedExports(Directory dir) async {
+    try {
+      await for (final FileSystemEntity entry in dir.list(followLinks: false)) {
+        if (entry is! File) {
+          continue;
+        }
+        final String base = entry.uri.pathSegments.isEmpty
+            ? ''
+            : entry.uri.pathSegments.last;
+        if (SettingsExport.timestampedFileNamePattern.hasMatch(base)) {
+          try {
+            await entry.delete();
+          } on FileSystemException catch (e) {
+            developer.log(
+              'Failed to delete stale export file ${entry.path}: $e',
+              name: 'SettingsStore',
+            );
+          }
+        }
+      }
+    } on FileSystemException catch (e) {
+      developer.log(
+        'Failed to scan temp directory for stale exports: $e',
+        name: 'SettingsStore',
+      );
+    }
   }
 
   @override
