@@ -93,13 +93,10 @@ void main() {
 
       await client.fetchPastComments(viewUri);
 
-      final List<NdgrTimeshiftEvent> progressEvents = events
+      final List<AppMessage> allMessages = events
           .where(
             (NdgrTimeshiftEvent e) => e.type == NdgrTimeshiftEventType.progress,
           )
-          .toList();
-
-      final List<AppMessage> allMessages = progressEvents
           .expand((NdgrTimeshiftEvent e) => e.messages!)
           .toList();
 
@@ -117,6 +114,9 @@ void main() {
       expect(events.first.type, NdgrTimeshiftEventType.started);
       expect(events.last.type, NdgrTimeshiftEventType.completed);
       expect(events.last.fetchedCount, 4);
+      expect(client.totalFetched, 4);
+      expect(client.hasMore, isFalse);
+      expect(client.isSessionOpen, isTrue);
     });
 
     test('deduplicates messages across segments', () async {
@@ -209,82 +209,7 @@ void main() {
       expect(allMessages.map((AppMessage m) => m.id).toSet().length, 3);
     });
 
-    test('respects maxMessages limit', () async {
-      final HttpServer server = await HttpServer.bind(
-        InternetAddress.loopbackIPv4,
-        0,
-      );
-      addTearDown(() async {
-        await server.close(force: true);
-      });
-
-      final Uri base = Uri(
-        scheme: 'http',
-        host: server.address.host,
-        port: server.port,
-      );
-
-      final Uri viewUri = base.replace(path: '/view');
-      final Uri previousUri = base.replace(path: '/previous');
-
-      server.listen((HttpRequest request) async {
-        if (request.uri.path == '/view' &&
-            request.uri.queryParameters['at'] == 'now') {
-          request.response.add(
-            _delimit(_encodeChunkedEntryNext(at: 1700000000)),
-          );
-          await request.response.close();
-          return;
-        }
-
-        if (request.uri.path == '/view' &&
-            request.uri.queryParameters['at'] == '1700000000') {
-          request.response.add(
-            _delimit(
-              _encodeChunkedEntryPrevious(previousUri: previousUri.toString()),
-            ),
-          );
-          await request.response.close();
-          return;
-        }
-
-        if (request.uri.path == '/previous') {
-          final List<int> body = <int>[
-            ..._delimit(_encodeChunkedMessage(id: 'msg-1', content: 'first')),
-            ..._delimit(_encodeChunkedMessage(id: 'msg-2', content: 'second')),
-            ..._delimit(_encodeChunkedMessage(id: 'msg-3', content: 'third')),
-          ];
-          request.response.add(body);
-          await request.response.close();
-          return;
-        }
-
-        request.response.statusCode = HttpStatus.notFound;
-        await request.response.close();
-      });
-
-      final NdgrTimeshiftClient client = NdgrTimeshiftClient();
-      addTearDown(client.dispose);
-
-      final List<AppMessage> allMessages = <AppMessage>[];
-      final StreamSubscription<NdgrTimeshiftEvent> subscription = client.events
-          .listen((NdgrTimeshiftEvent event) {
-            if (event.type == NdgrTimeshiftEventType.progress) {
-              allMessages.addAll(event.messages!);
-            }
-          });
-      addTearDown(subscription.cancel);
-
-      await client.fetchPastComments(viewUri, maxMessages: 2);
-
-      // The previous segment has 3 messages but maxMessages=2 limits
-      // the backward walk (previous segments are fetched in full per segment).
-      // Since previous segments are fetched as a whole segment, the
-      // maxMessages limit applies at the segment boundary level.
-      expect(allMessages.length, lessThanOrEqualTo(3));
-    });
-
-    test('walks backward linked list of packed segments', () async {
+    test('fetchMore resumes from cursor position', () async {
       final HttpServer server = await HttpServer.bind(
         InternetAddress.loopbackIPv4,
         0,
@@ -328,11 +253,8 @@ void main() {
 
         if (request.uri.path == '/backward1') {
           final List<int> packed = _encodePackedSegment(<List<int>>[
-            _encodeChunkedMessage(
-              id: 'newer-1',
-              content: 'newer',
-              seconds: 1700000100,
-            ),
+            _encodeChunkedMessage(id: 'b1-1', content: 'batch1-msg1'),
+            _encodeChunkedMessage(id: 'b1-2', content: 'batch1-msg2'),
           ], nextUri: backward2Uri.toString());
           request.response.add(packed);
           await request.response.close();
@@ -341,11 +263,7 @@ void main() {
 
         if (request.uri.path == '/backward2') {
           final List<int> packed = _encodePackedSegment(<List<int>>[
-            _encodeChunkedMessage(
-              id: 'older-1',
-              content: 'older',
-              seconds: 1700000050,
-            ),
+            _encodeChunkedMessage(id: 'b2-1', content: 'batch2-msg1'),
           ]);
           request.response.add(packed);
           await request.response.close();
@@ -368,12 +286,255 @@ void main() {
           });
       addTearDown(subscription.cancel);
 
-      await client.fetchPastComments(viewUri);
+      // First fetch: only 2 messages (backward1 segment).
+      await client.fetchPastComments(viewUri, maxMessages: 2);
 
       expect(allMessages.length, 2);
-      // Backward batches are emitted oldest-first.
-      expect(allMessages[0].content, 'older');
-      expect(allMessages[1].content, 'newer');
+      expect(client.totalFetched, 2);
+      expect(client.hasMore, isTrue);
+
+      // Second fetch: get the remaining 1 message from backward2.
+      await client.fetchMore(count: 500);
+
+      expect(allMessages.length, 3);
+      expect(client.totalFetched, 3);
+      expect(client.hasMore, isFalse);
+    });
+
+    test('fetchMore throws when no session is open', () {
+      final NdgrTimeshiftClient client = NdgrTimeshiftClient();
+      addTearDown(client.dispose);
+
+      expect(() => client.fetchMore(count: 500), throwsA(isA<StateError>()));
+    });
+
+    test('fetchMore does nothing when hasMore is false', () async {
+      final HttpServer server = await HttpServer.bind(
+        InternetAddress.loopbackIPv4,
+        0,
+      );
+      addTearDown(() async {
+        await server.close(force: true);
+      });
+
+      final Uri viewUri = Uri(
+        scheme: 'http',
+        host: server.address.host,
+        port: server.port,
+        path: '/view',
+      );
+
+      server.listen((HttpRequest request) async {
+        if (request.uri.queryParameters['at'] == 'now') {
+          request.response.add(
+            _delimit(_encodeChunkedEntryNext(at: 1700000000)),
+          );
+          await request.response.close();
+          return;
+        }
+        await request.response.close();
+      });
+
+      final NdgrTimeshiftClient client = NdgrTimeshiftClient();
+      addTearDown(client.dispose);
+
+      await client.fetchPastComments(viewUri);
+      expect(client.hasMore, isFalse);
+
+      // Should return immediately without emitting events.
+      final List<NdgrTimeshiftEventType> extraEvents =
+          <NdgrTimeshiftEventType>[];
+      final StreamSubscription<NdgrTimeshiftEvent> subscription = client.events
+          .listen((NdgrTimeshiftEvent e) {
+            extraEvents.add(e.type);
+          });
+      addTearDown(subscription.cancel);
+
+      await client.fetchMore(count: 500);
+      expect(extraEvents, isEmpty);
+    });
+
+    test('backward segments emit immediately (not buffered)', () async {
+      final HttpServer server = await HttpServer.bind(
+        InternetAddress.loopbackIPv4,
+        0,
+      );
+      addTearDown(() async {
+        await server.close(force: true);
+      });
+
+      final Uri base = Uri(
+        scheme: 'http',
+        host: server.address.host,
+        port: server.port,
+      );
+
+      final Uri viewUri = base.replace(path: '/view');
+      final Uri backward1Uri = base.replace(path: '/backward1');
+      final Uri backward2Uri = base.replace(path: '/backward2');
+
+      server.listen((HttpRequest request) async {
+        if (request.uri.path == '/view' &&
+            request.uri.queryParameters['at'] == 'now') {
+          request.response.add(
+            _delimit(_encodeChunkedEntryNext(at: 1700000000)),
+          );
+          await request.response.close();
+          return;
+        }
+
+        if (request.uri.path == '/view' &&
+            request.uri.queryParameters['at'] == '1700000000') {
+          request.response.add(
+            _delimit(
+              _encodeChunkedEntryBackward(
+                backwardSegmentUri: backward1Uri.toString(),
+              ),
+            ),
+          );
+          await request.response.close();
+          return;
+        }
+
+        if (request.uri.path == '/backward1') {
+          final List<int> packed = _encodePackedSegment(<List<int>>[
+            _encodeChunkedMessage(id: 'seg1-1', content: 'seg1'),
+          ], nextUri: backward2Uri.toString());
+          request.response.add(packed);
+          await request.response.close();
+          return;
+        }
+
+        if (request.uri.path == '/backward2') {
+          final List<int> packed = _encodePackedSegment(<List<int>>[
+            _encodeChunkedMessage(id: 'seg2-1', content: 'seg2'),
+          ]);
+          request.response.add(packed);
+          await request.response.close();
+          return;
+        }
+
+        request.response.statusCode = HttpStatus.notFound;
+        await request.response.close();
+      });
+
+      final NdgrTimeshiftClient client = NdgrTimeshiftClient();
+      addTearDown(client.dispose);
+
+      // Track how many progress events are emitted.
+      // Each backward segment should produce its own progress event.
+      int progressCount = 0;
+      final StreamSubscription<NdgrTimeshiftEvent> subscription = client.events
+          .listen((NdgrTimeshiftEvent event) {
+            if (event.type == NdgrTimeshiftEventType.progress) {
+              progressCount += 1;
+            }
+          });
+      addTearDown(subscription.cancel);
+
+      await client.fetchPastComments(viewUri);
+
+      // Two backward segments = two separate progress events.
+      expect(progressCount, 2);
+    });
+
+    test('maxMessages stops backward walk across segments', () async {
+      final HttpServer server = await HttpServer.bind(
+        InternetAddress.loopbackIPv4,
+        0,
+      );
+      addTearDown(() async {
+        await server.close(force: true);
+      });
+
+      final Uri base = Uri(
+        scheme: 'http',
+        host: server.address.host,
+        port: server.port,
+      );
+
+      final Uri viewUri = base.replace(path: '/view');
+      final Uri previousUri = base.replace(path: '/previous');
+      final Uri backward1Uri = base.replace(path: '/backward1');
+      final Uri backward2Uri = base.replace(path: '/backward2');
+      int backward2FetchCount = 0;
+
+      server.listen((HttpRequest request) async {
+        if (request.uri.path == '/view' &&
+            request.uri.queryParameters['at'] == 'now') {
+          request.response.add(
+            _delimit(_encodeChunkedEntryNext(at: 1700000000)),
+          );
+          await request.response.close();
+          return;
+        }
+
+        if (request.uri.path == '/view' &&
+            request.uri.queryParameters['at'] == '1700000000') {
+          final List<int> body = <int>[
+            ..._delimit(
+              _encodeChunkedEntryBackward(
+                backwardSegmentUri: backward1Uri.toString(),
+              ),
+            ),
+            ..._delimit(
+              _encodeChunkedEntryPrevious(previousUri: previousUri.toString()),
+            ),
+          ];
+          request.response.add(body);
+          await request.response.close();
+          return;
+        }
+
+        if (request.uri.path == '/previous') {
+          request.response.add(
+            _delimit(_encodeChunkedMessage(id: 'prev-1', content: 'prev')),
+          );
+          await request.response.close();
+          return;
+        }
+
+        if (request.uri.path == '/backward1') {
+          final List<int> packed = _encodePackedSegment(<List<int>>[
+            _encodeChunkedMessage(id: 'back-1', content: 'back1'),
+            _encodeChunkedMessage(id: 'back-2', content: 'back2'),
+          ], nextUri: backward2Uri.toString());
+          request.response.add(packed);
+          await request.response.close();
+          return;
+        }
+
+        if (request.uri.path == '/backward2') {
+          backward2FetchCount += 1;
+          final List<int> packed = _encodePackedSegment(<List<int>>[
+            _encodeChunkedMessage(id: 'back-3', content: 'back3'),
+          ]);
+          request.response.add(packed);
+          await request.response.close();
+          return;
+        }
+
+        request.response.statusCode = HttpStatus.notFound;
+        await request.response.close();
+      });
+
+      final NdgrTimeshiftClient client = NdgrTimeshiftClient();
+      addTearDown(client.dispose);
+
+      final List<AppMessage> allMessages = <AppMessage>[];
+      final StreamSubscription<NdgrTimeshiftEvent> subscription = client.events
+          .listen((NdgrTimeshiftEvent event) {
+            if (event.type == NdgrTimeshiftEventType.progress) {
+              allMessages.addAll(event.messages!);
+            }
+          });
+      addTearDown(subscription.cancel);
+
+      await client.fetchPastComments(viewUri, maxMessages: 3);
+
+      expect(allMessages.length, 3);
+      expect(backward2FetchCount, 0);
+      expect(client.hasMore, isTrue);
     });
 
     test('stop aborts fetch in progress', () async {
@@ -556,7 +717,6 @@ void main() {
             ..._delimit(
               _encodeChunkedEntryPrevious(previousUri: previousUri.toString()),
             ),
-            // A Segment entry indicates live — should stop collecting.
             ..._delimit(
               _encodeChunkedEntrySegment(segmentUri: segmentUri.toString()),
             ),
@@ -596,6 +756,46 @@ void main() {
       expect(allMessages[0].content, 'previous');
     });
 
+    test('throws StateError when server returns no ReadyForNext', () async {
+      final HttpServer server = await HttpServer.bind(
+        InternetAddress.loopbackIPv4,
+        0,
+      );
+      addTearDown(() async {
+        await server.close(force: true);
+      });
+
+      final Uri viewUri = Uri(
+        scheme: 'http',
+        host: server.address.host,
+        port: server.port,
+        path: '/view',
+      );
+
+      server.listen((HttpRequest request) async {
+        await request.response.close();
+      });
+
+      final NdgrTimeshiftClient client = NdgrTimeshiftClient();
+      addTearDown(client.dispose);
+
+      final List<NdgrTimeshiftEventType> eventTypes =
+          <NdgrTimeshiftEventType>[];
+      final StreamSubscription<NdgrTimeshiftEvent> subscription = client.events
+          .listen((NdgrTimeshiftEvent event) {
+            eventTypes.add(event.type);
+          });
+      addTearDown(subscription.cancel);
+
+      await expectLater(
+        client.fetchPastComments(viewUri),
+        throwsA(isA<StateError>()),
+      );
+
+      expect(eventTypes, contains(NdgrTimeshiftEventType.started));
+      expect(eventTypes, contains(NdgrTimeshiftEventType.error));
+    });
+
     test('handles empty response gracefully', () async {
       final HttpServer server = await HttpServer.bind(
         InternetAddress.loopbackIPv4,
@@ -621,7 +821,6 @@ void main() {
           return;
         }
 
-        // Return empty response for the view-at request.
         await request.response.close();
       });
 
@@ -640,51 +839,10 @@ void main() {
 
       expect(eventTypes, contains(NdgrTimeshiftEventType.started));
       expect(eventTypes, contains(NdgrTimeshiftEventType.completed));
-      expect(eventTypes.last, NdgrTimeshiftEventType.completed);
+      expect(client.hasMore, isFalse);
     });
 
-    test('throws StateError when server returns no ReadyForNext', () async {
-      final HttpServer server = await HttpServer.bind(
-        InternetAddress.loopbackIPv4,
-        0,
-      );
-      addTearDown(() async {
-        await server.close(force: true);
-      });
-
-      final Uri viewUri = Uri(
-        scheme: 'http',
-        host: server.address.host,
-        port: server.port,
-        path: '/view',
-      );
-
-      server.listen((HttpRequest request) async {
-        // Return a valid HTTP 200 but with no ReadyForNext content.
-        await request.response.close();
-      });
-
-      final NdgrTimeshiftClient client = NdgrTimeshiftClient();
-      addTearDown(client.dispose);
-
-      final List<NdgrTimeshiftEventType> eventTypes =
-          <NdgrTimeshiftEventType>[];
-      final StreamSubscription<NdgrTimeshiftEvent> subscription = client.events
-          .listen((NdgrTimeshiftEvent event) {
-            eventTypes.add(event.type);
-          });
-      addTearDown(subscription.cancel);
-
-      await expectLater(
-        client.fetchPastComments(viewUri),
-        throwsA(isA<StateError>()),
-      );
-
-      expect(eventTypes, contains(NdgrTimeshiftEventType.started));
-      expect(eventTypes, contains(NdgrTimeshiftEventType.error));
-    });
-
-    test('maxMessages stops backward walk across segments', () async {
+    test('resetSession clears cursor state', () async {
       final HttpServer server = await HttpServer.bind(
         InternetAddress.loopbackIPv4,
         0,
@@ -700,7 +858,113 @@ void main() {
       );
 
       final Uri viewUri = base.replace(path: '/view');
-      final Uri previousUri = base.replace(path: '/previous');
+      final Uri backwardUri = base.replace(path: '/backward');
+
+      server.listen((HttpRequest request) async {
+        if (request.uri.path == '/view' &&
+            request.uri.queryParameters['at'] == 'now') {
+          request.response.add(
+            _delimit(_encodeChunkedEntryNext(at: 1700000000)),
+          );
+          await request.response.close();
+          return;
+        }
+
+        if (request.uri.path == '/view' &&
+            request.uri.queryParameters['at'] == '1700000000') {
+          request.response.add(
+            _delimit(
+              _encodeChunkedEntryBackward(
+                backwardSegmentUri: backwardUri.toString(),
+              ),
+            ),
+          );
+          await request.response.close();
+          return;
+        }
+
+        if (request.uri.path == '/backward') {
+          final List<int> packed = _encodePackedSegment(<List<int>>[
+            _encodeChunkedMessage(id: 'msg-1', content: 'message'),
+          ]);
+          request.response.add(packed);
+          await request.response.close();
+          return;
+        }
+
+        request.response.statusCode = HttpStatus.notFound;
+        await request.response.close();
+      });
+
+      final NdgrTimeshiftClient client = NdgrTimeshiftClient();
+      addTearDown(client.dispose);
+
+      await client.fetchPastComments(viewUri);
+      expect(client.totalFetched, 1);
+      expect(client.isSessionOpen, isTrue);
+
+      client.resetSession();
+      expect(client.totalFetched, 0);
+      expect(client.isSessionOpen, isFalse);
+      expect(client.hasMore, isFalse);
+    });
+
+    test('resetSession throws when fetch is in progress', () async {
+      final HttpServer server = await HttpServer.bind(
+        InternetAddress.loopbackIPv4,
+        0,
+      );
+      final Completer<void> releaseView = Completer<void>();
+      addTearDown(() async {
+        if (!releaseView.isCompleted) {
+          releaseView.complete();
+        }
+        await server.close(force: true);
+      });
+
+      server.listen((HttpRequest request) async {
+        await releaseView.future;
+        await request.response.close();
+      });
+
+      final Uri viewUri = Uri(
+        scheme: 'http',
+        host: server.address.host,
+        port: server.port,
+        path: '/view',
+      );
+
+      final NdgrTimeshiftClient client = NdgrTimeshiftClient();
+      addTearDown(client.dispose);
+
+      final Future<void> fetchFuture = client.fetchPastComments(viewUri);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(() => client.resetSession(), throwsA(isA<StateError>()));
+
+      await client.stop();
+      if (!releaseView.isCompleted) {
+        releaseView.complete();
+      }
+      await fetchFuture.timeout(const Duration(seconds: 1));
+    });
+
+    test('hardLimit stops fetching and sets hasMore to false', () async {
+      final HttpServer server = await HttpServer.bind(
+        InternetAddress.loopbackIPv4,
+        0,
+      );
+      addTearDown(() async {
+        await server.close(force: true);
+      });
+
+      final Uri base = Uri(
+        scheme: 'http',
+        host: server.address.host,
+        port: server.port,
+      );
+
+      final Uri viewUri = base.replace(path: '/view');
       final Uri backward1Uri = base.replace(path: '/backward1');
       final Uri backward2Uri = base.replace(path: '/backward2');
       int backward2FetchCount = 0;
@@ -717,24 +981,12 @@ void main() {
 
         if (request.uri.path == '/view' &&
             request.uri.queryParameters['at'] == '1700000000') {
-          final List<int> body = <int>[
-            ..._delimit(
+          request.response.add(
+            _delimit(
               _encodeChunkedEntryBackward(
                 backwardSegmentUri: backward1Uri.toString(),
               ),
             ),
-            ..._delimit(
-              _encodeChunkedEntryPrevious(previousUri: previousUri.toString()),
-            ),
-          ];
-          request.response.add(body);
-          await request.response.close();
-          return;
-        }
-
-        if (request.uri.path == '/previous') {
-          request.response.add(
-            _delimit(_encodeChunkedMessage(id: 'prev-1', content: 'prev')),
           );
           await request.response.close();
           return;
@@ -742,8 +994,8 @@ void main() {
 
         if (request.uri.path == '/backward1') {
           final List<int> packed = _encodePackedSegment(<List<int>>[
-            _encodeChunkedMessage(id: 'back-1', content: 'back1'),
-            _encodeChunkedMessage(id: 'back-2', content: 'back2'),
+            _encodeChunkedMessage(id: 'b1-1', content: 'msg1'),
+            _encodeChunkedMessage(id: 'b1-2', content: 'msg2'),
           ], nextUri: backward2Uri.toString());
           request.response.add(packed);
           await request.response.close();
@@ -753,7 +1005,7 @@ void main() {
         if (request.uri.path == '/backward2') {
           backward2FetchCount += 1;
           final List<int> packed = _encodePackedSegment(<List<int>>[
-            _encodeChunkedMessage(id: 'back-3', content: 'back3'),
+            _encodeChunkedMessage(id: 'b2-1', content: 'msg3'),
           ]);
           request.response.add(packed);
           await request.response.close();
@@ -764,7 +1016,8 @@ void main() {
         await request.response.close();
       });
 
-      final NdgrTimeshiftClient client = NdgrTimeshiftClient();
+      // hardLimit=2: first backward segment has 2 messages, should stop there.
+      final NdgrTimeshiftClient client = NdgrTimeshiftClient(hardLimit: 2);
       addTearDown(client.dispose);
 
       final List<AppMessage> allMessages = <AppMessage>[];
@@ -776,18 +1029,21 @@ void main() {
           });
       addTearDown(subscription.cancel);
 
-      // 1 previous + 2 backward1 = 3 messages fills maxMessages.
-      // backward2 should NOT be fetched.
-      await client.fetchPastComments(viewUri, maxMessages: 3);
+      await client.fetchPastComments(viewUri, maxMessages: 5000);
 
-      expect(allMessages.length, 3);
+      expect(allMessages.length, 2);
+      expect(client.hasMore, isFalse);
+      expect(client.totalFetched, 2);
       expect(backward2FetchCount, 0);
+
+      // fetchMore should do nothing after hardLimit reached.
+      await client.fetchMore(count: 500);
+      expect(allMessages.length, 2);
     });
   });
 }
 
 // --- Protobuf encoding helpers ---
-// Reuses the same encoding pattern as ndgr_client_test.dart.
 
 List<int> _encodeChunkedEntryNext({required int at}) {
   final List<int> readyForNext = _varintField(1, at);
