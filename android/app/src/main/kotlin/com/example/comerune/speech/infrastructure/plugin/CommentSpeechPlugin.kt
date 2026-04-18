@@ -32,6 +32,7 @@ import com.example.comerune.speech.domain.settings.InMemorySettingsRepository
 import com.example.comerune.speech.infrastructure.engine.VoicevoxEngineImpl
 import com.example.comerune.speech.infrastructure.event.FlutterSpeechEventEmitter
 import com.example.comerune.speech.infrastructure.player.AndroidTtsSpeaker
+import com.example.comerune.speech.infrastructure.player.DefaultTextToSpeechFactory
 import com.example.comerune.speech.infrastructure.player.SwitchableWavPlayer
 import com.example.comerune.speech.infrastructure.repository.VoicevoxModelRepositoryImpl
 
@@ -80,7 +81,7 @@ class CommentSpeechPlugin :
         val player = SwitchableWavPlayer(context)
         switchablePlayer = player
 
-        val ttsSpeaker = AndroidTtsSpeaker(context)
+        val ttsSpeaker = AndroidTtsSpeaker(DefaultTextToSpeechFactory(context))
         androidTtsSpeaker = ttsSpeaker
 
         eventEmitter = emitter

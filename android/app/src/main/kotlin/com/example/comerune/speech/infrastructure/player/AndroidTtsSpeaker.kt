@@ -1,6 +1,5 @@
 package com.example.comerune.speech.infrastructure.player
 
-import android.content.Context
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
@@ -15,14 +14,16 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
 import kotlin.coroutines.resume
 
-class AndroidTtsSpeaker(private val context: Context) : TtsSpeaker {
+class AndroidTtsSpeaker(
+    private val factory: TextToSpeechFactory,
+) : TtsSpeaker {
 
     companion object {
         private const val TAG = "AndroidTtsSpeaker"
         private const val SPEAK_TIMEOUT_MS = 60_000L
     }
 
-    private var tts: TextToSpeech? = null
+    private var tts: TextToSpeechAdapter? = null
 
     @Volatile
     private var ready = false
@@ -83,15 +84,15 @@ class AndroidTtsSpeaker(private val context: Context) : TtsSpeaker {
                 }
                 tts = null
             }
-            lateinit var newEngine: TextToSpeech
-            newEngine = TextToSpeech(context) { status ->
+            lateinit var newEngine: TextToSpeechAdapter
+            newEngine = factory.create { status ->
                 // If release() fired while the native TTS was initializing,
                 // drop the fresh instance instead of leaking it. Without this
                 // check, the engine silently becomes ready-to-go even though
                 // the caller has already asked us to release.
                 if (released) {
                     abortInitDueToRelease(newEngine, cont)
-                    return@TextToSpeech
+                    return@create
                 }
                 val currentEngine = tts
                 if (currentEngine == null) {
@@ -102,7 +103,7 @@ class AndroidTtsSpeaker(private val context: Context) : TtsSpeaker {
                             )
                         )
                     }
-                    return@TextToSpeech
+                    return@create
                 }
                 if (status == TextToSpeech.SUCCESS) {
                     val result = currentEngine.setLanguage(Locale.JAPANESE)
@@ -118,7 +119,7 @@ class AndroidTtsSpeaker(private val context: Context) : TtsSpeaker {
                                 )
                             )
                         }
-                        return@TextToSpeech
+                        return@create
                     }
                     currentEngine.setSpeechRate(speechRate)
                     currentEngine.setPitch(pitch)
@@ -217,7 +218,7 @@ class AndroidTtsSpeaker(private val context: Context) : TtsSpeaker {
     // message. Extracting this avoids two copies of the cleanup drifting
     // apart over time (noted by the Round 1 "保守性仙人" review).
     private fun abortInitDueToRelease(
-        newEngine: TextToSpeech,
+        newEngine: TextToSpeechAdapter,
         cont: CancellableContinuation<Result<Unit>>,
     ) {
         try {
@@ -238,7 +239,7 @@ class AndroidTtsSpeaker(private val context: Context) : TtsSpeaker {
         }
     }
 
-    private val engine: TextToSpeech?
+    private val engine: TextToSpeechAdapter?
         get() = tts
 
     override suspend fun speak(text: String, utteranceId: String): Result<Unit> {
