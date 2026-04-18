@@ -245,7 +245,7 @@ void main() {
 
     test('uses SettingsExport.fileName as the canonical file name', () async {
       final String path = await store.writeExportToTempFile();
-      expect(path.endsWith('/\${SettingsExport.fileName}'), isTrue);
+      expect(path.endsWith('/${SettingsExport.fileName}'), isTrue);
     });
   });
 }
