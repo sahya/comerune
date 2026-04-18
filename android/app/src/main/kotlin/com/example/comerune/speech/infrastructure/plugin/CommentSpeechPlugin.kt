@@ -408,7 +408,26 @@ class CommentSpeechPlugin :
                 if (speaker == null) {
                     result.success(mapOf("available" to false, "error" to "not_initialized"))
                 } else {
-                    result.success(mapOf("available" to speaker.isReady()))
+                    // The speaker is only initialized lazily inside the
+                    // "initialize" handler, which is triggered by VOICEVOX
+                    // flows. For users who never touch VOICEVOX, isReady()
+                    // would remain false and the availability check would
+                    // wrongly report Japanese voice data as missing. Kick
+                    // off initialization on demand so the check reflects
+                    // the real system state.
+                    handleAsync(result) {
+                        if (!speaker.isReady()) {
+                            val initResult = speaker.initialize()
+                            if (initResult.isFailure) {
+                                Log.w(
+                                    TAG,
+                                    "Android TTS init via availability check failed: " +
+                                        (initResult.exceptionOrNull()?.message ?: "unknown")
+                                )
+                            }
+                        }
+                        Result.success(mapOf("available" to speaker.isReady()))
+                    }
                 }
             }
             "openAndroidTtsSettings" -> {

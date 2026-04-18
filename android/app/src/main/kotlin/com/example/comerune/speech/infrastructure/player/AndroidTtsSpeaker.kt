@@ -9,6 +9,8 @@ import com.example.comerune.speech.domain.model.PlayerState
 import com.example.comerune.speech.domain.player.TtsSpeaker
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
 import kotlin.coroutines.resume
@@ -43,8 +45,30 @@ class AndroidTtsSpeaker(private val context: Context) : TtsSpeaker {
     @Volatile
     private var currentContinuation: CancellableContinuation<Result<Unit>>? = null
 
-    override suspend fun initialize(): Result<Unit> =
+    // Serializes initialize() so concurrent callers (e.g. eager VOICEVOX init +
+    // availability check from the settings screen) do not spawn multiple
+    // TextToSpeech instances and leak the first one.
+    private val initMutex = Mutex()
+
+    override suspend fun initialize(): Result<Unit> = initMutex.withLock {
+        if (ready) return@withLock Result.success(Unit)
+        doInitialize()
+    }
+
+    private suspend fun doInitialize(): Result<Unit> =
         suspendCancellableCoroutine { cont ->
+            // Defensively shutdown any lingering TextToSpeech from a previous
+            // failed init; otherwise we leak the native instance when a caller
+            // retries (e.g. the settings screen re-invoking the availability
+            // check after voice data is installed).
+            tts?.let { previous ->
+                try {
+                    previous.shutdown()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error shutting down previous TTS: ${e.message}")
+                }
+                tts = null
+            }
             val newEngine = TextToSpeech(context) { status ->
                 val currentEngine = tts
                 if (currentEngine == null) {
