@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -52,6 +53,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   SettingsStore get settingsStore => widget.settingsStore;
 
   bool _isLoggedIn = false;
+  bool _isExporting = false;
+  bool _isImporting = false;
 
   @override
   void initState() {
@@ -163,12 +166,24 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Future<void> _exportSettings() async {
+    if (_isExporting) {
+      return;
+    }
+    setState(() => _isExporting = true);
     try {
       final String json = await widget.settingsStore.exportAsJson();
+      // text: で共有すると Share Sheet には文字列としてしか渡らず、
+      // 保存先アプリに `.json` ファイルが残らないため、後続の
+      // インポート (file_picker は JSON 拡張子で絞り込み) で再選択できない。
+      // そのため一時ディレクトリに実ファイルを書き出してから共有する。
+      final Directory tempDir = await getTemporaryDirectory();
+      final String fileName = AppStrings.settings.exportShareSubject;
+      final File file = File('${tempDir.path}/$fileName');
+      await file.writeAsString(json, flush: true);
       await SharePlus.instance.share(
         ShareParams(
-          text: json,
-          subject: AppStrings.settings.exportShareSubject,
+          files: <XFile>[XFile(file.path, mimeType: 'application/json')],
+          subject: fileName,
         ),
       );
     } on Exception catch (e) {
@@ -180,10 +195,18 @@ class _SettingsScreenState extends State<SettingsScreen>
             SnackBar(content: Text(AppStrings.settings.exportFailedSnackBar)),
           );
       }
+    } finally {
+      if (mounted) {
+        setState(() => _isExporting = false);
+      }
     }
   }
 
   Future<void> _importSettings() async {
+    if (_isImporting) {
+      return;
+    }
+    setState(() => _isImporting = true);
     try {
       final FilePickerResult? result = await FilePicker.pickFiles(
         type: FileType.custom,
@@ -267,6 +290,10 @@ class _SettingsScreenState extends State<SettingsScreen>
           ..showSnackBar(
             SnackBar(content: Text(AppStrings.settings.importFailedSnackBar)),
           );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isImporting = false);
       }
     }
   }
@@ -482,8 +509,14 @@ class _SettingsScreenState extends State<SettingsScreen>
           width: double.infinity,
           child: OutlinedButton.icon(
             key: const Key('export-settings-button'),
-            onPressed: _exportSettings,
-            icon: const Icon(Icons.upload),
+            onPressed: _isExporting ? null : _exportSettings,
+            icon: _isExporting
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.upload),
             label: Text(AppStrings.settings.exportSettingsButton),
           ),
         ),
@@ -492,8 +525,14 @@ class _SettingsScreenState extends State<SettingsScreen>
           width: double.infinity,
           child: OutlinedButton.icon(
             key: const Key('import-settings-button'),
-            onPressed: _importSettings,
-            icon: const Icon(Icons.download),
+            onPressed: _isImporting ? null : _importSettings,
+            icon: _isImporting
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.download),
             label: Text(AppStrings.settings.importSettingsButton),
           ),
         ),
