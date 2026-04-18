@@ -83,7 +83,8 @@ class AndroidTtsSpeaker(private val context: Context) : TtsSpeaker {
                 }
                 tts = null
             }
-            val newEngine = TextToSpeech(context) { status ->
+            lateinit var newEngine: TextToSpeech
+            newEngine = TextToSpeech(context) { status ->
                 // If release() fired while the native TTS was initializing,
                 // drop the fresh instance instead of leaking it. Without this
                 // check, the engine silently becomes ready-to-go even though
