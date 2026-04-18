@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:comerune/domain/connection/session_ws_client.dart';
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -358,36 +359,50 @@ void main() {
 
     test(
       'sends keepSeat periodically after receiving seat keepIntervalSec',
-      () async {
-        final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
-        final SessionWsClient client = SessionWsClient(
-          lv: 'lv123456789',
-          channelFactory: (_, _) async => fakeChannel,
-        );
+      () {
+        // 実時間ベース (`Future.delayed(1100ms)`) だと `flutter test` 全量実行時の
+        // CPU 競合で `Timer.periodic(1s)` の発火が遅延して flake する。
+        // `fake_async` で仮想時間化し、決定的に 2 回分 tick を進める。
+        fakeAsync((FakeAsync async) {
+          final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+          final SessionWsClient client = SessionWsClient(
+            lv: 'lv123456789',
+            channelFactory: (_, _) async => fakeChannel,
+          );
 
-        await client.connect();
-        fakeChannel.pushIncoming(
-          jsonEncode(<String, Object?>{
-            'type': 'seat',
-            'data': <String, Object?>{'keepIntervalSec': 1},
-          }),
-        );
+          unawaited(client.connect());
+          async.flushMicrotasks();
 
-        await Future<void>.delayed(const Duration(milliseconds: 1100));
+          fakeChannel.pushIncoming(
+            jsonEncode(<String, Object?>{
+              'type': 'seat',
+              'data': <String, Object?>{'keepIntervalSec': 1},
+            }),
+          );
+          async.flushMicrotasks();
 
-        expect(fakeChannel.sentMessages.length, greaterThanOrEqualTo(2));
-        final Map<String, dynamic> keepSeat =
-            jsonDecode(fakeChannel.sentMessages.last as String)
-                as Map<String, dynamic>;
-        expect(keepSeat['type'], 'keepSeat');
+          async.elapse(const Duration(seconds: 2));
 
-        await client.dispose();
+          expect(fakeChannel.sentMessages.length, greaterThanOrEqualTo(2));
+          final Map<String, dynamic> keepSeat =
+              jsonDecode(fakeChannel.sentMessages.last as String)
+                  as Map<String, dynamic>;
+          expect(keepSeat['type'], 'keepSeat');
+
+          unawaited(client.dispose());
+          async.flushMicrotasks();
+        });
       },
     );
 
     test(
       'emits keepalive failure and disconnects when keepSeat send fails',
       () async {
+        // このテストは `disconnect()` 側の `await _subscription.cancel()` に
+        // 依存するため fake_async では期待通り前進しない（fake_async と
+        // StreamSubscription.cancel の既知の非互換）。実時間を使いつつ、
+        // CPU 競合で 1s timer の発火が遅延しても安定して完了できるよう
+        // 余裕を十分取る（5s = timer 1 周 + disconnect 完了 + マージン）。
         final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel(
           failOnKeepSeat: true,
         );
@@ -407,7 +422,17 @@ void main() {
           }),
         );
 
-        await Future<void>.delayed(const Duration(milliseconds: 1100));
+        final Completer<void> disconnectedCompleter = Completer<void>();
+        final StreamSubscription<SessionWsEvent> disconnectWatcher = client
+            .events
+            .listen((SessionWsEvent event) {
+              if (event.type == SessionWsEventType.disconnected &&
+                  !disconnectedCompleter.isCompleted) {
+                disconnectedCompleter.complete();
+              }
+            });
+
+        await disconnectedCompleter.future.timeout(const Duration(seconds: 5));
 
         expect(
           events.any(
@@ -426,6 +451,7 @@ void main() {
 
         await client.dispose();
         await subscription.cancel();
+        await disconnectWatcher.cancel();
       },
     );
 
