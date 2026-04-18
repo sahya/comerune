@@ -1,5 +1,8 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
+import 'dart:io';
+
+import 'package:path_provider/path_provider.dart';
 
 import '../../comment_speech/src/models/replace_rule.dart';
 import '../../domain/models/app_settings.dart';
@@ -19,10 +22,36 @@ abstract class SettingsStore {
   /// Exports current settings as a pretty-printed JSON string.
   Future<String> exportAsJson();
 
+  /// Writes the current settings as JSON to a temporary file and returns
+  /// the written file path.
+  ///
+  /// Intended for use with the system share sheet so the user can choose
+  /// an external destination (Files / Drive / etc.).  The file extension
+  /// is always `.json`.
+  ///
+  /// Mirrors the naming convention of
+  /// `FileCommentLogWriter.writeToTempFile` for consistency.
+  Future<String> writeExportToTempFile();
+
   /// Imports settings from a JSON string, saves them, and returns the result.
   ///
   /// Throws [FormatException] if [jsonString] is not valid JSON.
   Future<AppSettings> importFromJson(String jsonString);
+}
+
+/// Constants describing the settings export file produced by
+/// [SettingsStore.writeExportToTempFile].  Exposed so the presentation layer
+/// can reference the canonical file name / MIME type without re-declaring
+/// string literals.
+class SettingsExport {
+  const SettingsExport._();
+
+  /// File name used for the temp file.  Kept in sync with
+  /// `AppStrings.exportShareSubject`.
+  static const String fileName = 'comerune-settings.json';
+
+  /// MIME type of the exported file.  Passed to `XFile` when sharing.
+  static const String mimeType = 'application/json';
 }
 
 /// SharedPreferences API のうち本画面で利用する最小セット。
@@ -50,10 +79,17 @@ abstract class SharedPreferencesLike {
 }
 
 class SharedPreferencesSettingsStore implements SettingsStore {
-  const SharedPreferencesSettingsStore({required SharedPreferencesLike prefs})
-    : _prefs = prefs;
+  const SharedPreferencesSettingsStore({
+    required SharedPreferencesLike prefs,
+    Directory? tempDirectory,
+  }) : _prefs = prefs,
+       _tempDirectory = tempDirectory;
 
   final SharedPreferencesLike _prefs;
+
+  /// Temp directory used by [writeExportToTempFile].  When null, falls back
+  /// to `path_provider`'s `getTemporaryDirectory()` at call time.
+  final Directory? _tempDirectory;
 
   static const String _kThemeMode = 'settings.themeMode';
   static const String _kAutoReadEnabled = 'settings.autoReadEnabled';
@@ -410,6 +446,18 @@ class SharedPreferencesSettingsStore implements SettingsStore {
     final Map<String, dynamic> json = settings.toJson();
     const JsonEncoder encoder = JsonEncoder.withIndent('  ');
     return encoder.convert(json);
+  }
+
+  @override
+  Future<String> writeExportToTempFile() async {
+    final Directory dir = _tempDirectory ?? await getTemporaryDirectory();
+    if (!dir.existsSync()) {
+      await dir.create(recursive: true);
+    }
+    final String json = await exportAsJson();
+    final File file = File('${dir.path}/${SettingsExport.fileName}');
+    await file.writeAsString(json, flush: true);
+    return file.path;
   }
 
   @override

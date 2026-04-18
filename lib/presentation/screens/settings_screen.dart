@@ -5,7 +5,6 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -171,19 +170,13 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
     setState(() => _isExporting = true);
     try {
-      final String json = await widget.settingsStore.exportAsJson();
-      // text: で共有すると Share Sheet には文字列としてしか渡らず、
-      // 保存先アプリに `.json` ファイルが残らないため、後続の
-      // インポート (file_picker は JSON 拡張子で絞り込み) で再選択できない。
-      // そのため一時ディレクトリに実ファイルを書き出してから共有する。
-      final Directory tempDir = await getTemporaryDirectory();
-      final String fileName = AppStrings.settings.exportShareSubject;
-      final File file = File('${tempDir.path}/$fileName');
-      await file.writeAsString(json, flush: true);
+      // filesystem I/O は data 層の SettingsStore.writeExportToTempFile に
+      // 集約し、ここでは「パスを受け取って share する」だけに留める。
+      final String path = await widget.settingsStore.writeExportToTempFile();
       await SharePlus.instance.share(
         ShareParams(
-          files: <XFile>[XFile(file.path, mimeType: 'application/json')],
-          subject: fileName,
+          files: <XFile>[XFile(path, mimeType: SettingsExport.mimeType)],
+          subject: AppStrings.settings.exportShareSubject,
         ),
       );
     } on Exception catch (e) {

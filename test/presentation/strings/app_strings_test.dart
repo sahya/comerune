@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:comerune/application/settings/settings_store.dart';
 import 'package:comerune/presentation/strings/app_strings.dart';
 
 void main() {
@@ -78,6 +79,10 @@ void main() {
       );
       expect(AppStrings.settings.exportShareSubject, 'comerune-settings.json');
       expect(AppStrings.settings.exportFailedSnackBar, '設定のエクスポートに失敗しました');
+      // 共有 subject と data 層の canonical filename はドリフト防止のため
+      // 必ず一致させる。SettingsExport.fileName を変更したら AppStrings も
+      // 同時に更新すること。
+      expect(AppStrings.settings.exportShareSubject, SettingsExport.fileName);
     });
 
     test('インポートダイアログ / SnackBar の文言が既存と一致する', () {

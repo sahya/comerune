@@ -55,16 +55,17 @@ Future<void> main() async {
   );
   await upgradeInitializer.run();
 
+  final Directory appDocDir = await getApplicationDocumentsDirectory();
+  final Directory tempDir = await getTemporaryDirectory();
   final SettingsStore settingsStore = SharedPreferencesSettingsStore(
     prefs: prefsAdapter,
+    tempDirectory: tempDir,
   );
   final AppSettings initialSettings = await settingsStore.load();
   final UserSessionStore userSessionStore = SecureUserSessionStore(
     prefs: prefs,
   );
 
-  final Directory appDocDir = await getApplicationDocumentsDirectory();
-  final Directory tempDir = await getTemporaryDirectory();
   final CommentLogWriter commentLogWriter = FileCommentLogWriter(
     directory: Directory('${appDocDir.path}/comment_logs'),
     tempDirectory: Directory('${tempDir.path}/comment_logs'),

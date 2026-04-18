@@ -249,6 +249,9 @@ class _ThrowingSettingsStore implements SettingsStore {
   Future<String> exportAsJson() => _delegate.exportAsJson();
 
   @override
+  Future<String> writeExportToTempFile() => _delegate.writeExportToTempFile();
+
+  @override
   Future<AppSettings> importFromJson(String jsonString) =>
       _delegate.importFromJson(jsonString);
 }

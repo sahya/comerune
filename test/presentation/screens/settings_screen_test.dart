@@ -1,15 +1,21 @@
 import 'dart:io';
 
+// ignore: implementation_imports
+import 'package:file_picker/src/platform/file_picker_platform_interface.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:share_plus_platform_interface/share_plus_platform_interface.dart';
 
 import 'package:comerune/application/settings/settings_store.dart';
 import 'package:comerune/data/auth/user_session_store.dart';
 import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/presentation/screens/settings_screen.dart';
 
+import '../../helpers/fake_file_picker_platform.dart';
+import '../../helpers/fake_share_platform.dart';
 import '../../helpers/in_memory_shared_preferences.dart';
 import '../../helpers/in_memory_user_session_store.dart';
 import '../../helpers/settings_test_helpers.dart';
@@ -464,6 +470,364 @@ void main() {
       );
     });
   });
+
+  group('SettingsScreen export/import', () {
+    // `SharePlus.instance._platform` は `SharePlus.instance` の最初のアクセス時に
+    // `SharePlatform.instance` をキャプチャする (static final)。したがって、
+    // 本グループの最初のテストより前にフェイクをインストールしておく必要がある。
+    //
+    // tests 内部から `SharePlus.instance.share(...)` を呼び出す前に必ず
+    // 1 度だけキャプチャされるため、`setUpAll` にて設定すれば十分。
+    late FakeSharePlatform fakeShare;
+    late FakeFilePickerPlatform fakeFilePicker;
+    late Directory tempDir;
+
+    setUpAll(() {
+      fakeShare = FakeSharePlatform();
+      SharePlatform.instance = fakeShare;
+      fakeFilePicker = FakeFilePickerPlatform();
+      FilePickerPlatform.instance = fakeFilePicker;
+      // Force `SharePlus.instance` static-final to initialize now with our
+      // fake platform so later tests cannot accidentally capture the real one.
+      // ignore: unnecessary_statements
+      SharePlus.instance;
+    });
+
+    setUp(() {
+      fakeShare.reset();
+      fakeFilePicker.reset();
+      tempDir = Directory.systemTemp.createTempSync(
+        'settings_screen_export_test_',
+      );
+    });
+
+    tearDown(() {
+      if (tempDir.existsSync()) {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
+
+    SettingsStore buildStore() {
+      return SharedPreferencesSettingsStore(
+        prefs: InMemorySharedPreferences(),
+        tempDirectory: tempDir,
+      );
+    }
+
+    testWidgets('export: double-tap guard calls SharePlus.share exactly once', (
+      WidgetTester tester,
+    ) async {
+      // `File.writeAsString` はウィジェットテストの FakeAsync 内では
+      // 進まないため、data 層は通さずスタブ SettingsStore で置き換える。
+      final _StubSettingsStore store = _StubSettingsStore(
+        exportPath: '${tempDir.path}/comerune-settings.json',
+        exportDelay: const Duration(milliseconds: 150),
+      );
+      fakeShare.responseDelay = const Duration(milliseconds: 200);
+
+      await tester.pumpWidget(_buildScreen(store));
+      await tester.pumpAndSettle();
+
+      final Finder exportBtn = find.byKey(const Key('export-settings-button'));
+      await scrollToKeyInList(
+        tester,
+        const Key('settings-list'),
+        const Key('export-settings-button'),
+      );
+
+      await tester.tap(exportBtn);
+      await tester.pump(); // _isExporting = true, re-render with spinner
+      // 2 回目のタップ (ボタンは disabled のため onPressed: null で無視)
+      await tester.tap(exportBtn, warnIfMissed: false);
+
+      // store.writeExportToTempFile の delay + share.responseDelay を越える。
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+
+      expect(fakeShare.calls, hasLength(1));
+    });
+
+    testWidgets(
+      'export: button is disabled and shows spinner while in-flight',
+      (WidgetTester tester) async {
+        final _StubSettingsStore store = _StubSettingsStore(
+          exportPath: '${tempDir.path}/comerune-settings.json',
+          exportDelay: const Duration(milliseconds: 100),
+        );
+        fakeShare.responseDelay = const Duration(milliseconds: 200);
+
+        await tester.pumpWidget(_buildScreen(store));
+        await tester.pumpAndSettle();
+
+        final Finder exportBtn = find.byKey(
+          const Key('export-settings-button'),
+        );
+        await scrollToKeyInList(
+          tester,
+          const Key('settings-list'),
+          const Key('export-settings-button'),
+        );
+
+        await tester.tap(exportBtn);
+        await tester.pump(); // in-flight 状態を一度だけ描画する
+
+        final OutlinedButton btnWidget = tester.widget<OutlinedButton>(
+          exportBtn,
+        );
+        expect(btnWidget.onPressed, isNull, reason: 'disabled while in-flight');
+        expect(
+          find.descendant(
+            of: exportBtn,
+            matching: find.byType(CircularProgressIndicator),
+          ),
+          findsOneWidget,
+        );
+
+        // Let share complete and clean up; avoid leaking pending timers.
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pump();
+      },
+    );
+
+    testWidgets('export: button re-enables after completion', (
+      WidgetTester tester,
+    ) async {
+      final _StubSettingsStore store = _StubSettingsStore(
+        exportPath: '${tempDir.path}/comerune-settings.json',
+      );
+      // 0 レスポンス遅延で即完了させ、finally で `_isExporting = false` に戻る
+      // ことを検証する。
+      await tester.pumpWidget(_buildScreen(store));
+      await tester.pumpAndSettle();
+
+      final Finder exportBtn = find.byKey(const Key('export-settings-button'));
+      await scrollToKeyInList(
+        tester,
+        const Key('settings-list'),
+        const Key('export-settings-button'),
+      );
+
+      await tester.tap(exportBtn);
+      await tester.pump();
+      await tester.pump();
+
+      final OutlinedButton btnWidget = tester.widget<OutlinedButton>(exportBtn);
+      expect(btnWidget.onPressed, isNotNull, reason: 're-enabled');
+      expect(
+        find.descendant(
+          of: exportBtn,
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsNothing,
+      );
+    });
+
+    testWidgets(
+      'export: surfaces exportFailed SnackBar when writeExport throws',
+      (WidgetTester tester) async {
+        final SettingsStore store = _FailingExportSettingsStore();
+
+        await tester.pumpWidget(_buildScreen(store));
+        await tester.pumpAndSettle();
+
+        final Finder exportBtn = find.byKey(
+          const Key('export-settings-button'),
+        );
+        await scrollToKeyInList(
+          tester,
+          const Key('settings-list'),
+          const Key('export-settings-button'),
+        );
+
+        await tester.tap(exportBtn);
+        await tester.pump();
+        await tester.pump();
+        // SnackBar の in アニメーション分だけ進める。
+        await tester.pump(const Duration(milliseconds: 500));
+
+        expect(find.text('設定のエクスポートに失敗しました'), findsOneWidget);
+        expect(fakeShare.calls, isEmpty);
+      },
+    );
+
+    testWidgets('import: user cancel (null result) leaves settings untouched', (
+      WidgetTester tester,
+    ) async {
+      final SettingsStore store = _StubSettingsStore();
+      fakeFilePicker.resultToReturn = null; // user cancel
+
+      await tester.pumpWidget(_buildScreen(store));
+      await tester.pumpAndSettle();
+
+      final Finder importBtn = find.byKey(const Key('import-settings-button'));
+      await scrollToKeyInList(
+        tester,
+        const Key('settings-list'),
+        const Key('import-settings-button'),
+      );
+
+      await tester.tap(importBtn);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('設定をインポートしました'), findsNothing);
+      expect(find.text('無効な設定ファイルです'), findsNothing);
+      expect(fakeFilePicker.pickCalls, hasLength(1));
+
+      final OutlinedButton btnWidget = tester.widget<OutlinedButton>(importBtn);
+      expect(btnWidget.onPressed, isNotNull, reason: 're-enabled after cancel');
+    });
+
+    testWidgets('import: invalid JSON shows importInvalidFile SnackBar', (
+      WidgetTester tester,
+    ) async {
+      final SettingsStore store = buildStore();
+      final File bad = File('${tempDir.path}/bad.json')
+        ..writeAsStringSync('not valid json');
+      fakeFilePicker.resultToReturn = buildSingleFileResult(path: bad.path);
+
+      await tester.pumpWidget(_buildScreen(store));
+      await tester.pumpAndSettle();
+
+      final Finder importBtn = find.byKey(const Key('import-settings-button'));
+      await scrollToKeyInList(
+        tester,
+        const Key('settings-list'),
+        const Key('import-settings-button'),
+      );
+
+      await tester.tap(importBtn);
+      // FilePicker 完了 + File.readAsString (実 I/O) + showDialog まで進める。
+      // spinner のアニメーションが永続するため pumpAndSettle は使えない。
+      // I/O 完了待ちに runAsync を噛ませ、その後 dialog アニメーションを
+      // 進めるために有限 pump を繰り返す。
+      for (int i = 0; i < 5; i++) {
+        await tester.runAsync(() async {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        });
+        await tester.pump(const Duration(milliseconds: 200));
+      }
+
+      // ダイアログが表示されていることを確認してから「インポート」ボタンを探す
+      expect(find.byType(AlertDialog), findsOneWidget);
+      final Finder confirmBtn = find.widgetWithText(TextButton, 'インポート');
+      expect(confirmBtn, findsOneWidget);
+      await tester.tap(confirmBtn);
+      for (int i = 0; i < 5; i++) {
+        await tester.runAsync(() async {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        });
+        await tester.pump(const Duration(milliseconds: 200));
+      }
+
+      expect(find.text('無効な設定ファイルです'), findsOneWidget);
+    });
+
+    testWidgets('import: double-tap guard calls FilePicker exactly once', (
+      WidgetTester tester,
+    ) async {
+      final SettingsStore store = buildStore();
+      fakeFilePicker.responseDelay = const Duration(milliseconds: 200);
+      fakeFilePicker.resultToReturn = null; // user cancel on completion
+
+      await tester.pumpWidget(_buildScreen(store));
+      await tester.pumpAndSettle();
+
+      final Finder importBtn = find.byKey(const Key('import-settings-button'));
+      await scrollToKeyInList(
+        tester,
+        const Key('settings-list'),
+        const Key('import-settings-button'),
+      );
+
+      await tester.tap(importBtn);
+      await tester.pump(); // in-flight
+      await tester.tap(importBtn, warnIfMissed: false);
+
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
+
+      expect(fakeFilePicker.pickCalls, hasLength(1));
+    });
+  });
+}
+
+/// In-memory stub SettingsStore that avoids real filesystem I/O.
+///
+/// [writeExportToTempFile] returns [exportPath] (or a default) after
+/// [exportDelay]; the path is not actually written to disk unless the
+/// test does so explicitly (for `invalid JSON` etc.).  `importFromJson`
+/// delegates to the real SharedPreferencesSettingsStore so that the
+/// screen receives a realistic AppSettings instance.
+class _StubSettingsStore implements SettingsStore {
+  _StubSettingsStore({String? exportPath, this.exportDelay = Duration.zero})
+    : exportPath = exportPath ?? '/tmp/stub-settings.json';
+
+  final SharedPreferencesSettingsStore _delegate =
+      SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+  final String exportPath;
+  final Duration exportDelay;
+
+  @override
+  Future<AppSettings> load() => _delegate.load();
+
+  @override
+  Future<void> save(AppSettings settings) => _delegate.save(settings);
+
+  @override
+  double? loadPreMuteVolume() => _delegate.loadPreMuteVolume();
+
+  @override
+  Future<void> savePreMuteVolume(double? volume) =>
+      _delegate.savePreMuteVolume(volume);
+
+  @override
+  Future<String> exportAsJson() => _delegate.exportAsJson();
+
+  @override
+  Future<String> writeExportToTempFile() async {
+    if (exportDelay > Duration.zero) {
+      await Future<void>.delayed(exportDelay);
+    }
+    return exportPath;
+  }
+
+  @override
+  Future<AppSettings> importFromJson(String jsonString) =>
+      _delegate.importFromJson(jsonString);
+}
+
+/// SettingsStore whose `writeExportToTempFile` always throws.  Used to verify
+/// that the screen displays the failure SnackBar.
+class _FailingExportSettingsStore implements SettingsStore {
+  final SharedPreferencesSettingsStore _delegate =
+      SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+  @override
+  Future<AppSettings> load() => _delegate.load();
+
+  @override
+  Future<void> save(AppSettings settings) => _delegate.save(settings);
+
+  @override
+  double? loadPreMuteVolume() => _delegate.loadPreMuteVolume();
+
+  @override
+  Future<void> savePreMuteVolume(double? volume) =>
+      _delegate.savePreMuteVolume(volume);
+
+  @override
+  Future<String> exportAsJson() => _delegate.exportAsJson();
+
+  @override
+  Future<String> writeExportToTempFile() async {
+    throw Exception('simulated export failure');
+  }
+
+  @override
+  Future<AppSettings> importFromJson(String jsonString) =>
+      _delegate.importFromJson(jsonString);
 }
 
 Widget _buildScreen(
