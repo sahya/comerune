@@ -415,6 +415,74 @@ void main() {
     },
   );
 
+  testWidgets('does not add notification when user stops manually (stopped)', (
+    WidgetTester tester,
+  ) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+    final TimelineStore timelineStore = TimelineStore();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SelectScreen(
+          connectionSupervisor: supervisor,
+          timelineStore: timelineStore,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.enterText(inputField(), 'lv345678901');
+    await tester.pump();
+    await tester.tap(connectButton());
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CommentScreen), findsOneWidget);
+
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(supervisor.onNdgrEndpointResolved(), isTrue);
+    expect(supervisor.stopByUser(), isTrue);
+    await tester.pumpAndSettle();
+
+    final List<AppMessage> notifications = timelineStore.messages
+        .where((AppMessage m) => m.type == AppMessageType.notification)
+        .toList();
+    expect(notifications, isEmpty);
+  });
+
+  testWidgets('does not add notification when connection fails', (
+    WidgetTester tester,
+  ) async {
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+    final TimelineStore timelineStore = TimelineStore();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SelectScreen(
+          connectionSupervisor: supervisor,
+          timelineStore: timelineStore,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.enterText(inputField(), 'lv345678901');
+    await tester.pump();
+    await tester.tap(connectButton());
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CommentScreen), findsOneWidget);
+
+    expect(supervisor.onSessionWsConnected(), isTrue);
+    expect(supervisor.onNdgrEndpointResolved(), isTrue);
+    expect(supervisor.fail(ConnectionErrorCode.ndgrStreamFailed), isTrue);
+    await tester.pumpAndSettle();
+
+    final List<AppMessage> notifications = timelineStore.messages
+        .where((AppMessage m) => m.type == AppMessageType.notification)
+        .toList();
+    expect(notifications, isEmpty);
+  });
+
   testWidgets('shows settings button when settingsStore is provided', (
     WidgetTester tester,
   ) async {
