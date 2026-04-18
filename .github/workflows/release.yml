@@ -133,6 +133,13 @@ jobs:
           path: build/debug-info/
           retention-days: 180
 
+      - name: Upload release APK
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-apk-${{ inputs.version }}
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 90
+
   # TODO: チーム拡大時は environment protection rules + required reviewers を設定し、
   #       リリース実行者を制限する（workflow_dispatch は write 権限者全員が実行可能なため）
   # NOTE: タグ push 後に Release 作成が失敗した場合、孤児タグが残る。
@@ -151,11 +158,22 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Create and push tag
+      - name: Download release APK
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-apk-${{ inputs.version }}
+          path: ./release-assets/
+
+      - name: Rename release APK
+        env:
+          VERSION: ${{ inputs.version }}
+        run: mv ./release-assets/app-release.apk "./release-assets/comerune-${VERSION}-arm64.apk"
+
+      - name: Create and push annotated tag
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          git tag "$VERSION"
+          git tag -a "$VERSION" -m "Release $VERSION"
           git push origin "$VERSION"
 
       - name: Generate release notes
@@ -163,19 +181,56 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          PREV_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | sed -n '2p')
-          if [ -z "$PREV_TAG" ]; then
-            echo "body=Initial release" >> "$GITHUB_OUTPUT"
-          else
-            {
-              echo 'body<<RELEASE_EOF'
-              echo "## Changes since ${PREV_TAG}"
-              echo ""
-              git log "${PREV_TAG}..HEAD" --pretty=format:"- %s (%h)" --no-merges
-              echo ""
-              echo 'RELEASE_EOF'
-            } >> "$GITHUB_OUTPUT"
-          fi
+          PREV_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$' | sed -n '2p')
+          DELIMITER="RELEASE_EOF_$(openssl rand -hex 8)"
+
+          {
+            echo "body<<${DELIMITER}"
+
+            if [ -z "$PREV_TAG" ]; then
+              echo "最初のリリース"
+            else
+              FEATURES=""
+              FIXES=""
+              IMPROVEMENTS=""
+
+              while IFS= read -r msg; do
+                [ -z "$msg" ] && continue
+
+                clean=$(echo "$msg" | sed -E \
+                  -e 's/\(#[0-9]+\)//g' \
+                  -e 's/(Closes|Fixes|Resolves|Refs?)[[:space:]]*#[0-9]+[,;]?[[:space:]]*//gI' \
+                  -e 's/^(feat|fix|docs|style|refactor|test|chore|perf)(\([^)]*\))?!?:[[:space:]]*//' \
+                  -e 's/[[:space:]]+/ /g' \
+                  -e 's/^ +| +$//g')
+
+                [ -z "$clean" ] && continue
+
+                if echo "$msg" | grep -qE '^feat(\(|!?:)'; then
+                  FEATURES="${FEATURES}- ${clean}"$'\n'
+                elif echo "$msg" | grep -qE '^fix(\(|!?:)'; then
+                  FIXES="${FIXES}- ${clean}"$'\n'
+                else
+                  IMPROVEMENTS="${IMPROVEMENTS}- ${clean}"$'\n'
+                fi
+              done < <(git log "${PREV_TAG}..HEAD" --pretty=format:"%s" --no-merges)
+
+              if [ -n "$FEATURES" ]; then
+                printf '## 新機能\n\n%s\n' "$FEATURES"
+              fi
+              if [ -n "$FIXES" ]; then
+                printf '## バグ修正\n\n%s\n' "$FIXES"
+              fi
+              if [ -n "$IMPROVEMENTS" ]; then
+                printf '## 改善・その他\n\n%s\n' "$IMPROVEMENTS"
+              fi
+              if [ -z "$FEATURES" ] && [ -z "$FIXES" ] && [ -z "$IMPROVEMENTS" ]; then
+                echo "軽微な変更・内部改善を含むリリースです。"
+              fi
+            fi
+
+            echo "${DELIMITER}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2.2.2
@@ -186,3 +241,4 @@ jobs:
           draft: false
           prerelease: ${{ inputs.prerelease }}
           make_latest: ${{ !inputs.prerelease }}
+          files: ./release-assets/comerune-${{ inputs.version }}-arm64.apk
