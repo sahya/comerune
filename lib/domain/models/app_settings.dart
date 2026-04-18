@@ -183,10 +183,39 @@ extension PastCommentFetchCountValue on PastCommentFetchCount {
 }
 
 /// ニコニコ用語のデフォルト読み上げ辞書ルール。
+///
+/// 「w」「ｗ」による笑いプリセットの設計方針:
+/// - 3 個以上連続 → 「わらわら」（文中の位置を問わず）
+/// - 末尾 2 個 → 「わらわら」
+/// - 末尾 1 個 → 「わら」
+/// - 文中の単独 1 個 → 「わら」。英数字で挟まれていない（空白・記号・
+///   日本語で区切られた）ものを先読み/後読みで広く捕捉する。英単語中の
+///   `w`（`we`, `watch` 等）や URL の連続 `w` を壊さないよう、半角英数字
+///   との隣接を除外している。
+///
+/// 末尾専用の `[wｗ]$` / `[wｑ]{2}$` と文中対応の lookbehind/lookahead 版は
+/// **機能的に重複** する（末尾の単独 w は両方で捕捉される）。それでも
+/// 両方を残している理由:
+/// 1. 既存ユーザーの SharedPreferences に保存された旧デフォルトを
+///    [isDefaultNicoDictionaryRule] が「組み込み」として認識し続けられる
+/// 2. 辞書適用は冪等（最初のルールが置換した後は 2 つ目のルールに `w` は
+///    残っていない）ため、重複実行による誤変換は起きない
+///
+/// Android 側 (`DefaultCommentNormalizer.compressSymbols`) の PATTERN_W は
+/// `[wWｗＷ]{2,}` を辞書適用前に「わらわら」に変換するため、末尾 2 個の
+/// dictionary ルールは Android 実行時には冗長。ただし単体テストでは
+/// 辞書ルールのみを評価するため、テスト期待値の維持目的でも保持する。
 const List<ReplaceRule> defaultNicoDictionaryRules = <ReplaceRule>[
   ReplaceRule(pattern: r'[wｗ]{3,}', replacement: 'わらわら'),
   ReplaceRule(pattern: r'[wｗ]{2}$', replacement: 'わらわら'),
   ReplaceRule(pattern: r'[wｗ]$', replacement: 'わら'),
+  // 文中（末尾以外）に単独で現れる w/ｗ を「わら」として読ませる。
+  // 上 2 つの末尾限定ルールの拡張版。上で捕捉済みの末尾ケースに対しては
+  // 既に置換後なので再マッチしない（冪等）。
+  ReplaceRule(
+    pattern: r'(?<![A-Za-z0-9])[wｗ](?![A-Za-z0-9])',
+    replacement: 'わら',
+  ),
   ReplaceRule(pattern: r'8{3,}|８{3,}', replacement: 'ぱちぱちぱち'),
   ReplaceRule(pattern: r'おつ$', replacement: 'おつかれ'),
   ReplaceRule(pattern: r'わこつ', replacement: 'わくおつ'),

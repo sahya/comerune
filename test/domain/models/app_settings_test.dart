@@ -376,30 +376,59 @@ void main() {
       );
     });
 
-    test('default rules distinguish ww (→わらわら) from single w (→わら)', () {
-      // Applies the default dictionary rules in order, the same way the
-      // native normalizer does. Verifies that `ww` at the end of a comment
-      // becomes `わらわら` (not `わら`), and a single `w` at the end still
-      // becomes `わら`. This is the user-visible behavior that split the
-      // original `[wｗ]{1,2}$` rule into two distinct rules.
-      String apply(String input) {
-        String out = input;
-        for (final ReplaceRule rule in defaultNicoDictionaryRules) {
-          if (!rule.enabled) continue;
-          out = out.replaceAll(RegExp(rule.pattern), rule.replacement);
-        }
-        return out;
+    // デフォルト辞書ルールを順に適用するヘルパ。native normalizer の
+    // applyDictionaryRules と同じ順序で処理する（enabled が false の
+    // ルールはスキップ）。
+    String applyDefaultDictionary(String input) {
+      String out = input;
+      for (final ReplaceRule rule in defaultNicoDictionaryRules) {
+        if (!rule.enabled) continue;
+        out = out.replaceAll(RegExp(rule.pattern), rule.replacement);
       }
+      return out;
+    }
 
-      expect(apply('w'), 'わら');
-      expect(apply('ww'), 'わらわら');
-      expect(apply('www'), 'わらわら');
-      expect(apply('おはようw'), 'おはようわら');
-      expect(apply('おはようww'), 'おはようわらわら');
-      expect(apply('おはようwww'), 'おはようわらわら');
+    test('default rules distinguish ww (→わらわら) from single w (→わら)', () {
+      // `ww` at the end of a comment becomes `わらわら` (not `わら`), and a
+      // single `w` at the end still becomes `わら`. This is the user-visible
+      // behavior that split the original `[wｗ]{1,2}$` rule into two rules.
+      expect(applyDefaultDictionary('w'), 'わら');
+      expect(applyDefaultDictionary('ww'), 'わらわら');
+      expect(applyDefaultDictionary('www'), 'わらわら');
+      expect(applyDefaultDictionary('おはようw'), 'おはようわら');
+      expect(applyDefaultDictionary('おはようww'), 'おはようわらわら');
+      expect(applyDefaultDictionary('おはようwww'), 'おはようわらわら');
       // 全角ｗ も同様に処理されること。
-      expect(apply('おはようｗ'), 'おはようわら');
-      expect(apply('おはようｗｗ'), 'おはようわらわら');
+      expect(applyDefaultDictionary('おはようｗ'), 'おはようわら');
+      expect(applyDefaultDictionary('おはようｗｗ'), 'おはようわらわら');
     });
+
+    test('standalone w/ｗ not at end of string reads as わら', () {
+      // 行末以外で単独の `w`/`ｗ` が出た場合も「わら」と読めるよう、
+      // 先読み/後読みで英数字に隣接しないケースを広く捕捉する。
+      expect(applyDefaultDictionary('w おはよう'), 'わら おはよう');
+      expect(applyDefaultDictionary('ｗ おはよう'), 'わら おはよう');
+      expect(applyDefaultDictionary('おはよう w また'), 'おはよう わら また');
+      expect(applyDefaultDictionary('おはよう ｗ また'), 'おはよう わら また');
+      expect(applyDefaultDictionary('うれしいw さらに'), 'うれしいわら さらに');
+      // 句読点・約物で区切られる場合も単独の w とみなす。
+      expect(applyDefaultDictionary('そうだねw、また'), 'そうだねわら、また');
+    });
+
+    test(
+      'single w inside English words is not converted (false positive guard)',
+      () {
+        // 英単語の途中・先頭・末尾にある `w` は半角英数字で挟まれて
+        // いるので変換対象にならない。
+        expect(applyDefaultDictionary('we'), 'we');
+        expect(applyDefaultDictionary('watch'), 'watch');
+        expect(applyDefaultDictionary('wifi'), 'wifi');
+        expect(applyDefaultDictionary('howl'), 'howl');
+        // `www` URL プレフィックス相当は 3+ ルールで「わらわら」に
+        // なるため、URL 検出は呼び出し側（ニコニコ向け正規化）で
+        // 事前に行うこと。ここでは辞書のみの動作を確認する。
+        expect(applyDefaultDictionary('www.example.com'), 'わらわら.example.com');
+      },
+    );
   });
 }
