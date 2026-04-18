@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 // ignore: implementation_imports
 import 'package:file_picker/src/platform/file_picker_platform_interface.dart';
 import 'package:flutter/foundation.dart';
@@ -748,6 +749,37 @@ void main() {
       await tester.pump();
 
       expect(fakeFilePicker.pickCalls, hasLength(1));
+    });
+
+    testWidgets('import: picker is invoked with both json and txt extensions '
+        '(so text/plain-stored JSON on Drive remains selectable)', (
+      WidgetTester tester,
+    ) async {
+      // Google Drive 等が共有経由で受け取った `.json` を `text/plain` として
+      // 保存するケースが観測されている。SAF は MIME でフィルタするため、
+      // `['json']` 単独では text/plain な JSON が選べない。`['json', 'txt']`
+      // を渡すことで `application/json` + `text/plain` の両方を許容する。
+      final SettingsStore store = _StubSettingsStore();
+      fakeFilePicker.resultToReturn = null; // user cancel
+
+      await tester.pumpWidget(_buildScreen(store));
+      await tester.pumpAndSettle();
+
+      await scrollToKeyInList(
+        tester,
+        const Key('settings-list'),
+        const Key('import-settings-button'),
+      );
+      await tester.tap(find.byKey(const Key('import-settings-button')));
+      await tester.pump();
+      await tester.pump();
+
+      expect(fakeFilePicker.pickCalls, hasLength(1));
+      expect(fakeFilePicker.pickCalls[0]['type'], FileType.custom);
+      expect(fakeFilePicker.pickCalls[0]['allowedExtensions'], <String>[
+        'json',
+        'txt',
+      ]);
     });
   });
 }

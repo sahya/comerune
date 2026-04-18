@@ -203,7 +203,11 @@ class _SettingsScreenState extends State<SettingsScreen>
     try {
       final FilePickerResult? result = await FilePicker.pickFiles(
         type: FileType.custom,
-        allowedExtensions: <String>['json'],
+        // `['json']` 単独だと Android の SAF は `application/json` MIME のみで
+        // 絞り込むため、Drive 等で `text/plain` として保存された JSON が
+        // ピッカーでグレーアウトする。`.txt` も許容して text/plain を通す。
+        // 中身が JSON でなければ既存の FormatException ハンドラで拒否される。
+        allowedExtensions: <String>['json', 'txt'],
       );
       if (result == null || result.files.isEmpty) {
         return;
