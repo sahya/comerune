@@ -23,6 +23,26 @@ if (!appIdPropsFile.exists()) {
     logger.warn("app_id.properties not found — using fallback applicationId. See app_id.properties.example.")
 }
 
+val keyPropsFile = rootProject.file("key.properties")
+val keyProps = Properties().apply {
+    if (keyPropsFile.exists()) {
+        keyPropsFile.inputStream().use { load(it) }
+    }
+}
+
+val keyPropsValid = if (keyPropsFile.exists()) {
+    val requiredKeys = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+    val missingKeys = requiredKeys.filter { keyProps.getProperty(it) == null }
+    if (missingKeys.isNotEmpty()) {
+        logger.warn("key.properties is missing required keys: ${missingKeys.joinToString()}. See key.properties.example.")
+        false
+    } else {
+        true
+    }
+} else {
+    false
+}
+
 android {
     namespace = "com.example.comerune"
     compileSdk = flutter.compileSdkVersion
@@ -65,6 +85,17 @@ android {
         }
     }
 
+    if (keyPropsValid) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(keyProps.getProperty("storeFile"))
+                storePassword = keyProps.getProperty("storePassword")
+                keyAlias = keyProps.getProperty("keyAlias")
+                keyPassword = keyProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             ndk {
@@ -78,9 +109,13 @@ android {
             }
         }
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (keyPropsValid) {
+                signingConfigs.getByName("release")
+            } else {
+                // Fallback to debug signing for local development without key.properties
+                // or when key.properties is incomplete.
+                signingConfigs.getByName("debug")
+            }
             isMinifyEnabled = true
             // Safe: no res/raw/ directory exists in this project, so resource
             // shrinking will not accidentally strip required assets.

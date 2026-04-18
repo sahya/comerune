@@ -72,6 +72,31 @@ jobs:
           fi
           printf 'applicationId=%s\n' "$ANDROID_APPLICATION_ID" > android/app_id.properties
 
+      - name: Configure release signing
+        env:
+          ANDROID_SIGNING_KEYSTORE_BASE64: ${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}
+          ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
+          ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+        run: |
+          set +x
+          if [ -z "$ANDROID_SIGNING_KEYSTORE_BASE64" ]; then
+            echo "::error::Repository secret ANDROID_SIGNING_KEYSTORE_BASE64 is not set. See docs/build-guide.md."
+            exit 1
+          fi
+          if [ -z "$ANDROID_SIGNING_KEY_PASSWORD" ] || [ -z "$ANDROID_SIGNING_STORE_PASSWORD" ]; then
+            echo "::error::One or more signing secrets are missing. Required: ANDROID_SIGNING_KEY_PASSWORD, ANDROID_SIGNING_STORE_PASSWORD."
+            exit 1
+          fi
+          mkdir -p android/keystore
+          echo "$ANDROID_SIGNING_KEYSTORE_BASE64" | base64 -d > android/keystore/release.jks \
+            || { echo "::error::Failed to decode keystore. Verify ANDROID_SIGNING_KEYSTORE_BASE64 contains valid base64."; exit 1; }
+          {
+            printf 'storePassword=%s\n' "$ANDROID_SIGNING_STORE_PASSWORD"
+            printf 'keyPassword=%s\n' "$ANDROID_SIGNING_KEY_PASSWORD"
+            printf 'keyAlias=release\n'
+            printf 'storeFile=../keystore/release.jks\n'
+          } > android/key.properties
+
       - name: Set up Java
         uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
         with:
@@ -139,6 +164,12 @@ jobs:
           name: release-apk-${{ inputs.version }}
           path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 90
+
+      - name: Clean up signing materials
+        if: always()
+        run: |
+          rm -f android/keystore/release.jks
+          rm -f android/key.properties
 
   # TODO: チーム拡大時は environment protection rules + required reviewers を設定し、
   #       リリース実行者を制限する（workflow_dispatch は write 権限者全員が実行可能なため）

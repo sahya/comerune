@@ -1,0 +1,10 @@
+# Copy this file to key.properties and set your own signing configuration.
+# key.properties is gitignored so that secrets are never committed.
+# If the file is absent, the release build falls back to debug signing
+# (suitable for local development only).
+#
+# See docs/build-guide.md for keystore generation instructions.
+storePassword=your_store_password
+keyPassword=your_key_password
+keyAlias=release
+storeFile=../keystore/release.jks

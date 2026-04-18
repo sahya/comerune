@@ -29,6 +29,96 @@ GitHub Actions のリリースワークフローでは、Repository Secret `ANDR
 1. GitHub リポジトリの Settings → Secrets and variables → Actions を開く
 2. Repository secret `ANDROID_APPLICATION_ID` を追加し、本番の applicationId を設定する
 
+## リリース署名の設定
+
+リリースビルドの署名には本番用キーストアが必要です。
+`key.properties` が存在しない場合はデバッグ鍵で署名されます（ローカル開発用）。
+
+### キーストアの生成
+
+```bash
+# android/keystore/ ディレクトリを作成
+mkdir -p android/keystore
+
+# リリース用キーストアを生成
+keytool -genkeypair \
+  -alias release \
+  -keyalg EC \
+  -groupname secp256r1 \
+  -validity 10000 \
+  -storetype PKCS12 \
+  -dname "CN=comerune" \
+  -keystore android/keystore/release.jks
+```
+
+- **鍵アルゴリズム**: ECDSA（secp256r1 / P-256）。RSA 3072bit 相当のセキュリティを小さな鍵サイズで実現する
+- **有効期限**: 10000日（約27年）。Google Play は 2033-10-22 以降に期限切れとなる鍵を拒否するため、十分な期間を設定する
+- **keystore / jks ファイルは `.gitignore` 対象** — リポジトリにコミットされない
+
+### key.properties の設定
+
+```bash
+# テンプレートをコピー
+cp android/key.properties.example android/key.properties
+chmod 600 android/key.properties
+
+# 各値を実際のパスワード・パスに書き換える
+```
+
+| プロパティ | 説明 |
+|---|---|
+| `storePassword` | キーストアのパスワード |
+| `keyPassword` | 鍵エントリのパスワード（PKCS12 では `storePassword` と同じ値を設定する） |
+| `keyAlias` | 鍵のエイリアス名（上記コマンドでは `release`） |
+| `storeFile` | キーストアファイルへの相対パス（`build.gradle.kts` の `file()` で解決される） |
+
+### キーストアのバックアップと復旧
+
+キーストアを紛失すると、同じ署名の APK を二度と生成できなくなります。
+既存ユーザーはアプリを再インストールする必要が生じます。
+
+**推奨バックアップ方法:**
+- クラウドストレージ（AWS KMS / GCP KMS 等）に暗号化して保存
+- USB ドライブ等のオフラインメディアにバックアップし、物理的に安全な場所に保管
+- 複数の場所に冗長に保管する
+
+**復旧手順:**
+1. バックアップから `release.jks` を `android/keystore/` にリストア
+2. `android/key.properties` のパスワードが正しいことを確認
+3. `flutter build apk --release` で署名されたビルドが生成されることを確認
+
+### CI/CD での署名設定
+
+GitHub Actions のリリースワークフローでは、以下の Repository Secrets からキーストアを復元して署名します。
+
+| Secret 名 | 内容 |
+|---|---|
+| `ANDROID_SIGNING_KEYSTORE_BASE64` | キーストアファイル（.jks）の Base64 エンコード |
+| `ANDROID_SIGNING_KEY_PASSWORD` | 鍵エントリのパスワード（PKCS12 では `ANDROID_SIGNING_STORE_PASSWORD` と同じ値） |
+| `ANDROID_SIGNING_STORE_PASSWORD` | キーストアのパスワード |
+
+鍵エイリアスは `release` 固定でワークフローに直接記述されているため、Secret の設定は不要です。
+
+**Secrets の設定手順:**
+1. キーストアを Base64 エンコード: `base64 -w 0 android/keystore/release.jks`
+2. GitHub リポジトリの Settings → Secrets and variables → Actions を開く
+3. 上記 3 つの Repository Secrets を追加する
+
+### Google Play App Signing
+
+Google Play App Signing の利用を推奨します。
+
+- Google がアプリ署名鍵を管理し、開発者はアップロード鍵のみ保持する
+- アップロード鍵を紛失しても Google に再設定を依頼できる
+- 鍵のローテーションが可能（通常の署名では不可）
+
+**導入手順:**
+1. Google Play Console でアプリを作成後、App Signing を有効化
+2. Google が提供する署名鍵証明書に基づいてアップロード鍵をエクスポート
+3. 以降、本リポジトリの署名設定はアップロード鍵用として使用する
+
+詳細は [Google Play App Signing ドキュメント](https://developer.android.com/studio/publish/app-signing#app-signing-google-play) を参照してください。
+
 ## 基本手順
 
 ```bash
