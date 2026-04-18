@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../app_logging.dart';
 import '../../application/comment_post/comment_post_controller.dart';
+import '../../application/timeshift_fetch/timeshift_fetch_controller.dart';
 import '../../application/settings/settings_store.dart';
 import '../../application/statistics/statistics_store.dart';
 import '../../application/timeline/timeline_store.dart';
@@ -62,6 +63,7 @@ class SelectScreen extends StatefulWidget {
     this.favoriteUserLiveChecker,
     this.userAttributeStore,
     this.commentPostController,
+    this.timeshiftFetchController,
     super.key,
   });
 
@@ -92,6 +94,7 @@ class SelectScreen extends StatefulWidget {
   final FavoriteUserLiveChecker? favoriteUserLiveChecker;
   final UserAttributeStore? userAttributeStore;
   final CommentPostController? commentPostController;
+  final TimeshiftFetchController? timeshiftFetchController;
 
   @override
   State<SelectScreen> createState() => _SelectScreenState();
@@ -645,6 +648,7 @@ class _SelectScreenState extends State<SelectScreen>
           ),
           commentPostController: widget.commentPostController,
           userSessionLoader: widget.userSessionStore?.load,
+          timeshiftFetchController: widget.timeshiftFetchController,
         );
       },
     );

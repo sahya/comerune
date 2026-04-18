@@ -27,10 +27,12 @@ import 'data/foreground_service/foreground_service_manager.dart';
 import 'data/connection/web_socket_channel_legacy_web_socket.dart';
 import 'data/user/user_attribute_store.dart';
 import 'data/user/user_name_resolver.dart';
+import 'application/timeshift_fetch/timeshift_fetch_controller.dart';
 import 'domain/connection/connection_clients.dart' as reconnect;
 import 'domain/connection/connection_supervisor.dart';
 import 'domain/connection/legacy_comment_client.dart' as legacy_impl;
 import 'domain/connection/ndgr_client.dart' as ndgr_impl;
+import 'domain/connection/ndgr_timeshift_client.dart';
 import 'domain/connection/session_ws_client.dart' as session_impl;
 import 'domain/models/app_message.dart';
 import 'domain/models/app_settings.dart';
@@ -166,6 +168,8 @@ class _ComeruneAppState extends State<ComeruneApp> {
   late final BroadcastControlRepository _broadcastControlRepository;
   late final LiveCommentRepository _liveCommentRepository;
   late final CommentPostController _commentPostController;
+  late final NdgrTimeshiftClient _timeshiftClient;
+  late final TimeshiftFetchController _timeshiftFetchController;
   ForegroundServiceController? _foregroundServiceController;
 
   @override
@@ -239,6 +243,14 @@ class _ComeruneAppState extends State<ComeruneApp> {
       legacyCommentClient: _legacyCommentClient,
     );
 
+    _timeshiftClient = NdgrTimeshiftClient();
+    _timeshiftFetchController = TimeshiftFetchController(
+      client: _timeshiftClient,
+      onMessages: (List<AppMessage> messages) {
+        _timelineStore.addAll(messages);
+      },
+    );
+
     if (widget.foregroundServiceManager != null) {
       _foregroundServiceController = ForegroundServiceController(
         foregroundServiceManager: widget.foregroundServiceManager!,
@@ -281,6 +293,8 @@ class _ComeruneAppState extends State<ComeruneApp> {
     // in-flight postComment / ensureBroadcasterStatus future sees the
     // disposed flag before we close the underlying HttpClients.
     _commentPostController.dispose();
+    _timeshiftFetchController.dispose();
+    _timeshiftClient.dispose();
     _followProgramRepository.dispose();
     _myProgramRepository.dispose();
     _broadcastControlRepository.dispose();
@@ -351,6 +365,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
           broadcastControlRepository: _broadcastControlRepository,
           userAttributeStore: widget.userAttributeStore,
           commentPostController: _commentPostController,
+          timeshiftFetchController: _timeshiftFetchController,
         ),
       ),
     );

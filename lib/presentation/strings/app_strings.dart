@@ -34,6 +34,7 @@ abstract final class AppStrings {
   const AppStrings._();
 
   static const SettingsStrings settings = SettingsStrings._();
+  static const TimeshiftStrings timeshift = TimeshiftStrings._();
 }
 
 /// `SettingsScreen` で使用する文字列の集約。
@@ -111,4 +112,19 @@ final class SettingsStrings {
   // セクション: デバッグ
   String get debugSectionTitle => 'デバッグ';
   String get debugModeSwitchTitle => 'デバッグモード';
+}
+
+/// タイムシフトコメント取得 UI の文字列。
+final class TimeshiftStrings {
+  const TimeshiftStrings._();
+
+  String get fetch500 => '500件取得';
+  String get fetch1000 => '1000件取得';
+  String get fetchAll => '全件取得';
+  String get cancel => 'キャンセル';
+  String fetchedCount(int count) => '取得済み: $count件';
+  String get fetching => '取得中...';
+  String get fetchComplete => '取得完了';
+  String get fetchError => '取得に失敗しました';
+  String get retry => '再試行';
 }

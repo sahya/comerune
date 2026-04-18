@@ -12,6 +12,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../app_logging.dart';
 import '../../application/comment_post/comment_post_controller.dart';
+import '../../application/timeshift_fetch/timeshift_fetch_controller.dart';
 import '../../application/settings/settings_store.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../data/comment_log/comment_log_writer.dart';
@@ -31,6 +32,7 @@ import '../theme/app_theme.dart';
 import '../widgets/comment_input_bar.dart';
 import 'comment_log_stats_sheet.dart';
 import 'comment_screen_config.dart';
+import '../widgets/timeshift_fetch_panel.dart';
 import 'user_detail_sheet.dart';
 
 const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
@@ -325,6 +327,7 @@ class CommentScreen extends StatefulWidget {
     this.speechConfig = const CommentSpeechConfig(),
     this.commentPostController,
     this.userSessionLoader,
+    this.timeshiftFetchController,
     this.clock,
   });
 
@@ -399,6 +402,8 @@ class CommentScreen extends StatefulWidget {
   /// Loads the current niconico `user_session`. When it resolves to a
   /// non-empty string the comment-post FAB is shown.
   final Future<String> Function()? userSessionLoader;
+
+  final TimeshiftFetchController? timeshiftFetchController;
 
   /// Clock abstraction used for the NG-protection snackbar throttle window.
   ///
@@ -1892,6 +1897,20 @@ class _CommentScreenState extends State<CommentScreen> {
                   totalCommentCount: widget.statistics.totalCommentCount,
                   activeUserCount: widget.statistics.activeUserCount,
                 ),
+                if (widget.timeshiftFetchController != null)
+                  TimeshiftFetchPanel(
+                    key: const Key('timeshift-fetch-panel'),
+                    controller: widget.timeshiftFetchController!,
+                    onFetch500: () =>
+                        widget.timeshiftFetchController!.fetchMore(500),
+                    onFetch1000: () =>
+                        widget.timeshiftFetchController!.fetchMore(1000),
+                    onFetchAll: () =>
+                        widget.timeshiftFetchController!.fetchAll(),
+                    onCancel: () => widget.timeshiftFetchController!.cancel(),
+                    onRetry: () =>
+                        widget.timeshiftFetchController!.fetchMore(500),
+                  ),
                 if (_pinnedMessageIds.isNotEmpty)
                   _PinnedCommentsSection(
                     key: const Key('pinned-comments-section'),
