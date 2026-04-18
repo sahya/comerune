@@ -203,11 +203,18 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
   /// If non-null, [checkAndroidTtsAvailability] will throw this.
   Object? checkAndroidTtsAvailabilityError;
 
+  /// When non-null, [checkAndroidTtsAvailability] awaits this completer before
+  /// returning. Used to observe the "checking" UI state deterministically.
+  Completer<void>? checkAndroidTtsAvailabilityGate;
+
   /// Tracks whether [openAndroidTtsSettings] was called.
   bool openAndroidTtsSettingsCalled = false;
 
   @override
   Future<bool> checkAndroidTtsAvailability() async {
+    if (checkAndroidTtsAvailabilityGate != null) {
+      await checkAndroidTtsAvailabilityGate!.future;
+    }
     if (checkAndroidTtsAvailabilityError != null) {
       throw checkAndroidTtsAvailabilityError!;
     }

@@ -2551,6 +2551,116 @@ void main() {
       },
     );
 
+    testWidgets(
+      'shows checking indicator while Android TTS availability is pending',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final FakeCommentSpeechPlatform fakePlatform =
+            FakeCommentSpeechPlatform();
+        final Completer<void> gate = Completer<void>();
+        fakePlatform.checkAndroidTtsAvailabilityGate = gate;
+        fakePlatform.androidTtsAvailableToReturn = true;
+
+        await tester.pumpWidget(
+          _buildScreenWithPlatform(settingsStore, fakePlatform),
+        );
+        await tester.pumpAndSettle();
+
+        // Switch to Android TTS — availability check starts but is gated.
+        await scrollToKeyInList(
+          tester,
+          _listKey,
+          const Key('speech-engine-selector'),
+        );
+        final SegmentedButton<SpeechEngine> segmented = tester
+            .widget<SegmentedButton<SpeechEngine>>(
+              find.byKey(
+                const Key('speech-engine-selector'),
+                skipOffstage: false,
+              ),
+            );
+        segmented.onSelectionChanged!(<SpeechEngine>{SpeechEngine.androidTts});
+        await tester.pump();
+
+        // While the check is pending, the "確認中…" indicator is shown and
+        // neither the warning card nor the ready description is visible.
+        expect(
+          find.byKey(const Key('android-tts-checking'), skipOffstage: false),
+          findsOneWidget,
+        );
+        expect(find.text('音声データを確認中…', skipOffstage: false), findsOneWidget);
+        expect(
+          find.byKey(const Key('android-tts-warning'), skipOffstage: false),
+          findsNothing,
+        );
+
+        // Resolve the gate — the indicator disappears and ready description
+        // (available == true) replaces it.
+        gate.complete();
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('android-tts-checking'), skipOffstage: false),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('android-tts-warning'), skipOffstage: false),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'checking indicator is replaced by warning when availability resolves to false',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final FakeCommentSpeechPlatform fakePlatform =
+            FakeCommentSpeechPlatform();
+        final Completer<void> gate = Completer<void>();
+        fakePlatform.checkAndroidTtsAvailabilityGate = gate;
+        fakePlatform.androidTtsAvailableToReturn = false;
+
+        await tester.pumpWidget(
+          _buildScreenWithPlatform(settingsStore, fakePlatform),
+        );
+        await tester.pumpAndSettle();
+
+        await scrollToKeyInList(
+          tester,
+          _listKey,
+          const Key('speech-engine-selector'),
+        );
+        final SegmentedButton<SpeechEngine> segmented = tester
+            .widget<SegmentedButton<SpeechEngine>>(
+              find.byKey(
+                const Key('speech-engine-selector'),
+                skipOffstage: false,
+              ),
+            );
+        segmented.onSelectionChanged!(<SpeechEngine>{SpeechEngine.androidTts});
+        await tester.pump();
+
+        expect(
+          find.byKey(const Key('android-tts-checking'), skipOffstage: false),
+          findsOneWidget,
+        );
+
+        gate.complete();
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('android-tts-checking'), skipOffstage: false),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('android-tts-warning'), skipOffstage: false),
+          findsOneWidget,
+        );
+      },
+    );
+
     testWidgets('shows warning when checkAndroidTtsAvailability throws', (
       WidgetTester tester,
     ) async {

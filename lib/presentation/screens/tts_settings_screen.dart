@@ -1042,11 +1042,36 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
   }
 
   Widget _buildAndroidTtsSection(AppSettings settings) {
+    final bool? available = _androidTtsAvailable;
+    // Show the "checking" indicator only when a real check is in flight.
+    // When [widget.platform] is null we can never actually check, so we fall
+    // through to the ready description instead of showing a spinner that
+    // would never resolve.
+    final bool isChecking = available == null && widget.platform != null;
     return SettingsSection(
       key: const Key('android-tts-section'),
       title: 'Android標準TTS',
       children: <Widget>[
-        if (_androidTtsAvailable == false) ...[
+        if (isChecking) ...[
+          Row(
+            key: const Key('android-tts-checking'),
+            children: <Widget>[
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '音声データを確認中…',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+        ] else if (available == false) ...[
           Card(
             key: const Key('android-tts-warning'),
             color: Theme.of(context).colorScheme.errorContainer,
@@ -1104,14 +1129,14 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
             ),
           ),
           const SizedBox(height: 8),
-        ],
-        if (_androidTtsAvailable != false)
+        ] else ...[
           Text(
             '端末の「設定 > システム > 言語と入力 > テキスト読み上げ」で日本語音声データがインストールされている必要があります。',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: Theme.of(context).colorScheme.outline,
             ),
           ),
+        ],
         const SizedBox(height: 12),
         SettingsDoubleSliderField(
           key: const Key('android-tts-speed-slider'),
