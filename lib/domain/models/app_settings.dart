@@ -692,6 +692,24 @@ class AppSettings {
   /// Settings export format version for forward compatibility.
   static const int settingsVersion = 1;
 
+  /// 改行区切りで保持している favoriteUserIds を、Export 用に
+  /// 登録順を保った重複なし文字列配列へ変換する。
+  List<String> _serializeFavoriteUserIds() {
+    if (favoriteUserIds.trim().isEmpty) {
+      return const <String>[];
+    }
+    final Set<String> seen = <String>{};
+    final List<String> result = <String>[];
+    for (final String line in favoriteUserIds.split('\n')) {
+      final String trimmed = line.trim();
+      if (trimmed.isEmpty) continue;
+      if (seen.add(trimmed)) {
+        result.add(trimmed);
+      }
+    }
+    return result;
+  }
+
   /// Serializes all fields to a JSON-compatible map.
   ///
   /// Uses the same key names and value formats as
@@ -715,7 +733,10 @@ class AppSettings {
       'suppressDuplicate': suppressDuplicate,
       'ngWords': ngWords,
       'ngUserIds': ngUserIds,
-      'favoriteUserIds': favoriteUserIds,
+      // 改行区切りの内部表現は入出力の見通しが悪いため、
+      // Export ではトリム済みの配列として書き出す。元の登録順を保持する。
+      // Import は後方互換のため配列・文字列のどちらも受け付ける。
+      'favoriteUserIds': _serializeFavoriteUserIds(),
       'pastCommentFetchCount': pastCommentFetchCount.storageValue,
       'showUserName': showUserName,
       'resolveUserName': resolveUserName,
@@ -778,6 +799,35 @@ class AppSettings {
       return d.ngWordRules;
     }
 
+    // favoriteUserIds は現行の Export では JSON 配列、旧 Export では
+    // 改行区切りの文字列として保存される。どちらの形式も受け付ける。
+    // 想定外の型や、配列内に非文字列（ネスト配列・Map・数値等）が混入
+    // していても落ちないよう、他の parseXxx と同じく try/catch で
+    // デフォルトへフォールバックする。
+    String parseFavoriteUserIds() {
+      final Object? raw = json['favoriteUserIds'];
+      if (raw is List) {
+        try {
+          final List<String> ids = <String>[];
+          for (final Object? item in raw) {
+            if (item is String) {
+              final String trimmed = item.trim();
+              if (trimmed.isNotEmpty) {
+                ids.add(trimmed);
+              }
+            }
+          }
+          return ids.join('\n');
+        } on Object {
+          return d.favoriteUserIds;
+        }
+      }
+      if (raw is String) {
+        return raw;
+      }
+      return d.favoriteUserIds;
+    }
+
     List<ReplaceRule> parseDictionaryRules() {
       final Object? raw = json['dictionaryRules'];
       if (raw is List) {
@@ -820,7 +870,7 @@ class AppSettings {
           json['suppressDuplicate'] as bool? ?? d.suppressDuplicate,
       ngWords: json['ngWords'] as String? ?? d.ngWords,
       ngUserIds: json['ngUserIds'] as String? ?? d.ngUserIds,
-      favoriteUserIds: json['favoriteUserIds'] as String? ?? d.favoriteUserIds,
+      favoriteUserIds: parseFavoriteUserIds(),
       pastCommentFetchCount: PastCommentFetchCountValue.fromStorageValue(
         json['pastCommentFetchCount'] as String?,
       ),

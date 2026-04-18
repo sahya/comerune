@@ -302,5 +302,111 @@ void main() {
       });
       expect(result.themeMode, AppSettings.defaults.themeMode);
     });
+
+    group('favoriteUserIds export/import', () {
+      test('toJson emits favoriteUserIds as a JSON array', () {
+        final AppSettings settings = AppSettings.defaults.copyWith(
+          favoriteUserIds: 'user-a\nuser-b\nuser-c',
+        );
+        final Map<String, dynamic> json = settings.toJson();
+        expect(json['favoriteUserIds'], <String>['user-a', 'user-b', 'user-c']);
+      });
+
+      test('toJson emits empty array when favoriteUserIds is empty', () {
+        final Map<String, dynamic> json = AppSettings.defaults.toJson();
+        expect(json['favoriteUserIds'], const <String>[]);
+      });
+
+      test(
+        'toJson strips blank lines and duplicates while preserving order',
+        () {
+          final AppSettings settings = AppSettings.defaults.copyWith(
+            favoriteUserIds: '\nuser-a\n\n  user-b  \nuser-a\nuser-c\n',
+          );
+          final Map<String, dynamic> json = settings.toJson();
+          expect(json['favoriteUserIds'], <String>[
+            'user-a',
+            'user-b',
+            'user-c',
+          ]);
+        },
+      );
+
+      test(
+        'fromJson accepts JSON array and joins with newlines internally',
+        () {
+          final AppSettings result = AppSettings.fromJson(<String, dynamic>{
+            'favoriteUserIds': <String>['user-a', 'user-b'],
+          });
+          expect(result.favoriteUserIds, 'user-a\nuser-b');
+          expect(result.favoriteUserIdSet, <String>{'user-a', 'user-b'});
+        },
+      );
+
+      test('fromJson still accepts legacy newline-separated string format', () {
+        final AppSettings result = AppSettings.fromJson(<String, dynamic>{
+          'favoriteUserIds': 'legacy-a\nlegacy-b',
+        });
+        expect(result.favoriteUserIds, 'legacy-a\nlegacy-b');
+        expect(result.favoriteUserIdSet, <String>{'legacy-a', 'legacy-b'});
+      });
+
+      test('fromJson skips non-string items in the array', () {
+        final AppSettings result = AppSettings.fromJson(<String, dynamic>{
+          'favoriteUserIds': <dynamic>['user-a', 42, null, 'user-b'],
+        });
+        expect(result.favoriteUserIdSet, <String>{'user-a', 'user-b'});
+      });
+
+      test(
+        'fromJson trims whitespace and drops blank strings in the array',
+        () {
+          final AppSettings result = AppSettings.fromJson(<String, dynamic>{
+            'favoriteUserIds': <String>['  user-a  ', '', '   ', 'user-b'],
+          });
+          expect(result.favoriteUserIdSet, <String>{'user-a', 'user-b'});
+        },
+      );
+
+      test('fromJson falls back to default when field is missing', () {
+        final AppSettings result = AppSettings.fromJson(<String, dynamic>{});
+        expect(result.favoriteUserIds, AppSettings.defaults.favoriteUserIds);
+      });
+
+      test('fromJson falls back to default for unexpected types', () {
+        final AppSettings result = AppSettings.fromJson(<String, dynamic>{
+          'favoriteUserIds': 42,
+        });
+        expect(result.favoriteUserIds, AppSettings.defaults.favoriteUserIds);
+      });
+
+      test('fromJson accepts legacy empty string as empty favoriteUserIds', () {
+        final AppSettings result = AppSettings.fromJson(<String, dynamic>{
+          'favoriteUserIds': '',
+        });
+        expect(result.favoriteUserIds, '');
+        expect(result.favoriteUserIdSet, isEmpty);
+      });
+
+      test('fromJson ignores nested/structured items in the array', () {
+        final AppSettings result = AppSettings.fromJson(<String, dynamic>{
+          'favoriteUserIds': <dynamic>[
+            'user-a',
+            <String>['nested'],
+            <String, dynamic>{'key': 'value'},
+            'user-b',
+          ],
+        });
+        expect(result.favoriteUserIdSet, <String>{'user-a', 'user-b'});
+      });
+
+      test('roundtrip preserves favoriteUserIds order', () {
+        final AppSettings original = AppSettings.defaults.copyWith(
+          favoriteUserIds: 'user-1\nuser-2\nuser-3',
+        );
+        final AppSettings restored = AppSettings.fromJson(original.toJson());
+        expect(restored.favoriteUserIds, 'user-1\nuser-2\nuser-3');
+      });
+    });
   });
 }

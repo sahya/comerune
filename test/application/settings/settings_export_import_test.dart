@@ -108,6 +108,42 @@ void main() {
       expect(imported.commentFontSize, 36);
     });
 
+    test('exportAsJson emits favoriteUserIds as a JSON array, '
+        'and legacy string format is still importable', () async {
+      final AppSettings original = AppSettings.defaults.copyWith(
+        favoriteUserIds: 'user-a\nuser-b',
+      );
+      await store.save(original);
+
+      final String exported = await store.exportAsJson();
+      final Map<String, dynamic> json =
+          jsonDecode(exported) as Map<String, dynamic>;
+      expect(json['favoriteUserIds'], <String>['user-a', 'user-b']);
+
+      // Roundtrip: export (array) → import → matches original value.
+      final InMemorySharedPreferences newPrefs = InMemorySharedPreferences();
+      final SharedPreferencesSettingsStore newStore =
+          SharedPreferencesSettingsStore(prefs: newPrefs);
+      final AppSettings imported = await newStore.importFromJson(exported);
+      expect(imported.favoriteUserIdSet, <String>{'user-a', 'user-b'});
+
+      // Legacy string format is still accepted by import.
+      final InMemorySharedPreferences legacyPrefs = InMemorySharedPreferences();
+      final SharedPreferencesSettingsStore legacyStore =
+          SharedPreferencesSettingsStore(prefs: legacyPrefs);
+      final Map<String, dynamic> legacyJson = <String, dynamic>{
+        '_version': 1,
+        'favoriteUserIds': 'legacy-1\nlegacy-2',
+      };
+      final AppSettings legacyImported = await legacyStore.importFromJson(
+        const JsonEncoder.withIndent('  ').convert(legacyJson),
+      );
+      expect(legacyImported.favoriteUserIdSet, <String>{
+        'legacy-1',
+        'legacy-2',
+      });
+    });
+
     test('roundtrip preserves gift/nicoad display + TTS toggles', () async {
       final AppSettings original = AppSettings.defaults.copyWith(
         showGiftComment: false,
