@@ -515,18 +515,17 @@ void main() {
           }
 
           if (request.uri.path == '/segment') {
-            // One normal chat message, then ProgramStatus.Ended.
+            // /segment endpoint delivers a stream of length-delimited
+            // ChunkedMessage frames (NdgrLengthDelimitedDecoder), not a
+            // packed segment. One normal chat message, then ProgramStatus.Ended.
             final List<int> chatMessage = _encodeChunkedMessage(
               id: 'msg-1',
               content: 'last-comment',
             );
             final List<int> endedMessage =
                 _encodeChunkedMessageWithProgramEnd();
-            final List<int> packed = _encodePackedSegment(<List<int>>[
-              chatMessage,
-              endedMessage,
-            ]);
-            request.response.add(packed);
+            request.response.add(_delimit(chatMessage));
+            request.response.add(_delimit(endedMessage));
             await request.response.close();
             return;
           }
