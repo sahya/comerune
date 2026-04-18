@@ -494,6 +494,9 @@ class ConnectionSupervisor extends ChangeNotifier {
       case NdgrEventType.stalled:
         unawaited(onNdgrStreamStalled(resumeCursor: event.resumeCursor));
         break;
+      case NdgrEventType.broadcastEnded:
+        endBroadcast();
+        break;
     }
   }
 

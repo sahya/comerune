@@ -671,6 +671,108 @@ void main() {
       },
     );
 
+    test('decodes ProgramStatus.Ended from NicoliveState.program_status', () {
+      final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+      // ProgramStatus: state(1) = Ended (1)
+      final List<int> programStatus = <int>[..._varintField(1, 1)];
+      // NicoliveState: program_status(9)
+      final List<int> state = <int>[..._bytesField(9, programStatus)];
+      // ChunkedMessage: state(4)
+      final Uint8List bytes = Uint8List.fromList(<int>[
+        ..._bytesField(4, state),
+      ]);
+
+      final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+      expect(message.programStatus, NdgrProgramStatus.ended);
+      expect(message.operatorComment, isNull);
+      expect(message.chat, isNull);
+    });
+
+    test('decodes ProgramStatus.Unknown (0) as unknown', () {
+      final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+      // ProgramStatus: state(1) = Unknown (0)
+      final List<int> programStatus = <int>[..._varintField(1, 0)];
+      final List<int> state = <int>[..._bytesField(9, programStatus)];
+      final Uint8List bytes = Uint8List.fromList(<int>[
+        ..._bytesField(4, state),
+      ]);
+
+      final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+      expect(message.programStatus, NdgrProgramStatus.unknown);
+    });
+
+    test('programStatus is null when NicoliveState has no program_status', () {
+      final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+      // NicoliveState with only marquee(4), no program_status(9).
+      final List<int> operatorComment = <int>[..._stringField(1, 'test')];
+      final List<int> display = <int>[..._bytesField(1, operatorComment)];
+      final List<int> marquee = <int>[..._bytesField(1, display)];
+      final List<int> state = <int>[..._bytesField(4, marquee)];
+      final Uint8List bytes = Uint8List.fromList(<int>[
+        ..._bytesField(4, state),
+      ]);
+
+      final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+      expect(message.programStatus, isNull);
+      expect(message.operatorComment, isNotNull);
+    });
+
+    test(
+      'decodes both operator comment and ProgramStatus from same NicoliveState',
+      () {
+        final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+        final List<int> operatorComment = <int>[..._stringField(1, '終了のお知らせ')];
+        final List<int> display = <int>[..._bytesField(1, operatorComment)];
+        final List<int> marquee = <int>[..._bytesField(1, display)];
+        // ProgramStatus: state(1) = Ended (1)
+        final List<int> programStatus = <int>[..._varintField(1, 1)];
+        // NicoliveState: marquee(4) + program_status(9)
+        final List<int> state = <int>[
+          ..._bytesField(4, marquee),
+          ..._bytesField(9, programStatus),
+        ];
+        final Uint8List bytes = Uint8List.fromList(<int>[
+          ..._bytesField(4, state),
+        ]);
+
+        final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+        expect(message.programStatus, NdgrProgramStatus.ended);
+        expect(message.operatorComment, isNotNull);
+        expect(message.operatorComment!.content, '終了のお知らせ');
+      },
+    );
+
+    test('malformed ProgramStatus does not drop operator comment', () {
+      final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+      final List<int> operatorComment = <int>[..._stringField(1, '有効なコメント')];
+      final List<int> display = <int>[..._bytesField(1, operatorComment)];
+      final List<int> marquee = <int>[..._bytesField(1, display)];
+      // Malformed ProgramStatus: truncated varint
+      final List<int> malformedProgramStatus = <int>[0x80];
+      final List<int> state = <int>[
+        ..._bytesField(4, marquee),
+        ..._bytesField(9, malformedProgramStatus),
+      ];
+      final Uint8List bytes = Uint8List.fromList(<int>[
+        ..._bytesField(4, state),
+      ]);
+
+      final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+      expect(message.operatorComment, isNotNull);
+      expect(message.operatorComment!.content, '有効なコメント');
+      expect(message.programStatus, isNull);
+    });
+
     test('decodes backward segment uri with interleaved sibling fields', () {
       final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
 

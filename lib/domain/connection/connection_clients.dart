@@ -28,7 +28,7 @@ abstract class SessionWsClient {
   Future<void> disconnect();
 }
 
-enum NdgrEventType { disconnected, stalled }
+enum NdgrEventType { disconnected, stalled, broadcastEnded }
 
 class NdgrResumeCursor {
   const NdgrResumeCursor({this.at, this.next});

@@ -95,6 +95,8 @@ class NdgrSimpleNotificationV2 {
   final String message;
 }
 
+enum NdgrProgramStatus { unknown, ended }
+
 class NdgrChunkedMessage {
   const NdgrChunkedMessage({
     this.id,
@@ -103,6 +105,7 @@ class NdgrChunkedMessage {
     this.statistics,
     this.operatorComment,
     this.simpleNotificationV2,
+    this.programStatus,
   });
 
   final String? id;
@@ -116,6 +119,10 @@ class NdgrChunkedMessage {
   /// SimpleNotificationV2 extracted from `NicoliveMessage.simple_notification_v2`.
   /// Used to surface system/emotion/notification messages.
   final NdgrSimpleNotificationV2? simpleNotificationV2;
+
+  /// Program status extracted from `ChunkedMessage.state.program_status`.
+  /// Non-null with [NdgrProgramStatus.ended] when the broadcast has ended.
+  final NdgrProgramStatus? programStatus;
 }
 
 class NdgrPackedSegment {
@@ -268,6 +275,7 @@ class NdgrProtobufDecoder {
     NdgrStatistics? statistics;
     NdgrOperatorComment? operatorComment;
     NdgrSimpleNotificationV2? simpleNotificationV2;
+    NdgrProgramStatus? programStatus;
 
     while (!reader.isAtEnd) {
       final int tag = reader.readVarint();
@@ -332,11 +340,7 @@ class NdgrProtobufDecoder {
                 stateBytes,
               );
               operatorComment = stateResult.operatorComment;
-              // Statistics fallback from `NicoliveState.statistics` is
-              // not wired in yet — see Issue #461 and the doc comment
-              // on [_decodeNicoliveState]. Once upstream proto is
-              // verified, populate `_NicoliveStateResult.statistics`
-              // there and assign it to [statistics] here.
+              programStatus = stateResult.programStatus;
             } on FormatException {
               operatorComment = null;
             }
@@ -356,6 +360,7 @@ class NdgrProtobufDecoder {
       statistics: statistics,
       operatorComment: operatorComment,
       simpleNotificationV2: simpleNotificationV2,
+      programStatus: programStatus,
     );
   }
 
@@ -561,6 +566,7 @@ class NdgrProtobufDecoder {
     final _ProtoReader reader = _ProtoReader(bytes);
 
     NdgrOperatorComment? operatorComment;
+    NdgrProgramStatus? programStatus;
 
     while (!reader.isAtEnd) {
       final int tag = reader.readVarint();
@@ -569,12 +575,42 @@ class NdgrProtobufDecoder {
 
       if (fieldNumber == 4 && wireType == _WireType.lengthDelimited) {
         operatorComment = _decodeMarquee(reader.readLengthDelimited());
+      } else if (fieldNumber == 9 && wireType == _WireType.lengthDelimited) {
+        try {
+          programStatus = _decodeProgramStatus(reader.readLengthDelimited());
+        } on FormatException {
+          // Malformed ProgramStatus — leave null, do not drop other fields.
+        }
       } else {
         reader.skipField(wireType);
       }
     }
 
-    return _NicoliveStateResult(operatorComment: operatorComment);
+    return _NicoliveStateResult(
+      operatorComment: operatorComment,
+      programStatus: programStatus,
+    );
+  }
+
+  NdgrProgramStatus _decodeProgramStatus(Uint8List bytes) {
+    final _ProtoReader reader = _ProtoReader(bytes);
+    int stateValue = 0;
+
+    while (!reader.isAtEnd) {
+      final int tag = reader.readVarint();
+      final int fieldNumber = tag >> 3;
+      final int wireType = tag & 0x07;
+
+      if (fieldNumber == 1 && wireType == _WireType.varint) {
+        stateValue = reader.readVarint();
+      } else {
+        reader.skipField(wireType);
+      }
+    }
+
+    return stateValue == 1
+        ? NdgrProgramStatus.ended
+        : NdgrProgramStatus.unknown;
   }
 
   NdgrOperatorComment? _decodeMarquee(Uint8List bytes) {
@@ -1065,9 +1101,10 @@ class _NicoliveMessageResult {
 }
 
 class _NicoliveStateResult {
-  const _NicoliveStateResult({this.operatorComment});
+  const _NicoliveStateResult({this.operatorComment, this.programStatus});
 
   final NdgrOperatorComment? operatorComment;
+  final NdgrProgramStatus? programStatus;
 
   // NOTE(Issue #461): a future `NicoliveStatistics? statistics` field
   // will live here once upstream proto field numbers are confirmed.

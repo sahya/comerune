@@ -943,6 +943,69 @@ void main() {
     );
 
     test(
+      'auto transitions to ENDED when NDGR broadcast ended event is emitted',
+      () async {
+        final Uri ndgrUri = Uri.parse('https://example.com/api/view/v4/stream');
+        final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
+          endpointsQueue: <SessionEndpoints>[
+            SessionEndpoints(ndgrViewApiUri: ndgrUri),
+          ],
+        );
+        final FakeNdgrClient ndgrClient = FakeNdgrClient();
+        final ConnectionSupervisor supervisor = ConnectionSupervisor(
+          sessionWsClient: sessionWsClient,
+          ndgrClient: ndgrClient,
+          legacyCommentClient: FakeLegacyCommentClient(),
+          delayExecutor: (_) async {},
+          jitterProvider: (_) => Duration.zero,
+        );
+        addTearDown(supervisor.dispose);
+
+        final bool started = await _startAndDrain(supervisor);
+        expect(started, isTrue);
+        expect(supervisor.status, ConnectionStatus.streamingNdgr);
+
+        ndgrClient.emitBroadcastEnded();
+        await _drainEventLoop();
+
+        expect(supervisor.status, ConnectionStatus.ended);
+        expect(supervisor.lastError, ConnectionErrorCode.broadcastEnded);
+      },
+    );
+
+    test('does not reconnect after NDGR broadcast ended event', () async {
+      final Uri ndgrUri = Uri.parse('https://example.com/api/view/v4/stream');
+      final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
+        endpointsQueue: <SessionEndpoints>[
+          SessionEndpoints(ndgrViewApiUri: ndgrUri),
+        ],
+      );
+      final FakeNdgrClient ndgrClient = FakeNdgrClient();
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: sessionWsClient,
+        ndgrClient: ndgrClient,
+        legacyCommentClient: FakeLegacyCommentClient(),
+        delayExecutor: (_) async {},
+        jitterProvider: (_) => Duration.zero,
+      );
+      addTearDown(supervisor.dispose);
+
+      final bool started = await _startAndDrain(supervisor);
+      expect(started, isTrue);
+
+      ndgrClient.emitBroadcastEnded();
+      await _drainEventLoop();
+
+      expect(supervisor.status, ConnectionStatus.ended);
+
+      // Subsequent NDGR disconnect should not trigger reconnect.
+      ndgrClient.emitDisconnected();
+      await _drainEventLoop();
+      expect(supervisor.reconnectCount, 0);
+      expect(supervisor.status, ConnectionStatus.ended);
+    });
+
+    test(
       'auto transitions to ENDED when session broadcast ended event is emitted',
       () async {
         final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
@@ -1087,6 +1150,10 @@ class FakeNdgrClient implements NdgrClient {
     _eventsController.add(
       NdgrEvent(NdgrEventType.stalled, resumeCursor: resumeCursor),
     );
+  }
+
+  void emitBroadcastEnded() {
+    _eventsController.add(const NdgrEvent(NdgrEventType.broadcastEnded));
   }
 }
 

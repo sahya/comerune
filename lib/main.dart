@@ -855,6 +855,13 @@ class _NdgrClientAdapter implements reconnect.NdgrClient {
           _viewerCountController.add(event.viewerCount);
         }
         break;
+      case ndgr_impl.NdgrClientEventType.broadcastEnded:
+        if (!_eventsController.isClosed) {
+          _eventsController.add(
+            const reconnect.NdgrEvent(reconnect.NdgrEventType.broadcastEnded),
+          );
+        }
+        break;
     }
   }
 

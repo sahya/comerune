@@ -8,7 +8,13 @@ import 'ndgr_message_normalizer.dart';
 import 'ndgr_protobuf_decoder.dart';
 import 'ndgr_stall_detector.dart';
 
-enum NdgrClientEventType { connected, message, stalled, statistics }
+enum NdgrClientEventType {
+  connected,
+  message,
+  stalled,
+  statistics,
+  broadcastEnded,
+}
 
 class NdgrClientEvent {
   const NdgrClientEvent._({
@@ -29,6 +35,9 @@ class NdgrClientEvent {
 
   const NdgrClientEvent.statistics({int? viewerCount})
     : this._(type: NdgrClientEventType.statistics, viewerCount: viewerCount);
+
+  const NdgrClientEvent.broadcastEnded()
+    : this._(type: NdgrClientEventType.broadcastEnded);
 
   final NdgrClientEventType type;
   final AppMessage? message;
@@ -301,6 +310,12 @@ class NdgrClient {
   bool _handleChunkedMessage(NdgrChunkedMessage message) {
     final DateTime receivedAt = _now();
     _markReceivedAndEnsureTimer(receivedAt);
+
+    if (message.programStatus == NdgrProgramStatus.ended) {
+      _eventsController.add(const NdgrClientEvent.broadcastEnded());
+      _isStopped = true;
+      return false;
+    }
 
     if (message.statistics != null) {
       _eventsController.add(

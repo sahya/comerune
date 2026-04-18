@@ -489,6 +489,86 @@ void main() {
       );
       expect(observedAt, '12345');
     });
+
+    test(
+      'emits broadcastEnded and stops when ProgramStatus.Ended is received',
+      () async {
+        final HttpServer server = await HttpServer.bind(
+          InternetAddress.loopbackIPv4,
+          0,
+        );
+        addTearDown(() async {
+          await server.close(force: true);
+        });
+
+        server.listen((HttpRequest request) async {
+          if (request.uri.path == '/view') {
+            final List<int> segment = _encodeChunkedEntrySegment(
+              segmentUri:
+                  'http://${server.address.host}:${server.port}/segment',
+            );
+            final List<int> nextAt = _varintField(4, 9999999999);
+            request.response.add(_delimit(<int>[...segment]));
+            request.response.add(_delimit(<int>[...nextAt]));
+            await request.response.close();
+            return;
+          }
+
+          if (request.uri.path == '/segment') {
+            // One normal chat message, then ProgramStatus.Ended.
+            final List<int> chatMessage = _encodeChunkedMessage(
+              id: 'msg-1',
+              content: 'last-comment',
+            );
+            final List<int> endedMessage =
+                _encodeChunkedMessageWithProgramEnd();
+            final List<int> packed = _encodePackedSegment(<List<int>>[
+              chatMessage,
+              endedMessage,
+            ]);
+            request.response.add(packed);
+            await request.response.close();
+            return;
+          }
+
+          request.response.statusCode = HttpStatus.notFound;
+          await request.response.close();
+        });
+
+        final Uri viewUri = Uri(
+          scheme: 'http',
+          host: server.address.host,
+          port: server.port,
+          path: '/view',
+        );
+
+        final NdgrClient client = NdgrClient(
+          stallThreshold: const Duration(minutes: 1),
+        );
+        addTearDown(client.dispose);
+
+        final List<AppMessage> messages = <AppMessage>[];
+        bool broadcastEnded = false;
+        final StreamSubscription<NdgrClientEvent> subscription = client.events
+            .listen((NdgrClientEvent event) {
+              if (event.type == NdgrClientEventType.message &&
+                  event.message != null) {
+                messages.add(event.message!);
+              }
+              if (event.type == NdgrClientEventType.broadcastEnded) {
+                broadcastEnded = true;
+              }
+            });
+        addTearDown(subscription.cancel);
+
+        await client.connect(viewUri, historyCount: 0);
+
+        expect(messages, hasLength(1));
+        expect(messages[0].content, 'last-comment');
+        expect(broadcastEnded, isTrue);
+        expect(client.isRunning, isFalse);
+      },
+    );
   });
 
   group('NdgrAt', () {
@@ -512,6 +592,15 @@ List<int> _encodeChunkedEntrySegment({required String segmentUri}) {
 List<int> _encodeChunkedEntryPrevious({required String previousUri}) {
   final List<int> previous = _stringField(3, previousUri);
   return _bytesField(3, previous);
+}
+
+List<int> _encodeChunkedMessageWithProgramEnd() {
+  // ProgramStatus: state(1) = Ended (1)
+  final List<int> programStatus = _varintField(1, 1);
+  // NicoliveState: program_status(9)
+  final List<int> state = _bytesField(9, programStatus);
+  // ChunkedMessage: state(4)
+  return _bytesField(4, state);
 }
 
 List<int> _encodeChunkedMessage({
