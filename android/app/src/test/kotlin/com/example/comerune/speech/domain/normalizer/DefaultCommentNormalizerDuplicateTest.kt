@@ -54,11 +54,18 @@ class DefaultCommentNormalizerDuplicateTest {
     }
 
     @Test
-    fun `rapid fire same user gets skipReason duplicate`() {
+    fun `rapid fire same text gets skipReason duplicate`() {
+        // `InMemoryDuplicateDetector` は「同一テキスト」を duplicate 判定の条件としており、
+        // 「同一ユーザー」はあくまで無視される（仕様: per-user rate limiter ではない）。
+        // テスト名も "same user" ではなく "same text" に揃え、実挙動と一致させる。
+        // 元のテストは同ユーザーで "hello" → "different text" を投げて duplicate を期待
+        // していたが、SUT の設計上これは duplicate にならない。
+        // 本テストは「短時間に同じ文面が連投された場合に duplicate と判定される」
+        // 挙動を確認する。
         normalizer.normalize(raw("hello", userId = "user1"), settings)
 
         currentTime += 1000L
-        val second = normalizer.normalize(raw("different text", userId = "user1"), settings)
+        val second = normalizer.normalize(raw("hello", userId = "user1"), settings)
         assertEquals("duplicate", second.skipReason)
     }
 

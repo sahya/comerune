@@ -249,7 +249,13 @@ class SpeechControllerImplTest {
         controller.initialize()
         controller.start()
 
-        val text = "今日は忙しかったからでもなんとか終わったので帰れるよ"
+        // 選定理由: デフォルト設定 (minChunkLength=5, minTextLength=15, maxChunks=5) で
+        // 「から」「けど」で 2 か所分割され、どのチャンクも minChunkLength を満たすため
+        // マージされず確実に 3 チャンクとなる文を使う。
+        // 元のテキスト「今日は忙しかったからでもなんとか終わったので帰れるよ」は
+        // 「でも」が 2 文字で minChunkLength 未満→前チャンクにマージされ、
+        // 結果として 2 チャンクしか得られず assertion が落ちていた。
+        val text = "雨が降ってるからバスで行ったけどすごく時間がかかってしまった"
         controller.submitComment(rawComment("1", text))
 
         delay(800)
@@ -269,7 +275,8 @@ class SpeechControllerImplTest {
 
         engine.failOnNthSynthesize = 2
 
-        val text = "今日は忙しかったからでもなんとか終わったので帰れるよ"
+        // 同じ 3 チャンク文を利用し、N=2（中間チャンク）合成失敗を検証する。
+        val text = "雨が降ってるからバスで行ったけどすごく時間がかかってしまった"
         controller.submitComment(rawComment("1", text))
 
         delay(800)

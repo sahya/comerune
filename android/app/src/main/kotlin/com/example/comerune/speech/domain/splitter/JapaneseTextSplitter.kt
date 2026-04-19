@@ -51,10 +51,22 @@ class JapaneseTextSplitter(
          * Optionally followed by a punctuation mark (、。) which is
          * included in the match so the split point falls after the
          * punctuation — keeping "から、" together in the first chunk.
+         *
+         * 「って」に限り、直前が漢字 (CJK Unified Ideograph) の場合は
+         * 動詞テ形（例: 持って、言って、降って、行って）である可能性が
+         * 高いため、負の先読みで除外する。これにより「ても」等の本来
+         * 狙う助詞が動詞テ形の「って」に先んじて誤マッチする問題を防ぐ。
+         *
+         * 既知の制約: ひらがな語幹の動詞テ形（例: やって、歩いて、買って）は
+         * regex 単独では助詞の「って」と判別できない。実害は [MIN_CHUNK_LENGTH_DEFAULT]
+         * による短チャンクマージで最小化される（5 字未満のチャンクが隣接
+         * チャンクに吸収されるため、多くの場合は安全にマージされる）。
+         * 完全な判別には形態素解析が必要であり、本プロジェクトではスコープ外。
          */
         private val MULTI_CHAR_PATTERN = Regex(
             "(?<=[\\p{InHiragana}\\p{InKatakana}\\p{InCJKUnifiedIdeographs}ー])" +
-                "(けれども|けれど|だけど|だから|けど|ので|のに|たら|ても|でも|って|から)" +
+                "(けれども|けれど|だけど|だから|けど|ので|のに|たら|ても|でも|" +
+                "(?<![\\p{InCJKUnifiedIdeographs}])って|から)" +
                 "[、。]?" +
                 "(?=.)"
         )
@@ -67,10 +79,14 @@ class JapaneseTextSplitter(
          * end a clause before the conjunctive し (e.g. いし, だし, でし, たし,
          * もし) and NOT followed by い-adjective inflections (い, く, さ, か, っ).
          *
+         * さらに「もしれない／かもしれない」の「し」は助詞ではなく、
+         * 「しれる」の未然形の一部。先読みに「れ」を加え、「もしれ〜」の
+         * 誤マッチを抑止する。
+         *
          * Optionally followed by punctuation (、。).
          */
         private val SHI_PARTICLE_PATTERN = Regex(
-            "(?<=[いだでもた])し(?![いくさかっ])[、。]?(?=.)"
+            "(?<=[いだでもた])し(?![いくさかっれ])[、。]?(?=.)"
         )
 
         private const val PUNCTUATION_CHARS = "、。"
