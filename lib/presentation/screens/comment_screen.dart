@@ -281,6 +281,125 @@ String commentLineTextForTesting({
   );
 }
 
+/// Test-only harness exposing [_CommentRow] to widget tests.
+///
+/// The private row class intentionally stays private to prevent call sites
+/// outside this file from constructing it directly. Tests need to pump one
+/// row at a time to verify the read-skipped badge / opacity / semantics
+/// without spinning up the full [CommentScreen], so this thin wrapper
+/// forwards every prop 1:1. Behavior must match the production call site
+/// (see the `_CommentRow(` instantiation inside the ListView.builder).
+@visibleForTesting
+class CommentRowHarness extends StatelessWidget {
+  const CommentRowHarness({
+    super.key,
+    required this.message,
+    required this.themeColors,
+    this.resolvedUserName,
+    this.showUserName = true,
+    required this.fontSize,
+    this.textScaler = TextScaler.noScaling,
+    this.starPrefixHidingEnabled = false,
+    this.commentTwoLineEnabled = false,
+    this.zebraStripingEnabled = false,
+    this.emphasizeGiftNicoadComment = true,
+    this.commentIndex = 0,
+    this.userColor,
+    this.onLongPress,
+    this.onOpenUrl,
+    this.beginAt,
+    this.ngMatcher,
+  });
+
+  final AppMessage message;
+  final AppThemeColors themeColors;
+  final String? resolvedUserName;
+  final bool showUserName;
+  final double fontSize;
+  final TextScaler textScaler;
+  final bool starPrefixHidingEnabled;
+  final bool commentTwoLineEnabled;
+  final bool zebraStripingEnabled;
+  final bool emphasizeGiftNicoadComment;
+  final int commentIndex;
+  final Color? userColor;
+  final VoidCallback? onLongPress;
+  final ValueChanged<AppMessage>? onOpenUrl;
+  final DateTime? beginAt;
+  final NgMatcher? ngMatcher;
+
+  @override
+  Widget build(BuildContext context) {
+    return _CommentRow(
+      message: message,
+      themeColors: themeColors,
+      resolvedUserName: resolvedUserName,
+      showUserName: showUserName,
+      fontSize: fontSize,
+      textScaler: textScaler,
+      starPrefixHidingEnabled: starPrefixHidingEnabled,
+      commentTwoLineEnabled: commentTwoLineEnabled,
+      zebraStripingEnabled: zebraStripingEnabled,
+      emphasizeGiftNicoadComment: emphasizeGiftNicoadComment,
+      commentIndex: commentIndex,
+      userColor: userColor,
+      onLongPress: onLongPress,
+      onOpenUrl: onOpenUrl,
+      beginAt: beginAt,
+      ngMatcher: ngMatcher,
+    );
+  }
+}
+
+/// Test-only harness exposing [_PinnedCommentRow]. See [CommentRowHarness]
+/// for rationale.
+@visibleForTesting
+class PinnedCommentRowHarness extends StatelessWidget {
+  const PinnedCommentRowHarness({
+    super.key,
+    required this.message,
+    required this.themeColors,
+    this.resolvedUserName,
+    this.showUserName = true,
+    required this.fontSize,
+    this.commentTwoLineEnabled = false,
+    this.userColor,
+    required this.onUnpin,
+    this.beginAt,
+    this.textScaler = TextScaler.noScaling,
+    this.ngMatcher,
+  });
+
+  final AppMessage message;
+  final AppThemeColors themeColors;
+  final String? resolvedUserName;
+  final bool showUserName;
+  final double fontSize;
+  final bool commentTwoLineEnabled;
+  final Color? userColor;
+  final VoidCallback onUnpin;
+  final DateTime? beginAt;
+  final TextScaler textScaler;
+  final NgMatcher? ngMatcher;
+
+  @override
+  Widget build(BuildContext context) {
+    return _PinnedCommentRow(
+      message: message,
+      themeColors: themeColors,
+      resolvedUserName: resolvedUserName,
+      showUserName: showUserName,
+      fontSize: fontSize,
+      commentTwoLineEnabled: commentTwoLineEnabled,
+      userColor: userColor,
+      onUnpin: onUnpin,
+      beginAt: beginAt,
+      textScaler: textScaler,
+      ngMatcher: ngMatcher,
+    );
+  }
+}
+
 enum CommentSortOrder { ascending, descending }
 
 /// Actions reachable through the AppBar overflow menu. Kept private to the
@@ -1993,6 +2112,8 @@ class _CommentScreenState extends State<CommentScreen> {
                     onUnpin: _unpinMessage,
                     beginAt: widget.programInfo.beginAt,
                     commentTwoLineEnabled: widget.commentTwoLineEnabled,
+                    textScaler: textScaler,
+                    ngMatcher: _ngMatcher,
                   ),
                 if (widget.speechConfig.speechSettings.enabled &&
                     widget.speechConfig.isSpeechMuted)
@@ -2085,6 +2206,7 @@ class _CommentScreenState extends State<CommentScreen> {
                                 onLongPress: () => _showCommentActions(message),
                                 onOpenUrl: _showUrlConfirmDialog,
                                 beginAt: widget.programInfo.beginAt,
+                                ngMatcher: _ngMatcher,
                               );
                             },
                           ),
@@ -4324,6 +4446,8 @@ class _PinnedCommentsSection extends StatelessWidget {
     required this.onUnpin,
     this.beginAt,
     this.commentTwoLineEnabled = false,
+    this.textScaler = TextScaler.noScaling,
+    this.ngMatcher,
   });
 
   final List<AppMessage> pinnedMessages;
@@ -4335,6 +4459,8 @@ class _PinnedCommentsSection extends StatelessWidget {
   final void Function(String messageId) onUnpin;
   final DateTime? beginAt;
   final bool commentTwoLineEnabled;
+  final TextScaler textScaler;
+  final NgMatcher? ngMatcher;
 
   @override
   Widget build(BuildContext context) {
@@ -4393,6 +4519,8 @@ class _PinnedCommentsSection extends StatelessWidget {
                   : null,
               onUnpin: () => onUnpin(message.id),
               beginAt: beginAt,
+              textScaler: textScaler,
+              ngMatcher: ngMatcher,
             ),
         ],
       ),
@@ -4412,6 +4540,8 @@ class _PinnedCommentRow extends StatelessWidget {
     this.userColor,
     required this.onUnpin,
     this.beginAt,
+    this.textScaler = TextScaler.noScaling,
+    this.ngMatcher,
   });
 
   final AppMessage message;
@@ -4423,6 +4553,16 @@ class _PinnedCommentRow extends StatelessWidget {
   final Color? userColor;
   final VoidCallback onUnpin;
   final DateTime? beginAt;
+
+  /// Forwarded text scaler so the badge icon scales with the user's
+  /// accessibility font settings, matching the row rendered by
+  /// [_CommentRow.textScaler].
+  final TextScaler textScaler;
+
+  /// Optional matcher. See [_CommentRow.ngMatcher]. Pinned rows use the
+  /// pinned-specific semantics label so screen-reader users can tell a
+  /// read-skipped pinned comment apart from a read-skipped inline comment.
+  final NgMatcher? ngMatcher;
 
   @override
   Widget build(BuildContext context) {
@@ -4436,26 +4576,26 @@ class _PinnedCommentRow extends StatelessWidget {
         ? themeColors.operatorTextColor
         : userColor;
 
-    return Padding(
+    final NgDisplaySubcategory? matchedSubcategory = ngMatcher
+        ?.match(message.content)
+        ?.matchedSubcategory;
+
+    Widget body;
+    if (useTwoLine) {
+      body = _buildTwoLinePinned(context, matchedSubcategory);
+    } else {
+      body = _buildSingleLinePinned(
+        context,
+        effectiveUserColor,
+        matchedSubcategory,
+      );
+    }
+
+    Widget row = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       child: Row(
         children: <Widget>[
-          Expanded(
-            child: useTwoLine
-                ? _buildTwoLinePinned(context)
-                : Text(
-                    _commentLineText(
-                      message: message,
-                      showUserName: showUserName,
-                      resolvedUserName: resolvedUserName,
-                      beginAt: beginAt,
-                    ),
-                    style: TextStyle(
-                      fontSize: fontSize,
-                      color: effectiveUserColor,
-                    ),
-                  ),
-          ),
+          Expanded(child: body),
           SizedBox(
             width: 32,
             height: 32,
@@ -4470,6 +4610,72 @@ class _PinnedCommentRow extends StatelessWidget {
         ],
       ),
     );
+
+    if (matchedSubcategory != null) {
+      row = MergeSemantics(
+        child: Semantics(
+          label:
+              '読み上げ対象外のコメント（ピン留め）。'
+              '${displaySubcategoryLabel(matchedSubcategory)}を含みます',
+          child: row,
+        ),
+      );
+    }
+    return row;
+  }
+
+  Widget _buildSingleLinePinned(
+    BuildContext context,
+    Color? effectiveUserColor,
+    NgDisplaySubcategory? matchedSubcategory,
+  ) {
+    final TextStyle bodyStyle = TextStyle(
+      fontSize: fontSize,
+      color: effectiveUserColor,
+    );
+    if (matchedSubcategory == null) {
+      final String lineText = _commentLineText(
+        message: message,
+        showUserName: showUserName,
+        resolvedUserName: resolvedUserName,
+        beginAt: beginAt,
+      );
+      return Text(lineText, style: bodyStyle);
+    }
+    // Only the body content is dimmed; timestamp + display name stay at
+    // full contrast so the row still reads as a legitimate pinned message.
+    // Reuse [_commentLineText] with an empty body so the meta formatting
+    // stays in lock-step with the unmatched path — any future change to
+    // [_commentLineText] (operator handling, anonymous, etc.) propagates
+    // here automatically instead of drifting.
+    final String metaPrefix = _commentLineText(
+      message: message,
+      showUserName: showUserName,
+      resolvedUserName: resolvedUserName,
+      contentOverride: '',
+      beginAt: beginAt,
+    );
+    return Text.rich(
+      TextSpan(
+        children: <InlineSpan>[
+          _buildReadSkippedBadgeSpan(
+            fontSize: fontSize,
+            textScaler: textScaler,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          const TextSpan(text: ' '),
+          TextSpan(text: metaPrefix, style: bodyStyle),
+          WidgetSpan(
+            alignment: PlaceholderAlignment.baseline,
+            baseline: TextBaseline.alphabetic,
+            child: Opacity(
+              opacity: _readSkippedBodyOpacity,
+              child: Text(message.content, style: bodyStyle),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Builds a two-line layout for a pinned comment.
@@ -4477,7 +4683,10 @@ class _PinnedCommentRow extends StatelessWidget {
   /// Shares the same font ratio constants as
   /// [_CommentRowState._buildTwoLineComment] but uses a simpler layout
   /// because pinned rows don't support star-prefix hiding or hidden state.
-  Widget _buildTwoLinePinned(BuildContext context) {
+  Widget _buildTwoLinePinned(
+    BuildContext context,
+    NgDisplaySubcategory? matchedSubcategory,
+  ) {
     final String timestamp = _formatHms(message.timestamp, beginAt: beginAt);
     final double metaFontSize = (fontSize * _twoLineMetaFontRatio).clamp(
       _twoLineMinMetaFontSize,
@@ -4498,30 +4707,107 @@ class _PinnedCommentRow extends StatelessWidget {
       resolvedUserName: resolvedUserName,
     );
 
-    final List<InlineSpan> metaSpans = _buildMetaSpans(
-      timestamp: timestamp,
-      showUserName: true,
-      displayName: displayName,
-      timestampFontSize: metaFontSize,
-      idFontSize: metaFontSize,
-      timestampColor: metaColor,
-      idColor: metaColor,
-      effectiveUserColor: effectiveUserColor,
-      hidden: false,
+    final List<InlineSpan> metaSpans = <InlineSpan>[];
+    // Badge uses the body [fontSize] (not the smaller [metaFontSize]) so
+    // the read-skipped affordance stays equally readable in 2-line pinned
+    // layout; see the matching rationale in
+    // [_CommentRowState._buildTwoLineComment].
+    if (matchedSubcategory != null) {
+      metaSpans.add(
+        _buildReadSkippedBadgeSpan(
+          fontSize: fontSize,
+          textScaler: textScaler,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      );
+      metaSpans.add(const TextSpan(text: ' '));
+    }
+    metaSpans.addAll(
+      _buildMetaSpans(
+        timestamp: timestamp,
+        showUserName: true,
+        displayName: displayName,
+        timestampFontSize: metaFontSize,
+        idFontSize: metaFontSize,
+        timestampColor: metaColor,
+        idColor: metaColor,
+        effectiveUserColor: effectiveUserColor,
+        hidden: false,
+      ),
     );
+
+    Widget bodyText = Text(
+      message.content,
+      style: TextStyle(fontSize: fontSize, color: effectiveUserColor),
+    );
+    if (matchedSubcategory != null) {
+      bodyText = Opacity(opacity: _readSkippedBodyOpacity, child: bodyText);
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text.rich(TextSpan(children: metaSpans)),
         const SizedBox(height: 2),
-        Text(
-          message.content,
-          style: TextStyle(fontSize: fontSize, color: effectiveUserColor),
-        ),
+        bodyText,
       ],
     );
   }
+}
+
+/// Sentinel wrapper for the cached "matched subcategory" verdict.
+///
+/// A plain `NgDisplaySubcategory?` field cannot distinguish "not yet
+/// computed" from "computed and known to be null (no match)": both are
+/// represented as null. Wrapping the verdict in a small holder lets the
+/// state class store `null` for "uncomputed" and a `_SubcategoryCache`
+/// instance (with `value == null`) for "computed and no match".
+class _SubcategoryCache {
+  const _SubcategoryCache(this.value);
+
+  final NgDisplaySubcategory? value;
+}
+
+/// Opacity alpha applied to the body portion of a read-skipped comment row.
+///
+/// 0.7 matches the Issue #611 visual baseline. Kept as a named constant so
+/// tests and the pinned-row variant can reference the same value without
+/// risk of drifting copies.
+const double _readSkippedBodyOpacity = 0.7;
+
+/// Semantics label used by [Icon] badges inside the read-skipped row. Left
+/// intentionally short because the parent [Semantics] node already
+/// describes the full "読み上げ対象外" state; TalkBack/VoiceOver users should
+/// not hear the state twice per row.
+const String _readSkippedBadgeSemanticLabel = '読み上げ対象外';
+
+/// Builds the "read-skipped" badge icon as an inline span. Sized to mirror
+/// [_buildLeadingTypeIconSpan] (matches the gift/nicoad type icon) so the
+/// two icons line up visually when they coexist.
+///
+/// The badge's own [Semantics] is excluded because the parent row already
+/// carries a single [Semantics] node that names the state in full.
+WidgetSpan _buildReadSkippedBadgeSpan({
+  required double fontSize,
+  required TextScaler textScaler,
+  required Color color,
+}) {
+  final double baseIconSize = (fontSize * 0.95).clamp(10.0, 20.0);
+  final double iconSize = textScaler.scale(baseIconSize);
+  return WidgetSpan(
+    alignment: PlaceholderAlignment.middle,
+    child: ExcludeSemantics(
+      child: Icon(
+        Icons.volume_off,
+        size: iconSize,
+        color: color,
+        // Harmless fallback for assistive tooling that bypasses the
+        // ExcludeSemantics boundary; the parent Semantics label still
+        // carries the authoritative state.
+        semanticLabel: _readSkippedBadgeSemanticLabel,
+      ),
+    ),
+  );
 }
 
 class _CommentRow extends StatefulWidget {
@@ -4541,6 +4827,7 @@ class _CommentRow extends StatefulWidget {
     this.onLongPress,
     this.onOpenUrl,
     this.beginAt,
+    this.ngMatcher,
   });
 
   final AppMessage message;
@@ -4567,6 +4854,14 @@ class _CommentRow extends StatefulWidget {
   final ValueChanged<AppMessage>? onOpenUrl;
   final DateTime? beginAt;
 
+  /// Optional matcher used to detect that this comment is rendered only
+  /// because the user opted into a display subcategory (preset match with
+  /// `matchedSubcategory != null`). When provided, a "read-skipped" badge
+  /// is shown and the body is dimmed so the broadcaster can tell at a
+  /// glance that TTS is skipping the row. `null` matches (user-defined NG
+  /// or no match) render the row unchanged.
+  final NgMatcher? ngMatcher;
+
   @override
   State<_CommentRow> createState() => _CommentRowState();
 }
@@ -4582,6 +4877,16 @@ class _CommentRowState extends State<_CommentRow> {
   /// since [_CommentRow] is rebuilt on every frame when new messages arrive.
   List<UrlMatch>? _cachedUrlMatches;
 
+  /// Cached preset-subcategory match for [widget.message.content].
+  ///
+  /// `null` (the default) means "not yet computed"; once resolved the cache
+  /// holds a [_SubcategoryCache] describing either a real match or the
+  /// "no match" verdict. Keyed implicitly by `(message.id, ngMatcher)` —
+  /// invalidated in [didUpdateWidget] whenever either changes so a row
+  /// recycled for a new message or after a settings-driven matcher rebuild
+  /// re-evaluates cleanly.
+  _SubcategoryCache? _cachedSubcategory;
+
   bool get _isStarHidden =>
       widget.starPrefixHidingEnabled &&
       widget.message.content.startsWith('☆') &&
@@ -4591,14 +4896,41 @@ class _CommentRowState extends State<_CommentRow> {
     return _cachedUrlMatches ??= findUrls(widget.message.content);
   }
 
+  /// Resolves the preset subcategory associated with this row, or `null`
+  /// when the row should render unchanged. Returns `null` for:
+  ///   * rows with no matcher attached,
+  ///   * rows whose content does not match any entry,
+  ///   * rows that matched a user-defined NG word (matchedSubcategory is
+  ///     null — per the v1 contract, user words always block both display
+  ///     and speech so the badge would be redundant),
+  ///   * star-prefix-hidden rows (they already render a placeholder body;
+  ///     adding a badge would leak that the original matched something).
+  NgDisplaySubcategory? _resolveMatchedSubcategory() {
+    if (_isStarHidden) {
+      return null;
+    }
+    final NgMatcher? matcher = widget.ngMatcher;
+    if (matcher == null) {
+      return null;
+    }
+    final _SubcategoryCache cache = _cachedSubcategory ??= _SubcategoryCache(
+      matcher.match(widget.message.content)?.matchedSubcategory,
+    );
+    return cache.value;
+  }
+
   @override
   void didUpdateWidget(covariant _CommentRow oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.message.id != widget.message.id) {
       _revealed = false;
       _cachedUrlMatches = null;
+      _cachedSubcategory = null;
     } else if (oldWidget.message.content != widget.message.content) {
       _cachedUrlMatches = null;
+      _cachedSubcategory = null;
+    } else if (!identical(oldWidget.ngMatcher, widget.ngMatcher)) {
+      _cachedSubcategory = null;
     }
   }
 
@@ -4611,6 +4943,8 @@ class _CommentRowState extends State<_CommentRow> {
         ? const <UrlMatch>[]
         : _resolveUrlMatches();
     final bool hasUrl = urlMatches.isNotEmpty;
+    final NgDisplaySubcategory? matchedSubcategory =
+        _resolveMatchedSubcategory();
     final Color? specialBg = _backgroundColor(widget.message);
     final Color? effectiveBg =
         specialBg ??
@@ -4627,15 +4961,36 @@ class _CommentRowState extends State<_CommentRow> {
       onTap = () => widget.onOpenUrl!.call(widget.message);
     }
 
+    Widget row = Container(
+      color: effectiveBg,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+      child: _buildRichCommentLine(
+        context,
+        hidden,
+        urlMatches,
+        matchedSubcategory,
+      ),
+    );
+
+    // Wrap in a single Semantics node so TalkBack/VoiceOver users hear the
+    // "read-skipped" state once per row. The child icon badge is excluded
+    // from semantics (see [_buildReadSkippedBadgeSpan]).
+    if (matchedSubcategory != null) {
+      row = MergeSemantics(
+        child: Semantics(
+          label:
+              '読み上げ対象外のコメント。'
+              '${displaySubcategoryLabel(matchedSubcategory)}を含みます',
+          child: row,
+        ),
+      );
+    }
+
     return GestureDetector(
       key: Key('comment-row-${widget.message.id}'),
       onLongPress: widget.onLongPress,
       onTap: onTap,
-      child: Container(
-        color: effectiveBg,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-        child: _buildRichCommentLine(context, hidden, urlMatches),
-      ),
+      child: row,
     );
   }
 
@@ -4643,6 +4998,7 @@ class _CommentRowState extends State<_CommentRow> {
     BuildContext context,
     bool hidden,
     List<UrlMatch> urlMatches,
+    NgDisplaySubcategory? matchedSubcategory,
   ) {
     final AppMessage message = widget.message;
     final String timestamp = _formatHms(
@@ -4690,10 +5046,27 @@ class _CommentRowState extends State<_CommentRow> {
         timestampColor: timestampColor,
         idColor: idColor,
         effectiveUserColor: effectiveUserColor,
+        matchedSubcategory: matchedSubcategory,
       );
     }
 
     final List<InlineSpan> spans = <InlineSpan>[];
+    // Read-skipped badge is inserted before any type icon so the "skipped"
+    // state reads as a global row modifier rather than a per-type marker.
+    // Icon color uses `onSurfaceVariant` (the theme's canonical subdued
+    // foreground) so it remains legible on both the plain background and
+    // the zebra stripe tint — unlike `outline`, which is intended for
+    // decorative borders and can drop to ~40% luminance on dark themes.
+    if (matchedSubcategory != null) {
+      spans.add(
+        _buildReadSkippedBadgeSpan(
+          fontSize: fontSize,
+          textScaler: widget.textScaler,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      );
+      spans.add(const TextSpan(text: ' '));
+    }
     final InlineSpan? leadingIconSpan = _buildLeadingTypeIconSpan(
       context,
       fontSize,
@@ -4724,14 +5097,30 @@ class _CommentRowState extends State<_CommentRow> {
     );
 
     spans.add(const TextSpan(text: '  '));
-    spans.addAll(
-      _buildContentSpans(
-        context: context,
-        content: content,
-        urlMatches: urlMatches,
-        baseStyle: contentStyle,
-      ),
+    final List<InlineSpan> contentSpans = _buildContentSpans(
+      context: context,
+      content: content,
+      urlMatches: urlMatches,
+      baseStyle: contentStyle,
     );
+    if (matchedSubcategory != null) {
+      // Wrap the body in an inline Opacity so timestamp/username stay at
+      // full contrast while the content dims. A WidgetSpan is used (rather
+      // than splitting the row into a Row) so the row's vertical rhythm
+      // and tap target remain identical to non-matched rows.
+      spans.add(
+        WidgetSpan(
+          alignment: PlaceholderAlignment.baseline,
+          baseline: TextBaseline.alphabetic,
+          child: Opacity(
+            opacity: _readSkippedBodyOpacity,
+            child: Text.rich(TextSpan(children: contentSpans)),
+          ),
+        ),
+      );
+    } else {
+      spans.addAll(contentSpans);
+    }
 
     return Text.rich(TextSpan(children: spans));
   }
@@ -4818,8 +5207,24 @@ class _CommentRowState extends State<_CommentRow> {
     required Color timestampColor,
     required Color idColor,
     Color? effectiveUserColor,
+    NgDisplaySubcategory? matchedSubcategory,
   }) {
     final List<InlineSpan> metaSpans = <InlineSpan>[];
+    // Mirror the 1-line ordering: badge first, then type icon, then meta.
+    // Badge is sized by the body [fontSize] (not the smaller meta font) so
+    // it stays as readable as in 1-line mode — the whole point of the
+    // badge is at-a-glance scanning of silenced rows, which should not
+    // degrade just because the streamer chose 2-line display.
+    if (matchedSubcategory != null) {
+      metaSpans.add(
+        _buildReadSkippedBadgeSpan(
+          fontSize: fontSize,
+          textScaler: widget.textScaler,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      );
+      metaSpans.add(const TextSpan(text: ' '));
+    }
     final InlineSpan? leadingIconSpan = _buildLeadingTypeIconSpan(
       context,
       timestampFontSize,
@@ -4851,21 +5256,26 @@ class _CommentRowState extends State<_CommentRow> {
       fontStyle: hidden ? FontStyle.italic : null,
     );
 
+    Widget body = Text.rich(
+      TextSpan(
+        children: _buildContentSpans(
+          context: context,
+          content: content,
+          urlMatches: urlMatches,
+          baseStyle: contentStyle,
+        ),
+      ),
+    );
+    if (matchedSubcategory != null) {
+      body = Opacity(opacity: _readSkippedBodyOpacity, child: body);
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text.rich(TextSpan(children: metaSpans)),
         const SizedBox(height: 2),
-        Text.rich(
-          TextSpan(
-            children: _buildContentSpans(
-              context: context,
-              content: content,
-              urlMatches: urlMatches,
-              baseStyle: contentStyle,
-            ),
-          ),
-        ),
+        body,
       ],
     );
   }
