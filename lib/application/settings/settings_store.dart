@@ -185,6 +185,14 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   static const String _kDebugMode = 'settings.debugMode';
   static const String _kNgProtectionNotificationEnabled =
       'settings.ngFilter.protectionNotification';
+  static const String _kShowViolentComment =
+      'settings.comment.showViolentComment';
+  static const String _kShowSexualComment =
+      'settings.comment.showSexualComment';
+  static const String _kShowDiscriminationComment =
+      'settings.comment.showDiscriminationComment';
+  static const String _kShowMinorsRelatedComment =
+      'settings.comment.showMinorsRelatedComment';
   static const String _kPreMuteVolume = 'settings.voicevox.preMuteVolume';
   static const String _kAndroidTtsSpeed = 'settings.androidTts.speed';
   static const String _kAndroidTtsPitch = 'settings.androidTts.pitch';
@@ -302,6 +310,16 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       ngProtectionNotificationEnabled:
           _prefs.getBool(_kNgProtectionNotificationEnabled) ??
           defaults.ngProtectionNotificationEnabled,
+      showViolentComment:
+          _prefs.getBool(_kShowViolentComment) ?? defaults.showViolentComment,
+      showSexualComment:
+          _prefs.getBool(_kShowSexualComment) ?? defaults.showSexualComment,
+      showDiscriminationComment:
+          _prefs.getBool(_kShowDiscriminationComment) ??
+          defaults.showDiscriminationComment,
+      showMinorsRelatedComment:
+          _prefs.getBool(_kShowMinorsRelatedComment) ??
+          defaults.showMinorsRelatedComment,
       androidTtsSpeed:
           _prefs.getDouble(_kAndroidTtsSpeed) ?? defaults.androidTtsSpeed,
       androidTtsPitch:
@@ -406,6 +424,16 @@ class SharedPreferencesSettingsStore implements SettingsStore {
     await _prefs.setBool(
       _kNgProtectionNotificationEnabled,
       settings.ngProtectionNotificationEnabled,
+    );
+    await _prefs.setBool(_kShowViolentComment, settings.showViolentComment);
+    await _prefs.setBool(_kShowSexualComment, settings.showSexualComment);
+    await _prefs.setBool(
+      _kShowDiscriminationComment,
+      settings.showDiscriminationComment,
+    );
+    await _prefs.setBool(
+      _kShowMinorsRelatedComment,
+      settings.showMinorsRelatedComment,
     );
     await _prefs.setString(
       _kNgWordRules,

@@ -146,6 +146,76 @@ void main() {
       });
     });
 
+    test(
+      'roundtrip preserves all four preset display category toggles',
+      () async {
+        final AppSettings original = AppSettings.defaults.copyWith(
+          showViolentComment: true,
+          showSexualComment: false,
+          showDiscriminationComment: true,
+          showMinorsRelatedComment: false,
+        );
+        await store.save(original);
+
+        final String exported = await store.exportAsJson();
+        final Map<String, dynamic> json =
+            jsonDecode(exported) as Map<String, dynamic>;
+        expect(json['showViolentComment'], isTrue);
+        expect(json['showSexualComment'], isFalse);
+        expect(json['showDiscriminationComment'], isTrue);
+        expect(json['showMinorsRelatedComment'], isFalse);
+
+        final InMemorySharedPreferences newPrefs = InMemorySharedPreferences();
+        final SharedPreferencesSettingsStore newStore =
+            SharedPreferencesSettingsStore(prefs: newPrefs);
+        final AppSettings imported = await newStore.importFromJson(exported);
+
+        expect(imported.showViolentComment, isTrue);
+        expect(imported.showSexualComment, isFalse);
+        expect(imported.showDiscriminationComment, isTrue);
+        expect(imported.showMinorsRelatedComment, isFalse);
+      },
+    );
+
+    test(
+      'importing a legacy export without the new toggle keys leaves them at false',
+      () async {
+        // Simulates a settings.json produced by a pre-#614 build, which does
+        // not contain any of the four new keys. The new fields must default
+        // to false so that the conservative pre-#614 behavior (preset
+        // categories block both display and speech) is preserved.
+        final Map<String, dynamic> legacyJson = <String, dynamic>{
+          '_version': 1,
+          'themeMode': 'dark',
+          'voicevoxSpeaker': 99,
+        };
+        final String legacyJsonString = const JsonEncoder.withIndent(
+          '  ',
+        ).convert(legacyJson);
+
+        final AppSettings imported = await store.importFromJson(
+          legacyJsonString,
+        );
+
+        expect(imported.showViolentComment, isFalse);
+        expect(imported.showSexualComment, isFalse);
+        expect(imported.showDiscriminationComment, isFalse);
+        expect(imported.showMinorsRelatedComment, isFalse);
+        // Sanity: unrelated fields still applied.
+        expect(imported.themeMode, AppThemeMode.dark);
+        expect(imported.voicevoxSpeaker, 99);
+
+        // Re-loading from the same prefs must keep them at false.
+        // (`importFromJson` persists all fields including the defaulted
+        // toggles, so the keys are written but the value is false.)
+        final AppSettings reloaded = await store.load();
+        expect(reloaded.showViolentComment, isFalse);
+        expect(reloaded.showSexualComment, isFalse);
+        expect(reloaded.showDiscriminationComment, isFalse);
+        expect(reloaded.showMinorsRelatedComment, isFalse);
+      },
+    );
+
     test('roundtrip preserves gift/nicoad display + TTS toggles', () async {
       final AppSettings original = AppSettings.defaults.copyWith(
         showGiftComment: false,

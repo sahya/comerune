@@ -262,6 +262,102 @@ void main() {
     );
   });
 
+  group('preset display category toggles', () {
+    test('all four toggles default to false', () {
+      expect(AppSettings.defaults.showViolentComment, isFalse);
+      expect(AppSettings.defaults.showSexualComment, isFalse);
+      expect(AppSettings.defaults.showDiscriminationComment, isFalse);
+      expect(AppSettings.defaults.showMinorsRelatedComment, isFalse);
+    });
+
+    test('copyWith updates each toggle independently', () {
+      final AppSettings violent = AppSettings.defaults.copyWith(
+        showViolentComment: true,
+      );
+      expect(violent.showViolentComment, isTrue);
+      expect(violent.showSexualComment, isFalse);
+      expect(violent.showDiscriminationComment, isFalse);
+      expect(violent.showMinorsRelatedComment, isFalse);
+
+      final AppSettings sexual = AppSettings.defaults.copyWith(
+        showSexualComment: true,
+      );
+      expect(sexual.showSexualComment, isTrue);
+      expect(sexual.showViolentComment, isFalse);
+
+      final AppSettings discrimination = AppSettings.defaults.copyWith(
+        showDiscriminationComment: true,
+      );
+      expect(discrimination.showDiscriminationComment, isTrue);
+
+      final AppSettings minors = AppSettings.defaults.copyWith(
+        showMinorsRelatedComment: true,
+      );
+      expect(minors.showMinorsRelatedComment, isTrue);
+    });
+
+    test('copyWith preserves other toggles when one is updated', () {
+      final AppSettings initial = AppSettings.defaults.copyWith(
+        showViolentComment: true,
+        showMinorsRelatedComment: true,
+      );
+      final AppSettings updated = initial.copyWith(showSexualComment: true);
+      expect(updated.showViolentComment, isTrue);
+      expect(updated.showSexualComment, isTrue);
+      expect(updated.showDiscriminationComment, isFalse);
+      expect(updated.showMinorsRelatedComment, isTrue);
+    });
+
+    test('toJson emits all four toggle keys', () {
+      final Map<String, dynamic> json = AppSettings.defaults
+          .copyWith(
+            showViolentComment: true,
+            showSexualComment: true,
+            showDiscriminationComment: true,
+            showMinorsRelatedComment: true,
+          )
+          .toJson();
+      expect(json['showViolentComment'], isTrue);
+      expect(json['showSexualComment'], isTrue);
+      expect(json['showDiscriminationComment'], isTrue);
+      expect(json['showMinorsRelatedComment'], isTrue);
+    });
+
+    test('fromJson round-trips all four toggles', () {
+      final AppSettings original = AppSettings.defaults.copyWith(
+        showViolentComment: true,
+        showSexualComment: false,
+        showDiscriminationComment: true,
+        showMinorsRelatedComment: false,
+      );
+      final AppSettings restored = AppSettings.fromJson(original.toJson());
+      expect(restored.showViolentComment, isTrue);
+      expect(restored.showSexualComment, isFalse);
+      expect(restored.showDiscriminationComment, isTrue);
+      expect(restored.showMinorsRelatedComment, isFalse);
+    });
+
+    test(
+      'fromJson with legacy payload (no toggle keys) falls back to false',
+      () {
+        // Simulates an Export file written before #614, which has none of
+        // the four toggle keys. The new fields must default to false so
+        // existing users do not suddenly start showing previously-blocked
+        // categories after upgrading.
+        final AppSettings restored = AppSettings.fromJson(<String, dynamic>{
+          '_version': 1,
+          'themeMode': 'dark',
+        });
+        expect(restored.showViolentComment, isFalse);
+        expect(restored.showSexualComment, isFalse);
+        expect(restored.showDiscriminationComment, isFalse);
+        expect(restored.showMinorsRelatedComment, isFalse);
+        // Sanity: the rest of the payload still applied.
+        expect(restored.themeMode, AppThemeMode.dark);
+      },
+    );
+  });
+
   group('ngProtectionNotificationEnabled', () {
     test('defaults to false', () {
       expect(AppSettings.defaults.ngProtectionNotificationEnabled, isFalse);

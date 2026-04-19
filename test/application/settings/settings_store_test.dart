@@ -746,5 +746,54 @@ void main() {
         expect(loaded.speechEngine, SpeechEngine.voicevox);
       },
     );
+
+    test(
+      'preset display category toggles default to false when not stored',
+      () async {
+        final SharedPreferencesSettingsStore store =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        final AppSettings loaded = await store.load();
+
+        expect(loaded.showViolentComment, isFalse);
+        expect(loaded.showSexualComment, isFalse);
+        expect(loaded.showDiscriminationComment, isFalse);
+        expect(loaded.showMinorsRelatedComment, isFalse);
+      },
+    );
+
+    test('round-trips all four preset display category toggles', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings original = AppSettings.defaults.copyWith(
+        showViolentComment: true,
+        showSexualComment: true,
+        showDiscriminationComment: true,
+        showMinorsRelatedComment: true,
+      );
+      await store.save(original);
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.showViolentComment, isTrue);
+      expect(loaded.showSexualComment, isTrue);
+      expect(loaded.showDiscriminationComment, isTrue);
+      expect(loaded.showMinorsRelatedComment, isTrue);
+    });
+
+    test('preset display toggles are persisted independently', () async {
+      // Toggling only one of the four flags must not flip the others.
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await store.save(AppSettings.defaults.copyWith(showSexualComment: true));
+
+      final AppSettings loaded = await store.load();
+      expect(loaded.showSexualComment, isTrue);
+      expect(loaded.showViolentComment, isFalse);
+      expect(loaded.showDiscriminationComment, isFalse);
+      expect(loaded.showMinorsRelatedComment, isFalse);
+    });
   });
 }

@@ -291,6 +291,10 @@ class AppSettings {
     required this.readGiftComment,
     required this.readNicoadComment,
     required this.ngProtectionNotificationEnabled,
+    required this.showViolentComment,
+    required this.showSexualComment,
+    required this.showDiscriminationComment,
+    required this.showMinorsRelatedComment,
     required this.androidTtsSpeed,
     required this.androidTtsPitch,
     required this.androidTtsVolume,
@@ -348,6 +352,10 @@ class AppSettings {
     readGiftComment: false,
     readNicoadComment: false,
     ngProtectionNotificationEnabled: false,
+    showViolentComment: false,
+    showSexualComment: false,
+    showDiscriminationComment: false,
+    showMinorsRelatedComment: false,
     androidTtsSpeed: 1.0,
     androidTtsPitch: 1.0,
     androidTtsVolume: 1.0,
@@ -468,6 +476,31 @@ class AppSettings {
   /// historical behavior — and only announces itself when the broadcaster
   /// opts in. Off means both snackbar and badge are suppressed.
   final bool ngProtectionNotificationEnabled;
+
+  /// When true, comments matched by preset NG categories whose
+  /// [NgDisplaySubcategory] is `violence` are still displayed in the comment
+  /// list. Defaults to `false` so that the conservative pre-#614 behavior
+  /// (preset categories block both display and speech) is preserved until the
+  /// user opts in. Wiring of this flag into the actual filter pipeline is
+  /// performed in #615; for #614 the value only affects how the auto-saved
+  /// log is tagged.
+  final bool showViolentComment;
+
+  /// When true, comments matched by preset NG categories whose
+  /// [NgDisplaySubcategory] is `sexual` are still displayed in the comment
+  /// list. Defaults to `false`. See [showViolentComment] for scope notes.
+  final bool showSexualComment;
+
+  /// When true, comments matched by preset NG categories whose
+  /// [NgDisplaySubcategory] is `discrimination` are still displayed in the
+  /// comment list. Defaults to `false`. See [showViolentComment] for scope
+  /// notes.
+  final bool showDiscriminationComment;
+
+  /// When true, comments matched by preset NG categories whose
+  /// [NgDisplaySubcategory] is `minors` are still displayed in the comment
+  /// list. Defaults to `false`. See [showViolentComment] for scope notes.
+  final bool showMinorsRelatedComment;
 
   /// Android標準TTS の話速。0.5〜2.0、デフォルト 1.0。
   final double androidTtsSpeed;
@@ -617,6 +650,10 @@ class AppSettings {
     bool? readGiftComment,
     bool? readNicoadComment,
     bool? ngProtectionNotificationEnabled,
+    bool? showViolentComment,
+    bool? showSexualComment,
+    bool? showDiscriminationComment,
+    bool? showMinorsRelatedComment,
     double? androidTtsSpeed,
     double? androidTtsPitch,
     double? androidTtsVolume,
@@ -683,6 +720,12 @@ class AppSettings {
       ngProtectionNotificationEnabled:
           ngProtectionNotificationEnabled ??
           this.ngProtectionNotificationEnabled,
+      showViolentComment: showViolentComment ?? this.showViolentComment,
+      showSexualComment: showSexualComment ?? this.showSexualComment,
+      showDiscriminationComment:
+          showDiscriminationComment ?? this.showDiscriminationComment,
+      showMinorsRelatedComment:
+          showMinorsRelatedComment ?? this.showMinorsRelatedComment,
       androidTtsSpeed: androidTtsSpeed ?? this.androidTtsSpeed,
       androidTtsPitch: androidTtsPitch ?? this.androidTtsPitch,
       androidTtsVolume: androidTtsVolume ?? this.androidTtsVolume,
@@ -772,6 +815,10 @@ class AppSettings {
       'readGiftComment': readGiftComment,
       'readNicoadComment': readNicoadComment,
       'ngProtectionNotificationEnabled': ngProtectionNotificationEnabled,
+      'showViolentComment': showViolentComment,
+      'showSexualComment': showSexualComment,
+      'showDiscriminationComment': showDiscriminationComment,
+      'showMinorsRelatedComment': showMinorsRelatedComment,
       'androidTtsSpeed': androidTtsSpeed,
       'androidTtsPitch': androidTtsPitch,
       'androidTtsVolume': androidTtsVolume,
@@ -933,6 +980,16 @@ class AppSettings {
       ngProtectionNotificationEnabled:
           json['ngProtectionNotificationEnabled'] as bool? ??
           d.ngProtectionNotificationEnabled,
+      showViolentComment:
+          json['showViolentComment'] as bool? ?? d.showViolentComment,
+      showSexualComment:
+          json['showSexualComment'] as bool? ?? d.showSexualComment,
+      showDiscriminationComment:
+          json['showDiscriminationComment'] as bool? ??
+          d.showDiscriminationComment,
+      showMinorsRelatedComment:
+          json['showMinorsRelatedComment'] as bool? ??
+          d.showMinorsRelatedComment,
       androidTtsSpeed:
           (json['androidTtsSpeed'] as num?)?.toDouble() ?? d.androidTtsSpeed,
       androidTtsPitch:

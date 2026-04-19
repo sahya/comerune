@@ -15,6 +15,7 @@ import '../../application/comment_post/comment_post_controller.dart';
 import '../../application/timeshift_fetch/timeshift_fetch_controller.dart';
 import '../../application/settings/settings_store.dart';
 import '../../comment_speech/comment_speech.dart';
+import '../../data/comment_log/comment_log_tag.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/comment_log/comment_log_stats.dart';
 import '../../domain/models/teach_command.dart';
@@ -27,6 +28,7 @@ import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/matchers/ng_matcher.dart';
 import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
+import '../../domain/models/ng_display_subcategory.dart';
 import '../../domain/models/ng_policy.dart';
 import '../../domain/models/ng_preset_category.dart';
 import '../../domain/models/user_name_resolution.dart';
@@ -647,6 +649,9 @@ class _CommentScreenState extends State<CommentScreen> {
         // Flat list provided by the caller loses category info; drop any
         // previously loaded structured categories so the matcher does not
         // mix stale subcategory metadata with a fresh flat word list.
+        // The log will fall back to dropping preset matches without a
+        // [filtered:<sub>] tag, since NgMatcher.match()?.matchedSubcategory
+        // returns null for flat-fallback entries.
         _effectivePresetCategories = const <NgPresetCategory>[];
         _refreshNormalizedNgWords();
       } else if (oldWidget.contentFilter.presetNgWords.isNotEmpty &&
@@ -3564,8 +3569,8 @@ class _CommentScreenState extends State<CommentScreen> {
   }
 
   Future<void> _saveLogManual() async {
-    final List<AppMessage> messagesForStatsAndLogs = _messagesForStatsAndLogs();
-    final bool hasMessages = messagesForStatsAndLogs.isNotEmpty;
+    final List<AppMessage> messagesForLog = _messagesForLog();
+    final bool hasMessages = messagesForLog.isNotEmpty;
     if (!hasMessages) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -3587,7 +3592,7 @@ class _CommentScreenState extends State<CommentScreen> {
     try {
       final String? tempPath = await writer.writeToTempFile(
         lv: widget.programInfo.lv,
-        messages: messagesForStatsAndLogs,
+        messages: messagesForLog,
       );
       if (tempPath == null) {
         if (mounted) {
@@ -3622,7 +3627,7 @@ class _CommentScreenState extends State<CommentScreen> {
       return;
     }
 
-    final List<AppMessage> messagesForStatsAndLogs = _messagesForStatsAndLogs();
+    final List<AppMessage> messagesForLog = _messagesForLog();
 
     final Directory? customDir =
         widget.logConfig.autoSaveCommentLogPath.isNotEmpty
@@ -3633,7 +3638,7 @@ class _CommentScreenState extends State<CommentScreen> {
     try {
       savedPath = await writer.save(
         lv: widget.programInfo.lv,
-        messages: messagesForStatsAndLogs,
+        messages: messagesForLog,
         customDirectory: customDir,
       );
     } on Object {
@@ -3648,7 +3653,7 @@ class _CommentScreenState extends State<CommentScreen> {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
         ..showSnackBar(SnackBar(content: Text('コメントログを保存しました: $savedPath')));
-    } else if (messagesForStatsAndLogs.isNotEmpty) {
+    } else if (messagesForLog.isNotEmpty) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
         ..showSnackBar(const SnackBar(content: Text('コメントログの自動保存に失敗しました')));
@@ -3663,6 +3668,85 @@ class _CommentScreenState extends State<CommentScreen> {
     return widget.messages
         .where(_shouldIncludeInStatsAndLogs)
         .toList(growable: false);
+  }
+
+  /// Returns the messages to write to the auto-saved comment log file.
+  ///
+  /// Diverges from [_messagesForStatsAndLogs] (Issue #614):
+  ///   * preset-NG-matched comments are **kept** with their content
+  ///     prefixed by a `[filtered:<displaySubcategory>]` tag, instead of
+  ///     being silently dropped from the log.
+  ///   * user-defined NG word matches and NG users are still excluded
+  ///     because those are user-driven blocks (not preset display
+  ///     categories) and the tagging spec only covers the four preset
+  ///     display subcategories.
+  ///   * gift / nicoad and the system "broadcast ended" affordance row
+  ///     are still excluded — the writer contract for the former and the
+  ///     UI-only nature of the latter both predate this change.
+  ///
+  /// The stats path keeps using [_messagesForStatsAndLogs] so that this
+  /// log-only behavior change does not bleed into the in-app statistics
+  /// counts.
+  List<AppMessage> _messagesForLog() {
+    final List<AppMessage> out = <AppMessage>[];
+    for (final AppMessage message in widget.messages) {
+      // Step 1: system broadcast-ended rows are UI-only.
+      if (_isSystemBroadcastEndedMessage(message)) {
+        continue;
+      }
+      // Step 2: gift / nicoad — same writer contract as before.
+      if (message.type == AppMessageType.gift ||
+          message.type == AppMessageType.nicoad) {
+        continue;
+      }
+      // Step 3: NG user — user-driven block, kept out of the log.
+      final String? userId = message.userId;
+      if (userId != null && widget.contentFilter.ngUserIds.contains(userId)) {
+        continue;
+      }
+      // Step 4: NG word. Preset categories with a displaySubcategory get
+      // tagged so the log preserves "what would have shown if the user
+      // toggled the category on". User-defined NG words have no category
+      // and remain excluded for parity with NG-user behavior.
+      //
+      // Uses the unified NgMatcher (#613) which exposes matchedSubcategory
+      // directly. User-defined NG words match with matchedSubcategory == null,
+      // so the tag-or-drop branch below correctly excludes them from the log.
+      //
+      // Note: v1 preset asset (#612) guarantees every preset category has a
+      // non-null displaySubcategory. If a future preset is added with
+      // subcategory=null, NgMatcher.match() may return that entry first and
+      // matchedSubcategory becomes null, falling through to the user-NG
+      // exclude branch (drop, no tag). To preserve the "save with tag" intent
+      // for such future presets, the v3 schema constraint must be retained
+      // (or this method extended to skip null-subcategory matches).
+      final NgDisplaySubcategory? presetSub = _ngMatcher
+          .match(message.content)
+          ?.matchedSubcategory;
+      if (presetSub != null) {
+        out.add(
+          AppMessage(
+            id: message.id,
+            timestamp: message.timestamp,
+            userId: message.userId,
+            userName: message.userName,
+            content: CommentLogTag.applyTag(
+              content: message.content,
+              tag: CommentLogTag.filtered(presetSub),
+            ),
+            type: message.type,
+            raw: message.raw,
+          ),
+        );
+        continue;
+      }
+      if (_containsNgWord(message.content)) {
+        // Matched a user-defined NG word (no preset category match).
+        continue;
+      }
+      out.add(message);
+    }
+    return List<AppMessage>.unmodifiable(out);
   }
 
   /// Decides whether [message] contributes to in-app statistics and to the
