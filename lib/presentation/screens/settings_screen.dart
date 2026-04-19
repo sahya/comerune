@@ -173,10 +173,22 @@ class _SettingsScreenState extends State<SettingsScreen>
       // filesystem I/O は data 層の SettingsStore.writeExportToTempFile に
       // 集約し、ここでは「パスを受け取って share する」だけに留める。
       final String path = await widget.settingsStore.writeExportToTempFile();
+      // Android の Google Drive 等は `EXTRA_SUBJECT` を保存時の既定ファイル名
+      // として採用し、FileProvider の DISPLAY_NAME より優先する。
+      // ディスク上の実体がタイムスタンプ付きでも subject が変わらないと
+      // 受信側でタイムスタンプが落ちるため、basename を subject と
+      // XFile.name の双方に渡して整合させる。
+      final String exportFileName = Uri.file(path).pathSegments.last;
       await SharePlus.instance.share(
         ShareParams(
-          files: <XFile>[XFile(path, mimeType: SettingsExport.mimeType)],
-          subject: AppStrings.settings.exportShareSubject,
+          files: <XFile>[
+            XFile(
+              path,
+              name: exportFileName,
+              mimeType: SettingsExport.mimeType,
+            ),
+          ],
+          subject: exportFileName,
         ),
       );
     } on Exception catch (e) {

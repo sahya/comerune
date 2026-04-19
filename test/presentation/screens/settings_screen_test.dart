@@ -624,6 +624,66 @@ void main() {
     });
 
     testWidgets(
+      'export: share params carry the timestamped file name as both subject and XFile.name',
+      (WidgetTester tester) async {
+        // Google Drive は `ShareParams.subject` を保存時の既定ファイル名に
+        // 採用し、FileProvider の DISPLAY_NAME より優先する。
+        // タイムスタンプ付きのディスク実体に対して subject / XFile.name が
+        // 旧来の canonical 名のままだと、Drive 上で上書き保存になる。
+        //
+        // タイムスタンプ生成ルールの変更に追従させるため、data 層の
+        // `SettingsExport.timestampedFileName` を使って期待値を作る。
+        final String timestampedName = SettingsExport.timestampedFileName(
+          DateTime(2026, 4, 19, 1, 2, 3),
+        );
+        final _StubSettingsStore store = _StubSettingsStore(
+          exportPath:
+              '${tempDir.path}${Platform.pathSeparator}$timestampedName',
+        );
+
+        await tester.pumpWidget(_buildScreen(store));
+        await tester.pumpAndSettle();
+
+        final Finder exportBtn = find.byKey(
+          const Key('export-settings-button'),
+        );
+        await scrollToKeyInList(
+          tester,
+          const Key('settings-list'),
+          const Key('export-settings-button'),
+        );
+
+        await tester.tap(exportBtn);
+        await tester.pump();
+        await tester.pump();
+
+        expect(fakeShare.calls, hasLength(1));
+        final ShareParams params = fakeShare.calls.single;
+        expect(
+          params.subject,
+          timestampedName,
+          reason: 'subject は Drive の保存ファイル名として使われるため basename と一致させる',
+        );
+        expect(params.files, isNotNull);
+        expect(params.files!, hasLength(1));
+        final XFile shared = params.files!.single;
+        expect(
+          shared.name,
+          timestampedName,
+          reason:
+              'XFile.name は FileProvider 経由の DISPLAY_NAME に使われる。 '
+              'subject と揃えることで受信側の挙動を安定させる',
+        );
+        expect(shared.mimeType, SettingsExport.mimeType);
+        expect(
+          SettingsExport.timestampedFileNamePattern.hasMatch(shared.name),
+          isTrue,
+          reason: 'shared file name must match the timestamped pattern',
+        );
+      },
+    );
+
+    testWidgets(
       'export: surfaces exportFailed SnackBar when writeExport throws',
       (WidgetTester tester) async {
         final SettingsStore store = _FailingExportSettingsStore();

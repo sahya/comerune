@@ -40,19 +40,13 @@ abstract class SettingsStore {
   Future<AppSettings> importFromJson(String jsonString);
 }
 
-/// Constants describing the settings export file produced by
-/// [SettingsStore.writeExportToTempFile].  Exposed so the presentation layer
-/// can reference the canonical file name / MIME type without re-declaring
-/// string literals.
+/// Constants and helpers describing the settings export file produced by
+/// [SettingsStore.writeExportToTempFile].  Exposes the MIME type plus the
+/// timestamped file name generator / matcher so the presentation and
+/// data layers agree on the on-disk and shared file name without
+/// re-declaring string literals.
 class SettingsExport {
   const SettingsExport._();
-
-  /// Canonical base file name (no timestamp).  Used as the share sheet
-  /// subject and kept in sync with `AppStrings.exportShareSubject` so that
-  /// UI labels do not drift.  The actual file written to disk uses
-  /// [timestampedFileName] to avoid collisions when users stack multiple
-  /// backups in Drive etc.
-  static const String fileName = 'comerune-settings.json';
 
   /// File name prefix used for timestamped exports.  Also used to match
   /// previously-written temp files for cleanup.

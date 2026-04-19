@@ -86,11 +86,6 @@ final class SettingsStrings {
   String get importSettingsButton => '設定をインポート';
   String get dataManagementDescription => 'JSON形式で設定のバックアップ・復元ができます。';
 
-  /// エクスポート共有時のファイル名（Share Sheet の subject）。
-  /// **多言語対応時も翻訳しないこと** — 機械可読なファイル名パターンであり、
-  /// ブランド名 `comerune` は非翻訳対象。ここに置いているのは
-  /// 「UI から参照される文字列の一元管理」のためのみ。
-  String get exportShareSubject => 'comerune-settings.json';
   String get exportFailedSnackBar => '設定のエクスポートに失敗しました';
   String get importDialogTitle => '設定のインポート';
   String get importDialogMessage => '現在の設定がインポートしたデータで上書きされます。よろしいですか？';
