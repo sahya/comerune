@@ -12,7 +12,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import org.json.JSONObject
 import com.example.comerune.speech.domain.controller.SpeechController
 import com.example.comerune.speech.domain.controller.SpeechControllerImpl
 import com.example.comerune.speech.domain.engine.VoicevoxEngine
@@ -572,19 +571,7 @@ class CommentSpeechPlugin :
             val json = context.assets.open("preset_ng_words.json")
                 .bufferedReader()
                 .use { it.readText() }
-            val root = JSONObject(json)
-            val categories = root.getJSONObject("categories")
-            val words = mutableListOf<String>()
-            for (key in categories.keys()) {
-                val category = categories.getJSONObject(key)
-                val wordArray = category.getJSONArray("words")
-                for (i in 0 until wordArray.length()) {
-                    val word = wordArray.getString(i)
-                    if (word.isNotBlank()) {
-                        words.add(word)
-                    }
-                }
-            }
+            val words = PresetNgWordsParser.parseFlatWords(json)
             Log.i(TAG, "Loaded ${words.size} preset NG words")
             words
         } catch (e: Exception) {

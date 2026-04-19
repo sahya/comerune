@@ -26,6 +26,7 @@ import '../../domain/utils/url_extractor.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
+import '../../domain/models/ng_preset_category.dart';
 import '../../domain/models/user_name_resolution.dart';
 import '../errors/user_facing_error_messages.dart';
 import '../theme/app_theme.dart';
@@ -3042,29 +3043,11 @@ class _CommentScreenState extends State<CommentScreen> {
       final String jsonText = await rootBundle.loadString(
         'android/app/src/main/assets/preset_ng_words.json',
       );
-      final Object decoded = jsonDecode(jsonText);
-      if (decoded is! Map<String, dynamic>) {
-        return;
-      }
-      final Object? categoriesObject = decoded['categories'];
-      if (categoriesObject is! Map<String, dynamic>) {
-        return;
-      }
-      final List<String> words = <String>[];
-      for (final Object? categoryObject in categoriesObject.values) {
-        if (categoryObject is! Map<String, dynamic>) {
-          continue;
-        }
-        final Object? wordsObject = categoryObject['words'];
-        if (wordsObject is! List<dynamic>) {
-          continue;
-        }
-        for (final Object? wordObject in wordsObject) {
-          if (wordObject is String && wordObject.trim().isNotEmpty) {
-            words.add(wordObject.trim());
-          }
-        }
-      }
+      final Object? decoded = jsonDecode(jsonText);
+      final List<NgPresetCategory> categories = NgPresetCategory.parseDocument(
+        decoded,
+      );
+      final List<String> words = NgPresetCategory.flattenWords(categories);
       if (!mounted || widget.contentFilter.presetNgWords.isNotEmpty) {
         return;
       }

@@ -1,9 +1,11 @@
 {
-  "version": 2,
-  "description": "プリセットNGワード辞書（VOICEVOX Nemo 規約準拠 + TTS読み上げ不適切表現フィルタ。軽度な下ネタは既定で許容）",
+  "version": 3,
+  "description": "プリセットNGワード辞書（VOICEVOX Nemo 規約準拠 + TTS読み上げ不適切表現フィルタ。軽度な下ネタは既定で許容）。v3: 各カテゴリに policy と displaySubcategory を追加。",
   "categories": {
     "criminal_incitement": {
       "description": "犯罪助長表現（Nemo規約6「犯罪の助長」に直接抵触）",
+      "policy": "blockSpeechOnly",
+      "displaySubcategory": "violence",
       "words": [
         "殺す",
         "殺してやる",
@@ -30,6 +32,8 @@
     },
     "extreme_discrimination": {
       "description": "極端な差別・ヘイト表現（「著しく反する」に該当）",
+      "policy": "blockSpeechOnly",
+      "displaySubcategory": "discrimination",
       "words": [
         "ガイジ",
         "池沼",
@@ -43,6 +47,8 @@
     },
     "sexual_violence_and_exploitation": {
       "description": "重大な性的暴力・搾取表現（軽度な下ネタは対象外）",
+      "policy": "blockSpeechOnly",
+      "displaySubcategory": "sexual",
       "words": [
         "強姦",
         "レイプ",
@@ -58,6 +64,8 @@
     },
     "child_safety": {
       "description": "児童に関する不適切な表現（法的リスク極めて高い）",
+      "policy": "blockSpeechOnly",
+      "displaySubcategory": "minors",
       "words": [
         "児童ポルノ",
         "児ポ",
@@ -70,18 +78,29 @@
         "JC買い"
       ]
     },
-    "severe_public_morals": {
-      "description": "公序良俗に著しく反する過激表現（軽度なエロネタは対象外）",
+    "severe_public_morals_violence": {
+      "description": "公序良俗に著しく反する過激表現（暴力系）",
+      "policy": "blockSpeechOnly",
+      "displaySubcategory": "violence",
       "words": [
         "グロ画像",
         "死体画像",
+        "拷問配信"
+      ]
+    },
+    "severe_public_morals_sexual": {
+      "description": "公序良俗に著しく反する過激表現（性的搾取系）",
+      "policy": "blockSpeechOnly",
+      "displaySubcategory": "sexual",
+      "words": [
         "凌辱",
-        "拷問配信",
         "リベンジポルノ"
       ]
     },
     "vulgar_sexual_expressions": {
       "description": "卑猥表現（TTS読み上げで不適切な性的俗語・スラング）",
+      "policy": "blockSpeechOnly",
+      "displaySubcategory": "sexual",
       "words": [
         "あいじる",
         "あおかん",

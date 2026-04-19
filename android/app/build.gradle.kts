@@ -130,6 +130,16 @@ android {
             }
         }
     }
+
+    testOptions {
+        unitTests {
+            // Return default values (0 / null / false) for unmocked Android
+            // framework methods (e.g. android.util.Log) instead of throwing
+            // "Stub!" RuntimeExceptions. Required for pure-JVM unit tests
+            // that reference Android SDK types.
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 kotlin {
@@ -140,4 +150,12 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    testImplementation("junit:junit:4.13.2")
+    // Real org.json implementation for JVM unit tests. Android's bundled
+    // org.json is a stub that throws "Stub!" RuntimeExceptions when called
+    // outside an Android runtime, which breaks any test that parses JSON.
+    testImplementation("org.json:json:20240303")
 }
