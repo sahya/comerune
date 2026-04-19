@@ -24,8 +24,10 @@ import '../../domain/utils/search_normalizer.dart';
 import '../../domain/utils/unicode_sanitizer.dart';
 import '../../domain/utils/url_extractor.dart';
 import '../../domain/connection/connection_supervisor.dart';
+import '../../domain/matchers/ng_matcher.dart';
 import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
+import '../../domain/models/ng_policy.dart';
 import '../../domain/models/ng_preset_category.dart';
 import '../../domain/models/user_name_resolution.dart';
 import '../errors/user_facing_error_messages.dart';
@@ -461,7 +463,26 @@ class _CommentScreenState extends State<CommentScreen> {
   /// arriving after speech initialization are read aloud.
   DateTime? _speechBaselineTimestamp;
   List<String> _effectivePresetNgWords = const <String>[];
-  List<String> _normalizedEffectiveNgWords = const <String>[];
+
+  /// Structured preset categories loaded from the asset, when available.
+  /// Remains empty when the caller passes a pre-populated flat
+  /// `contentFilter.presetNgWords` (legacy path) or when the asset failed
+  /// to load. The matcher falls back to treating flat preset words as
+  /// `blockSpeechOnly` with no subcategory in that case, which keeps the
+  /// v1 behavior (matched comments are both silenced and hidden because
+  /// [NgDisplayPreferences] defaults to "allow nothing" in #613).
+  List<NgPresetCategory> _effectivePresetCategories =
+      const <NgPresetCategory>[];
+
+  /// Matcher rebuilt whenever the preset / user NG word list changes.
+  /// Owned by this widget because the normalized form depends on the
+  /// screen-local [_normalizeNgWordText] helper; consolidating the helper
+  /// into the domain layer is out of scope for #613 (the helper contains
+  /// screen-specific tables that would need their own separate refactor).
+  NgMatcher _ngMatcher = NgMatcher.fromFlatWords(
+    words: const <String>[],
+    normalizer: _identityNormalizer,
+  );
 
   /// Cached user_session for the comment-post feature. Empty string means
   /// "not logged in" and hides the FAB. Loaded in [initState].
@@ -512,6 +533,12 @@ class _CommentScreenState extends State<CommentScreen> {
   /// Window during which additional NG detections do not trigger new
   /// snackbars (the badge still increments). 10 seconds per spec.
   static const Duration _protectionSnackBarWindow = Duration(seconds: 10);
+
+  /// Placeholder normalizer used only for the initial [_ngMatcher] field
+  /// value (before [initState] replaces it with one wired to the real
+  /// [_normalizeNgWordText] helper). Static so that the field initializer
+  /// does not depend on `this`.
+  static String _identityNormalizer(String s) => s;
 
   /// Cached pattern used by [_sanitizeSingleLine] to collapse any residual
   /// CR / LF / TAB runs into a single space.  Defensive: the shared
@@ -617,10 +644,15 @@ class _CommentScreenState extends State<CommentScreen> {
         )) {
       if (widget.contentFilter.presetNgWords.isNotEmpty) {
         _effectivePresetNgWords = widget.contentFilter.presetNgWords;
+        // Flat list provided by the caller loses category info; drop any
+        // previously loaded structured categories so the matcher does not
+        // mix stale subcategory metadata with a fresh flat word list.
+        _effectivePresetCategories = const <NgPresetCategory>[];
         _refreshNormalizedNgWords();
       } else if (oldWidget.contentFilter.presetNgWords.isNotEmpty &&
           widget.contentFilter.presetNgWords.isEmpty) {
         _effectivePresetNgWords = const <String>[];
+        _effectivePresetCategories = const <NgPresetCategory>[];
         _refreshNormalizedNgWords();
         unawaited(_loadPresetNgWordsFromAsset());
       } else {
@@ -1233,10 +1265,13 @@ class _CommentScreenState extends State<CommentScreen> {
 
   /// Returns `true` when [content] contains any configured NG word.
   ///
-  /// Delegates to [_matchedNgWord] so that normalization is done once per
-  /// message (mirrors [AppSettings.containsNgWord] / [AppSettings.matchedNgWord]).
+  /// Delegates to the screen-local [NgMatcher]. Behavior matches the
+  /// pre-#613 implementation: a hit on any preset or user NG word returns
+  /// `true`, regardless of display preferences. The two-axis
+  /// display/speech split is exposed separately through
+  /// [NgMatcher.shouldBlockDisplay] / [NgMatcher.shouldBlockSpeech].
   bool _containsNgWord(String content) {
-    return _matchedNgWord(content) != null;
+    return _ngMatcher.match(content) != null;
   }
 
   Future<void> _handleTeachCommand(AppMessage message) async {
@@ -1646,17 +1681,12 @@ class _CommentScreenState extends State<CommentScreen> {
 
   /// Returns the matched NG word pattern in [content] (normalized, as used
   /// by [_containsNgWord]), or `null` when nothing matches.
+  ///
+  /// Delegates to the screen-local [NgMatcher]. The pattern string returned
+  /// here is the normalized form (same as pre-#613 behavior), which is
+  /// what the protection snackbar expects.
   String? _matchedNgWord(String content) {
-    if (_normalizedEffectiveNgWords.isEmpty) {
-      return null;
-    }
-    final String normalizedContent = _normalizeNgWordText(content);
-    for (final String word in _normalizedEffectiveNgWords) {
-      if (normalizedContent.contains(word)) {
-        return word;
-      }
-    }
-    return null;
+    return _ngMatcher.match(content)?.matchedPattern;
   }
 
   String _buildNgWordProtectionMessage(String ngWord) {
@@ -2787,7 +2817,11 @@ class _CommentScreenState extends State<CommentScreen> {
       return false;
     }
 
-    if (_containsNgWord(message.content)) {
+    // Display-axis NG filter. With the default [NgDisplayPreferences]
+    // (all `false`) this is equivalent to the pre-#613 `_containsNgWord`
+    // check, so the behavior is unchanged in this PR. Issue #614 will
+    // thread a real `NgDisplayPreferences` through from `AppSettings`.
+    if (_ngMatcher.shouldBlockDisplay(message.content)) {
       return false;
     }
 
@@ -3052,6 +3086,7 @@ class _CommentScreenState extends State<CommentScreen> {
         return;
       }
       _effectivePresetNgWords = words;
+      _effectivePresetCategories = categories;
       _refreshNormalizedNgWords();
       setState(() {});
     } catch (_) {
@@ -3059,18 +3094,35 @@ class _CommentScreenState extends State<CommentScreen> {
     }
   }
 
+  /// Rebuilds [_ngMatcher] from the current preset / user NG-word
+  /// configuration. Called whenever any of those inputs change. The name
+  /// is kept for continuity with the pre-#613 implementation; callers
+  /// treat this as "refresh whatever NG caches this screen keeps".
   void _refreshNormalizedNgWords() {
-    final List<String> source = <String>[
-      ..._effectivePresetNgWords,
-      ...widget.contentFilter.ngWords,
-    ];
-    final List<String> normalized = source
-        .where((String word) => word.trim().isNotEmpty)
-        .map(_normalizeNgWordText)
-        .where((String word) => word.isNotEmpty)
-        .toSet()
-        .toList(growable: false);
-    _normalizedEffectiveNgWords = normalized;
+    // Prefer the structured category list (loaded from the asset) when it
+    // is available, so the matcher can expose per-subcategory policies.
+    // Fall back to the flat preset list — for pre-#613 callers that
+    // injected `presetNgWords` directly — which is matched as
+    // `blockSpeechOnly` with no subcategory. With the default
+    // `NgDisplayPreferences` (all `false`) both paths hide and silence the
+    // same comments, so behavior is unchanged.
+    final Iterable<NgPresetCategory> categories =
+        _effectivePresetCategories.isNotEmpty
+        ? _effectivePresetCategories
+        : _effectivePresetNgWords.map(
+            (String word) => NgPresetCategory(
+              id: '_flat',
+              description: '',
+              policy: NgPolicy.blockSpeechOnly,
+              displaySubcategory: null,
+              words: <String>[word],
+            ),
+          );
+    _ngMatcher = NgMatcher(
+      presetCategories: categories,
+      userNgWords: widget.contentFilter.ngWords,
+      normalizer: _normalizeNgWordText,
+    );
   }
 
   bool _listEqualsShallow(List<String> a, List<String> b) {
