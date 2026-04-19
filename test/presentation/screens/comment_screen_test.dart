@@ -3838,6 +3838,240 @@ void main() {
       expect(find.text('コメント統計サマリ'), findsNothing);
     });
 
+    testWidgets('broadcast end without messages still freezes elapsed timer', (
+      WidgetTester tester,
+    ) async {
+      // Covers the path where the panel is never shown (no messages),
+      // but `_endedAt` still needs to be set so the status-bar timer
+      // stops ticking. Exercises the early-return side of
+      // `_updateEndedAtForStatus`.
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final DateTime beginAt = DateTime.now().subtract(
+        const Duration(minutes: 3),
+      );
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          beginAt: beginAt,
+        ),
+      );
+
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pump();
+
+      // No stats panel (no messages to summarize).
+      expect(find.byKey(const Key('stats-panel')), findsNothing);
+
+      // Elapsed label must be frozen even though the panel is absent.
+      final Finder elapsedFinder = find.byKey(const Key('status-elapsed'));
+      final String? frozen = (tester.widget(elapsedFinder) as Text).data;
+      await tester.pump(const Duration(seconds: 3));
+      expect((tester.widget(elapsedFinder) as Text).data, frozen);
+    });
+
+    testWidgets('shows end-of-broadcast SnackBar with "statistics" action', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        _message(id: 'c1', type: AppMessageType.chat, content: 'hello'),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(supervisor: supervisor, messages: messages),
+      );
+
+      expect(supervisor.endBroadcast(), isTrue);
+      // Pump once to apply state change, once more to flush the post-frame
+      // callback that shows the SnackBar.
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        find.byKey(const Key('broadcast-ended-stats-snackbar')),
+        findsOneWidget,
+      );
+      expect(find.text('放送が終了しました'), findsOneWidget);
+      expect(find.widgetWithText(SnackBarAction, '統計を見る'), findsOneWidget);
+    });
+
+    testWidgets('SnackBar "統計を見る" action re-expands a minimized stats panel', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        _message(id: 'c1', type: AppMessageType.chat, content: 'hello'),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(supervisor: supervisor, messages: messages),
+      );
+
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pump();
+      await tester.pump();
+
+      // Minimize the panel first.
+      await tester.tap(find.byKey(const Key('stats-close-button')));
+      await tester.pump();
+      expect(find.byKey(const Key('stats-panel-minimized')), findsOneWidget);
+
+      // Invoke the SnackBar action programmatically — tap via the
+      // finder can fall outside the 800x600 test view, so we drive the
+      // `onPressed` callback directly. This still exercises the wiring
+      // between the SnackBarAction and the screen's re-open handler.
+      final SnackBarAction action = tester.widget<SnackBarAction>(
+        find.widgetWithText(SnackBarAction, '統計を見る'),
+      );
+      action.onPressed();
+      await tester.pump();
+
+      expect(find.byKey(const Key('stats-panel-expanded')), findsOneWidget);
+      expect(find.byKey(const Key('stats-panel-minimized')), findsNothing);
+    });
+
+    testWidgets(
+      'SnackBar action is a no-op after stats are cleared (reconnect)',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          _message(id: 'c1', type: AppMessageType.chat, content: 'hello'),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(supervisor: supervisor, messages: messages),
+        );
+
+        expect(supervisor.endBroadcast(), isTrue);
+        await tester.pump();
+        await tester.pump();
+
+        final SnackBarAction action = tester.widget<SnackBarAction>(
+          find.widgetWithText(SnackBarAction, '統計を見る'),
+        );
+
+        // Simulate a reconnect that clears pending stats before the user
+        // taps the SnackBar action. Since `endBroadcast()` is a terminal
+        // transition in the supervisor, we simply unmount the screen to
+        // trigger the `mounted == false` / `_pendingStats == null` guard.
+        await tester.pumpWidget(const SizedBox.shrink());
+
+        // Must not throw and must not attempt to show a panel on the
+        // detached screen.
+        action.onPressed();
+        await tester.pump();
+
+        expect(find.byKey(const Key('stats-panel-expanded')), findsNothing);
+      },
+    );
+
+    testWidgets('minimized stats panel can be re-expanded by tapping it', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<AppMessage> messages = <AppMessage>[
+        _message(id: 'c1', type: AppMessageType.chat, content: 'hello'),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(supervisor: supervisor, messages: messages),
+      );
+
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pumpAndSettle();
+
+      // Starts expanded.
+      expect(find.byKey(const Key('stats-panel-expanded')), findsOneWidget);
+
+      // Tap close icon → minimize.
+      await tester.tap(find.byKey(const Key('stats-close-button')));
+      await tester.pump();
+      expect(find.byKey(const Key('stats-panel-minimized')), findsOneWidget);
+      expect(find.byKey(const Key('stats-panel-expanded')), findsNothing);
+
+      // Tap expand icon → expand again.
+      await tester.tap(find.byKey(const Key('stats-panel-expand-button')));
+      await tester.pump();
+      expect(find.byKey(const Key('stats-panel-expanded')), findsOneWidget);
+    });
+
+    testWidgets('status bar elapsed label freezes after broadcast ends', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final DateTime beginAt = DateTime.now().subtract(
+        const Duration(minutes: 10, seconds: 5),
+      );
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          beginAt: beginAt,
+        ),
+      );
+
+      final Finder elapsedFinder = find.byKey(const Key('status-elapsed'));
+      final Text before = tester.widget(elapsedFinder);
+      final String? beforeText = before.data;
+      expect(beforeText, isNotNull);
+
+      // End the broadcast. The elapsed label should stop advancing even
+      // as wall-clock time moves forward.
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pump();
+      final Text frozen = tester.widget(elapsedFinder);
+      final String? frozenText = frozen.data;
+      expect(frozenText, isNotNull);
+
+      await tester.pump(const Duration(seconds: 3));
+      final Text stillFrozen = tester.widget(elapsedFinder);
+      expect(stillFrozen.data, frozenText);
+    });
+
+    testWidgets(
+      'reconnect after stop clears stats panel and resumes elapsed ticking',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final DateTime beginAt = DateTime.now().subtract(
+          const Duration(minutes: 5),
+        );
+        final List<AppMessage> messages = <AppMessage>[
+          _message(id: 'c1', type: AppMessageType.chat, content: 'hello'),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            beginAt: beginAt,
+          ),
+        );
+
+        // User stops the broadcast → stats panel should appear.
+        expect(supervisor.stopByUser(), isTrue);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('stats-panel-expanded')), findsOneWidget);
+
+        // User reconnects. The panel must disappear so it does not leak
+        // stale stats into the new session.
+        expect(supervisor.startConnection(), isTrue);
+        expect(supervisor.onSessionWsConnected(), isTrue);
+        expect(supervisor.onNdgrEndpointResolved(), isTrue);
+        await tester.pump();
+        expect(find.byKey(const Key('stats-panel-expanded')), findsNothing);
+        expect(find.byKey(const Key('stats-panel-minimized')), findsNothing);
+
+        // The elapsed label must still render and tick. It is present so
+        // long as beginAt is provided; after reconnect endedAt is cleared
+        // so the label no longer reads the frozen value.
+        final Finder elapsedFinder = find.byKey(const Key('status-elapsed'));
+        expect(elapsedFinder, findsOneWidget);
+      },
+    );
+
     group('NG protection notification', () {
       testWidgets(
         'does not show snackbar or badge when setting is OFF (default)',

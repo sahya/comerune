@@ -437,6 +437,22 @@ class _CommentScreenState extends State<CommentScreen> {
   bool _autoScrollEnabled = true;
   bool _isStoppingForExit = false;
   bool _isSavingLog = false;
+
+  /// Timestamp at which the broadcast transitioned to ended/stopped.
+  /// Used to freeze the status-bar elapsed timer display.
+  DateTime? _endedAt;
+
+  /// Stats captured when the broadcast ends. Non-null implies the
+  /// post-broadcast stats panel is rendered; null means it is not.
+  /// Held so the user can re-open the panel after minimizing or
+  /// dismissing the end-of-broadcast SnackBar.
+  CommentLogStats? _pendingStats;
+  List<AppMessage> _pendingStatsMessages = const <AppMessage>[];
+
+  /// Whether the stats panel is expanded (full content) or minimized
+  /// (header bar only, tappable to restore). Only consulted when
+  /// [_pendingStats] is non-null.
+  bool _statsPanelExpanded = false;
   CommentSortOrder _sortOrder = CommentSortOrder.ascending;
   final Set<String> _pinnedMessageIds = <String>{};
   bool _touchActive = false;
@@ -1923,6 +1939,7 @@ class _CommentScreenState extends State<CommentScreen> {
                   debugMode: widget.debugMode,
                   broadcasterUserId: widget.programInfo.broadcasterUserId,
                   beginAt: widget.programInfo.beginAt,
+                  endedAt: _endedAt,
                   themeColors: themeColors,
                   statisticsEnabled: widget.statistics.enabled,
                   statisticsViewerCommentEnabled:
@@ -2100,6 +2117,28 @@ class _CommentScreenState extends State<CommentScreen> {
                   ),
                 ),
                 _buildBottomAction(status),
+                if (_pendingStats != null)
+                  CommentLogStatsPanel(
+                    key: const Key('stats-panel'),
+                    stats: _pendingStats!,
+                    themeMode: widget.themeMode,
+                    expanded: _statsPanelExpanded,
+                    programTitle: widget.programInfo.programTitle,
+                    lv: widget.programInfo.lv,
+                    highlightPickupEnabled:
+                        widget.statistics.highlightPickupEnabled,
+                    messages: _pendingStatsMessages,
+                    ngUserIds: widget.contentFilter.ngUserIds,
+                    onBarTapped: (int minuteOffset) {
+                      _minimizeStatsPanel();
+                      _scrollToMinuteOffset(minuteOffset);
+                    },
+                    onPeakTapped: (int minuteOffset) {
+                      _minimizeStatsPanel();
+                      _scrollToMinuteOffset(minuteOffset);
+                    },
+                    onToggleExpanded: _toggleStatsPanelExpanded,
+                  ),
                 if (_commentInputExpanded &&
                     widget.commentPostController != null)
                   CommentInputBar(
@@ -2606,8 +2645,10 @@ class _CommentScreenState extends State<CommentScreen> {
       unawaited(_saveLogAuto());
     }
 
+    _updateEndedAtForStatus(currentStatus);
+
     if (!_isStoppingForExit && _isStatsTrigger(currentStatus)) {
-      _showStatsSheet();
+      _showStatsPanel();
     }
 
     if (_lastStatus != ConnectionStatus.ended &&
@@ -3483,7 +3524,31 @@ class _CommentScreenState extends State<CommentScreen> {
     _wakelockReleaseTimer = null;
   }
 
-  void _showStatsSheet() {
+  /// Records the time at which the broadcast entered an ended / stopped
+  /// state, and clears it when the user reconnects (so the status-bar
+  /// timer resumes ticking for the new session).
+  ///
+  /// Clearing is wrapped in [setState] so the panel widget is removed in
+  /// the same frame rather than relying on a sibling listener to rebuild.
+  void _updateEndedAtForStatus(ConnectionStatus status) {
+    final bool isEnded =
+        status == ConnectionStatus.ended || status == ConnectionStatus.stopped;
+    if (isEnded) {
+      _endedAt ??= DateTime.now();
+      return;
+    }
+    if (_endedAt == null && _pendingStats == null) {
+      return;
+    }
+    setState(() {
+      _endedAt = null;
+      _pendingStats = null;
+      _pendingStatsMessages = const <AppMessage>[];
+      _statsPanelExpanded = false;
+    });
+  }
+
+  void _showStatsPanel() {
     final List<AppMessage> messagesForStatsAndLogs = _messagesForStatsAndLogs();
     final bool hasMessages = messagesForStatsAndLogs.isNotEmpty;
     if (!hasMessages) {
@@ -3495,33 +3560,57 @@ class _CommentScreenState extends State<CommentScreen> {
       ngUserIds: widget.contentFilter.ngUserIds,
     );
 
+    setState(() {
+      _pendingStats = stats;
+      _pendingStatsMessages = messagesForStatsAndLogs;
+      _statsPanelExpanded = true;
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
       }
-      showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        builder: (BuildContext sheetContext) {
-          return CommentLogStatsSheet(
-            stats: stats,
-            themeMode: widget.themeMode,
-            programTitle: widget.programInfo.programTitle,
-            lv: widget.programInfo.lv,
-            highlightPickupEnabled: widget.statistics.highlightPickupEnabled,
-            messages: messagesForStatsAndLogs,
-            ngUserIds: widget.contentFilter.ngUserIds,
-            onBarTapped: (int minuteOffset) {
-              Navigator.of(sheetContext).pop();
-              _scrollToMinuteOffset(minuteOffset);
-            },
-            onPeakTapped: (int minuteOffset) {
-              Navigator.of(sheetContext).pop();
-              _scrollToMinuteOffset(minuteOffset);
-            },
-          );
-        },
+      // NOTE: we intentionally do not call `clearSnackBars()` here so
+      // that higher-priority notifications (NG protection, send errors)
+      // stay visible even when the broadcast ends at the same moment.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          key: const Key('broadcast-ended-stats-snackbar'),
+          content: const Text('放送が終了しました'),
+          duration: const Duration(seconds: 6),
+          action: SnackBarAction(label: '統計を見る', onPressed: _reopenStatsPanel),
+        ),
       );
+    });
+  }
+
+  /// Re-opens or expands the stats panel. Safe to call when stats are
+  /// no longer available (for example after a reconnect cleared them) —
+  /// it becomes a no-op.
+  void _reopenStatsPanel() {
+    if (!mounted || _pendingStats == null) {
+      return;
+    }
+    setState(() {
+      _statsPanelExpanded = true;
+    });
+  }
+
+  void _minimizeStatsPanel() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _statsPanelExpanded = false;
+    });
+  }
+
+  void _toggleStatsPanelExpanded() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _statsPanelExpanded = !_statsPanelExpanded;
     });
   }
 
@@ -3942,6 +4031,7 @@ class _StatusBar extends StatefulWidget {
     required this.debugMode,
     this.broadcasterUserId,
     this.beginAt,
+    this.endedAt,
     required this.themeColors,
     this.statisticsEnabled = false,
     this.statisticsViewerCommentEnabled = true,
@@ -3956,6 +4046,10 @@ class _StatusBar extends StatefulWidget {
   final bool debugMode;
   final String? broadcasterUserId;
   final DateTime? beginAt;
+
+  /// Freezes the elapsed display at this moment. Non-null once the broadcast
+  /// has ended or been stopped; null while the broadcast is still active.
+  final DateTime? endedAt;
   final AppThemeColors themeColors;
   final bool statisticsEnabled;
   final bool statisticsViewerCommentEnabled;
@@ -3973,6 +4067,18 @@ class _StatusBarState extends State<_StatusBar> {
   Timer? _autoCollapseTimer;
   Timer? _elapsedTimer;
 
+  bool get _shouldTickElapsed =>
+      widget.beginAt != null && widget.endedAt == null;
+
+  void _startElapsedTimer() {
+    _elapsedTimer?.cancel();
+    _elapsedTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -3983,27 +4089,21 @@ class _StatusBarState extends State<_StatusBar> {
         });
       }
     });
-    if (widget.beginAt != null) {
-      _elapsedTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (mounted) {
-          setState(() {});
-        }
-      });
+    if (_shouldTickElapsed) {
+      _startElapsedTimer();
     }
   }
 
   @override
   void didUpdateWidget(covariant _StatusBar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.beginAt != widget.beginAt) {
+    final bool beginChanged = oldWidget.beginAt != widget.beginAt;
+    final bool endedChanged = oldWidget.endedAt != widget.endedAt;
+    if (beginChanged || endedChanged) {
       _elapsedTimer?.cancel();
       _elapsedTimer = null;
-      if (widget.beginAt != null) {
-        _elapsedTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-          if (mounted) {
-            setState(() {});
-          }
-        });
+      if (_shouldTickElapsed) {
+        _startElapsedTimer();
       }
     }
   }
@@ -4015,7 +4115,8 @@ class _StatusBarState extends State<_StatusBar> {
     super.dispose();
   }
 
-  String? _elapsedLabel() => formatElapsed(widget.beginAt);
+  String? _elapsedLabel() =>
+      formatElapsed(widget.beginAt, endAt: widget.endedAt);
 
   void _toggle() {
     setState(() {

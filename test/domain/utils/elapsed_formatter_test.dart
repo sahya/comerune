@@ -64,6 +64,29 @@ void main() {
       // Allow ±1 second tolerance due to test execution time.
       expect(result, anyOf('1:02:03', '1:02:02', '1:02:04'));
     });
+
+    test('freezes elapsed time at endAt when provided', () {
+      final DateTime start = DateTime(2026, 3, 22, 10, 0, 0);
+      final DateTime endAt = DateTime(2026, 3, 22, 11, 23, 45);
+
+      expect(formatElapsed(start, endAt: endAt), '1:23:45');
+    });
+
+    test('returns frozen elapsed regardless of wall clock when endAt set', () {
+      // Choose a start well in the past so "now" would otherwise drift the
+      // result; endAt pins it to a stable value.
+      final DateTime start = DateTime.now().subtract(const Duration(hours: 3));
+      final DateTime endAt = start.add(const Duration(minutes: 42, seconds: 7));
+
+      expect(formatElapsed(start, endAt: endAt), '0:42:07');
+    });
+
+    test('returns null when endAt is before start', () {
+      final DateTime start = DateTime(2026, 3, 22, 12, 0, 0);
+      final DateTime endAt = DateTime(2026, 3, 22, 11, 59, 59);
+
+      expect(formatElapsed(start, endAt: endAt), isNull);
+    });
   });
 
   group('formatWallClockHms', () {

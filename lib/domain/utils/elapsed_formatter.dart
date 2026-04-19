@@ -9,12 +9,19 @@ String _formatDurationHms(Duration duration) {
 }
 
 /// Formats the elapsed time since [start] as `H:MM:SS`.
-/// Returns null if [start] is null or in the future.
-String? formatElapsed(DateTime? start) {
+///
+/// When [endAt] is provided, the elapsed time is frozen at `endAt - start`
+/// instead of advancing with wall-clock time. This is used to stop the
+/// status bar timer after a broadcast ends so the displayed duration no
+/// longer ticks.
+///
+/// Returns null if [start] is null or the computed elapsed is negative.
+String? formatElapsed(DateTime? start, {DateTime? endAt}) {
   if (start == null) {
     return null;
   }
-  final Duration elapsed = DateTime.now().difference(start);
+  final DateTime reference = endAt ?? DateTime.now();
+  final Duration elapsed = reference.difference(start);
   if (elapsed.isNegative) {
     return null;
   }
