@@ -19,6 +19,7 @@ import '../../data/follow/my_program_repository.dart';
 import '../../data/user/user_attribute_store.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
+import '../../domain/matchers/ng_matcher.dart';
 import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/user_name_resolution.dart';
@@ -623,6 +624,9 @@ class _SelectScreenState extends State<SelectScreen>
             userNicknameMap: _userAttrNotifier.value.nicknames,
             ngProtectionNotificationEnabled:
                 _settingsNotifier.value.ngProtectionNotificationEnabled,
+            ngDisplayPreferences: NgDisplayPreferences.fromAppSettings(
+              _settingsNotifier.value,
+            ),
           ),
           messageTypeVisibility: MessageTypeVisibilityConfig(
             showOperatorComment: _settingsNotifier.value.showOperatorComment,

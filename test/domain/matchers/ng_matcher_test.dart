@@ -1,4 +1,5 @@
 import 'package:comerune/domain/matchers/ng_matcher.dart';
+import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/domain/models/ng_display_subcategory.dart';
 import 'package:comerune/domain/models/ng_policy.dart';
 import 'package:comerune/domain/models/ng_preset_category.dart';
@@ -429,6 +430,96 @@ void main() {
       expect(prefs.allows(NgDisplaySubcategory.sexual), isFalse);
       expect(prefs.allows(NgDisplaySubcategory.discrimination), isFalse);
       expect(prefs.allows(NgDisplaySubcategory.minors), isFalse);
+    });
+  });
+
+  group('NgDisplayPreferences.fromAppSettings (#615)', () {
+    test('all-false AppSettings maps to defaults (enabledCount == 0)', () {
+      final NgDisplayPreferences prefs = NgDisplayPreferences.fromAppSettings(
+        AppSettings.defaults,
+      );
+      expect(prefs.allowViolence, isFalse);
+      expect(prefs.allowSexual, isFalse);
+      expect(prefs.allowDiscrimination, isFalse);
+      expect(prefs.allowMinors, isFalse);
+      expect(prefs.enabledCount, 0);
+    });
+
+    test('violence flag is carried independently', () {
+      final NgDisplayPreferences prefs = NgDisplayPreferences.fromAppSettings(
+        AppSettings.defaults.copyWith(showViolentComment: true),
+      );
+      expect(prefs.allowViolence, isTrue);
+      expect(prefs.allowSexual, isFalse);
+      expect(prefs.allowDiscrimination, isFalse);
+      expect(prefs.allowMinors, isFalse);
+      expect(prefs.enabledCount, 1);
+    });
+
+    test('sexual flag is carried independently', () {
+      final NgDisplayPreferences prefs = NgDisplayPreferences.fromAppSettings(
+        AppSettings.defaults.copyWith(showSexualComment: true),
+      );
+      expect(prefs.allowSexual, isTrue);
+      expect(prefs.allowViolence, isFalse);
+      expect(prefs.allowDiscrimination, isFalse);
+      expect(prefs.allowMinors, isFalse);
+      expect(prefs.enabledCount, 1);
+    });
+
+    test('discrimination flag is carried independently', () {
+      final NgDisplayPreferences prefs = NgDisplayPreferences.fromAppSettings(
+        AppSettings.defaults.copyWith(showDiscriminationComment: true),
+      );
+      expect(prefs.allowDiscrimination, isTrue);
+      expect(prefs.allowViolence, isFalse);
+      expect(prefs.allowSexual, isFalse);
+      expect(prefs.allowMinors, isFalse);
+      expect(prefs.enabledCount, 1);
+    });
+
+    test('minors flag is carried independently', () {
+      final NgDisplayPreferences prefs = NgDisplayPreferences.fromAppSettings(
+        AppSettings.defaults.copyWith(showMinorsRelatedComment: true),
+      );
+      expect(prefs.allowMinors, isTrue);
+      expect(prefs.allowViolence, isFalse);
+      expect(prefs.allowSexual, isFalse);
+      expect(prefs.allowDiscrimination, isFalse);
+      expect(prefs.enabledCount, 1);
+    });
+
+    test('all-true AppSettings maps to all allowed (enabledCount == 4)', () {
+      final NgDisplayPreferences prefs = NgDisplayPreferences.fromAppSettings(
+        AppSettings.defaults.copyWith(
+          showViolentComment: true,
+          showSexualComment: true,
+          showDiscriminationComment: true,
+          showMinorsRelatedComment: true,
+        ),
+      );
+      expect(prefs.allowViolence, isTrue);
+      expect(prefs.allowSexual, isTrue);
+      expect(prefs.allowDiscrimination, isTrue);
+      expect(prefs.allowMinors, isTrue);
+      expect(prefs.enabledCount, 4);
+    });
+  });
+
+  group('NgDisplaySubcategory.displayLabelJa (#615)', () {
+    test('each subcategory has a distinct non-empty Japanese label', () {
+      final Set<String> labels = <String>{
+        for (final NgDisplaySubcategory s in NgDisplaySubcategory.values)
+          s.displayLabelJa,
+      };
+      expect(labels.length, NgDisplaySubcategory.values.length);
+      for (final String label in labels) {
+        expect(label.trim(), isNotEmpty);
+      }
+    });
+
+    test('minors label contains 未成年 wording', () {
+      expect(NgDisplaySubcategory.minors.displayLabelJa, contains('未成年'));
     });
   });
 }

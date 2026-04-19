@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 
 import '../../application/settings/settings_store.dart';
 import '../../domain/models/app_settings.dart';
+import '../../domain/models/ng_display_subcategory.dart';
 import '../mixins/settings_screen_mixin.dart';
+import '../widgets/display_subcategory_warning_dialog.dart';
 import '../widgets/settings_widgets.dart';
 
 final List<bool Function(AppSettings)> _messageTypeGetters =
@@ -19,6 +21,84 @@ int _enabledMessageTypeCount(AppSettings settings) {
   return _messageTypeGetters
       .where((bool Function(AppSettings) g) => g(settings))
       .length;
+}
+
+/// Declarative spec for one "読み上げ対象外コメントの表示" toggle. Kept at file
+/// scope so the 4 toggles share a single source of truth between the build
+/// method and the `N / 4 表示中` subtitle helper.
+@immutable
+class _NgDisplayToggleSpec {
+  const _NgDisplayToggleSpec({
+    required this.subcategory,
+    required this.key,
+    required this.title,
+    required this.subtitle,
+    required this.get,
+    required this.set,
+  });
+
+  final NgDisplaySubcategory subcategory;
+  final Key key;
+  final String title;
+  final String subtitle;
+  final bool Function(AppSettings s) get;
+  final AppSettings Function(AppSettings s, bool value) set;
+}
+
+const List<_NgDisplayToggleSpec> _ngDisplayToggleSpecs = <_NgDisplayToggleSpec>[
+  _NgDisplayToggleSpec(
+    subcategory: NgDisplaySubcategory.violence,
+    key: Key('show-violent-comment-switch'),
+    title: '暴力表現を含むコメントを表示',
+    subtitle: '殺害・傷害などの表現を含むコメントを画面に表示します（読み上げは行いません）',
+    get: _getShowViolent,
+    set: _setShowViolent,
+  ),
+  _NgDisplayToggleSpec(
+    subcategory: NgDisplaySubcategory.sexual,
+    key: Key('show-sexual-comment-switch'),
+    title: '性的表現を含むコメントを表示',
+    subtitle: '露骨な性的表現を含むコメントを画面に表示します（読み上げは行いません）',
+    get: _getShowSexual,
+    set: _setShowSexual,
+  ),
+  _NgDisplayToggleSpec(
+    subcategory: NgDisplaySubcategory.discrimination,
+    key: Key('show-discrimination-comment-switch'),
+    title: '差別・ヘイト表現を含むコメントを表示',
+    subtitle: '差別・ヘイト的な表現を含むコメントを画面に表示します（読み上げは行いません）',
+    get: _getShowDiscrimination,
+    set: _setShowDiscrimination,
+  ),
+  _NgDisplayToggleSpec(
+    subcategory: NgDisplaySubcategory.minors,
+    key: Key('show-minors-comment-switch'),
+    title: '未成年関連表現を含むコメントを表示',
+    subtitle: '児童・未成年に関する不適切な表現を含むコメントを画面に表示します（読み上げは行いません）',
+    get: _getShowMinors,
+    set: _setShowMinors,
+  ),
+];
+
+bool _getShowViolent(AppSettings s) => s.showViolentComment;
+AppSettings _setShowViolent(AppSettings s, bool v) =>
+    s.copyWith(showViolentComment: v);
+bool _getShowSexual(AppSettings s) => s.showSexualComment;
+AppSettings _setShowSexual(AppSettings s, bool v) =>
+    s.copyWith(showSexualComment: v);
+bool _getShowDiscrimination(AppSettings s) => s.showDiscriminationComment;
+AppSettings _setShowDiscrimination(AppSettings s, bool v) =>
+    s.copyWith(showDiscriminationComment: v);
+bool _getShowMinors(AppSettings s) => s.showMinorsRelatedComment;
+AppSettings _setShowMinors(AppSettings s, bool v) =>
+    s.copyWith(showMinorsRelatedComment: v);
+
+int _enabledNgDisplayCount(AppSettings settings) {
+  int n = 0;
+  for (final _NgDisplayToggleSpec spec in _ngDisplayToggleSpecs) {
+    if (spec.get(settings)) n++;
+  }
+  return n;
 }
 
 class CommentDisplaySettingsScreen extends StatefulWidget {
@@ -56,6 +136,34 @@ class _CommentDisplaySettingsScreenState
     } else {
       loadSettings();
     }
+  }
+
+  /// Handles OFF→ON / ON→OFF taps on the NG display subcategory toggles.
+  ///
+  /// OFF→ON always shows [showDisplaySubcategoryWarningDialog] first; the
+  /// setting is only persisted when the user confirms. ON→OFF persists
+  /// immediately with no confirmation — the restrictive state never needs
+  /// to be double-checked.
+  Future<void> _onNgDisplayToggleChanged({
+    required _NgDisplayToggleSpec spec,
+    required AppSettings settings,
+    required bool value,
+  }) async {
+    if (!value) {
+      updateAndSave(spec.set(settings, false));
+      return;
+    }
+    final bool confirmed = await showDisplaySubcategoryWarningDialog(
+      context: context,
+      subcategory: spec.subcategory,
+    );
+    if (!mounted) {
+      return;
+    }
+    if (!confirmed) {
+      return;
+    }
+    updateAndSave(spec.set(settings, true));
   }
 
   @override
@@ -251,6 +359,38 @@ class _CommentDisplaySettingsScreenState
                               ),
                             ],
                           ),
+                        ],
+                      ),
+                      ExpansionTile(
+                        key: const Key('ng-display-expansion-tile'),
+                        title: const Text('読み上げ対象外コメントの表示'),
+                        subtitle: Text(
+                          '${_enabledNgDisplayCount(settings)} / ${_ngDisplayToggleSpecs.length} 表示中 ・ 有効にしても音声では読み上げられません',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        tilePadding: EdgeInsets.zero,
+                        childrenPadding: const EdgeInsets.only(
+                          left: 16,
+                          top: 4,
+                          bottom: 4,
+                        ),
+                        initiallyExpanded: false,
+                        children: <Widget>[
+                          for (final _NgDisplayToggleSpec spec
+                              in _ngDisplayToggleSpecs)
+                            SwitchListTile(
+                              key: spec.key,
+                              title: Text(spec.title),
+                              subtitle: Text(spec.subtitle),
+                              contentPadding: EdgeInsets.zero,
+                              value: spec.get(settings),
+                              onChanged: (bool value) =>
+                                  _onNgDisplayToggleChanged(
+                                    spec: spec,
+                                    settings: settings,
+                                    value: value,
+                                  ),
+                            ),
                         ],
                       ),
                       SwitchListTile(

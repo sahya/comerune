@@ -4,6 +4,7 @@ import '../../application/settings/settings_store.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/connection/connection_method.dart';
+import '../../domain/matchers/ng_matcher.dart';
 import '../../domain/models/app_settings.dart';
 
 /// Program-level metadata for the comment screen.
@@ -155,6 +156,7 @@ class ContentFilterConfig {
     this.userColorMap = const <String, int>{},
     this.userNicknameMap = const <String, String>{},
     this.ngProtectionNotificationEnabled = false,
+    this.ngDisplayPreferences = NgDisplayPreferences.defaults,
   });
 
   /// Set of user IDs marked as NG (blocked).
@@ -195,6 +197,13 @@ class ContentFilterConfig {
   ///
   /// When false (default), filtering stays silent.
   final bool ngProtectionNotificationEnabled;
+
+  /// Per-subcategory display allow-list wired to the preset NG matcher.
+  ///
+  /// Introduced in #615. Defaults to [NgDisplayPreferences.defaults]
+  /// (all `false`), which preserves the pre-#615 behavior where every
+  /// preset NG match silently hides the comment.
+  final NgDisplayPreferences ngDisplayPreferences;
 }
 
 /// Message-type visibility toggles for [CommentScreen].

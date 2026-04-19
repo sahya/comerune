@@ -463,6 +463,328 @@ void main() {
       expect(activeTile.onChanged, isNotNull);
     });
   });
+
+  _ngDisplayToggleTests();
+}
+
+/// Per-subcategory test parameters so the same ON/OFF flow runs against
+/// all four toggles without duplicating assertions.
+class _NgToggleCase {
+  const _NgToggleCase({
+    required this.name,
+    required this.toggleKey,
+    required this.prefsKey,
+    required this.isOn,
+  });
+
+  final String name;
+  final Key toggleKey;
+  final String prefsKey;
+  final bool Function(AppSettings s) isOn;
+}
+
+const List<_NgToggleCase> _ngToggleCases = <_NgToggleCase>[
+  _NgToggleCase(
+    name: 'violence',
+    toggleKey: Key('show-violent-comment-switch'),
+    prefsKey: 'settings.comment.showViolentComment',
+    isOn: _violenceOn,
+  ),
+  _NgToggleCase(
+    name: 'sexual',
+    toggleKey: Key('show-sexual-comment-switch'),
+    prefsKey: 'settings.comment.showSexualComment',
+    isOn: _sexualOn,
+  ),
+  _NgToggleCase(
+    name: 'discrimination',
+    toggleKey: Key('show-discrimination-comment-switch'),
+    prefsKey: 'settings.comment.showDiscriminationComment',
+    isOn: _discriminationOn,
+  ),
+  _NgToggleCase(
+    name: 'minors',
+    toggleKey: Key('show-minors-comment-switch'),
+    prefsKey: 'settings.comment.showMinorsRelatedComment',
+    isOn: _minorsOn,
+  ),
+];
+
+bool _violenceOn(AppSettings s) => s.showViolentComment;
+bool _sexualOn(AppSettings s) => s.showSexualComment;
+bool _discriminationOn(AppSettings s) => s.showDiscriminationComment;
+bool _minorsOn(AppSettings s) => s.showMinorsRelatedComment;
+
+void _ngDisplayToggleTests() {
+  group('NG display toggles (#615)', () {
+    testWidgets('expansion tile is collapsed initially', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('show-violent-comment-switch')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('ng-display-expansion-tile')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('expansion tile can be opened to reveal all 4 toggles', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      await expandExpansionTileByKey(
+        tester,
+        _listKey,
+        const Key('ng-display-expansion-tile'),
+      );
+
+      for (final _NgToggleCase tc in _ngToggleCases) {
+        expect(
+          find.byKey(tc.toggleKey),
+          findsOneWidget,
+          reason: '${tc.name} toggle must render when expanded',
+        );
+      }
+    });
+
+    testWidgets('all 4 toggles default to OFF in AppSettings', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      final AppSettings loaded = await settingsStore.load();
+      for (final _NgToggleCase tc in _ngToggleCases) {
+        expect(tc.isOn(loaded), isFalse, reason: tc.name);
+      }
+    });
+
+    testWidgets('subtitle shows "0 / 4 表示中" when all off', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('ng-display-expansion-tile'),
+      );
+
+      expect(find.textContaining('0 / 4 表示中'), findsOneWidget);
+    });
+
+    for (final _NgToggleCase tc in _ngToggleCases) {
+      testWidgets(
+        '${tc.name}: OFF->ON shows the warning dialog (not persisted yet)',
+        (WidgetTester tester) async {
+          final SharedPreferencesSettingsStore settingsStore =
+              SharedPreferencesSettingsStore(
+                prefs: InMemorySharedPreferences(),
+              );
+
+          await tester.pumpWidget(_buildScreen(settingsStore));
+          await tester.pumpAndSettle();
+
+          await expandExpansionTileByKey(
+            tester,
+            _listKey,
+            const Key('ng-display-expansion-tile'),
+          );
+          await toggleSwitchByKey(tester, _listKey, tc.toggleKey);
+          await tester.pumpAndSettle();
+
+          expect(
+            find.byKey(const Key('display-subcategory-warning-dialog')),
+            findsOneWidget,
+          );
+          final AppSettings mid = await settingsStore.load();
+          expect(tc.isOn(mid), isFalse);
+        },
+      );
+
+      testWidgets('${tc.name}: cancelling the dialog keeps the toggle OFF', (
+        WidgetTester tester,
+      ) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
+
+        await expandExpansionTileByKey(
+          tester,
+          _listKey,
+          const Key('ng-display-expansion-tile'),
+        );
+        await toggleSwitchByKey(tester, _listKey, tc.toggleKey);
+        await tester.pumpAndSettle();
+
+        await tester.tap(
+          find.byKey(const Key('display-subcategory-warning-cancel-button')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('display-subcategory-warning-dialog')),
+          findsNothing,
+        );
+        final AppSettings loaded = await settingsStore.load();
+        expect(tc.isOn(loaded), isFalse);
+      });
+
+      testWidgets('${tc.name}: confirming the dialog persists ON', (
+        WidgetTester tester,
+      ) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
+
+        await expandExpansionTileByKey(
+          tester,
+          _listKey,
+          const Key('ng-display-expansion-tile'),
+        );
+        await toggleSwitchByKey(tester, _listKey, tc.toggleKey);
+        await tester.pumpAndSettle();
+
+        await tester.tap(
+          find.byKey(const Key('display-subcategory-warning-confirm-button')),
+        );
+        await tester.pumpAndSettle();
+
+        final AppSettings loaded = await settingsStore.load();
+        expect(tc.isOn(loaded), isTrue);
+      });
+
+      testWidgets(
+        '${tc.name}: ON->OFF does not show the dialog and persists immediately',
+        (WidgetTester tester) async {
+          final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+          await prefs.setBool(tc.prefsKey, true);
+          final SharedPreferencesSettingsStore settingsStore =
+              SharedPreferencesSettingsStore(prefs: prefs);
+
+          await tester.pumpWidget(_buildScreen(settingsStore));
+          await tester.pumpAndSettle();
+
+          await expandExpansionTileByKey(
+            tester,
+            _listKey,
+            const Key('ng-display-expansion-tile'),
+          );
+          await toggleSwitchByKey(tester, _listKey, tc.toggleKey);
+          await tester.pumpAndSettle();
+
+          expect(
+            find.byKey(const Key('display-subcategory-warning-dialog')),
+            findsNothing,
+            reason: 'ON->OFF must never show the warning dialog',
+          );
+          final AppSettings loaded = await settingsStore.load();
+          expect(tc.isOn(loaded), isFalse);
+        },
+      );
+    }
+
+    testWidgets('minors dialog shows the reinforced 強化版 wording', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      await expandExpansionTileByKey(
+        tester,
+        _listKey,
+        const Key('ng-display-expansion-tile'),
+      );
+      await toggleSwitchByKey(
+        tester,
+        _listKey,
+        const Key('show-minors-comment-switch'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('児童や未成年に関する不適切な表現'), findsOneWidget);
+    });
+
+    testWidgets('non-minors dialog uses the 通常版 wording', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      await expandExpansionTileByKey(
+        tester,
+        _listKey,
+        const Key('ng-display-expansion-tile'),
+      );
+      await toggleSwitchByKey(
+        tester,
+        _listKey,
+        const Key('show-violent-comment-switch'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('配信画面への映り込みに注意'), findsOneWidget);
+      expect(find.textContaining('児童や未成年'), findsNothing);
+    });
+
+    testWidgets('subtitle count updates after confirming one toggle', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      await expandExpansionTileByKey(
+        tester,
+        _listKey,
+        const Key('ng-display-expansion-tile'),
+      );
+      await toggleSwitchByKey(
+        tester,
+        _listKey,
+        const Key('show-violent-comment-switch'),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('display-subcategory-warning-confirm-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('1 / 4 表示中'), findsOneWidget);
+    });
+  });
 }
 
 Widget _buildScreen(SettingsStore settingsStore) {

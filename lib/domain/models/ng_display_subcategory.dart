@@ -25,6 +25,25 @@ enum NgDisplaySubcategory {
     }
   }
 
+  /// Short Japanese label shown in the comment action sheet "理由バナー" and
+  /// in the warning dialog body. Kept inside the enum so every call site
+  /// uses the exact same phrasing — single source of truth (note: AGENTS.md
+  /// `AppStrings`集約 policy applies to lower-screen UI strings; this
+  /// enum-bound mapping is acceptable as the canonical label until full
+  /// i18n migration in a future PR).
+  String get displayLabelJa {
+    switch (this) {
+      case NgDisplaySubcategory.violence:
+        return '暴力表現';
+      case NgDisplaySubcategory.sexual:
+        return '性的表現';
+      case NgDisplaySubcategory.discrimination:
+        return '差別・ヘイト表現';
+      case NgDisplaySubcategory.minors:
+        return '未成年関連表現';
+    }
+  }
+
   /// Parses a wire string to an [NgDisplaySubcategory], returning null on
   /// unknown input or null input. Callers must decide whether unknown values
   /// should be treated as "no classification" (preferred) or as an error.

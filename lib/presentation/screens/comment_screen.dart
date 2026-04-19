@@ -35,6 +35,7 @@ import '../../domain/models/user_name_resolution.dart';
 import '../errors/user_facing_error_messages.dart';
 import '../theme/app_theme.dart';
 import '../widgets/comment_input_bar.dart';
+import '../widgets/display_subcategory_warning_dialog.dart';
 import 'comment_log_stats_sheet.dart';
 import 'comment_screen_config.dart';
 import '../widgets/timeshift_fetch_panel.dart';
@@ -1608,6 +1609,22 @@ class _CommentScreenState extends State<CommentScreen> {
         continue;
       }
 
+      // Issue #615: when the user opted the matched subcategory back on,
+      // the comment is visible in the list. Announcing protection for
+      // something the viewer actually sees is misleading, so such matches
+      // are skipped from both the badge and the snackbar. NG-user hits are
+      // unaffected (those comments remain hidden), and user-configured NG
+      // words keep being counted because they carry no subcategory —
+      // shouldBlockDisplay always returns true for them.
+      if (matchedWord != null && !isNgUser) {
+        if (!_ngMatcher.shouldBlockDisplay(
+          message.content,
+          widget.contentFilter.ngDisplayPreferences,
+        )) {
+          continue;
+        }
+      }
+
       newHits += 1;
       // NG word takes priority when both match (design note: more actionable
       // for the broadcaster than a userId string).
@@ -2220,6 +2237,14 @@ class _CommentScreenState extends State<CommentScreen> {
     final bool isPinned = _pinnedMessageIds.contains(message.id);
     final bool hasUserId = message.userId != null && message.userId!.isNotEmpty;
     final bool canCopy = message.content.isNotEmpty;
+    // Issue #615: when the long-pressed comment is only on screen because
+    // the user opted a display subcategory on, the speech engine still
+    // skipped it. Surface that reason at the top of the sheet so the
+    // broadcaster understands why TTS stayed silent for this row. A null
+    // subcategory (unmatched or user-NG) yields no banner.
+    final NgDisplaySubcategory? readSkippedSubcategory = _ngMatcher
+        .match(message.content)
+        ?.matchedSubcategory;
 
     showModalBottomSheet<void>(
       context: context,
@@ -2229,6 +2254,17 @@ class _CommentScreenState extends State<CommentScreen> {
             key: const Key('comment-actions-sheet'),
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
+              if (readSkippedSubcategory != null)
+                ListTile(
+                  key: const Key('action-read-skipped-banner'),
+                  leading: const Icon(Icons.volume_off),
+                  title: const Text('読み上げ対象外'),
+                  subtitle: Text(
+                    '${displaySubcategoryLabel(readSkippedSubcategory)}を含むため'
+                    '音声では読み上げられません',
+                  ),
+                  enabled: false,
+                ),
               ListTile(
                 key: Key(
                   isPinned
@@ -2863,11 +2899,14 @@ class _CommentScreenState extends State<CommentScreen> {
       return false;
     }
 
-    // Display-axis NG filter. With the default [NgDisplayPreferences]
-    // (all `false`) this is equivalent to the pre-#613 `_containsNgWord`
-    // check, so the behavior is unchanged in this PR. Issue #614 will
-    // thread a real `NgDisplayPreferences` through from `AppSettings`.
-    if (_ngMatcher.shouldBlockDisplay(message.content)) {
+    // Display-axis NG filter. Uses the [NgDisplayPreferences] threaded in
+    // from `AppSettings` (#615) so the four preset subcategory toggles
+    // (violence / sexual / discrimination / minors) can opt matched
+    // comments back into the list without affecting the speech axis.
+    if (_ngMatcher.shouldBlockDisplay(
+      message.content,
+      widget.contentFilter.ngDisplayPreferences,
+    )) {
       return false;
     }
 

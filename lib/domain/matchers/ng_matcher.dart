@@ -1,3 +1,4 @@
+import '../models/app_settings.dart';
 import '../models/ng_display_subcategory.dart';
 import '../models/ng_policy.dart';
 import '../models/ng_preset_category.dart';
@@ -25,6 +26,33 @@ class NgDisplayPreferences {
   /// Convenience default used by callers that have not opted any subcategory
   /// in. Kept as a `const` so it can be used in constructors.
   static const NgDisplayPreferences defaults = NgDisplayPreferences();
+
+  /// Build an [NgDisplayPreferences] from the user's persisted [AppSettings]
+  /// subcategory toggles.
+  ///
+  /// Pure function — no widget or framework dependency — so that tests can
+  /// compose [AppSettings] directly and assert matcher behavior without
+  /// instantiating a widget. Each `show*Comment` flag maps one-to-one to
+  /// the corresponding `allow*` field.
+  factory NgDisplayPreferences.fromAppSettings(AppSettings settings) {
+    return NgDisplayPreferences(
+      allowViolence: settings.showViolentComment,
+      allowSexual: settings.showSexualComment,
+      allowDiscrimination: settings.showDiscriminationComment,
+      allowMinors: settings.showMinorsRelatedComment,
+    );
+  }
+
+  /// Number of subcategories currently allowed (0..4). Pure helper used by
+  /// the settings screen subtitle and by tests.
+  int get enabledCount {
+    int n = 0;
+    if (allowViolence) n++;
+    if (allowSexual) n++;
+    if (allowDiscrimination) n++;
+    if (allowMinors) n++;
+    return n;
+  }
 
   /// Returns `true` when comments matching [subcategory] should be shown.
   /// Null (unclassified) is never allowed by display-side toggles — the
