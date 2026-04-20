@@ -960,6 +960,57 @@ void main() {
       );
     });
 
+    testWidgets('shows non-retryable notice when error code is not retryable', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(supervisor: supervisor, messages: const <AppMessage>[]),
+      );
+
+      // lvParseFailed は再試行しても状況が変わらない分類。
+      expect(supervisor.fail(ConnectionErrorCode.lvParseFailed), isTrue);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.textContaining('再接続しても解消しません。'), findsOneWidget);
+      expect(find.textContaining('再接続ボタンで再試行できます。'), findsNothing);
+    });
+
+    testWidgets(
+      'debug snackbar composes non-retryable notice with code and detail',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: const <AppMessage>[],
+            debugMode: true,
+          ),
+        );
+
+        // 非 retryable エラー + デバッグモードで、既存の
+        // 「[code: ...] 原因: ...」形式を維持しつつ誘導文だけが切り替わる
+        // ことを保証する（Issue #639 cause 3）。
+        expect(
+          supervisor.fail(
+            ConnectionErrorCode.lvParseFailed,
+            errorDetail: 'invalid lv format',
+          ),
+          isTrue,
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+
+        expect(find.textContaining('code: LV_PARSE_FAILED'), findsOneWidget);
+        expect(find.textContaining('原因: invalid lv format'), findsOneWidget);
+        expect(find.textContaining('再接続しても解消しません。'), findsOneWidget);
+        expect(find.textContaining('再接続ボタンで再試行できます。'), findsNothing);
+      },
+    );
+
     testWidgets('shows reconnect button on FAILED and allows retry tap', (
       WidgetTester tester,
     ) async {

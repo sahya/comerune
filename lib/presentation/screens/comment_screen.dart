@@ -33,6 +33,7 @@ import '../../domain/models/ng_policy.dart';
 import '../../domain/models/ng_preset_category.dart';
 import '../../domain/models/user_name_resolution.dart';
 import '../errors/user_facing_error_messages.dart';
+import '../strings/app_strings.dart';
 import '../theme/app_theme.dart';
 import '../widgets/comment_input_bar.dart';
 import '../widgets/display_subcategory_warning_dialog.dart';
@@ -2840,6 +2841,11 @@ class _CommentScreenState extends State<CommentScreen> {
     final ConnectionErrorCode? errorCode =
         widget.connectionSupervisor.lastError;
     final String base = _failedMessage(errorCode);
+    // Unknown なエラーコード（null）は一時的事象の可能性を排除できないため
+    // retryable 扱いで誘導文を表示する（既存挙動の踏襲）。
+    final String guidance = (errorCode?.isRetryable ?? true)
+        ? AppStrings.connection.retryGuidance
+        : AppStrings.connection.nonRetryableNotice;
 
     if (widget.debugMode) {
       final String detail = widget.connectionSupervisor.lastErrorDetail ?? '';
@@ -2847,10 +2853,10 @@ class _CommentScreenState extends State<CommentScreen> {
           ? '-'
           : _compactSingleLine(detail);
       final String code = errorCode?.code ?? 'UNKNOWN_ERROR';
-      return '$base [code: $code] 原因: $compactDetail 再接続ボタンで再試行できます。';
+      return '$base [code: $code] 原因: $compactDetail $guidance';
     }
 
-    return '$base 再接続ボタンで再試行できます。';
+    return '$base $guidance';
   }
 
   String _failedMessage(ConnectionErrorCode? errorCode) {

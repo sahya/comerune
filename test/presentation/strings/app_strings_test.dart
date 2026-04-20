@@ -100,4 +100,13 @@ void main() {
       expect(AppStrings.settings.debugModeSwitchTitle, 'デバッグモード');
     });
   });
+
+  group('AppStrings.connection', () {
+    test('再試行誘導文と非再試行案内文が既定ロケールで固定される', () {
+      // Issue #639 cause 3: UI が isRetryable に応じて切り替える案内文。
+      // バイト完全一致を維持し、既存 Snackbar のリグレッションを防ぐ。
+      expect(AppStrings.connection.retryGuidance, '再接続ボタンで再試行できます。');
+      expect(AppStrings.connection.nonRetryableNotice, '再接続しても解消しません。');
+    });
+  });
 }

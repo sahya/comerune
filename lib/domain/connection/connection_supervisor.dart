@@ -96,6 +96,31 @@ extension ConnectionErrorCodeExtension on ConnectionErrorCode {
         return 'BROADCAST_ENDED';
     }
   }
+
+  /// 再接続ボタンでの再試行に意味があるかを示す分類フラグ。
+  ///
+  /// UI はこの値に基づき「再接続ボタンで再試行できます」という誘導表示を
+  /// 切り替える（Issue #639 cause 3）。値の意味は以下の通り:
+  ///
+  /// - `true`: ネットワークやサーバ側の一時的な要因の可能性があり、
+  ///   再接続で回復し得るエラー。
+  /// - `false`: 放送終了・ユーザ停止・入力値不正など、同じ操作の再試行
+  ///   では状況が変わらないエラー。
+  bool get isRetryable {
+    switch (this) {
+      case ConnectionErrorCode.sessionWsConnectFailed:
+      case ConnectionErrorCode.sessionWsTimeout:
+      case ConnectionErrorCode.endpointResolveFailed:
+      case ConnectionErrorCode.ndgrStreamFailed:
+      case ConnectionErrorCode.legacyWsFailed:
+      case ConnectionErrorCode.speechVoicevoxFailed:
+        return true;
+      case ConnectionErrorCode.lvParseFailed:
+      case ConnectionErrorCode.userStopped:
+      case ConnectionErrorCode.broadcastEnded:
+        return false;
+    }
+  }
 }
 
 typedef DelayExecutor = Future<void> Function(Duration delay);

@@ -41,6 +41,21 @@ void main() {
       );
     });
 
+    test('isRetryable classifies transient vs terminal errors', () {
+      // 再試行で回復し得るエラー: ネットワーク/サーバ側の一時的要因
+      expect(ConnectionErrorCode.sessionWsConnectFailed.isRetryable, isTrue);
+      expect(ConnectionErrorCode.sessionWsTimeout.isRetryable, isTrue);
+      expect(ConnectionErrorCode.endpointResolveFailed.isRetryable, isTrue);
+      expect(ConnectionErrorCode.ndgrStreamFailed.isRetryable, isTrue);
+      expect(ConnectionErrorCode.legacyWsFailed.isRetryable, isTrue);
+      expect(ConnectionErrorCode.speechVoicevoxFailed.isRetryable, isTrue);
+
+      // 再試行では状況が変わらないエラー
+      expect(ConnectionErrorCode.lvParseFailed.isRetryable, isFalse);
+      expect(ConnectionErrorCode.userStopped.isRetryable, isFalse);
+      expect(ConnectionErrorCode.broadcastEnded.isRetryable, isFalse);
+    });
+
     test('wifi indicator mapping remains stable for all statuses', () {
       expect(ConnectionStatus.idle.usesGreenWifiIcon, isFalse);
       expect(ConnectionStatus.connectingSessionWs.usesGreenWifiIcon, isTrue);

@@ -35,6 +35,7 @@ abstract final class AppStrings {
 
   static const SettingsStrings settings = SettingsStrings._();
   static const TimeshiftStrings timeshift = TimeshiftStrings._();
+  static const ConnectionStrings connection = ConnectionStrings._();
 }
 
 /// `SettingsScreen` で使用する文字列の集約。
@@ -107,6 +108,20 @@ final class SettingsStrings {
   // セクション: デバッグ
   String get debugSectionTitle => 'デバッグ';
   String get debugModeSwitchTitle => 'デバッグモード';
+}
+
+/// 接続エラーのスナックバー等で使用する文字列の集約。
+///
+/// 再試行可能/不可の案内文は、
+/// [ConnectionErrorCodeExtension.isRetryable] の分類と対応する。
+final class ConnectionStrings {
+  const ConnectionStrings._();
+
+  /// 再接続ボタンで回復し得るエラー時の誘導文（末尾に連結して使用する）。
+  String get retryGuidance => '再接続ボタンで再試行できます。';
+
+  /// 再接続では回復しないエラー時の案内文（末尾に連結して使用する）。
+  String get nonRetryableNotice => '再接続しても解消しません。';
 }
 
 /// タイムシフトコメント取得 UI の文字列。
