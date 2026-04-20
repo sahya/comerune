@@ -3,7 +3,7 @@
   "extends": [
     "config:recommended"
   ],
-  "enabledManagers": ["pub"],
+  "enabledManagers": ["pub", "gradle", "gradle-wrapper"],
   "labels": ["dependencies"],
   "prConcurrentLimit": 5,
   "timezone": "Asia/Tokyo",
@@ -19,6 +19,17 @@
     {
       "matchUpdateTypes": ["major"],
       "draftPR": true
+    },
+    {
+      "description": "Keep Gradle/Kotlin dependencies pinned to exact versions, matching the pubspec.yaml pinning policy in CLAUDE.md.",
+      "matchManagers": ["gradle", "gradle-wrapper"],
+      "rangeStrategy": "pin"
+    },
+    {
+      "description": "Group Android/Kotlin test-only dependencies (JUnit, org.json, etc.) into a single PR to reduce PR noise.",
+      "matchManagers": ["gradle"],
+      "matchDepTypes": ["testImplementation", "androidTestImplementation"],
+      "groupName": "android test dependencies"
     }
   ]
 }
