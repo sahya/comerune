@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:comerune/data/connection/program_info_resolver.dart';
+import 'package:comerune/domain/models/follow_program.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -40,6 +41,8 @@ void main() {
       expect(result.supplierUserId, isNull);
       expect(result.broadcasterName, isNull);
       expect(result.beginAt, isNull);
+      expect(result.programStatus, ProgramStatus.onAir);
+      expect(result.isTimeshift, isFalse);
 
       expect(httpClient.requests, hasLength(1));
       final _CapturedRequest request = httpClient.requests[0];
@@ -52,6 +55,79 @@ void main() {
 
       resolver.dispose();
     });
+
+    test(
+      'extracts programStatus=ended for timeshift programs (#639 cause 2)',
+      () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseBody = jsonEncode(<String, Object?>{
+          'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+          'data': <String, Object?>{
+            'status': 'ended',
+            'rooms': <Object?>[
+              <String, Object?>{
+                'viewUri':
+                    'https://mpn.live.nicovideo.jp/api/view/v4/TimeshiftXYZ',
+              },
+            ],
+            'title': 'Past Program',
+          },
+        });
+
+        final ProgramInfoResolver resolver = ProgramInfoResolver(
+          httpClient: httpClient,
+        );
+        final ProgramInfo result = await resolver.resolve(
+          lv: 'lv999',
+          userSession: 'session',
+        );
+
+        expect(result.programStatus, ProgramStatus.ended);
+        expect(result.isTimeshift, isTrue);
+        expect(
+          result.viewUri.toString(),
+          'https://mpn.live.nicovideo.jp/api/view/v4/TimeshiftXYZ',
+        );
+        resolver.dispose();
+      },
+    );
+
+    test(
+      'programStatus is null when status field is missing or unknown',
+      () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseBody = jsonEncode(<String, Object?>{
+          'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+          'data': <String, Object?>{
+            // No 'status' field.
+            'rooms': <Object?>[
+              <String, Object?>{
+                'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/Unknown',
+              },
+            ],
+            'title': 'Unknown Status Program',
+          },
+        });
+
+        final ProgramInfoResolver resolver = ProgramInfoResolver(
+          httpClient: httpClient,
+        );
+        final ProgramInfo result = await resolver.resolve(
+          lv: 'lv000',
+          userSession: 'session',
+        );
+
+        expect(result.programStatus, isNull);
+        expect(
+          result.isTimeshift,
+          isFalse,
+          reason:
+              'unknown status must be treated as "assume live" so callers '
+              'preserve historical behaviour (Issue #639 follow-up).',
+        );
+        resolver.dispose();
+      },
+    );
 
     test('extracts broadcaster user ID from broadcaster array', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();

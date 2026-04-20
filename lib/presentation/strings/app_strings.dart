@@ -137,4 +137,8 @@ final class TimeshiftStrings {
   String get fetchComplete => '取得完了';
   String get fetchError => '取得に失敗しました';
   String get retry => '再試行';
+
+  /// 同じ URL の再試行で解消しない種別のエラー（権限不足など）時に、
+  /// リトライボタンの代わりに表示する案内。Issue #639 cause 5。
+  String get nonRetryableNotice => 'このタイムシフトは再試行しても取得できません。';
 }

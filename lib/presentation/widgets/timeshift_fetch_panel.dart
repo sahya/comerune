@@ -174,6 +174,26 @@ class TimeshiftFetchPanel extends StatelessWidget {
   }
 
   Widget _buildErrorRow(BuildContext context) {
+    // Issue #639 cause 5: retryable=false なエラー（権限不足など）では
+    // 同じ URL の再試行で状況が変わらないので、誤誘導を避けるため
+    // リトライボタン自体を表示しない代わりに注意書きを出す。
+    final bool isRetryable = controller.lastError?.retryable ?? true;
+
+    if (!isRetryable) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            AppStrings.timeshift.nonRetryableNotice,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.error,
+            ),
+          ),
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.only(top: 6),
       child: SizedBox(

@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../../domain/models/follow_program.dart';
 import '../utils/begin_at_parser.dart';
 
 /// Resolves the NDGR view URI from the niconico programinfo API.
@@ -161,6 +162,16 @@ class ProgramInfoResolver {
     // existing `beginAt` fallback keeps the previous behaviour intact.
     final DateTime? vposBaseAt = _extractVposBaseAt(data);
 
+    // Extract broadcast status (Issue #639 cause 2). `data.status` is
+    // either `'onAir'` (currently broadcasting) or `'ended'` (timeshift).
+    // This lets the caller short-circuit live-session attempts for
+    // already-ended broadcasts and route them into the NDGR timeshift
+    // HTTP flow instead. Unknown / missing values yield `null` so the
+    // caller falls back to the existing live-path behaviour.
+    final ProgramStatus? programStatus = parseProgramStatus(
+      data['status'] as String?,
+    );
+
     log(
       'Resolved NDGR viewUri for $lv via programinfo'
       ' (broadcaster: ${broadcasterInfo.name ?? 'null'}'
@@ -186,6 +197,7 @@ class ProgramInfoResolver {
       broadcasterName: broadcasterInfo.name,
       beginAt: beginAt,
       vposBaseAt: vposBaseAt,
+      programStatus: programStatus,
     );
   }
 
@@ -326,6 +338,7 @@ class ProgramInfo {
     this.broadcasterName,
     this.beginAt,
     this.vposBaseAt,
+    this.programStatus,
   });
 
   /// The NDGR view URI extracted from `data.rooms[0].viewUri`.
@@ -357,6 +370,25 @@ class ProgramInfo {
   /// fall back to [beginAt] otherwise — using `beginAt` as a fallback
   /// keeps behaviour identical to the pre-Issue-#465 code path.
   final DateTime? vposBaseAt;
+
+  /// Program lifecycle status extracted from `data.status` (Issue #639).
+  ///
+  /// `null` indicates the server did not return a recognised status (legacy
+  /// API responses, or unknown string). Callers should treat `null` as
+  /// "unknown — assume live" to preserve historical behaviour.
+  ///
+  /// When equal to [ProgramStatus.ended], the broadcast is a timeshift and
+  /// the live session WS / NDGR streaming path should be bypassed in favour
+  /// of the NDGR timeshift HTTP fetch path.
+  final ProgramStatus? programStatus;
+
+  /// Whether this broadcast is a timeshift (past) broadcast.
+  ///
+  /// Equivalent to `programStatus == ProgramStatus.ended`. Provided as a
+  /// named predicate so call sites (and tests) read intent rather than
+  /// a status-value comparison. See [programStatus] for why `null` is
+  /// treated as "assume live".
+  bool get isTimeshift => programStatus == ProgramStatus.ended;
 }
 
 class ProgramInfoResolveException implements Exception {

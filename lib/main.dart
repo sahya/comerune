@@ -227,6 +227,14 @@ class _ComeruneAppState extends State<ComeruneApp> {
       onVposBaseAtResolved: (DateTime vposBaseAt) {
         _vposBaseAtNotifier.value = vposBaseAt;
       },
+      // Issue #639 cause 4: programinfo が「ended」を返した放送
+      // （タイムシフト）では、過去コメントを NDGR HTTP 経由で
+      // 取得するよう TimeshiftFetchController に viewApiUri を
+      // 渡して初回取得を開始する。同じ URL で二重起動を避けるため
+      // 既に実行中/完了している場合はスキップする。
+      onTimeshiftDetected: (Uri viewApiUri) {
+        unawaited(_tryStartTimeshiftInitial(viewApiUri));
+      },
     );
     _ndgrClient = _NdgrClientAdapter(
       client: ndgr_impl.NdgrClient(),
@@ -275,6 +283,32 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _ndgrViewerCountSubscription = _ndgrClient.viewerCounts.listen(
       _statisticsStore.updateViewerCount,
     );
+  }
+
+  /// Called when [_SessionWsClientAdapter] detects a timeshift (ended)
+  /// broadcast from the programinfo response. Routes past-comment
+  /// retrieval to [TimeshiftFetchController.fetchInitial] so the user
+  /// does not have to trigger it manually (Issue #639 cause 4).
+  ///
+  /// Idempotent: if the controller is already fetching (or has progressed
+  /// past idle in this session) the call is skipped. This prevents double
+  /// initial-fetches when session resolution happens more than once
+  /// (e.g. reconnect attempts) while the previous fetch is still running
+  /// or already collected past comments.
+  Future<void> _tryStartTimeshiftInitial(Uri viewApiUri) async {
+    if (_timeshiftFetchController.status != TimeshiftFetchStatus.idle) {
+      return;
+    }
+    try {
+      await _timeshiftFetchController.fetchInitial(viewApiUri);
+    } on Object catch (error, stackTrace) {
+      log(
+        'Timeshift initial fetch failed',
+        name: 'App',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
   }
 
   @override
@@ -383,6 +417,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     void Function(String? userId, String name)? onBroadcasterNameResolved,
     void Function(DateTime beginAt)? onBeginAtResolved,
     void Function(DateTime vposBaseAt)? onVposBaseAtResolved,
+    void Function(Uri viewApiUri)? onTimeshiftDetected,
   }) : _lvProvider = lvProvider,
        _userSessionProvider = userSessionProvider,
        _programInfoResolver = programInfoResolver,
@@ -390,7 +425,8 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
        _onSupplierUserIdResolved = onSupplierUserIdResolved,
        _onBroadcasterNameResolved = onBroadcasterNameResolved,
        _onBeginAtResolved = onBeginAtResolved,
-       _onVposBaseAtResolved = onVposBaseAtResolved;
+       _onVposBaseAtResolved = onVposBaseAtResolved,
+       _onTimeshiftDetected = onTimeshiftDetected;
 
   final String Function() _lvProvider;
   final Future<String> Function() _userSessionProvider;
@@ -400,6 +436,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
   final void Function(String? userId, String name)? _onBroadcasterNameResolved;
   final void Function(DateTime beginAt)? _onBeginAtResolved;
   final void Function(DateTime vposBaseAt)? _onVposBaseAtResolved;
+  final void Function(Uri viewApiUri)? _onTimeshiftDetected;
   final StreamController<reconnect.SessionWsEvent> _eventsController =
       StreamController<reconnect.SessionWsEvent>.broadcast();
 
@@ -463,11 +500,42 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       if (programInfo.supplierUserId != null) {
         _onSupplierUserIdResolved?.call(programInfo.supplierUserId!);
       }
+      // Issue #639 cause 2: for ended broadcasts (timeshift) notify the
+      // caller so they can route fetching through the NDGR timeshift HTTP
+      // flow.
+      if (programInfo.isTimeshift) {
+        _onTimeshiftDetected?.call(programInfo.viewUri);
+      }
       log(
-        'Resolved NDGR endpoint via programinfo API',
+        'Resolved NDGR endpoint via programinfo API '
+        '(status: ${programInfo.programStatus?.name ?? 'unknown'})',
         name: 'SessionWsClientAdapter',
       );
+      // Issue #639 follow-up: when the broadcast is already ended,
+      // short-circuit the live NDGR streaming path. Both
+      // `NdgrClient` (live) and `NdgrTimeshiftClient` (HTTP) would
+      // otherwise race on the same viewUri — independent HttpClient
+      // instances, same host, same query shape — which risks:
+      //   - server-side rate limits (HTTP 429) on duplicated fetches
+      //   - contradictory UI state (`ndgrStreamFailed` snackbar while
+      //     timeshift panel shows a different error classification)
+      //   - wasted bandwidth for the ~N00 ms until the live path
+      //     receives the ended signal on its first chunk
+      // Throwing `broadcastEnded` routes ConnectionSupervisor directly
+      // to `ConnectionStatus.ended` via `endBroadcast()` without
+      // attempting to stream. The timeshift fetch started via
+      // `onTimeshiftDetected` above continues independently.
+      if (programInfo.isTimeshift) {
+        throw const reconnect.SessionWsConnectException(
+          reconnect.SessionWsConnectFailureKind.broadcastEnded,
+        );
+      }
       return reconnect.SessionEndpoints(ndgrViewApiUri: programInfo.viewUri);
+    } on reconnect.SessionWsConnectException {
+      // Re-throw our own signalling exception so it is not swallowed by
+      // the broad fallback handlers below. ConnectionSupervisor maps
+      // `broadcastEnded` into `endBroadcast()` directly.
+      rethrow;
     } on ProgramInfoResolveException catch (error) {
       if (error.title != null) {
         _onProgramTitleResolved?.call(error.title!);

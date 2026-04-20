@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -20,6 +21,147 @@ void main() {
       expect(controller.totalFetched, 0);
       expect(controller.hasMore, isFalse);
       expect(controller.isFetchingAll, isFalse);
+    });
+
+    group('TimeshiftFetchError.classify', () {
+      test('HTTP 403 is classified as non-retryable (premium-only case)', () {
+        final TimeshiftFetchError error = TimeshiftFetchError.classify(
+          const HttpException(
+            'NDGR timeshift session request failed with status 403',
+          ),
+        );
+        expect(error.retryable, isFalse);
+      });
+
+      test('HTTP 401 is classified as non-retryable (auth)', () {
+        final TimeshiftFetchError error = TimeshiftFetchError.classify(
+          const HttpException(
+            'NDGR timeshift session request failed with status 401',
+          ),
+        );
+        expect(error.retryable, isFalse);
+      });
+
+      test('HTTP 404 is classified as non-retryable (removed)', () {
+        final TimeshiftFetchError error = TimeshiftFetchError.classify(
+          const HttpException(
+            'NDGR timeshift session request failed with status 404',
+          ),
+        );
+        expect(error.retryable, isFalse);
+      });
+
+      test('HTTP 408 Request Timeout is retryable (transient)', () {
+        final TimeshiftFetchError error = TimeshiftFetchError.classify(
+          const HttpException(
+            'NDGR timeshift backward request failed with status 408',
+          ),
+        );
+        expect(error.retryable, isTrue);
+      });
+
+      test('HTTP 429 Too Many Requests is retryable (transient)', () {
+        final TimeshiftFetchError error = TimeshiftFetchError.classify(
+          const HttpException(
+            'NDGR timeshift backward request failed with status 429',
+          ),
+        );
+        expect(error.retryable, isTrue);
+      });
+
+      test('HTTP 503 is classified as retryable (server side)', () {
+        final TimeshiftFetchError error = TimeshiftFetchError.classify(
+          const HttpException(
+            'NDGR timeshift backward request failed with status 503',
+          ),
+        );
+        expect(error.retryable, isTrue);
+      });
+
+      test('SocketException is retryable', () {
+        final TimeshiftFetchError error = TimeshiftFetchError.classify(
+          const SocketException('reset'),
+        );
+        expect(error.retryable, isTrue);
+      });
+
+      test('TimeoutException is retryable', () {
+        final TimeshiftFetchError error = TimeshiftFetchError.classify(
+          TimeoutException('timed out'),
+        );
+        expect(error.retryable, isTrue);
+      });
+
+      test('Unknown exception falls back to retryable=true', () {
+        final TimeshiftFetchError error = TimeshiftFetchError.classify(
+          StateError('unexpected'),
+        );
+        expect(error.retryable, isTrue);
+      });
+
+      test('HttpException with no status digits is retryable', () {
+        final TimeshiftFetchError error = TimeshiftFetchError.classify(
+          const HttpException('some message without status code'),
+        );
+        expect(error.retryable, isTrue);
+      });
+
+      test(
+        'stray 3-digit numbers before "status <N>" do not shadow the code',
+        () {
+          // `_extractHttpStatus` anchors the match to end-of-string, so a
+          // numeric value earlier in the message (e.g. a response body with
+          // `"errorCode": 200`) must not be picked as the status.
+          final TimeshiftFetchError error = TimeshiftFetchError.classify(
+            const HttpException(
+              'NDGR timeshift session request failed with status 403',
+            ),
+          );
+          expect(error.retryable, isFalse);
+        },
+      );
+
+      test(
+        'message format matches NdgrTimeshiftClient — lock-step parser guard',
+        () {
+          // NdgrTimeshiftClient._fetch throws HttpException with the literal
+          // format:
+          //   'NDGR timeshift <phase> request failed with status <N>'
+          // (see lib/domain/connection/ndgr_timeshift_client.dart).
+          // `TimeshiftFetchError.classify` depends on this shape. If either
+          // side changes the format, 4xx responses would silently fall back
+          // to retryable=true.
+          for (final String phase in <String>[
+            'session',
+            'backward',
+            'previous',
+            'view',
+          ]) {
+            final TimeshiftFetchError error = TimeshiftFetchError.classify(
+              HttpException(
+                'NDGR timeshift $phase request failed with status 403',
+              ),
+            );
+            expect(
+              error.retryable,
+              isFalse,
+              reason: 'phase=$phase must be parsed as 4xx',
+            );
+          }
+          for (final int status in <int>[500, 502, 503, 504]) {
+            final TimeshiftFetchError error = TimeshiftFetchError.classify(
+              HttpException(
+                'NDGR timeshift session request failed with status $status',
+              ),
+            );
+            expect(
+              error.retryable,
+              isTrue,
+              reason: 'status=$status must be parsed as 5xx (retryable)',
+            );
+          }
+        },
+      );
     });
 
     test('fetchInitial transitions to paused when hasMore', () async {
@@ -68,7 +210,10 @@ void main() {
       await controller.fetchInitial(Uri.parse('http://example.com/view'));
 
       expect(controller.status, TimeshiftFetchStatus.error);
-      expect(controller.lastError, isA<StateError>());
+      expect(controller.lastError, isA<TimeshiftFetchError>());
+      expect(controller.lastError!.cause, isA<StateError>());
+      // Unknown exceptions fall back to retryable=true (legacy behaviour).
+      expect(controller.lastError!.retryable, isTrue);
     });
 
     test('fetchMore transitions to paused when hasMore', () async {

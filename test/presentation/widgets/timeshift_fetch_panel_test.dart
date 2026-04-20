@@ -74,6 +74,44 @@ void main() {
       expect(find.text('再試行'), findsOneWidget);
     });
 
+    testWidgets(
+      'hides retry button and shows notice when error is not retryable',
+      (WidgetTester tester) async {
+        // Issue #639 cause 5: 権限不足などの再試行不能エラーでは
+        // リトライボタンを表示せず、誘導文だけを表示する。
+        final _FakeController controller = _FakeController(
+          status: TimeshiftFetchStatus.error,
+          lastError: TimeshiftFetchError(
+            retryable: false,
+            cause: Exception('HTTP 403'),
+          ),
+        );
+
+        await tester.pumpWidget(_wrap(controller));
+
+        expect(find.text('取得に失敗しました'), findsOneWidget);
+        expect(find.byKey(const Key('timeshift-retry')), findsNothing);
+        expect(find.text('再試行'), findsNothing);
+        expect(find.text('このタイムシフトは再試行しても取得できません。'), findsOneWidget);
+      },
+    );
+
+    testWidgets('shows retry button when lastError is retryable', (
+      WidgetTester tester,
+    ) async {
+      final _FakeController controller = _FakeController(
+        status: TimeshiftFetchStatus.error,
+        lastError: TimeshiftFetchError(
+          retryable: true,
+          cause: Exception('network'),
+        ),
+      );
+
+      await tester.pumpWidget(_wrap(controller));
+
+      expect(find.byKey(const Key('timeshift-retry')), findsOneWidget);
+    });
+
     testWidgets('fetch button callbacks are invoked', (
       WidgetTester tester,
     ) async {
@@ -187,15 +225,18 @@ class _FakeController extends ChangeNotifier
     bool hasMore = false,
     int totalFetched = 0,
     bool isFetchingAll = false,
+    TimeshiftFetchError? lastError,
   }) : _status = status,
        _hasMore = hasMore,
        _totalFetched = totalFetched,
-       _isFetchingAll = isFetchingAll;
+       _isFetchingAll = isFetchingAll,
+       _lastError = lastError;
 
   TimeshiftFetchStatus _status;
   final bool _hasMore;
   final int _totalFetched;
   final bool _isFetchingAll;
+  final TimeshiftFetchError? _lastError;
 
   @override
   TimeshiftFetchStatus get status => _status;
@@ -210,7 +251,7 @@ class _FakeController extends ChangeNotifier
   bool get isFetchingAll => _isFetchingAll;
 
   @override
-  Object? get lastError => null;
+  TimeshiftFetchError? get lastError => _lastError;
 
   @override
   Future<void> fetchInitial(Uri viewApiUri) async {}
