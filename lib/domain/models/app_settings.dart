@@ -126,6 +126,15 @@ double commentFontSizeFromStorageValue(String? raw) {
 
 enum PastCommentFetchCount { count100, count500, count1000, all }
 
+/// タイムライン表示容量を算出する際に、過去コメント取得数へ上乗せする
+/// 新着ライブコメント用のバッファサイズ。
+///
+/// 取得直後の過去コメントが、新着コメントの流入で即座にトリムされないよう、
+/// `TimelineStore.capacity` は `historyCount + timelineLiveCommentBufferSize`
+/// として計算する。5000 は一般的なライブ配信 1 本分の新着コメントを
+/// 余裕をもって保持できるサイズとして選択している。
+const int timelineLiveCommentBufferSize = 5000;
+
 extension PastCommentFetchCountValue on PastCommentFetchCount {
   String get storageValue {
     switch (this) {
@@ -165,6 +174,24 @@ extension PastCommentFetchCountValue on PastCommentFetchCount {
         return 10000;
     }
   }
+
+  /// `TimelineStore` が保持するメッセージ数の上限。
+  ///
+  /// 取得した過去コメントを新着コメントの流入で失わないよう、
+  /// 取得数そのものではなく [timelineLiveCommentBufferSize] を加算した値を
+  /// 表示容量として用いる。
+  ///
+  /// 不変条件: `displayCapacity > historyCount` を常に満たすこと。
+  /// この関係を崩す（例: buffer を 0 にする、同値を返す等）と、
+  /// 過去コメント取得直後から新着 1 件ごとに最古の過去コメントが
+  /// `TimelineStore._trimOverflow` で消える回帰バグが再発する。
+  ///
+  /// 境界: 新着コメントが `timelineLiveCommentBufferSize` を超えて
+  /// 流入し続けると、超過分から最古の（取得済み）過去コメントが
+  /// 順次トリムされる。本 PR のスコープは「典型的な視聴時間の新着数」
+  /// までの保証で、無制限ではない。恒久的な過去コメント保持や
+  /// 漸進的なさらなる取得は別 Issue で対応する。
+  int get displayCapacity => historyCount + timelineLiveCommentBufferSize;
 
   static PastCommentFetchCount fromStorageValue(String? raw) {
     switch (raw) {

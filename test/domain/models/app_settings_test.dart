@@ -44,6 +44,23 @@ void main() {
     });
   });
 
+  group('PastCommentFetchCountValue.displayCapacity', () {
+    test(
+      'adds timelineLiveCommentBufferSize to historyCount so freshly fetched '
+      'history is not trimmed by incoming live comments',
+      () {
+        for (final PastCommentFetchCount value
+            in PastCommentFetchCount.values) {
+          expect(
+            value.displayCapacity,
+            value.historyCount + timelineLiveCommentBufferSize,
+          );
+          expect(value.displayCapacity, greaterThan(value.historyCount));
+        }
+      },
+    );
+  });
+
   group('ngUserIdSet', () {
     test('returns empty set for empty string', () {
       const AppSettings settings = AppSettings.defaults;

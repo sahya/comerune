@@ -202,7 +202,9 @@ class _ComeruneAppState extends State<ComeruneApp> {
       liveCommentRepository: _liveCommentRepository,
       myProgramRepository: _myProgramRepository,
     );
-    _timelineStore = TimelineStore(capacity: _ndgrHistoryCount);
+    _timelineStore = TimelineStore(
+      capacity: widget.initialSettings.pastCommentFetchCount.displayCapacity,
+    );
     _statisticsStore = StatisticsStore();
     _sessionWsClient = _SessionWsClientAdapter(
       lvProvider: () => _currentLv,
@@ -357,7 +359,9 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _beginAtNotifier.value = null;
     _vposBaseAtNotifier.value = null;
     _ndgrHistoryCount = settings.pastCommentFetchCount.historyCount;
-    _timelineStore.setCapacity(_ndgrHistoryCount);
+    // TimelineStore の capacity は _SelectScreen 側が接続開始 / 再接続の直前に
+    // pastCommentFetchCount.displayCapacity で更新する。ここで二重に呼ぶと
+    // 責務が分散するため、本メソッドでは NDGR 取得数と統計のリセットに専念する。
     _statisticsStore.reset();
   }
 

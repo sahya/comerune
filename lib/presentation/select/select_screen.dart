@@ -347,7 +347,7 @@ class _SelectScreenState extends State<SelectScreen>
       widget.timelineStore?.clear();
     }
     widget.timelineStore?.setCapacity(
-      settings.pastCommentFetchCount.historyCount,
+      settings.pastCommentFetchCount.displayCapacity,
     );
     await widget.onPrepareConnection?.call(lv, settings);
 
@@ -679,7 +679,7 @@ class _SelectScreenState extends State<SelectScreen>
 
     final AppSettings settings = _settingsNotifier.value;
     widget.timelineStore?.setCapacity(
-      settings.pastCommentFetchCount.historyCount,
+      settings.pastCommentFetchCount.displayCapacity,
     );
     await widget.onPrepareConnection?.call(lv, settings);
 

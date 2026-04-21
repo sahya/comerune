@@ -287,6 +287,51 @@ void main() {
   });
 
   testWidgets(
+    'startConnection updates TimelineStore capacity to displayCapacity '
+    'so fetched history is not evicted by incoming live comments',
+    (WidgetTester tester) async {
+      // Regression wiring test: guards against a future refactor that
+      // re-wires `setCapacity` back to `historyCount` (the original bug).
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+      // Start with an intentionally unrelated capacity so the assertion
+      // proves the connect flow updated it.
+      final TimelineStore timelineStore = TimelineStore(capacity: 1);
+
+      const AppSettings settings = AppSettings.defaults;
+      const PastCommentFetchCount fetchCount = PastCommentFetchCount.count500;
+      final AppSettings settingsWith500 = settings.copyWith(
+        pastCommentFetchCount: fetchCount,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: supervisor,
+            timelineStore: timelineStore,
+            initialSettings: settingsWith500,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.enterText(inputField(), 'lv345678901');
+      await tester.pump();
+      await tester.tap(connectButton());
+      await tester.pumpAndSettle();
+
+      // `displayCapacity` must be used, not `historyCount`. This pins the
+      // invariant: capacity > historyCount, so live influx never trims
+      // the freshly fetched history.
+      expect(timelineStore.capacity, fetchCount.displayCapacity);
+      expect(
+        timelineStore.capacity,
+        greaterThan(fetchCount.historyCount),
+        reason: 'regression: TimelineStore.capacity must exceed historyCount',
+      );
+    },
+  );
+
+  testWidgets(
     'keeps name resolution callbacks enabled when showUserName is false',
     (WidgetTester tester) async {
       final ConnectionSupervisor supervisor = ConnectionSupervisor();

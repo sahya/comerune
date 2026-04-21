@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/application/timeline/timeline_store.dart';
 import 'package:comerune/domain/models/app_message.dart';
+import 'package:comerune/domain/models/app_settings.dart';
 
 AppMessage _message(int index) {
   return AppMessage(
@@ -271,5 +272,81 @@ void main() {
       'id-2',
       'id-3',
     ]);
+  });
+
+  group('displayCapacity preserves fetched history under live influx', () {
+    // Regression for the bug where `TimelineStore.capacity` was wired to
+    // `pastCommentFetchCount.historyCount`, causing every new live comment
+    // to evict one freshly fetched past comment.
+    //
+    // Post-fix contract: capacity is `historyCount + timelineLiveCommentBufferSize`,
+    // so the full fetched history survives while new live comments fill the
+    // extra buffer.
+    for (final PastCommentFetchCount value in PastCommentFetchCount.values) {
+      test(
+        'for ${value.name}: N past + buffer-sized live influx keeps all N past',
+        () {
+          final int historyCount = value.historyCount;
+          final TimelineStore store = TimelineStore(
+            capacity: value.displayCapacity,
+          );
+
+          // Seed the store with `historyCount` past comments (indices 1..N).
+          final List<AppMessage> past = <AppMessage>[
+            for (int i = 1; i <= historyCount; i++) _message(i),
+          ];
+          store.addAll(past);
+          expect(store.messages.length, historyCount);
+
+          // Fill the live buffer completely so the store is at max capacity,
+          // but no past comment should be evicted yet.
+          for (int i = 1; i <= timelineLiveCommentBufferSize; i++) {
+            store.add(_message(historyCount + i));
+          }
+
+          expect(store.messages.length, value.displayCapacity);
+          // The very first past comment (id-1) must still be present.
+          expect(store.messages.first.id, 'id-1');
+          expect(
+            store.messages.take(historyCount).map((AppMessage m) => m.id),
+            past.map((AppMessage m) => m.id),
+          );
+        },
+      );
+    }
+
+    test(
+      'one extra live comment past capacity evicts only the oldest past',
+      () {
+        // Smaller scale reproduction to assert first eviction timing precisely.
+        const int historyCount = 3;
+        const int liveBuffer = 2;
+        final TimelineStore store = TimelineStore(
+          capacity: historyCount + liveBuffer,
+        );
+
+        store.addAll(<AppMessage>[_message(1), _message(2), _message(3)]);
+        store.add(_message(4));
+        store.add(_message(5));
+        // Now full (5/5). Past 1..3 all still present.
+        expect(store.messages.map((AppMessage m) => m.id).toList(), <String>[
+          'id-1',
+          'id-2',
+          'id-3',
+          'id-4',
+          'id-5',
+        ]);
+
+        // One more new live comment: the oldest past (id-1) is evicted.
+        store.add(_message(6));
+        expect(store.messages.map((AppMessage m) => m.id).toList(), <String>[
+          'id-2',
+          'id-3',
+          'id-4',
+          'id-5',
+          'id-6',
+        ]);
+      },
+    );
   });
 }
