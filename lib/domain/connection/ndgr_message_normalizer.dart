@@ -304,6 +304,47 @@ class NdgrMessageNormalizer {
       );
     }
 
+    // ForwardedChat — the primary path for ニコ生クルーズ visitor
+    // comments (`NdgrForwardingMode.fromCruise`).
+    //
+    // Surface as a chat message (same [AppMessageType.chat] as locally
+    // authored comments) so the existing rendering, NG user / NG word
+    // filters, speech pipeline, and userName resolution all reuse their
+    // established behaviour.  The underlying [NdgrForwardedChat] is
+    // carried on [AppMessage.raw] for any future UI that wants to
+    // surface a "From other stream" badge.
+    //
+    // Using the same sanitise / id-fallback logic as the chat branch
+    // keeps the rendering one-to-one with locally originated comments.
+    final NdgrForwardedChat? forwarded = source.forwardedChat;
+    if (forwarded != null &&
+        forwarded.mode == NdgrForwardingMode.fromCruise &&
+        forwarded.chat.content.isNotEmpty) {
+      final NdgrChat forwardedChat = forwarded.chat;
+      final String? sanitizedContent = _sanitizeMessageContent(
+        forwardedChat.content,
+      );
+      if (sanitizedContent == null) {
+        return null;
+      }
+      final String id = _buildNdgrId(
+        _kNdgrChatNoIdPrefix,
+        _firstNonEmptyString(source.id, forwarded.messageId),
+        forwardedChat.no,
+        timestamp,
+        timestampPrefix: _kNdgrChatFallbackTimestampPrefix,
+      );
+      return AppMessage(
+        id: id,
+        timestamp: timestamp,
+        userId: _resolveUserId(forwardedChat),
+        userName: _sanitizeChatUserName(forwardedChat.name),
+        content: sanitizedContent,
+        type: AppMessageType.chat,
+        raw: source,
+      );
+    }
+
     final NdgrChat? chat = source.chat;
     if (chat == null) {
       return null;
@@ -500,6 +541,16 @@ class NdgrMessageNormalizer {
       return chat.hashedUserId;
     }
 
+    return null;
+  }
+
+  String? _firstNonEmptyString(String? first, String? second) {
+    if (first != null && first.isNotEmpty) {
+      return first;
+    }
+    if (second != null && second.isNotEmpty) {
+      return second;
+    }
     return null;
   }
 }

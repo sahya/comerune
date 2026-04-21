@@ -1471,7 +1471,9 @@ void main() {
       final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
 
       final AppMessage? normalized = normalizer.normalizeChunkedMessage(
-        const NdgrChunkedMessage(nicoad: NdgrNicoad(message: '\u200B\u202E\uFEFF')),
+        const NdgrChunkedMessage(
+          nicoad: NdgrNicoad(message: '\u200B\u202E\uFEFF'),
+        ),
       );
 
       expect(normalized, isNull);
@@ -1652,6 +1654,189 @@ void main() {
       expect(normalized, isNotNull);
       expect(normalized!.type, AppMessageType.nicoad);
       expect(normalized.content, '広告本文');
+    });
+
+    // --- ForwardedChat (ニコ生クルーズ 由来のコメント本体) ---
+    test('normalizes forwarded_chat (FROM_CRUISE) to AppMessageType.chat '
+        'with the forwarded user body', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-04-21T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-forwarded-1',
+        serverTimestamp: serverTime,
+        forwardedChat: const NdgrForwardedChat(
+          chat: NdgrChat(
+            content: 'クルーズから来ました',
+            name: 'クルーズ太郎',
+            rawUserId: 888,
+            no: 42,
+          ),
+          mode: NdgrForwardingMode.fromCruise,
+          messageId: 'msg-abc',
+          sourceLiveId: 111222,
+        ),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.type, AppMessageType.chat);
+      expect(normalized.content, 'クルーズから来ました');
+      expect(normalized.userName, 'クルーズ太郎');
+      expect(normalized.userId, '888');
+    });
+
+    test('forwarded_chat uses ndgr-chat-<no> fallback id shape when source.id '
+        'is missing', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-04-21T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        serverTimestamp: serverTime,
+        forwardedChat: const NdgrForwardedChat(
+          chat: NdgrChat(content: 'クルーズ'),
+          mode: NdgrForwardingMode.fromCruise,
+        ),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(source);
+
+      expect(normalized, isNotNull);
+      // With no inner chat.no and no source.id, the chat fallback path
+      // is `ndgr-${microsecondsSinceEpoch}-${seq}` — not the gift /
+      // nicoad / notify prefix.
+      expect(
+        normalized!.id.startsWith('ndgr-'),
+        isTrue,
+        reason: 'forwarded_chat should reuse the chat id-fallback shape',
+      );
+      expect(
+        normalized.id.startsWith(kNdgrGiftIdPrefix) ||
+            normalized.id.startsWith(kNdgrNicoadIdPrefix) ||
+            normalized.id.startsWith(kNdgrNotifyIdPrefix) ||
+            normalized.id.startsWith(kNdgrOperatorIdPrefix),
+        isFalse,
+        reason:
+            'forwarded_chat id must not collide with non-chat fallback '
+            'prefixes (gift / nicoad / notify / operator)',
+      );
+    });
+
+    test('forwarded_chat falls back to forwarded messageId when source.id is '
+        'empty', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-04-21T10:00:00Z');
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        NdgrChunkedMessage(
+          id: '',
+          serverTimestamp: serverTime,
+          forwardedChat: const NdgrForwardedChat(
+            chat: NdgrChat(content: 'クルーズ本文'),
+            mode: NdgrForwardingMode.fromCruise,
+            messageId: 'forwarded-msg-id',
+          ),
+        ),
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.id, 'forwarded-msg-id');
+    });
+
+    test('forwarded_chat with COLLAB_SHARING mode is not emitted as chat', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        const NdgrChunkedMessage(
+          forwardedChat: NdgrForwardedChat(
+            chat: NdgrChat(content: 'コラボ共有コメント'),
+            mode: NdgrForwardingMode.collabSharing,
+          ),
+        ),
+      );
+
+      expect(normalized, isNull);
+    });
+
+    test(
+      'forwarded_chat returns null when inner chat body sanitises to empty',
+      () {
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          const NdgrChunkedMessage(
+            forwardedChat: NdgrForwardedChat(
+              // ZWSP + RLO + BOM — all invisible
+              chat: NdgrChat(content: '\u200B\u202E\uFEFF'),
+              mode: NdgrForwardingMode.fromCruise,
+            ),
+          ),
+        );
+
+        expect(normalized, isNull);
+      },
+    );
+
+    test('gift / nicoad / forwarded_chat precedence: nicoad > gift > '
+        'forwardedChat > chat', () {
+      // All four payloads present on a single chunk is unusual, but the
+      // precedence order must still be well-defined so the same chunk
+      // decoded across different app versions produces the same visible
+      // message.  Gift beats forwardedChat because a real gift event
+      // (monetisation) is higher-value than a cross-stream chat.
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-04-21T10:00:00Z');
+
+      final NdgrChunkedMessage nicoadWins = NdgrChunkedMessage(
+        id: 'ndgr-precedence-1',
+        serverTimestamp: serverTime,
+        nicoad: const NdgrNicoad(message: '広告本文'),
+        gift: const NdgrGift(itemName: 'こんぺいとう', advertiserName: 'たろう'),
+        forwardedChat: const NdgrForwardedChat(
+          chat: NdgrChat(content: 'クルーズ'),
+          mode: NdgrForwardingMode.fromCruise,
+        ),
+        chat: const NdgrChat(content: 'chat'),
+      );
+      expect(
+        normalizer.normalizeChunkedMessage(nicoadWins)!.type,
+        AppMessageType.nicoad,
+      );
+
+      final NdgrChunkedMessage giftWins = NdgrChunkedMessage(
+        id: 'ndgr-precedence-2',
+        serverTimestamp: serverTime,
+        gift: const NdgrGift(itemName: 'こんぺいとう', advertiserName: 'たろう'),
+        forwardedChat: const NdgrForwardedChat(
+          chat: NdgrChat(content: 'クルーズ'),
+          mode: NdgrForwardingMode.fromCruise,
+        ),
+        chat: const NdgrChat(content: 'chat'),
+      );
+      expect(
+        normalizer.normalizeChunkedMessage(giftWins)!.type,
+        AppMessageType.gift,
+      );
+
+      final NdgrChunkedMessage forwardedWins = NdgrChunkedMessage(
+        id: 'ndgr-precedence-3',
+        serverTimestamp: serverTime,
+        forwardedChat: const NdgrForwardedChat(
+          chat: NdgrChat(content: 'クルーズ本文'),
+          mode: NdgrForwardingMode.fromCruise,
+        ),
+        chat: const NdgrChat(content: 'local chat'),
+      );
+      final AppMessage? forwardedResult = normalizer.normalizeChunkedMessage(
+        forwardedWins,
+      );
+      expect(forwardedResult!.type, AppMessageType.chat);
+      expect(forwardedResult.content, 'クルーズ本文');
     });
   });
 }

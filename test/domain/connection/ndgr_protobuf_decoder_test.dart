@@ -126,6 +126,138 @@ void main() {
       expect(message.gift!.point, 500);
     });
 
+    test(
+      'Gift falls back to item_id (field 1) when item_name (field 6) is empty',
+      () {
+        // Defence against server variants that omit the localised
+        // `item_name` and only ship the stable `item_id`: we previously
+        // returned null and silently dropped the gift.  Now the decoder
+        // falls back so the user still sees something.
+        final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+        // Gift: item_id(1) + advertiser_name(3) + point(4), no item_name(6)
+        final List<int> gift = <int>[
+          ..._stringField(1, 'konpeito_small'),
+          ..._stringField(3, 'たろう'),
+          ..._varintField(4, 500),
+        ];
+        final List<int> nicoliveMessage = <int>[..._bytesField(8, gift)];
+
+        final Uint8List bytes = Uint8List.fromList(<int>[
+          ..._bytesField(2, nicoliveMessage),
+        ]);
+
+        final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+        expect(message.gift, isNotNull);
+        expect(message.gift!.itemName, 'konpeito_small');
+        expect(message.gift!.advertiserName, 'たろう');
+        expect(message.gift!.point, 500);
+      },
+    );
+
+    test('Gift returns null when both item_name and item_id and advertiser '
+        'are empty', () {
+      final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+      // Gift with only point(4) — no identifying label at all.
+      final List<int> gift = <int>[..._varintField(4, 1)];
+      final List<int> nicoliveMessage = <int>[..._bytesField(8, gift)];
+
+      final Uint8List bytes = Uint8List.fromList(<int>[
+        ..._bytesField(2, nicoliveMessage),
+      ]);
+
+      final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+      expect(message.gift, isNull);
+    });
+
+    test(
+      'decodes NicoliveMessage.forwarded_chat (field 22) with FROM_CRUISE mode',
+      () {
+        // ForwardedChat is the path ニコ生クルーズ visitor comments actually
+        // travel through.  Before this change field 22 was skipped via
+        // default `skipField`, so cruise visitor comments were invisible.
+        final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+        // Inner Chat: content(1), name(2), raw_user_id(5), no(8)
+        final List<int> innerChat = <int>[
+          ..._stringField(1, 'クルーズから来ました'),
+          ..._stringField(2, 'クルーズ太郎'),
+          ..._varintField(5, 777),
+          ..._varintField(8, 42),
+        ];
+        // ForwardedChat: chat(1) + message_id(2) + source_live_id(3) + mode(4)
+        final List<int> forwarded = <int>[
+          ..._bytesField(1, innerChat),
+          ..._stringField(2, 'msg-abc-123'),
+          ..._varintField(3, 111222),
+          ..._varintField(4, 1), // FROM_CRUISE
+        ];
+        final List<int> nicoliveMessage = <int>[..._bytesField(22, forwarded)];
+
+        final Uint8List bytes = Uint8List.fromList(<int>[
+          ..._bytesField(2, nicoliveMessage),
+        ]);
+
+        final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+        expect(message.forwardedChat, isNotNull);
+        expect(message.forwardedChat!.chat.content, 'クルーズから来ました');
+        expect(message.forwardedChat!.chat.name, 'クルーズ太郎');
+        expect(message.forwardedChat!.chat.rawUserId, 777);
+        expect(message.forwardedChat!.chat.no, 42);
+        expect(message.forwardedChat!.messageId, 'msg-abc-123');
+        expect(message.forwardedChat!.sourceLiveId, 111222);
+        expect(message.forwardedChat!.mode, NdgrForwardingMode.fromCruise);
+      },
+    );
+
+    test(
+      'decodes NicoliveMessage.forwarded_chat (field 22) with COLLAB_SHARING '
+      'mode',
+      () {
+        final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+        final List<int> innerChat = <int>[..._stringField(1, 'コラボからの一言')];
+        final List<int> forwarded = <int>[
+          ..._bytesField(1, innerChat),
+          ..._varintField(4, 2), // COLLAB_SHARING
+        ];
+        final List<int> nicoliveMessage = <int>[..._bytesField(22, forwarded)];
+
+        final Uint8List bytes = Uint8List.fromList(<int>[
+          ..._bytesField(2, nicoliveMessage),
+        ]);
+
+        final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+        expect(message.forwardedChat, isNotNull);
+        expect(message.forwardedChat!.mode, NdgrForwardingMode.collabSharing);
+      },
+    );
+
+    test('forwarded_chat returns null when inner Chat body is empty', () {
+      final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+      // Inner Chat with empty content (no field 1) — not displayable.
+      final List<int> innerChat = <int>[..._stringField(2, 'だれか')];
+      final List<int> forwarded = <int>[
+        ..._bytesField(1, innerChat),
+        ..._varintField(4, 1),
+      ];
+      final List<int> nicoliveMessage = <int>[..._bytesField(22, forwarded)];
+
+      final Uint8List bytes = Uint8List.fromList(<int>[
+        ..._bytesField(2, nicoliveMessage),
+      ]);
+
+      final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+      expect(message.forwardedChat, isNull);
+    });
+
     test('decodes NicoliveMessage.nicoad (field 9) V1 variant', () {
       // Field 9 was not handled at all before this change; every
       // ニコニ広告 event was silently skipped by the default branch.

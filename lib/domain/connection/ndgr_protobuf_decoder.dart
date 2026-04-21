@@ -179,6 +179,43 @@ class NdgrNicoad {
   final int? totalPoint;
 }
 
+/// Forwarding mode carried by [NdgrForwardedChat].
+///
+/// Matches the upstream proto `atoms.ForwardedChat.ForwardingMode` enum:
+///   0 UNKNOWN, 1 FROM_CRUISE, 2 COLLAB_SHARING.
+///
+/// The most user-visible variant is [fromCruise], which delivers the comment
+/// bodies of visitors who reached the broadcast via ニコ生クルーズ. These
+/// were previously invisible because the decoder skipped field 22.
+enum NdgrForwardingMode { unknown, fromCruise, collabSharing }
+
+/// Chat forwarded from another live stream, extracted from
+/// `NicoliveMessage.forwarded_chat` (field 22). Schema (atoms/forwarded.proto):
+///   1: Chat chat                  — the forwarded comment body
+///   2: string message_id          — source-stream message id
+///   3: int64 source_live_id       — source lv
+///   4: ForwardingMode mode        — see [NdgrForwardingMode]
+///
+/// The main motivation for decoding this field is **ニコ生クルーズのコメント**:
+/// when the broadcaster opts into cruise, visitors' comments from the
+/// cruise client are forwarded into this stream's chat flow via
+/// [NdgrForwardingMode.fromCruise]. Without this path they are silently
+/// dropped.  [NdgrForwardingMode.collabSharing] also flows through here
+/// for broadcaster collaborations.
+class NdgrForwardedChat {
+  const NdgrForwardedChat({
+    required this.chat,
+    this.messageId,
+    this.sourceLiveId,
+    this.mode = NdgrForwardingMode.unknown,
+  });
+
+  final NdgrChat chat;
+  final String? messageId;
+  final int? sourceLiveId;
+  final NdgrForwardingMode mode;
+}
+
 enum NdgrProgramStatus { unknown, ended }
 
 class NdgrChunkedMessage {
@@ -192,6 +229,7 @@ class NdgrChunkedMessage {
     this.simpleNotificationV2,
     this.gift,
     this.nicoad,
+    this.forwardedChat,
     this.programStatus,
   });
 
@@ -218,6 +256,11 @@ class NdgrChunkedMessage {
 
   /// Nicoad (ニコニ広告) extracted from `NicoliveMessage.nicoad` (field 9).
   final NdgrNicoad? nicoad;
+
+  /// ForwardedChat extracted from `NicoliveMessage.forwarded_chat` (field 22).
+  /// Carries cross-stream comments (e.g. ニコ生クルーズ visitors' comments
+  /// via [NdgrForwardingMode.fromCruise]) that would otherwise be invisible.
+  final NdgrForwardedChat? forwardedChat;
 
   /// Program status extracted from `ChunkedMessage.state.program_status`.
   /// Non-null with [NdgrProgramStatus.ended] when the broadcast has ended.
@@ -382,6 +425,7 @@ class NdgrProtobufDecoder {
     NdgrSimpleNotificationV2? simpleNotificationV2;
     NdgrGift? gift;
     NdgrNicoad? nicoad;
+    NdgrForwardedChat? forwardedChat;
     NdgrProgramStatus? programStatus;
 
     while (!reader.isAtEnd) {
@@ -427,12 +471,14 @@ class NdgrProtobufDecoder {
               simpleNotificationV2 = result.simpleNotificationV2;
               gift = result.gift;
               nicoad = result.nicoad;
+              forwardedChat = result.forwardedChat;
             } on FormatException {
               chat = null;
               simpleNotification = null;
               simpleNotificationV2 = null;
               gift = null;
               nicoad = null;
+              forwardedChat = null;
             }
           } else {
             reader.skipField(wireType);
@@ -474,6 +520,7 @@ class NdgrProtobufDecoder {
       simpleNotificationV2: simpleNotificationV2,
       gift: gift,
       nicoad: nicoad,
+      forwardedChat: forwardedChat,
       programStatus: programStatus,
     );
   }
@@ -591,6 +638,7 @@ class NdgrProtobufDecoder {
     NdgrSimpleNotificationV2? simpleNotificationV2;
     NdgrGift? gift;
     NdgrNicoad? nicoad;
+    NdgrForwardedChat? forwardedChat;
 
     while (!reader.isAtEnd) {
       final int tag = reader.readVarint();
@@ -654,6 +702,25 @@ class NdgrProtobufDecoder {
         } on FormatException {
           nicoad = null;
         }
+      } else if (fieldNumber == 22 && wireType == _WireType.lengthDelimited) {
+        // NicoliveMessage.forwarded_chat (ForwardedChat).
+        //
+        // This is the **actual payload path for ニコ生クルーズ viewer
+        // comments** (and broadcaster collab-shared chat): the real chat
+        // body is forwarded from another live stream and arrives here as
+        // an embedded Chat + ForwardingMode metadata.  Prior revisions
+        // skipped this field entirely, so every cruise visitor comment
+        // was invisible.
+        //
+        // `SimpleNotification(V2).cruise` — handled separately above —
+        // only carries the **arrival announcement** ("xx さんが to来場 し
+        // ました"), not the visitor's actual comment body.
+        final Uint8List forwardedBytes = reader.readLengthDelimited();
+        try {
+          forwardedChat = _decodeForwardedChat(forwardedBytes);
+        } on FormatException {
+          forwardedChat = null;
+        }
       } else if (fieldNumber == 23 && wireType == _WireType.lengthDelimited) {
         // NicoliveMessage.simple_notification_v2 (atoms.SimpleNotificationV2)
         //
@@ -675,6 +742,13 @@ class NdgrProtobufDecoder {
           simpleNotificationV2 = null;
         }
       } else {
+        // Unknown / not-yet-decoded NicoliveMessage oneof field.
+        //
+        // In debug builds we surface a first-occurrence log per field
+        // number so that a server-side addition (new event type) or a
+        // still-missing decoder branch becomes observable without
+        // spamming the log on every message.  Release builds stay silent.
+        _noteUnknownNicoliveField(fieldNumber);
         reader.skipField(wireType);
       }
     }
@@ -685,8 +759,40 @@ class NdgrProtobufDecoder {
       simpleNotificationV2: simpleNotificationV2,
       gift: gift,
       nicoad: nicoad,
+      forwardedChat: forwardedChat,
     );
   }
+
+  /// First-occurrence log of unknown / not-yet-decoded NicoliveMessage
+  /// oneof field numbers. Gated on [kDebugMode] and keyed on field number
+  /// so production logs stay quiet even on long-running streams.
+  ///
+  /// Known-but-skipped field numbers per the upstream proto (as of
+  /// 2026-04, see `atoms.proto` / `message.proto`): 13 game_update,
+  /// 17 tag_updated, 18 moderator_updated, 19 ssng_updated,
+  /// 24 akashic_message_event. Anything outside the known list is
+  /// potential protocol drift — the first-occurrence log surfaces that
+  /// drift while debugging issues like "ニコ生クルーズ / ギフト /
+  /// ニコニ広告 が取れない".
+  void _noteUnknownNicoliveField(int fieldNumber) {
+    if (!kDebugMode) {
+      return;
+    }
+    if (!_observedUnknownNicoliveFields.add(fieldNumber)) {
+      return;
+    }
+    developer.log(
+      'Skipped NicoliveMessage oneof field $fieldNumber '
+      '(first occurrence; not currently decoded). '
+      'Known skipped fields: 13 game_update / 17 tag_updated / '
+      '18 moderator_updated / 19 ssng_updated / 24 akashic_message_event.',
+      name: 'NdgrProtobufDecoder',
+    );
+  }
+
+  /// Per-decoder-instance set of unknown NicoliveMessage field numbers
+  /// already logged (so each number is reported only once per stream).
+  final Set<int> _observedUnknownNicoliveFields = <int>{};
 
   /// Extracts the parts of `NicoliveState` the app currently consumes.
   ///
@@ -947,6 +1053,7 @@ class NdgrProtobufDecoder {
   NdgrGift? _decodeGift(Uint8List bytes) {
     final _ProtoReader reader = _ProtoReader(bytes);
 
+    String itemId = '';
     String itemName = '';
     String? advertiserName;
     int? point;
@@ -957,6 +1064,20 @@ class NdgrProtobufDecoder {
       final int wireType = tag & 0x07;
 
       switch (fieldNumber) {
+        case 1: // item_id
+          //
+          // Not normally the display-side identifier (that's item_name at
+          // field 6), but kept as a fallback so a server revision that
+          // ships an item_id without a localised item_name still surfaces
+          // something recognisable to the user instead of producing an
+          // empty gift row.  See `_formatGiftContent` in the normaliser
+          // for how the fallback is consumed.
+          if (wireType == _WireType.lengthDelimited) {
+            itemId = reader.readString();
+          } else {
+            reader.skipField(wireType);
+          }
+          break;
         case 3: // advertiser_name
           if (wireType == _WireType.lengthDelimited) {
             advertiserName = reader.readString();
@@ -987,11 +1108,16 @@ class NdgrProtobufDecoder {
         advertiserName != null && advertiserName.isNotEmpty
         ? advertiserName
         : null;
-    if (itemName.isEmpty && normalizedAdvertiser == null) {
+    // Prefer the localised `item_name`; fall back to `item_id` so a gift
+    // without a display-ready name still appears instead of being dropped.
+    // If both are empty AND there is no advertiser, there is nothing
+    // displayable and the normaliser should not emit a row.
+    final String effectiveItemName = itemName.isNotEmpty ? itemName : itemId;
+    if (effectiveItemName.isEmpty && normalizedAdvertiser == null) {
       return null;
     }
     return NdgrGift(
-      itemName: itemName,
+      itemName: effectiveItemName,
       advertiserName: normalizedAdvertiser,
       point: point,
     );
@@ -1354,6 +1480,87 @@ class NdgrProtobufDecoder {
     );
   }
 
+  /// Decodes `atoms.ForwardedChat`.
+  ///
+  /// Schema (verified 2026-04 against upstream proto):
+  ///   1: Chat chat                — forwarded comment body (embedded Chat)
+  ///   2: string message_id        — source stream's message id (optional)
+  ///   3: int64 source_live_id     — source stream lv id (optional)
+  ///   4: ForwardingMode mode      — enum: 0 UNKNOWN, 1 FROM_CRUISE, 2 COLLAB_SHARING
+  ///
+  /// Returns `null` if the embedded Chat is missing or has an empty body —
+  /// forwarding metadata without a chat payload is not displayable.
+  NdgrForwardedChat? _decodeForwardedChat(Uint8List bytes) {
+    final _ProtoReader reader = _ProtoReader(bytes);
+
+    NdgrChat? innerChat;
+    String? messageId;
+    int? sourceLiveId;
+    int rawMode = 0;
+
+    while (!reader.isAtEnd) {
+      final int tag = reader.readVarint();
+      final int fieldNumber = tag >> 3;
+      final int wireType = tag & 0x07;
+
+      switch (fieldNumber) {
+        case 1: // embedded Chat
+          if (wireType == _WireType.lengthDelimited) {
+            innerChat = _decodeChat(reader.readLengthDelimited());
+          } else {
+            reader.skipField(wireType);
+          }
+          break;
+        case 2: // message_id
+          if (wireType == _WireType.lengthDelimited) {
+            messageId = reader.readString();
+          } else {
+            reader.skipField(wireType);
+          }
+          break;
+        case 3: // source_live_id
+          if (wireType == _WireType.varint) {
+            sourceLiveId = reader.readVarint();
+          } else {
+            reader.skipField(wireType);
+          }
+          break;
+        case 4: // mode (enum)
+          if (wireType == _WireType.varint) {
+            rawMode = reader.readVarint();
+          } else {
+            reader.skipField(wireType);
+          }
+          break;
+        default:
+          reader.skipField(wireType);
+      }
+    }
+
+    if (innerChat == null || innerChat.content.isEmpty) {
+      return null;
+    }
+
+    return NdgrForwardedChat(
+      chat: innerChat,
+      messageId: messageId != null && messageId.isNotEmpty ? messageId : null,
+      sourceLiveId: sourceLiveId,
+      mode: _forwardingModeFromInt(rawMode),
+    );
+  }
+
+  NdgrForwardingMode _forwardingModeFromInt(int raw) {
+    switch (raw) {
+      case 1:
+        return NdgrForwardingMode.fromCruise;
+      case 2:
+        return NdgrForwardingMode.collabSharing;
+      case 0:
+      default:
+        return NdgrForwardingMode.unknown;
+    }
+  }
+
   String? _decodeMessageSegmentUri(Uint8List bytes) {
     final _ProtoReader reader = _ProtoReader(bytes);
 
@@ -1567,6 +1774,7 @@ class _NicoliveMessageResult {
     this.simpleNotificationV2,
     this.gift,
     this.nicoad,
+    this.forwardedChat,
   });
 
   final NdgrChat? chat;
@@ -1574,6 +1782,7 @@ class _NicoliveMessageResult {
   final NdgrSimpleNotificationV2? simpleNotificationV2;
   final NdgrGift? gift;
   final NdgrNicoad? nicoad;
+  final NdgrForwardedChat? forwardedChat;
 
   // `statistics` is intentionally not on this result: the current upstream
   // proto does not carry Statistics on NicoliveMessage (field 8 is Gift).
