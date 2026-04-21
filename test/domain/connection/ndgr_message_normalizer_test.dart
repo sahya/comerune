@@ -1259,5 +1259,399 @@ void main() {
       expect(op.id.startsWith(kNdgrOperatorIdPrefix), isTrue);
       expect(op.id, isNot('')); // definitely not the empty id
     });
+
+    // --- Gift (ギフト) normalization ---
+    test('normalizes gift to AppMessageType.gift with synthesised body', () {
+      // The gift row body must be synthesised from advertiser / item / point
+      // only — never from a free-text `Gift.message` field in the proto —
+      // so the comment-screen NG-bypass assumption for gift bodies holds.
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-04-20T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-gift-1',
+        serverTimestamp: serverTime,
+        gift: const NdgrGift(
+          itemName: 'こんぺいとう',
+          advertiserName: 'たろう',
+          point: 500,
+        ),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.type, AppMessageType.gift);
+      expect(normalized.id, 'ndgr-gift-1');
+      expect(normalized.userName, 'たろう');
+      expect(normalized.content, 'たろうさんがこんぺいとう（500pt）をプレゼントしました');
+    });
+
+    test('gift without point omits the (pt) suffix', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-04-20T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-gift-nopoint',
+        serverTimestamp: serverTime,
+        gift: const NdgrGift(itemName: 'こんぺいとう', advertiserName: 'たろう'),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.content, 'たろうさんがこんぺいとうをプレゼントしました');
+    });
+
+    test('gift without advertiser falls back to item-only body', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-04-20T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-gift-noadv',
+        serverTimestamp: serverTime,
+        gift: const NdgrGift(itemName: 'こんぺいとう', point: 100),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.content, 'ギフト：こんぺいとう（100pt）');
+      expect(normalized.userName, isNull);
+    });
+
+    test('gift without item falls back to advertiser-only body', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-04-20T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-gift-noitem',
+        serverTimestamp: serverTime,
+        gift: const NdgrGift(itemName: '', advertiserName: 'たろう', point: 30),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.content, 'たろうさんからギフト（30pt）');
+    });
+
+    test('gift advertiser name is sanitised (bidi / zero-width / Tag '
+        'characters stripped)', () {
+      // The advertiser label is broadcaster/advertiser-authored and flows
+      // through to both `userName` and the synthesised `content`. It MUST
+      // go through the same strip-set as chat names so a crafted label
+      // cannot inject extra rendered rows or smuggle Trojan Source
+      // payloads into the gift row.
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-04-20T10:00:00Z');
+
+      const String attack = 'たろう\u202E\u00A0さん\u200B\u{E0001}';
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-gift-sanitise',
+        serverTimestamp: serverTime,
+        gift: const NdgrGift(
+          itemName: 'こんぺいとう',
+          advertiserName: attack,
+          point: 1,
+        ),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.userName, 'たろうさん');
+      expect(
+        normalized.content,
+        'たろうさんさんがこんぺいとう（1pt）をプレゼントしました',
+        reason:
+            'invisible payloads in advertiser name must be stripped in '
+            'the synthesised body too',
+      );
+    });
+
+    test('returns null for gift without any usable label', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        const NdgrChunkedMessage(gift: NdgrGift(itemName: '')),
+      );
+
+      expect(normalized, isNull);
+    });
+
+    test('gift falls back to ndgr-gift-\${ts}-\${seq} when source id is '
+        'missing', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-04-20T10:00:00Z');
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        NdgrChunkedMessage(
+          serverTimestamp: serverTime,
+          gift: const NdgrGift(itemName: 'こんぺいとう', advertiserName: 'たろう'),
+        ),
+      );
+
+      expect(normalized, isNotNull);
+      expect(
+        normalized!.id,
+        '$kNdgrGiftIdPrefix${serverTime.microsecondsSinceEpoch}-1',
+      );
+    });
+
+    // --- Nicoad (ニコニ広告) normalization ---
+    test('normalizes nicoad to AppMessageType.nicoad using proto message '
+        'verbatim', () {
+      // The nicoad body is advertiser-authored and MUST stay verbatim (after
+      // sanitisation) so the speech-layer NG-word filter in comment_screen
+      // can evaluate it. If the normaliser rewrote the body, the NG filter
+      // would see a system-generated prefix and silently admit obscenity.
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-04-20T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-nicoad-1',
+        serverTimestamp: serverTime,
+        nicoad: const NdgrNicoad(
+          message: '広告主さんが1000ポイントの広告をしました',
+          totalPoint: 5000,
+        ),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.type, AppMessageType.nicoad);
+      expect(normalized.id, 'ndgr-nicoad-1');
+      expect(normalized.content, '広告主さんが1000ポイントの広告をしました');
+    });
+
+    test('nicoad body is sanitised (bidi / zero-width / Tag characters '
+        'stripped, printable text preserved)', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-04-20T10:00:00Z');
+
+      const String attack = '広告\u202E\u00A0主\u200B\u{E0001}さん';
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-nicoad-sanitise',
+        serverTimestamp: serverTime,
+        nicoad: const NdgrNicoad(message: attack),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.content, '広告主さん');
+    });
+
+    test('returns null for nicoad with message that sanitises to empty', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        const NdgrChunkedMessage(nicoad: NdgrNicoad(message: '\u200B\u202E\uFEFF')),
+      );
+
+      expect(normalized, isNull);
+    });
+
+    test('nicoad falls back to ndgr-nicoad-\${ts}-\${seq} when source id is '
+        'missing', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-04-20T10:00:00Z');
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        NdgrChunkedMessage(
+          serverTimestamp: serverTime,
+          nicoad: const NdgrNicoad(message: '広告メッセージ'),
+        ),
+      );
+
+      expect(normalized, isNotNull);
+      expect(
+        normalized!.id,
+        '$kNdgrNicoadIdPrefix${serverTime.microsecondsSinceEpoch}-1',
+      );
+    });
+
+    // --- SimpleNotification v1 (legacy) normalization ---
+    test(
+      'maps SimpleNotification v1 CRUISE to AppMessageType.notification',
+      () {
+        // ニコ生クルーズ has historically been delivered via
+        // `NicoliveMessage.simple_notification.cruise` (v1). Servers that
+        // have not migrated to SimpleNotificationV2 still emit it this way;
+        // without this fallback the cruise announcement is invisible.
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final DateTime serverTime = DateTime.parse('2026-04-20T10:00:00Z');
+
+        final NdgrChunkedMessage source = NdgrChunkedMessage(
+          id: 'ndgr-v1-cruise',
+          serverTimestamp: serverTime,
+          simpleNotification: const NdgrSimpleNotificationV1(
+            type: NdgrSimpleNotificationV1Type.cruise,
+            message: 'ニコ生クルーズが到着しました',
+          ),
+        );
+
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          source,
+          receivedAt: serverTime,
+        );
+
+        expect(normalized, isNotNull);
+        expect(normalized!.type, AppMessageType.notification);
+        expect(normalized.content, 'ニコ生クルーズが到着しました');
+      },
+    );
+
+    test('maps SimpleNotification v1 ICHIBA to AppMessageType.system', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-04-20T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-v1-ichiba',
+        serverTimestamp: serverTime,
+        simpleNotification: const NdgrSimpleNotificationV1(
+          type: NdgrSimpleNotificationV1Type.ichiba,
+          message: '市場に商品が登録されました',
+        ),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.type, AppMessageType.system);
+    });
+
+    test('maps SimpleNotification v1 EMOTION to AppMessageType.emotion', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-04-20T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-v1-emotion',
+        serverTimestamp: serverTime,
+        simpleNotification: const NdgrSimpleNotificationV1(
+          type: NdgrSimpleNotificationV1Type.emotion,
+          message: 'エモーション: 盛り上がり',
+        ),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.type, AppMessageType.emotion);
+    });
+
+    test('SimpleNotificationV2 wins over SimpleNotification v1 when both '
+        'are present in the same chunk', () {
+      // When the server forwards both the v1 and v2 variant simultaneously
+      // (observed during the v2 migration), the normaliser must prefer v2
+      // so the category is derived from the richer enum.
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-04-20T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-v1-v2',
+        serverTimestamp: serverTime,
+        simpleNotification: const NdgrSimpleNotificationV1(
+          type: NdgrSimpleNotificationV1Type.cruise,
+          message: 'v1 cruise',
+        ),
+        simpleNotificationV2: const NdgrSimpleNotificationV2(
+          type: NdgrSimpleNotificationV2Type.cruise,
+          message: 'v2 cruise',
+        ),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.content, 'v2 cruise');
+    });
+
+    test('prefers operator comment over gift / nicoad / simpleNotification v1 '
+        'when combined', () {
+      // Operator announcements outrank every advertiser / system payload
+      // in the existing hierarchy; the new branches must not upset that
+      // order.
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-04-20T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-op-wins',
+        serverTimestamp: serverTime,
+        operatorComment: const NdgrOperatorComment(content: '運営本文'),
+        simpleNotification: const NdgrSimpleNotificationV1(
+          type: NdgrSimpleNotificationV1Type.cruise,
+          message: 'cruise',
+        ),
+        gift: const NdgrGift(itemName: 'こんぺいとう', advertiserName: 'たろう'),
+        nicoad: const NdgrNicoad(message: '広告'),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.type, AppMessageType.operator);
+      expect(normalized.content, '運営本文');
+    });
+
+    test('nicoad wins over gift and chat when combined (without operator / '
+        'notification)', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-04-20T10:00:00Z');
+
+      final NdgrChunkedMessage source = NdgrChunkedMessage(
+        id: 'ndgr-nicoad-wins',
+        serverTimestamp: serverTime,
+        nicoad: const NdgrNicoad(message: '広告本文'),
+        gift: const NdgrGift(itemName: 'こんぺいとう', advertiserName: 'たろう'),
+        chat: const NdgrChat(content: 'chat'),
+      );
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        source,
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.type, AppMessageType.nicoad);
+      expect(normalized.content, '広告本文');
+    });
   });
 }

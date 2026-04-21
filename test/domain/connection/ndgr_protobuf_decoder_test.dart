@@ -92,11 +92,21 @@ void main() {
       expect(entry.previousUri, isNull);
     });
 
-    test('decodes statistics message with viewers', () {
+    test('decodes NicoliveMessage.gift (field 8) as Gift, not Statistics', () {
+      // Regression guard: prior revisions wrongly routed field 8 to
+      // `_decodeStatistics`. The upstream proto defines
+      // `NicoliveMessage.gift = 8` (atoms.proto `message Gift`) — every
+      // gift event was invisible and every gift payload spuriously
+      // emitted a null-viewer Statistics event. This test pins the fix.
       final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
 
-      final List<int> statistics = <int>[..._varintField(1, 42)];
-      final List<int> nicoliveMessage = <int>[..._bytesField(8, statistics)];
+      // Gift: advertiser_name(3), point(4), item_name(6)
+      final List<int> gift = <int>[
+        ..._stringField(3, 'たろう'),
+        ..._varintField(4, 500),
+        ..._stringField(6, 'こんぺいとう'),
+      ];
+      final List<int> nicoliveMessage = <int>[..._bytesField(8, gift)];
 
       final Uint8List bytes = Uint8List.fromList(<int>[
         ..._bytesField(2, nicoliveMessage),
@@ -105,8 +115,211 @@ void main() {
       final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
 
       expect(message.chat, isNull);
-      expect(message.statistics, isNotNull);
-      expect(message.statistics!.viewers, 42);
+      expect(
+        message.statistics,
+        isNull,
+        reason: 'field 8 must no longer populate Statistics',
+      );
+      expect(message.gift, isNotNull);
+      expect(message.gift!.itemName, 'こんぺいとう');
+      expect(message.gift!.advertiserName, 'たろう');
+      expect(message.gift!.point, 500);
+    });
+
+    test('decodes NicoliveMessage.nicoad (field 9) V1 variant', () {
+      // Field 9 was not handled at all before this change; every
+      // ニコニ広告 event was silently skipped by the default branch.
+      final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+      // Nicoad.V1: total_ad_point(1), message(2)
+      final List<int> v1 = <int>[
+        ..._varintField(1, 5000),
+        ..._stringField(2, '広告主さんが1000ポイントの広告をしました'),
+      ];
+      // Nicoad.versions oneof: v1 = 2
+      final List<int> nicoad = <int>[..._bytesField(2, v1)];
+      final List<int> nicoliveMessage = <int>[..._bytesField(9, nicoad)];
+
+      final Uint8List bytes = Uint8List.fromList(<int>[
+        ..._bytesField(2, nicoliveMessage),
+      ]);
+
+      final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+      expect(message.nicoad, isNotNull);
+      expect(message.nicoad!.message, '広告主さんが1000ポイントの広告をしました');
+      expect(message.nicoad!.totalPoint, 5000);
+    });
+
+    test('decodes NicoliveMessage.nicoad (field 9) V0 variant via Latest', () {
+      final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+      // Nicoad.V0.Latest: advertiser(1), point(2), message(3)
+      final List<int> latest = <int>[
+        ..._stringField(1, 'たろう'),
+        ..._varintField(2, 1000),
+        ..._stringField(3, 'たろうさんが1000ptニコニ広告をしました'),
+      ];
+      // Nicoad.V0: latest(1), total_point(3)
+      final List<int> v0 = <int>[
+        ..._bytesField(1, latest),
+        ..._varintField(3, 3000),
+      ];
+      // Nicoad.versions oneof: v0 = 1
+      final List<int> nicoad = <int>[..._bytesField(1, v0)];
+      final List<int> nicoliveMessage = <int>[..._bytesField(9, nicoad)];
+
+      final Uint8List bytes = Uint8List.fromList(<int>[
+        ..._bytesField(2, nicoliveMessage),
+      ]);
+
+      final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+      expect(message.nicoad, isNotNull);
+      expect(message.nicoad!.message, 'たろうさんが1000ptニコニ広告をしました');
+      expect(message.nicoad!.advertiser, 'たろう');
+      expect(message.nicoad!.totalPoint, 3000);
+    });
+
+    test(
+      'decodes NicoliveMessage.nicoad (field 9) V0 with missing Latest.message '
+      'synthesises body from advertiser + point',
+      () {
+        // The V0 Latest.message field is `optional`; real payloads do omit
+        // it. In that case the decoder synthesises a display body from the
+        // remaining fields so the ニコニ広告 event is still visible.
+        final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+        // Nicoad.V0.Latest: advertiser(1) + point(2) only (no message).
+        final List<int> latest = <int>[
+          ..._stringField(1, 'たろう'),
+          ..._varintField(2, 500),
+        ];
+        final List<int> v0 = <int>[..._bytesField(1, latest)];
+        final List<int> nicoad = <int>[..._bytesField(1, v0)];
+        final List<int> nicoliveMessage = <int>[..._bytesField(9, nicoad)];
+
+        final Uint8List bytes = Uint8List.fromList(<int>[
+          ..._bytesField(2, nicoliveMessage),
+        ]);
+
+        final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+        expect(message.nicoad, isNotNull);
+        expect(message.nicoad!.message, 'たろうさんが500ptニコニ広告しました');
+        expect(message.nicoad!.advertiser, 'たろう');
+      },
+    );
+
+    test('decodes NicoliveMessage.nicoad (field 9) V0 caps adversarial '
+        'advertiser length in the synthesised body', () {
+      // Defence-in-depth: a multi-megabyte advertiser string must not
+      // balloon AppMessage.content. The decoder caps the advertiser at
+      // 64 grapheme clusters when synthesising a V0 fallback body.
+      final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+      final String hugeAdvertiser = 'あ' * 5000;
+      final List<int> latest = <int>[
+        ..._stringField(1, hugeAdvertiser),
+        ..._varintField(2, 1),
+      ];
+      final List<int> v0 = <int>[..._bytesField(1, latest)];
+      final List<int> nicoad = <int>[..._bytesField(1, v0)];
+      final List<int> nicoliveMessage = <int>[..._bytesField(9, nicoad)];
+
+      final Uint8List bytes = Uint8List.fromList(<int>[
+        ..._bytesField(2, nicoliveMessage),
+      ]);
+
+      final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+      expect(message.nicoad, isNotNull);
+      final int bodyBytes = message.nicoad!.message.length;
+      // The capped advertiser is 64 code units ('あ' is BMP, 1 UTF-16
+      // code unit each) plus the fixed "さんが${point}ptニコニ広告しました"
+      // suffix (20 code units for point=1). Assert a generous upper
+      // bound well below the original 5,000-char advertiser.
+      expect(
+        bodyBytes,
+        lessThan(200),
+        reason: 'V0 advertiser must be length-capped before synthesis',
+      );
+      // And specifically: advertiser prefix length (64) is enforced.
+      expect(message.nicoad!.advertiser!.length, 64);
+    });
+
+    test(
+      'decodes NicoliveMessage.nicoad (field 9) with both V0 and V1 payloads '
+      'prefers V1',
+      () {
+        // Upstream proto marks Nicoad.versions as a oneof; in practice the
+        // upstream is expected to emit only one at a time. A lenient
+        // decoder still handles the paranoid "both present" case and
+        // prefers the newer (V1) representation because that's what the
+        // docstring on [NdgrNicoad] promises.
+        final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+        // V0 Latest with message (would decode successfully on its own).
+        final List<int> latest = <int>[
+          ..._stringField(1, 'たろう'),
+          ..._varintField(2, 100),
+          ..._stringField(3, 'V0 message'),
+        ];
+        final List<int> v0 = <int>[..._bytesField(1, latest)];
+
+        // V1 with its own message.
+        final List<int> v1 = <int>[
+          ..._varintField(1, 2000),
+          ..._stringField(2, 'V1 message'),
+        ];
+
+        // Nicoad: both v0 (field 1) and v1 (field 2) present.
+        final List<int> nicoad = <int>[
+          ..._bytesField(1, v0),
+          ..._bytesField(2, v1),
+        ];
+        final List<int> nicoliveMessage = <int>[..._bytesField(9, nicoad)];
+
+        final Uint8List bytes = Uint8List.fromList(<int>[
+          ..._bytesField(2, nicoliveMessage),
+        ]);
+
+        final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+        expect(message.nicoad, isNotNull);
+        expect(
+          message.nicoad!.message,
+          'V1 message',
+          reason: 'V1 wins when both payloads coexist',
+        );
+        expect(message.nicoad!.totalPoint, 2000);
+      },
+    );
+
+    test('decodes NicoliveMessage.simple_notification (field 7) v1 cruise', () {
+      // Retained fallback for servers still emitting ニコ生クルーズ via the
+      // legacy v1 SimpleNotification oneof (cruise = field 4).
+      final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
+
+      final List<int> simpleNotification = <int>[
+        ..._stringField(4, 'ニコ生クルーズが到着しました'),
+      ];
+      final List<int> nicoliveMessage = <int>[
+        ..._bytesField(7, simpleNotification),
+      ];
+
+      final Uint8List bytes = Uint8List.fromList(<int>[
+        ..._bytesField(2, nicoliveMessage),
+      ]);
+
+      final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
+
+      expect(message.simpleNotification, isNotNull);
+      expect(
+        message.simpleNotification!.type,
+        NdgrSimpleNotificationV1Type.cruise,
+      );
+      expect(message.simpleNotification!.message, 'ニコ生クルーズが到着しました');
     });
 
     test('normalizes empty chat.name to null at decode level', () {
@@ -168,14 +381,18 @@ void main() {
       expect(message.chat!.name, 'ユーザー名');
     });
 
-    test('decodes message with both chat and statistics', () {
+    test('decodes message with both chat and gift (field 8 is Gift)', () {
       final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
 
       final List<int> chat = <int>[..._stringField(1, 'hello')];
-      final List<int> statistics = <int>[..._varintField(1, 100)];
+      // Gift: advertiser_name(3), item_name(6)
+      final List<int> gift = <int>[
+        ..._stringField(3, 'たろう'),
+        ..._stringField(6, 'こんぺいとう'),
+      ];
       final List<int> nicoliveMessage = <int>[
         ..._bytesField(1, chat),
-        ..._bytesField(8, statistics),
+        ..._bytesField(8, gift),
       ];
 
       final Uint8List bytes = Uint8List.fromList(<int>[
@@ -186,8 +403,16 @@ void main() {
 
       expect(message.chat, isNotNull);
       expect(message.chat!.content, 'hello');
-      expect(message.statistics, isNotNull);
-      expect(message.statistics!.viewers, 100);
+      expect(message.gift, isNotNull);
+      expect(message.gift!.itemName, 'こんぺいとう');
+      expect(message.gift!.advertiserName, 'たろう');
+      expect(
+        message.statistics,
+        isNull,
+        reason:
+            'field 8 is Gift, not Statistics; statistics must not be '
+            'populated from NicoliveMessage',
+      );
     });
 
     test('decodes operator comment from ChunkedMessage.state.marquee', () {
@@ -500,21 +725,20 @@ void main() {
       },
     );
 
-    group('NicoliveMessage.statistics vs NicoliveState (Issue #461)', () {
-      test('legacy NicoliveMessage.field=8 still populates viewers when '
-          'a NicoliveState payload coexists in the same chunk', () {
-        // Regression lock for Issue #461 follow-up: while the
-        // `NicoliveState.statistics` fallback is staged (not yet
-        // wired because upstream field numbers need confirmation),
-        // the decoder must still read viewers from the legacy
-        // `NicoliveMessage.statistics` (field 8) even when the same
-        // chunk carries an unrelated NicoliveState payload. This
-        // exercises the "state body parsed but does not stomp over
-        // legacy statistics" code path in `decodeChunkedMessage`.
+    group('NicoliveMessage.statistics regression (Issue #461 follow-up)', () {
+      test('field 8 Gift coexists with a NicoliveState payload without '
+          'populating Statistics', () {
+        // Pre-fix behaviour: field 8 on NicoliveMessage was wrongly
+        // decoded as Statistics, which also meant every Gift event
+        // spuriously emitted a null-viewer Statistics event. After the
+        // fix, field 8 is correctly interpreted as Gift; Statistics must
+        // come from NicoliveState (Issue #461 — not wired yet) and the
+        // coexistence of a state payload must not upset the gift decode.
         final NdgrProtobufDecoder decoder = NdgrProtobufDecoder();
 
-        final List<int> legacyStats = <int>[..._varintField(1, 42)];
-        final List<int> nicoliveMessage = <int>[..._bytesField(8, legacyStats)];
+        // Gift: item_name(6) only — minimal payload.
+        final List<int> gift = <int>[..._stringField(6, 'こんぺいとう')];
+        final List<int> nicoliveMessage = <int>[..._bytesField(8, gift)];
 
         // Arbitrary NicoliveState payload carrying only a marquee so
         // the state decoder has real work to do.
@@ -530,8 +754,15 @@ void main() {
 
         final NdgrChunkedMessage message = decoder.decodeChunkedMessage(bytes);
 
-        expect(message.statistics, isNotNull);
-        expect(message.statistics!.viewers, 42);
+        expect(
+          message.statistics,
+          isNull,
+          reason:
+              'Statistics is not delivered on NicoliveMessage; '
+              'waiting on Issue #461 to wire the NicoliveState path',
+        );
+        expect(message.gift, isNotNull);
+        expect(message.gift!.itemName, 'こんぺいとう');
         expect(message.operatorComment, isNotNull);
       });
     });
@@ -899,6 +1130,67 @@ void main() {
       final List<Uint8List> recovered = decoder.add(delimited);
       expect(recovered.length, 1);
       expect(recovered.first, Uint8List.fromList(payload));
+    });
+  });
+
+  group('NdgrProtobufDecoder.capGraphemes', () {
+    test('returns input unchanged when shorter than cap', () {
+      expect(NdgrProtobufDecoder.capGraphemesForTest('たろう', 64), 'たろう');
+    });
+
+    test('returns input unchanged when exactly at cap', () {
+      final String value = 'あ' * 64;
+      expect(NdgrProtobufDecoder.capGraphemesForTest(value, 64), value);
+    });
+
+    test(
+      'truncates at grapheme cluster boundary without splitting surrogates',
+      () {
+        // 1 face-with-tears-of-joy emoji = 1 grapheme = 2 UTF-16 code units.
+        // 40 emoji = 40 graphemes = 80 code units. Prefixed with 25 ASCII
+        // chars so the total is 65 graphemes, crossing the cap inside the
+        // emoji region.
+        final String heading = 'a' * 25;
+        final String emojis = '\u{1F602}' * 40;
+        final String crafted = heading + emojis;
+
+        final String capped = NdgrProtobufDecoder.capGraphemesForTest(
+          crafted,
+          64,
+        );
+
+        // Must not contain U+FFFD (broken-surrogate replacement character).
+        expect(
+          capped.contains('�'),
+          isFalse,
+          reason: 'cap must not split a surrogate pair into a lone surrogate',
+        );
+        // Every high surrogate must still be followed by a low surrogate.
+        for (int i = 0; i < capped.length; i++) {
+          final int unit = capped.codeUnitAt(i);
+          final bool isHigh = unit >= 0xD800 && unit <= 0xDBFF;
+          final bool isLow = unit >= 0xDC00 && unit <= 0xDFFF;
+          if (isHigh) {
+            expect(i + 1 < capped.length, isTrue);
+            final int next = capped.codeUnitAt(i + 1);
+            expect(next >= 0xDC00 && next <= 0xDFFF, isTrue);
+            i++;
+          } else {
+            expect(isLow, isFalse, reason: 'lone low surrogate at offset $i');
+          }
+        }
+      },
+    );
+
+    test('preserves ZWJ-composed emoji family at cluster boundary', () {
+      // Family emoji = man + ZWJ + woman + ZWJ + girl.  Single grapheme
+      // cluster across 8 UTF-16 code units. Must survive as a unit when
+      // inside the kept prefix.
+      const String family = '\u{1F468}‍\u{1F469}‍\u{1F467}';
+      final String value = 'A' * 63 + family;
+      // 63 ASCII + 1 family = 64 graphemes total; within cap — expect
+      // unchanged.
+      expect(NdgrProtobufDecoder.capGraphemesForTest(value, 64), value);
     });
   });
 }

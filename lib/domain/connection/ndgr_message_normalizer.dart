@@ -15,6 +15,14 @@ const String kNdgrOperatorIdPrefix = 'ndgr-operator-';
 /// emotion / notification) that do not carry a source ID.
 const String kNdgrNotifyIdPrefix = 'ndgr-notify-';
 
+/// Fallback ID prefix for gift (ギフト) messages that do not carry a
+/// source ID.
+const String kNdgrGiftIdPrefix = 'ndgr-gift-';
+
+/// Fallback ID prefix for nicoad (ニコニ広告) messages that do not carry
+/// a source ID.
+const String kNdgrNicoadIdPrefix = 'ndgr-nicoad-';
+
 /// Prefix for chat ids that fall back to `${prefix}${chat.no}` when the
 /// upstream ChunkedMessageMeta.id is missing but the chat carries a
 /// comment number. Library-private so the refactor does not widen the
@@ -221,6 +229,81 @@ class NdgrMessageNormalizer {
       );
     }
 
+    // SimpleNotification (v1 legacy) — fallback for streams that still emit
+    // ニコ生クルーズ / 市場 / エモーション through the older
+    // `NicoliveMessage.simple_notification` field (7) instead of
+    // SimpleNotificationV2 (23). Placed after the v2 branch so that when
+    // both are present in the same chunk, v2 wins.
+    final NdgrSimpleNotificationV1? notificationV1 = source.simpleNotification;
+    if (notificationV1 != null && notificationV1.message.isNotEmpty) {
+      final String? sanitizedContent = _sanitizeMessageContent(
+        notificationV1.message,
+      );
+      if (sanitizedContent == null) {
+        return null;
+      }
+      return AppMessage(
+        id: _buildNdgrId(kNdgrNotifyIdPrefix, source.id, null, timestamp),
+        timestamp: timestamp,
+        userId: null,
+        userName: null,
+        content: sanitizedContent,
+        type: _notificationV1TypeToAppMessageType(notificationV1.type),
+        raw: source,
+      );
+    }
+
+    // Nicoad (ニコニ広告). The decoder already collapses V0 / V1 into a
+    // single [NdgrNicoad.message] so this branch does not need to know the
+    // version.  The body is broadcaster/advertiser-authored text so the
+    // same sanitiser pipeline (bidi / Tag / zero-width) is applied as to
+    // chat / operator / notification content.  Downstream speech code in
+    // `comment_screen.dart` additionally runs the NG-word filter on
+    // [AppMessage.content] for nicoad (but bypasses it for gift), which is
+    // the reason nicoad carries the user-facing message verbatim while
+    // gift is synthesised from system fields only.
+    final NdgrNicoad? nicoad = source.nicoad;
+    if (nicoad != null && nicoad.message.isNotEmpty) {
+      final String? sanitizedContent = _sanitizeMessageContent(nicoad.message);
+      if (sanitizedContent == null) {
+        return null;
+      }
+      return AppMessage(
+        id: _buildNdgrId(kNdgrNicoadIdPrefix, source.id, null, timestamp),
+        timestamp: timestamp,
+        userId: null,
+        userName: null,
+        content: sanitizedContent,
+        type: AppMessageType.nicoad,
+        raw: source,
+      );
+    }
+
+    // Gift (ギフト). Body is intentionally synthesised from the
+    // advertiser / item / point fields only — never from any
+    // advertiser-supplied free-text — so the comment-screen assumption
+    // that gift bodies are system-generated (and therefore safe to
+    // bypass the NG word filter) holds. The advertiser name goes through
+    // the same chat-name sanitiser (strip bidi / Tag / zero-width, cap
+    // to 64 grapheme clusters) because the upstream label is advertiser-
+    // supplied and the gift row renders it in-line with the item name.
+    final NdgrGift? gift = source.gift;
+    if (gift != null) {
+      final String? content = _formatGiftContent(gift);
+      if (content == null) {
+        return null;
+      }
+      return AppMessage(
+        id: _buildNdgrId(kNdgrGiftIdPrefix, source.id, null, timestamp),
+        timestamp: timestamp,
+        userId: null,
+        userName: _sanitizeChatUserName(gift.advertiserName),
+        content: content,
+        type: AppMessageType.gift,
+        raw: source,
+      );
+    }
+
     final NdgrChat? chat = source.chat;
     if (chat == null) {
       return null;
@@ -303,6 +386,82 @@ class NdgrMessageNormalizer {
         return AppMessageType.notification;
     }
   }
+
+  /// Maps legacy SimpleNotification (v1) oneof field numbers to
+  /// [AppMessageType].  Kept in lock-step with the v2 mapping so a
+  /// category that arrives via either field produces the same downstream
+  /// visibility / NG-filter behaviour.
+  AppMessageType _notificationV1TypeToAppMessageType(
+    NdgrSimpleNotificationV1Type type,
+  ) {
+    switch (type) {
+      case NdgrSimpleNotificationV1Type.ichiba:
+        return AppMessageType.system;
+      case NdgrSimpleNotificationV1Type.emotion:
+        return AppMessageType.emotion;
+      case NdgrSimpleNotificationV1Type.unknown:
+      case NdgrSimpleNotificationV1Type.quote:
+      case NdgrSimpleNotificationV1Type.cruise:
+      case NdgrSimpleNotificationV1Type.programExtended:
+      case NdgrSimpleNotificationV1Type.rankingIn:
+      case NdgrSimpleNotificationV1Type.visited:
+      case NdgrSimpleNotificationV1Type.rankingUpdated:
+      case NdgrSimpleNotificationV1Type.supporterRegistered:
+      case NdgrSimpleNotificationV1Type.userLevelUp:
+        return AppMessageType.notification;
+    }
+  }
+
+  /// Synthesises the gift row body from system-supplied fields only.
+  ///
+  /// Preserves the invariant that gift bodies never carry arbitrary
+  /// advertiser-authored text (the `Gift.message` field in the upstream
+  /// proto is deliberately not decoded — see [NdgrGift]). Returns `null`
+  /// when there is no usable fixed text to produce (both advertiser and
+  /// item are absent); in that case the caller drops the gift rather than
+  /// emit an empty bubble.
+  ///
+  /// The advertiser label runs through [_sanitizeChatUserName] at the
+  /// callsite for the `userName` field; this helper additionally strips
+  /// invisible characters from whichever advertiser/item substring it
+  /// interpolates into the body so a crafted label cannot inject extra
+  /// rendered rows into the comment list.
+  String? _formatGiftContent(NdgrGift gift) {
+    final String? safeAdvertiser = _sanitizeGiftLabel(gift.advertiserName);
+    final String? safeItem = _sanitizeGiftLabel(gift.itemName);
+    final int? point = gift.point;
+
+    if (safeItem != null && safeAdvertiser != null) {
+      if (point != null && point > 0) {
+        return '${safeAdvertiser}さんが${safeItem}（${point}pt）をプレゼントしました';
+      }
+      return '${safeAdvertiser}さんが${safeItem}をプレゼントしました';
+    }
+    if (safeItem != null) {
+      if (point != null && point > 0) {
+        return 'ギフト：${safeItem}（${point}pt）';
+      }
+      return 'ギフト：${safeItem}';
+    }
+    if (safeAdvertiser != null) {
+      if (point != null && point > 0) {
+        return '${safeAdvertiser}さんからギフト（${point}pt）';
+      }
+      return '${safeAdvertiser}さんからギフト';
+    }
+    return null;
+  }
+
+  /// Strips invisible / control characters from a gift label substring and
+  /// caps it at the chat-user-name length ceiling so a malformed or
+  /// abusive label cannot inflate the rendered comment row. Returns
+  /// `null` when the label empties after sanitisation.
+  ///
+  /// Shares [_sanitizeUserName] with the chat / operator name fields so
+  /// the strip-set stays in lock-step across every user-authored label
+  /// the comment list renders.
+  String? _sanitizeGiftLabel(String? raw) =>
+      _sanitizeUserName(raw, _kChatUserNameMaxLength);
 
   /// Builds a stable id for a normalized NDGR message, consolidating the
   /// pre-refactor per-type `_resolveId` / `_resolveOperatorId` /

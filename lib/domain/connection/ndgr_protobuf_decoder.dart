@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
 
+import 'package:characters/characters.dart';
 import 'package:flutter/foundation.dart';
 
 class NdgrChunkedEntry {
@@ -95,6 +96,89 @@ class NdgrSimpleNotificationV2 {
   final String message;
 }
 
+/// Legacy (v1) `SimpleNotification` payload from `atoms.proto`.
+///
+/// Schema (verified 2026-04 against upstream proto): a single `oneof message`
+/// whose field number identifies the notification category and whose value
+/// is the pre-formatted display string.
+///
+/// Field numbers (oneof):
+///   1 ichiba, 2 quote, 3 emotion, 4 cruise, 5 program_extended,
+///   6 ranking_in, 7 visited, 8 ranking_updated, 9 supporter_registered,
+///   10 user_level_up.
+///
+/// Retained alongside [NdgrSimpleNotificationV2] because the upstream service
+/// is observed to still emit certain categories (notably CRUISE and legacy
+/// ICHIBA) through this older field (NicoliveMessage.simple_notification at
+/// field 7) rather than the newer SimpleNotificationV2 (field 23). Dropping
+/// v1 would leave ニコ生クルーズ events invisible on streams that haven't
+/// migrated yet.
+enum NdgrSimpleNotificationV1Type {
+  unknown,
+  ichiba,
+  quote,
+  emotion,
+  cruise,
+  programExtended,
+  rankingIn,
+  visited,
+  rankingUpdated,
+  supporterRegistered,
+  userLevelUp,
+}
+
+class NdgrSimpleNotificationV1 {
+  const NdgrSimpleNotificationV1({required this.type, required this.message});
+
+  final NdgrSimpleNotificationV1Type type;
+  final String message;
+}
+
+/// Gift (ギフト) message extracted from
+/// `NicoliveMessage.gift` (field 8). Schema (atoms.proto `message Gift`):
+///   1: string item_id
+///   2: optional int64 advertiser_user_id
+///   3: string advertiser_name
+///   4: int64 point
+///   5: string message                (NOT surfaced — see normaliser)
+///   6: string item_name
+///   7: optional int32 contribution_rank
+///
+/// `message` is intentionally not carried on this class: downstream
+/// rendering (`comment_screen.dart`) bypasses the NG word filter for gift
+/// entries on the assumption that the body is a system-generated string of
+/// the form "xxxさんがyyyをプレゼントしました". Preserving that invariant
+/// here — by only exposing the system-derivable fields — means the NG-
+/// bypass assumption cannot accidentally regress if a future advertiser-
+/// supplied `message` ever carries arbitrary user text.
+class NdgrGift {
+  const NdgrGift({required this.itemName, this.advertiserName, this.point});
+
+  final String itemName;
+  final String? advertiserName;
+  final int? point;
+}
+
+/// Nicoad (ニコニ広告) message extracted from
+/// `NicoliveMessage.nicoad` (field 9). Schema (atoms.proto `message Nicoad`):
+///   versions: oneof { V0 v0 = 1; V1 v1 = 2; }
+///   V0: Latest latest = 1, repeated Ranking ranking = 2, int32 total_point = 3
+///     Latest:  advertiser = 1, point = 2, optional message = 3
+///     Ranking: advertiser = 1, rank = 2, optional message = 3, user_rank = 4
+///   V1: total_ad_point = 1, string message = 2
+///
+/// Normalised into a single display [message] so downstream code does not
+/// need to branch on V0 / V1. V1 wins when both are present (newer format).
+/// V0 falls back to the `latest` sub-message; the `ranking` list is not
+/// surfaced to keep the comment row single-line.
+class NdgrNicoad {
+  const NdgrNicoad({required this.message, this.advertiser, this.totalPoint});
+
+  final String message;
+  final String? advertiser;
+  final int? totalPoint;
+}
+
 enum NdgrProgramStatus { unknown, ended }
 
 class NdgrChunkedMessage {
@@ -104,7 +188,10 @@ class NdgrChunkedMessage {
     this.chat,
     this.statistics,
     this.operatorComment,
+    this.simpleNotification,
     this.simpleNotificationV2,
+    this.gift,
+    this.nicoad,
     this.programStatus,
   });
 
@@ -116,9 +203,21 @@ class NdgrChunkedMessage {
   /// Operator (運営) comment extracted from `ChunkedMessage.state.marquee`.
   final NdgrOperatorComment? operatorComment;
 
+  /// Legacy SimpleNotification extracted from
+  /// `NicoliveMessage.simple_notification` (field 7). Used as a fallback for
+  /// streams that still emit e.g. ニコ生クルーズ through the v1 path
+  /// instead of SimpleNotificationV2 (field 23).
+  final NdgrSimpleNotificationV1? simpleNotification;
+
   /// SimpleNotificationV2 extracted from `NicoliveMessage.simple_notification_v2`.
   /// Used to surface system/emotion/notification messages.
   final NdgrSimpleNotificationV2? simpleNotificationV2;
+
+  /// Gift (ギフト) extracted from `NicoliveMessage.gift` (field 8).
+  final NdgrGift? gift;
+
+  /// Nicoad (ニコニ広告) extracted from `NicoliveMessage.nicoad` (field 9).
+  final NdgrNicoad? nicoad;
 
   /// Program status extracted from `ChunkedMessage.state.program_status`.
   /// Non-null with [NdgrProgramStatus.ended] when the broadcast has ended.
@@ -272,9 +371,17 @@ class NdgrProtobufDecoder {
     String? id;
     DateTime? serverTimestamp;
     NdgrChat? chat;
-    NdgrStatistics? statistics;
+    // `statistics` on [NdgrChunkedMessage] is retained as part of the
+    // public shape for ndgr_client.dart, but the current proto does not
+    // carry Statistics on NicoliveMessage — see the note on
+    // [_NicoliveMessageResult] and Issue #461. Until the NicoliveState
+    // fallback is added, this always passes through as `null`.
+    const NdgrStatistics? statistics = null;
     NdgrOperatorComment? operatorComment;
+    NdgrSimpleNotificationV1? simpleNotification;
     NdgrSimpleNotificationV2? simpleNotificationV2;
+    NdgrGift? gift;
+    NdgrNicoad? nicoad;
     NdgrProgramStatus? programStatus;
 
     while (!reader.isAtEnd) {
@@ -316,12 +423,16 @@ class NdgrProtobufDecoder {
                 messageBytes,
               );
               chat = result.chat;
-              statistics = result.statistics;
+              simpleNotification = result.simpleNotification;
               simpleNotificationV2 = result.simpleNotificationV2;
+              gift = result.gift;
+              nicoad = result.nicoad;
             } on FormatException {
               chat = null;
-              statistics = null;
+              simpleNotification = null;
               simpleNotificationV2 = null;
+              gift = null;
+              nicoad = null;
             }
           } else {
             reader.skipField(wireType);
@@ -359,7 +470,10 @@ class NdgrProtobufDecoder {
       chat: chat,
       statistics: statistics,
       operatorComment: operatorComment,
+      simpleNotification: simpleNotification,
       simpleNotificationV2: simpleNotificationV2,
+      gift: gift,
+      nicoad: nicoad,
       programStatus: programStatus,
     );
   }
@@ -473,8 +587,10 @@ class NdgrProtobufDecoder {
     final _ProtoReader reader = _ProtoReader(bytes);
 
     NdgrChat? chat;
-    NdgrStatistics? statistics;
+    NdgrSimpleNotificationV1? simpleNotification;
     NdgrSimpleNotificationV2? simpleNotificationV2;
+    NdgrGift? gift;
+    NdgrNicoad? nicoad;
 
     while (!reader.isAtEnd) {
       final int tag = reader.readVarint();
@@ -483,34 +599,68 @@ class NdgrProtobufDecoder {
 
       if ((fieldNumber == 1 || fieldNumber == 20) &&
           wireType == _WireType.lengthDelimited) {
-        // NicoliveMessage.chat / NicoliveMessage.overflowed_chat
+        // NicoliveMessage.chat (1) / NicoliveMessage.overflowed_chat (20)
         //
-        // Design decision: chat is NOT wrapped in try/catch (unlike
-        // simpleNotificationV2 below).  Chat is the primary payload of
-        // the NicoliveMessage — if it is malformed, the entire message
-        // is semantically broken and should propagate as a decode
-        // failure rather than silently producing a null chat while
-        // statistics / notification data is preserved.  Silently
-        // swallowing a chat decode error would hide protocol drift from
-        // the maintainer and leave the user with no visible comment.
+        // Design decision: chat is NOT wrapped in try/catch (unlike the
+        // notification / gift / nicoad branches below).  Chat is the
+        // primary payload of the NicoliveMessage — if it is malformed, the
+        // entire message is semantically broken and should propagate as a
+        // decode failure rather than silently producing a null chat while
+        // other data is preserved.  Silently swallowing a chat decode
+        // error would hide protocol drift from the maintainer and leave
+        // the user with no visible comment.
         chat = _decodeChat(reader.readLengthDelimited());
+      } else if (fieldNumber == 7 && wireType == _WireType.lengthDelimited) {
+        // NicoliveMessage.simple_notification (v1 legacy)
+        //
+        // Retained as a fallback path: servers that have not yet migrated
+        // to SimpleNotificationV2 still emit categories like ニコ生クルーズ
+        // through this field. Dropping v1 would leave those events
+        // invisible. When both v1 and v2 are present in the same chunk,
+        // v2 wins at the normaliser level.
+        final Uint8List notificationBytes = reader.readLengthDelimited();
+        try {
+          simpleNotification = _decodeSimpleNotificationV1(notificationBytes);
+        } on FormatException {
+          simpleNotification = null;
+        }
       } else if (fieldNumber == 8 && wireType == _WireType.lengthDelimited) {
-        // NicoliveMessage.statistics (legacy path). Upstream proto is
-        // migrating Statistics into NicoliveState (see
-        // [_decodeNicoliveState] / Issue #461 for the fallback path that
-        // reads NicoliveState.statistics). We keep this branch so that any
-        // server still emitting the legacy layout continues to populate
-        // viewers safely; the NicoliveState path will overwrite this value
-        // when both are present (upstream is considered authoritative once
-        // it ships the migration).
-        statistics = _decodeStatistics(reader.readLengthDelimited());
+        // NicoliveMessage.gift (ギフト).
+        //
+        // Prior revisions routed this field to `_decodeStatistics`, which
+        // was a protocol-drift bug: field 8 in the current proto is
+        // `Gift gift`, not `Statistics statistics`. The misroute silently
+        // dropped every gift event and, because the Gift wire format was
+        // being re-interpreted as Statistics, also produced spurious
+        // null-viewer Statistics payloads on every gift. Corrected to
+        // decode Gift directly; viewer counts are now sourced via
+        // NicoliveState (Issue #461) rather than this field.
+        final Uint8List giftBytes = reader.readLengthDelimited();
+        try {
+          gift = _decodeGift(giftBytes);
+        } on FormatException {
+          gift = null;
+        }
+      } else if (fieldNumber == 9 && wireType == _WireType.lengthDelimited) {
+        // NicoliveMessage.nicoad (ニコニ広告).
+        //
+        // Not handled prior to this change — every nicoad event was being
+        // skipped by the default branch. Isolate decode failures so a
+        // single malformed V0 / V1 payload does not drop the rest of the
+        // NicoliveMessage.
+        final Uint8List nicoadBytes = reader.readLengthDelimited();
+        try {
+          nicoad = _decodeNicoad(nicoadBytes);
+        } on FormatException {
+          nicoad = null;
+        }
       } else if (fieldNumber == 23 && wireType == _WireType.lengthDelimited) {
         // NicoliveMessage.simple_notification_v2 (atoms.SimpleNotificationV2)
         //
         // Isolate decode failures so that a single malformed
         // SimpleNotificationV2 payload does not drop other already-decoded
-        // fields in the same NicoliveMessage (chat / statistics). Mirrors
-        // the try/catch around NicoliveState.operator_comment in
+        // fields in the same NicoliveMessage (chat / gift / nicoad).
+        // Mirrors the try/catch around NicoliveState.operator_comment in
         // [decodeChunkedMessage] so both nested fields are equally robust
         // to protocol drift.
         //
@@ -531,8 +681,10 @@ class NdgrProtobufDecoder {
 
     return _NicoliveMessageResult(
       chat: chat,
-      statistics: statistics,
+      simpleNotification: simpleNotification,
       simpleNotificationV2: simpleNotificationV2,
+      gift: gift,
+      nicoad: nicoad,
     );
   }
 
@@ -723,6 +875,346 @@ class NdgrProtobufDecoder {
     );
   }
 
+  /// Decodes `SimpleNotification` (v1) from atoms.proto.
+  ///
+  /// Wire shape: a single `oneof message { string … }` where the selected
+  /// field number identifies the category and the string value is the
+  /// pre-formatted body. Returns `null` when no recognised field carries a
+  /// non-empty payload (avoids emitting empty bubbles).
+  NdgrSimpleNotificationV1? _decodeSimpleNotificationV1(Uint8List bytes) {
+    final _ProtoReader reader = _ProtoReader(bytes);
+
+    NdgrSimpleNotificationV1Type type = NdgrSimpleNotificationV1Type.unknown;
+    String message = '';
+    bool resolved = false;
+
+    while (!reader.isAtEnd) {
+      final int tag = reader.readVarint();
+      final int fieldNumber = tag >> 3;
+      final int wireType = tag & 0x07;
+
+      if (wireType != _WireType.lengthDelimited) {
+        reader.skipField(wireType);
+        continue;
+      }
+
+      final String value = reader.readString();
+      final NdgrSimpleNotificationV1Type? mapped =
+          _simpleNotificationV1TypeFromField(fieldNumber);
+      if (mapped != null && value.isNotEmpty) {
+        type = mapped;
+        message = value;
+        resolved = true;
+      }
+    }
+
+    if (!resolved) {
+      return null;
+    }
+    return NdgrSimpleNotificationV1(type: type, message: message);
+  }
+
+  NdgrSimpleNotificationV1Type? _simpleNotificationV1TypeFromField(int field) {
+    switch (field) {
+      case 1:
+        return NdgrSimpleNotificationV1Type.ichiba;
+      case 2:
+        return NdgrSimpleNotificationV1Type.quote;
+      case 3:
+        return NdgrSimpleNotificationV1Type.emotion;
+      case 4:
+        return NdgrSimpleNotificationV1Type.cruise;
+      case 5:
+        return NdgrSimpleNotificationV1Type.programExtended;
+      case 6:
+        return NdgrSimpleNotificationV1Type.rankingIn;
+      case 7:
+        return NdgrSimpleNotificationV1Type.visited;
+      case 8:
+        return NdgrSimpleNotificationV1Type.rankingUpdated;
+      case 9:
+        return NdgrSimpleNotificationV1Type.supporterRegistered;
+      case 10:
+        return NdgrSimpleNotificationV1Type.userLevelUp;
+      default:
+        return null;
+    }
+  }
+
+  /// Decodes `Gift` from atoms.proto. Returns `null` when the gift is
+  /// unusable for display (no item_name and no advertiser) so the
+  /// normaliser can drop it rather than emit an empty bubble.
+  NdgrGift? _decodeGift(Uint8List bytes) {
+    final _ProtoReader reader = _ProtoReader(bytes);
+
+    String itemName = '';
+    String? advertiserName;
+    int? point;
+
+    while (!reader.isAtEnd) {
+      final int tag = reader.readVarint();
+      final int fieldNumber = tag >> 3;
+      final int wireType = tag & 0x07;
+
+      switch (fieldNumber) {
+        case 3: // advertiser_name
+          if (wireType == _WireType.lengthDelimited) {
+            advertiserName = reader.readString();
+          } else {
+            reader.skipField(wireType);
+          }
+          break;
+        case 4: // point
+          if (wireType == _WireType.varint) {
+            point = reader.readVarint();
+          } else {
+            reader.skipField(wireType);
+          }
+          break;
+        case 6: // item_name
+          if (wireType == _WireType.lengthDelimited) {
+            itemName = reader.readString();
+          } else {
+            reader.skipField(wireType);
+          }
+          break;
+        default:
+          reader.skipField(wireType);
+      }
+    }
+
+    final String? normalizedAdvertiser =
+        advertiserName != null && advertiserName.isNotEmpty
+        ? advertiserName
+        : null;
+    if (itemName.isEmpty && normalizedAdvertiser == null) {
+      return null;
+    }
+    return NdgrGift(
+      itemName: itemName,
+      advertiserName: normalizedAdvertiser,
+      point: point,
+    );
+  }
+
+  /// Decodes `Nicoad` from atoms.proto. Collapses V0 / V1 into a single
+  /// display [NdgrNicoad]. When both versions are present in the same
+  /// payload, V1 wins (newer format).
+  NdgrNicoad? _decodeNicoad(Uint8List bytes) {
+    final _ProtoReader reader = _ProtoReader(bytes);
+
+    Uint8List? v0Bytes;
+    Uint8List? v1Bytes;
+
+    while (!reader.isAtEnd) {
+      final int tag = reader.readVarint();
+      final int fieldNumber = tag >> 3;
+      final int wireType = tag & 0x07;
+
+      if (wireType != _WireType.lengthDelimited) {
+        reader.skipField(wireType);
+        continue;
+      }
+      switch (fieldNumber) {
+        case 1: // v0
+          v0Bytes = reader.readLengthDelimited();
+          break;
+        case 2: // v1
+          v1Bytes = reader.readLengthDelimited();
+          break;
+        default:
+          // Skip the payload of any unknown length-delimited field.
+          reader.readLengthDelimited();
+      }
+    }
+
+    if (v1Bytes != null) {
+      final NdgrNicoad? v1 = _decodeNicoadV1(v1Bytes);
+      if (v1 != null) {
+        return v1;
+      }
+    }
+    if (v0Bytes != null) {
+      return _decodeNicoadV0(v0Bytes);
+    }
+    return null;
+  }
+
+  NdgrNicoad? _decodeNicoadV1(Uint8List bytes) {
+    final _ProtoReader reader = _ProtoReader(bytes);
+
+    int? totalAdPoint;
+    String message = '';
+
+    while (!reader.isAtEnd) {
+      final int tag = reader.readVarint();
+      final int fieldNumber = tag >> 3;
+      final int wireType = tag & 0x07;
+
+      switch (fieldNumber) {
+        case 1:
+          if (wireType == _WireType.varint) {
+            totalAdPoint = reader.readVarint();
+          } else {
+            reader.skipField(wireType);
+          }
+          break;
+        case 2:
+          if (wireType == _WireType.lengthDelimited) {
+            message = reader.readString();
+          } else {
+            reader.skipField(wireType);
+          }
+          break;
+        default:
+          reader.skipField(wireType);
+      }
+    }
+
+    if (message.isEmpty) {
+      return null;
+    }
+    return NdgrNicoad(message: message, totalPoint: totalAdPoint);
+  }
+
+  NdgrNicoad? _decodeNicoadV0(Uint8List bytes) {
+    final _ProtoReader reader = _ProtoReader(bytes);
+
+    Uint8List? latestBytes;
+    int? totalPoint;
+
+    while (!reader.isAtEnd) {
+      final int tag = reader.readVarint();
+      final int fieldNumber = tag >> 3;
+      final int wireType = tag & 0x07;
+
+      switch (fieldNumber) {
+        case 1: // latest
+          if (wireType == _WireType.lengthDelimited) {
+            latestBytes = reader.readLengthDelimited();
+          } else {
+            reader.skipField(wireType);
+          }
+          break;
+        case 3: // total_point
+          if (wireType == _WireType.varint) {
+            totalPoint = reader.readVarint();
+          } else {
+            reader.skipField(wireType);
+          }
+          break;
+        default:
+          reader.skipField(wireType);
+      }
+    }
+
+    if (latestBytes == null) {
+      return null;
+    }
+    return _decodeNicoadV0Latest(latestBytes, totalPoint);
+  }
+
+  NdgrNicoad? _decodeNicoadV0Latest(Uint8List bytes, int? totalPoint) {
+    final _ProtoReader reader = _ProtoReader(bytes);
+
+    String? advertiser;
+    int? point;
+    String? message;
+
+    while (!reader.isAtEnd) {
+      final int tag = reader.readVarint();
+      final int fieldNumber = tag >> 3;
+      final int wireType = tag & 0x07;
+
+      switch (fieldNumber) {
+        case 1:
+          if (wireType == _WireType.lengthDelimited) {
+            advertiser = reader.readString();
+          } else {
+            reader.skipField(wireType);
+          }
+          break;
+        case 2:
+          if (wireType == _WireType.varint) {
+            point = reader.readVarint();
+          } else {
+            reader.skipField(wireType);
+          }
+          break;
+        case 3:
+          if (wireType == _WireType.lengthDelimited) {
+            message = reader.readString();
+          } else {
+            reader.skipField(wireType);
+          }
+          break;
+        default:
+          reader.skipField(wireType);
+      }
+    }
+
+    final String? resolvedAdvertiser =
+        advertiser != null && advertiser.isNotEmpty ? advertiser : null;
+    if (message != null && message.isNotEmpty) {
+      return NdgrNicoad(
+        message: message,
+        advertiser: resolvedAdvertiser,
+        totalPoint: totalPoint,
+      );
+    }
+    if (resolvedAdvertiser != null && point != null) {
+      // Defence-in-depth for the synthesised body: the advertiser label
+      // is pulled verbatim from the server and interpolated into a new
+      // string that ends up in [AppMessage.content]. The downstream
+      // [_sanitizeMessageContent] pipeline strips control characters but
+      // does NOT enforce a length cap, so an adversarial server could
+      // balloon the rendered comment row by shipping a multi-megabyte
+      // advertiser string. Cap to [_kNicoadAdvertiserMaxLength] grapheme
+      // clusters (same ceiling as chat user names) before synthesis.
+      final String cappedAdvertiser = _capGraphemes(
+        resolvedAdvertiser,
+        _kNicoadAdvertiserMaxLength,
+      );
+      return NdgrNicoad(
+        message: '${cappedAdvertiser}さんが${point}ptニコニ広告しました',
+        advertiser: cappedAdvertiser,
+        totalPoint: totalPoint,
+      );
+    }
+    return null;
+  }
+
+  /// Upper bound on the length of the advertiser label that may be
+  /// interpolated into a Nicoad V0 synthesised body.
+  ///
+  /// Intentionally matches the `_kOperatorUserNameMaxLength` /
+  /// `_kChatUserNameMaxLength` constants in [NdgrMessageNormalizer]
+  /// (same numeric value, independent definition). The three ceilings
+  /// are deliberately kept separate so a future issue can tighten any
+  /// one label policy without affecting the others — see the sibling
+  /// docstring on `_kChatUserNameMaxLength` in the normaliser.
+  static const int _kNicoadAdvertiserMaxLength = 64;
+
+  /// Truncates [value] at [maxGraphemes] grapheme clusters, using the
+  /// same `Characters`-based split as `_sanitizeUserName` in
+  /// [NdgrMessageNormalizer] so a multi-byte emoji at the boundary is
+  /// not split into a lone surrogate. Returns [value] unchanged when it
+  /// already fits within [maxGraphemes] clusters.
+  @visibleForTesting
+  static String capGraphemesForTest(String value, int maxGraphemes) =>
+      _capGraphemesImpl(value, maxGraphemes);
+
+  String _capGraphemes(String value, int maxGraphemes) =>
+      _capGraphemesImpl(value, maxGraphemes);
+
+  static String _capGraphemesImpl(String value, int maxGraphemes) {
+    final Characters chars = Characters(value);
+    if (chars.length <= maxGraphemes) {
+      return value;
+    }
+    return chars.take(maxGraphemes).toString();
+  }
+
   /// Highest `NotificationType` enum value the decoder currently knows about
   /// (verified 2026-04 against upstream proto: 0 UNKNOWN … 9 USER_FOLLOW).
   ///
@@ -790,31 +1282,11 @@ class NdgrProtobufDecoder {
     }
   }
 
-  NdgrStatistics _decodeStatistics(Uint8List bytes) {
-    final _ProtoReader reader = _ProtoReader(bytes);
-
-    int? viewers;
-
-    while (!reader.isAtEnd) {
-      final int tag = reader.readVarint();
-      final int fieldNumber = tag >> 3;
-      final int wireType = tag & 0x07;
-
-      switch (fieldNumber) {
-        case 1: // Statistics.viewers
-          if (wireType == _WireType.varint) {
-            viewers = reader.readVarint();
-          } else {
-            reader.skipField(wireType);
-          }
-          break;
-        default:
-          reader.skipField(wireType);
-      }
-    }
-
-    return NdgrStatistics(viewers: viewers);
-  }
+  // [_decodeStatistics] was removed alongside the field-8 misroute fix: the
+  // only caller was the buggy `NicoliveMessage.statistics` path, which in
+  // the current proto is actually `Gift gift = 8`. When the
+  // NicoliveState.statistics fallback (Issue #461) is implemented, the
+  // field-1 decoder can be re-introduced inside [_decodeNicoliveState].
 
   NdgrChat _decodeChat(Uint8List bytes) {
     final _ProtoReader reader = _ProtoReader(bytes);
@@ -1091,13 +1563,22 @@ class _ChunkedMessageMeta {
 class _NicoliveMessageResult {
   const _NicoliveMessageResult({
     this.chat,
-    this.statistics,
+    this.simpleNotification,
     this.simpleNotificationV2,
+    this.gift,
+    this.nicoad,
   });
 
   final NdgrChat? chat;
-  final NdgrStatistics? statistics;
+  final NdgrSimpleNotificationV1? simpleNotification;
   final NdgrSimpleNotificationV2? simpleNotificationV2;
+  final NdgrGift? gift;
+  final NdgrNicoad? nicoad;
+
+  // `statistics` is intentionally not on this result: the current upstream
+  // proto does not carry Statistics on NicoliveMessage (field 8 is Gift).
+  // The NicoliveState.statistics fallback path lives on
+  // [_NicoliveStateResult] and is tracked by Issue #461.
 }
 
 class _NicoliveStateResult {
