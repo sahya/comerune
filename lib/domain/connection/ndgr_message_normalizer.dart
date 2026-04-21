@@ -29,6 +29,15 @@ const String kNdgrNicoadIdPrefix = 'ndgr-nicoad-';
 /// public surface of this file — the prior behaviour inlined this literal.
 const String _kNdgrChatNoIdPrefix = 'ndgr-chat-';
 
+/// Prefix for forwarded-chat ids when the upstream payload carries a stable
+/// `ForwardedChat.message_id`.
+///
+/// Forwarded comments can be replayed under different outer
+/// `ChunkedMessageMeta.id` values, so using the forwarded message id keeps
+/// deduplication stable across live / timeshift replays. `sourceLiveId` is
+/// folded into the concrete id to avoid collisions between source streams.
+const String _kNdgrForwardedIdPrefix = 'ndgr-forwarded-';
+
 /// Prefix for chat ids that cannot resolve to either a source id or a
 /// comment number and must use a local-sequence fallback. Intentionally
 /// shorter than [_kNdgrChatNoIdPrefix] to match the historical
@@ -327,15 +336,8 @@ class NdgrMessageNormalizer {
       if (sanitizedContent == null) {
         return null;
       }
-      final String id = _buildNdgrId(
-        _kNdgrChatNoIdPrefix,
-        _firstNonEmptyString(source.id, forwarded.messageId),
-        forwardedChat.no,
-        timestamp,
-        timestampPrefix: _kNdgrChatFallbackTimestampPrefix,
-      );
       return AppMessage(
-        id: id,
+        id: _buildForwardedChatId(source, forwarded, timestamp),
         timestamp: timestamp,
         userId: _resolveUserId(forwardedChat),
         userName: _sanitizeChatUserName(forwardedChat.name),
@@ -504,6 +506,31 @@ class NdgrMessageNormalizer {
   String? _sanitizeGiftLabel(String? raw) =>
       _sanitizeUserName(raw, _kChatUserNameMaxLength);
 
+  /// Builds a stable id for forwarded chat.
+  ///
+  /// Prefer the embedded `ForwardedChat.messageId` over the outer
+  /// `ChunkedMessageMeta.id` so duplicate suppression can survive server-side
+  /// rewrapping of the same forwarded comment. `sourceLiveId` is included
+  /// when available to keep ids unique across source streams.
+  String _buildForwardedChatId(
+    NdgrChunkedMessage source,
+    NdgrForwardedChat forwarded,
+    DateTime timestamp,
+  ) {
+    final String? messageId = forwarded.messageId;
+    if (messageId != null && messageId.isNotEmpty) {
+      final String sourceKey = forwarded.sourceLiveId?.toString() ?? 'unknown';
+      return '$_kNdgrForwardedIdPrefix$sourceKey-$messageId';
+    }
+    return _buildNdgrId(
+      _kNdgrChatNoIdPrefix,
+      source.id,
+      forwarded.chat.no,
+      timestamp,
+      timestampPrefix: _kNdgrChatFallbackTimestampPrefix,
+    );
+  }
+
   /// Builds a stable id for a normalized NDGR message, consolidating the
   /// pre-refactor per-type `_resolveId` / `_resolveOperatorId` /
   /// `_resolveNotificationId` helpers. Resolution order:
@@ -541,16 +568,6 @@ class NdgrMessageNormalizer {
       return chat.hashedUserId;
     }
 
-    return null;
-  }
-
-  String? _firstNonEmptyString(String? first, String? second) {
-    if (first != null && first.isNotEmpty) {
-      return first;
-    }
-    if (second != null && second.isNotEmpty) {
-      return second;
-    }
     return null;
   }
 }

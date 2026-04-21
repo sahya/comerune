@@ -1727,7 +1727,30 @@ void main() {
     });
 
     test('forwarded_chat falls back to forwarded messageId when source.id is '
-        'empty', () {
+        'present to keep dedupe stable across wrapper ids', () {
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime serverTime = DateTime.parse('2026-04-21T10:00:00Z');
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        NdgrChunkedMessage(
+          id: 'outer-wrapper-id',
+          serverTimestamp: serverTime,
+          forwardedChat: const NdgrForwardedChat(
+            chat: NdgrChat(content: 'クルーズ本文'),
+            mode: NdgrForwardingMode.fromCruise,
+            messageId: 'forwarded-msg-id',
+            sourceLiveId: 123456,
+          ),
+        ),
+        receivedAt: serverTime,
+      );
+
+      expect(normalized, isNotNull);
+      expect(normalized!.id, 'ndgr-forwarded-123456-forwarded-msg-id');
+    });
+
+    test('forwarded_chat falls back to messageId with unknown source when '
+        'sourceLiveId is absent', () {
       final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
       final DateTime serverTime = DateTime.parse('2026-04-21T10:00:00Z');
 
@@ -1745,7 +1768,7 @@ void main() {
       );
 
       expect(normalized, isNotNull);
-      expect(normalized!.id, 'forwarded-msg-id');
+      expect(normalized!.id, 'ndgr-forwarded-unknown-forwarded-msg-id');
     });
 
     test('forwarded_chat with COLLAB_SHARING mode is not emitted as chat', () {

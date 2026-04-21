@@ -713,8 +713,8 @@ class NdgrProtobufDecoder {
         // was invisible.
         //
         // `SimpleNotification(V2).cruise` — handled separately above —
-        // only carries the **arrival announcement** ("xx さんが to来場 し
-        // ました"), not the visitor's actual comment body.
+        // only carries the **arrival announcement** ("xx さんが来場しました"),
+        // not the visitor's actual comment body.
         final Uint8List forwardedBytes = reader.readLengthDelimited();
         try {
           forwardedChat = _decodeForwardedChat(forwardedBytes);
