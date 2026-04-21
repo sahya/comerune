@@ -220,6 +220,11 @@ class _SelectScreenState extends State<SelectScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final bool wasForeground = _isInForeground;
     _isInForeground = state == AppLifecycleState.resumed;
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(_flushPendingUserAttributeWrites());
+    }
     if (!wasForeground && _isInForeground) {
       // Returning to foreground: invalidate cache and trigger an immediate
       // check so the user sees up-to-date status right away.
@@ -238,6 +243,23 @@ class _SelectScreenState extends State<SelectScreen>
     }
     _ownsFavoriteUserLiveChecker = checker == null;
     _favoriteUserLiveChecker = checker ?? FavoriteUserLiveChecker();
+  }
+
+  Future<void> _flushPendingUserAttributeWrites() async {
+    final UserAttributeStore? store = widget.userAttributeStore;
+    if (store == null) {
+      return;
+    }
+    try {
+      await store.flushPendingWrites();
+    } on Object catch (error, stackTrace) {
+      appErrorLog(
+        name: 'SelectScreen',
+        message: 'Failed to flush pending user attribute writes',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
   }
 
   void _onSupervisorChanged() {

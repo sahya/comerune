@@ -60,4 +60,7 @@ class InMemoryUserAttributeStore implements UserAttributeStore {
   Future<int> cleanup({Duration maxAge = const Duration(days: 365)}) async {
     return 0;
   }
+
+  @override
+  Future<void> flushPendingWrites() async {}
 }

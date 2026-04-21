@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:collection';
+
+import 'package:comerune/application/settings/settings_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/data/user/user_attribute_store.dart';
@@ -81,6 +85,85 @@ void main() {
       expect(await store.loadColors('b1'), <String, int>{'u1': 0xFFE53935});
       expect(await store.loadColors('b2'), <String, int>{'u1': 0xFF1E88E5});
     });
+
+    test(
+      'flushPendingWrites waits for an in-flight persistence write',
+      () async {
+        final _DelayedSharedPreferences delayedPrefs =
+            _DelayedSharedPreferences();
+        store = SharedPreferencesUserAttributeStore(prefs: delayedPrefs);
+
+        unawaited(
+          store.setColor(
+            broadcasterId: 'b1',
+            userId: 'u1',
+            colorValue: 0xFFE53935,
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        final Future<void> flushFuture = store.flushPendingWrites();
+        bool flushCompleted = false;
+        unawaited(
+          flushFuture.then((_) {
+            flushCompleted = true;
+          }),
+        );
+        await Future<void>.delayed(Duration.zero);
+        expect(flushCompleted, isFalse);
+
+        await delayedPrefs.drainWrites();
+        await flushFuture;
+
+        expect(
+          delayedPrefs.getString('usercolor.b1'),
+          contains('"u1":4293212469'),
+        );
+        expect(delayedPrefs.getString('usercolor._index'), '["b1"]');
+      },
+    );
+
+    test(
+      'loadColors touch does not overwrite a pending attribute write',
+      () async {
+        final _ControlledSharedPreferences controlledPrefs =
+            _ControlledSharedPreferences()
+              ..seedString('usercolor.b1', '{"existing":123,"_lastUsedAt":1}')
+              ..seedString('usercolor._index', '["b1"]');
+        store = SharedPreferencesUserAttributeStore(prefs: controlledPrefs);
+
+        unawaited(
+          store.setColor(
+            broadcasterId: 'b1',
+            userId: 'u1',
+            colorValue: 0xFFE53935,
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        final Future<Map<String, int>> loadFuture = store.loadColors('b1');
+        await Future<void>.delayed(Duration.zero);
+
+        expect(controlledPrefs.pendingWriteCount, 1);
+
+        await controlledPrefs.completeNextWrite();
+        await Future<void>.delayed(Duration.zero);
+
+        expect(controlledPrefs.pendingWriteCount, 1);
+
+        await controlledPrefs.completeNextWrite();
+        expect(await loadFuture, <String, int>{'existing': 123});
+
+        expect(
+          controlledPrefs.getString('usercolor.b1'),
+          contains('"u1":4293212469'),
+        );
+        expect(
+          controlledPrefs.getString('usercolor.b1'),
+          contains('"existing":123'),
+        );
+      },
+    );
 
     test('removeColor removes the color for a user', () async {
       await store.setColor(
@@ -430,4 +513,132 @@ void main() {
       );
     });
   });
+}
+
+class _DelayedSharedPreferences implements SharedPreferencesLike {
+  final Map<String, Object> _values = <String, Object>{};
+  final Queue<void Function()> _pendingWrites = Queue<void Function()>();
+
+  @override
+  bool? getBool(String key) => _values[key] as bool?;
+
+  @override
+  double? getDouble(String key) => _values[key] as double?;
+
+  @override
+  int? getInt(String key) => _values[key] as int?;
+
+  @override
+  String? getString(String key) => _values[key] as String?;
+
+  @override
+  Future<bool> setBool(String key, bool value) async {
+    _values[key] = value;
+    return true;
+  }
+
+  @override
+  Future<bool> setDouble(String key, double value) async {
+    _values[key] = value;
+    return true;
+  }
+
+  @override
+  Future<bool> setInt(String key, int value) async {
+    _values[key] = value;
+    return true;
+  }
+
+  @override
+  Future<bool> setString(String key, String value) {
+    final Completer<bool> completer = Completer<bool>();
+    _pendingWrites.add(() {
+      _values[key] = value;
+      completer.complete(true);
+    });
+    return completer.future;
+  }
+
+  @override
+  Future<bool> remove(String key) {
+    final Completer<bool> completer = Completer<bool>();
+    _pendingWrites.add(() {
+      _values.remove(key);
+      completer.complete(true);
+    });
+    return completer.future;
+  }
+
+  Future<void> drainWrites() async {
+    while (_pendingWrites.isNotEmpty) {
+      _pendingWrites.removeFirst()();
+      await Future<void>.delayed(Duration.zero);
+    }
+  }
+}
+
+class _ControlledSharedPreferences implements SharedPreferencesLike {
+  final Map<String, Object> _values = <String, Object>{};
+  final Queue<void Function()> _pendingWrites = Queue<void Function()>();
+
+  int get pendingWriteCount => _pendingWrites.length;
+
+  void seedString(String key, String value) {
+    _values[key] = value;
+  }
+
+  @override
+  bool? getBool(String key) => _values[key] as bool?;
+
+  @override
+  double? getDouble(String key) => _values[key] as double?;
+
+  @override
+  int? getInt(String key) => _values[key] as int?;
+
+  @override
+  String? getString(String key) => _values[key] as String?;
+
+  @override
+  Future<bool> setBool(String key, bool value) async {
+    _values[key] = value;
+    return true;
+  }
+
+  @override
+  Future<bool> setDouble(String key, double value) async {
+    _values[key] = value;
+    return true;
+  }
+
+  @override
+  Future<bool> setInt(String key, int value) async {
+    _values[key] = value;
+    return true;
+  }
+
+  @override
+  Future<bool> setString(String key, String value) {
+    final Completer<bool> completer = Completer<bool>();
+    _pendingWrites.add(() {
+      _values[key] = value;
+      completer.complete(true);
+    });
+    return completer.future;
+  }
+
+  @override
+  Future<bool> remove(String key) {
+    final Completer<bool> completer = Completer<bool>();
+    _pendingWrites.add(() {
+      _values.remove(key);
+      completer.complete(true);
+    });
+    return completer.future;
+  }
+
+  Future<void> completeNextWrite() async {
+    _pendingWrites.removeFirst()();
+    await Future<void>.delayed(Duration.zero);
+  }
 }

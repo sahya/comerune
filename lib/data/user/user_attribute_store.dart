@@ -64,14 +64,19 @@ abstract class UserAttributeStore {
   /// Removes broadcaster entries that have not been accessed for longer
   /// than [maxAge]. Defaults to 365 days.
   Future<int> cleanup({Duration maxAge = const Duration(days: 365)});
+
+  /// Waits for any in-flight persistence writes to complete.
+  ///
+  /// Implementations that write synchronously may return immediately.
+  Future<void> flushPendingWrites();
 }
 
 class SharedPreferencesUserAttributeStore implements UserAttributeStore {
-  const SharedPreferencesUserAttributeStore({
-    required SharedPreferencesLike prefs,
-  }) : _prefs = prefs;
+  SharedPreferencesUserAttributeStore({required SharedPreferencesLike prefs})
+    : _prefs = prefs;
 
   final SharedPreferencesLike _prefs;
+  Future<void> _pendingWriteChain = Future<void>.value();
 
   static const String _indexKey = 'usercolor._index';
   static const String _lastUsedAtField = '_lastUsedAt';
@@ -87,7 +92,7 @@ class SharedPreferencesUserAttributeStore implements UserAttributeStore {
     if (raw.isEmpty) {
       return <String, int>{};
     }
-    await _touchLastUsedAt(broadcasterId, raw);
+    await _touchLastUsedAt(broadcasterId);
     return _extractColors(raw);
   }
 
@@ -97,7 +102,7 @@ class SharedPreferencesUserAttributeStore implements UserAttributeStore {
     if (raw.isEmpty) {
       return <String, String>{};
     }
-    await _touchLastUsedAt(broadcasterId, raw);
+    await _touchLastUsedAt(broadcasterId);
     return _extractNicknames(raw);
   }
 
@@ -107,13 +112,15 @@ class SharedPreferencesUserAttributeStore implements UserAttributeStore {
     required String userId,
     required int colorValue,
   }) async {
-    final Map<String, dynamic> raw = _readRaw(broadcasterId);
-    final _UserEntry existing = _readEntry(raw, userId);
-    final _UserEntry updated = existing.copyWith(color: colorValue);
-    raw[userId] = updated.toJson();
-    raw[_lastUsedAtField] = DateTime.now().millisecondsSinceEpoch;
-    await _prefs.setString(_key(broadcasterId), json.encode(raw));
-    await _addToIndex(broadcasterId);
+    await _enqueueWrite(() async {
+      final Map<String, dynamic> raw = _readRaw(broadcasterId);
+      final _UserEntry existing = _readEntry(raw, userId);
+      final _UserEntry updated = existing.copyWith(color: colorValue);
+      raw[userId] = updated.toJson();
+      raw[_lastUsedAtField] = DateTime.now().millisecondsSinceEpoch;
+      await _prefs.setString(_key(broadcasterId), json.encode(raw));
+      await _addToIndex(broadcasterId);
+    });
   }
 
   @override
@@ -121,19 +128,21 @@ class SharedPreferencesUserAttributeStore implements UserAttributeStore {
     required String broadcasterId,
     required String userId,
   }) async {
-    final Map<String, dynamic> raw = _readRaw(broadcasterId);
-    final _UserEntry existing = _readEntry(raw, userId);
-    if (existing.color == null) {
-      return;
-    }
-    final _UserEntry updated = existing.copyWithoutColor();
-    if (updated.isEmpty) {
-      raw.remove(userId);
-    } else {
-      raw[userId] = updated.toJson();
-    }
-    raw[_lastUsedAtField] = DateTime.now().millisecondsSinceEpoch;
-    await _prefs.setString(_key(broadcasterId), json.encode(raw));
+    await _enqueueWrite(() async {
+      final Map<String, dynamic> raw = _readRaw(broadcasterId);
+      final _UserEntry existing = _readEntry(raw, userId);
+      if (existing.color == null) {
+        return;
+      }
+      final _UserEntry updated = existing.copyWithoutColor();
+      if (updated.isEmpty) {
+        raw.remove(userId);
+      } else {
+        raw[userId] = updated.toJson();
+      }
+      raw[_lastUsedAtField] = DateTime.now().millisecondsSinceEpoch;
+      await _prefs.setString(_key(broadcasterId), json.encode(raw));
+    });
   }
 
   @override
@@ -142,13 +151,15 @@ class SharedPreferencesUserAttributeStore implements UserAttributeStore {
     required String userId,
     required String nickname,
   }) async {
-    final Map<String, dynamic> raw = _readRaw(broadcasterId);
-    final _UserEntry existing = _readEntry(raw, userId);
-    final _UserEntry updated = existing.copyWith(nickname: nickname);
-    raw[userId] = updated.toJson();
-    raw[_lastUsedAtField] = DateTime.now().millisecondsSinceEpoch;
-    await _prefs.setString(_key(broadcasterId), json.encode(raw));
-    await _addToIndex(broadcasterId);
+    await _enqueueWrite(() async {
+      final Map<String, dynamic> raw = _readRaw(broadcasterId);
+      final _UserEntry existing = _readEntry(raw, userId);
+      final _UserEntry updated = existing.copyWith(nickname: nickname);
+      raw[userId] = updated.toJson();
+      raw[_lastUsedAtField] = DateTime.now().millisecondsSinceEpoch;
+      await _prefs.setString(_key(broadcasterId), json.encode(raw));
+      await _addToIndex(broadcasterId);
+    });
   }
 
   @override
@@ -156,48 +167,55 @@ class SharedPreferencesUserAttributeStore implements UserAttributeStore {
     required String broadcasterId,
     required String userId,
   }) async {
-    final Map<String, dynamic> raw = _readRaw(broadcasterId);
-    final _UserEntry existing = _readEntry(raw, userId);
-    if (existing.nickname == null) {
-      return;
-    }
-    final _UserEntry updated = existing.copyWithoutNickname();
-    if (updated.isEmpty) {
-      raw.remove(userId);
-    } else {
-      raw[userId] = updated.toJson();
-    }
-    raw[_lastUsedAtField] = DateTime.now().millisecondsSinceEpoch;
-    await _prefs.setString(_key(broadcasterId), json.encode(raw));
+    await _enqueueWrite(() async {
+      final Map<String, dynamic> raw = _readRaw(broadcasterId);
+      final _UserEntry existing = _readEntry(raw, userId);
+      if (existing.nickname == null) {
+        return;
+      }
+      final _UserEntry updated = existing.copyWithoutNickname();
+      if (updated.isEmpty) {
+        raw.remove(userId);
+      } else {
+        raw[userId] = updated.toJson();
+      }
+      raw[_lastUsedAtField] = DateTime.now().millisecondsSinceEpoch;
+      await _prefs.setString(_key(broadcasterId), json.encode(raw));
+    });
   }
 
   @override
+  Future<void> flushPendingWrites() => _pendingWriteChain;
+
+  @override
   Future<int> cleanup({Duration maxAge = const Duration(days: 365)}) async {
-    final List<String> index = _readIndex();
-    if (index.isEmpty) {
-      return 0;
-    }
-
-    final int cutoff = DateTime.now().subtract(maxAge).millisecondsSinceEpoch;
-    final List<String> remaining = <String>[];
-    int removedCount = 0;
-
-    for (final String broadcasterId in index) {
-      final Map<String, dynamic> raw = _readRaw(broadcasterId);
-      final int lastUsedAt = raw[_lastUsedAtField] is int
-          ? raw[_lastUsedAtField] as int
-          : 0;
-
-      if (lastUsedAt < cutoff) {
-        await _prefs.remove(_key(broadcasterId));
-        removedCount++;
-      } else {
-        remaining.add(broadcasterId);
+    return _enqueueWrite(() async {
+      final List<String> index = _readIndex();
+      if (index.isEmpty) {
+        return 0;
       }
-    }
 
-    await _prefs.setString(_indexKey, json.encode(remaining));
-    return removedCount;
+      final int cutoff = DateTime.now().subtract(maxAge).millisecondsSinceEpoch;
+      final List<String> remaining = <String>[];
+      int removedCount = 0;
+
+      for (final String broadcasterId in index) {
+        final Map<String, dynamic> raw = _readRaw(broadcasterId);
+        final int lastUsedAt = raw[_lastUsedAtField] is int
+            ? raw[_lastUsedAtField] as int
+            : 0;
+
+        if (lastUsedAt < cutoff) {
+          await _prefs.remove(_key(broadcasterId));
+          removedCount++;
+        } else {
+          remaining.add(broadcasterId);
+        }
+      }
+
+      await _prefs.setString(_indexKey, json.encode(remaining));
+      return removedCount;
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -273,13 +291,16 @@ class SharedPreferencesUserAttributeStore implements UserAttributeStore {
     return result;
   }
 
-  Future<void> _touchLastUsedAt(
-    String broadcasterId,
-    Map<String, dynamic> raw,
-  ) async {
-    raw[_lastUsedAtField] = DateTime.now().millisecondsSinceEpoch;
-    await _prefs.setString(_key(broadcasterId), json.encode(raw));
-    await _addToIndex(broadcasterId);
+  Future<void> _touchLastUsedAt(String broadcasterId) async {
+    await _enqueueWrite(() async {
+      final Map<String, dynamic> latestRaw = _readRaw(broadcasterId);
+      if (latestRaw.isEmpty) {
+        return;
+      }
+      latestRaw[_lastUsedAtField] = DateTime.now().millisecondsSinceEpoch;
+      await _prefs.setString(_key(broadcasterId), json.encode(latestRaw));
+      await _addToIndex(broadcasterId);
+    });
   }
 
   List<String> _readIndex() {
@@ -302,6 +323,14 @@ class SharedPreferencesUserAttributeStore implements UserAttributeStore {
     }
     index.add(broadcasterId);
     await _prefs.setString(_indexKey, json.encode(index));
+  }
+
+  Future<T> _enqueueWrite<T>(Future<T> Function() operation) {
+    final Future<T> scheduled = _pendingWriteChain.then<T>((_) => operation());
+    _pendingWriteChain = scheduled
+        .then<void>((_) {})
+        .catchError((Object error, StackTrace stackTrace) {});
+    return scheduled;
   }
 }
 

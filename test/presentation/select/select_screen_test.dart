@@ -1430,6 +1430,47 @@ void main() {
         expect(after.contentFilter.userNicknameMap['user-1'], '設定画面で変更');
       },
     );
+
+    testWidgets('flushes pending user attribute writes on app pause', (
+      WidgetTester tester,
+    ) async {
+      final _FlushTrackingUserAttributeStore trackingStore =
+          _FlushTrackingUserAttributeStore();
+      final ConnectionSupervisor localSupervisor = ConnectionSupervisor();
+      final TimelineStore localTimelineStore = TimelineStore();
+
+      localTimelineStore.add(
+        AppMessage(
+          id: 'msg-pause',
+          timestamp: DateTime(2026, 4, 22, 12, 0, 0),
+          userId: 'user-1',
+          content: 'pause test',
+          type: AppMessageType.chat,
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: localSupervisor,
+            timelineStore: localTimelineStore,
+            userAttributeStore: trackingStore,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final TestWidgetsFlutterBinding binding =
+          TestWidgetsFlutterBinding.ensureInitialized();
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+
+      expect(trackingStore.flushPendingWritesCallCount, 1);
+
+      addTearDown(() async {
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      });
+    });
   });
 
   group('favorite user section', () {
@@ -1935,5 +1976,17 @@ class _FakeUserAttributeStore implements UserAttributeStore {
   @override
   Future<int> cleanup({Duration maxAge = const Duration(days: 365)}) async {
     return 0;
+  }
+
+  @override
+  Future<void> flushPendingWrites() async {}
+}
+
+class _FlushTrackingUserAttributeStore extends _FakeUserAttributeStore {
+  int flushPendingWritesCallCount = 0;
+
+  @override
+  Future<void> flushPendingWrites() async {
+    flushPendingWritesCallCount++;
   }
 }
