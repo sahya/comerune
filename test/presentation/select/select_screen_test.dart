@@ -286,6 +286,202 @@ void main() {
     expect(find.byKey(const Key('comment-row-msg-1')), findsOneWidget);
   });
 
+  testWidgets('auto-follows newly added live comments when TimelineStore grows '
+      'past the initial fetch count', (WidgetTester tester) async {
+    // Regression: auto-scroll used to work only by coincidence of trim
+    // (list length held constant → no extent growth). After the
+    // displayCapacity fix preserved past history, new arrivals grew the
+    // list and the view stopped following the latest comment because
+    // diffing `oldWidget.messages` vs `widget.messages` sees equal
+    // snapshots (both are `UnmodifiableListView` over the same mutable
+    // list). This test pins the independent state-tracked detection.
+    final ConnectionSupervisor supervisor = ConnectionSupervisor();
+    final TimelineStore timelineStore = TimelineStore(capacity: 5100);
+
+    // Seed enough messages to make the ListView actually scrollable.
+    final DateTime base = DateTime(2026, 3, 28, 10, 0, 0);
+    for (int i = 0; i < 80; i++) {
+      timelineStore.add(
+        AppMessage(
+          id: 'seed-$i',
+          timestamp: base.add(Duration(seconds: i)),
+          userId: 'u',
+          content: 'seed $i',
+          type: AppMessageType.chat,
+        ),
+      );
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SelectScreen(
+          connectionSupervisor: supervisor,
+          timelineStore: timelineStore,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.enterText(inputField(), 'lv345678901');
+    await tester.pump();
+    await tester.tap(connectButton());
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CommentScreen), findsOneWidget);
+
+    // Capture the scroll extent at the initial view. The post-mount
+    // `_scrollToEdge` runs in a postFrameCallback so `pumpAndSettle`
+    // above guarantees the controller is already at the tail.
+    final ScrollController controller = tester
+        .widget<ListView>(find.byKey(const Key('comment-list')))
+        .controller!;
+    final double extentBefore = controller.position.maxScrollExtent;
+    expect(
+      controller.position.pixels,
+      closeTo(extentBefore, 0.5),
+      reason: 'view should start at the tail after initial mount',
+    );
+
+    // Inject new live comments that extend the list beyond the initial
+    // viewport. This grows maxScrollExtent; the view must auto-scroll
+    // to the new tail. Timestamps are placed strictly after every seed
+    // so each new arrival actually becomes `messages.last`.
+    final DateTime liveBase = base.add(const Duration(hours: 1));
+    for (int i = 0; i < 20; i++) {
+      timelineStore.add(
+        AppMessage(
+          id: 'live-$i',
+          timestamp: liveBase.add(Duration(seconds: i)),
+          userId: 'u',
+          content: 'live $i',
+          type: AppMessageType.chat,
+        ),
+      );
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    final double extentAfter = controller.position.maxScrollExtent;
+    expect(
+      extentAfter,
+      greaterThan(extentBefore),
+      reason: 'new live comments should extend the scrollable area',
+    );
+    // If auto-scroll silently regressed (as happened when `_hasNewMessages`
+    // diffed two `UnmodifiableListView` instances over the same mutable
+    // list), `pixels` would stay at `extentBefore` and the user would be
+    // stranded well behind the new tail. Allow a small slack window for
+    // animation / rendering timing, but assert we've crossed well past
+    // the initial tail toward the new one.
+    final double crossedDistance = controller.position.pixels - extentBefore;
+    final double availableGrowth = extentAfter - extentBefore;
+    expect(
+      crossedDistance,
+      greaterThan(availableGrowth * 0.5),
+      reason:
+          'auto-scroll must follow the newly added latest comment; if the '
+          'view lags behind the new maxScrollExtent, `_hasNewMessages` '
+          'was likely relied upon and failed silently (pre-fix symptom). '
+          'pixels=${controller.position.pixels}, '
+          'extentBefore=$extentBefore, extentAfter=$extentAfter',
+    );
+  });
+
+  testWidgets(
+    'does NOT auto-scroll to tail while user is scrolled away from the tail',
+    (WidgetTester tester) async {
+      // Contract: when the user has manually scrolled up to read older
+      // comments, `_autoScrollEnabled` flips to false and new arrivals
+      // must NOT yank the viewport back to the tail. This pins the other
+      // half of the auto-scroll contract alongside the forward-follow
+      // test above.
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+      final TimelineStore timelineStore = TimelineStore(capacity: 5100);
+
+      final DateTime base = DateTime(2026, 3, 28, 10, 0, 0);
+      for (int i = 0; i < 80; i++) {
+        timelineStore.add(
+          AppMessage(
+            id: 'seed-$i',
+            timestamp: base.add(Duration(seconds: i)),
+            userId: 'u',
+            content: 'seed $i',
+            type: AppMessageType.chat,
+          ),
+        );
+      }
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: supervisor,
+            timelineStore: timelineStore,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.enterText(inputField(), 'lv345678901');
+      await tester.pump();
+      await tester.tap(connectButton());
+      await tester.pumpAndSettle();
+
+      final ScrollController controller = tester
+          .widget<ListView>(find.byKey(const Key('comment-list')))
+          .controller!;
+
+      // Simulate a user dragging the list upward to read older comments.
+      // A large upward swipe flips `_autoScrollEnabled` off via
+      // `_handleScrollAscending`.
+      await tester.drag(
+        find.byKey(const Key('comment-list')),
+        const Offset(0, 400),
+      );
+      await tester.pumpAndSettle();
+
+      final double pixelsAfterManualScroll = controller.position.pixels;
+      final double extentBeforeLive = controller.position.maxScrollExtent;
+      expect(
+        pixelsAfterManualScroll,
+        lessThan(extentBeforeLive - 50),
+        reason:
+            'the manual drag must move the view clearly away from the tail '
+            'so `_autoScrollEnabled` flips to false',
+      );
+
+      // Inject new live comments while the user is scrolled up.
+      final DateTime liveBase = base.add(const Duration(hours: 1));
+      for (int i = 0; i < 20; i++) {
+        timelineStore.add(
+          AppMessage(
+            id: 'live-$i',
+            timestamp: liveBase.add(Duration(seconds: i)),
+            userId: 'u',
+            content: 'live $i',
+            type: AppMessageType.chat,
+          ),
+        );
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+
+      // The view must stay roughly where the user left it, not snap back
+      // to the tail. maxScrollExtent may have grown, but pixels should
+      // remain near pixelsAfterManualScroll.
+      final double pixelsAfterLive = controller.position.pixels;
+      expect(
+        pixelsAfterLive,
+        closeTo(pixelsAfterManualScroll, 50),
+        reason:
+            'auto-scroll must stay disabled when the user is scrolled away '
+            'from the tail; `pixels` must not be yanked to the new '
+            'maxScrollExtent. pixelsAfterLive=$pixelsAfterLive, '
+            'pixelsAfterManualScroll=$pixelsAfterManualScroll, '
+            'newExtent=${controller.position.maxScrollExtent}',
+      );
+    },
+  );
+
   testWidgets(
     'startConnection updates TimelineStore capacity to displayCapacity '
     'so fetched history is not evicted by incoming live comments',

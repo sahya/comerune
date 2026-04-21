@@ -597,6 +597,18 @@ class _CommentScreenState extends State<CommentScreen> {
   /// reference the same mutable list as widget.messages.
   String? _lastSpeechMessageId;
 
+  /// ID of the message that was `.last` when auto-scroll last reacted to a
+  /// new arrival. Used to detect a newly appended latest message without
+  /// depending on `oldWidget.messages` vs `widget.messages`, which may be
+  /// two `UnmodifiableListView` instances over the same mutable list in
+  /// [TimelineStore] (so diff-based detection would see equal snapshots).
+  /// Auto-scroll worked coincidentally when the timeline was capped at the
+  /// past-comment fetch count, because trimming kept the list length stable
+  /// and the visible tail refreshed in place. After capacity was widened to
+  /// preserve fetched history, that illusion broke — hence this explicit
+  /// tracker.
+  String? _lastAutoScrollObservedLastId;
+
   /// Timestamp recorded just before the speech engine starts. Messages with a
   /// timestamp before this value are skipped, ensuring that only comments
   /// arriving after speech initialization are read aloud.
@@ -739,6 +751,14 @@ class _CommentScreenState extends State<CommentScreen> {
     if (widget.messages.isNotEmpty) {
       _lastProtectionInspectedMessageId = widget.messages.last.id;
     }
+
+    // Seed the auto-scroll cursor with the current tail so that the initial
+    // post-mount `_scrollToEdge` below is the only jump; subsequent
+    // `didUpdateWidget` calls will only re-scroll when a truly newer
+    // message lands at the tail.
+    if (widget.messages.isNotEmpty) {
+      _lastAutoScrollObservedLastId = widget.messages.last.id;
+    }
     if (widget.contentFilter.presetNgWords.isEmpty) {
       unawaited(_loadPresetNgWordsFromAsset());
     }
@@ -828,6 +848,12 @@ class _CommentScreenState extends State<CommentScreen> {
       _lastProtectionInspectedMessageId = widget.messages.isNotEmpty
           ? widget.messages.last.id
           : null;
+      // Re-seed the auto-scroll cursor so that the first arrival on the
+      // new lv is treated as "new" (triggering a scroll to the tail) only
+      // once, not repeatedly for messages already in the refreshed list.
+      _lastAutoScrollObservedLastId = widget.messages.isNotEmpty
+          ? widget.messages.last.id
+          : null;
       _lastProtectionNotificationAt = null;
       unawaited(
         widget.callbacks.onDifferentLvConnected(
@@ -893,6 +919,20 @@ class _CommentScreenState extends State<CommentScreen> {
       );
       _processNicknameComments(oldWidget.messages, widget.messages);
       _processNgProtectionNotifications(widget.messages);
+    }
+
+    // Auto-scroll detection uses an independent, state-tracked cursor so
+    // that newly arrived live comments reliably trigger a scroll-to-tail
+    // even when `oldWidget.messages` and `widget.messages` are two views
+    // over the same mutable list in [TimelineStore] (in which case
+    // `_hasNewMessages` would see equal snapshots and return false).
+    final String? currentLastId = widget.messages.isNotEmpty
+        ? widget.messages.last.id
+        : null;
+    final bool hasNewLatestMessage =
+        currentLastId != null && currentLastId != _lastAutoScrollObservedLastId;
+    if (hasNewLatestMessage) {
+      _lastAutoScrollObservedLastId = currentLastId;
       // While searching, the user is reading a filtered view, so avoid
       // forcing auto-scroll to the newest comment.
       if (_isSearching) {
@@ -3250,6 +3290,22 @@ class _CommentScreenState extends State<CommentScreen> {
     return normalized;
   }
 
+  /// **Known limitation**: in production callers (via `TimelineStore`), the
+  /// `previous` and `current` arguments are typically two distinct
+  /// `UnmodifiableListView` instances that both wrap the same mutable
+  /// `_messages` list. Because views are live (not snapshots), every
+  /// length / last.id read resolves to the **current** underlying state,
+  /// so `previous.length == current.length` and `previous.last.id ==
+  /// current.last.id` always hold at the moment this runs — meaning this
+  /// method silently returns `false` for the production data shape.
+  ///
+  /// Auto-scroll and speech both worked around this by tracking a
+  /// state-local cursor (see `_lastAutoScrollObservedLastId` and
+  /// `_lastSpeechMessageId`). Any **new** code that needs "did a new
+  /// latest message arrive?" should follow the same pattern — do not
+  /// rely on this method for fresh detection, because it will appear to
+  /// work in unit tests (which pass concrete `List<AppMessage>` copies
+  /// whose length genuinely differs) and then fail in production.
   bool _hasNewMessages(List<AppMessage> previous, List<AppMessage> current) {
     if (identical(previous, current)) {
       return false;
