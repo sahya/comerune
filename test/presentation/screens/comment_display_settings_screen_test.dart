@@ -111,9 +111,9 @@ void main() {
       await tester.pumpWidget(_buildScreen(settingsStore));
       await tester.pumpAndSettle();
 
-      // Default should be count100
+      // Default should be count500 (initial fetch target).
       AppSettings loaded = await settingsStore.load();
-      expect(loaded.pastCommentFetchCount, PastCommentFetchCount.count100);
+      expect(loaded.pastCommentFetchCount, PastCommentFetchCount.count500);
 
       // Scroll to and open the dropdown. `ensureVisible` is called explicitly
       // after `scrollToKeyInList` so that later additions to the list do not
@@ -134,12 +134,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Select '500' option in the dropdown overlay
-      await tester.tap(find.text('500').last);
+      // Select '1000' option in the dropdown overlay. The default is now
+      // 500, so selecting a different value proves the UI actually
+      // persists a transition (not just re-selects the default).
+      await tester.tap(find.text('1000').last);
       await tester.pumpAndSettle();
 
       loaded = await settingsStore.load();
-      expect(loaded.pastCommentFetchCount, PastCommentFetchCount.count500);
+      expect(loaded.pastCommentFetchCount, PastCommentFetchCount.count1000);
     });
 
     testWidgets('toggles commentTwoLineEnabled and persists value', (

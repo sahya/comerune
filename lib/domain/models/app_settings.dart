@@ -195,16 +195,20 @@ extension PastCommentFetchCountValue on PastCommentFetchCount {
 
   static PastCommentFetchCount fromStorageValue(String? raw) {
     switch (raw) {
+      // 明示的に 100 を選んだ既存ユーザーの設定は尊重する（後方互換）。
+      case '100':
+        return PastCommentFetchCount.count100;
       case '500':
         return PastCommentFetchCount.count500;
       case '1000':
         return PastCommentFetchCount.count1000;
       case 'all':
         return PastCommentFetchCount.all;
-      case '100':
+      // 未保存 (null) または未知の値は新デフォルト（500 件）に揃える。
+      // `AppSettings.defaults.pastCommentFetchCount` と常に一致させること。
       case null:
       default:
-        return PastCommentFetchCount.count100;
+        return PastCommentFetchCount.count500;
     }
   }
 }
@@ -348,7 +352,7 @@ class AppSettings {
     ngWords: '',
     ngUserIds: '',
     favoriteUserIds: '',
-    pastCommentFetchCount: PastCommentFetchCount.count100,
+    pastCommentFetchCount: PastCommentFetchCount.count500,
     showUserName: true,
     resolveUserName: true,
     commentFontSize: commentFontSizeDefault,

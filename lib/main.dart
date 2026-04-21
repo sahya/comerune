@@ -143,7 +143,10 @@ class _ComeruneAppState extends State<ComeruneApp> {
 
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   String _currentLv = '';
-  int _ndgrHistoryCount = 100;
+  // initState で initialSettings.pastCommentFetchCount.historyCount に
+  // 上書きされるため値そのものは一時的なもの。AppSettings.defaults と
+  // 整合を取るため 500 を初期値としている。
+  int _ndgrHistoryCount = 500;
   final ValueNotifier<String?> _programTitleNotifier = ValueNotifier<String?>(
     null,
   );

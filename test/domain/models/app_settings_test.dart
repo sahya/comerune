@@ -30,10 +30,44 @@ void main() {
   });
 
   group('PastCommentFetchCountValue.fromStorageValue', () {
-    test('returns default count100 for unknown value', () {
+    test('returns default count500 for unknown value', () {
       expect(
         PastCommentFetchCountValue.fromStorageValue('unexpected'),
+        PastCommentFetchCount.count500,
+      );
+    });
+
+    test('returns default count500 for null (unset storage)', () {
+      expect(
+        PastCommentFetchCountValue.fromStorageValue(null),
+        PastCommentFetchCount.count500,
+      );
+    });
+
+    test('preserves explicit count100 setting for backward compatibility', () {
+      // 明示的に 100 を選択していた既存ユーザーの設定は新デフォルト
+      // (500) で上書きしてはいけない。
+      expect(
+        PastCommentFetchCountValue.fromStorageValue('100'),
         PastCommentFetchCount.count100,
+      );
+    });
+
+    test('round-trips all enum values via storageValue', () {
+      for (final PastCommentFetchCount value in PastCommentFetchCount.values) {
+        expect(
+          PastCommentFetchCountValue.fromStorageValue(value.storageValue),
+          value,
+        );
+      }
+    });
+  });
+
+  group('AppSettings.defaults.pastCommentFetchCount', () {
+    test('defaults to count500 (initial fetch target)', () {
+      expect(
+        AppSettings.defaults.pastCommentFetchCount,
+        PastCommentFetchCount.count500,
       );
     });
   });
