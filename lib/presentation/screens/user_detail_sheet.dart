@@ -527,7 +527,12 @@ class _NicknameRow extends StatelessWidget {
       },
     );
 
-    controller.dispose();
+    // Do NOT dispose the controller here. The dialog's pop animation may
+    // still be running and the TextField still references the controller.
+    // Disposing too early causes "TextEditingController was used after
+    // being disposed" when _AnimatedState.didUpdateWidget tries to
+    // addListener during the dismiss animation.  The controller is a
+    // local variable and will be GC'd when this method returns.
 
     if (result == null || result.isEmpty) {
       return;

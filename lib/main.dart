@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:developer';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
@@ -25,7 +26,9 @@ import 'data/follow/follow_program_repository.dart';
 import 'data/follow/my_program_repository.dart';
 import 'data/foreground_service/foreground_service_manager.dart';
 import 'data/connection/web_socket_channel_legacy_web_socket.dart';
+import 'data/user/file_user_attribute_store.dart';
 import 'data/user/user_attribute_store.dart';
+import 'data/user/user_attribute_store_migrator.dart';
 import 'data/user/user_name_resolver.dart';
 import 'application/timeshift_fetch/timeshift_fetch_controller.dart';
 import 'domain/connection/connection_clients.dart' as reconnect;
@@ -43,6 +46,23 @@ import 'presentation/theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Route Flutter framework errors (assertions, build errors) to Logcat
+  // using debugPrint so they appear under the `flutter` tag consistently.
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    debugPrint(
+      '[FlutterError] ${details.exceptionAsString()}\n'
+      '${details.stack}',
+    );
+  };
+
+  // Catch uncaught async errors (e.g. from microtasks, Future callbacks)
+  // that don't go through FlutterError.
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    debugPrint('[PlatformDispatcher.onError] $error\n$stack');
+    return false; // propagate to default handler
+  };
 
   final SharedPreferences prefs = await SharedPreferences.getInstance();
   final SharedPreferencesLike prefsAdapter = SharedPreferencesAdapter(prefs);
@@ -70,8 +90,23 @@ Future<void> main() async {
     directory: Directory('${appDocDir.path}/comment_logs'),
     tempDirectory: Directory('${tempDir.path}/comment_logs'),
   );
-  final UserAttributeStore userAttributeStore =
-      SharedPreferencesUserAttributeStore(prefs: prefsAdapter);
+  // File-based user attribute store. Each write calls fsync via
+  // `File.writeAsString(flush: true)`, and SelectScreen flushes pending
+  // writes on lifecycle pause.  This replaces SharedPreferences which
+  // the pub.dev docs advise against using for critical data, and gives
+  // a cleaner per-broadcaster file layout for future extensibility.
+  final FileUserAttributeStore fileUserAttributeStore = FileUserAttributeStore(
+    root: Directory('${appDocDir.path}/user_attributes'),
+  );
+  // One-shot migration from legacy SharedPreferences storage. No-op after
+  // the first successful run (tracked via the `usercolor.migratedToFile`
+  // marker key).
+  await UserAttributeStoreMigrator(
+    prefs: prefsAdapter,
+    fileStore: fileUserAttributeStore,
+  ).run();
+  final UserAttributeStore userAttributeStore = fileUserAttributeStore;
+
   // Run one-time migration tasks when the app version changes.
   // Awaited so that migrations complete before the app reads settings or
   // user data that a migration might alter.

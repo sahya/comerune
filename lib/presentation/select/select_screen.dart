@@ -209,6 +209,12 @@ class _SelectScreenState extends State<SelectScreen>
     }
     widget.connectionSupervisor.removeListener(_onSupervisorChanged);
     widget.supplierUserIdNotifier?.removeListener(_onSupplierUserIdChanged);
+    // Flush pending user attribute writes as a defensive measure in case
+    // the widget is disposed without going through the lifecycle
+    // (inactive/paused/detached) handler — e.g. during tests or future
+    // refactors.  Fire-and-forget is acceptable here because the widget
+    // is on its way out and we cannot await in dispose().
+    unawaited(_flushPendingUserAttributeWrites());
     _loginStateNotifier.dispose();
     _userAttrNotifier.dispose();
     _settingsNotifier.dispose();
@@ -372,6 +378,14 @@ class _SelectScreenState extends State<SelectScreen>
       settings.pastCommentFetchCount.displayCapacity,
     );
     await widget.onPrepareConnection?.call(lv, settings);
+    _currentBroadcasterId = null;
+    // Load user attributes immediately using the lv as a fallback key.
+    // If supplierUserId resolves later, _onSupplierUserIdChanged will
+    // re-run _loadUserAttributes with the broadcaster ID, and the merge
+    // logic will migrate the data to the correct key.  If supplierUserId
+    // never resolves (e.g. certain broadcast types), data still persists
+    // under the lv key.
+    unawaited(_loadUserAttributes(lv));
 
     final bool started = widget.connectionSupervisor.startConnection();
     _debugLogLazy(
@@ -704,6 +718,8 @@ class _SelectScreenState extends State<SelectScreen>
       settings.pastCommentFetchCount.displayCapacity,
     );
     await widget.onPrepareConnection?.call(lv, settings);
+    _currentBroadcasterId = null;
+    unawaited(_loadUserAttributes(lv));
 
     final bool retried = widget.connectionSupervisor
         .retryConnectionFromTerminal();
@@ -727,7 +743,18 @@ class _SelectScreenState extends State<SelectScreen>
 
   void _onSupplierUserIdChanged() {
     final String? supplierUserId = widget.supplierUserIdNotifier?.value;
+    _debugLogLazy(
+      () =>
+          '[SelectScreen] _onSupplierUserIdChanged: '
+          'supplierUserId=$supplierUserId, '
+          '_currentBroadcasterId=$_currentBroadcasterId',
+    );
     if (supplierUserId != null && supplierUserId != _currentBroadcasterId) {
+      _debugLogLazy(
+        () =>
+            '[SelectScreen] _onSupplierUserIdChanged: '
+            'calling _loadUserAttributes($supplierUserId)',
+      );
       unawaited(_loadUserAttributes(supplierUserId));
     }
   }
@@ -758,8 +785,20 @@ class _SelectScreenState extends State<SelectScreen>
     if (broadcasterId == null ||
         broadcasterId == _currentBroadcasterId ||
         widget.userAttributeStore == null) {
+      _debugLogLazy(
+        () =>
+            '[SelectScreen] _loadUserAttributes: SKIPPED '
+            '(broadcasterId=$broadcasterId, '
+            '_currentBroadcasterId=$_currentBroadcasterId, '
+            'storeNull=${widget.userAttributeStore == null})',
+      );
       return;
     }
+    _debugLogLazy(
+      () =>
+          '[SelectScreen] _loadUserAttributes: START '
+          '(broadcasterId=$broadcasterId)',
+    );
     _currentBroadcasterId = broadcasterId;
     final Map<String, int> diskColors = await widget.userAttributeStore!
         .loadColors(broadcasterId);
@@ -842,6 +881,13 @@ class _SelectScreenState extends State<SelectScreen>
       nicknames: prev.nicknames,
     );
     final String? broadcasterId = _currentBroadcasterId;
+    if (broadcasterId == null) {
+      _debugLogLazy(
+        () =>
+            '[SelectScreen] _onUserColorChanged: SAVE SKIPPED '
+            '(broadcasterId is null, userId=$userId)',
+      );
+    }
     if (broadcasterId != null && widget.userAttributeStore != null) {
       unawaited(
         widget.userAttributeStore!.setColor(
@@ -879,6 +925,13 @@ class _SelectScreenState extends State<SelectScreen>
       nicknames: Map<String, String>.from(prev.nicknames)..[userId] = nickname,
     );
     final String? broadcasterId = _currentBroadcasterId;
+    if (broadcasterId == null) {
+      _debugLogLazy(
+        () =>
+            '[SelectScreen] _onNicknameChanged: SAVE SKIPPED '
+            '(broadcasterId is null, userId=$userId)',
+      );
+    }
     if (broadcasterId != null && widget.userAttributeStore != null) {
       unawaited(
         widget.userAttributeStore!.setNickname(

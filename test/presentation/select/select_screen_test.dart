@@ -1573,6 +1573,88 @@ void main() {
     });
 
     testWidgets(
+      'reconnect via onReconnectSameLv reloads attributes from disk',
+      (WidgetTester tester) async {
+        // Pre-seed disk data.
+        await userAttributeStore.setColor(
+          broadcasterId: 'broadcaster-1',
+          userId: 'user-1',
+          colorValue: 0xFFE53935,
+        );
+        await userAttributeStore.setNickname(
+          broadcasterId: 'broadcaster-1',
+          userId: 'user-1',
+          nickname: 'ディスクコテハン',
+        );
+
+        timelineStore.add(
+          AppMessage(
+            id: 'msg-1',
+            timestamp: DateTime(2026, 3, 28, 10, 0, 0),
+            userId: 'user-1',
+            content: 'テストコメント',
+            type: AppMessageType.chat,
+          ),
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SelectScreen(
+              connectionSupervisor: supervisor,
+              timelineStore: timelineStore,
+              userAttributeStore: userAttributeStore,
+              supplierUserIdNotifier: supplierUserIdNotifier,
+              onPrepareConnection: (String lv, AppSettings settings) async {
+                supplierUserIdNotifier.value = null;
+              },
+            ),
+          ),
+        );
+        await tester.pump();
+
+        await tester.enterText(inputField(), 'lv345678901');
+        await tester.pump();
+        await tester.tap(connectButton());
+        await tester.pumpAndSettle();
+
+        supplierUserIdNotifier.value = 'broadcaster-1';
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<CommentScreen>(find.byType(CommentScreen))
+              .contentFilter
+              .userColorMap['user-1'],
+          0xFFE53935,
+        );
+
+        await userAttributeStore.setNickname(
+          broadcasterId: 'broadcaster-1',
+          userId: 'user-new',
+          nickname: '新規ユーザー',
+        );
+
+        await tester
+            .widget<CommentScreen>(find.byType(CommentScreen))
+            .callbacks
+            .onReconnectSameLv();
+        await tester.pump();
+        supplierUserIdNotifier.value = 'broadcaster-1';
+        await tester.pumpAndSettle();
+
+        final CommentScreen after = tester.widget<CommentScreen>(
+          find.byType(CommentScreen),
+        );
+        expect(
+          after.contentFilter.userNicknameMap['user-new'],
+          '新規ユーザー',
+          reason: 'New disk entry must be loaded after onReconnectSameLv',
+        );
+        expect(after.contentFilter.userColorMap['user-1'], 0xFFE53935);
+        expect(after.contentFilter.userNicknameMap['user-1'], 'ディスクコテハン');
+      },
+    );
+
+    testWidgets(
       'disk change is picked up after lv switch clears in-memory state',
       (WidgetTester tester) async {
         await pumpAndNavigate(tester);

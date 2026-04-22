@@ -79,9 +79,7 @@ class SharedPreferencesUserAttributeStore implements UserAttributeStore {
   Future<void> _pendingWriteChain = Future<void>.value();
 
   static const String _indexKey = 'usercolor._index';
-  static const String _lastUsedAtField = '_lastUsedAt';
-  static const String _colorField = 'c';
-  static const String _nicknameField = 'n';
+  static const String _lastUsedAtField = userAttrLastUsedAtField;
 
   // Keep the same key prefix for backward compatibility with existing data.
   static String _key(String broadcasterId) => 'usercolor.$broadcasterId';
@@ -93,7 +91,7 @@ class SharedPreferencesUserAttributeStore implements UserAttributeStore {
       return <String, int>{};
     }
     await _touchLastUsedAt(broadcasterId);
-    return _extractColors(raw);
+    return extractColors(raw);
   }
 
   @override
@@ -103,7 +101,7 @@ class SharedPreferencesUserAttributeStore implements UserAttributeStore {
       return <String, String>{};
     }
     await _touchLastUsedAt(broadcasterId);
-    return _extractNicknames(raw);
+    return extractNicknames(raw);
   }
 
   @override
@@ -114,8 +112,8 @@ class SharedPreferencesUserAttributeStore implements UserAttributeStore {
   }) async {
     await _enqueueWrite(() async {
       final Map<String, dynamic> raw = _readRaw(broadcasterId);
-      final _UserEntry existing = _readEntry(raw, userId);
-      final _UserEntry updated = existing.copyWith(color: colorValue);
+      final UserEntry existing = readUserEntry(raw, userId);
+      final UserEntry updated = existing.copyWith(color: colorValue);
       raw[userId] = updated.toJson();
       raw[_lastUsedAtField] = DateTime.now().millisecondsSinceEpoch;
       await _prefs.setString(_key(broadcasterId), json.encode(raw));
@@ -130,11 +128,11 @@ class SharedPreferencesUserAttributeStore implements UserAttributeStore {
   }) async {
     await _enqueueWrite(() async {
       final Map<String, dynamic> raw = _readRaw(broadcasterId);
-      final _UserEntry existing = _readEntry(raw, userId);
+      final UserEntry existing = readUserEntry(raw, userId);
       if (existing.color == null) {
         return;
       }
-      final _UserEntry updated = existing.copyWithoutColor();
+      final UserEntry updated = existing.copyWithoutColor();
       if (updated.isEmpty) {
         raw.remove(userId);
       } else {
@@ -153,8 +151,8 @@ class SharedPreferencesUserAttributeStore implements UserAttributeStore {
   }) async {
     await _enqueueWrite(() async {
       final Map<String, dynamic> raw = _readRaw(broadcasterId);
-      final _UserEntry existing = _readEntry(raw, userId);
-      final _UserEntry updated = existing.copyWith(nickname: nickname);
+      final UserEntry existing = readUserEntry(raw, userId);
+      final UserEntry updated = existing.copyWith(nickname: nickname);
       raw[userId] = updated.toJson();
       raw[_lastUsedAtField] = DateTime.now().millisecondsSinceEpoch;
       await _prefs.setString(_key(broadcasterId), json.encode(raw));
@@ -169,11 +167,11 @@ class SharedPreferencesUserAttributeStore implements UserAttributeStore {
   }) async {
     await _enqueueWrite(() async {
       final Map<String, dynamic> raw = _readRaw(broadcasterId);
-      final _UserEntry existing = _readEntry(raw, userId);
+      final UserEntry existing = readUserEntry(raw, userId);
       if (existing.nickname == null) {
         return;
       }
-      final _UserEntry updated = existing.copyWithoutNickname();
+      final UserEntry updated = existing.copyWithoutNickname();
       if (updated.isEmpty) {
         raw.remove(userId);
       } else {
@@ -234,63 +232,6 @@ class SharedPreferencesUserAttributeStore implements UserAttributeStore {
     }
   }
 
-  /// Reads a single user entry from the raw map, handling both legacy (int)
-  /// and new (Map) formats.
-  _UserEntry _readEntry(Map<String, dynamic> raw, String userId) {
-    final Object? value = raw[userId];
-    if (value == null) {
-      return const _UserEntry();
-    }
-    if (value is int) {
-      // Legacy format: plain int = color only.
-      return _UserEntry(color: value);
-    }
-    if (value is Map<String, dynamic>) {
-      return _UserEntry(
-        color: value[_colorField] is int ? value[_colorField] as int : null,
-        nickname: value[_nicknameField] is String
-            ? value[_nicknameField] as String
-            : null,
-      );
-    }
-    return const _UserEntry();
-  }
-
-  Map<String, int> _extractColors(Map<String, dynamic> raw) {
-    final Map<String, int> result = <String, int>{};
-    for (final MapEntry<String, dynamic> entry in raw.entries) {
-      if (entry.key == _lastUsedAtField) {
-        continue;
-      }
-      if (entry.value is int) {
-        // Legacy format: plain int = color.
-        result[entry.key] = entry.value as int;
-      } else if (entry.value is Map<String, dynamic>) {
-        final Map<String, dynamic> map = entry.value as Map<String, dynamic>;
-        if (map[_colorField] is int) {
-          result[entry.key] = map[_colorField] as int;
-        }
-      }
-    }
-    return result;
-  }
-
-  Map<String, String> _extractNicknames(Map<String, dynamic> raw) {
-    final Map<String, String> result = <String, String>{};
-    for (final MapEntry<String, dynamic> entry in raw.entries) {
-      if (entry.key == _lastUsedAtField) {
-        continue;
-      }
-      if (entry.value is Map<String, dynamic>) {
-        final Map<String, dynamic> map = entry.value as Map<String, dynamic>;
-        if (map[_nicknameField] is String) {
-          result[entry.key] = map[_nicknameField] as String;
-        }
-      }
-    }
-    return result;
-  }
-
   Future<void> _touchLastUsedAt(String broadcasterId) async {
     await _enqueueWrite(() async {
       final Map<String, dynamic> latestRaw = _readRaw(broadcasterId);
@@ -334,46 +275,102 @@ class SharedPreferencesUserAttributeStore implements UserAttributeStore {
   }
 }
 
-/// Internal value object representing a single user's attributes.
-class _UserEntry {
-  const _UserEntry({this.color, this.nickname});
+// ---------------------------------------------------------------------------
+// Shared helpers — used by FileUserAttributeStore (and available to any
+// future UserAttributeStore implementation) so the JSON payload shape
+// stays identical across implementations.
+// ---------------------------------------------------------------------------
+
+const String userAttrColorField = 'c';
+const String userAttrNicknameField = 'n';
+const String userAttrLastUsedAtField = '_lastUsedAt';
+
+/// Value object representing a single user's attributes.
+class UserEntry {
+  const UserEntry({this.color, this.nickname});
 
   final int? color;
   final String? nickname;
 
   bool get isEmpty => color == null && nickname == null;
 
-  _UserEntry copyWith({int? color, String? nickname}) {
-    return _UserEntry(
+  UserEntry copyWith({int? color, String? nickname}) {
+    return UserEntry(
       color: color ?? this.color,
       nickname: nickname ?? this.nickname,
     );
   }
 
-  _UserEntry copyWithoutColor() {
-    return _UserEntry(nickname: nickname);
-  }
+  UserEntry copyWithoutColor() => UserEntry(nickname: nickname);
 
-  _UserEntry copyWithoutNickname() {
-    return _UserEntry(color: color);
-  }
+  UserEntry copyWithoutNickname() => UserEntry(color: color);
 
-  /// Serializes to JSON-compatible value.
-  ///
-  /// If only color is set and no nickname, returns the color int directly
-  /// for backward compatibility. Otherwise returns a Map.
   Object toJson() {
     if (nickname == null && color != null) {
-      // Backward-compatible format: plain int.
       return color!;
     }
     final Map<String, dynamic> map = <String, dynamic>{};
     if (color != null) {
-      map['c'] = color;
+      map[userAttrColorField] = color;
     }
     if (nickname != null) {
-      map['n'] = nickname;
+      map[userAttrNicknameField] = nickname;
     }
     return map;
   }
+}
+
+UserEntry readUserEntry(Map<String, dynamic> raw, String userId) {
+  final Object? value = raw[userId];
+  if (value == null) {
+    return const UserEntry();
+  }
+  if (value is int) {
+    return UserEntry(color: value);
+  }
+  if (value is Map<String, dynamic>) {
+    return UserEntry(
+      color: value[userAttrColorField] is int
+          ? value[userAttrColorField] as int
+          : null,
+      nickname: value[userAttrNicknameField] is String
+          ? value[userAttrNicknameField] as String
+          : null,
+    );
+  }
+  return const UserEntry();
+}
+
+Map<String, int> extractColors(Map<String, dynamic> raw) {
+  final Map<String, int> result = <String, int>{};
+  for (final MapEntry<String, dynamic> entry in raw.entries) {
+    if (entry.key == userAttrLastUsedAtField) {
+      continue;
+    }
+    if (entry.value is int) {
+      result[entry.key] = entry.value as int;
+    } else if (entry.value is Map<String, dynamic>) {
+      final Map<String, dynamic> map = entry.value as Map<String, dynamic>;
+      if (map[userAttrColorField] is int) {
+        result[entry.key] = map[userAttrColorField] as int;
+      }
+    }
+  }
+  return result;
+}
+
+Map<String, String> extractNicknames(Map<String, dynamic> raw) {
+  final Map<String, String> result = <String, String>{};
+  for (final MapEntry<String, dynamic> entry in raw.entries) {
+    if (entry.key == userAttrLastUsedAtField) {
+      continue;
+    }
+    if (entry.value is Map<String, dynamic>) {
+      final Map<String, dynamic> map = entry.value as Map<String, dynamic>;
+      if (map[userAttrNicknameField] is String) {
+        result[entry.key] = map[userAttrNicknameField] as String;
+      }
+    }
+  }
+  return result;
 }
