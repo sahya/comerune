@@ -131,6 +131,97 @@ void main() {
     });
   });
 
+  group('extractProviderUserId', () {
+    test('returns programProviderId from programProvider as int', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'programProvider': <String, dynamic>{'programProviderId': 97472220},
+      };
+      expect(extractProviderUserId(item), '97472220');
+    });
+
+    test('returns programProviderId from programProvider as string', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'programProvider': <String, dynamic>{'programProviderId': '97472220'},
+      };
+      expect(extractProviderUserId(item), '97472220');
+    });
+
+    test('falls back to programProvider.id', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'programProvider': <String, dynamic>{'id': 12345678},
+      };
+      expect(extractProviderUserId(item), '12345678');
+    });
+
+    test('falls back to supplier.programProviderId', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'supplier': <String, dynamic>{'programProviderId': 18897569},
+      };
+      expect(extractProviderUserId(item), '18897569');
+    });
+
+    test('falls back to supplier.id', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'supplier': <String, dynamic>{'id': 18897569},
+      };
+      expect(extractProviderUserId(item), '18897569');
+    });
+
+    test('falls back to top-level programProviderId', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'programProviderId': 18897569,
+      };
+      expect(extractProviderUserId(item), '18897569');
+    });
+
+    test('falls back to top-level supplierUserId', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'supplierUserId': 18897569,
+      };
+      expect(extractProviderUserId(item), '18897569');
+    });
+
+    test('rejects channel IDs like "ch2648853"', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'supplier': <String, dynamic>{'programProviderId': 'ch2648853'},
+      };
+      expect(extractProviderUserId(item), isNull);
+    });
+
+    test('rejects community IDs like "co0"', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'supplier': <String, dynamic>{'programProviderId': 'co0'},
+      };
+      expect(extractProviderUserId(item), isNull);
+    });
+
+    test('rejects zero-valued IDs', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'supplier': <String, dynamic>{'programProviderId': 0},
+      };
+      expect(extractProviderUserId(item), isNull);
+    });
+
+    test('rejects negative IDs', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'supplier': <String, dynamic>{'programProviderId': -1},
+      };
+      expect(extractProviderUserId(item), isNull);
+    });
+
+    test('prefers programProvider over supplier', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'programProvider': <String, dynamic>{'programProviderId': 11111111},
+        'supplier': <String, dynamic>{'programProviderId': 22222222},
+      };
+      expect(extractProviderUserId(item), '11111111');
+    });
+
+    test('returns null when nothing is present', () {
+      expect(extractProviderUserId(<String, dynamic>{}), isNull);
+    });
+  });
+
   group('extractCommunityName', () {
     test('returns name from socialGroup', () {
       final Map<String, dynamic> item = <String, dynamic>{
@@ -274,6 +365,30 @@ void main() {
       };
       final result = parseProgramItem(item);
       expect(result!.beginAt, isNull);
+    });
+
+    test('populates providerUserId from programProvider.programProviderId', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'id': 'lv123456',
+        'title': 'Test Title',
+        'programProvider': <String, dynamic>{
+          'name': 'TestUser',
+          'programProviderId': 97472220,
+        },
+      };
+      final result = parseProgramItem(item);
+      expect(result, isNotNull);
+      expect(result!.providerUserId, '97472220');
+    });
+
+    test('providerUserId is null when no numeric ID is available', () {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'id': 'lv123456',
+        'title': 'Test Title',
+        'programProvider': <String, dynamic>{'name': 'TestUser'},
+      };
+      final result = parseProgramItem(item);
+      expect(result!.providerUserId, isNull);
     });
   });
 }

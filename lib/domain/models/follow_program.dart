@@ -42,6 +42,7 @@ class FollowProgram {
     required this.title,
     required this.providerName,
     this.providerIconUrl,
+    this.providerUserId,
     String? communityName,
     this.beginAt,
     this.endAt,
@@ -62,6 +63,13 @@ class FollowProgram {
 
   /// The broadcaster's icon URL (small, typically 50x50).
   final String? providerIconUrl;
+
+  /// The broadcaster's numeric niconico user ID as a string, when the
+  /// source API response carried it (Issue #681, Phase 1). Used to
+  /// pre-bind color/nickname persistence keys to the real user ID rather
+  /// than the lv-based fallback, so the same broadcaster's data is
+  /// carried across different broadcasts.
+  final String? providerUserId;
 
   /// The community or channel name, if available.
   final String? communityName;
@@ -96,6 +104,7 @@ class FollowProgram {
       title: title,
       providerName: providerName,
       providerIconUrl: providerIconUrl,
+      providerUserId: providerUserId,
       communityName: communityName,
       beginAt: beginAt,
       endAt: endAt ?? this.endAt,

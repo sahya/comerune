@@ -1789,6 +1789,97 @@ void main() {
       expect(find.byType(CommentScreen), findsOneWidget);
       expect(checker.lastRequestedUserIds, <String>{'12345'});
     });
+
+    testWidgets('tapping favorite tile pre-binds supplierUserIdNotifier to '
+        'FollowProgram.providerUserId (Issue #681 Phase 1)', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+      final ValueNotifier<String?> supplierUserIdNotifier =
+          ValueNotifier<String?>(null);
+      addTearDown(supplierUserIdNotifier.dispose);
+
+      final _FakeFavoriteUserLiveChecker checker = _FakeFavoriteUserLiveChecker(
+        resultMap: <String, FollowProgram>{
+          '97472220': FollowProgram(
+            programId: 'lv350353828',
+            title: 'ドラクエ6(DS)',
+            providerName: '朝方ネル',
+            providerUserId: '97472220',
+            status: ProgramStatus.onAir,
+          ),
+        },
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: supervisor,
+            initialSettings: AppSettings.defaults.copyWith(
+              favoriteUserIds: '97472220',
+            ),
+            favoriteUserLiveChecker: checker,
+            supplierUserIdNotifier: supplierUserIdNotifier,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(supplierUserIdNotifier.value, isNull);
+
+      await tester.tap(find.text('ドラクエ6(DS)'));
+      await tester.pumpAndSettle();
+
+      expect(supplierUserIdNotifier.value, '97472220');
+    });
+
+    testWidgets('tapping favorite tile with null providerUserId leaves '
+        'supplierUserIdNotifier unchanged (lv fallback path)', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+      final ValueNotifier<String?> supplierUserIdNotifier =
+          ValueNotifier<String?>(null);
+      addTearDown(supplierUserIdNotifier.dispose);
+
+      final _FakeFavoriteUserLiveChecker checker = _FakeFavoriteUserLiveChecker(
+        resultMap: <String, FollowProgram>{
+          'co0': FollowProgram(
+            programId: 'lv350353828',
+            title: 'コミュID経由の放送',
+            providerName: '不明',
+            // providerUserId intentionally omitted — simulates the
+            // non-numeric map-key defensive path.
+            status: ProgramStatus.onAir,
+          ),
+        },
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: supervisor,
+            initialSettings: AppSettings.defaults.copyWith(
+              favoriteUserIds: 'co0',
+            ),
+            favoriteUserLiveChecker: checker,
+            supplierUserIdNotifier: supplierUserIdNotifier,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(supplierUserIdNotifier.value, isNull);
+
+      await tester.tap(find.text('コミュID経由の放送'));
+      await tester.pumpAndSettle();
+
+      // No pre-bind: the notifier stays null because providerUserId was
+      // null. Subsequent programinfo resolution (not mocked here) is
+      // the only path that can populate this notifier in the lv fallback
+      // case.
+      expect(supplierUserIdNotifier.value, isNull);
+    });
   });
 
   group('my broadcast section', () {

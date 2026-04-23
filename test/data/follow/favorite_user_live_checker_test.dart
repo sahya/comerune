@@ -91,10 +91,42 @@ void main() {
       expect(result['12345']!.programId, 'lv348712105');
       expect(result['12345']!.title, 'テスト放送タイトル');
       expect(result['12345']!.providerName, '放送者名');
+      expect(result['12345']!.providerUserId, '12345');
       expect(result['12345']!.status, ProgramStatus.onAir);
 
       checker.dispose();
     });
+
+    test(
+      'providerUserId is null when favorite map key is non-numeric',
+      () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseBodyByUrlPrefix['providerId=co0'] =
+            _buildHistoryResponse(
+              programId: 'lv348712105',
+              status: 'ON_AIR',
+              title: 'テスト放送タイトル',
+              providerName: '放送者名',
+            );
+
+        final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
+          httpClient: httpClient,
+          minInterval: Duration.zero,
+        );
+
+        final Map<String, FollowProgram> result = await checker
+            .checkBroadcastStatus(<String>{'co0'});
+
+        // The FollowProgram is still produced (keyed by the raw input) but
+        // providerUserId is suppressed so the non-numeric value is never
+        // persisted as a user-attribute key.
+        expect(result, hasLength(1));
+        expect(result['co0'], isNotNull);
+        expect(result['co0']!.providerUserId, isNull);
+
+        checker.dispose();
+      },
+    );
 
     test('returns empty map when user is not broadcasting (ENDED)', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();

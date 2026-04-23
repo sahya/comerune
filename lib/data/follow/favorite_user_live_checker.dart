@@ -355,6 +355,16 @@ class FavoriteUserLiveChecker {
             '[FavoriteUserLiveChecker] user=$maskedUserId on-air program=$programId',
       );
 
+      // Guard against non-numeric map keys (e.g. stray "co0"-style values
+      // entered via the favorites settings UI) so they are never persisted
+      // as a user attribute key. The API only returns data for valid
+      // numeric IDs in practice, but validating here keeps the invariant
+      // local to the place where providerUserId is populated.
+      final int? parsedUserId = int.tryParse(userId);
+      final String? numericUserId = (parsedUserId != null && parsedUserId > 0)
+          ? userId
+          : null;
+
       return MapEntry<String, FollowProgram>(
         userId,
         FollowProgram(
@@ -362,6 +372,7 @@ class FavoriteUserLiveChecker {
           title: title,
           providerName: _extractProviderName(first),
           providerIconUrl: _extractProviderIconUrl(first),
+          providerUserId: numericUserId,
           communityName: _extractCommunityName(first),
           beginAt: _extractTimestamp(schedule['beginTime']),
           endAt: _extractTimestamp(schedule['scheduledEndTime']),

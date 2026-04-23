@@ -330,7 +330,10 @@ class _SelectScreenState extends State<SelectScreen>
     unawaited(_connect(connectSource: 'submit'));
   }
 
-  Future<void> _connect({required String connectSource}) async {
+  Future<void> _connect({
+    required String connectSource,
+    String? preferredBroadcasterId,
+  }) async {
     final String rawInput = _controller.text;
     if (rawInput.trim().isEmpty) {
       _debugLogLazy(
@@ -379,13 +382,30 @@ class _SelectScreenState extends State<SelectScreen>
     );
     await widget.onPrepareConnection?.call(lv, settings);
     _currentBroadcasterId = null;
-    // Load user attributes immediately using the lv as a fallback key.
-    // If supplierUserId resolves later, _onSupplierUserIdChanged will
-    // re-run _loadUserAttributes with the broadcaster ID, and the merge
-    // logic will migrate the data to the correct key.  If supplierUserId
-    // never resolves (e.g. certain broadcast types), data still persists
-    // under the lv key.
-    unawaited(_loadUserAttributes(lv));
+    // Issue #681 Phase 1: when the caller already knows the broadcaster's
+    // numeric user ID (from a FollowProgram / Favorite API response),
+    // pre-bind the notifier so user attributes load under the real user ID
+    // immediately. Otherwise fall back to the lv key; _onSupplierUserIdChanged
+    // will later migrate the data once programinfo resolves the real ID.
+    // If supplierUserId never resolves, data stays under the lv key.
+    //
+    // Note: setting `supplierUserIdNotifier.value` synchronously fires
+    // `_onSupplierUserIdChanged`, which in turn calls
+    // `_loadUserAttributes(preferredBroadcasterId)`. The explicit
+    // `unawaited(_loadUserAttributes(...))` below is therefore a no-op in
+    // that branch (skipped by the `broadcasterId == _currentBroadcasterId`
+    // guard). It is kept intentionally so the lv branch — where no
+    // listener fires — still triggers the load, and so the intent of
+    // "always kick off the initial attribute load here" stays explicit
+    // at this call site.
+    final String initialAttributeKey;
+    if (preferredBroadcasterId != null) {
+      widget.supplierUserIdNotifier?.value = preferredBroadcasterId;
+      initialAttributeKey = preferredBroadcasterId;
+    } else {
+      initialAttributeKey = lv;
+    }
+    unawaited(_loadUserAttributes(initialAttributeKey));
 
     final bool started = widget.connectionSupervisor.startConnection();
     _debugLogLazy(
@@ -1320,7 +1340,12 @@ class _SelectScreenState extends State<SelectScreen>
       () =>
           '[SelectScreen] follow program tapped: programId=${program.programId}',
     );
-    unawaited(_connect(connectSource: 'follow-program'));
+    unawaited(
+      _connect(
+        connectSource: 'follow-program',
+        preferredBroadcasterId: program.providerUserId,
+      ),
+    );
   }
 
   Future<void> _fetchFavoriteUserStatus() async {
@@ -1362,7 +1387,12 @@ class _SelectScreenState extends State<SelectScreen>
       () =>
           '[SelectScreen] favorite program tapped: programId=${program.programId}',
     );
-    unawaited(_connect(connectSource: 'favorite-user'));
+    unawaited(
+      _connect(
+        connectSource: 'favorite-user',
+        preferredBroadcasterId: program.providerUserId,
+      ),
+    );
   }
 
   Future<void> _reloadSettingsFromStore() async {

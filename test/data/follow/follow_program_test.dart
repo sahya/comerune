@@ -107,5 +107,22 @@ void main() {
       expect(updated.endAt, endAt);
       expect(updated.status, ProgramStatus.onAir);
     });
+
+    test('preserves providerUserId across copyWith', () {
+      final FollowProgram original = FollowProgram(
+        programId: 'lv123',
+        title: 'Test',
+        providerName: 'User',
+        providerUserId: '97472220',
+        status: ProgramStatus.onAir,
+      );
+
+      final FollowProgram updated = original.copyWith(
+        status: ProgramStatus.ended,
+      );
+
+      expect(updated.providerUserId, '97472220');
+      expect(updated.status, ProgramStatus.ended);
+    });
   });
 }

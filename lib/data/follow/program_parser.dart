@@ -85,7 +85,7 @@ String? extractProviderIconUrl(Map<String, dynamic> item) {
   }
 
   // Final fallback: synthesize niconico usericon URL from numeric provider IDs.
-  final String? providerUserId = _extractProviderUserId(item);
+  final String? providerUserId = extractProviderUserId(item);
   if (providerUserId != null) {
     return buildNicoIconUrl(providerUserId);
   }
@@ -140,7 +140,18 @@ String? _extractDirectIconUrl(Map<String, dynamic> item) {
   return null;
 }
 
-String? _extractProviderUserId(Map<String, dynamic> item) {
+/// Extracts the broadcaster's numeric user ID as a string from a program
+/// JSON item.
+///
+/// Checks, in order:
+///   1. `programProvider.programProviderId` / `programProvider.id`
+///   2. `supplier.programProviderId` / `supplier.id`
+///   3. top-level `programProviderId` / `supplierUserId`
+///
+/// Only returns IDs that parse as positive integers — channel IDs (e.g.
+/// `"ch2648853"`) and community IDs (e.g. `"co0"`) are rejected so they
+/// are never persisted as a user ID.
+String? extractProviderUserId(Map<String, dynamic> item) {
   final Object? provider = item['programProvider'];
   if (provider is Map<String, dynamic>) {
     final String? userId = _asNumericUserId(provider['programProviderId']);
@@ -208,6 +219,7 @@ FollowProgram? parseProgramItem(
   }
 
   final String? providerIconUrl = extractProviderIconUrl(item);
+  final String? providerUserId = extractProviderUserId(item);
   final String? communityName = extractCommunityName(item);
   final DateTime? beginAt = parseBeginAt(item);
   final DateTime? endAt = parseEndAt(item);
@@ -218,6 +230,7 @@ FollowProgram? parseProgramItem(
     title: title,
     providerName: providerName ?? '',
     providerIconUrl: providerIconUrl,
+    providerUserId: providerUserId,
     communityName: communityName,
     beginAt: beginAt,
     endAt: endAt,
