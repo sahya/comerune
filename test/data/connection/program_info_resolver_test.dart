@@ -163,6 +163,184 @@ void main() {
       resolver.dispose();
     });
 
+    test('extracts broadcaster user ID from broadcaster object '
+        '(current niconive user-live shape)', () async {
+      // Real-world payload shape observed at:
+      //   GET https://live2.nicovideo.jp/watch/<lv>/programinfo
+      // for niconive user-live broadcasts. `data.broadcaster` is a
+      // single object, not an array, and `id` is a string.
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'User Live Program',
+          'broadcaster': <String, Object?>{'id': '11111111', 'name': 'テスト配信者A'},
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/UserLive',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv2000',
+        userSession: 'session',
+      );
+
+      expect(result.title, 'User Live Program');
+      expect(result.supplierUserId, '11111111');
+      expect(result.broadcasterName, 'テスト配信者A');
+
+      resolver.dispose();
+    });
+
+    test('extracts broadcaster user ID from object with int id '
+        '(type tolerance)', () async {
+      // Same shape as the user-live response, but `id` is an int rather
+      // than a string. The extractor should normalise via toString().
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'Int Id Object',
+          'broadcaster': <String, Object?>{'id': 12345678, 'name': '配信者X'},
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/IntId',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv2100',
+        userSession: 'session',
+      );
+
+      expect(result.supplierUserId, '12345678');
+      expect(result.broadcasterName, '配信者X');
+
+      resolver.dispose();
+    });
+
+    test('falls back to supplier when broadcaster object is empty', () async {
+      // broadcaster is an empty object — neither id nor name available.
+      // supplier should be consulted as fallback.
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'title': 'Empty Broadcaster Object',
+          'broadcaster': <String, Object?>{},
+          'supplier': <String, Object?>{
+            'name': 'サプライヤー',
+            'programProviderId': 99999,
+          },
+          'rooms': <Object?>[
+            <String, Object?>{
+              'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/EmptyB',
+            },
+          ],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv2200',
+        userSession: 'session',
+      );
+
+      expect(result.supplierUserId, '99999');
+      expect(result.broadcasterName, 'サプライヤー');
+
+      resolver.dispose();
+    });
+
+    test(
+      'returns null broadcaster info when broadcaster is an empty array',
+      () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseBody = jsonEncode(<String, Object?>{
+          'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+          'data': <String, Object?>{
+            'title': 'Empty Array',
+            'broadcaster': <Object?>[],
+            'rooms': <Object?>[
+              <String, Object?>{
+                'viewUri': 'https://mpn.live.nicovideo.jp/api/view/v4/EmptyArr',
+              },
+            ],
+          },
+        });
+
+        final ProgramInfoResolver resolver = ProgramInfoResolver(
+          httpClient: httpClient,
+        );
+
+        final ProgramInfo result = await resolver.resolve(
+          lv: 'lv2300',
+          userSession: 'session',
+        );
+
+        expect(result.supplierUserId, isNull);
+        expect(result.broadcasterName, isNull);
+
+        resolver.dispose();
+      },
+    );
+
+    test(
+      'prefers broadcaster object over supplier when both present',
+      () async {
+        // When `broadcaster` is provided as an object with both id and
+        // name, the supplier section must not override either.
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseBody = jsonEncode(<String, Object?>{
+          'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+          'data': <String, Object?>{
+            'title': 'Object Wins',
+            'broadcaster': <String, Object?>{'id': '11111', 'name': '本来の配信者'},
+            'supplier': <String, Object?>{
+              'name': '違う名前',
+              'programProviderId': 22222,
+            },
+            'rooms': <Object?>[
+              <String, Object?>{
+                'viewUri':
+                    'https://mpn.live.nicovideo.jp/api/view/v4/ObjectWins',
+              },
+            ],
+          },
+        });
+
+        final ProgramInfoResolver resolver = ProgramInfoResolver(
+          httpClient: httpClient,
+        );
+
+        final ProgramInfo result = await resolver.resolve(
+          lv: 'lv2400',
+          userSession: 'session',
+        );
+
+        expect(result.supplierUserId, '11111');
+        expect(result.broadcasterName, '本来の配信者');
+
+        resolver.dispose();
+      },
+    );
+
     test(
       'falls back to supplier name and ID when broadcaster is absent',
       () async {

@@ -249,23 +249,28 @@ class ProgramInfoResolver {
     String? broadcasterName;
     String? broadcasterUserId;
 
-    // Primary: data.broadcaster (array of {id, name}).
+    // Primary: data.broadcaster.
+    //
+    // Two shapes have been observed in the wild:
+    //   - Object: `{"id": "<numeric-user-id>", "name": "..."}` — current
+    //     niconive user-live response (confirmed via
+    //     `live2.nicovideo.jp/watch/<lv>/programinfo`).
+    //   - Array: `[{"id": ..., "name": ...}, ...]` — older / N Air typed
+    //     definition (kept for backward compatibility).
     final Object? broadcaster = data['broadcaster'];
-    if (broadcaster is List && broadcaster.isNotEmpty) {
-      final Object? first = broadcaster[0];
-      if (first is Map<String, dynamic>) {
-        final Object? id = first['id'];
-        final Object? name = first['name'];
-        if (id != null) {
-          broadcasterUserId = id.toString();
-        }
-        if (name is String && name.isNotEmpty) {
-          broadcasterName = name;
-        }
-        // If both id and name are available, return immediately.
-        if (broadcasterUserId != null && broadcasterName != null) {
-          return (userId: broadcasterUserId, name: broadcasterName);
-        }
+    final Map<String, dynamic>? broadcasterMap = _asBroadcasterMap(broadcaster);
+    if (broadcasterMap != null) {
+      final Object? id = broadcasterMap['id'];
+      final Object? name = broadcasterMap['name'];
+      if (id != null) {
+        broadcasterUserId = id.toString();
+      }
+      if (name is String && name.isNotEmpty) {
+        broadcasterName = name;
+      }
+      // If both id and name are available, return immediately.
+      if (broadcasterUserId != null && broadcasterName != null) {
+        return (userId: broadcasterUserId, name: broadcasterName);
       }
     }
 
@@ -290,6 +295,24 @@ class ProgramInfoResolver {
     }
 
     return (userId: null, name: null);
+  }
+
+  /// Returns the broadcaster's `{id, name}` map regardless of whether
+  /// `data.broadcaster` is delivered as an object or an array.
+  ///
+  /// Returns `null` when the value is missing, of an unexpected type,
+  /// or an empty array.
+  static Map<String, dynamic>? _asBroadcasterMap(Object? value) {
+    if (value is Map<String, dynamic>) {
+      return value;
+    }
+    if (value is List && value.isNotEmpty) {
+      final Object? first = value[0];
+      if (first is Map<String, dynamic>) {
+        return first;
+      }
+    }
+    return null;
   }
 
   /// Reads at most [_maxErrorBodyBytes] bytes from the response to avoid
