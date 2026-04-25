@@ -3,6 +3,7 @@ export 'src/engine_readiness.dart';
 export 'src/method_channel_comment_speech.dart';
 export 'src/models/raw_comment.dart';
 export 'src/models/replace_rule.dart';
+export 'src/models/speech_engine_state.dart';
 export 'src/models/speech_event.dart';
 export 'src/models/speech_failure_reason.dart';
 export 'src/models/speech_runtime_status.dart';

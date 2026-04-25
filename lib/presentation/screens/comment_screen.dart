@@ -601,7 +601,12 @@ class _CommentScreenState extends State<CommentScreen>
   bool _speechInitializing = false;
   bool _speechInitialized = false;
   bool _speechStarted = false;
-  String _speechEngineState = '';
+  // Issue #717 (ARCH-2): replaced inline magic strings (`'' / 'READY' /
+  // 'ERROR'`) with [SpeechEngineState] so the 4 source paths
+  // (native event / cross-screen notifier / init failure / recovery
+  // heuristic) all funnel through a single typed setter
+  // [_setSpeechEngineState] and a single comparison surface.
+  SpeechEngineState _speechEngineState = SpeechEngineState.unknown;
 
   /// Number of consecutive Android-TTS `speech_failed` events received with
   /// no `speech_completed` in between. When this reaches
@@ -1242,6 +1247,39 @@ class _CommentScreenState extends State<CommentScreen>
   // Speech (VoiceVox) integration
   // ---------------------------------------------------------------------------
 
+  /// Single write point for [_speechEngineState] (Issue #717 / ARCH-2).
+  ///
+  /// All 4 historical source paths funnel through here:
+  ///   1. native engine event (`engine_state_changed`)
+  ///   2. cross-screen notifier listener (PR #704)
+  ///   3. local init failure (#695, #696)
+  ///   4. `speech_completed` recovery heuristic (PR #707 / #695)
+  ///
+  /// Call this from any path that wants to mutate the engine state so
+  /// that:
+  ///   * the assignment is wrapped in `setState` consistently (the
+  ///     icon is part of the AppBar tree and must rebuild on change),
+  ///   * an idempotent no-op (same enum value) skips `setState` entirely
+  ///     to avoid unnecessary rebuilds,
+  ///   * future cross-cutting hooks (e.g. SnackBar on ERROR transition
+  ///     in #712) attach in **one** place rather than 8.
+  ///
+  /// Invoke from OUTSIDE any caller's own `setState` block — the helper
+  /// performs its own `setState` only when mounted and only when the
+  /// value actually changes. When unmounted (the State is being torn
+  /// down), the field is updated without `setState` so reads stay
+  /// consistent during dispose.
+  void _setSpeechEngineState(SpeechEngineState next) {
+    if (_speechEngineState == next) return;
+    if (!mounted) {
+      _speechEngineState = next;
+      return;
+    }
+    setState(() {
+      _speechEngineState = next;
+    });
+  }
+
   Future<void> _initializeAndStartSpeech() async {
     _debugLogLazy(
       () =>
@@ -1281,15 +1319,11 @@ class _CommentScreenState extends State<CommentScreen>
           // actually ready, because the start() success path that
           // normally sets state='READY' is reached only after a few
           // awaits and the icon would briefly flicker ERROR in between.
-          if (_speechEngineState == 'ERROR' && mounted) {
-            setState(() {
-              _speechEngineState = '';
-            });
+          if (_speechEngineState == SpeechEngineState.error) {
+            _setSpeechEngineState(SpeechEngineState.unknown);
           }
-        } else if (status.engineState == 'ERROR' && mounted) {
-          setState(() {
-            _speechEngineState = 'ERROR';
-          });
+        } else if (status.engineState == 'ERROR') {
+          _setSpeechEngineState(SpeechEngineState.error);
         }
       } catch (e) {
         _errorLog('[CommentScreen] initSpeech: getStatus failed', error: e);
@@ -1308,11 +1342,7 @@ class _CommentScreenState extends State<CommentScreen>
         // down sets `_speechEngineState='READY'` again, naturally
         // clearing the ERROR we just set. An early return here would
         // remove the user's only recovery path within this init attempt.
-        if (mounted) {
-          setState(() {
-            _speechEngineState = 'ERROR';
-          });
-        }
+        _setSpeechEngineState(SpeechEngineState.error);
       }
     }
 
@@ -1337,11 +1367,7 @@ class _CommentScreenState extends State<CommentScreen>
         // user can distinguish a real failure from "still initializing"
         // (Issue #696). _speechInitialized stays false so toggling speech
         // off/on retries from scratch.
-        if (mounted) {
-          setState(() {
-            _speechEngineState = 'ERROR';
-          });
-        }
+        _setSpeechEngineState(SpeechEngineState.error);
         _speechInitializing = false;
         return;
       }
@@ -1389,9 +1415,7 @@ class _CommentScreenState extends State<CommentScreen>
           // _speechInitialized stays false. Keeping _speechInitialized=false
           // also preserves the retry path: if the user toggles speech off
           // and on again, this branch will run again and re-check.
-          setState(() {
-            _speechEngineState = 'ERROR';
-          });
+          _setSpeechEngineState(SpeechEngineState.error);
           _speechInitializing = false;
           return;
         }
@@ -1408,11 +1432,7 @@ class _CommentScreenState extends State<CommentScreen>
         // Same reasoning as the (!available) branch above: leave
         // _speechInitialized=false so the user can retry by toggling speech
         // off/on. The ERROR engine state drives the icon regardless.
-        if (mounted) {
-          setState(() {
-            _speechEngineState = 'ERROR';
-          });
-        }
+        _setSpeechEngineState(SpeechEngineState.error);
         _speechInitializing = false;
         return;
       }
@@ -1444,7 +1464,7 @@ class _CommentScreenState extends State<CommentScreen>
         _speechEventSub = null;
         _speechBaselineTimestamp = null;
         _speechStarted = false;
-        _speechEngineState = '';
+        _setSpeechEngineState(SpeechEngineState.unknown);
         // Issue #695: counter must also be reset on abort, not just on the
         // _stopSpeech path. Otherwise a stale Android-TTS failure tally from
         // a previous session can spill into the next attempt.
@@ -1460,8 +1480,8 @@ class _CommentScreenState extends State<CommentScreen>
       if (mounted) {
         setState(() {
           _speechStarted = true;
-          _speechEngineState = 'READY';
         });
+        _setSpeechEngineState(SpeechEngineState.ready);
       }
       _startSpeechPollTimer();
       _debugLogLazy(
@@ -1475,11 +1495,7 @@ class _CommentScreenState extends State<CommentScreen>
         error: e,
         stackTrace: stackTrace,
       );
-      if (mounted) {
-        setState(() {
-          _speechEngineState = 'ERROR';
-        });
-      }
+      _setSpeechEngineState(SpeechEngineState.error);
     } finally {
       _speechInitializing = false;
     }
@@ -1536,8 +1552,8 @@ class _CommentScreenState extends State<CommentScreen>
       if (mounted) {
         setState(() {
           _speechStarted = false;
-          _speechEngineState = '';
         });
+        _setSpeechEngineState(SpeechEngineState.unknown);
       }
     }
   }
@@ -1601,11 +1617,8 @@ class _CommentScreenState extends State<CommentScreen>
     // would re-trip ERROR on the very next transient failure after the
     // user just observed a clean AppBar.
     _consecutiveAndroidTtsFailures = 0;
-    if (_speechEngineState != 'ERROR') return;
-    if (!mounted) return;
-    setState(() {
-      _speechEngineState = '';
-    });
+    if (_speechEngineState != SpeechEngineState.error) return;
+    _setSpeechEngineState(SpeechEngineState.unknown);
   }
 
   // The literal wire-format strings for Android-TTS failure reasons live
@@ -1639,20 +1652,19 @@ class _CommentScreenState extends State<CommentScreen>
     if (event.type == SpeechEventType.engineStateChanged) {
       // Defensive cast: native is expected to send a String here, but a
       // malformed payload must not crash the listener (Issue #695 review #7).
+      // [SpeechEngineState.fromWire] also performs the defensive default
+      // (unknown wires map to [SpeechEngineState.unknown]).
       final dynamic rawState = event.payload['state'];
       final String state = rawState is String ? rawState : '';
+      final SpeechEngineState nextState = SpeechEngineState.fromWire(state);
       // Issue #695 cycle-3 review: a READY transition is a strong signal
       // that the engine is alive again — reset the failure counter so a
       // single subsequent transient failure cannot push us right back to
       // ERROR (counter was at threshold, +1 stays over threshold).
-      if (state == 'READY') {
+      if (nextState == SpeechEngineState.ready) {
         _consecutiveAndroidTtsFailures = 0;
       }
-      if (mounted) {
-        setState(() {
-          _speechEngineState = state;
-        });
-      }
+      _setSpeechEngineState(nextState);
       return;
     }
     if (event.type == SpeechEventType.speechFailed) {
@@ -1677,11 +1689,8 @@ class _CommentScreenState extends State<CommentScreen>
       if (isAndroidTtsFailure) {
         _consecutiveAndroidTtsFailures++;
         if (_consecutiveAndroidTtsFailures >= _androidTtsErrorThreshold &&
-            _speechEngineState != 'ERROR' &&
-            mounted) {
-          setState(() {
-            _speechEngineState = 'ERROR';
-          });
+            _speechEngineState != SpeechEngineState.error) {
+          _setSpeechEngineState(SpeechEngineState.error);
         }
       }
       return;
@@ -1709,10 +1718,8 @@ class _CommentScreenState extends State<CommentScreen>
       final bool isAndroidTtsActive =
           widget.speechConfig.speechSettings.engineType ==
           SpeechEngineType.androidTts;
-      if (isAndroidTtsActive && _speechEngineState == 'ERROR' && mounted) {
-        setState(() {
-          _speechEngineState = 'READY';
-        });
+      if (isAndroidTtsActive && _speechEngineState == SpeechEngineState.error) {
+        _setSpeechEngineState(SpeechEngineState.ready);
       }
       return;
     }
@@ -5733,6 +5740,101 @@ class _MuteBanner extends StatelessWidget {
   }
 }
 
+/// View-model produced by [speechIconViewFor]. Concrete pixel-level
+/// inputs to the AppBar speech-status icon, derived purely from the
+/// engine state machine inputs — no `BuildContext`, no `setState`, no
+/// theme lookups beyond the [AppThemeColors] passed in. Unit-testable
+/// in isolation (Issue #717 / ARCH-2).
+@immutable
+class SpeechIconView {
+  const SpeechIconView({
+    required this.icon,
+    required this.color,
+    required this.tooltip,
+    required this.isError,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String tooltip;
+
+  /// True when the icon represents an error state (either local
+  /// `engineState == error` or `treatAsError` from the cross-screen
+  /// notifier). Used by [_SpeechStatusIcon] to gate `canToggleMute`.
+  final bool isError;
+}
+
+/// Pure state-decision function for the AppBar speech-status icon.
+/// Extracted from `_SpeechStatusIcon._buildIcon` (Issue #717 / ARCH-2)
+/// so the priority ladder
+/// (ERROR → !initialized → !started → isMuted → ready) can be unit
+/// tested without pumping a widget tree.
+///
+/// Behaviour parity with the previous inline if/else chain is preserved:
+/// * ERROR is checked first so a failure dominates the visual signal,
+///   even if the engine never reached `_speechStarted == true` (Issue
+///   #682's "the user must be able to notice the failure").
+/// * [treatAsError] is the cross-screen availability override (Issue
+///   #694). When `true`, the icon renders ERROR even if the local
+///   `engineState` is still `unknown`/`ready`.
+/// * The tooltip distinguishes Android TTS errors (which point at
+///   read-aloud settings) from generic errors (which do not). The
+///   distinction is signalled by [isAndroidTtsEngine] — the caller
+///   passes `androidTtsAvailability != null` since that notifier is
+///   only injected for the Android TTS engine.
+SpeechIconView speechIconViewFor({
+  required SpeechEngineState engineState,
+  required bool isStarted,
+  required bool isInitialized,
+  required bool isMuted,
+  required bool treatAsError,
+  required AppThemeColors themeColors,
+  required bool isAndroidTtsEngine,
+}) {
+  final bool isError = engineState == SpeechEngineState.error || treatAsError;
+  if (isError) {
+    final String tooltip = isAndroidTtsEngine
+        ? '読み上げ: エラー（読み上げ設定で詳細を確認してください）'
+        : '読み上げ: エラー';
+    return SpeechIconView(
+      icon: Icons.error_outline,
+      color: themeColors.statusDisconnected,
+      tooltip: tooltip,
+      isError: true,
+    );
+  }
+  if (!isInitialized) {
+    return SpeechIconView(
+      icon: Icons.hourglass_top,
+      color: themeColors.subtleTextColor,
+      tooltip: '読み上げ: 初期化中',
+      isError: false,
+    );
+  }
+  if (!isStarted) {
+    return SpeechIconView(
+      icon: Icons.pause_circle_outline,
+      color: themeColors.subtleTextColor,
+      tooltip: '読み上げ: 停止中',
+      isError: false,
+    );
+  }
+  if (isMuted) {
+    return SpeechIconView(
+      icon: Icons.volume_off,
+      color: themeColors.statusConnected,
+      tooltip: 'ミュート解除',
+      isError: false,
+    );
+  }
+  return SpeechIconView(
+    icon: Icons.volume_up,
+    color: themeColors.statusConnected,
+    tooltip: 'ミュート',
+    isError: false,
+  );
+}
+
 class _SpeechStatusIcon extends StatelessWidget {
   const _SpeechStatusIcon({
     super.key,
@@ -5745,7 +5847,7 @@ class _SpeechStatusIcon extends StatelessWidget {
     this.androidTtsAvailability,
   });
 
-  final String engineState;
+  final SpeechEngineState engineState;
   final bool isStarted;
   final bool isInitialized;
   final bool isMuted;
@@ -5774,68 +5876,19 @@ class _SpeechStatusIcon extends StatelessWidget {
   }
 
   Widget _buildIcon(BuildContext context, {required bool treatAsError}) {
-    final IconData icon;
-    final Color color;
-    final String tooltip;
-
-    // ERROR is evaluated FIRST on purpose. When initialization fails
-    // (e.g. Android TTS Japanese voice data missing, VOICEVOX setup
-    // cancelled, platform channel failure), the screen sets
-    // engineState='ERROR' and leaves isInitialized=false / isStarted=false.
-    // If (!isInitialized) or (!isStarted) were evaluated first, the user
-    // would see the neutral "初期化中" (hourglass) or "停止中" (paused) icon
-    // and could not distinguish a real failure from an in-progress or
-    // intentionally paused state, violating Issue #682's acceptance
-    // criterion "the user must be able to notice the failure".
-    //
-    // [treatAsError] adds Issue #694's cross-screen availability override:
-    // if another screen (e.g. TTS settings) detected unavailability, the
-    // AppBar surfaces the same ERROR state immediately, even when this
-    // screen's local engineState has not had a chance to observe it.
-    final bool isError = engineState == 'ERROR' || treatAsError;
-    if (isError) {
-      icon = Icons.error_outline;
-      color = themeColors.statusDisconnected;
-      // When the override comes from cross-screen detection (the engine
-      // itself has not failed on this screen yet), point the user at the
-      // settings screen so they can see the detailed warning and the
-      // recovery actions there. When the local engine is in ERROR, the
-      // existing tooltip is already accurate (an inline retry is not
-      // available — speech must be toggled off/on to retry).
-      // MAQR ③ 感性の賢者 review: unify the tooltip so the same ERROR is
-      // surfaced with the same recovery hint regardless of detection
-      // path (cross-screen notifier vs local engineState=='ERROR'). The
-      // user's actionable next step — "read the warning card in 読み上げ
-      // 設定 and follow the OS instructions to install Japanese voice
-      // data" — applies to all Android-TTS-error paths. VOICEVOX errors
-      // (setup failure / cancel) do not have such a hint because the
-      // recovery is "toggle speech off/on" rather than "go to settings".
-      final bool isAndroidTtsError =
-          isError &&
-          androidTtsAvailability !=
-              null; // notifier is only injected for AndroidTTS engine, see comment_screen.dart:_SpeechStatusIcon construction
-      tooltip = isAndroidTtsError
-          ? '読み上げ: エラー（読み上げ設定で詳細を確認してください）'
-          : '読み上げ: エラー';
-    } else if (!isInitialized) {
-      icon = Icons.hourglass_top;
-      color = themeColors.subtleTextColor;
-      tooltip = '読み上げ: 初期化中';
-    } else if (!isStarted) {
-      icon = Icons.pause_circle_outline;
-      color = themeColors.subtleTextColor;
-      tooltip = '読み上げ: 停止中';
-    } else if (isMuted) {
-      icon = Icons.volume_off;
-      color = themeColors.statusConnected;
-      tooltip = 'ミュート解除';
-    } else {
-      icon = Icons.volume_up;
-      color = themeColors.statusConnected;
-      tooltip = 'ミュート';
-    }
-
-    final bool canToggleMute = isInitialized && isStarted && !isError;
+    final SpeechIconView view = speechIconViewFor(
+      engineState: engineState,
+      isStarted: isStarted,
+      isInitialized: isInitialized,
+      isMuted: isMuted,
+      treatAsError: treatAsError,
+      themeColors: themeColors,
+      isAndroidTtsEngine: androidTtsAvailability != null,
+    );
+    final IconData icon = view.icon;
+    final Color color = view.color;
+    final String tooltip = view.tooltip;
+    final bool canToggleMute = isInitialized && isStarted && !view.isError;
 
     if (canToggleMute && onTap != null) {
       return Semantics(
