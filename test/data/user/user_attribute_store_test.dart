@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:convert';
 
 import 'package:comerune/application/settings/settings_store.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -400,6 +401,133 @@ void main() {
     });
 
     // -----------------------------------------------------------------------
+    // loadAttributes (combined I/O) tests
+    // -----------------------------------------------------------------------
+
+    group('loadAttributes', () {
+      test('returns empty maps when no data exists', () async {
+        final ({Map<String, int> colors, Map<String, String> nicknames})
+        result = await store.loadAttributes('broadcaster1');
+
+        expect(result.colors, isEmpty);
+        expect(result.nicknames, isEmpty);
+      });
+
+      test(
+        'returns colors and nicknames consistent with loadColors + loadNicknames',
+        () async {
+          await store.setColor(
+            broadcasterId: 'b1',
+            userId: 'u1',
+            colorValue: 0xFFE53935,
+          );
+          await store.setNickname(
+            broadcasterId: 'b1',
+            userId: 'u2',
+            nickname: 'たろう',
+          );
+          await store.setColor(
+            broadcasterId: 'b1',
+            userId: 'u3',
+            colorValue: 0xFF1E88E5,
+          );
+          await store.setNickname(
+            broadcasterId: 'b1',
+            userId: 'u3',
+            nickname: 'じろう',
+          );
+
+          final Map<String, int> viaLoadColors = await store.loadColors('b1');
+          final Map<String, String> viaLoadNicknames = await store
+              .loadNicknames('b1');
+          final ({Map<String, int> colors, Map<String, String> nicknames})
+          viaLoadAttributes = await store.loadAttributes('b1');
+
+          expect(viaLoadAttributes.colors, viaLoadColors);
+          expect(viaLoadAttributes.nicknames, viaLoadNicknames);
+        },
+      );
+
+      test(
+        'reads legacy int format as colors and ignores _lastUsedAt',
+        () async {
+          await prefs.setString(
+            'usercolor.b1',
+            '{"u1": 4293467445, "u2": {"n": "のみ"}, "_lastUsedAt": 999}',
+          );
+
+          final ({Map<String, int> colors, Map<String, String> nicknames})
+          result = await store.loadAttributes('b1');
+
+          expect(result.colors, <String, int>{'u1': 4293467445});
+          expect(result.nicknames, <String, String>{'u2': 'のみ'});
+          expect(result.colors.containsKey('_lastUsedAt'), isFalse);
+        },
+      );
+
+      test('updates _lastUsedAt so the entry survives cleanup '
+          '(touch is invoked exactly once)', () async {
+        final int oldTimestamp = DateTime.now()
+            .subtract(const Duration(days: 366))
+            .millisecondsSinceEpoch;
+        await prefs.setString(
+          'usercolor.aging',
+          '{"u1": 111, "_lastUsedAt": $oldTimestamp}',
+        );
+        await prefs.setString('usercolor._index', '["aging"]');
+
+        await store.loadAttributes('aging');
+
+        final int removed = await store.cleanup();
+        expect(removed, 0);
+        expect((await store.loadAttributes('aging')).colors, <String, int>{
+          'u1': 111,
+        });
+      });
+
+      test('_lastUsedAt is rewritten exactly once per loadAttributes call '
+          '(single combined I/O)', () async {
+        final _CountingSharedPreferences countingPrefs =
+            _CountingSharedPreferences();
+        final SharedPreferencesUserAttributeStore countingStore =
+            SharedPreferencesUserAttributeStore(prefs: countingPrefs);
+        await countingPrefs.setString(
+          'usercolor.b1',
+          '{"u1": 4293467445, "_lastUsedAt": 1}',
+        );
+        await countingPrefs.setString('usercolor._index', '["b1"]');
+
+        // Reset the counter so we ignore the seed writes above.
+        countingPrefs.resetCounters();
+
+        await countingStore.loadAttributes('b1');
+        await countingStore.flushPendingWrites();
+
+        // Exactly one write to the broadcaster's payload key
+        // (_touchLastUsedAt). loadAttributes must NOT double-touch even
+        // though it returns both colors and nicknames.
+        expect(
+          countingPrefs.setStringCounts['usercolor.b1'] ?? 0,
+          1,
+          reason:
+              'loadAttributes は _lastUsedAt を一度だけ更新する必要がある'
+              '（loadColors+loadNicknames の二重 touch を避ける目的）',
+        );
+
+        // The new _lastUsedAt must have advanced past the seeded value.
+        final String? after = countingPrefs.getString('usercolor.b1');
+        expect(after, isNotNull);
+        final Map<String, dynamic> decoded =
+            jsonDecode(after!) as Map<String, dynamic>;
+        expect(
+          decoded['_lastUsedAt'] is int && (decoded['_lastUsedAt'] as int) > 1,
+          isTrue,
+          reason: '_lastUsedAt の値は seed 値 (1) から更新されている必要がある',
+        );
+      });
+    });
+
+    // -----------------------------------------------------------------------
     // Cleanup tests
     // -----------------------------------------------------------------------
 
@@ -640,5 +768,60 @@ class _ControlledSharedPreferences implements SharedPreferencesLike {
   Future<void> completeNextWrite() async {
     _pendingWrites.removeFirst()();
     await Future<void>.delayed(Duration.zero);
+  }
+}
+
+/// In-memory [SharedPreferencesLike] that records how many times each key
+/// is written via [setString]. Used to assert exact write traffic
+/// (e.g. `_lastUsedAt` is touched exactly once per `loadAttributes`).
+class _CountingSharedPreferences implements SharedPreferencesLike {
+  final Map<String, Object> _values = <String, Object>{};
+  final Map<String, int> setStringCounts = <String, int>{};
+
+  void resetCounters() {
+    setStringCounts.clear();
+  }
+
+  @override
+  bool? getBool(String key) => _values[key] as bool?;
+
+  @override
+  double? getDouble(String key) => _values[key] as double?;
+
+  @override
+  int? getInt(String key) => _values[key] as int?;
+
+  @override
+  String? getString(String key) => _values[key] as String?;
+
+  @override
+  Future<bool> setBool(String key, bool value) async {
+    _values[key] = value;
+    return true;
+  }
+
+  @override
+  Future<bool> setDouble(String key, double value) async {
+    _values[key] = value;
+    return true;
+  }
+
+  @override
+  Future<bool> setInt(String key, int value) async {
+    _values[key] = value;
+    return true;
+  }
+
+  @override
+  Future<bool> setString(String key, String value) async {
+    _values[key] = value;
+    setStringCounts[key] = (setStringCounts[key] ?? 0) + 1;
+    return true;
+  }
+
+  @override
+  Future<bool> remove(String key) async {
+    _values.remove(key);
+    return true;
   }
 }

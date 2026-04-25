@@ -166,6 +166,18 @@ class FileUserAttributeStore implements UserAttributeStore {
   }
 
   @override
+  Future<UserAttributesSnapshot> loadAttributes(String broadcasterId) {
+    return _withLock(broadcasterId, () async {
+      final Map<String, dynamic> raw = await _readRaw(broadcasterId);
+      if (raw.isEmpty) {
+        return (colors: <String, int>{}, nicknames: <String, String>{});
+      }
+      await _touchLastUsedAt(broadcasterId, raw);
+      return (colors: extractColors(raw), nicknames: extractNicknames(raw));
+    });
+  }
+
+  @override
   Future<void> setColor({
     required String broadcasterId,
     required String userId,

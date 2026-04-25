@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -365,6 +366,188 @@ void main() {
 
     test('flushPendingWrites is a no-op when nothing is pending', () async {
       await store.flushPendingWrites();
+    });
+  });
+
+  group('FileUserAttributeStore — loadAttributes', () {
+    test('returns colors and nicknames combined in a single call', () async {
+      await store.setColor(
+        broadcasterId: 'b1',
+        userId: 'u1',
+        colorValue: 0xFFE53935,
+      );
+      await store.setNickname(
+        broadcasterId: 'b1',
+        userId: 'u2',
+        nickname: 'たろう',
+      );
+      await store.setColor(
+        broadcasterId: 'b1',
+        userId: 'u3',
+        colorValue: 0xFF1E88E5,
+      );
+      await store.setNickname(
+        broadcasterId: 'b1',
+        userId: 'u3',
+        nickname: 'じろう',
+      );
+
+      final ({Map<String, int> colors, Map<String, String> nicknames}) result =
+          await store.loadAttributes('b1');
+
+      expect(result.colors, <String, int>{'u1': 0xFFE53935, 'u3': 0xFF1E88E5});
+      expect(result.nicknames, <String, String>{'u2': 'たろう', 'u3': 'じろう'});
+    });
+
+    test('result is equivalent to loadColors + loadNicknames', () async {
+      await store.setColor(
+        broadcasterId: 'b1',
+        userId: 'u1',
+        colorValue: 0xFFE53935,
+      );
+      await store.setNickname(
+        broadcasterId: 'b1',
+        userId: 'u2',
+        nickname: 'テスト',
+      );
+
+      final Map<String, int> viaLoadColors = await store.loadColors('b1');
+      final Map<String, String> viaLoadNicknames = await store.loadNicknames(
+        'b1',
+      );
+      final ({Map<String, int> colors, Map<String, String> nicknames})
+      viaLoadAttributes = await store.loadAttributes('b1');
+
+      expect(viaLoadAttributes.colors, viaLoadColors);
+      expect(viaLoadAttributes.nicknames, viaLoadNicknames);
+    });
+
+    test('returns empty maps for unknown broadcaster', () async {
+      final ({Map<String, int> colors, Map<String, String> nicknames}) result =
+          await store.loadAttributes('unknown');
+
+      expect(result.colors, isEmpty);
+      expect(result.nicknames, isEmpty);
+    });
+
+    test('updates _lastUsedAt exactly once (single I/O round-trip)', () async {
+      await store.setColor(
+        broadcasterId: 'b1',
+        userId: 'u1',
+        colorValue: 0xFFE53935,
+      );
+
+      final File file = File(
+        p.join(tempRoot.path, 'user_attributes', 'b1.json'),
+      );
+      // Push the timestamp into the past so any touch should clearly
+      // overwrite it (and we can detect a missed update).
+      final Map<String, dynamic> raw =
+          json.decode(await file.readAsString()) as Map<String, dynamic>;
+      raw['_lastUsedAt'] = 1;
+      await file.writeAsString(json.encode(raw), flush: true);
+
+      await store.loadAttributes('b1');
+
+      final Map<String, dynamic> after =
+          json.decode(await file.readAsString()) as Map<String, dynamic>;
+      expect(
+        after['_lastUsedAt'] is int && (after['_lastUsedAt'] as int) > 1,
+        isTrue,
+        reason: '_lastUsedAt must be touched by loadAttributes',
+      );
+    });
+
+    test(
+      'does not write when broadcaster has no data (no _lastUsedAt created)',
+      () async {
+        await store.loadAttributes('never_seen');
+
+        final File file = File(
+          p.join(tempRoot.path, 'user_attributes', 'never_seen.json'),
+        );
+        expect(
+          await file.exists(),
+          isFalse,
+          reason: 'loadAttributes on empty broadcaster must not create file',
+        );
+      },
+    );
+
+    test('writes the broadcaster file at most once per loadAttributes call '
+        '(regression: prevent loadColors+loadNicknames double I/O)', () async {
+      // Pre-seed the file via a normal write so the broadcaster JSON
+      // exists on disk before we start watching.
+      await store.setColor(
+        broadcasterId: 'b-watch',
+        userId: 'u1',
+        colorValue: 0xFFE53935,
+      );
+
+      final File file = File(
+        p.join(tempRoot.path, 'user_attributes', 'b-watch.json'),
+      );
+
+      // Watch the broadcaster file and capture distinct, non-empty
+      // content snapshots.  Each writeAsString produces a transient
+      // empty state plus the final content; counting distinct
+      // non-empty contents tells us how many logical writes happened.
+      // _writeRaw stamps a fresh DateTime.now() into _lastUsedAt on
+      // every call, so two back-to-back writes produce two distinct
+      // contents (assuming millisecond clock advances; we add a small
+      // pre-call delay after seeding to maximise that distinction).
+      final Set<String> snapshots = <String>{};
+      final List<FileSystemEvent> events = <FileSystemEvent>[];
+      final StreamSubscription<FileSystemEvent> sub = file
+          .watch(events: FileSystemEvent.modify)
+          .listen((FileSystemEvent event) {
+            events.add(event);
+            try {
+              snapshots.add(file.readAsStringSync());
+            } on Object {
+              // Ignore transient read errors during write.
+            }
+          });
+      // Let the watcher attach.
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      // Ensure any new write definitely uses a different millisecond
+      // value than the seed write above so distinct contents show up
+      // even if loadAttributes only calls _writeRaw once.
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+
+      await store.loadAttributes('b-watch');
+
+      // Allow any pending file events to drain.
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      await sub.cancel();
+
+      final Set<String> nonEmpty = snapshots
+          .where((String s) => s.isNotEmpty)
+          .toSet();
+
+      expect(
+        nonEmpty,
+        hasLength(1),
+        reason:
+            'loadAttributes must call _writeRaw exactly once. '
+            'Observing more than one distinct non-empty file content '
+            'indicates the legacy double-touch behaviour has regressed. '
+            'events=${events.length} snapshots=$snapshots',
+      );
+    });
+
+    test('reads legacy color-only entries', () async {
+      final Directory root = Directory(p.join(tempRoot.path, 'user_attributes'))
+        ..createSync(recursive: true);
+      File(p.join(root.path, 'b1.json')).writeAsStringSync(
+        '{"u1": 4293212469, "u2": {"n": "のみ"}, "_lastUsedAt": 1}',
+      );
+
+      final ({Map<String, int> colors, Map<String, String> nicknames}) result =
+          await store.loadAttributes('b1');
+
+      expect(result.colors, <String, int>{'u1': 4293212469});
+      expect(result.nicknames, <String, String>{'u2': 'のみ'});
     });
   });
 

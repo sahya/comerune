@@ -2,6 +2,18 @@ import 'dart:convert';
 
 import '../../application/settings/settings_store.dart';
 
+/// Snapshot of all per-user attributes for a single broadcaster, returned
+/// by [UserAttributeStore.loadAttributes].
+///
+/// Defined as a typedef over a Record so that callers and implementations
+/// share a stable type name. Adding a new field in the future only requires
+/// updating this typedef and the implementations — call-sites that destructure
+/// known fields keep working.
+typedef UserAttributesSnapshot = ({
+  Map<String, int> colors,
+  Map<String, String> nicknames,
+});
+
 /// Persists per-user attributes (comment color, nickname, etc.) scoped by
 /// broadcaster ID.
 ///
@@ -28,12 +40,38 @@ abstract class UserAttributeStore {
   /// Returns the color map for all users under the given broadcaster.
   ///
   /// Keys are user IDs, values are ARGB32 integers.
+  ///
+  /// New code should prefer [loadAttributes] over calling [loadColors] and
+  /// [loadNicknames] back-to-back: a single combined call halves the
+  /// underlying I/O (one read + one `_lastUsedAt` write instead of two of
+  /// each). [loadColors] is retained for backward compatibility.
   Future<Map<String, int>> loadColors(String broadcasterId);
 
   /// Returns the nickname map for all users under the given broadcaster.
   ///
   /// Keys are user IDs, values are nickname strings.
+  ///
+  /// New code should prefer [loadAttributes] over calling [loadColors] and
+  /// [loadNicknames] back-to-back: a single combined call halves the
+  /// underlying I/O. [loadNicknames] is retained for backward compatibility.
   Future<Map<String, String>> loadNicknames(String broadcasterId);
+
+  /// Loads colors and nicknames in a single I/O round-trip.
+  ///
+  /// **New call-sites should use [loadAttributes] instead of calling
+  /// [loadColors] and [loadNicknames] separately.** The legacy two-call
+  /// pattern is retained only for backward compatibility.
+  ///
+  /// Implementations must read the underlying storage only once and update
+  /// `_lastUsedAt` only once. The returned tuple is equivalent to calling
+  /// [loadColors] and [loadNicknames] back-to-back, but avoids the duplicate
+  /// read and the duplicate fsynced write that the two-call sequence would
+  /// otherwise perform.
+  ///
+  /// Because both fields are derived from the same raw snapshot, internal
+  /// consistency between `colors` and `nicknames` is guaranteed (no torn
+  /// read can interleave a concurrent mutation between the two extractions).
+  Future<UserAttributesSnapshot> loadAttributes(String broadcasterId);
 
   /// Sets a custom color for a user under the given broadcaster.
   Future<void> setColor({
@@ -102,6 +140,16 @@ class SharedPreferencesUserAttributeStore implements UserAttributeStore {
     }
     await _touchLastUsedAt(broadcasterId);
     return extractNicknames(raw);
+  }
+
+  @override
+  Future<UserAttributesSnapshot> loadAttributes(String broadcasterId) async {
+    final Map<String, dynamic> raw = _readRaw(broadcasterId);
+    if (raw.isEmpty) {
+      return (colors: <String, int>{}, nicknames: <String, String>{});
+    }
+    await _touchLastUsedAt(broadcasterId);
+    return (colors: extractColors(raw), nicknames: extractNicknames(raw));
   }
 
   @override

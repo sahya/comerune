@@ -2120,6 +2120,321 @@ void main() {
         binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       });
     });
+
+    testWidgets(
+      'loadAttributes merge: in-memory entries with no disk counterpart are '
+      'flushed to the store after broadcaster resolution',
+      (WidgetTester tester) async {
+        // Use _FakeUserAttributeStore so we can count setColor / setNickname
+        // calls (the InMemoryUserAttributeStore fixture used in this group
+        // does not track call traffic).
+        final _FakeUserAttributeStore localStore = _FakeUserAttributeStore();
+        final ConnectionSupervisor localSupervisor = ConnectionSupervisor();
+        final TimelineStore localTimelineStore = TimelineStore();
+        final ValueNotifier<String?> localSupplierNotifier =
+            ValueNotifier<String?>(null);
+        addTearDown(localSupplierNotifier.dispose);
+
+        localTimelineStore.add(
+          AppMessage(
+            id: 'msg-merge',
+            timestamp: DateTime(2026, 4, 25, 9, 0, 0),
+            userId: 'user-1',
+            content: 'merge test',
+            type: AppMessageType.chat,
+          ),
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SelectScreen(
+              connectionSupervisor: localSupervisor,
+              timelineStore: localTimelineStore,
+              supplierUserIdNotifier: localSupplierNotifier,
+              userAttributeStore: localStore,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        await tester.enterText(inputField(), 'lv345678901');
+        await tester.pump();
+        await tester.tap(connectButton());
+        await tester.pumpAndSettle();
+
+        // Accumulate in-memory changes BEFORE the broadcaster ID is known.
+        // _currentBroadcasterId is still null, so these go straight into
+        // _userAttrNotifier without hitting the store.
+        final CommentScreen screen = tester.widget<CommentScreen>(
+          find.byType(CommentScreen),
+        );
+        screen.callbacks.onNicknameChanged!('user-1', 'メモリ専用ニックネーム');
+        screen.callbacks.onUserColorChanged!('user-1', 0xFFE53935);
+        await tester.pump();
+
+        // Sanity: nothing should have been written yet because
+        // _currentBroadcasterId is null.
+        expect(
+          localStore.setColorCalls,
+          isEmpty,
+          reason: 'broadcaster 未確定中に store へ書き込んではいけない',
+        );
+        expect(localStore.setNicknameCalls, isEmpty);
+
+        // Broadcaster resolves -> _loadUserAttributes runs -> merge happens
+        // -> _flushPendingAttributes flushes the in-memory deltas to the
+        // store via setColor / setNickname.
+        localSupplierNotifier.value = 'broadcaster-1';
+        await tester.pumpAndSettle();
+
+        expect(localStore.setNicknameCalls, hasLength(1));
+        expect(
+          localStore.setNicknameCalls.single.broadcasterId,
+          'broadcaster-1',
+        );
+        expect(localStore.setNicknameCalls.single.userId, 'user-1');
+        expect(localStore.setNicknameCalls.single.nickname, 'メモリ専用ニックネーム');
+
+        expect(localStore.setColorCalls, hasLength(1));
+        expect(localStore.setColorCalls.single.broadcasterId, 'broadcaster-1');
+        expect(localStore.setColorCalls.single.userId, 'user-1');
+        expect(localStore.setColorCalls.single.colorValue, 0xFFE53935);
+      },
+    );
+
+    testWidgets(
+      'loadAttributes merge: in-memory entries equal to disk are NOT re-flushed',
+      (WidgetTester tester) async {
+        // Pre-seed disk so disk == in-memory after the user "changes" the
+        // value to the same thing. _flushPendingAttributes should detect
+        // this and skip the redundant write.
+        final _FakeUserAttributeStore localStore = _FakeUserAttributeStore(
+          colorsByBroadcaster: <String, Map<String, int>>{
+            'broadcaster-1': <String, int>{'user-1': 0xFFE53935},
+          },
+          nicknamesByBroadcaster: <String, Map<String, String>>{
+            'broadcaster-1': <String, String>{'user-1': '同じコテハン'},
+          },
+        );
+        final ConnectionSupervisor localSupervisor = ConnectionSupervisor();
+        final TimelineStore localTimelineStore = TimelineStore();
+        final ValueNotifier<String?> localSupplierNotifier =
+            ValueNotifier<String?>(null);
+        addTearDown(localSupplierNotifier.dispose);
+
+        localTimelineStore.add(
+          AppMessage(
+            id: 'msg-merge-eq',
+            timestamp: DateTime(2026, 4, 25, 9, 0, 0),
+            userId: 'user-1',
+            content: 'no-op merge',
+            type: AppMessageType.chat,
+          ),
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SelectScreen(
+              connectionSupervisor: localSupervisor,
+              timelineStore: localTimelineStore,
+              supplierUserIdNotifier: localSupplierNotifier,
+              userAttributeStore: localStore,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        await tester.enterText(inputField(), 'lv345678901');
+        await tester.pump();
+        await tester.tap(connectButton());
+        await tester.pumpAndSettle();
+
+        // In-memory changes that happen to match the disk values exactly.
+        final CommentScreen screen = tester.widget<CommentScreen>(
+          find.byType(CommentScreen),
+        );
+        screen.callbacks.onNicknameChanged!('user-1', '同じコテハン');
+        screen.callbacks.onUserColorChanged!('user-1', 0xFFE53935);
+        await tester.pump();
+
+        // The first onNicknameChanged / onUserColorChanged calls happen
+        // before broadcaster resolution, so _onUserColorChanged /
+        // _onNicknameChanged must not call setColor / setNickname yet.
+        expect(localStore.setColorCalls, isEmpty);
+        expect(localStore.setNicknameCalls, isEmpty);
+
+        // Resolve broadcaster: merge runs and _flushPendingAttributes
+        // should detect that disk already has the same values, and skip
+        // the writes.
+        localSupplierNotifier.value = 'broadcaster-1';
+        await tester.pumpAndSettle();
+
+        expect(
+          localStore.setColorCalls,
+          isEmpty,
+          reason: 'disk と一致する in-memory 値は再書き込みされてはいけない',
+        );
+        expect(
+          localStore.setNicknameCalls,
+          isEmpty,
+          reason: 'disk と一致する in-memory 値は再書き込みされてはいけない',
+        );
+      },
+    );
+
+    testWidgets(
+      'loadAttributes merge: only nickname is flushed when color matches '
+      'disk and nickname is in-memory only',
+      (WidgetTester tester) async {
+        // Disk already has the same color as the user "set" in-memory,
+        // but the nickname is in-memory only (not on disk yet).
+        // _flushPendingAttributes must skip the redundant color write
+        // and only flush the nickname.
+        final _FakeUserAttributeStore localStore = _FakeUserAttributeStore(
+          colorsByBroadcaster: <String, Map<String, int>>{
+            'broadcaster-1': <String, int>{'user-1': 0xFFE53935},
+          },
+          // No nickname on disk for user-1.
+        );
+        final ConnectionSupervisor localSupervisor = ConnectionSupervisor();
+        final TimelineStore localTimelineStore = TimelineStore();
+        final ValueNotifier<String?> localSupplierNotifier =
+            ValueNotifier<String?>(null);
+        addTearDown(localSupplierNotifier.dispose);
+
+        localTimelineStore.add(
+          AppMessage(
+            id: 'msg-merge-partial-c',
+            timestamp: DateTime(2026, 4, 25, 9, 0, 0),
+            userId: 'user-1',
+            content: 'partial merge: nickname only',
+            type: AppMessageType.chat,
+          ),
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SelectScreen(
+              connectionSupervisor: localSupervisor,
+              timelineStore: localTimelineStore,
+              supplierUserIdNotifier: localSupplierNotifier,
+              userAttributeStore: localStore,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        await tester.enterText(inputField(), 'lv345678901');
+        await tester.pump();
+        await tester.tap(connectButton());
+        await tester.pumpAndSettle();
+
+        // Color matches disk; nickname is brand new in-memory only.
+        final CommentScreen screen = tester.widget<CommentScreen>(
+          find.byType(CommentScreen),
+        );
+        screen.callbacks.onUserColorChanged!('user-1', 0xFFE53935);
+        screen.callbacks.onNicknameChanged!('user-1', '新しいコテハン');
+        await tester.pump();
+
+        expect(localStore.setColorCalls, isEmpty);
+        expect(localStore.setNicknameCalls, isEmpty);
+
+        localSupplierNotifier.value = 'broadcaster-1';
+        await tester.pumpAndSettle();
+
+        expect(
+          localStore.setColorCalls,
+          isEmpty,
+          reason: 'disk と一致する color は再書き込みされてはいけない',
+        );
+        expect(
+          localStore.setNicknameCalls,
+          hasLength(1),
+          reason: 'in-memory のみの nickname は flush されなければならない',
+        );
+        expect(
+          localStore.setNicknameCalls.single.broadcasterId,
+          'broadcaster-1',
+        );
+        expect(localStore.setNicknameCalls.single.userId, 'user-1');
+        expect(localStore.setNicknameCalls.single.nickname, '新しいコテハン');
+      },
+    );
+
+    testWidgets(
+      'loadAttributes merge: only color is flushed when nickname matches '
+      'disk and color is in-memory only',
+      (WidgetTester tester) async {
+        // Symmetric counterpart: disk has the nickname, in-memory adds
+        // a fresh color.  Only the color should hit the store.
+        final _FakeUserAttributeStore localStore = _FakeUserAttributeStore(
+          // No color on disk for user-1.
+          nicknamesByBroadcaster: <String, Map<String, String>>{
+            'broadcaster-1': <String, String>{'user-1': '同じコテハン'},
+          },
+        );
+        final ConnectionSupervisor localSupervisor = ConnectionSupervisor();
+        final TimelineStore localTimelineStore = TimelineStore();
+        final ValueNotifier<String?> localSupplierNotifier =
+            ValueNotifier<String?>(null);
+        addTearDown(localSupplierNotifier.dispose);
+
+        localTimelineStore.add(
+          AppMessage(
+            id: 'msg-merge-partial-n',
+            timestamp: DateTime(2026, 4, 25, 9, 0, 0),
+            userId: 'user-1',
+            content: 'partial merge: color only',
+            type: AppMessageType.chat,
+          ),
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SelectScreen(
+              connectionSupervisor: localSupervisor,
+              timelineStore: localTimelineStore,
+              supplierUserIdNotifier: localSupplierNotifier,
+              userAttributeStore: localStore,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        await tester.enterText(inputField(), 'lv345678901');
+        await tester.pump();
+        await tester.tap(connectButton());
+        await tester.pumpAndSettle();
+
+        final CommentScreen screen = tester.widget<CommentScreen>(
+          find.byType(CommentScreen),
+        );
+        screen.callbacks.onNicknameChanged!('user-1', '同じコテハン');
+        screen.callbacks.onUserColorChanged!('user-1', 0xFF1E88E5);
+        await tester.pump();
+
+        expect(localStore.setColorCalls, isEmpty);
+        expect(localStore.setNicknameCalls, isEmpty);
+
+        localSupplierNotifier.value = 'broadcaster-1';
+        await tester.pumpAndSettle();
+
+        expect(
+          localStore.setNicknameCalls,
+          isEmpty,
+          reason: 'disk と一致する nickname は再書き込みされてはいけない',
+        );
+        expect(
+          localStore.setColorCalls,
+          hasLength(1),
+          reason: 'in-memory のみの color は flush されなければならない',
+        );
+        expect(localStore.setColorCalls.single.broadcasterId, 'broadcaster-1');
+        expect(localStore.setColorCalls.single.userId, 'user-1');
+        expect(localStore.setColorCalls.single.colorValue, 0xFF1E88E5);
+      },
+    );
   });
 
   group('favorite user section', () {
@@ -2633,6 +2948,26 @@ class _FakeFollowProgramRepository extends FollowProgramRepository {
   }
 }
 
+/// Fake [UserAttributeStore] used by widget tests.
+///
+/// **Semantic differences from the production stores
+/// ([FileUserAttributeStore] / [SharedPreferencesUserAttributeStore]):**
+///
+/// - Production stores hold colors and nicknames in a single raw JSON
+///   payload per broadcaster, so an "empty" broadcaster always yields empty
+///   `colors` AND empty `nicknames` together. This fake stores them in two
+///   separate maps, so it can represent a state where only one of them has
+///   data for a broadcaster (a configuration that the production stores
+///   cannot reach by normal operations).
+/// - This fake does not model `_lastUsedAt` touch behaviour. Cleanup-by-age
+///   verification belongs in the production-store unit tests under
+///   `test/data/user/`.
+///
+/// Both differences are intentional and acceptable for widget tests that
+/// only depend on the in-memory contract of [UserAttributeStore].
+/// `setColor` / `setNickname` / `removeColor` / `removeNickname` call counts
+/// are tracked so tests can assert on the exact write traffic produced by
+/// the screen (e.g. the merge / flush path of `_loadUserAttributes`).
 class _FakeUserAttributeStore implements UserAttributeStore {
   _FakeUserAttributeStore({
     Map<String, Map<String, int>> colorsByBroadcaster =
@@ -2657,6 +2992,41 @@ class _FakeUserAttributeStore implements UserAttributeStore {
   final Map<String, Map<String, int>> _colorsByBroadcaster;
   final Map<String, Map<String, String>> _nicknamesByBroadcaster;
 
+  /// Internal mutable buffers; tests must read via the public unmodifiable
+  /// getters below so they cannot accidentally mutate recorded history.
+  final List<({String broadcasterId, String userId, int colorValue})>
+  _setColorCalls = <({String broadcasterId, String userId, int colorValue})>[];
+  final List<({String broadcasterId, String userId, String nickname})>
+  _setNicknameCalls =
+      <({String broadcasterId, String userId, String nickname})>[];
+  final List<({String broadcasterId, String userId})> _removeColorCalls =
+      <({String broadcasterId, String userId})>[];
+  final List<({String broadcasterId, String userId})> _removeNicknameCalls =
+      <({String broadcasterId, String userId})>[];
+
+  /// Read-only views over every mutating call, in invocation order.
+  ///
+  /// Exposed as unmodifiable lists so tests can inspect `length`, `single`,
+  /// element fields, etc. without being able to add or remove entries.
+  List<({String broadcasterId, String userId, int colorValue})>
+  get setColorCalls =>
+      List<
+        ({String broadcasterId, String userId, int colorValue})
+      >.unmodifiable(_setColorCalls);
+  List<({String broadcasterId, String userId, String nickname})>
+  get setNicknameCalls =>
+      List<
+        ({String broadcasterId, String userId, String nickname})
+      >.unmodifiable(_setNicknameCalls);
+  List<({String broadcasterId, String userId})> get removeColorCalls =>
+      List<({String broadcasterId, String userId})>.unmodifiable(
+        _removeColorCalls,
+      );
+  List<({String broadcasterId, String userId})> get removeNicknameCalls =>
+      List<({String broadcasterId, String userId})>.unmodifiable(
+        _removeNicknameCalls,
+      );
+
   @override
   Future<Map<String, int>> loadColors(String broadcasterId) async {
     return Map<String, int>.from(
@@ -2672,11 +3042,28 @@ class _FakeUserAttributeStore implements UserAttributeStore {
   }
 
   @override
+  Future<UserAttributesSnapshot> loadAttributes(String broadcasterId) async {
+    return (
+      colors: Map<String, int>.from(
+        _colorsByBroadcaster[broadcasterId] ?? const <String, int>{},
+      ),
+      nicknames: Map<String, String>.from(
+        _nicknamesByBroadcaster[broadcasterId] ?? const <String, String>{},
+      ),
+    );
+  }
+
+  @override
   Future<void> setColor({
     required String broadcasterId,
     required String userId,
     required int colorValue,
   }) async {
+    _setColorCalls.add((
+      broadcasterId: broadcasterId,
+      userId: userId,
+      colorValue: colorValue,
+    ));
     final Map<String, int> colors = _colorsByBroadcaster.putIfAbsent(
       broadcasterId,
       () => <String, int>{},
@@ -2689,6 +3076,7 @@ class _FakeUserAttributeStore implements UserAttributeStore {
     required String broadcasterId,
     required String userId,
   }) async {
+    _removeColorCalls.add((broadcasterId: broadcasterId, userId: userId));
     _colorsByBroadcaster[broadcasterId]?.remove(userId);
   }
 
@@ -2698,6 +3086,11 @@ class _FakeUserAttributeStore implements UserAttributeStore {
     required String userId,
     required String nickname,
   }) async {
+    _setNicknameCalls.add((
+      broadcasterId: broadcasterId,
+      userId: userId,
+      nickname: nickname,
+    ));
     final Map<String, String> nicknames = _nicknamesByBroadcaster.putIfAbsent(
       broadcasterId,
       () => <String, String>{},
@@ -2710,6 +3103,7 @@ class _FakeUserAttributeStore implements UserAttributeStore {
     required String broadcasterId,
     required String userId,
   }) async {
+    _removeNicknameCalls.add((broadcasterId: broadcasterId, userId: userId));
     _nicknamesByBroadcaster[broadcasterId]?.remove(userId);
   }
 

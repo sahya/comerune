@@ -884,10 +884,10 @@ class _SelectScreenState extends State<SelectScreen>
           '(broadcasterId=$broadcasterId)',
     );
     _currentBroadcasterId = broadcasterId;
-    final Map<String, int> diskColors = await widget.userAttributeStore!
-        .loadColors(broadcasterId);
-    final Map<String, String> diskNicknames = await widget.userAttributeStore!
-        .loadNicknames(broadcasterId);
+    final UserAttributesSnapshot loaded = await widget.userAttributeStore!
+        .loadAttributes(broadcasterId);
+    final Map<String, int> diskColors = loaded.colors;
+    final Map<String, String> diskNicknames = loaded.nicknames;
     if (!mounted || _currentBroadcasterId != broadcasterId) {
       return;
     }
