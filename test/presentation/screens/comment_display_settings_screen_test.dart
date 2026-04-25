@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:comerune/application/settings/settings_store.dart';
 import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/presentation/screens/comment_display_settings_screen.dart';
+import 'package:comerune/presentation/strings/app_strings.dart';
 
 import '../../helpers/in_memory_shared_preferences.dart';
 import '../../helpers/settings_test_helpers.dart';
@@ -143,6 +144,45 @@ void main() {
       loaded = await settingsStore.load();
       expect(loaded.pastCommentFetchCount, PastCommentFetchCount.count1000);
     });
+
+    testWidgets(
+      'past comment count dropdown shows description text below selector '
+      '(#668)',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
+
+        // Scroll the description into view so the assertion is not skipped
+        // by offstage rendering (the list is long and the helper text sits
+        // just below the selector).
+        await scrollToKeyInList(
+          tester,
+          _listKey,
+          const Key('past-comment-count-description'),
+        );
+
+        // The description must come from AppStrings (no hardcoded Japanese
+        // in the screen file) and it must be rendered as a visible Text.
+        // The buffer size is pulled from the domain constant so that
+        // future changes to `timelineLiveCommentBufferSize` flow through
+        // without editing the description string.
+        expect(
+          find.byKey(const Key('past-comment-count-description')),
+          findsOneWidget,
+        );
+        expect(
+          find.text(
+            AppStrings.commentDisplaySettings.pastCommentFetchCountDescription(
+              liveCommentBufferSize: timelineLiveCommentBufferSize,
+            ),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
 
     testWidgets('toggles commentTwoLineEnabled and persists value', (
       WidgetTester tester,

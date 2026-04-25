@@ -36,6 +36,8 @@ abstract final class AppStrings {
   static const SettingsStrings settings = SettingsStrings._();
   static const TimeshiftStrings timeshift = TimeshiftStrings._();
   static const ConnectionStrings connection = ConnectionStrings._();
+  static const CommentDisplaySettingsStrings commentDisplaySettings =
+      CommentDisplaySettingsStrings._();
 }
 
 /// `SettingsScreen` で使用する文字列の集約。
@@ -122,6 +124,33 @@ final class ConnectionStrings {
 
   /// 再接続では回復しないエラー時の案内文（末尾に連結して使用する）。
   String get nonRetryableNotice => '再接続しても解消しません。';
+}
+
+/// `CommentDisplaySettingsScreen`（コメント表示設定画面）で使用する文字列の集約。
+///
+/// 画面全体の文字列集約は継続課題だが、Issue #668 で追加された
+/// 「過去コメント取得件数」の補足説明は新規追加テキストのため、
+/// 先行して本クラスにまとめる。
+final class CommentDisplaySettingsStrings {
+  const CommentDisplaySettingsStrings._();
+
+  /// 過去コメント取得件数ドロップダウンの下に表示する補足説明。
+  ///
+  /// PR #652 以降、取得件数（`historyCount`）と表示保持数
+  /// （`displayCapacity = historyCount + liveBuffer`）が分離されたため、
+  /// 「100 件にしたのに画面に 5100 件出る」という誤解を避けるために
+  /// 設定の意味と表示保持数の関係を明示する。
+  ///
+  /// [liveCommentBufferSize] には domain 層の
+  /// `timelineLiveCommentBufferSize` をそのまま渡すこと。ここでハードコード
+  /// してしまうと、将来 buffer サイズを変更した際に description だけ
+  /// 古い値を表示し続けるドリフトが発生する（Issue #668 レビュー指摘）。
+  String pastCommentFetchCountDescription({
+    required int liveCommentBufferSize,
+  }) =>
+      '初回接続時にまとめて取得する過去コメント数の上限です。\n'
+      '取得後の新着コメントも追加で表示されます'
+      '（表示保持数 = 取得数 + 約 $liveCommentBufferSize 件）。';
 }
 
 /// タイムシフトコメント取得 UI の文字列。

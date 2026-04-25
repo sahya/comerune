@@ -5,6 +5,7 @@ import '../../application/settings/settings_store.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/ng_display_subcategory.dart';
 import '../mixins/settings_screen_mixin.dart';
+import '../strings/app_strings.dart';
 import '../widgets/display_subcategory_warning_dialog.dart';
 import '../widgets/settings_widgets.dart';
 
@@ -285,6 +286,18 @@ class _CommentDisplaySettingsScreenState
                             settings.copyWith(pastCommentFetchCount: value),
                           );
                         },
+                      ),
+                      Padding(
+                        key: const Key('past-comment-count-description'),
+                        padding: const EdgeInsets.only(top: 4, bottom: 4),
+                        child: Text(
+                          AppStrings.commentDisplaySettings
+                              .pastCommentFetchCountDescription(
+                                liveCommentBufferSize:
+                                    timelineLiveCommentBufferSize,
+                              ),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
                       ),
                       ExpansionTile(
                         key: const Key('message-type-expansion-tile'),

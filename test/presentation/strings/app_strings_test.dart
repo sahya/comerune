@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/presentation/strings/app_strings.dart';
 
 void main() {
@@ -107,6 +108,31 @@ void main() {
       // バイト完全一致を維持し、既存 Snackbar のリグレッションを防ぐ。
       expect(AppStrings.connection.retryGuidance, '再接続ボタンで再試行できます。');
       expect(AppStrings.connection.nonRetryableNotice, '再接続しても解消しません。');
+    });
+  });
+
+  group('AppStrings.commentDisplaySettings', () {
+    test('pastCommentFetchCountDescription は取得数と表示保持数の区別を説明し、'
+        'buffer サイズは引数で注入される（Issue #668）', () {
+      // domain 層の定数を渡した場合の既定ロケール表示をバイト完全一致で固定する。
+      expect(
+        AppStrings.commentDisplaySettings.pastCommentFetchCountDescription(
+          liveCommentBufferSize: timelineLiveCommentBufferSize,
+        ),
+        '初回接続時にまとめて取得する過去コメント数の上限です。\n'
+        '取得後の新着コメントも追加で表示されます'
+        '（表示保持数 = 取得数 + 約 5000 件）。',
+      );
+    });
+
+    test('pastCommentFetchCountDescription は buffer サイズ変更に追従する'
+        '（ハードコードしない回帰防止）', () {
+      // 将来 `timelineLiveCommentBufferSize` を変更した際に、
+      // description だけ古い値のまま取り残されるドリフトを防ぐための回帰テスト。
+      final String desc = AppStrings.commentDisplaySettings
+          .pastCommentFetchCountDescription(liveCommentBufferSize: 3000);
+      expect(desc, contains('約 3000 件'));
+      expect(desc, isNot(contains('約 5000 件')));
     });
   });
 }
