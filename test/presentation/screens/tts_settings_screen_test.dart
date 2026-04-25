@@ -2458,6 +2458,221 @@ void main() {
 
       expect(find.text('コメント画面でミュート中です', skipOffstage: false), findsNothing);
     });
+
+    // Issue #714 (UX-3): the AppBar mute toggle introduced in PR #707
+    // writes BOTH engines' pre-mute slots simultaneously. The previous
+    // OR-gated indicator therefore rendered the same hint in both
+    // sections at once. The hint must follow the active engine and
+    // appear at most once on screen.
+    testWidgets(
+      'with both pre-mute slots set and VOICEVOX active, indicator appears '
+      'only inside the VOICEVOX section (Issue #714)',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        await settingsStore.save(
+          AppSettings.defaults.copyWith(speechEngine: SpeechEngine.voicevox),
+        );
+        // Both slots set, mirroring the AppBar mute contract.
+        await settingsStore.savePreMuteVolume(1.0);
+        await settingsStore.savePreMuteAndroidTtsVolume(0.7);
+
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
+
+        // Exactly one indicator on the screen, and it lives inside the
+        // VOICEVOX section.
+        expect(
+          find.byKey(const Key('voicevox-mute-indicator'), skipOffstage: false),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key('android-tts-mute-indicator'),
+            skipOffstage: false,
+          ),
+          findsNothing,
+        );
+        expect(
+          find.text('コメント画面でミュート中です', skipOffstage: false),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'with both pre-mute slots set and Android TTS active, indicator '
+      'appears only inside the Android TTS section (Issue #714)',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        await settingsStore.save(
+          AppSettings.defaults.copyWith(speechEngine: SpeechEngine.androidTts),
+        );
+        await settingsStore.savePreMuteVolume(1.0);
+        await settingsStore.savePreMuteAndroidTtsVolume(0.7);
+
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(
+            const Key('android-tts-mute-indicator'),
+            skipOffstage: false,
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('voicevox-mute-indicator'), skipOffstage: false),
+          findsNothing,
+        );
+        expect(
+          find.text('コメント画面でミュート中です', skipOffstage: false),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('VOICEVOX active with only Android TTS pre-mute slot set hides '
+        'the indicator (Issue #714)', (WidgetTester tester) async {
+      // Even though AppBar mute would normally write both slots, this
+      // covers the case where only the inactive engine's slot survives
+      // (e.g. through a partial migration or a future code path) — the
+      // active VOICEVOX section must NOT pretend to be muted.
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      await settingsStore.save(
+        AppSettings.defaults.copyWith(speechEngine: SpeechEngine.voicevox),
+      );
+      await settingsStore.savePreMuteAndroidTtsVolume(0.7);
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('voicevox-mute-indicator'), skipOffstage: false),
+        findsNothing,
+      );
+      expect(find.text('コメント画面でミュート中です', skipOffstage: false), findsNothing);
+    });
+
+    testWidgets('Android TTS active with only VOICEVOX pre-mute slot set hides '
+        'the indicator (Issue #714 — symmetric)', (WidgetTester tester) async {
+      // Symmetric case to the test above. Guards against asymmetric
+      // gating that would silently leak the indicator only on the
+      // VOICEVOX side.
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      await settingsStore.save(
+        AppSettings.defaults.copyWith(speechEngine: SpeechEngine.androidTts),
+      );
+      await settingsStore.savePreMuteVolume(1.0);
+
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const Key('android-tts-mute-indicator'),
+          skipOffstage: false,
+        ),
+        findsNothing,
+      );
+      expect(find.text('コメント画面でミュート中です', skipOffstage: false), findsNothing);
+    });
+
+    testWidgets(
+      'engine switch moves the mute indicator from VOICEVOX to Android TTS '
+      'and back (Issue #714 — Acceptance Criterion #3)',
+      (WidgetTester tester) async {
+        // Issue #714 acceptance criterion #3: "エンジン切り替え時に表示
+        // 位置が即座に追随する". This dynamic test guards against a
+        // future regression where a stale-section condition would freeze
+        // the indicator on the previous engine after switching.
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        await settingsStore.save(
+          AppSettings.defaults.copyWith(speechEngine: SpeechEngine.voicevox),
+        );
+        // Both pre-mute slots set, mirroring the AppBar mute contract.
+        await settingsStore.savePreMuteVolume(1.0);
+        await settingsStore.savePreMuteAndroidTtsVolume(0.7);
+
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
+
+        // Initial: VOICEVOX side only.
+        expect(
+          find.byKey(const Key('voicevox-mute-indicator'), skipOffstage: false),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key('android-tts-mute-indicator'),
+            skipOffstage: false,
+          ),
+          findsNothing,
+        );
+
+        // Switch to Android TTS via the SegmentedButton (programmatic
+        // invocation, mirroring existing engine-switch tests in this
+        // file).
+        await scrollToKeyInList(
+          tester,
+          _listKey,
+          const Key('speech-engine-selector'),
+        );
+        final SegmentedButton<SpeechEngine> segmented1 = tester
+            .widget<SegmentedButton<SpeechEngine>>(
+              find.byKey(
+                const Key('speech-engine-selector'),
+                skipOffstage: false,
+              ),
+            );
+        segmented1.onSelectionChanged!(<SpeechEngine>{SpeechEngine.androidTts});
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(
+            const Key('android-tts-mute-indicator'),
+            skipOffstage: false,
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('voicevox-mute-indicator'), skipOffstage: false),
+          findsNothing,
+        );
+
+        // And back to VOICEVOX — the indicator must follow.
+        await scrollToKeyInList(
+          tester,
+          _listKey,
+          const Key('speech-engine-selector'),
+        );
+        final SegmentedButton<SpeechEngine> segmented2 = tester
+            .widget<SegmentedButton<SpeechEngine>>(
+              find.byKey(
+                const Key('speech-engine-selector'),
+                skipOffstage: false,
+              ),
+            );
+        segmented2.onSelectionChanged!(<SpeechEngine>{SpeechEngine.voicevox});
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('voicevox-mute-indicator'), skipOffstage: false),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key('android-tts-mute-indicator'),
+            skipOffstage: false,
+          ),
+          findsNothing,
+        );
+      },
+    );
   });
 
   group('Android TTS availability warning', () {

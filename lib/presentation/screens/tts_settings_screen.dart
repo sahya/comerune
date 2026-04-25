@@ -1204,13 +1204,15 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
             }
           },
         ),
-        // Issue #697 round-2 review: the AppBar mute toggle stores BOTH
-        // engines' pre-mute slots simultaneously. To match that contract,
-        // show the indicator whenever EITHER slot is set — otherwise a
-        // user who muted via the AppBar then switched engines would see
-        // the indicator vanish even though they are still globally muted.
-        if (widget.settingsStore.loadPreMuteAndroidTtsVolume() != null ||
-            widget.settingsStore.loadPreMuteVolume() != null)
+        // Issue #714 (UX-3): show the indicator only inside the section
+        // that matches the currently active engine. PR #707 made the
+        // AppBar mute zero BOTH pre-mute slots simultaneously, so the
+        // previous OR-condition rendered the same hint in both sections
+        // ("コメント画面でミュート中です" 二重表示)。Gating on the active
+        // engine plus the engine-specific pre-mute slot keeps the
+        // indicator unique to the visible engine and unambiguous.
+        if (settings.speechEngine == SpeechEngine.androidTts &&
+            widget.settingsStore.loadPreMuteAndroidTtsVolume() != null)
           const _MutedFromCommentScreenIndicator(
             key: Key('android-tts-mute-indicator'),
           ),
@@ -1441,13 +1443,13 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                             }
                           },
                         ),
-                        // Round-2: same OR-condition as the Android TTS
-                        // section so AppBar-driven mute always shows the
-                        // hint regardless of the active engine.
-                        if (widget.settingsStore.loadPreMuteVolume() != null ||
-                            widget.settingsStore
-                                    .loadPreMuteAndroidTtsVolume() !=
-                                null)
+                        // Issue #714 (UX-3): mirror the Android TTS
+                        // section — only render the indicator when the
+                        // VOICEVOX engine is active AND its own pre-mute
+                        // slot is set, so the hint never appears in two
+                        // sections simultaneously (二重表示 解消)。
+                        if (settings.speechEngine == SpeechEngine.voicevox &&
+                            widget.settingsStore.loadPreMuteVolume() != null)
                           const _MutedFromCommentScreenIndicator(
                             key: Key('voicevox-mute-indicator'),
                           ),
