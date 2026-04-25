@@ -26,6 +26,8 @@ Finder inputField() => find.byKey(const Key('select_screen_input'));
 Finder connectButton() => find.byKey(const Key('select_screen_connect_button'));
 
 void main() {
+  _registerIssue697MuteTests();
+
   test('buildBroadcastEndedNotificationId is unique for same milliseconds', () {
     final String id0 = buildBroadcastEndedNotificationId(
       epochMilliseconds: 1234567890,
@@ -3123,4 +3125,192 @@ class _FlushTrackingUserAttributeStore extends _FakeUserAttributeStore {
   Future<void> flushPendingWrites() async {
     flushPendingWritesCallCount++;
   }
+}
+
+void _registerIssue697MuteTests() {
+  // ---------------------------------------------------------------------------
+  // Issue #697: tapping the AppBar mute toggle while engineType=Android TTS
+  // must actually mute speech. The previous implementation only adjusted the
+  // VOICEVOX volume and left Android TTS playing at full volume even though
+  // the icon flipped to volume_off.
+  //
+  // The mute decision logic now lives in `computeSpeechMuteToggle`, a pure
+  // function we can drive directly from tests without standing up the full
+  // SelectScreen + CommentScreen + MethodChannel stack (which previously
+  // gated access to the toggle behind a non-tappable icon when the speech
+  // engine was not initialised).
+  // ---------------------------------------------------------------------------
+  group('computeSpeechMuteToggle (Issue #697)', () {
+    test(
+      'mute path zeroes BOTH engine volumes and captures both pre-mute slots',
+      () {
+        final SpeechMuteToggleResult result = computeSpeechMuteToggle(
+          current: AppSettings.defaults.copyWith(
+            voicevoxVolume: 1.5,
+            androidTtsVolume: 0.8,
+          ),
+          currentVoicevoxPreMute: null,
+          currentAndroidTtsPreMute: null,
+        );
+
+        expect(
+          result.updated.voicevoxVolume,
+          0.0,
+          reason:
+              'Mute must zero VOICEVOX volume so the existing VOICEVOX-mute '
+              'path stays intact.',
+        );
+        expect(
+          result.updated.androidTtsVolume,
+          0.0,
+          reason:
+              'Mute must zero Android TTS volume so the native TTS speak call '
+              'receives KEY_PARAM_VOLUME=0 — this is the regression Issue #697 '
+              'targets.',
+        );
+        expect(result.voicevoxPreMute, 1.5);
+        expect(
+          result.androidTtsPreMute,
+          0.8,
+          reason:
+              'Both pre-mute slots are persisted so engine switching while '
+              'muted does not lose either engine\'s saved volume.',
+        );
+      },
+    );
+
+    test(
+      'mute path with already-zero current volumes falls back to 1.0 on the pre-mute slot',
+      () {
+        // Defensive parity with the legacy VOICEVOX behaviour: storing 0 in
+        // the pre-mute slot would leave the user silent forever after unmute,
+        // so 1.0 is used instead.
+        final SpeechMuteToggleResult result = computeSpeechMuteToggle(
+          current: AppSettings.defaults.copyWith(
+            voicevoxVolume: 0.0,
+            androidTtsVolume: 0.0,
+          ),
+          currentVoicevoxPreMute: null,
+          currentAndroidTtsPreMute: null,
+        );
+
+        expect(result.updated.voicevoxVolume, 0.0);
+        expect(result.updated.androidTtsVolume, 0.0);
+        expect(result.voicevoxPreMute, 1.0);
+        expect(result.androidTtsPreMute, 1.0);
+      },
+    );
+
+    test(
+      'unmute path restores both engine volumes from the pre-mute slots and clears them',
+      () {
+        final SpeechMuteToggleResult result = computeSpeechMuteToggle(
+          current: AppSettings.defaults.copyWith(
+            voicevoxVolume: 0.0,
+            androidTtsVolume: 0.0,
+          ),
+          currentVoicevoxPreMute: 1.5,
+          currentAndroidTtsPreMute: 0.8,
+        );
+
+        expect(result.updated.voicevoxVolume, 1.5);
+        expect(result.updated.androidTtsVolume, 0.8);
+        expect(result.voicevoxPreMute, isNull);
+        expect(result.androidTtsPreMute, isNull);
+      },
+    );
+
+    test(
+      'unmute path falls back to 1.0 when slot is null AND current volume is 0 (post-merge round-2)',
+      () {
+        // Post-merge round-2 review: a partial SharedPreferences write
+        // failure can persist the muted save (current.*Volume = 0.0)
+        // while losing the pre-mute slot for one engine. Without the
+        // `> 0` guard, unmute would restore that engine's volume to 0,
+        // leaving the user silent forever even though they tapped
+        // unmute. This test pins the recovery fallback to 1.0.
+        final SpeechMuteToggleResult result = computeSpeechMuteToggle(
+          current: AppSettings.defaults.copyWith(
+            voicevoxVolume: 0.0,
+            androidTtsVolume: 0.0,
+          ),
+          currentVoicevoxPreMute: 1.5,
+          currentAndroidTtsPreMute: null,
+        );
+
+        expect(result.updated.voicevoxVolume, 1.5);
+        expect(
+          result.updated.androidTtsVolume,
+          1.0,
+          reason:
+              'When the pre-mute slot is null AND the current volume is '
+              '0 (e.g. after a partial-write + restart), unmute must '
+              'fall back to 1.0 instead of leaving the user silent. '
+              'Mirrors the mute path defence (Issue #697 post-merge '
+              'round-2).',
+        );
+        expect(result.voicevoxPreMute, isNull);
+        expect(result.androidTtsPreMute, isNull);
+      },
+    );
+
+    test(
+      'unmute path falls back to current volume when only one pre-mute slot is set (legacy upgrade)',
+      () {
+        // Forward-compat with users upgrading from a build that only stored
+        // the VOICEVOX pre-mute slot: the missing Android TTS slot must not
+        // overwrite a good current volume with 0.
+        final SpeechMuteToggleResult result = computeSpeechMuteToggle(
+          current: AppSettings.defaults.copyWith(
+            voicevoxVolume: 0.0,
+            androidTtsVolume: 0.4,
+          ),
+          currentVoicevoxPreMute: 1.2,
+          currentAndroidTtsPreMute: null,
+        );
+
+        expect(result.updated.voicevoxVolume, 1.2);
+        expect(
+          result.updated.androidTtsVolume,
+          0.4,
+          reason:
+              'Missing pre-mute slot must preserve the current value, not '
+              'overwrite it with 0.',
+        );
+        expect(result.voicevoxPreMute, isNull);
+        expect(result.androidTtsPreMute, isNull);
+      },
+    );
+
+    test('unmute is triggered when EITHER pre-mute slot is set', () {
+      // Either slot being non-null means "muted". The toggle therefore
+      // takes the unmute path whenever at least one slot is populated.
+      final SpeechMuteToggleResult onlyAndroid = computeSpeechMuteToggle(
+        current: AppSettings.defaults.copyWith(
+          voicevoxVolume: 0.0,
+          androidTtsVolume: 0.0,
+        ),
+        currentVoicevoxPreMute: null,
+        currentAndroidTtsPreMute: 0.8,
+      );
+      // Took the unmute path → both slots cleared.
+      expect(onlyAndroid.voicevoxPreMute, isNull);
+      expect(onlyAndroid.androidTtsPreMute, isNull);
+      expect(onlyAndroid.updated.androidTtsVolume, 0.8);
+
+      // Symmetric case: only the VOICEVOX slot set must also take the
+      // unmute path (Issue #697 cycle-2 review #2).
+      final SpeechMuteToggleResult onlyVoicevox = computeSpeechMuteToggle(
+        current: AppSettings.defaults.copyWith(
+          voicevoxVolume: 0.0,
+          androidTtsVolume: 0.0,
+        ),
+        currentVoicevoxPreMute: 1.5,
+        currentAndroidTtsPreMute: null,
+      );
+      expect(onlyVoicevox.voicevoxPreMute, isNull);
+      expect(onlyVoicevox.androidTtsPreMute, isNull);
+      expect(onlyVoicevox.updated.voicevoxVolume, 1.5);
+    });
+  });
 }

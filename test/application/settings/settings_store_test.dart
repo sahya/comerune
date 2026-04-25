@@ -795,5 +795,69 @@ void main() {
       expect(loaded.showDiscriminationComment, isFalse);
       expect(loaded.showMinorsRelatedComment, isFalse);
     });
+
+    // -------------------------------------------------------------------
+    // Issue #697: pre-mute volume is now stored per engine. The Android TTS
+    // pre-mute slot is independent from the existing VOICEVOX pre-mute slot
+    // so that switching engines while muted does not lose either engine's
+    // saved volume.
+    // -------------------------------------------------------------------
+    test(
+      'loadPreMuteAndroidTtsVolume returns null when not stored (Issue #697)',
+      () {
+        final SharedPreferencesSettingsStore store =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        expect(store.loadPreMuteAndroidTtsVolume(), isNull);
+      },
+    );
+
+    test(
+      'savePreMuteAndroidTtsVolume round-trips a value (Issue #697)',
+      () async {
+        final SharedPreferencesSettingsStore store =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        await store.savePreMuteAndroidTtsVolume(0.7);
+
+        expect(store.loadPreMuteAndroidTtsVolume(), 0.7);
+      },
+    );
+
+    test(
+      'savePreMuteAndroidTtsVolume(null) clears the stored value (Issue #697)',
+      () async {
+        final SharedPreferencesSettingsStore store =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        await store.savePreMuteAndroidTtsVolume(0.5);
+        await store.savePreMuteAndroidTtsVolume(null);
+
+        expect(store.loadPreMuteAndroidTtsVolume(), isNull);
+      },
+    );
+
+    test(
+      'pre-mute slots are stored independently per engine (Issue #697)',
+      () async {
+        // Regression guard: writing to the Android TTS slot must not affect
+        // the VOICEVOX slot, and vice versa. Without separate keys the
+        // AppBar-driven mute would silently overwrite either engine's
+        // pre-mute when the user switched engines while muted.
+        final SharedPreferencesSettingsStore store =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        await store.savePreMuteVolume(1.5);
+        await store.savePreMuteAndroidTtsVolume(0.8);
+
+        expect(store.loadPreMuteVolume(), 1.5);
+        expect(store.loadPreMuteAndroidTtsVolume(), 0.8);
+
+        // Clearing one slot must leave the other untouched.
+        await store.savePreMuteVolume(null);
+        expect(store.loadPreMuteVolume(), isNull);
+        expect(store.loadPreMuteAndroidTtsVolume(), 0.8);
+      },
+    );
   });
 }

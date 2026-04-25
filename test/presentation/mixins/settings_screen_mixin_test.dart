@@ -246,6 +246,14 @@ class _ThrowingSettingsStore implements SettingsStore {
       _delegate.savePreMuteVolume(volume);
 
   @override
+  double? loadPreMuteAndroidTtsVolume() =>
+      _delegate.loadPreMuteAndroidTtsVolume();
+
+  @override
+  Future<void> savePreMuteAndroidTtsVolume(double? volume) =>
+      _delegate.savePreMuteAndroidTtsVolume(volume);
+
+  @override
   Future<String> exportAsJson() => _delegate.exportAsJson();
 
   @override

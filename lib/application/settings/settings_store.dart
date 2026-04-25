@@ -14,11 +14,21 @@ abstract class SettingsStore {
 
   Future<void> save(AppSettings settings);
 
-  /// Load the volume stored before muting. Returns `null` if not muted.
+  /// Load the VOICEVOX volume stored before muting. Returns `null` if not
+  /// muted on the VOICEVOX engine.
   double? loadPreMuteVolume();
 
-  /// Save the volume before muting. Pass `null` to clear.
+  /// Save the VOICEVOX volume before muting. Pass `null` to clear.
   Future<void> savePreMuteVolume(double? volume);
+
+  /// Load the Android TTS volume stored before muting. Returns `null` if not
+  /// muted on the Android TTS engine. Stored separately from the VOICEVOX
+  /// pre-mute slot so that switching engines while muted does not lose the
+  /// other engine's pre-mute value (Issue #697).
+  double? loadPreMuteAndroidTtsVolume();
+
+  /// Save the Android TTS volume before muting. Pass `null` to clear.
+  Future<void> savePreMuteAndroidTtsVolume(double? volume);
 
   /// Exports current settings as a pretty-printed JSON string.
   Future<String> exportAsJson();
@@ -187,10 +197,16 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       'settings.comment.showDiscriminationComment';
   static const String _kShowMinorsRelatedComment =
       'settings.comment.showMinorsRelatedComment';
+  // Pre-mute volume slots are intentionally NOT included in
+  // [exportAsJson] / [importFromJson] — they are transient device-local
+  // mute state, not user-authored configuration. Restoring an old export
+  // must not silently mute the user (Issue #697 cycle-2 review).
   static const String _kPreMuteVolume = 'settings.voicevox.preMuteVolume';
   static const String _kAndroidTtsSpeed = 'settings.androidTts.speed';
   static const String _kAndroidTtsPitch = 'settings.androidTts.pitch';
   static const String _kAndroidTtsVolume = 'settings.androidTts.volume';
+  static const String _kPreMuteAndroidTtsVolume =
+      'settings.androidTts.preMuteVolume';
 
   @override
   Future<AppSettings> load() async {
@@ -474,6 +490,19 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       await _prefs.remove(_kPreMuteVolume);
     } else {
       await _prefs.setDouble(_kPreMuteVolume, volume);
+    }
+  }
+
+  @override
+  double? loadPreMuteAndroidTtsVolume() =>
+      _prefs.getDouble(_kPreMuteAndroidTtsVolume);
+
+  @override
+  Future<void> savePreMuteAndroidTtsVolume(double? volume) async {
+    if (volume == null) {
+      await _prefs.remove(_kPreMuteAndroidTtsVolume);
+    } else {
+      await _prefs.setDouble(_kPreMuteAndroidTtsVolume, volume);
     }
   }
 

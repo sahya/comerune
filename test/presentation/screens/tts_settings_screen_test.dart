@@ -2276,6 +2276,120 @@ void main() {
       },
     );
 
+    testWidgets(
+      'Android TTS volume slider clears the Android TTS pre-mute slot when value > 0',
+      (WidgetTester tester) async {
+        // Issue #697 review #2: VOICEVOX slider already does this; the
+        // Android TTS slider was missing the parity behaviour, leaving
+        // pre-mute set after the user manually restored a non-zero volume.
+        // Without this clear, the next app launch would treat the user as
+        // muted again.
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        await settingsStore.save(
+          AppSettings.defaults.copyWith(speechEngine: SpeechEngine.androidTts),
+        );
+        await settingsStore.savePreMuteAndroidTtsVolume(0.7);
+
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
+
+        await scrollToKeyInList(
+          tester,
+          _listKey,
+          const Key('android-tts-volume-slider'),
+        );
+        final Slider slider = tester.widget<Slider>(
+          find.descendant(
+            of: find.byKey(
+              const Key('android-tts-volume-slider'),
+              skipOffstage: false,
+            ),
+            matching: find.byType(Slider),
+          ),
+        );
+        slider.onChanged!(0.5);
+        await tester.pumpAndSettle();
+
+        expect(
+          settingsStore.loadPreMuteAndroidTtsVolume(),
+          isNull,
+          reason:
+              'Manually moving the Android TTS volume slider above 0 must '
+              'clear the Android-TTS pre-mute slot, mirroring the VOICEVOX '
+              'slider behaviour (Issue #697 review).',
+        );
+      },
+    );
+
+    testWidgets(
+      'Android TTS volume slider preserves the pre-mute slot when value stays at 0',
+      (WidgetTester tester) async {
+        // The clear is intentionally guarded on `value > 0` so the user
+        // staying silent does not disturb the pre-mute history kept by the
+        // AppBar mute toggle.
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        await settingsStore.save(
+          AppSettings.defaults.copyWith(speechEngine: SpeechEngine.androidTts),
+        );
+        await settingsStore.savePreMuteAndroidTtsVolume(0.7);
+
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
+
+        await scrollToKeyInList(
+          tester,
+          _listKey,
+          const Key('android-tts-volume-slider'),
+        );
+        final Slider slider = tester.widget<Slider>(
+          find.descendant(
+            of: find.byKey(
+              const Key('android-tts-volume-slider'),
+              skipOffstage: false,
+            ),
+            matching: find.byType(Slider),
+          ),
+        );
+        slider.onChanged!(0.0);
+        await tester.pumpAndSettle();
+
+        expect(settingsStore.loadPreMuteAndroidTtsVolume(), 0.7);
+      },
+    );
+
+    testWidgets(
+      'Android TTS section shows mute indicator when pre-mute slot is set',
+      (WidgetTester tester) async {
+        // Issue #697 review #4: previously the "コメント画面でミュート中です"
+        // badge only checked the VOICEVOX pre-mute slot, so Android-TTS-only
+        // users had no on-screen indication of the mute state.
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        await settingsStore.save(
+          AppSettings.defaults.copyWith(speechEngine: SpeechEngine.androidTts),
+        );
+        await settingsStore.savePreMuteAndroidTtsVolume(0.7);
+
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
+
+        await scrollToKeyInList(
+          tester,
+          _listKey,
+          const Key('android-tts-mute-indicator'),
+        );
+        expect(
+          find.byKey(
+            const Key('android-tts-mute-indicator'),
+            skipOffstage: false,
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
     testWidgets('Android TTS sliders not visible when VOICEVOX is selected', (
       WidgetTester tester,
     ) async {

@@ -84,6 +84,11 @@ class UpgradeInitializer {
     // アップデート後に古い値が残ると音量が意図しない値に復元される
     // 可能性があるため初期化する。
     'settings.voicevox.preMuteVolume',
+    // Android TTS 用のミュート前音量。同上の理由でアップデート時にクリアする
+    // (Issue #697)。VOICEVOX 側のキーと同期して扱わないと、アップデート後に
+    // 片エンジンだけ「mute 状態」と誤検知され、起動直後の AppBar アイコンが
+    // ミュート表示で固着する。
+    'settings.androidTts.preMuteVolume',
   ];
 
   /// 指定されたキーの [StorageKeyCategory] を返す。

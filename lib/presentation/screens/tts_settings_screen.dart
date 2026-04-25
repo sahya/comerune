@@ -1169,8 +1169,27 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
           value: settings.androidTtsVolume,
           onChanged: (double value) {
             updateAndSave(settings.copyWith(androidTtsVolume: value));
+            // Issue #697 review: clear the Android-TTS pre-mute slot when
+            // the user manually moves the slider above 0, mirroring the
+            // VOICEVOX slider behaviour. Without this the next app launch
+            // would re-detect a non-null pre-mute value and restart in
+            // muted state even though the user has already restored a
+            // working volume.
+            if (value > 0) {
+              unawaited(widget.settingsStore.savePreMuteAndroidTtsVolume(null));
+            }
           },
         ),
+        // Issue #697 round-2 review: the AppBar mute toggle stores BOTH
+        // engines' pre-mute slots simultaneously. To match that contract,
+        // show the indicator whenever EITHER slot is set — otherwise a
+        // user who muted via the AppBar then switched engines would see
+        // the indicator vanish even though they are still globally muted.
+        if (widget.settingsStore.loadPreMuteAndroidTtsVolume() != null ||
+            widget.settingsStore.loadPreMuteVolume() != null)
+          const _MutedFromCommentScreenIndicator(
+            key: Key('android-tts-mute-indicator'),
+          ),
       ],
     );
   }
@@ -1392,28 +1411,15 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                             }
                           },
                         ),
-                        if (widget.settingsStore.loadPreMuteVolume() != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.volume_off,
-                                  size: 16,
-                                  color: Theme.of(context).colorScheme.outline,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'コメント画面でミュート中です',
-                                  style: Theme.of(context).textTheme.bodySmall
-                                      ?.copyWith(
-                                        color: Theme.of(
-                                          context,
-                                        ).colorScheme.outline,
-                                      ),
-                                ),
-                              ],
-                            ),
+                        // Round-2: same OR-condition as the Android TTS
+                        // section so AppBar-driven mute always shows the
+                        // hint regardless of the active engine.
+                        if (widget.settingsStore.loadPreMuteVolume() != null ||
+                            widget.settingsStore
+                                    .loadPreMuteAndroidTtsVolume() !=
+                                null)
+                          const _MutedFromCommentScreenIndicator(
+                            key: Key('voicevox-mute-indicator'),
                           ),
                         const SizedBox(height: 12),
                         Text(
@@ -1559,6 +1565,37 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                   ),
                 ],
               ),
+      ),
+    );
+  }
+}
+
+/// Inline hint that says "コメント画面でミュート中です" with a `volume_off` icon.
+///
+/// Shared between the VOICEVOX and Android TTS volume sections so the two
+/// indicators cannot drift apart when the wording, icon, or surrounding
+/// padding is later tweaked (Issue #697 cycle-2 review).
+class _MutedFromCommentScreenIndicator extends StatelessWidget {
+  const _MutedFromCommentScreenIndicator({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final Color hintColor = Theme.of(context).colorScheme.outline;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        children: <Widget>[
+          Icon(Icons.volume_off, size: 16, color: hintColor),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'コメント画面でミュート中です',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: hintColor),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -139,7 +139,11 @@ class _SelectScreenState extends State<SelectScreen>
   final MethodChannelCommentSpeech _speechPlatform =
       MethodChannelCommentSpeech();
   int _broadcastEndedNotificationSequence = 0;
+  // Per-engine pre-mute volumes. Either being non-null means "muted".
+  // Stored separately so that switching engines while muted does not lose
+  // the other engine's pre-mute value (Issue #697).
   double? _preMuteVolume;
+  double? _preMuteAndroidTtsVolume;
 
   static const Duration _followRefreshInterval = Duration(seconds: 60);
   static const Duration _favoriteRefreshIntervalForeground = Duration(
@@ -717,7 +721,7 @@ class _SelectScreenState extends State<SelectScreen>
             readGiftComment: _settingsNotifier.value.readGiftComment,
             readNicoadComment: _settingsNotifier.value.readNicoadComment,
             settingsStore: widget.settingsStore,
-            isSpeechMuted: _preMuteVolume != null,
+            isSpeechMuted: _isSpeechMuted,
           ),
           commentPostController: widget.commentPostController,
           userSessionLoader: widget.userSessionStore?.load,
@@ -1049,28 +1053,49 @@ class _SelectScreenState extends State<SelectScreen>
     _settingsNotifier.value = updated;
   }
 
+  bool get _isSpeechMuted =>
+      _preMuteVolume != null || _preMuteAndroidTtsVolume != null;
+
   void _toggleSpeechMute() {
     final SettingsStore? settingsStore = widget.settingsStore;
     if (settingsStore == null) return;
 
-    final AppSettings current = _settingsNotifier.value;
-    if (_preMuteVolume != null) {
-      // Unmute: restore previous volume.
-      final double restored = _preMuteVolume!;
-      _preMuteVolume = null;
-      final AppSettings updated = current.copyWith(voicevoxVolume: restored);
-      _settingsNotifier.value = updated;
-      unawaited(settingsStore.save(updated));
-      unawaited(settingsStore.savePreMuteVolume(null));
-    } else {
-      // Mute: save current volume and set to 0.
-      final double currentVolume = current.voicevoxVolume;
-      _preMuteVolume = currentVolume > 0 ? currentVolume : 1.0;
-      final AppSettings updated = current.copyWith(voicevoxVolume: 0.0);
-      _settingsNotifier.value = updated;
-      unawaited(settingsStore.save(updated));
-      unawaited(settingsStore.savePreMuteVolume(_preMuteVolume));
-    }
+    final SpeechMuteToggleResult result = computeSpeechMuteToggle(
+      current: _settingsNotifier.value,
+      currentVoicevoxPreMute: _preMuteVolume,
+      currentAndroidTtsPreMute: _preMuteAndroidTtsVolume,
+    );
+    _preMuteVolume = result.voicevoxPreMute;
+    _preMuteAndroidTtsVolume = result.androidTtsPreMute;
+    _settingsNotifier.value = result.updated;
+    // Issue #697 cycle-2-new-1 + round-2 review: aggregate the three
+    // SharedPreferences writes into a single error-handling path so a
+    // failure of any one is logged centrally via appErrorLog instead of
+    // being silently dropped on three separate `unawaited` futures.
+    //
+    // Note on Future.wait semantics: `Future.wait` defaults to
+    // `eagerError: false`, which means writes that have already started
+    // before another fails are still allowed to complete in the
+    // background. We do NOT promise atomic persistence — any of the
+    // three writes may have committed by the time `catchError` runs.
+    // The in-memory mute state on this screen is still self-consistent;
+    // a partial-write failure is recovered on the next user toggle (which
+    // always rewrites all three keys with the freshest values).
+    unawaited(
+      Future.wait<void>(<Future<void>>[
+        settingsStore.save(result.updated),
+        settingsStore.savePreMuteVolume(result.voicevoxPreMute),
+        settingsStore.savePreMuteAndroidTtsVolume(result.androidTtsPreMute),
+      ]).catchError((Object e, StackTrace st) {
+        appErrorLog(
+          name: 'SelectScreen',
+          message: '_toggleSpeechMute: settings persistence FAILED',
+          error: e,
+          stackTrace: st,
+        );
+        return <void>[];
+      }),
+    );
   }
 
   void _toggleNgUser(String userId) {
@@ -1472,6 +1497,7 @@ class _SelectScreenState extends State<SelectScreen>
 
     _settingsNotifier.value = loaded;
     _preMuteVolume = settingsStore.loadPreMuteVolume();
+    _preMuteAndroidTtsVolume = settingsStore.loadPreMuteAndroidTtsVolume();
     _requestFavoriteUserNameResolution();
     if (widget.themeModeNotifier != null &&
         widget.themeModeNotifier!.value != loaded.themeMode) {
@@ -2049,4 +2075,79 @@ class _MyBroadcastSection extends StatelessWidget {
       child: const Icon(Icons.videocam, size: 22, color: Colors.orange),
     );
   }
+}
+
+/// Result of [computeSpeechMuteToggle].
+///
+/// `updated` is the [AppSettings] to persist after toggling. The two pre-mute
+/// fields hold the per-engine pre-mute volumes (or `null` after unmute).
+@immutable
+class SpeechMuteToggleResult {
+  const SpeechMuteToggleResult({
+    required this.updated,
+    required this.voicevoxPreMute,
+    required this.androidTtsPreMute,
+  });
+
+  final AppSettings updated;
+  final double? voicevoxPreMute;
+  final double? androidTtsPreMute;
+}
+
+/// Pure function that decides the next mute state.
+///
+/// Extracted from `_SelectScreenState._toggleSpeechMute` so the engine-agnostic
+/// mute behaviour added for Issue #697 can be unit-tested without spinning up
+/// the full SelectScreen + CommentScreen + MethodChannel stack.
+///
+/// Behaviour:
+/// - When already muted (either pre-mute slot non-null), restore both engine
+///   volumes from their respective pre-mute slots and clear both slots. A
+///   slot may be `null` (e.g. on upgrade from a build that only persisted
+///   the VOICEVOX slot, or the engine was on a single engine when muted) —
+///   in that case the current value is preserved instead of being zeroed.
+/// - When not muted, capture the current volumes for both engines into the
+///   pre-mute slots and zero out both volumes. Volumes that were already 0
+///   (so unmuting them would still be silent) are stored as `1.0` instead so
+///   the user always recovers an audible state.
+@visibleForTesting
+SpeechMuteToggleResult computeSpeechMuteToggle({
+  required AppSettings current,
+  required double? currentVoicevoxPreMute,
+  required double? currentAndroidTtsPreMute,
+}) {
+  final bool isMuted =
+      currentVoicevoxPreMute != null || currentAndroidTtsPreMute != null;
+  if (isMuted) {
+    // Post-merge round-2 review: when one engine's pre-mute slot is null
+    // (e.g. partial-write failure on a previous toggle, then app
+    // restart) we previously fell back to `current.<engine>Volume`,
+    // which is `0.0` because the muted save did succeed for the
+    // settings record. Without this `> 0` guard the unmute would
+    // restore the volume to 0 and leave the user with silence forever
+    // even though they tapped unmute. Mirror the mute path's "store
+    // 1.0 instead of 0" defence to guarantee the user always recovers
+    // an audible state.
+    final double restoredVoicevox =
+        currentVoicevoxPreMute ??
+        (current.voicevoxVolume > 0 ? current.voicevoxVolume : 1.0);
+    final double restoredAndroidTts =
+        currentAndroidTtsPreMute ??
+        (current.androidTtsVolume > 0 ? current.androidTtsVolume : 1.0);
+    return SpeechMuteToggleResult(
+      updated: current.copyWith(
+        voicevoxVolume: restoredVoicevox,
+        androidTtsVolume: restoredAndroidTts,
+      ),
+      voicevoxPreMute: null,
+      androidTtsPreMute: null,
+    );
+  }
+  return SpeechMuteToggleResult(
+    updated: current.copyWith(voicevoxVolume: 0.0, androidTtsVolume: 0.0),
+    voicevoxPreMute: current.voicevoxVolume > 0 ? current.voicevoxVolume : 1.0,
+    androidTtsPreMute: current.androidTtsVolume > 0
+        ? current.androidTtsVolume
+        : 1.0,
+  );
 }
