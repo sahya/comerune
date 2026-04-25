@@ -908,6 +908,367 @@ void main() {
       },
     );
 
+    // Issue #671: auto-scroll regression contracts.
+    //
+    // These tests pin four axes that PR #664 did not explicitly cover:
+    //   (1) descending sort — `_scrollToEdge` uses offset 0 and the edge is
+    //       judged by `_isNearTop`; a new message arrival must still follow
+    //       the edge (top = most recent).
+    //   (2) search active — auto-scroll must be suppressed; a new message
+    //       arrival must not move `pixels`.
+    //   (3) empty → non-empty → empty → non-empty cursor transitions — the
+    //       `_lastAutoScrollObservedLastId` seed/reset must handle nulls
+    //       without forcing a scroll-to-edge on a non-new tail.
+    //   (4) lv change cursor reseed — swapping `programInfo.lv` via
+    //       [_CommentScreenHostState.changeLv] should reseed the cursor so
+    //       messages already present on the new lv do not replay a scroll.
+    //
+    // Tolerance decisions: 1.0 px is enough to absorb sub-pixel rounding on
+    // `jumpTo`/`animateTo` without masking a real regression. Where the
+    // `_scrollToEdge` animation runs (180 ms easeOut), the tests pump with
+    // `pumpAndSettle` to reach steady state deterministically instead of
+    // relying on `Future.delayed`.
+    testWidgets(
+      'auto-scroll follows top edge in descending sort when new messages arrive',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_CommentScreenHostState> hostKey =
+            GlobalKey<_CommentScreenHostState>();
+
+        await tester.pumpWidget(
+          _CommentScreenHost(
+            key: hostKey,
+            supervisor: supervisor,
+            initialLv: 'lv-desc',
+            initialMessages: List<AppMessage>.generate(
+              40,
+              (int index) => _message(
+                id: 'desc-initial-$index',
+                type: AppMessageType.chat,
+                content: 'comment-$index',
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Switch to descending sort. The post-frame `_scrollToEdge` after
+        // toggling should settle the viewport at offset 0 (top), because in
+        // descending sort the tail of the data list is rendered at the top
+        // of the ListView.
+        await tester.tap(find.byKey(const Key('sort-toggle-button')));
+        await tester.pumpAndSettle();
+
+        final ListView listView = tester.widget(
+          find.byKey(const Key('comment-list')),
+        );
+        final ScrollController controller = listView.controller!;
+
+        expect(
+          controller.position.pixels,
+          closeTo(0, 1),
+          reason:
+              'descending sort should place the viewport at offset 0 '
+              '(top = most recent) after the toggle settles',
+        );
+
+        // A new live message lands — in descending sort the new tail becomes
+        // the new top row, and auto-scroll must keep offset pinned to 0.
+        hostKey.currentState!.addMessage(
+          _message(
+            id: 'desc-new-1',
+            type: AppMessageType.chat,
+            content: 'new-comment-1',
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          controller.position.pixels,
+          closeTo(0, 1),
+          reason:
+              'new message arrival in descending sort must keep offset at '
+              'the top edge (0), not drift toward maxScrollExtent',
+        );
+      },
+    );
+
+    testWidgets('auto-scroll is suppressed while search is active', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final GlobalKey<_CommentScreenHostState> hostKey =
+          GlobalKey<_CommentScreenHostState>();
+
+      await tester.pumpWidget(
+        _CommentScreenHost(
+          key: hostKey,
+          supervisor: supervisor,
+          initialLv: 'lv-search',
+          initialMessages: List<AppMessage>.generate(
+            40,
+            (int index) => _message(
+              id: 'search-initial-$index',
+              type: AppMessageType.chat,
+              content: 'comment-$index',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final ListView listView = tester.widget(
+        find.byKey(const Key('comment-list')),
+      );
+      final ScrollController controller = listView.controller!;
+
+      // Enter search mode via the overflow menu (same path as users).
+      await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('comment-search-button')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('comment-search-field')),
+        findsOneWidget,
+        reason: 'search field must be mounted for _isSearching=true',
+      );
+
+      // Scroll away from the tail so a potential auto-scroll would be
+      // visible as a pixel change. In ascending sort "away from tail"
+      // means scrolling up.
+      await tester.drag(
+        find.byKey(const Key('comment-list')),
+        const Offset(0, 300),
+      );
+      await tester.pumpAndSettle();
+      final double pixelsBefore = controller.position.pixels;
+
+      // A new message arrives while search is active. Auto-scroll must
+      // NOT run, so `pixels` must remain at `pixelsBefore`.
+      hostKey.currentState!.addMessage(
+        _message(
+          id: 'search-new-1',
+          type: AppMessageType.chat,
+          content: 'new-comment-while-searching',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        controller.position.pixels,
+        closeTo(pixelsBefore, 1),
+        reason:
+            'while _isSearching=true, a new message arrival must not move '
+            'the scroll position',
+      );
+    });
+
+    testWidgets(
+      'auto-scroll cursor handles empty → non-empty → empty → non-empty transitions',
+      (WidgetTester tester) async {
+        // Issue #671 scenario 3: when messages go empty and then non-empty
+        // again, `_lastAutoScrollObservedLastId` must be reset to null so
+        // that the next arrival is correctly treated as "new" exactly once,
+        // without replaying prior ids. The regression surface is that if
+        // the cursor were left at the previous list's last id, the first
+        // message on the *new* non-empty tail would still be compared
+        // against a stale cursor — we assert here that re-appearing the
+        // *same* id after an empty transition does not cause an auto-scroll
+        // loop (no crash, pixel stays at the tail edge).
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_CommentScreenHostState> hostKey =
+            GlobalKey<_CommentScreenHostState>();
+
+        await tester.pumpWidget(
+          _CommentScreenHost(
+            key: hostKey,
+            supervisor: supervisor,
+            initialLv: 'lv-empty',
+            initialMessages: const <AppMessage>[],
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final ListView listView = tester.widget(
+          find.byKey(const Key('comment-list')),
+        );
+        final ScrollController controller = listView.controller!;
+
+        // empty → non-empty: first message should not trip on a null cursor
+        // and the viewport must follow the edge.
+        hostKey.currentState!.replaceMessages(<AppMessage>[
+          _message(
+            id: 'transition-1',
+            type: AppMessageType.chat,
+            content: 'first-message',
+          ),
+        ]);
+        await tester.pumpAndSettle();
+        expect(
+          controller.position.pixels,
+          closeTo(controller.position.maxScrollExtent, 1),
+          reason:
+              'first non-empty transition should leave viewport at the '
+              'bottom edge in ascending sort',
+        );
+
+        // non-empty → empty: cursor seed must tolerate the list shrinking
+        // back to zero without crashing.
+        hostKey.currentState!.replaceMessages(const <AppMessage>[]);
+        await tester.pumpAndSettle();
+
+        // empty → non-empty again, reusing the *same* id. The cursor must
+        // have been reset (or must not force a replay), so the viewport
+        // still ends at the bottom edge and no exception is thrown.
+        hostKey.currentState!.replaceMessages(<AppMessage>[
+          _message(
+            id: 'transition-1',
+            type: AppMessageType.chat,
+            content: 'first-message',
+          ),
+          _message(
+            id: 'transition-2',
+            type: AppMessageType.chat,
+            content: 'second-message',
+          ),
+        ]);
+        await tester.pumpAndSettle();
+
+        expect(
+          controller.position.pixels,
+          closeTo(controller.position.maxScrollExtent, 1),
+          reason:
+              'after empty → non-empty → empty → non-empty, the viewport '
+              'must still follow the tail edge',
+        );
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: 'empty/non-empty transitions must not throw',
+        );
+      },
+    );
+
+    testWidgets(
+      'lv change reseeds auto-scroll cursor so prefilled tail does not replay',
+      (WidgetTester tester) async {
+        // Issue #671 scenario 4: `didUpdateWidget` must reset
+        // `_lastAutoScrollObservedLastId` to the new lv's current tail id
+        // when `programInfo.lv` changes. Otherwise a stale cursor from the
+        // previous lv could match (or mismatch) against the new tail and
+        // cause spurious scroll jumps. We exercise the reseed via the
+        // in-test `_CommentScreenHost` helper rather than a real Navigator
+        // push, so the `CommentScreen` is rebuilt in place.
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_CommentScreenHostState> hostKey =
+            GlobalKey<_CommentScreenHostState>();
+
+        await tester.pumpWidget(
+          _CommentScreenHost(
+            key: hostKey,
+            supervisor: supervisor,
+            initialLv: 'lv-before',
+            initialMessages: List<AppMessage>.generate(
+              40,
+              (int index) => _message(
+                id: 'before-$index',
+                type: AppMessageType.chat,
+                content: 'before-$index',
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final ListView listView = tester.widget(
+          find.byKey(const Key('comment-list')),
+        );
+        final ScrollController controller = listView.controller!;
+
+        // Scroll up so that, if the lv change incorrectly reuses the old
+        // cursor and treats the prefilled tail as "new", a spurious
+        // `_scrollToEdge` would visibly snap the viewport back to the
+        // bottom. We capture the current position as the baseline to
+        // defend against that.
+        await tester.drag(
+          find.byKey(const Key('comment-list')),
+          const Offset(0, 300),
+        );
+        await tester.pumpAndSettle();
+        final double pixelsBeforeLvChange = controller.position.pixels;
+
+        // Swap to a new lv whose message list already has a tail (the
+        // cursor must be seeded to that tail, not left at the previous
+        // lv's cursor). The two synchronous `setState` calls below are
+        // coalesced by the framework into a single pending rebuild, so
+        // the following `pumpAndSettle` delivers both deltas to
+        // `CommentScreen.didUpdateWidget` in one frame — matching
+        // production navigation where lv and messages change together.
+        hostKey.currentState!.changeLv('lv-after');
+        hostKey.currentState!.replaceMessages(
+          List<AppMessage>.generate(
+            30,
+            (int index) => _message(
+              id: 'after-$index',
+              type: AppMessageType.chat,
+              content: 'after-$index',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // On lv change the screen explicitly scrolls to the edge after
+        // the next frame, so after settling the viewport must be at the
+        // bottom edge (not at `pixelsBeforeLvChange`). lv change
+        // intentionally resets the view; the contract we pin is that
+        // the cursor is reseeded and no further replay happens on the
+        // *next* new message.
+        expect(
+          controller.position.pixels,
+          closeTo(controller.position.maxScrollExtent, 1),
+          reason:
+              'lv change should settle the viewport at the new tail edge '
+              'after the post-frame scroll-to-edge runs',
+        );
+        expect(
+          controller.position.pixels,
+          isNot(closeTo(pixelsBeforeLvChange, 1)),
+          reason:
+              'lv change must reset the view, so pixels must differ from '
+              'the pre-change scroll position (guards against the cursor '
+              'leaking across lvs and suppressing the reset)',
+        );
+
+        // A further ring-buffer rotation that keeps the list length but
+        // swaps the tail must still trigger exactly one edge follow — the
+        // reseeded cursor recognises the new tail id as new. If the cursor
+        // had leaked across lvs, the comparison below would be fragile.
+        final List<AppMessage> rotated = <AppMessage>[
+          for (int index = 1; index < 30; index++)
+            _message(
+              id: 'after-$index',
+              type: AppMessageType.chat,
+              content: 'after-$index',
+            ),
+          _message(
+            id: 'after-new-tail',
+            type: AppMessageType.chat,
+            content: 'after-new-tail',
+          ),
+        ];
+        hostKey.currentState!.replaceMessages(rotated);
+        await tester.pumpAndSettle();
+
+        expect(
+          controller.position.pixels,
+          closeTo(controller.position.maxScrollExtent, 1),
+          reason:
+              'post-lv-change ring-buffer rotation must still follow the '
+              'tail edge via the reseeded cursor',
+        );
+      },
+    );
+
     testWidgets('shows snackbar on transition to FAILED', (
       WidgetTester tester,
     ) async {
