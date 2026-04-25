@@ -320,12 +320,20 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _ndgrMessageSubscription = _ndgrClient.messages.listen((
       AppMessage message,
     ) {
+      // Silent timestamp update — `_timelineStore.add` /
+      // `_statisticsStore.recordComment` below already trigger a rebuild
+      // of CommentScreen via the ListenableBuilder in select_screen, so
+      // the StatusBar's `最終受信` text picks up the fresh value without
+      // an extra supervisor-level notify (which would re-run wakelock /
+      // auto-save plumbing per comment).
+      _connectionSupervisor.recordReceivedAt(notify: false);
       _timelineStore.add(message);
       _statisticsStore.recordComment(message);
     });
     _legacyMessageSubscription = _legacyCommentClient.messages.listen((
       AppMessage message,
     ) {
+      _connectionSupervisor.recordReceivedAt(notify: false);
       _timelineStore.add(message);
       _statisticsStore.recordComment(message);
     });

@@ -4616,10 +4616,18 @@ class _StatusBarState extends State<_StatusBar> {
                       runSpacing: 4,
                       children: <Widget>[
                         if (widget.statisticsViewerCommentEnabled) ...<Widget>[
-                          Text(
-                            'リスナー: ${widget.viewerCount ?? '-'}',
-                            key: const Key('status-viewer-count'),
-                          ),
+                          // リスナー (viewer count) is sourced from
+                          // NDGR `NicoliveMessage.statistics.viewers`,
+                          // which the proto decoder does not yet
+                          // extract (tracked in Issue #724). Hide the
+                          // row entirely until that field lands so that
+                          // we never surface a "-" placeholder that the
+                          // user mistakes for a real "0 listeners".
+                          if (widget.viewerCount != null)
+                            Text(
+                              'リスナー: ${widget.viewerCount}',
+                              key: const Key('status-viewer-count'),
+                            ),
                           Text(
                             'コメント: ${widget.totalCommentCount}',
                             key: const Key('status-comment-count'),
@@ -4635,27 +4643,39 @@ class _StatusBarState extends State<_StatusBar> {
                   ],
                   if (widget.debugMode) ...<Widget>[
                     const SizedBox(height: 4),
-                    if (widget.broadcasterUserId != null)
-                      Text(
-                        '放送者ID: ${widget.broadcasterUserId}',
-                        key: const Key('status-broadcaster-user-id'),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: widget.themeColors.subtleTextColor,
-                        ),
-                      ),
-                    const SizedBox(height: 4),
+                    // 放送者ID / 最終受信 / 再接続 are debug-only
+                    // metadata; collapse them onto a single Wrap row so
+                    // the comment list keeps as much vertical space as
+                    // possible (UX request, screenshot dated
+                    // 2026-04-25).
                     Wrap(
                       spacing: 12,
                       runSpacing: 4,
                       children: <Widget>[
+                        if (widget.broadcasterUserId != null)
+                          Text(
+                            '放送者ID: ${widget.broadcasterUserId}',
+                            key: const Key('status-broadcaster-user-id'),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: widget.themeColors.subtleTextColor,
+                            ),
+                          ),
                         Text(
                           '最終受信: ${_formatHmsOrDash(widget.supervisor.lastReceivedAt)}',
                           key: const Key('status-last-received'),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: widget.themeColors.subtleTextColor,
+                          ),
                         ),
                         Text(
                           '再接続: ${widget.supervisor.reconnectCount}回',
                           key: const Key('status-reconnect-count'),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: widget.themeColors.subtleTextColor,
+                          ),
                         ),
                       ],
                     ),

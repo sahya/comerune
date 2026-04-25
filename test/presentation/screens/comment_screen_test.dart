@@ -63,7 +63,7 @@ void main() {
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-      supervisor.recordReceivedAt(DateTime(2026, 3, 22, 12, 34, 56));
+      supervisor.recordReceivedAt(timestamp: DateTime(2026, 3, 22, 12, 34, 56));
       expect(
         supervisor.onStreamDisconnected(ConnectionErrorCode.ndgrStreamFailed),
         isTrue,
@@ -84,9 +84,69 @@ void main() {
       final Text lastReceived = tester.widget(
         find.byKey(const Key('status-last-received')),
       );
-      expect(lastReceived.data, isNot('最終受信: -'));
-      expect(lastReceived.data, contains(':'));
+      expect(lastReceived.data, '最終受信: 12:34:56');
     });
+
+    testWidgets(
+      'debug row consolidates broadcasterId / lastReceived / reconnect',
+      (WidgetTester tester) async {
+        // UX request (2026-04-25): keep the comment list as tall as
+        // possible by collapsing the debug-only metadata into a single
+        // wrapping row instead of two stacked rows.
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        supervisor.recordReceivedAt(
+          timestamp: DateTime(2026, 3, 22, 12, 34, 56),
+        );
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: const <AppMessage>[],
+            debugMode: true,
+            broadcasterUserId: '12345678',
+          ),
+        );
+
+        final Finder broadcasterId = find.byKey(
+          const Key('status-broadcaster-user-id'),
+        );
+        final Finder lastReceived = find.byKey(
+          const Key('status-last-received'),
+        );
+        final Finder reconnect = find.byKey(
+          const Key('status-reconnect-count'),
+        );
+
+        expect(broadcasterId, findsOneWidget);
+        expect(lastReceived, findsOneWidget);
+        expect(reconnect, findsOneWidget);
+
+        Wrap ancestorWrapOf(Finder child) {
+          return tester.widget<Wrap>(
+            find.ancestor(of: child, matching: find.byType(Wrap)).first,
+          );
+        }
+
+        // All three live under the same parent Wrap.
+        expect(
+          ancestorWrapOf(broadcasterId),
+          same(ancestorWrapOf(lastReceived)),
+        );
+        expect(ancestorWrapOf(lastReceived), same(ancestorWrapOf(reconnect)));
+
+        // Style consistency: all three share the same subtle debug
+        // font size + color so the row reads as one piece of metadata
+        // rather than as three different signals.
+        TextStyle styleOf(Finder f) =>
+            tester.widget<Text>(f).style ?? const TextStyle();
+        final TextStyle bidStyle = styleOf(broadcasterId);
+        expect(bidStyle.fontSize, 12);
+        expect(styleOf(lastReceived).fontSize, bidStyle.fontSize);
+        expect(styleOf(reconnect).fontSize, bidStyle.fontSize);
+        expect(styleOf(lastReceived).color, bidStyle.color);
+        expect(styleOf(reconnect).color, bidStyle.color);
+      },
+    );
 
     testWidgets('comment row colors are applied by message type', (
       WidgetTester tester,
@@ -2398,6 +2458,35 @@ void main() {
 
       expect(find.byKey(const Key('status-viewer-count')), findsNothing);
       expect(find.byKey(const Key('status-comment-count')), findsNothing);
+      expect(find.text('5分アクティブ: 10'), findsOneWidget);
+    });
+
+    testWidgets('statistics hides リスナー row entirely when viewerCount is null', (
+      WidgetTester tester,
+    ) async {
+      // The viewer count comes from NDGR
+      // `NicoliveMessage.statistics.viewers`, which the proto
+      // decoder does not yet extract (tracked in Issue #724). Until
+      // that lands, surface no row at all so users do not mistake
+      // the "-" placeholder for "0 listeners".
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          statisticsEnabled: true,
+          statisticsViewerCommentEnabled: true,
+          statisticsActiveUserEnabled: true,
+          // viewerCount intentionally omitted (defaults to null).
+          totalCommentCount: 50,
+          activeUserCount: 10,
+        ),
+      );
+
+      expect(find.byKey(const Key('status-viewer-count')), findsNothing);
+      expect(find.textContaining('リスナー'), findsNothing);
+      expect(find.text('コメント: 50'), findsOneWidget);
       expect(find.text('5分アクティブ: 10'), findsOneWidget);
     });
 

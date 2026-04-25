@@ -193,7 +193,7 @@ void main() {
       expect(stalledReconnected, isTrue);
       expect(supervisor.reconnectCount, 0);
 
-      supervisor.recordReceivedAt(DateTime(2026, 1, 1));
+      supervisor.recordReceivedAt(timestamp: DateTime(2026, 1, 1));
       final bool failed = supervisor.fail(ConnectionErrorCode.ndgrStreamFailed);
       expect(failed, isTrue);
       expect(supervisor.status, ConnectionStatus.failed);
@@ -243,7 +243,7 @@ void main() {
         expect(reconnected, isTrue);
         expect(supervisor.reconnectCount, 0);
 
-        supervisor.recordReceivedAt(DateTime(2026, 1, 1));
+        supervisor.recordReceivedAt(timestamp: DateTime(2026, 1, 1));
         final bool failed = supervisor.fail(
           ConnectionErrorCode.ndgrStreamFailed,
         );
@@ -282,6 +282,42 @@ void main() {
         final bool retried = supervisor.retryConnectionFromTerminal();
         expect(retried, isFalse);
         expect(supervisor.status, ConnectionStatus.idle);
+      },
+    );
+
+    test('recordReceivedAt notifies listeners by default', () {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+      addTearDown(supervisor.dispose);
+
+      int notifyCount = 0;
+      supervisor.addListener(() => notifyCount++);
+
+      supervisor.recordReceivedAt(timestamp: DateTime(2026, 5, 1, 10, 0, 0));
+
+      expect(supervisor.lastReceivedAt, DateTime(2026, 5, 1, 10, 0, 0));
+      expect(notifyCount, 1);
+    });
+
+    test(
+      'recordReceivedAt with notify:false updates timestamp without notifying',
+      () {
+        // Hot-loop callers (per-message ingestion) rely on this so that the
+        // already-pending TimelineStore / StatisticsStore notify can flush
+        // the new timestamp without re-running supervisor listeners
+        // (wakelock / autosave plumbing) per comment.
+        final ConnectionSupervisor supervisor = ConnectionSupervisor();
+        addTearDown(supervisor.dispose);
+
+        int notifyCount = 0;
+        supervisor.addListener(() => notifyCount++);
+
+        supervisor.recordReceivedAt(
+          timestamp: DateTime(2026, 5, 1, 10, 0, 0),
+          notify: false,
+        );
+
+        expect(supervisor.lastReceivedAt, DateTime(2026, 5, 1, 10, 0, 0));
+        expect(notifyCount, 0);
       },
     );
 

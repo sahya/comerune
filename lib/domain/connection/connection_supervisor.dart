@@ -459,9 +459,18 @@ class ConnectionSupervisor extends ChangeNotifier {
     return _transitionTo(ConnectionStatus.idle);
   }
 
-  void recordReceivedAt([DateTime? timestamp]) {
+  /// Updates [lastReceivedAt] to [timestamp] (or now when omitted).
+  ///
+  /// Pass `notify: false` from a hot path that already triggers a
+  /// downstream rebuild (e.g. per-message ingestion where
+  /// `TimelineStore` / `StatisticsStore` already notify), to avoid
+  /// firing one wakelock-touching `_handleConnectionChanged` per
+  /// comment.
+  void recordReceivedAt({DateTime? timestamp, bool notify = true}) {
     _lastReceivedAt = timestamp ?? DateTime.now();
-    notifyListeners();
+    if (notify) {
+      notifyListeners();
+    }
   }
 
   void recordError(ConnectionErrorCode errorCode, {String? errorDetail}) {
