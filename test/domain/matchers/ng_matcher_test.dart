@@ -3,13 +3,15 @@ import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/domain/models/ng_display_subcategory.dart';
 import 'package:comerune/domain/models/ng_policy.dart';
 import 'package:comerune/domain/models/ng_preset_category.dart';
+import 'package:comerune/domain/normalizers/ng_word_text_normalizer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// Simple case-folding normalizer used by these tests. The real matcher on
-/// `CommentScreen` injects a much richer normalizer (NFKC + katakana
-/// folding + look-alike table + symbol stripping) but that normalizer is
-/// screen-local today. Using a small pure-Dart normalizer here keeps the
-/// unit tests deterministic and free of any screen dependency.
+/// Simple case-folding normalizer used by these tests. The production
+/// matcher uses the richer [normalizeNgWordText] (full-width / katakana /
+/// look-alike / symbol stripping, see `lib/domain/normalizers/`), but
+/// keeping a tiny pure-Dart normalizer here makes these unit tests
+/// independent of that helper and cheaper to reason about. One separate
+/// test below pins the default-parameter wiring.
 String _normalizer(String s) => s.toLowerCase().replaceAll(' ', '');
 
 NgPresetCategory _category({
@@ -521,5 +523,39 @@ void main() {
     test('minors label contains 未成年 wording', () {
       expect(NgDisplaySubcategory.minors.displayLabelJa, contains('未成年'));
     });
+  });
+
+  group('NgMatcher default normalizer wiring (#631, #633)', () {
+    test(
+      'omitting normalizer: uses normalizeNgWordText and matches evasion input',
+      () {
+        // Build a matcher without an explicit normalizer. The default must be
+        // the domain-layer [normalizeNgWordText], so an evasion input that
+        // relies on full-width / look-alike / katakana-hiragana folding must
+        // still match the registered NG word.
+        final NgMatcher matcher = NgMatcher.fromFlatWords(
+          words: const <String>['エロ'],
+        );
+        // 'Ｅｒｏ' alone would not match; use the look-alike evasion that
+        // [normalizeNgWordText] handles: '工口' → 'エロ' → 'えろ'.
+        expect(matcher.match('今日は 工口 だ'), isNotNull);
+        // Sanity: the default normalizer produces the same canonical form
+        // that the matcher uses internally.
+        expect(normalizeNgWordText('工口'), normalizeNgWordText('エロ'));
+      },
+    );
+
+    test(
+      'omitting normalizer: on full NgMatcher ctor also wires the default',
+      () {
+        final NgMatcher matcher = NgMatcher(
+          presetCategories: const <NgPresetCategory>[],
+          userNgWords: const <String>['ａｂｃ'],
+        );
+        // Full-width 'ａｂｃ' must match plain-ASCII 'abc' via the default
+        // normalizer.
+        expect(matcher.match('hello abc world'), isNotNull);
+      },
+    );
   });
 }

@@ -2,6 +2,7 @@ import '../models/app_settings.dart';
 import '../models/ng_display_subcategory.dart';
 import '../models/ng_policy.dart';
 import '../models/ng_preset_category.dart';
+import '../normalizers/ng_word_text_normalizer.dart';
 
 /// User-visible toggle state for each display subcategory.
 ///
@@ -135,22 +136,21 @@ class NgMatcher {
   /// dependency. Passing an unnormalized input is safe: the matcher always
   /// normalizes both sides.
   ///
-  /// Cross-platform contract: Dart callers typically pass
-  /// `_normalizeNgWordText` from `comment_screen.dart`, which must produce
+  /// Cross-platform contract: the default [normalizer] is the shared
+  /// [normalizeNgWordText] in `lib/domain/normalizers/`, which must produce
   /// the same output as the Kotlin-side
   /// `com.example.comerune.speech.domain.normalizer.NgWordTextNormalizer`.
   /// If either implementation changes, the other must be updated in the
   /// same PR to keep display-side and speech-side filtering consistent.
-  /// Unifying both into a single domain helper is tracked as a future
-  /// refactor (out of scope for #613).
+  /// Callers may still inject a different normalizer in tests.
   ///
   /// Empty / whitespace-only words are filtered out. Duplicate normalized
   /// forms are collapsed (first-seen wins), which mirrors the previous
-  /// behavior of `_refreshNormalizedNgWords` in `comment_screen.dart`.
+  /// behavior of `_rebuildNgMatcher` in `comment_screen.dart`.
   factory NgMatcher({
     required Iterable<NgPresetCategory> presetCategories,
     required Iterable<String> userNgWords,
-    required String Function(String) normalizer,
+    String Function(String) normalizer = normalizeNgWordText,
   }) {
     final List<_NgEntry> entries = <_NgEntry>[];
     final Set<String> seen = <String>{};
@@ -197,7 +197,7 @@ class NgMatcher {
   /// larger refactor of `comment_screen.dart` in one PR).
   factory NgMatcher.fromFlatWords({
     required Iterable<String> words,
-    required String Function(String) normalizer,
+    String Function(String) normalizer = normalizeNgWordText,
   }) {
     return NgMatcher(
       presetCategories: const <NgPresetCategory>[],
