@@ -426,6 +426,23 @@ bool _shouldEmphasizeGiftNicoad(AppMessage message, {required bool emphasize}) {
       message.type == AppMessageType.nicoad;
 }
 
+/// Public test-only interface exposing the comment-log branch of the
+/// [CommentScreen] state.
+///
+/// Exists so widget integration tests for `_messagesForLog()` can invoke the
+/// real production code path without the screen's state class being made
+/// public. Tests reach this interface via
+/// `tester.state<State<CommentScreen>>(...) as CommentScreenTestAccess`.
+///
+/// Do not add members for non-test reasons — that would reintroduce the
+/// encapsulation leak this indirection is designed to avoid.
+@visibleForTesting
+abstract interface class CommentScreenTestAccess {
+  /// Delegates to the private `_messagesForLog()` method and returns the
+  /// list of messages that would be written to the auto-saved comment log.
+  List<AppMessage> messagesForLogForTesting();
+}
+
 class CommentScreen extends StatefulWidget {
   const CommentScreen({
     super.key,
@@ -545,7 +562,8 @@ class CommentScreen extends StatefulWidget {
   State<CommentScreen> createState() => _CommentScreenState();
 }
 
-class _CommentScreenState extends State<CommentScreen> {
+class _CommentScreenState extends State<CommentScreen>
+    implements CommentScreenTestAccess {
   static const double _autoScrollResumeThreshold = 50;
   static const Duration _wakelockReleaseDelay = Duration(seconds: 45);
 
@@ -3786,6 +3804,9 @@ class _CommentScreenState extends State<CommentScreen> {
   /// The stats path keeps using [_messagesForStatsAndLogs] so that this
   /// log-only behavior change does not bleed into the in-app statistics
   /// counts.
+  @override
+  List<AppMessage> messagesForLogForTesting() => _messagesForLog();
+
   List<AppMessage> _messagesForLog() {
     final List<AppMessage> out = <AppMessage>[];
     for (final AppMessage message in widget.messages) {
