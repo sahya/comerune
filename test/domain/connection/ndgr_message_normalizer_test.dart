@@ -1863,6 +1863,86 @@ void main() {
       expect(forwardedResult.content, 'クルーズ本文');
     });
 
+    test('falls back to DateTime.now() when both serverTimestamp and '
+        'receivedAt are null (#667)', () {
+      // Regression guard: when neither the upstream serverTimestamp nor
+      // a caller-supplied receivedAt is available, the normalizer must
+      // still emit the message with a non-null timestamp (using
+      // DateTime.now() as a last resort) rather than dropping it. The
+      // associated developer.log warn line is emitted at level 900 to
+      // make the situation visible — captured here as a behaviour-only
+      // assertion (the log itself is verified manually / by reviewers).
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+
+      final DateTime before = DateTime.now().toUtc();
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        const NdgrChunkedMessage(chat: NdgrChat(content: 'hello', no: 1)),
+        // intentionally omit receivedAt so the DateTime.now() branch fires
+      );
+      final DateTime after = DateTime.now().toUtc();
+
+      expect(normalized, isNotNull);
+      expect(normalized!.content, 'hello');
+      // Timestamp must lie between the call's before/after snapshots,
+      // confirming the DateTime.now() fallback ran.
+      expect(
+        normalized.timestamp.isBefore(before),
+        isFalse,
+        reason: 'fallback timestamp should not predate the call',
+      );
+      expect(
+        normalized.timestamp.isAfter(after),
+        isFalse,
+        reason: 'fallback timestamp should not be after the call returned',
+      );
+      expect(
+        normalized.timestamp.isUtc,
+        isTrue,
+        reason: 'DateTime.now().toUtc() fallback must produce a UTC value',
+      );
+    });
+
+    test('uses provided receivedAt verbatim when serverTimestamp is null '
+        '(fallback path is not triggered)', () {
+      // Boundary guard for the timestamp-resolution priority:
+      //   1. serverTimestamp (if non-null)
+      //   2. receivedAt (if non-null)
+      //   3. DateTime.now() fallback (with developer.log warn)
+      //
+      // When `serverTimestamp` is null but `receivedAt` is supplied, the
+      // resulting `AppMessage.timestamp` MUST equal the supplied
+      // `receivedAt` exactly. Asserting bit-equality (rather than a
+      // Now() window) indirectly proves the DateTime.now() fallback
+      // path was NOT entered — DateTime.now() would always differ from
+      // a fixed receivedAt past instant, so equality here = fallback
+      // skipped = no spurious warn log emitted.
+      //
+      // Rationale for not capturing developer.log directly: there is no
+      // light-weight, supported intercept hook for `dart:developer.log`
+      // in this test suite, so the timestamp identity is used as the
+      // observable proxy.
+      final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+      final DateTime receivedAt = DateTime.parse('2026-03-22T12:34:56Z');
+
+      final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+        const NdgrChunkedMessage(
+          chat: NdgrChat(content: 'hello', no: 42),
+          // serverTimestamp intentionally omitted (null)
+        ),
+        receivedAt: receivedAt,
+      );
+
+      expect(normalized, isNotNull);
+      expect(
+        normalized!.timestamp,
+        receivedAt,
+        reason:
+            'timestamp must equal the provided receivedAt unchanged; '
+            'any DateTime.now() fallback would diverge from this fixed '
+            'past instant',
+      );
+    });
+
     // --- Notification / advertiser body length cap (Issue #651) ---
     //
     // The cap applies only to simpleNotificationV2, simpleNotification v1,

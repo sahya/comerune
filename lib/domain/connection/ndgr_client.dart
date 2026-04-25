@@ -1,8 +1,9 @@
 import 'dart:async';
-import 'dart:developer';
+import 'dart:developer' as developer;
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../../app_logging.dart';
 import '../models/app_message.dart';
 import 'ndgr_message_normalizer.dart';
 import 'ndgr_protobuf_decoder.dart';
@@ -149,7 +150,7 @@ class NdgrClient {
       if (_isStopped) {
         return;
       }
-      log(
+      developer.log(
         'NDGR client connect failed',
         name: 'NdgrClient',
         error: error,
@@ -277,6 +278,24 @@ class NdgrClient {
         .expand((List<NdgrChunkedMessage> messages) => messages)
         .toList();
 
+    // Silent-truncation observability (#666). When the backward pull ends
+    // with fewer messages than the caller requested it is usually because
+    // the server returned a packed segment with no nextUri (history
+    // boundary). Emitting a single warn-level log makes the truncation
+    // visible without changing behaviour. Skip the log when _isStopped is
+    // true so user-initiated stops do not produce spurious warns.
+    if (!_isStopped && flattened.length < want) {
+      // Note: emitted at most once per `_pullBackwards` call.
+      // TODO: track reconnect-storm log deduplication if observed in production
+      developer.log(
+        'NDGR backward pull truncated: '
+        'requested=$want emitted=${flattened.length} '
+        'reason=nextUri_null_or_server_end',
+        name: 'NdgrClient',
+        level: kAppErrorLogLevel,
+      );
+    }
+
     if (flattened.length <= want) {
       return flattened;
     }
@@ -352,7 +371,7 @@ class NdgrClient {
           _markReceivedAndEnsureTimer(_now());
           yield _protobufDecoder.decodeChunkedEntry(frame);
         } catch (error, stackTrace) {
-          log(
+          developer.log(
             'Failed to decode NDGR ChunkedEntry frame. Skip frame.',
             name: 'NdgrClient',
             error: error,
@@ -363,7 +382,7 @@ class NdgrClient {
     }
 
     if (decoder.fragmentRestoreCount > 0) {
-      log(
+      developer.log(
         'NDGR fragment restored ${decoder.fragmentRestoreCount} times (head).',
         name: 'NdgrClient',
       );
@@ -386,7 +405,7 @@ class NdgrClient {
           _markReceivedAndEnsureTimer(_now());
           yield _protobufDecoder.decodeChunkedMessage(frame);
         } catch (error, stackTrace) {
-          log(
+          developer.log(
             'Failed to decode NDGR ChunkedMessage frame. Skip frame.',
             name: 'NdgrClient',
             error: error,
@@ -397,7 +416,7 @@ class NdgrClient {
     }
 
     if (decoder.fragmentRestoreCount > 0) {
-      log(
+      developer.log(
         'NDGR fragment restored ${decoder.fragmentRestoreCount} times (segment).',
         name: 'NdgrClient',
       );

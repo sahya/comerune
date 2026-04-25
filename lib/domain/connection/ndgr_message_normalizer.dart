@@ -1,5 +1,8 @@
+import 'dart:developer' as developer;
+
 import 'package:characters/characters.dart';
 
+import '../../app_logging.dart';
 import '../models/app_message.dart';
 import '../utils/unicode_sanitizer.dart';
 import 'ndgr_protobuf_decoder.dart';
@@ -207,8 +210,27 @@ class NdgrMessageNormalizer {
     NdgrChunkedMessage source, {
     DateTime? receivedAt,
   }) {
-    final DateTime timestamp =
-        source.serverTimestamp ?? receivedAt ?? DateTime.now().toUtc();
+    final DateTime timestamp;
+    final DateTime? serverTimestamp = source.serverTimestamp;
+    if (serverTimestamp != null) {
+      timestamp = serverTimestamp;
+    } else if (receivedAt != null) {
+      timestamp = receivedAt;
+    } else {
+      // Both serverTimestamp and receivedAt are missing. The caller should
+      // always supply receivedAt (NdgrClient does), so reaching this branch
+      // indicates a regression in the call site or a malformed source. Emit
+      // a single warn-level log so the situation is visible without
+      // breaking the pipeline. Keep DateTime.now() as a safety fallback so
+      // the message still gets a timestamp and is not dropped.
+      developer.log(
+        'NDGR normalizer: both serverTimestamp and receivedAt are null; '
+        'falling back to DateTime.now().',
+        name: 'NdgrMessageNormalizer',
+        level: kAppErrorLogLevel,
+      );
+      timestamp = DateTime.now().toUtc();
+    }
 
     // Operator (運営) comment — emitted via NicoliveState.marquee.display.operator_comment.
     //

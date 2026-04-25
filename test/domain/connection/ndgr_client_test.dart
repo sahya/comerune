@@ -491,6 +491,170 @@ void main() {
     });
 
     test(
+      'returns partial result when backward pull ends without nextUri (#666)',
+      () async {
+        // Regression guard: when the server returns a packed segment with no
+        // nextUri (history boundary) before the requested count is reached,
+        // _pullBackwards must still return the partial result rather than
+        // dropping the messages it did receive. The companion observability
+        // change in #666 also emits a developer.log warn at that moment;
+        // the log itself is not asserted here (capturing dart:developer.log
+        // requires invasive infrastructure not used elsewhere in this test
+        // file), but the behaviour-level invariant — partial result is
+        // returned, no exception is thrown — is what callers depend on.
+        final HttpServer server = await HttpServer.bind(
+          InternetAddress.loopbackIPv4,
+          0,
+        );
+        addTearDown(() async {
+          await server.close(force: true);
+        });
+
+        final Uri base = Uri(
+          scheme: 'http',
+          host: server.address.host,
+          port: server.port,
+        );
+
+        final Uri viewUri = base.replace(path: '/view');
+        final Uri backwardUri = base.replace(path: '/backward');
+
+        server.listen((HttpRequest request) async {
+          if (request.uri.path == '/view') {
+            final List<int> headBody = _delimit(
+              _encodeChunkedEntryBackward(
+                backwardSegmentUri: backwardUri.toString(),
+              ),
+            );
+            request.response.add(headBody);
+            await request.response.close();
+            return;
+          }
+
+          if (request.uri.path == '/backward') {
+            // Single message, no nextUri — server signals "no more history".
+            final List<int> packed = _encodePackedSegment(<List<int>>[
+              _encodeChunkedMessage(id: 'backward-only', content: 'only-one'),
+            ]);
+            request.response.add(packed);
+            await request.response.close();
+            return;
+          }
+
+          request.response.statusCode = HttpStatus.notFound;
+          await request.response.close();
+        });
+
+        final NdgrClient client = NdgrClient(
+          stallThreshold: const Duration(minutes: 1),
+          stallCheckInterval: const Duration(seconds: 5),
+        );
+        addTearDown(client.dispose);
+
+        final List<AppMessage> messages = <AppMessage>[];
+        final StreamSubscription<NdgrClientEvent> subscription = client.events
+            .listen((NdgrClientEvent event) {
+              if (event.type == NdgrClientEventType.message &&
+                  event.message != null) {
+                messages.add(event.message!);
+              }
+            });
+        addTearDown(subscription.cancel);
+
+        // Request 5 history messages but the server only returns 1.
+        await client.connect(viewUri, historyCount: 5);
+
+        // The single available history message must still be delivered
+        // (silent truncation is acceptable; total loss is not).
+        expect(messages, hasLength(1));
+        expect(messages[0].content, 'only-one');
+      },
+    );
+
+    test('returns full set when backward pull yields exactly `want` messages '
+        '(boundary: warn log must NOT fire)', () async {
+      // Boundary guard for the truncation-warn condition in
+      // `_pullBackwards`: the warn log only fires when
+      // `flattened.length < want`. When the server returns EXACTLY
+      // `want` messages with `nextUri == null`, the pull must:
+      //   - return all `want` messages unchanged (no drop, no extra)
+      //   - NOT trigger the truncation warn log
+      //
+      // We cannot intercept `dart:developer.log` cheaply from this test
+      // file, so the non-fire of the warn is documented rather than
+      // asserted directly. The behavioural invariant that IS asserted
+      // (length matches the requested count) is the user-visible
+      // contract callers depend on.
+      final HttpServer server = await HttpServer.bind(
+        InternetAddress.loopbackIPv4,
+        0,
+      );
+      addTearDown(() async {
+        await server.close(force: true);
+      });
+
+      final Uri base = Uri(
+        scheme: 'http',
+        host: server.address.host,
+        port: server.port,
+      );
+
+      final Uri viewUri = base.replace(path: '/view');
+      final Uri backwardUri = base.replace(path: '/backward');
+
+      server.listen((HttpRequest request) async {
+        if (request.uri.path == '/view') {
+          final List<int> headBody = _delimit(
+            _encodeChunkedEntryBackward(
+              backwardSegmentUri: backwardUri.toString(),
+            ),
+          );
+          request.response.add(headBody);
+          await request.response.close();
+          return;
+        }
+
+        if (request.uri.path == '/backward') {
+          // Exactly `want` (=2) messages, no nextUri.
+          final List<int> packed = _encodePackedSegment(<List<int>>[
+            _encodeChunkedMessage(id: 'backward-1', content: 'one'),
+            _encodeChunkedMessage(id: 'backward-2', content: 'two'),
+          ]);
+          request.response.add(packed);
+          await request.response.close();
+          return;
+        }
+
+        request.response.statusCode = HttpStatus.notFound;
+        await request.response.close();
+      });
+
+      final NdgrClient client = NdgrClient(
+        stallThreshold: const Duration(minutes: 1),
+        stallCheckInterval: const Duration(seconds: 5),
+      );
+      addTearDown(client.dispose);
+
+      final List<AppMessage> messages = <AppMessage>[];
+      final StreamSubscription<NdgrClientEvent> subscription = client.events
+          .listen((NdgrClientEvent event) {
+            if (event.type == NdgrClientEventType.message &&
+                event.message != null) {
+              messages.add(event.message!);
+            }
+          });
+      addTearDown(subscription.cancel);
+
+      // Request exactly 2 history messages; the server returns 2.
+      await client.connect(viewUri, historyCount: 2);
+
+      // All requested messages delivered, in order.
+      expect(messages, hasLength(2));
+      expect(messages[0].content, 'one');
+      expect(messages[1].content, 'two');
+    });
+
+    test(
       'emits broadcastEnded and stops when ProgramStatus.Ended is received',
       () async {
         final HttpServer server = await HttpServer.bind(
