@@ -251,6 +251,16 @@ class _SelectScreenState extends State<SelectScreen>
     _favoriteUserLiveChecker = checker ?? FavoriteUserLiveChecker();
   }
 
+  static const ({Map<String, int> colors, Map<String, String> nicknames})
+  _emptyUserAttributes = (
+    colors: <String, int>{},
+    nicknames: <String, String>{},
+  );
+
+  void _clearInMemoryUserAttributes() {
+    _userAttrNotifier.value = _emptyUserAttributes;
+  }
+
   Future<void> _flushPendingUserAttributeWrites() async {
     final UserAttributeStore? store = widget.userAttributeStore;
     if (store == null) {
@@ -376,36 +386,21 @@ class _SelectScreenState extends State<SelectScreen>
     final AppSettings settings = _settingsNotifier.value;
     if (_lastConnectedLv != null && _lastConnectedLv != lv) {
       widget.timelineStore?.clear();
+      _clearInMemoryUserAttributes();
     }
     widget.timelineStore?.setCapacity(
       settings.pastCommentFetchCount.displayCapacity,
     );
     await widget.onPrepareConnection?.call(lv, settings);
     _currentBroadcasterId = null;
-    // Issue #681 Phase 1: when the caller already knows the broadcaster's
-    // numeric user ID (from a FollowProgram / Favorite API response),
-    // pre-bind the notifier so user attributes load under the real user ID
-    // immediately. Otherwise fall back to the lv key; _onSupplierUserIdChanged
-    // will later migrate the data once programinfo resolves the real ID.
-    // If supplierUserId never resolves, data stays under the lv key.
-    //
-    // Note: setting `supplierUserIdNotifier.value` synchronously fires
-    // `_onSupplierUserIdChanged`, which in turn calls
-    // `_loadUserAttributes(preferredBroadcasterId)`. The explicit
-    // `unawaited(_loadUserAttributes(...))` below is therefore a no-op in
-    // that branch (skipped by the `broadcasterId == _currentBroadcasterId`
-    // guard). It is kept intentionally so the lv branch — where no
-    // listener fires — still triggers the load, and so the intent of
-    // "always kick off the initial attribute load here" stays explicit
-    // at this call site.
-    final String initialAttributeKey;
+    // Pre-bind supplier ID if already known (Issue #681). When only the lv
+    // is known we do NOT load here — loading under `lv` creates an orphan
+    // file and pollutes the merge. _onSupplierUserIdChanged will flush
+    // accumulated in-memory changes to the correct file once resolved.
     if (preferredBroadcasterId != null) {
       widget.supplierUserIdNotifier?.value = preferredBroadcasterId;
-      initialAttributeKey = preferredBroadcasterId;
-    } else {
-      initialAttributeKey = lv;
+      unawaited(_loadUserAttributes(preferredBroadcasterId));
     }
-    unawaited(_loadUserAttributes(initialAttributeKey));
 
     final bool started = widget.connectionSupervisor.startConnection();
     _debugLogLazy(
@@ -738,8 +733,16 @@ class _SelectScreenState extends State<SelectScreen>
       settings.pastCommentFetchCount.displayCapacity,
     );
     await widget.onPrepareConnection?.call(lv, settings);
+    // Same broadcaster — do NOT clear `_userAttrNotifier`. The in-memory
+    // colors/nicknames must survive the reconnect so they remain visible.
+    // Reset `_currentBroadcasterId` to force a reload pass once the supplier
+    // ID is re-observed, but use the already-known supplier ID (not `lv`)
+    // as the load key so we never create an orphan `lv*.json` file.
+    final String? knownSupplierId = widget.supplierUserIdNotifier?.value;
     _currentBroadcasterId = null;
-    unawaited(_loadUserAttributes(lv));
+    if (knownSupplierId != null) {
+      unawaited(_loadUserAttributes(knownSupplierId));
+    }
 
     final bool retried = widget.connectionSupervisor
         .retryConnectionFromTerminal();
@@ -752,10 +755,7 @@ class _SelectScreenState extends State<SelectScreen>
     if (previousLv != nextLv) {
       widget.timelineStore?.clear();
       _currentBroadcasterId = null;
-      _userAttrNotifier.value = (
-        colors: const <String, int>{},
-        nicknames: const <String, String>{},
-      );
+      _clearInMemoryUserAttributes();
     }
     _lastConnectedLv = nextLv;
     return Future<void>.value();

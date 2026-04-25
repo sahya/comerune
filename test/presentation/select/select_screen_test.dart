@@ -1709,6 +1709,101 @@ void main() {
       },
     );
 
+    testWidgets(
+      'switching to a different lv clears in-memory attrs so broadcaster A '
+      'data is not written to broadcaster B file',
+      (WidgetTester tester) async {
+        // Simulate broadcaster A connection + in-memory changes.
+        await pumpAndNavigate(tester);
+        supplierUserIdNotifier.value = 'broadcaster-A';
+        await tester.pumpAndSettle();
+
+        final CommentScreen screen = tester.widget<CommentScreen>(
+          find.byType(CommentScreen),
+        );
+        screen.callbacks.onNicknameChanged!('user-A', 'Aの古いコテハン');
+        screen.callbacks.onUserColorChanged!('user-A', 0xFFE53935);
+        await tester.pump();
+
+        // Navigate back to the select screen and connect to a different lv
+        // (broadcaster B). Without the fix, A's in-memory nickname would be
+        // merged into B's file via `_flushPendingAttributes`.
+        await tester
+            .widget<CommentScreen>(find.byType(CommentScreen))
+            .callbacks
+            .onStopAllConnections();
+        await tester.pumpAndSettle();
+        Navigator.of(tester.element(find.byType(CommentScreen))).pop();
+        await tester.pumpAndSettle();
+
+        // Guard: verify we are back on SelectScreen.
+        expect(find.byType(SelectScreen), findsOneWidget);
+        expect(supervisor.canStartConnection, isTrue);
+
+        supplierUserIdNotifier.value = null;
+        await tester.pump();
+
+        await tester.enterText(inputField(), 'lv999999999');
+        await tester.pump();
+        await tester.tap(connectButton());
+        await tester.pumpAndSettle();
+
+        supplierUserIdNotifier.value = 'broadcaster-B';
+        await tester.pumpAndSettle();
+
+        // Broadcaster B's file must not contain any of A's data.
+        final Map<String, String> bStored = await userAttributeStore
+            .loadNicknames('broadcaster-B');
+        expect(
+          bStored['user-A'],
+          isNull,
+          reason: 'broadcaster-A の in-memory データが broadcaster-B に漏洩してはいけない',
+        );
+        expect(bStored, isEmpty);
+
+        final Map<String, int> bColors = await userAttributeStore.loadColors(
+          'broadcaster-B',
+        );
+        expect(
+          bColors,
+          isEmpty,
+          reason: 'broadcaster-A の色データが broadcaster-B に漏洩してはいけない',
+        );
+      },
+    );
+
+    testWidgets(
+      'direct lv input does not create an orphan lv-keyed file while waiting '
+      'for supplier resolution',
+      (WidgetTester tester) async {
+        await pumpAndNavigate(tester);
+        // supplier has NOT resolved yet.
+
+        // Auto-nickname registration fires while supplier is unresolved
+        // (simulates @コテハン auto-registration from past comments during
+        // the resolution window on a slow emulator).
+        tester
+            .widget<CommentScreen>(find.byType(CommentScreen))
+            .callbacks
+            .onNicknameChanged!('user-1', '自動登録ニックネーム');
+        await tester.pump();
+
+        // No lv-keyed file/entry must be created.
+        final Map<String, String> lvStored = await userAttributeStore
+            .loadNicknames('lv345678901');
+        expect(lvStored, isEmpty, reason: 'lv キーでの永続化は行われてはならない');
+
+        // Once supplier resolves, the accumulated in-memory changes should
+        // be flushed to the real broadcaster's file.
+        supplierUserIdNotifier.value = 'broadcaster-1';
+        await tester.pumpAndSettle();
+
+        final Map<String, String> realStored = await userAttributeStore
+            .loadNicknames('broadcaster-1');
+        expect(realStored['user-1'], '自動登録ニックネーム');
+      },
+    );
+
     testWidgets('flushes pending user attribute writes on app pause', (
       WidgetTester tester,
     ) async {
