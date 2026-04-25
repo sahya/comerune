@@ -25,7 +25,9 @@ import kotlinx.coroutines.CloseableCoroutineDispatcher
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -53,6 +55,10 @@ class SpeechControllerImpl(
 ) : SpeechController {
 
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
+
+    // newSingleThreadContext is @DelicateCoroutinesApi + @ExperimentalCoroutinesApi.
+    // Lifecycle is managed by release() below.
+    @OptIn(DelicateCoroutinesApi::class, ExperimentalCoroutinesApi::class)
     private val synthDispatcher: CoroutineDispatcher = synthesisDispatcher
         ?: newSingleThreadContext("voicevox-synth")
     private val ownsSynthDispatcher = synthesisDispatcher == null
@@ -272,6 +278,7 @@ class SpeechControllerImpl(
         )
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class) // CloseableCoroutineDispatcher
     override fun release() {
         // Uses synchronized (not workerMutex) because release() is a non-suspend
         // function.  Setting released=true ensures processQueue()'s workerMutex.withLock

@@ -170,7 +170,11 @@ class AndroidTtsSpeaker(
                                 currentContinuation = null
                             }
 
+                            // Override required by UtteranceProgressListener stub even though
+                            // the single-arg form is deprecated since API 21 (two-arg form below).
+                            // Kotlin 2.3 surfaces OVERRIDE_DEPRECATION despite @Deprecated.
                             @Deprecated("Deprecated in API")
+                            @Suppress("OVERRIDE_DEPRECATION")
                             override fun onError(id: String?) {
                                 speaking = false
                                 state = PlayerState.ERROR
