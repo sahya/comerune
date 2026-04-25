@@ -1730,6 +1730,597 @@ void main() {
   });
 
   // ---------------------------------------------------------------------------
+  // Issue #695: Android-TTS runtime degradation must surface to the user.
+  //
+  // Native already emits `speech_failed` events with reasons
+  // `android_tts_not_ready` and `android_tts_failed: <inner>`, but the screen
+  // previously only subscribed to `engine_state_changed`, dropping the
+  // failure events on the floor. The user saw speech silently stop with no
+  // explanation.
+  //
+  // The fix counts consecutive Android-TTS failures and flips the AppBar
+  // icon to ERROR after 3 in a row. A single `speech_completed` resets the
+  // counter so a real recovery (OS settings → voice data restored,
+  // engine swapped back, etc.) is visible without app restart.
+  // ---------------------------------------------------------------------------
+  group('CommentScreen speech runtime failure detection (Issue #695)', () {
+    late FakeCommentSpeechPlatform fakePlatform;
+
+    setUp(() {
+      fakePlatform = FakeCommentSpeechPlatform();
+      fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+        enabled: true,
+        engineState: 'READY',
+        playerState: 'IDLE',
+        queueSize: 0,
+        currentSpeakerId: 0,
+      );
+    });
+
+    tearDown(() {
+      fakePlatform.dispose();
+    });
+
+    Future<void> pumpAndSettleSpeech(WidgetTester tester) async {
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    // Mirror the native payload contract from `SpeechEvents.kt:speechFailed`,
+    // which uses `'message'` (not `'reason'`) as the failure description key.
+    // Using the wrong key would let the production-broken-but-test-green
+    // regression slip through again (Issue #695 cycle-2 review).
+    SpeechEvent androidTtsFailure({String message = 'android_tts_not_ready'}) {
+      return SpeechEvent(
+        type: SpeechEventType.speechFailed,
+        payload: <String, dynamic>{'commentId': 'c-fail', 'message': message},
+      );
+    }
+
+    SpeechEvent speechCompleted() {
+      return SpeechEvent(
+        type: SpeechEventType.speechCompleted,
+        payload: <String, dynamic>{'commentId': 'c-ok'},
+      );
+    }
+
+    testWidgets(
+      'two consecutive android_tts_not_ready failures do NOT flip to ERROR',
+      (WidgetTester tester) async {
+        // False-positive guard: the threshold must be > 2 so a single CPU
+        // spike or transient platform-channel hiccup never alarms the user.
+        await pumpAndSettleSpeech(tester);
+
+        fakePlatform.emitEvent(androidTtsFailure());
+        await tester.pump();
+        fakePlatform.emitEvent(androidTtsFailure());
+        await tester.pump();
+
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsNothing,
+          reason:
+              'Below the failure threshold the AppBar must NOT show ERROR — '
+              'isolated transient failures must not alarm the user '
+              '(Issue #695).',
+        );
+      },
+    );
+
+    testWidgets(
+      'three consecutive android_tts_not_ready failures flip the AppBar to ERROR',
+      (WidgetTester tester) async {
+        await pumpAndSettleSpeech(tester);
+
+        for (int i = 0; i < 3; i++) {
+          fakePlatform.emitEvent(androidTtsFailure());
+          await tester.pump();
+        }
+        // Drain the microtask queue once more in case the failure that
+        // crossed the threshold is processed AFTER the last pump (the
+        // listener runs in a microtask, and the third emit may be queued
+        // behind earlier deliveries).
+        await tester.pump();
+
+        // Debug aid for failure investigations: print the actual icon under
+        // the AppBar status key. Helps the next reader see immediately why
+        // the assertion failed without re-deriving it from the priority
+        // logic in `_SpeechStatusIcon`.
+        final Iterable<Icon> icons = tester
+            .widgetList<Icon>(
+              find.descendant(
+                of: find.byKey(const Key('speech-status-icon')),
+                matching: find.byType(Icon),
+              ),
+            )
+            .toList();
+        expect(
+          icons.length,
+          1,
+          reason: 'Status icon should render exactly one Icon child.',
+        );
+        expect(
+          icons.first.icon,
+          Icons.error_outline,
+          reason:
+              'Three consecutive Android TTS failures must be treated as a '
+              'real degradation and surfaced via the ERROR icon '
+              '(Issue #695). Actual icon: ${icons.first.icon?.codePoint}',
+        );
+      },
+    );
+
+    testWidgets(
+      'android_tts_failed:* prefix variants count toward the threshold',
+      (WidgetTester tester) async {
+        // Native sends `android_tts_failed: <message>` with the inner
+        // exception text appended. The fix recognises any reason that
+        // starts with `android_tts_failed`, not just an exact match.
+        await pumpAndSettleSpeech(tester);
+
+        fakePlatform.emitEvent(
+          androidTtsFailure(message: 'android_tts_failed: TTS speak timed out'),
+        );
+        await tester.pump();
+        fakePlatform.emitEvent(
+          androidTtsFailure(message: 'android_tts_failed: returned error -1'),
+        );
+        await tester.pump();
+        fakePlatform.emitEvent(androidTtsFailure());
+        await tester.pump();
+        await tester.pump();
+
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'a speech_completed in between resets the counter (no false ERROR)',
+      (WidgetTester tester) async {
+        // Two failures, then a success, then two more failures — total of
+        // four failures but only two consecutive. Must NOT trigger ERROR.
+        await pumpAndSettleSpeech(tester);
+
+        fakePlatform.emitEvent(androidTtsFailure());
+        fakePlatform.emitEvent(androidTtsFailure());
+        fakePlatform.emitEvent(speechCompleted());
+        fakePlatform.emitEvent(androidTtsFailure());
+        fakePlatform.emitEvent(androidTtsFailure());
+        await tester.pump();
+
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsNothing,
+          reason:
+              'The counter must reset after a successful speak so '
+              'non-consecutive failures do not accumulate into a false '
+              'ERROR (Issue #695).',
+        );
+      },
+    );
+
+    testWidgets(
+      'engineStateChanged → READY recovery flips the icon back from ERROR',
+      (WidgetTester tester) async {
+        // Realistic recovery flow: 3 failures push us into ERROR, then
+        // native emits engineStateChanged READY (e.g. user reinstalled the
+        // Japanese voice data and the engine self-reinitialised). The icon
+        // must follow native back to volume_up so the user knows speech is
+        // alive again.
+        await pumpAndSettleSpeech(tester);
+
+        for (int i = 0; i < 3; i++) {
+          fakePlatform.emitEvent(androidTtsFailure());
+          await tester.pump();
+        }
+        await tester.pump();
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsOneWidget,
+        );
+
+        fakePlatform.emitEvent(
+          const SpeechEvent(
+            type: SpeechEventType.engineStateChanged,
+            payload: <String, dynamic>{'state': 'READY'},
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsNothing,
+          reason:
+              'A READY engineStateChanged event from native must clear the '
+              'ERROR icon — the runtime-failure detection must not pin the '
+              'AppBar to ERROR after recovery (Issue #695).',
+        );
+      },
+    );
+
+    testWidgets(
+      'speech_completed on VOICEVOX engine does NOT clear an Android-TTS ERROR (round-2)',
+      (WidgetTester tester) async {
+        // Round-2 review #2/#8: the speechCompleted recovery heuristic
+        // must be gated on engineType. A VOICEVOX completion event that
+        // races with engine state changes (or arrives during a swap)
+        // must not silently clear an Android-TTS ERROR.
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.voicevox,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Simulate a 'leftover' ERROR (e.g. set by engineStateChanged
+        // before swap). Inject by emitting an engineStateChanged='ERROR'.
+        fakePlatform.emitEvent(
+          const SpeechEvent(
+            type: SpeechEventType.engineStateChanged,
+            payload: <String, dynamic>{'state': 'ERROR'},
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsOneWidget,
+        );
+
+        // VOICEVOX-side speech_completed arrives — this MUST NOT silently
+        // flip the engineState back to READY, because the recovery
+        // heuristic is gated on engineType=androidTts.
+        fakePlatform.emitEvent(
+          const SpeechEvent(
+            type: SpeechEventType.speechCompleted,
+            payload: <String, dynamic>{'commentId': 'voicevox-ok'},
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsOneWidget,
+          reason:
+              'A VOICEVOX speech_completed must not clear ERROR — the '
+              'recovery heuristic is gated on engineType=androidTts '
+              '(Issue #695 round-2 review).',
+        );
+      },
+    );
+
+    testWidgets(
+      'speech_completed clears the ERROR state and the AppBar recovers (cycle-2-new, Android TTS)',
+      (WidgetTester tester) async {
+        // Cycle-2 (new sage cycle) #705 review: native does not emit a
+        // runtime engineStateChanged → READY for Android TTS, only at
+        // initialize. Without `speech_completed` flipping the engine state
+        // back to READY, the AppBar is a one-way trap: once threshold is
+        // tripped, the icon stays on `error_outline` until app restart.
+        //
+        // Round-2 update: this recovery is gated on engineType=androidTts
+        // so a VOICEVOX completion that races with a swap cannot silently
+        // clear an Android TTS ERROR (covered by a sibling test).
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        for (int i = 0; i < 3; i++) {
+          fakePlatform.emitEvent(androidTtsFailure());
+          await tester.pump();
+        }
+        await tester.pump();
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsOneWidget,
+          reason: 'Sanity: 3 consecutive failures should have tripped ERROR.',
+        );
+
+        fakePlatform.emitEvent(
+          const SpeechEvent(
+            type: SpeechEventType.speechCompleted,
+            payload: <String, dynamic>{'commentId': 'c-ok'},
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsNothing,
+          reason:
+              'A single successful speech_completed must lift the AppBar '
+              'out of ERROR — without this recovery path the runtime '
+              'failure detection becomes a one-way trap (Issue #695 '
+              'cycle-2-new review).',
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.volume_up),
+          ),
+          findsOneWidget,
+          reason:
+              'After recovery the icon must return to volume_up so the '
+              'user sees that speech is working again.',
+        );
+      },
+    );
+
+    testWidgets(
+      'engineStateChanged → READY also resets the failure counter (cycle-3)',
+      (WidgetTester tester) async {
+        // Cycle-3 review #8: without the counter reset, a single transient
+        // failure right after recovery would push the count from
+        // (threshold) to (threshold+1), tripping ERROR again immediately.
+        await pumpAndSettleSpeech(tester);
+
+        // Drive the counter to threshold so the screen is in ERROR.
+        for (int i = 0; i < 3; i++) {
+          fakePlatform.emitEvent(androidTtsFailure());
+          await tester.pump();
+        }
+        await tester.pump();
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsOneWidget,
+        );
+
+        // Native recovery — engineStateChanged READY arrives.
+        fakePlatform.emitEvent(
+          const SpeechEvent(
+            type: SpeechEventType.engineStateChanged,
+            payload: <String, dynamic>{'state': 'READY'},
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        // A single subsequent failure must NOT push us back into ERROR — the
+        // READY transition reset the counter so we are far below threshold.
+        fakePlatform.emitEvent(androidTtsFailure());
+        await tester.pump();
+        await tester.pump();
+
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsNothing,
+          reason:
+              'A single failure right after a READY recovery must not '
+              'immediately re-trigger ERROR — the counter must have been '
+              'reset on the READY transition (Issue #695 cycle-3 review).',
+        );
+      },
+    );
+
+    testWidgets(
+      'voicevox_synthesis_failed reasons do NOT increment the Android-TTS counter',
+      (WidgetTester tester) async {
+        // Defensive: only Android-TTS failure reasons must move the counter.
+        // A flood of VOICEVOX synthesis failures (different code path) must
+        // not accidentally flip the Android-TTS-targeted ERROR icon.
+        await pumpAndSettleSpeech(tester);
+
+        for (int i = 0; i < 10; i++) {
+          fakePlatform.emitEvent(
+            androidTtsFailure(message: 'voicevox_synthesis_failed: code 42'),
+          );
+        }
+        await tester.pump();
+
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsNothing,
+          reason:
+              'VOICEVOX failure reasons must not contribute to the Android '
+              'TTS failure counter — they have their own code path '
+              '(Issue #695).',
+        );
+      },
+    );
+
+    testWidgets(
+      'switching engine type resets the failure counter to avoid carry-over ERROR',
+      (WidgetTester tester) async {
+        // Two failures on Android TTS, then user switches to VOICEVOX, then
+        // back to Android TTS. The carry-over counter must NOT push the new
+        // session straight into ERROR on the very first failure
+        // (Issue #695 review #8).
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        fakePlatform.emitEvent(androidTtsFailure());
+        await tester.pump();
+        fakePlatform.emitEvent(androidTtsFailure());
+        await tester.pump();
+
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        // Switch to VOICEVOX (engine-type change resets the counter).
+        host.updateSpeechSettings(
+          const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.voicevox,
+          ),
+        );
+        await tester.pumpAndSettle();
+        // Switch back to Android TTS.
+        host.updateSpeechSettings(
+          const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.androidTts,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // A single fresh failure must NOT trip ERROR — the prior counter
+        // from the earlier session was reset on engine-type change.
+        fakePlatform.emitEvent(androidTtsFailure());
+        await tester.pump();
+        await tester.pump();
+
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsNothing,
+          reason:
+              'Engine-type change must reset the failure counter so a new '
+              'session does not inherit the previous engine\'s failures '
+              '(Issue #695 review).',
+        );
+      },
+    );
+
+    testWidgets(
+      'realistic native messages with prefixed exception text count toward the threshold (Issue #695 cycle-2)',
+      (WidgetTester tester) async {
+        // Cycle-2 contract guard: the native side now wraps every Android
+        // TTS speak failure with the `android_tts_failed:` prefix
+        // (see SpeechControllerImpl.processWithAndroidTts). Realistic
+        // values include arbitrary inner exception text. The detector must
+        // recognise these as Android TTS failures.
+        await pumpAndSettleSpeech(tester);
+
+        const List<String> realisticFailures = <String>[
+          'android_tts_failed: TTS speak() returned error: -1',
+          'android_tts_failed: TTS speak timed out',
+          'android_tts_failed: unknown',
+        ];
+        for (final String message in realisticFailures) {
+          fakePlatform.emitEvent(androidTtsFailure(message: message));
+          await tester.pump();
+        }
+        await tester.pump();
+
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsOneWidget,
+          reason:
+              'Realistic prefixed Android-TTS failure messages must trip '
+              'the threshold — without the cycle-2 fix the detector read '
+              'the wrong payload key and never observed any failures '
+              '(Issue #695 cycle-2 review).',
+        );
+      },
+    );
+
+    testWidgets(
+      'malformed payload does not crash the listener (defensive cast guard)',
+      (WidgetTester tester) async {
+        // Defensive regression: a non-String `reason` (or a missing key,
+        // or a non-Map payload field) must not throw inside the listener.
+        // If it did, the StreamSubscription would tear down and silently
+        // break all future event delivery (Issue #695 review #7).
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        fakePlatform.emitEvent(
+          const SpeechEvent(
+            type: SpeechEventType.speechFailed,
+            payload: <String, dynamic>{'commentId': 1, 'message': 42},
+          ),
+        );
+        await tester.pump();
+        // After the malformed event, normal events must still be processed
+        // — confirming the subscription is alive.
+        for (int i = 0; i < 3; i++) {
+          fakePlatform.emitEvent(androidTtsFailure());
+          await tester.pump();
+        }
+        await tester.pump();
+
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsOneWidget,
+          reason:
+              'After a malformed speech_failed payload the listener must '
+              'still react to subsequent valid failures (Issue #695 '
+              'review #7).',
+        );
+      },
+    );
+  });
+
+
+  // ---------------------------------------------------------------------------
   // Issue #696: VOICEVOX setup failure / cancellation must surface ERROR.
   // Without the fix, the AppBar stayed on the neutral hourglass icon even
   // after the user cancelled the setup dialog, making cancellation

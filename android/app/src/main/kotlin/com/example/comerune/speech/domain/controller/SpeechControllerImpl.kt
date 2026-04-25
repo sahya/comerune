@@ -336,11 +336,26 @@ class SpeechControllerImpl(
                     throw e
                 } catch (e: Exception) {
                     try {
+                        // Issue #695 round-2 review: when the engine in use is
+                        // Android TTS, anything that throws *before* reaching
+                        // `processWithAndroidTts` (e.g. a settings lookup, a
+                        // pre-emit hook, or `processItem` itself) must still
+                        // surface as an `android_tts_failed:` reason so the
+                        // Flutter-side detector recognises it. Without this
+                        // engine-aware wrapping the message would be a bare
+                        // exception text or "unexpected_error", which slips
+                        // past the threshold-based detector entirely.
+                        val isAndroidTts =
+                            settingsRepository.get().engineType ==
+                                EngineType.ANDROID_TTS
+                        val rawMessage = e.message ?: "unexpected_error"
+                        val message = if (isAndroidTts) {
+                            "android_tts_failed: $rawMessage"
+                        } else {
+                            rawMessage
+                        }
                         eventEmitter.emit(
-                            SpeechEvents.speechFailed(
-                                item.commentId,
-                                e.message ?: "unexpected_error"
-                            )
+                            SpeechEvents.speechFailed(item.commentId, message)
                         )
                     } catch (_: Exception) {
                         // Best-effort
@@ -403,32 +418,66 @@ class SpeechControllerImpl(
             return
         }
 
-        if (lastAndroidTtsSpeed != settings.androidTtsSpeed) {
-            speaker.setSpeechRate(settings.androidTtsSpeed)
-            lastAndroidTtsSpeed = settings.androidTtsSpeed
-        }
-        if (lastAndroidTtsPitch != settings.androidTtsPitch) {
-            speaker.setPitch(settings.androidTtsPitch)
-            lastAndroidTtsPitch = settings.androidTtsPitch
-        }
-        if (lastAndroidTtsVolume != settings.androidTtsVolume) {
-            speaker.setVolume(settings.androidTtsVolume)
-            lastAndroidTtsVolume = settings.androidTtsVolume
-        }
+        // Issue #695 cycle-3: wrap the whole speak path so that any throw from
+        // setSpeechRate/setPitch/setVolume (e.g. native TextToSpeech instance
+        // becomes invalidated mid-session) also lands as an `android_tts_failed:`
+        // event. Otherwise the outer processQueue catch in run() swallows it as
+        // an unprefixed `unexpected_error` and the Flutter-side detector never
+        // sees an Android-TTS failure.
+        try {
+            if (lastAndroidTtsSpeed != settings.androidTtsSpeed) {
+                speaker.setSpeechRate(settings.androidTtsSpeed)
+                lastAndroidTtsSpeed = settings.androidTtsSpeed
+            }
+            if (lastAndroidTtsPitch != settings.androidTtsPitch) {
+                speaker.setPitch(settings.androidTtsPitch)
+                lastAndroidTtsPitch = settings.androidTtsPitch
+            }
+            if (lastAndroidTtsVolume != settings.androidTtsVolume) {
+                speaker.setVolume(settings.androidTtsVolume)
+                lastAndroidTtsVolume = settings.androidTtsVolume
+            }
 
-        val result = try {
-            speaker.speak(item.text, item.commentId)
+            val result = try {
+                speaker.speak(item.text, item.commentId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+
+            if (result.isFailure) {
+                // Issue #695: always include the `android_tts_failed:` prefix so
+                // the Flutter side can recognise this as an Android-TTS failure
+                // regardless of the underlying exception text. Without the
+                // prefix, the inner exception message ("TTS speak timed out",
+                // "TTS speak() returned error: -1", etc.) bypasses the
+                // Flutter-side detector entirely and the AppBar never flips to
+                // ERROR even after sustained failures.
+                val inner = result.exceptionOrNull()?.message ?: "unknown"
+                val errorMessage = "android_tts_failed: $inner"
+                eventEmitter.emit(SpeechEvents.speechFailed(item.commentId, errorMessage))
+            } else {
+                eventEmitter.emit(SpeechEvents.speechCompleted(item.commentId))
+            }
+            // Issue #695 cycle-2-new-1 review: signal that we have already
+            // emitted a terminal event for this item so the outer catch
+            // (below) does not double-emit a `speechFailed` after a
+            // successful `speechCompleted`.
+            return
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Result.failure(e)
-        }
-
-        if (result.isFailure) {
-            val errorMessage = result.exceptionOrNull()?.message ?: "android_tts_failed"
-            eventEmitter.emit(SpeechEvents.speechFailed(item.commentId, errorMessage))
-        } else {
-            eventEmitter.emit(SpeechEvents.speechCompleted(item.commentId))
+            // Reached only for exceptions thrown by the configuration calls
+            // (setSpeechRate / setPitch / setVolume) before we entered the
+            // speak() Result-wrapped path, OR for failures of
+            // eventEmitter.emit itself. In either case no terminal event has
+            // been emitted yet for this item, so emitting `speechFailed` here
+            // does NOT race with a prior successful `speechCompleted`.
+            val inner = e.message ?: "unknown"
+            eventEmitter.emit(
+                SpeechEvents.speechFailed(item.commentId, "android_tts_failed: $inner")
+            )
         }
     }
 

@@ -602,6 +602,23 @@ class _CommentScreenState extends State<CommentScreen>
   bool _speechStarted = false;
   String _speechEngineState = '';
 
+  /// Number of consecutive Android-TTS `speech_failed` events received with
+  /// no `speech_completed` in between. When this reaches
+  /// [_androidTtsErrorThreshold] the screen surfaces ERROR via the
+  /// AppBar status icon (Issue #695). Single transient failures are not
+  /// surfaced to avoid false positives — only a sustained inability to
+  /// speak is treated as a runtime degradation.
+  int _consecutiveAndroidTtsFailures = 0;
+
+  /// Number of consecutive Android-TTS speak failures required before the
+  /// screen flips `_speechEngineState` to `'ERROR'`. Tuned high enough to
+  /// ride out a one-off CPU spike or transient platform-channel hiccup but
+  /// low enough that an ongoing failure (OS settings → voice data deleted
+  /// while connected, engine switched to a non-Japanese-capable engine,
+  /// native TextToSpeech instance invalidated) reaches the user within
+  /// ~3 dropped comments.
+  static const int _androidTtsErrorThreshold = 3;
+
   Timer? _wakelockReleaseTimer;
 
   /// Periodic timer that ensures new comments are submitted for speech
@@ -1388,6 +1405,10 @@ class _CommentScreenState extends State<CommentScreen>
         _speechBaselineTimestamp = null;
         _speechStarted = false;
         _speechEngineState = '';
+        // Issue #695: counter must also be reset on abort, not just on the
+        // _stopSpeech path. Otherwise a stale Android-TTS failure tally from
+        // a previous session can spill into the next attempt.
+        _consecutiveAndroidTtsFailures = 0;
         try {
           await platform.stop(clearQueue: true);
         } catch (e) {
@@ -1430,6 +1451,14 @@ class _CommentScreenState extends State<CommentScreen>
           '[CommentScreen] settingsChanged: enabled ${oldSettings.enabled}→'
           '${widget.speechConfig.speechSettings.enabled}, started=$_speechStarted',
     );
+    // Reset the failure counter on any engine-type change so failures from
+    // the old engine cannot accumulate into a false ERROR for the new engine
+    // (Issue #695 review #8). This is a no-op when the engine type is
+    // unchanged.
+    if (oldSettings.engineType !=
+        widget.speechConfig.speechSettings.engineType) {
+      _consecutiveAndroidTtsFailures = 0;
+    }
     if (!oldSettings.enabled && widget.speechConfig.speechSettings.enabled) {
       _debugLog('[CommentScreen] settingsChanged: → enabling speech');
       await _initializeAndStartSpeech();
@@ -1463,6 +1492,7 @@ class _CommentScreenState extends State<CommentScreen>
         _errorLog('[CommentScreen] stopSpeech: FAILED', error: e);
       }
       _speechBaselineTimestamp = null;
+      _consecutiveAndroidTtsFailures = 0;
       if (mounted) {
         setState(() {
           _speechStarted = false;
@@ -1472,18 +1502,112 @@ class _CommentScreenState extends State<CommentScreen>
     }
   }
 
+  // Native `speech_failed` reason codes for the Android TTS engine. Mirrored
+  // from `SpeechControllerImpl.kt` — when the native side adds new reasons
+  // for Android TTS, update both sides so the consecutive-failure counter
+  // keeps recognising them.
+  static const String _kReasonAndroidTtsNotReady = 'android_tts_not_ready';
+  static const String _kReasonAndroidTtsFailedPrefix = 'android_tts_failed';
+
   void _onSpeechEvent(SpeechEvent event) {
+    // The events stream is shared with native and any exception in this
+    // listener would tear down the StreamSubscription, silently breaking
+    // all future event delivery. Wrap the entire body so a malformed
+    // payload (e.g. wrong type for `state` / `reason`) cannot poison the
+    // subscription (Issue #695 review #7).
+    try {
+      _onSpeechEventInner(event);
+    } catch (e, stackTrace) {
+      _errorLog(
+        '[CommentScreen] _onSpeechEvent: handler threw',
+        error: e,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
+  void _onSpeechEventInner(SpeechEvent event) {
     _debugLogLazy(
       () =>
           '[CommentScreen] speechEvent: ${event.type}, payload=${event.payload}',
     );
     if (event.type == SpeechEventType.engineStateChanged) {
-      final String state = event.payload['state'] as String? ?? '';
+      // Defensive cast: native is expected to send a String here, but a
+      // malformed payload must not crash the listener (Issue #695 review #7).
+      final dynamic rawState = event.payload['state'];
+      final String state = rawState is String ? rawState : '';
+      // Issue #695 cycle-3 review: a READY transition is a strong signal
+      // that the engine is alive again — reset the failure counter so a
+      // single subsequent transient failure cannot push us right back to
+      // ERROR (counter was at threshold, +1 stays over threshold).
+      if (state == 'READY') {
+        _consecutiveAndroidTtsFailures = 0;
+      }
       if (mounted) {
         setState(() {
           _speechEngineState = state;
         });
       }
+      return;
+    }
+    if (event.type == SpeechEventType.speechFailed) {
+      // Only Android TTS runtime failures are tracked here; VOICEVOX uses
+      // distinct messages (synthesis_failed / playback_failed) that the
+      // existing VOICEVOX flow handles via its own engineStateChanged path.
+      //
+      // The native payload uses `message` as the key (see
+      // `SpeechEvents.kt:speechFailed`). The Android-TTS-specific values
+      // emitted by `SpeechControllerImpl.processWithAndroidTts` are
+      // `"android_tts_not_ready"` (engine-not-ready guard) and
+      // `"android_tts_failed: <inner>"` (any other speak() failure — the
+      // prefix is added explicitly on the native side so the inner
+      // exception message does not slip past this detector).
+      final dynamic rawMessage = event.payload['message'];
+      final String message = rawMessage is String ? rawMessage : '';
+      final bool isAndroidTtsFailure =
+          message == _kReasonAndroidTtsNotReady ||
+          message.startsWith(_kReasonAndroidTtsFailedPrefix);
+      if (isAndroidTtsFailure) {
+        _consecutiveAndroidTtsFailures++;
+        if (_consecutiveAndroidTtsFailures >= _androidTtsErrorThreshold &&
+            _speechEngineState != 'ERROR' &&
+            mounted) {
+          setState(() {
+            _speechEngineState = 'ERROR';
+          });
+        }
+      }
+      return;
+    }
+    if (event.type == SpeechEventType.speechCompleted) {
+      // Any successful speak proves the engine is alive again — reset the
+      // counter so a single transient failure later cannot push us straight
+      // back to ERROR.
+      if (_consecutiveAndroidTtsFailures != 0) {
+        _consecutiveAndroidTtsFailures = 0;
+      }
+      // Issue #695 cycle-2-new-1 review: native does NOT emit a runtime
+      // engineStateChanged → READY for Android TTS recovery (only at
+      // initialize). Without this branch the AppBar stays on ERROR forever
+      // after a single threshold-tripping failure, even when subsequent
+      // speak calls succeed. A successful `speech_completed` is the only
+      // recovery signal we have, so use it to flip the AppBar back too.
+      //
+      // Round-2 review #2/#8 — gate this heuristic recovery on engineType.
+      // A `speech_completed` event arriving from a VOICEVOX completion that
+      // races with an engine swap must NOT silently clear an ERROR caused
+      // by Android TTS. The counter is only ever incremented for
+      // Android-TTS-specific reasons (see speechFailed branch above), so
+      // the matching recovery must also be Android-TTS-specific.
+      final bool isAndroidTtsActive =
+          widget.speechConfig.speechSettings.engineType ==
+          SpeechEngineType.androidTts;
+      if (isAndroidTtsActive && _speechEngineState == 'ERROR' && mounted) {
+        setState(() {
+          _speechEngineState = 'READY';
+        });
+      }
+      return;
     }
   }
 
