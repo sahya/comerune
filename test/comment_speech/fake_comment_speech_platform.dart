@@ -19,6 +19,10 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
   /// If non-null, [initialize] will throw this.
   Object? initializeError;
 
+  /// If non-null, [initialize] will wait for this completer before returning.
+  /// Useful for testing races between async initialization and disposal.
+  Completer<void>? initializeCompleter;
+
   /// If non-null, [submitComment] will throw this for every call.
   Object? submitCommentError;
 
@@ -86,6 +90,9 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
   @override
   Future<void> initialize() async {
     initializeCalled = true;
+    if (initializeCompleter != null) {
+      await initializeCompleter!.future;
+    }
     if (initializeError != null) {
       throw initializeError!;
     }

@@ -41,60 +41,97 @@ class VoicevoxSetupHelper {
 
   StreamSubscription<SpeechEvent>? _eventSub;
 
+  /// Tracks whether [dispose] has been called. Guards every [ValueNotifier]
+  /// write so that late-arriving async completions (e.g. [_platform.initialize]
+  /// resolving after the owning widget is disposed) do not throw
+  /// "A ValueNotifier was used after being disposed."
+  bool _disposed = false;
+
+  /// Whether this helper has been disposed. Exposed for tests and defensive
+  /// callers; the helper itself also guards internally.
+  bool get isDisposed => _disposed;
+
   /// Start the setup process: subscribe to events, then call initialize.
   Future<void> start() async {
-    state.value = VoicevoxSetupState.downloading;
-    statusMessage.value = 'VOICEVOXモデルを準備しています...';
-    progress.value = 0.0;
-    errorMessage.value = null;
+    if (_disposed) return;
+    _setState(VoicevoxSetupState.downloading);
+    _setStatusMessage('VOICEVOXモデルを準備しています...');
+    _setProgress(0.0);
+    _setErrorMessage(null);
 
     _eventSub = _platform.events.listen(_onEvent);
 
     try {
       await _platform.initialize();
-      state.value = VoicevoxSetupState.ready;
-      statusMessage.value = '準備完了';
-      progress.value = 1.0;
+      _setState(VoicevoxSetupState.ready);
+      _setStatusMessage('準備完了');
+      _setProgress(1.0);
     } catch (e) {
-      state.value = VoicevoxSetupState.error;
-      errorMessage.value = e.toString();
-      statusMessage.value = 'セットアップに失敗しました';
+      _setState(VoicevoxSetupState.error);
+      _setErrorMessage(e.toString());
+      _setStatusMessage('セットアップに失敗しました');
     }
   }
 
   void _onEvent(SpeechEvent event) {
+    if (_disposed) return;
     switch (event.type) {
       case SpeechEventType.downloadStarted:
-        state.value = VoicevoxSetupState.downloading;
+        _setState(VoicevoxSetupState.downloading);
         final fileName = event.payload['fileName'] as String? ?? '';
-        statusMessage.value = '$fileNameをダウンロード中...';
-        progress.value = 0.0;
+        _setStatusMessage('$fileNameをダウンロード中...');
+        _setProgress(0.0);
       case SpeechEventType.downloadProgress:
         final downloaded = event.payload['bytesDownloaded'] as int? ?? 0;
         final total = event.payload['totalBytes'] as int? ?? 1;
         if (total > 0) {
-          progress.value = downloaded / total;
+          _setProgress(downloaded / total);
         }
         final mb = (downloaded / 1024 / 1024).toStringAsFixed(1);
-        statusMessage.value = 'ダウンロード中... ${mb}MB';
+        _setStatusMessage('ダウンロード中... ${mb}MB');
       case SpeechEventType.downloadCompleted:
-        state.value = VoicevoxSetupState.initializing;
-        statusMessage.value = 'エンジンを初期化中...';
-        progress.value = 1.0;
+        _setState(VoicevoxSetupState.initializing);
+        _setStatusMessage('エンジンを初期化中...');
+        _setProgress(1.0);
       case SpeechEventType.engineStateChanged:
         final engineState = event.payload['state'] as String? ?? '';
         if (engineState == 'READY') {
-          state.value = VoicevoxSetupState.ready;
-          statusMessage.value = '準備完了';
+          _setState(VoicevoxSetupState.ready);
+          _setStatusMessage('準備完了');
         } else if (engineState == 'ERROR') {
-          state.value = VoicevoxSetupState.error;
-          statusMessage.value = 'エンジン初期化に失敗しました';
+          _setState(VoicevoxSetupState.error);
+          _setStatusMessage('エンジン初期化に失敗しました');
         }
     }
   }
 
+  void _setState(VoicevoxSetupState value) {
+    if (_disposed) return;
+    state.value = value;
+  }
+
+  void _setStatusMessage(String value) {
+    if (_disposed) return;
+    statusMessage.value = value;
+  }
+
+  void _setProgress(double value) {
+    if (_disposed) return;
+    progress.value = value;
+  }
+
+  void _setErrorMessage(String? value) {
+    if (_disposed) return;
+    errorMessage.value = value;
+  }
+
   void dispose() {
+    if (_disposed) return;
+    // Flip the guard first so any in-flight async continuations bail out
+    // before touching the notifiers we are about to dispose below.
+    _disposed = true;
     _eventSub?.cancel();
+    _eventSub = null;
     state.dispose();
     statusMessage.dispose();
     progress.dispose();
