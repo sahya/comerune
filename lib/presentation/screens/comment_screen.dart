@@ -628,6 +628,73 @@ class _CommentScreenState extends State<CommentScreen>
   /// tracker.
   String? _lastAutoScrollObservedLastId;
 
+  /// ID of the tail message that the shared "did a new message arrive?"
+  /// gate last processed. Used by [_logNewComments],
+  /// [_requestUserNameResolutionForNewMessages] and
+  /// [_processNicknameComments] to slice the freshly arrived suffix out of
+  /// `widget.messages` (Issue #670).
+  ///
+  /// [_processNgProtectionNotifications] is called from the same gate but
+  /// keeps its own dedicated cursor [_lastProtectionInspectedMessageId]
+  /// because it has additional cursor-advance semantics on the OFF→ON
+  /// toggle path that the shared cursor cannot express.
+  ///
+  /// A diff between `oldWidget.messages` and `widget.messages` is unreliable
+  /// here because [TimelineStore.messages] returns an [UnmodifiableListView]
+  /// over the same mutable underlying list, so both values resolve to the
+  /// current state at the moment `didUpdateWidget` runs. This cursor is
+  /// genuinely state-local and therefore decoupled from that aliasing.
+  ///
+  /// Re-seeded on initial mount, on lv switch, and on transition to an
+  /// empty messages list (timeline clear) so historic backfill is not
+  /// retroactively replayed through the gated callbacks. Supervisor swap
+  /// is intentionally NOT a re-seed trigger — see the swap branch in
+  /// [didUpdateWidget] for the rationale.
+  String? _lastProcessedTailMessageId;
+
+  /// Set of message IDs that have already been emitted to the nickname
+  /// callback within the current screen lifetime. Defends against the
+  /// "ring-buffer rotation" path in [_sliceStartFromCursor] that falls back
+  /// to processing the full tail when the cursor message has been evicted
+  /// — without de-duplication, a `@nickname` comment that survives across
+  /// the rotation could fire `onNicknameChanged` more than once and
+  /// silently overwrite a newer registration set by a later message.
+  ///
+  /// **Trade-off (round-2 sage review)**: a message id is added to this
+  /// set BEFORE its dispatch to the nickname callback, so if the callback
+  /// itself throws, the message will be marked processed and not retried
+  /// on a subsequent rebuild. We accept this in exchange for guaranteeing
+  /// the no-overwrite invariant. The callback is a simple state-update in
+  /// the upstream owner and is not expected to throw in practice.
+  ///
+  /// NG-protection is intentionally NOT de-duplicated this way: that
+  /// pipeline maintains a cumulative badge count, where a one-shot
+  /// over-count during ring rotation is preferable to silently dropping a
+  /// genuine NG hit. See [_processNgProtectionNotifications].
+  ///
+  /// Bounded eviction policy: once the set reaches
+  /// [_kRecentlyProcessedNicknameIdsCap] entries we clear it wholesale.
+  /// This is simpler than a true LRU and acceptable because the cap is
+  /// large enough that legitimate re-firing is statistically unreachable
+  /// during normal operation; the worst case after a clear is identical
+  /// to the no-de-dup baseline (one possible duplicate registration), and
+  /// recovery is automatic on the next non-duplicate message.
+  final Set<String> _recentlyProcessedNicknameMessageIds = <String>{};
+
+  /// Cap for [_recentlyProcessedNicknameMessageIds]. 200 covers a comfortable
+  /// rotation depth on the chat path (typical viewer chat ring is ≪ 200
+  /// comments deep before rotation evicts the earliest one).
+  static const int _kRecentlyProcessedNicknameIdsCap = 200;
+
+  /// One-shot flag: when `true`, the NEXT non-empty observation in
+  /// [didUpdateWidget] silently seeds [_lastProcessedTailMessageId] with
+  /// the current tail instead of processing the slice through the gated
+  /// callbacks. Cleared after the seed. Set whenever the messages list
+  /// transitions from non-empty to empty (timeline clear via
+  /// `onReconnectSameLv` etc.) so that the subsequent backfill is not
+  /// retroactively replayed (Issue #670 round-1 review).
+  bool _seedNextTailObservationSilently = false;
+
   /// Timestamp recorded just before the speech engine starts. Messages with a
   /// timestamp before this value are skipped, ensuring that only comments
   /// arriving after speech initialization are read aloud.
@@ -767,6 +834,15 @@ class _CommentScreenState extends State<CommentScreen>
     if (widget.messages.isNotEmpty) {
       _lastAutoScrollObservedLastId = widget.messages.last.id;
     }
+
+    // Issue #670: seed the shared "did a new tail arrive?" cursor with the
+    // current tail so that history backfill already in `widget.messages`
+    // does not retroactively replay nickname/NG-protection/userName-resolve
+    // logic on first frame. Subsequent `didUpdateWidget` calls only fire
+    // when a genuinely newer message lands at the tail.
+    if (widget.messages.isNotEmpty) {
+      _lastProcessedTailMessageId = widget.messages.last.id;
+    }
     if (widget.contentFilter.presetNgWords.isEmpty) {
       unawaited(_loadPresetNgWordsFromAsset());
     }
@@ -799,6 +875,13 @@ class _CommentScreenState extends State<CommentScreen>
       oldWidget.connectionSupervisor.removeListener(_handleConnectionChanged);
       widget.connectionSupervisor.addListener(_handleConnectionChanged);
       _lastStatus = widget.connectionSupervisor.status;
+      // Issue #670 round-1 review (変化) note: we intentionally do NOT
+      // re-seed the shared tail cursor on a supervisor swap. In production
+      // the supervisor is created once at app start and never replaced,
+      // so this branch is reached only by tests (some of which build a
+      // fresh supervisor on every widget rebuild). The genuine "different
+      // data source" signal is the lv change branch below; lv change
+      // handles the cursor / de-dup reset there.
     }
 
     if (!_listEqualsShallow(
@@ -862,6 +945,16 @@ class _CommentScreenState extends State<CommentScreen>
       _lastAutoScrollObservedLastId = widget.messages.isNotEmpty
           ? widget.messages.last.id
           : null;
+      // Issue #670: re-seed the shared tail cursor on lv switch so that the
+      // backfilled history of the new program does not retroactively trigger
+      // nickname / userName / log gates. Also clear the nickname de-dup set
+      // so message ids from the prior program do not block legitimate
+      // re-registration on the new program (id collisions are theoretical
+      // but cheap to defend against).
+      _lastProcessedTailMessageId = widget.messages.isNotEmpty
+          ? widget.messages.last.id
+          : null;
+      _recentlyProcessedNicknameMessageIds.clear();
       _lastProtectionNotificationAt = null;
       unawaited(
         widget.callbacks.onDifferentLvConnected(
@@ -907,26 +1000,59 @@ class _CommentScreenState extends State<CommentScreen>
       );
     }
 
-    // Speech: detect new messages independently of _hasNewMessages because
-    // the message list may be mutable (oldWidget and widget share the same
-    // data). Track progress via _lastSpeechMessageId instead.
+    // Speech: detect new messages with a state-local cursor because the
+    // message list may be mutable (oldWidget and widget share the same data).
+    // Track progress via _lastSpeechMessageId instead.
     if (_speechStarted && widget.speechConfig.speechSettings.enabled) {
       _submitNewCommentsForSpeech(widget.messages);
     }
 
-    final bool hasNewMessages = _hasNewMessages(
-      oldWidget.messages,
-      widget.messages,
-    );
-    if (hasNewMessages) {
-      // Log new comment texts for debugging.
-      _logNewComments(oldWidget.messages, widget.messages);
-      _requestUserNameResolutionForNewMessages(
-        oldWidget.messages,
-        widget.messages,
-      );
-      _processNicknameComments(oldWidget.messages, widget.messages);
-      _processNgProtectionNotifications(widget.messages);
+    // Issue #670: gate nickname / userName-resolve / log / NG-protection on a
+    // single state-local tail cursor instead of an oldWidget vs widget diff.
+    // In production [TimelineStore.messages] returns an UnmodifiableListView
+    // over the same mutable underlying list, so `oldWidget.messages` and
+    // `widget.messages` always share identical contents at this point — the
+    // diff-based gate would silently never fire (see PR #664 / Issue #670).
+    //
+    // Issue #670 round-1 review (変化): detect a transition to an empty
+    // messages list (e.g. timeline clear on `onReconnectSameLv`) and arm a
+    // one-shot silent seed for the next non-empty observation so backfill
+    // is absorbed without retroactively firing the gated callbacks.
+    //
+    // Detection cannot rely on `oldWidget.messages.isNotEmpty` because in
+    // production [TimelineStore.messages] is an [UnmodifiableListView] over
+    // a single mutable list, so once the underlying backing is cleared,
+    // BOTH `oldWidget.messages` and `widget.messages` resolve to the same
+    // (empty) view. The state-local cursor is the only durable record of
+    // "we previously saw a non-empty tail", so we test against it instead.
+    if (widget.messages.isEmpty && _lastProcessedTailMessageId != null) {
+      _lastProcessedTailMessageId = null;
+      _seedNextTailObservationSilently = true;
+      _recentlyProcessedNicknameMessageIds.clear();
+    }
+    final String? currentTailMessageId = widget.messages.isNotEmpty
+        ? widget.messages.last.id
+        : null;
+    final bool hasNewTailMessage =
+        currentTailMessageId != null &&
+        currentTailMessageId != _lastProcessedTailMessageId;
+    if (hasNewTailMessage) {
+      if (_seedNextTailObservationSilently) {
+        // First observation after an empty-transition: adopt the current
+        // tail without retroactively replaying backfill through the gated
+        // callbacks. Subsequent rebuilds compare against this seed and
+        // only fire on genuinely newer arrivals.
+        _seedNextTailObservationSilently = false;
+        _lastProcessedTailMessageId = currentTailMessageId;
+      } else {
+        final String? cursor = _lastProcessedTailMessageId;
+        // Log new comment texts for debugging.
+        _logNewComments(cursor, widget.messages);
+        _requestUserNameResolutionForNewMessages(cursor, widget.messages);
+        _processNicknameComments(cursor, widget.messages);
+        _processNgProtectionNotifications(widget.messages);
+        _lastProcessedTailMessageId = currentTailMessageId;
+      }
     }
 
     // Auto-scroll detection uses an independent, state-tracked cursor so
@@ -1011,7 +1137,7 @@ class _CommentScreenState extends State<CommentScreen>
   }
 
   void _requestUserNameResolutionForNewMessages(
-    List<AppMessage> oldMessages,
+    String? cursorMessageId,
     List<AppMessage> newMessages,
   ) {
     final UserNameResolution? resolution = widget.userNameResolution;
@@ -1019,20 +1145,7 @@ class _CommentScreenState extends State<CommentScreen>
       return;
     }
 
-    // Find where new messages diverge from old by locating the old tail ID
-    // in the new list. This handles ring-buffer rotation (same length,
-    // head removed + tail appended) correctly.
-    int start = 0;
-    if (oldMessages.isNotEmpty && newMessages.isNotEmpty) {
-      final String oldTailId = oldMessages.last.id;
-      for (int i = newMessages.length - 1; i >= 0; i--) {
-        if (newMessages[i].id == oldTailId) {
-          start = i + 1;
-          break;
-        }
-      }
-    }
-
+    final int start = _sliceStartFromCursor(cursorMessageId, newMessages);
     for (int i = start; i < newMessages.length; i++) {
       final String? userId = newMessages[i].userId;
       if (userId != null && userId.isNotEmpty) {
@@ -1041,20 +1154,8 @@ class _CommentScreenState extends State<CommentScreen>
     }
   }
 
-  void _logNewComments(
-    List<AppMessage> oldMessages,
-    List<AppMessage> newMessages,
-  ) {
-    int start = 0;
-    if (oldMessages.isNotEmpty && newMessages.isNotEmpty) {
-      final String oldTailId = oldMessages.last.id;
-      for (int i = newMessages.length - 1; i >= 0; i--) {
-        if (newMessages[i].id == oldTailId) {
-          start = i + 1;
-          break;
-        }
-      }
-    }
+  void _logNewComments(String? cursorMessageId, List<AppMessage> newMessages) {
+    final int start = _sliceStartFromCursor(cursorMessageId, newMessages);
     for (int i = start; i < newMessages.length; i++) {
       final AppMessage m = newMessages[i];
       if (m.type == AppMessageType.chat) {
@@ -1064,6 +1165,29 @@ class _CommentScreenState extends State<CommentScreen>
         );
       }
     }
+  }
+
+  /// Locates the slice index `start` such that `messages[start..]` are the
+  /// items that arrived after [cursorMessageId].
+  ///
+  /// - `cursorMessageId == null` → process the whole list (first observation).
+  /// - cursor found in [messages] → start one past it.
+  /// - cursor missing (rotated out of the ring buffer) → fall back to `0` so
+  ///   that hits during rotation are not silently swallowed. This trades a
+  ///   possible one-shot over-process for never losing a message.
+  int _sliceStartFromCursor(
+    String? cursorMessageId,
+    List<AppMessage> messages,
+  ) {
+    if (cursorMessageId == null || messages.isEmpty) {
+      return 0;
+    }
+    for (int i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].id == cursorMessageId) {
+        return i + 1;
+      }
+    }
+    return 0;
   }
 
   // ---------------------------------------------------------------------------
@@ -1573,7 +1697,7 @@ class _CommentScreenState extends State<CommentScreen>
   }
 
   void _processNicknameComments(
-    List<AppMessage> oldMessages,
+    String? cursorMessageId,
     List<AppMessage> newMessages,
   ) {
     if (!widget.autoNicknameRegistration ||
@@ -1581,17 +1705,7 @@ class _CommentScreenState extends State<CommentScreen>
       return;
     }
 
-    int start = 0;
-    if (oldMessages.isNotEmpty && newMessages.isNotEmpty) {
-      final String oldTailId = oldMessages.last.id;
-      for (int i = newMessages.length - 1; i >= 0; i--) {
-        if (newMessages[i].id == oldTailId) {
-          start = i + 1;
-          break;
-        }
-      }
-    }
-
+    final int start = _sliceStartFromCursor(cursorMessageId, newMessages);
     for (int i = start; i < newMessages.length; i++) {
       final AppMessage message = newMessages[i];
       if (message.type != AppMessageType.chat) {
@@ -1601,10 +1715,23 @@ class _CommentScreenState extends State<CommentScreen>
       if (userId == null || userId.isEmpty) {
         continue;
       }
+      // Issue #670 round-1 review (感性 / 価値): the
+      // `_sliceStartFromCursor` fallback to "process the whole tail" on
+      // ring-buffer rotation is acceptable for log / userName-resolve /
+      // NG-protection (where re-emission is harmless or already accounted
+      // for) but NOT for nickname registration: replaying an older `@A`
+      // comment after the user has issued a newer `@B` would silently
+      // overwrite the more recent registration. De-duplicate by message
+      // id so each `@`-comment registers exactly once for the lifetime
+      // of this screen.
+      if (_recentlyProcessedNicknameMessageIds.contains(message.id)) {
+        continue;
+      }
       final String content = message.content;
       if (!content.startsWith('@')) {
         continue;
       }
+      _recordNicknameMessageProcessed(message.id);
       final String nickname = content.substring(1).trim();
       if (nickname.isEmpty) {
         // `@` のみ → コテハン解除
@@ -1613,6 +1740,14 @@ class _CommentScreenState extends State<CommentScreen>
         widget.callbacks.onNicknameChanged!.call(userId, nickname);
       }
     }
+  }
+
+  void _recordNicknameMessageProcessed(String messageId) {
+    if (_recentlyProcessedNicknameMessageIds.length >=
+        _kRecentlyProcessedNicknameIdsCap) {
+      _recentlyProcessedNicknameMessageIds.clear();
+    }
+    _recentlyProcessedNicknameMessageIds.add(messageId);
   }
 
   /// Whether the comment-post FAB should be shown as a bottom-right overlay
@@ -3354,38 +3489,6 @@ class _CommentScreenState extends State<CommentScreen>
     final String normalized = normalizeForSearch(message.content);
     _normalizedContentCache[message.id] = normalized;
     return normalized;
-  }
-
-  /// **Known limitation**: in production callers (via `TimelineStore`), the
-  /// `previous` and `current` arguments are typically two distinct
-  /// `UnmodifiableListView` instances that both wrap the same mutable
-  /// `_messages` list. Because views are live (not snapshots), every
-  /// length / last.id read resolves to the **current** underlying state,
-  /// so `previous.length == current.length` and `previous.last.id ==
-  /// current.last.id` always hold at the moment this runs — meaning this
-  /// method silently returns `false` for the production data shape.
-  ///
-  /// Auto-scroll and speech both worked around this by tracking a
-  /// state-local cursor (see `_lastAutoScrollObservedLastId` and
-  /// `_lastSpeechMessageId`). Any **new** code that needs "did a new
-  /// latest message arrive?" should follow the same pattern — do not
-  /// rely on this method for fresh detection, because it will appear to
-  /// work in unit tests (which pass concrete `List<AppMessage>` copies
-  /// whose length genuinely differs) and then fail in production.
-  bool _hasNewMessages(List<AppMessage> previous, List<AppMessage> current) {
-    if (identical(previous, current)) {
-      return false;
-    }
-    if (current.isEmpty) {
-      return false;
-    }
-    if (previous.isEmpty) {
-      return true;
-    }
-    if (previous.length != current.length) {
-      return true;
-    }
-    return previous.last.id != current.last.id;
   }
 
   bool _isNearBottom() {

@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:io';
 
 import 'package:clock/clock.dart';
@@ -3773,6 +3774,258 @@ void main() {
 
         expect(hostKey.currentState!.lastNicknameUserId, isNull);
         expect(hostKey.currentState!.lastNickname, isNull);
+      },
+    );
+
+    // Issue #670: regression — when widget.messages is an UnmodifiableListView
+    // over the same mutable list (the production shape used by TimelineStore),
+    // the diff-based gate `oldWidget.messages != widget.messages` always
+    // evaluated to "no change" and never invoked the nickname / NG-protection /
+    // userName-resolve / debug-log callbacks. The fix introduces a
+    // state-local tail cursor (`_lastProcessedTailMessageId`) so these
+    // callbacks fire correctly even under the live-view aliasing.
+    testWidgets(
+      '@name comment fires nickname callback even with shared mutable list '
+      '(Issue #670 regression)',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_SharedListNicknameHostState> hostKey =
+            GlobalKey<_SharedListNicknameHostState>();
+
+        await tester.pumpWidget(
+          _SharedListNicknameHost(key: hostKey, supervisor: supervisor),
+        );
+
+        hostKey.currentState!.addMessage(
+          AppMessage(
+            id: 'msg-shared-1',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'user-shared-1',
+            content: '@はなこ',
+            type: AppMessageType.chat,
+          ),
+        );
+        await tester.pump();
+
+        expect(hostKey.currentState!.lastNicknameUserId, 'user-shared-1');
+        expect(hostKey.currentState!.lastNickname, 'はなこ');
+      },
+    );
+
+    // Issue #670: regression — the cursor must be seeded with the tail of
+    // the initial messages list so that historic backfill (e.g. past-comment
+    // fetch already populated in TimelineStore before navigation) is NOT
+    // retroactively replayed through the nickname pipeline on first mount.
+    testWidgets('historic backfill present at mount does not trigger nickname '
+        'callback (Issue #670 regression)', (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final GlobalKey<_SharedListNicknameHostState> hostKey =
+          GlobalKey<_SharedListNicknameHostState>();
+
+      // Seed backing list BEFORE pumpWidget so the initial CommentScreen
+      // observes a non-empty messages list at initState — exactly the
+      // backfill path TimelineStore exhibits in production after
+      // past-comment fetch.
+      await tester.pumpWidget(
+        _SharedListNicknameHost(
+          key: hostKey,
+          supervisor: supervisor,
+          initialMessages: <AppMessage>[
+            AppMessage(
+              id: 'msg-historic',
+              timestamp: DateTime(2026, 3, 22, 11, 0, 0),
+              userId: 'user-historic',
+              content: '@昔の人',
+              type: AppMessageType.chat,
+            ),
+          ],
+        ),
+      );
+      await tester.pump();
+
+      // Backfill must NOT fire the nickname callback retroactively.
+      expect(hostKey.currentState!.lastNicknameUserId, isNull);
+      expect(hostKey.currentState!.nicknameCallCount, 0);
+
+      // A genuinely new comment after mount must still fire the callback.
+      hostKey.currentState!.addMessage(
+        AppMessage(
+          id: 'msg-fresh',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-fresh',
+          content: '@新しい人',
+          type: AppMessageType.chat,
+        ),
+      );
+      await tester.pump();
+      expect(hostKey.currentState!.lastNicknameUserId, 'user-fresh');
+      expect(hostKey.currentState!.nicknameCallCount, 1);
+    });
+
+    // Issue #670 round-1 review (品質): ring-buffer rotation could evict
+    // the cursor message itself, in which case `_sliceStartFromCursor`
+    // falls back to processing the full tail. The nickname pipeline
+    // de-duplicates by message id so a `@`-comment that survives the
+    // rotation does not silently re-fire the callback (which would
+    // otherwise overwrite a more recent registration with a stale value).
+    testWidgets('ring-rotation eviction does not double-fire nickname callback '
+        '(Issue #670 regression)', (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final GlobalKey<_SharedListNicknameHostState> hostKey =
+          GlobalKey<_SharedListNicknameHostState>();
+
+      await tester.pumpWidget(
+        _SharedListNicknameHost(key: hostKey, supervisor: supervisor),
+      );
+
+      // Add a `@`-comment — fires once.
+      hostKey.currentState!.addMessage(
+        AppMessage(
+          id: 'msg-nick',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'user-nick',
+          content: '@A',
+          type: AppMessageType.chat,
+        ),
+      );
+      await tester.pump();
+      expect(hostKey.currentState!.nicknameCallCount, 1);
+      expect(hostKey.currentState!.lastNickname, 'A');
+
+      // Round-2 review (品質): construct the genuine ring-rotation case
+      // where the cursor anchor itself is evicted while the original
+      // `@`-comment SURVIVES in the tail. _sliceStartFromCursor should
+      // then fail to find the anchor, fall back to start=0, and iterate
+      // over the surviving `@`-comment — which the de-dup set must
+      // suppress.
+      //
+      //   1. Add 'msg-after' (regular text). Cursor advances to msg-after.
+      //   2. Evict 'msg-nick' from the head. Tail is now [msg-after].
+      //   3. Add a non-@ message 'msg-final' so a new arrival is observed
+      //      AND in the same step evict the anchor 'msg-after' so the
+      //      cursor anchor is missing while another @ still survives.
+      //
+      // To simulate "anchor missing while @-comment survives", we
+      // re-add the previously evicted '@A' message id at the tail, so the
+      // visible tail contains both 'msg-after' (anchor still present) +
+      // 'msg-nick' (the surviving @-comment) — but with the anchor
+      // evicted.
+      hostKey.currentState!.addMessage(
+        AppMessage(
+          id: 'msg-after',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 1),
+          userId: 'user-other',
+          content: 'hello',
+          type: AppMessageType.chat,
+        ),
+      );
+      await tester.pump();
+      // Evict 'msg-nick' so the surviving tail is [msg-after].
+      hostKey.currentState!.evictHead();
+      await tester.pump();
+      // Re-introduce a new message that contains the same '@A' content
+      // but with a different id, simulating the same author re-issuing
+      // the nickname comment AFTER rotation. This is a different message,
+      // so it MUST fire (de-dup is by message id, not by user/content).
+      hostKey.currentState!.addMessage(
+        AppMessage(
+          id: 'msg-nick-2',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 2),
+          userId: 'user-nick',
+          content: '@B',
+          type: AppMessageType.chat,
+        ),
+      );
+      await tester.pump();
+      // Now evict the cursor anchor 'msg-after' so a fresh arrival forces
+      // the cursor-missing fallback path.
+      hostKey.currentState!.evictHead();
+      await tester.pump();
+      // Force a fresh arrival. The de-dup set already contains 'msg-nick'
+      // and 'msg-nick-2' (both fired earlier when they were observed as
+      // genuinely new). _sliceStartFromCursor falls back to 0 because
+      // the anchor 'msg-after' has been evicted; the loop revisits the
+      // surviving `@`-message 'msg-nick-2' but the de-dup set blocks
+      // a duplicate `onNicknameChanged` for it. The fresh, non-@
+      // message itself does not fire either (different content).
+      hostKey.currentState!.addMessage(
+        AppMessage(
+          id: 'msg-tail-fresh',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 3),
+          userId: 'user-final',
+          content: 'plain text',
+          type: AppMessageType.chat,
+        ),
+      );
+      await tester.pump();
+
+      // Total nickname fires must be exactly 2: 'msg-nick' (@A) and
+      // 'msg-nick-2' (@B) — each fired exactly once, even after
+      // ring-rotation forced the fallback path.
+      expect(hostKey.currentState!.nicknameCallCount, 2);
+      expect(hostKey.currentState!.lastNickname, 'B');
+    });
+
+    // Issue #670 round-1 review (変化): a transition from non-empty to
+    // empty messages (timeline clear) followed by re-population must NOT
+    // retroactively replay the new tail through the nickname pipeline.
+    // The cursor is null'd on empty and re-seeded on first non-empty
+    // observation without firing callbacks.
+    testWidgets(
+      'timeline clear + re-population does not replay backfill through '
+      'nickname callback (Issue #670 regression)',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_SharedListNicknameHostState> hostKey =
+            GlobalKey<_SharedListNicknameHostState>();
+
+        await tester.pumpWidget(
+          _SharedListNicknameHost(key: hostKey, supervisor: supervisor),
+        );
+        // Seed an arrival.
+        hostKey.currentState!.addMessage(
+          AppMessage(
+            id: 'msg-1',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'user-1',
+            content: 'hello',
+            type: AppMessageType.chat,
+          ),
+        );
+        await tester.pump();
+        expect(hostKey.currentState!.nicknameCallCount, 0);
+
+        // Clear the timeline (mirrors `onReconnectSameLv` clearing
+        // TimelineStore).
+        hostKey.currentState!.evictHead();
+        await tester.pump();
+        // Re-populate with a `@`-comment as part of the new backfill.
+        hostKey.currentState!.addMessage(
+          AppMessage(
+            id: 'msg-backfill-nick',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 1),
+            userId: 'user-bf',
+            content: '@だれか',
+            type: AppMessageType.chat,
+          ),
+        );
+        await tester.pump();
+        // Backfill should be absorbed silently (cursor seed only).
+        expect(hostKey.currentState!.nicknameCallCount, 0);
+
+        // A subsequent fresh `@`-comment after the seed must fire normally.
+        hostKey.currentState!.addMessage(
+          AppMessage(
+            id: 'msg-real',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 2),
+            userId: 'user-real',
+            content: '@リアル',
+            type: AppMessageType.chat,
+          ),
+        );
+        await tester.pump();
+        expect(hostKey.currentState!.nicknameCallCount, 1);
+        expect(hostKey.currentState!.lastNickname, 'リアル');
       },
     );
 
@@ -7625,6 +7878,83 @@ class _NgProtectionHostState extends State<_NgProtectionHost> {
           ngProtectionNotificationEnabled: widget.notificationEnabled,
         ),
         clock: widget.clock,
+      ),
+    );
+  }
+}
+
+/// Test host that mirrors the production data shape (Issue #670):
+/// `widget.messages` is an [UnmodifiableListView] over a single mutable
+/// backing list, exactly like [TimelineStore.messages]. Adding a message
+/// mutates the backing in place and rebuilds, so `oldWidget.messages` and
+/// `widget.messages` end up resolving to the same content at the moment
+/// `didUpdateWidget` runs — the data shape that previously broke
+/// nickname / NG-protection / log / userName-resolve gating.
+class _SharedListNicknameHost extends StatefulWidget {
+  const _SharedListNicknameHost({
+    super.key,
+    required this.supervisor,
+    this.initialMessages = const <AppMessage>[],
+  });
+
+  final ConnectionSupervisor supervisor;
+  final List<AppMessage> initialMessages;
+
+  @override
+  State<_SharedListNicknameHost> createState() =>
+      _SharedListNicknameHostState();
+}
+
+class _SharedListNicknameHostState extends State<_SharedListNicknameHost> {
+  late final List<AppMessage> _backing = <AppMessage>[
+    ...widget.initialMessages,
+  ];
+  late final UnmodifiableListView<AppMessage> _view =
+      UnmodifiableListView<AppMessage>(_backing);
+  String? lastNicknameUserId;
+  String? lastNickname;
+  String? lastRemovedUserId;
+  int nicknameCallCount = 0;
+  int removedCallCount = 0;
+
+  void addMessage(AppMessage message) {
+    setState(() {
+      _backing.add(message);
+    });
+  }
+
+  void evictHead() {
+    setState(() {
+      if (_backing.isNotEmpty) {
+        _backing.removeAt(0);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: CommentScreen(
+        programInfo: const CommentProgramInfo(lv: 'lv123'),
+        connectionSupervisor: widget.supervisor,
+        messages: _view,
+        callbacks: CommentCallbacks(
+          onStopAllConnections: () async {},
+          onReconnectSameLv: () async {},
+          onDifferentLvConnected: (_, _) async {},
+          onNicknameChanged: (String userId, String nickname) {
+            lastNicknameUserId = userId;
+            lastNickname = nickname;
+            nicknameCallCount += 1;
+          },
+          onNicknameRemoved: (String userId) {
+            lastRemovedUserId = userId;
+            lastNickname = null;
+            removedCallCount += 1;
+          },
+        ),
+        autoNicknameRegistration: true,
+        themeMode: AppThemeMode.light,
       ),
     );
   }
