@@ -13,6 +13,7 @@ import com.example.comerune.speech.domain.model.TtsEngineState
 import com.example.comerune.speech.domain.model.WavSynthesisResult
 import com.example.comerune.speech.domain.normalizer.CommentNormalizer
 import com.example.comerune.speech.domain.player.WavPlayer
+import com.example.comerune.speech.domain.player.TtsSpeaker
 import com.example.comerune.speech.domain.queue.SpeechQueueManager
 import com.example.comerune.speech.domain.settings.SettingsRepository
 import kotlinx.coroutines.delay
@@ -195,3 +196,54 @@ fun rawComment(id: String, text: String) = RawComment(
     userId = null,
     postedAtEpochMs = System.currentTimeMillis()
 )
+
+/**
+ * Fake [TtsSpeaker] used by the Android-TTS contract tests to drive each
+ * failure path in [SpeechControllerImpl.processWithAndroidTts]:
+ *   * [readyOverride] — when set to false, simulates the not-ready branch
+ *     (matches `speaker.isReady() == false` in production).
+ *   * [throwOnSetSpeechRate] / [throwOnSetPitch] / [throwOnSetVolume] —
+ *     when true, the corresponding setter throws, which forces the outer
+ *     catch path inside `processWithAndroidTts` (`android_tts_failed:` prefix).
+ *   * [failOnSpeak] — when true, [speak] returns [Result.failure] which
+ *     forces the inner Result-wrapped failure path
+ *     (also `android_tts_failed:` prefix).
+ *   * [throwOnSpeak] — when true, [speak] throws which the inner try-catch
+ *     converts to [Result.failure] (same prefix path as [failOnSpeak]).
+ */
+open class FakeTtsSpeaker : TtsSpeaker {
+    var readyOverride: Boolean = true
+    var throwOnSetSpeechRate: Boolean = false
+    var throwOnSetPitch: Boolean = false
+    var throwOnSetVolume: Boolean = false
+    var failOnSpeak: Boolean = false
+    var throwOnSpeak: Boolean = false
+    val speakCalls = AtomicInteger(0)
+
+    override suspend fun initialize(): Result<Unit> = Result.success(Unit)
+
+    override suspend fun speak(text: String, utteranceId: String): Result<Unit> {
+        speakCalls.incrementAndGet()
+        if (throwOnSpeak) throw RuntimeException("simulated speak throw")
+        if (failOnSpeak) return Result.failure(IOException("simulated speak failure"))
+        return Result.success(Unit)
+    }
+
+    override suspend fun stop(): Result<Unit> = Result.success(Unit)
+
+    override fun isReady(): Boolean = readyOverride
+    override fun isSpeaking(): Boolean = false
+    override fun currentState(): PlayerState = PlayerState.IDLE
+
+    override fun setSpeechRate(rate: Float) {
+        if (throwOnSetSpeechRate) throw RuntimeException("simulated setSpeechRate throw")
+    }
+    override fun setPitch(pitch: Float) {
+        if (throwOnSetPitch) throw RuntimeException("simulated setPitch throw")
+    }
+    override fun setVolume(volume: Float) {
+        if (throwOnSetVolume) throw RuntimeException("simulated setVolume throw")
+    }
+
+    override fun release() {}
+}
