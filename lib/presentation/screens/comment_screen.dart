@@ -1608,12 +1608,11 @@ class _CommentScreenState extends State<CommentScreen>
     });
   }
 
-  // Native `speech_failed` reason codes for the Android TTS engine. Mirrored
-  // from `SpeechControllerImpl.kt` — when the native side adds new reasons
-  // for Android TTS, update both sides so the consecutive-failure counter
-  // keeps recognising them.
-  static const String _kReasonAndroidTtsNotReady = 'android_tts_not_ready';
-  static const String _kReasonAndroidTtsFailedPrefix = 'android_tts_failed';
+  // The literal wire-format strings for Android-TTS failure reasons live
+  // in `SpeechFailureReason` (see lib/comment_speech/src/models/
+  // speech_failure_reason.dart). That sealed class is the SSOT shared
+  // with the Kotlin contract test (`PrefixContract`) and locks the
+  // native↔Dart drift that PR #705 Cycle 2 originally surfaced.
 
   void _onSpeechEvent(SpeechEvent event) {
     // The events stream is shared with native and any exception in this
@@ -1670,9 +1669,11 @@ class _CommentScreenState extends State<CommentScreen>
       // exception message does not slip past this detector).
       final dynamic rawMessage = event.payload['message'];
       final String message = rawMessage is String ? rawMessage : '';
+      // Route through the SSOT (Issue #716): a non-null parse means the
+      // payload is one of the known Android-TTS failure reasons. Behaviour
+      // is byte-identical to the previous inline `==` / `startsWith` pair.
       final bool isAndroidTtsFailure =
-          message == _kReasonAndroidTtsNotReady ||
-          message.startsWith(_kReasonAndroidTtsFailedPrefix);
+          SpeechFailureReason.fromMessage(message) != null;
       if (isAndroidTtsFailure) {
         _consecutiveAndroidTtsFailures++;
         if (_consecutiveAndroidTtsFailures >= _androidTtsErrorThreshold &&
