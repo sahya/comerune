@@ -1116,8 +1116,66 @@ class _CommentScreenState extends State<CommentScreen> {
       }
       _speechInitialized = true;
     } else if (!_speechInitialized && isAndroidTts) {
-      _debugLog('[CommentScreen] initSpeech: Android TTS, skip setup dialog');
-      _speechInitialized = true;
+      // Android TTS does not need the setup dialog, but the native speaker
+      // still has to be brought to ready state. Without this step
+      // AndroidTtsSpeaker stays ready=false and later `start()` →
+      // `processWithAndroidTts()` silently drops every comment
+      // (`android_tts_not_ready`).
+      //
+      // We deliberately use `checkAndroidTtsAvailability()` instead of the
+      // generic `platform.initialize()`. The native "initialize" handler
+      // drives VOICEVOX engine init as well, which would (a) load tens of
+      // megabytes of VVM files that an Android-TTS-only user never needs,
+      // and (b) fail with `MissingAssetsException` for users who never
+      // downloaded VOICEVOX dict/VVM — masking a perfectly functional
+      // Android TTS as an error. `checkAndroidTtsAvailability` touches only
+      // `AndroidTtsSpeaker.initialize()` on the native side (see
+      // CommentSpeechPlugin.kt "checkAndroidTtsAvailability" handler), which
+      // is exactly what this branch needs.
+      _debugLog(
+        '[CommentScreen] initSpeech: Android TTS → checkAndroidTtsAvailability()',
+      );
+      try {
+        final bool available = await platform.checkAndroidTtsAvailability();
+        if (!mounted) {
+          _speechInitializing = false;
+          return;
+        }
+        if (!available) {
+          _errorLog(
+            '[CommentScreen] initSpeech: Android TTS not available '
+            '(Japanese voice data missing or engine failed to initialize)',
+          );
+          // Surface the failure via the ERROR icon. The status icon widget
+          // evaluates engineState=='ERROR' BEFORE !isInitialized, so the
+          // user sees "エラー" (not a stuck hourglass) even though
+          // _speechInitialized stays false. Keeping _speechInitialized=false
+          // also preserves the retry path: if the user toggles speech off
+          // and on again, this branch will run again and re-check.
+          setState(() {
+            _speechEngineState = 'ERROR';
+          });
+          _speechInitializing = false;
+          return;
+        }
+        _speechInitialized = true;
+      } catch (e, stackTrace) {
+        _errorLog(
+          '[CommentScreen] initSpeech: Android TTS availability check FAILED',
+          error: e,
+          stackTrace: stackTrace,
+        );
+        // Same reasoning as the (!available) branch above: leave
+        // _speechInitialized=false so the user can retry by toggling speech
+        // off/on. The ERROR engine state drives the icon regardless.
+        if (mounted) {
+          setState(() {
+            _speechEngineState = 'ERROR';
+          });
+        }
+        _speechInitializing = false;
+        return;
+      }
     }
 
     // Configure, subscribe to events, and start.
@@ -5534,7 +5592,20 @@ class _SpeechStatusIcon extends StatelessWidget {
     final Color color;
     final String tooltip;
 
-    if (!isInitialized) {
+    // ERROR is evaluated FIRST on purpose. When initialization fails
+    // (e.g. Android TTS Japanese voice data missing, VOICEVOX setup
+    // cancelled, platform channel failure), the screen sets
+    // engineState='ERROR' and leaves isInitialized=false / isStarted=false.
+    // If (!isInitialized) or (!isStarted) were evaluated first, the user
+    // would see the neutral "初期化中" (hourglass) or "停止中" (paused) icon
+    // and could not distinguish a real failure from an in-progress or
+    // intentionally paused state, violating Issue #682's acceptance
+    // criterion "the user must be able to notice the failure".
+    if (engineState == 'ERROR') {
+      icon = Icons.error_outline;
+      color = themeColors.statusDisconnected;
+      tooltip = '読み上げ: エラー';
+    } else if (!isInitialized) {
       icon = Icons.hourglass_top;
       color = themeColors.subtleTextColor;
       tooltip = '読み上げ: 初期化中';
@@ -5542,10 +5613,6 @@ class _SpeechStatusIcon extends StatelessWidget {
       icon = Icons.pause_circle_outline;
       color = themeColors.subtleTextColor;
       tooltip = '読み上げ: 停止中';
-    } else if (engineState == 'ERROR') {
-      icon = Icons.error_outline;
-      color = themeColors.statusDisconnected;
-      tooltip = '読み上げ: エラー';
     } else if (isMuted) {
       icon = Icons.volume_off;
       color = themeColors.statusConnected;

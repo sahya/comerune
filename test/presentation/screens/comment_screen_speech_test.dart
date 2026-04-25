@@ -1322,6 +1322,265 @@ void main() {
     });
   });
 
+  // Regression coverage for Issue #682. Android TTS does not show the VOICEVOX
+  // setup dialog, but the native AndroidTtsSpeaker still has to be brought to
+  // ready=true. We call `checkAndroidTtsAvailability()` (not `initialize()`)
+  // because the native "initialize" handler also drives VOICEVOX engine init,
+  // which fails with `MissingAssetsException` for users who never downloaded
+  // VOICEVOX dict/VVM — and that would mask a perfectly functional Android
+  // TTS as an error. `checkAndroidTtsAvailability` touches only
+  // `AndroidTtsSpeaker.initialize()` on the native side, which is exactly
+  // what Android-TTS-only users need.
+  group('CommentScreen speech integration (Android TTS)', () {
+    late FakeCommentSpeechPlatform fakePlatform;
+
+    setUp(() {
+      fakePlatform = FakeCommentSpeechPlatform();
+      // Engine is NOT ready yet — this is the first connection since app
+      // launch and the user has never opened the TTS settings screen.
+      fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+        enabled: true,
+        engineState: 'UNINITIALIZED',
+        playerState: 'UNKNOWN',
+        queueSize: 0,
+        currentSpeakerId: 0,
+      );
+    });
+
+    tearDown(() {
+      fakePlatform.dispose();
+    });
+
+    testWidgets(
+      'Android TTS branch initializes the native speaker without triggering VOICEVOX engine init',
+      (WidgetTester tester) async {
+        fakePlatform.androidTtsAvailableToReturn = true;
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The core regression assertion: without this path the native
+        // AndroidTtsSpeaker stays ready=false and drops every comment.
+        expect(fakePlatform.checkAndroidTtsAvailabilityCalled, isTrue);
+        // `initialize()` must NOT be called on this branch. The generic
+        // initialize handler would also bootstrap VOICEVOX engine, which
+        // fails with MissingAssetsException for Android-TTS-only users that
+        // never downloaded any VOICEVOX assets — regressing the very bug
+        // this PR is trying to fix (Issue #682 case 1).
+        expect(fakePlatform.initializeCalled, isFalse);
+        // After the Android TTS speaker is ready, speech must reach start()
+        // so the worker loop picks up queued comments.
+        expect(fakePlatform.startCalled, isTrue);
+      },
+    );
+
+    testWidgets(
+      'Android TTS unavailable surfaces the ERROR icon and does not start speech',
+      (WidgetTester tester) async {
+        // Native speaker initialization failed (e.g. Japanese voice data
+        // missing). checkAndroidTtsAvailability returns false.
+        fakePlatform.androidTtsAvailableToReturn = false;
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(fakePlatform.checkAndroidTtsAvailabilityCalled, isTrue);
+        expect(
+          fakePlatform.checkAndroidTtsAvailabilityCallCount,
+          1,
+          reason: 'availability must be checked exactly once per init attempt',
+        );
+        // start() must NOT be called when the speaker isn't ready, otherwise
+        // the worker loop would run against an un-ready speaker and drop
+        // every comment.
+        expect(fakePlatform.startCalled, isFalse);
+
+        // UI feedback requirement for Issue #682 acceptance criteria ("the
+        // user must be able to notice the failure"): the status icon must
+        // show the ERROR state, NOT the neutral hourglass ("初期化中") or
+        // pause ("停止中") icons. The status icon widget evaluates ERROR
+        // before the initialized/started branches precisely so this holds.
+        expect(
+          find.byIcon(Icons.error_outline),
+          findsOneWidget,
+          reason:
+              'Android TTS availability failure must surface the ERROR icon '
+              'so the user can notice the failure per Issue #682.',
+        );
+        expect(find.byIcon(Icons.hourglass_top), findsNothing);
+        expect(find.byIcon(Icons.pause_circle_outline), findsNothing);
+
+        // Accessibility regression guard: the ERROR branch renders the icon
+        // inside a non-interactive `Semantics(label: '読み上げ: エラー', ...)`
+        // wrapper (see `_SpeechStatusIcon.build()`). Screen reader users must
+        // hear "エラー" — not the default "読み上げミュート中/有効" labels used
+        // on the tappable mute path, which would wrongly suggest a working
+        // engine. This asserts the label value, not just icon presence.
+        expect(
+          find.bySemanticsLabel('読み上げ: エラー'),
+          findsOneWidget,
+          reason:
+              'Android TTS availability failure must expose the ERROR state '
+              'via the Semantics label so screen-reader users can also '
+              'notice the failure per Issue #682.',
+        );
+      },
+    );
+
+    testWidgets(
+      'checkAndroidTtsAvailability throwing surfaces the ERROR icon and does not start speech',
+      (WidgetTester tester) async {
+        fakePlatform.checkAndroidTtsAvailabilityError = Exception(
+          'platform channel failure',
+        );
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(fakePlatform.checkAndroidTtsAvailabilityCalled, isTrue);
+        expect(fakePlatform.startCalled, isFalse);
+        expect(find.byIcon(Icons.error_outline), findsOneWidget);
+        expect(find.byIcon(Icons.hourglass_top), findsNothing);
+        expect(find.byIcon(Icons.pause_circle_outline), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'Android TTS retries availability check after a prior failure when speech is re-enabled',
+      (WidgetTester tester) async {
+        // First attempt: availability returns false.
+        fakePlatform.androidTtsAvailableToReturn = false;
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(fakePlatform.checkAndroidTtsAvailabilityCallCount, 1);
+        expect(fakePlatform.startCalled, isFalse);
+        expect(find.byIcon(Icons.error_outline), findsOneWidget);
+
+        // User disables speech, then re-enables it — e.g. after going into
+        // Android TTS system settings to install Japanese voice data.
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.updateSpeechSettings(
+          const SpeechSettings(
+            enabled: false,
+            engineType: SpeechEngineType.androidTts,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Second attempt: availability now returns true.
+        fakePlatform.androidTtsAvailableToReturn = true;
+        host.updateSpeechSettings(
+          const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.androidTts,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The availability check must run AGAIN — retry must be possible
+        // after a prior failure. Regression guard for the state-machine
+        // concern: a previous attempt set `_speechInitialized=true` on
+        // failure, which would have short-circuited the retry and left the
+        // user with no way to recover without restarting the app.
+        expect(
+          fakePlatform.checkAndroidTtsAvailabilityCallCount,
+          2,
+          reason:
+              'The Android TTS availability check must re-run after a prior '
+              'failure when the user toggles speech off and on again, so '
+              'that recovery (e.g. installing voice data) can take effect '
+              'without restarting the app.',
+        );
+        expect(fakePlatform.startCalled, isTrue);
+
+        // Regression guard: after a successful retry, the ERROR icon from
+        // the previous failure must NOT linger. Once `start()` completes the
+        // screen transitions engineState ERROR → READY and isStarted=true,
+        // which in `_SpeechStatusIcon` should render the `volume_up` icon
+        // (not `error_outline`). Without this assertion a future change
+        // that forgets to clear `_speechEngineState` on successful init
+        // would leave the user with a stale ERROR icon even though speech
+        // is actually working.
+        expect(
+          find.byIcon(Icons.error_outline),
+          findsNothing,
+          reason:
+              'After a successful retry the ERROR icon from the previous '
+              'failure must no longer be visible.',
+        );
+        expect(find.byIcon(Icons.volume_up), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Android TTS availability check is skipped when engine is already READY',
+      (WidgetTester tester) async {
+        // Simulate a session where VOICEVOX was used first (engine is READY)
+        // and the user then switched to Android TTS. The existing pre-check
+        // at the top of _initializeAndStartSpeech flips _speechInitialized
+        // to true, so the Android TTS branch is bypassed entirely.
+        fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+          enabled: true,
+          engineState: 'READY',
+          playerState: 'IDLE',
+          queueSize: 0,
+          currentSpeakerId: 0,
+        );
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(fakePlatform.checkAndroidTtsAvailabilityCalled, isFalse);
+        expect(fakePlatform.initializeCalled, isFalse);
+        expect(fakePlatform.startCalled, isTrue);
+      },
+    );
+  });
+
   group('mute toggle', () {
     late FakeCommentSpeechPlatform fakePlatform;
 

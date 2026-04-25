@@ -31,6 +31,14 @@ abstract class CommentSpeechPlatform {
   ///
   /// Returns `true` when the engine is initialized and Japanese language data
   /// is available. Android-only — other platforms should return `false`.
+  ///
+  /// Side effect: on Android, if the native `AndroidTtsSpeaker` has not been
+  /// initialized yet, this call triggers its initialization on demand and
+  /// awaits completion before returning. Callers that only want a pure
+  /// read-only check should keep this in mind — for Android-TTS-only users
+  /// on the comment screen this lazy-init is the intended bootstrap path
+  /// (Issue #682). See the native "checkAndroidTtsAvailability" handler in
+  /// `CommentSpeechPlugin.kt` for details.
   Future<bool> checkAndroidTtsAvailability();
 
   /// Opens the device's TTS settings screen (Android only).

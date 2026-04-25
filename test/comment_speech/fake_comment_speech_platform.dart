@@ -214,11 +214,19 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
   /// returning. Used to observe the "checking" UI state deterministically.
   Completer<void>? checkAndroidTtsAvailabilityGate;
 
+  /// Tracks whether [checkAndroidTtsAvailability] was called at least once.
+  bool checkAndroidTtsAvailabilityCalled = false;
+
+  /// Number of calls to [checkAndroidTtsAvailability].
+  int checkAndroidTtsAvailabilityCallCount = 0;
+
   /// Tracks whether [openAndroidTtsSettings] was called.
   bool openAndroidTtsSettingsCalled = false;
 
   @override
   Future<bool> checkAndroidTtsAvailability() async {
+    checkAndroidTtsAvailabilityCalled = true;
+    checkAndroidTtsAvailabilityCallCount++;
     if (checkAndroidTtsAvailabilityGate != null) {
       await checkAndroidTtsAvailabilityGate!.future;
     }
