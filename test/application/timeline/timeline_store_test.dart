@@ -349,4 +349,179 @@ void main() {
       },
     );
   });
+
+  // Issue #709 / #670: `messages` must return a snapshot whose contents
+  // are frozen at notify time. Returning a live view of the internal
+  // list silently broke identity / tail-diff detection on consumers
+  // (e.g. CommentScreen `_hasNewMessages`).
+  group('messages getter snapshot semantics', () {
+    test('captured reference does not change when add() inserts new items', () {
+      final TimelineStore store = TimelineStore(capacity: 10);
+      store.add(_message(1));
+
+      final List<AppMessage> capturedAfterFirst = store.messages;
+      expect(capturedAfterFirst.length, 1);
+
+      store.add(_message(2));
+
+      // The previously captured snapshot is still the 1-element list.
+      expect(capturedAfterFirst.length, 1);
+      expect(capturedAfterFirst.single.id, 'id-1');
+
+      // The current getter exposes the new state.
+      expect(store.messages.length, 2);
+      // And it is a different instance than the prior snapshot.
+      expect(identical(capturedAfterFirst, store.messages), isFalse);
+    });
+
+    test('captured reference does not change when addAll() appends', () {
+      final TimelineStore store = TimelineStore(capacity: 10);
+      store.add(_message(1));
+
+      final List<AppMessage> snapshotBefore = store.messages;
+      store.addAll(<AppMessage>[_message(2), _message(3)]);
+
+      expect(snapshotBefore.length, 1);
+      expect(store.messages.length, 3);
+    });
+
+    test('captured reference does not change when clear() is called', () {
+      final TimelineStore store = TimelineStore(capacity: 10);
+      store.addAll(<AppMessage>[_message(1), _message(2)]);
+
+      final List<AppMessage> snapshotBefore = store.messages;
+      store.clear();
+
+      expect(snapshotBefore.length, 2);
+      expect(store.messages, isEmpty);
+    });
+
+    test('captured reference does not change when setCapacity() trims', () {
+      final TimelineStore store = TimelineStore(capacity: 5);
+      store.addAll(<AppMessage>[
+        _message(1),
+        _message(2),
+        _message(3),
+        _message(4),
+      ]);
+
+      final List<AppMessage> snapshotBefore = store.messages;
+      store.setCapacity(2);
+
+      expect(snapshotBefore.length, 4);
+      expect(store.messages.length, 2);
+      expect(snapshotBefore.first.id, 'id-1');
+    });
+
+    test(
+      'two consecutive reads between mutations return the same instance',
+      () {
+        final TimelineStore store = TimelineStore(capacity: 10);
+        store.add(_message(1));
+
+        final List<AppMessage> first = store.messages;
+        final List<AppMessage> second = store.messages;
+
+        // The getter is cheap and stable across repeated reads — UI
+        // rebuilds in a single frame should not allocate fresh
+        // snapshots on every access.
+        expect(identical(first, second), isTrue);
+      },
+    );
+
+    test('returned list is unmodifiable', () {
+      final TimelineStore store = TimelineStore(capacity: 10);
+      store.add(_message(1));
+
+      final List<AppMessage> snapshot = store.messages;
+      expect(() => snapshot.add(_message(2)), throwsUnsupportedError);
+      expect(() => snapshot.removeAt(0), throwsUnsupportedError);
+    });
+
+    test(
+      'snapshot survives a no-op setCapacity (same value) without re-allocation',
+      () {
+        final TimelineStore store = TimelineStore(capacity: 5);
+        store.add(_message(1));
+        final List<AppMessage> before = store.messages;
+
+        store.setCapacity(5); // no-op early return
+
+        expect(identical(before, store.messages), isTrue);
+      },
+    );
+
+    test('initial snapshot is empty before any mutation', () {
+      final TimelineStore store = TimelineStore();
+      expect(store.messages, isEmpty);
+      // And the same empty snapshot is returned on repeated reads.
+      expect(identical(store.messages, store.messages), isTrue);
+    });
+
+    test('setCapacity that does NOT trim preserves the snapshot reference', () {
+      // setCapacity may grow the cap or move it down to a value that
+      // the current length already satisfies — neither case should
+      // re-allocate the published snapshot, so identity-based diffs
+      // on the consumer side stay stable across pure-capacity edits.
+      final TimelineStore store = TimelineStore(capacity: 5);
+      store.add(_message(1));
+      store.add(_message(2));
+      final List<AppMessage> before = store.messages;
+
+      store.setCapacity(10); // grow — no trim
+      expect(identical(before, store.messages), isTrue);
+
+      store.setCapacity(2); // shrink to existing length — still no trim
+      expect(identical(before, store.messages), isTrue);
+    });
+
+    test('addAll with all-duplicate ids preserves the snapshot reference', () {
+      // The early-return branch in addAll() never fires
+      // notifyListeners and therefore must never re-allocate the
+      // snapshot — otherwise consumers would see fresh references
+      // for a no-op write.
+      final TimelineStore store = TimelineStore(capacity: 10);
+      store.addAll(<AppMessage>[_message(1), _message(2)]);
+      final List<AppMessage> before = store.messages;
+
+      store.addAll(<AppMessage>[_message(1), _message(2)]); // all duplicates
+      expect(identical(before, store.messages), isTrue);
+    });
+
+    test('snapshot publish at cap stays well under one frame budget', () {
+      // Issue #709 受け入れ基準: パフォーマンス計測。
+      // 60 fps の 1 フレーム ≈ 16ms。snapshot 公開 1 回でフレーム
+      // 予算を食い潰さないことの簡易ベンチ。10 回繰り返した平均
+      // を取り、十分な安全マージン (5ms) で判定。
+      const int cap = 15000;
+      final TimelineStore store = TimelineStore(capacity: cap);
+      for (int i = 0; i < cap; i++) {
+        store.add(_message(i));
+      }
+
+      final Stopwatch sw = Stopwatch()..start();
+      const int iterations = 10;
+      for (int i = 0; i < iterations; i++) {
+        // Adding a new id forces a fresh _publishSnapshot at full cap.
+        store.add(_message(cap + i));
+      }
+      sw.stop();
+
+      final double averageMicros = sw.elapsedMicroseconds / iterations;
+      // 5,000 µs == 5 ms; 60fps frame budget is ~16ms. Tests run in a
+      // debug VM, so this is a generous but meaningful upper bound.
+      const double thresholdMicros = 5000;
+      expect(
+        averageMicros,
+        lessThan(thresholdMicros),
+        reason:
+            'snapshot publish at cap=$cap took avg '
+            '${averageMicros.toStringAsFixed(1)}µs '
+            '(${(averageMicros / 1000).toStringAsFixed(2)}ms) — threshold '
+            '${thresholdMicros.toStringAsFixed(0)}µs '
+            '(${(thresholdMicros / 1000).toStringAsFixed(0)}ms, '
+            '~30% of one 60fps frame)',
+      );
+    });
+  });
 }
