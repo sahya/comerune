@@ -14,6 +14,7 @@ import 'application/migration/app_migration_runner.dart';
 import 'application/onboarding/onboarding_store.dart';
 import 'application/settings/settings_store.dart';
 import 'application/settings/shared_preferences_adapter.dart';
+import 'application/speech/speech_availability_notifier.dart';
 import 'application/upgrade/upgrade_initializer.dart';
 import 'application/statistics/statistics_store.dart';
 import 'application/timeline/timeline_store.dart';
@@ -202,6 +203,11 @@ class _ComeruneAppState extends State<ComeruneApp> {
     null,
   );
   late final ValueNotifier<AppThemeMode> _themeModeNotifier;
+  // Issue #694: cross-screen Android TTS availability source. Lives for the
+  // lifetime of the app so the comment screen and the TTS settings screen
+  // share the same view of the latest check result.
+  final SpeechAvailabilityNotifier _androidTtsAvailability =
+      SpeechAvailabilityNotifier();
   late final UserNameResolver _userNameResolver;
   late final BroadcasterEmbedResolver _broadcasterEmbedResolver;
   late final FollowProgramRepository _followProgramRepository;
@@ -386,6 +392,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _themeModeNotifier
       ..removeListener(_onThemeModeChanged)
       ..dispose();
+    _androidTtsAvailability.dispose();
     super.dispose();
   }
 
@@ -448,6 +455,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
           userAttributeStore: widget.userAttributeStore,
           commentPostController: _commentPostController,
           timeshiftFetchController: _timeshiftFetchController,
+          androidTtsAvailability: _androidTtsAvailability,
           broadcasterEmbedResolver: _broadcasterEmbedResolver,
         ),
       ),

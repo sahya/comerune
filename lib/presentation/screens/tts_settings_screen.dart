@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../app_logging.dart';
 import '../../application/settings/settings_store.dart';
+import '../../application/speech/speech_availability_notifier.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/voicevox_model_info.dart';
@@ -34,6 +35,7 @@ class TtsSettingsScreen extends StatefulWidget {
     required this.settingsStore,
     this.platform,
     this.initialSettings,
+    this.androidTtsAvailability,
   });
 
   final SettingsStore settingsStore;
@@ -41,6 +43,11 @@ class TtsSettingsScreen extends StatefulWidget {
 
   /// Pre-loaded settings from the parent screen.
   final AppSettings? initialSettings;
+
+  /// Issue #694: cross-screen Android TTS availability notifier. When
+  /// non-null, every check this screen runs is also published to the
+  /// notifier so the comment screen's AppBar icon stays in sync.
+  final SpeechAvailabilityNotifier? androidTtsAvailability;
 
   @override
   State<TtsSettingsScreen> createState() => _TtsSettingsScreenState();
@@ -464,13 +471,30 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
     final platform = widget.platform;
     if (platform == null) {
       setState(() => _androidTtsAvailable = null);
+      // Cannot determine availability without a platform — leave the
+      // cross-screen notifier untouched so a previously-known value (e.g.
+      // last successful check) is not overwritten with `unknown`.
       return;
     }
     try {
       final available = await platform.checkAndroidTtsAvailability();
+      // Issue #694: publish to the cross-screen notifier so other screens
+      // (notably the comment screen AppBar) reflect the same result
+      // without re-running the check.
+      widget.androidTtsAvailability?.publish(available: available);
       if (!mounted) return;
       setState(() => _androidTtsAvailable = available);
-    } on Object {
+    } on Object catch (e, stackTrace) {
+      // Mirror the comment screen's logging so root-cause diagnosis does
+      // not depend on which screen ran the check (Issue #694 review #4).
+      _errorLog(
+        '[TtsSettings] checkAndroidTtsAvailability FAILED',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      // Treat a thrown check as unavailable for cross-screen consumers —
+      // the user-visible outcome is the same.
+      widget.androidTtsAvailability?.publishUnavailable();
       if (!mounted) return;
       setState(() => _androidTtsAvailable = false);
     }
@@ -1290,6 +1314,12 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                             unawaited(_checkAndroidTtsAvailability());
                           } else {
                             setState(() => _androidTtsAvailable = null);
+                            // Issue #694 review: when leaving Android TTS,
+                            // clear the cross-screen notifier so a stale
+                            // unavailable result from the previous engine
+                            // does not flicker the comment screen icon back
+                            // to ERROR after the user switches back later.
+                            widget.androidTtsAvailability?.reset();
                           }
                         },
                       ),

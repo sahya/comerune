@@ -14,6 +14,7 @@ import '../../app_logging.dart';
 import '../../application/comment_post/comment_post_controller.dart';
 import '../../application/timeshift_fetch/timeshift_fetch_controller.dart';
 import '../../application/settings/settings_store.dart';
+import '../../application/speech/speech_availability_notifier.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../data/comment_log/comment_log_tag.dart';
 import '../../data/comment_log/comment_log_writer.dart';
@@ -879,6 +880,18 @@ class _CommentScreenState extends State<CommentScreen>
       });
     }
 
+    // Issue #694 cycle-2-new review: clear a stale local ERROR state when
+    // the cross-screen notifier publishes that the engine is available
+    // again (e.g. user re-installed Japanese voice data via TTS settings).
+    // Without this listener, the AppBar would stay on the
+    // `error_outline` icon even after recovery because the OR-condition
+    // `engineState == 'ERROR' || treatAsError` keeps firing on the local
+    // `_speechEngineState` half (the `treatAsError` half flips correctly
+    // via `AnimatedBuilder`).
+    widget.speechConfig.androidTtsAvailability?.addListener(
+      _onAndroidTtsAvailabilityChanged,
+    );
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToEdge(animated: false);
     });
@@ -899,6 +912,21 @@ class _CommentScreenState extends State<CommentScreen>
       // fresh supervisor on every widget rebuild). The genuine "different
       // data source" signal is the lv change branch below; lv change
       // handles the cursor / de-dup reset there.
+    }
+
+    // Issue #694 cycle-2-new (round 2) review: when the parent rebuilds
+    // CommentScreen with a different cross-screen availability notifier,
+    // re-attach the listener so we (a) stop receiving updates from the
+    // old notifier and (b) respond to changes on the new one. Without
+    // this swap the listener would silently leak references to the
+    // previous notifier instance.
+    final SpeechAvailabilityNotifier? oldNotifier =
+        oldWidget.speechConfig.androidTtsAvailability;
+    final SpeechAvailabilityNotifier? newNotifier =
+        widget.speechConfig.androidTtsAvailability;
+    if (!identical(oldNotifier, newNotifier)) {
+      oldNotifier?.removeListener(_onAndroidTtsAvailabilityChanged);
+      newNotifier?.addListener(_onAndroidTtsAvailabilityChanged);
     }
 
     if (!_listEqualsShallow(
@@ -1121,6 +1149,9 @@ class _CommentScreenState extends State<CommentScreen>
     );
     _stopSpeechPollTimer();
     _speechEventSub?.cancel();
+    widget.speechConfig.androidTtsAvailability?.removeListener(
+      _onAndroidTtsAvailabilityChanged,
+    );
     if (_speechStarted) {
       _debugLog('[CommentScreen] dispose: stopping speech engine');
       unawaited(widget.speechConfig.speechPlatform?.stop(clearQueue: true));
@@ -1337,6 +1368,12 @@ class _CommentScreenState extends State<CommentScreen>
       );
       try {
         final bool available = await platform.checkAndroidTtsAvailability();
+        // Issue #694: keep the cross-screen notifier in sync so the TTS
+        // settings screen (and any other subscriber) sees the same result
+        // without re-running the check.
+        widget.speechConfig.androidTtsAvailability?.publish(
+          available: available,
+        );
         if (!mounted) {
           _speechInitializing = false;
           return;
@@ -1365,6 +1402,9 @@ class _CommentScreenState extends State<CommentScreen>
           error: e,
           stackTrace: stackTrace,
         );
+        // Treat a thrown availability check as unavailable for cross-screen
+        // consumers — the user-visible outcome is the same (no usable TTS).
+        widget.speechConfig.androidTtsAvailability?.publishUnavailable();
         // Same reasoning as the (!available) branch above: leave
         // _speechInitialized=false so the user can retry by toggling speech
         // off/on. The ERROR engine state drives the icon regardless.
@@ -1500,6 +1540,72 @@ class _CommentScreenState extends State<CommentScreen>
         });
       }
     }
+  }
+
+  /// Listener for [SpeechAvailabilityNotifier] changes.
+  ///
+  /// Issue #694 cycle-2-new review: when the cross-screen notifier publishes
+  /// `available` (e.g. user re-installed Japanese voice data via TTS
+  /// settings), the local `_speechEngineState` may still hold the previous
+  /// `'ERROR'` from this screen's own failed init. The icon's OR-condition
+  /// then keeps it on `error_outline` even though `treatAsError` flipped to
+  /// false. Clearing the local ERROR here lets the next user toggle (or
+  /// `didUpdateWidget` retrigger) re-init from a clean slate.
+  ///
+  /// **State-double-management note (round-2 review):** `_speechEngineState`
+  /// is normally written by native engine events. This listener writes to
+  /// the same field as a *display-time* heuristic — only when the active
+  /// engine is Android TTS AND a true recovery has been observed in another
+  /// screen. The engineType gate is critical: without it, a stray publish
+  /// during engine swap (or a future helper that publishes from VOICEVOX
+  /// flows) would erase a real VOICEVOX ERROR.
+  ///
+  /// **Cross-PR integration note:** PR #695 (runtime failure counter) is
+  /// now also in main, so this listener additionally resets
+  /// `_consecutiveAndroidTtsFailures = 0`. Without that reset, a recovery
+  /// published via settings would leave the counter at threshold and the
+  /// next single transient failure would re-trip ERROR (= "fixed but
+  /// immediately broken again" UX). Resolves Issue #711 (CR-1).
+  void _onAndroidTtsAvailabilityChanged() {
+    // Wrap the body so a single buggy listener invocation cannot tear
+    // down the ChangeNotifier's listener list (which would silently
+    // disable cross-screen propagation across the entire app for
+    // subsequent publishes). MAQR ③ 堅牢の賢者 review.
+    try {
+      _onAndroidTtsAvailabilityChangedInner();
+    } catch (e, stackTrace) {
+      _errorLog(
+        '[CommentScreen] _onAndroidTtsAvailabilityChanged: handler threw',
+        error: e,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
+  void _onAndroidTtsAvailabilityChangedInner() {
+    final SpeechAvailabilityNotifier? notifier =
+        widget.speechConfig.androidTtsAvailability;
+    if (notifier == null) return;
+    if (notifier.value != SpeechAvailability.available) return;
+    // Engine-type gate: only the Android TTS engine has its availability
+    // tracked by this notifier. Any local ERROR while VOICEVOX is the
+    // active engine belongs to a different code path and must not be
+    // silently cleared here (round-2 review #7 / #8).
+    if (widget.speechConfig.speechSettings.engineType !=
+        SpeechEngineType.androidTts) {
+      return;
+    }
+    // Issue #711 (CR-1): #705's runtime failure counter must be reset on
+    // cross-screen recovery, even when local ERROR was not yet set.
+    // Otherwise a residual `_consecutiveAndroidTtsFailures == threshold`
+    // would re-trip ERROR on the very next transient failure after the
+    // user just observed a clean AppBar.
+    _consecutiveAndroidTtsFailures = 0;
+    if (_speechEngineState != 'ERROR') return;
+    if (!mounted) return;
+    setState(() {
+      _speechEngineState = '';
+    });
   }
 
   // Native `speech_failed` reason codes for the Android TTS engine. Mirrored
@@ -2432,6 +2538,16 @@ class _CommentScreenState extends State<CommentScreen>
                           isMuted: widget.speechConfig.isSpeechMuted,
                           themeColors: themeColors,
                           onTap: widget.callbacks.onSpeechMuteToggled,
+                          // Issue #694: Android-TTS-only override. The
+                          // icon listens to this notifier and surfaces
+                          // ERROR when other screens (e.g. TTS settings)
+                          // detect that Japanese voice data is missing,
+                          // even before the user reconnects.
+                          androidTtsAvailability:
+                              widget.speechConfig.speechSettings.engineType ==
+                                  SpeechEngineType.androidTts
+                              ? widget.speechConfig.androidTtsAvailability
+                              : null,
                         ),
                       IconButton(
                         key: const Key('sort-toggle-button'),
@@ -5605,6 +5721,7 @@ class _SpeechStatusIcon extends StatelessWidget {
     required this.isMuted,
     required this.themeColors,
     this.onTap,
+    this.androidTtsAvailability,
   });
 
   final String engineState;
@@ -5614,8 +5731,28 @@ class _SpeechStatusIcon extends StatelessWidget {
   final AppThemeColors themeColors;
   final VoidCallback? onTap;
 
+  /// Issue #694: Android-TTS-only cross-screen availability source. When
+  /// non-null and the latest publish was [SpeechAvailability.unavailable],
+  /// the icon renders ERROR even though `engineState` itself may still be
+  /// READY (because nothing on this screen has tried to speak yet).
+  /// VOICEVOX and the no-notifier case are unaffected.
+  final SpeechAvailabilityNotifier? androidTtsAvailability;
+
   @override
   Widget build(BuildContext context) {
+    final SpeechAvailabilityNotifier? notifier = androidTtsAvailability;
+    if (notifier == null) {
+      return _buildIcon(context, treatAsError: false);
+    }
+    return AnimatedBuilder(
+      animation: notifier,
+      builder: (BuildContext context, Widget? _) {
+        return _buildIcon(context, treatAsError: notifier.isUnavailable);
+      },
+    );
+  }
+
+  Widget _buildIcon(BuildContext context, {required bool treatAsError}) {
     final IconData icon;
     final Color color;
     final String tooltip;
@@ -5629,10 +5766,36 @@ class _SpeechStatusIcon extends StatelessWidget {
     // and could not distinguish a real failure from an in-progress or
     // intentionally paused state, violating Issue #682's acceptance
     // criterion "the user must be able to notice the failure".
-    if (engineState == 'ERROR') {
+    //
+    // [treatAsError] adds Issue #694's cross-screen availability override:
+    // if another screen (e.g. TTS settings) detected unavailability, the
+    // AppBar surfaces the same ERROR state immediately, even when this
+    // screen's local engineState has not had a chance to observe it.
+    final bool isError = engineState == 'ERROR' || treatAsError;
+    if (isError) {
       icon = Icons.error_outline;
       color = themeColors.statusDisconnected;
-      tooltip = '読み上げ: エラー';
+      // When the override comes from cross-screen detection (the engine
+      // itself has not failed on this screen yet), point the user at the
+      // settings screen so they can see the detailed warning and the
+      // recovery actions there. When the local engine is in ERROR, the
+      // existing tooltip is already accurate (an inline retry is not
+      // available — speech must be toggled off/on to retry).
+      // MAQR ③ 感性の賢者 review: unify the tooltip so the same ERROR is
+      // surfaced with the same recovery hint regardless of detection
+      // path (cross-screen notifier vs local engineState=='ERROR'). The
+      // user's actionable next step — "read the warning card in 読み上げ
+      // 設定 and follow the OS instructions to install Japanese voice
+      // data" — applies to all Android-TTS-error paths. VOICEVOX errors
+      // (setup failure / cancel) do not have such a hint because the
+      // recovery is "toggle speech off/on" rather than "go to settings".
+      final bool isAndroidTtsError =
+          isError &&
+          androidTtsAvailability !=
+              null; // notifier is only injected for AndroidTTS engine, see comment_screen.dart:_SpeechStatusIcon construction
+      tooltip = isAndroidTtsError
+          ? '読み上げ: エラー（読み上げ設定で詳細を確認してください）'
+          : '読み上げ: エラー';
     } else if (!isInitialized) {
       icon = Icons.hourglass_top;
       color = themeColors.subtleTextColor;
@@ -5651,8 +5814,7 @@ class _SpeechStatusIcon extends StatelessWidget {
       tooltip = 'ミュート';
     }
 
-    final bool canToggleMute =
-        isInitialized && isStarted && engineState != 'ERROR';
+    final bool canToggleMute = isInitialized && isStarted && !isError;
 
     if (canToggleMute && onTap != null) {
       return Semantics(

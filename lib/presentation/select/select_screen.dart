@@ -7,6 +7,7 @@ import '../../app_logging.dart';
 import '../../application/comment_post/comment_post_controller.dart';
 import '../../application/timeshift_fetch/timeshift_fetch_controller.dart';
 import '../../application/settings/settings_store.dart';
+import '../../application/speech/speech_availability_notifier.dart';
 import '../../application/statistics/statistics_store.dart';
 import '../../application/timeline/timeline_store.dart';
 import '../../data/auth/user_session_store.dart';
@@ -66,6 +67,7 @@ class SelectScreen extends StatefulWidget {
     this.userAttributeStore,
     this.commentPostController,
     this.timeshiftFetchController,
+    this.androidTtsAvailability,
     this.broadcasterEmbedResolver,
     super.key,
   });
@@ -98,6 +100,12 @@ class SelectScreen extends StatefulWidget {
   final UserAttributeStore? userAttributeStore;
   final CommentPostController? commentPostController;
   final TimeshiftFetchController? timeshiftFetchController;
+
+  /// Issue #694: optional cross-screen Android TTS availability notifier.
+  /// When provided, the comment screen's AppBar status icon and the TTS
+  /// settings screen share the same view of the latest check result so
+  /// failures detected in one place propagate to the other.
+  final SpeechAvailabilityNotifier? androidTtsAvailability;
 
   /// Resolves the broadcaster's numeric user ID from the public watch HTML
   /// when LV-direct-input is used (Issue #681 Phase 2). Optional: callers
@@ -722,6 +730,7 @@ class _SelectScreenState extends State<SelectScreen>
             readNicoadComment: _settingsNotifier.value.readNicoadComment,
             settingsStore: widget.settingsStore,
             isSpeechMuted: _isSpeechMuted,
+            androidTtsAvailability: widget.androidTtsAvailability,
           ),
           commentPostController: widget.commentPostController,
           userSessionLoader: widget.userSessionStore?.load,
@@ -1129,6 +1138,7 @@ class _SelectScreenState extends State<SelectScreen>
           broadcasterIdNotifier: widget.supplierUserIdNotifier,
           userNameResolution: widget.userNameResolution,
           speechPlatform: MethodChannelCommentSpeech(),
+          androidTtsAvailability: widget.androidTtsAvailability,
         ),
       ),
     );

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:comerune/application/speech/speech_availability_notifier.dart';
 import 'package:comerune/comment_speech/comment_speech.dart';
 import 'package:comerune/domain/connection/connection_supervisor.dart';
 import 'package:comerune/domain/models/app_message.dart';
@@ -1730,6 +1731,479 @@ void main() {
   });
 
   // ---------------------------------------------------------------------------
+  // Issue #694: cross-screen Android TTS availability propagation.
+  //
+  // The TTS settings screen previously kept its check result in local state,
+  // so a failure detected there did not flip the AppBar speech-status icon
+  // on the comment screen. The fix routes both screens' check results
+  // through `SpeechAvailabilityNotifier`; when its value is `unavailable`
+  // AND the active engine is Android TTS, the icon must surface ERROR even
+  // though the screen's own engineState may still be READY (e.g. the user
+  // came back from settings without reconnecting).
+  // ---------------------------------------------------------------------------
+  group('CommentScreen speech availability notifier (Issue #694)', () {
+    late FakeCommentSpeechPlatform fakePlatform;
+
+    setUp(() {
+      fakePlatform = FakeCommentSpeechPlatform();
+      fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+        enabled: true,
+        engineState: 'READY',
+        playerState: 'IDLE',
+        queueSize: 0,
+        currentSpeakerId: 0,
+      );
+    });
+
+    tearDown(() {
+      fakePlatform.dispose();
+    });
+
+    testWidgets(
+      'unavailable notifier flips Android TTS AppBar icon to ERROR after build',
+      (WidgetTester tester) async {
+        // Reproduces the user flow from Issue #694: AppBar icon is initially
+        // happy; user opens TTS settings and the check publishes
+        // unavailable; AppBar must update without a reconnect.
+        final SpeechAvailabilityNotifier notifier =
+            SpeechAvailabilityNotifier();
+        addTearDown(notifier.dispose);
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+            androidTtsAvailability: notifier,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Initially the notifier is `unknown` so the icon shows whatever the
+        // local engine state says — for the READY fake, that is volume_up.
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsNothing,
+        );
+
+        notifier.publishUnavailable();
+        await tester.pump();
+
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsOneWidget,
+          reason:
+              'When the cross-screen notifier publishes unavailable, the '
+              'Android TTS AppBar icon must flip to ERROR without waiting '
+              'for the user to reconnect (Issue #694).',
+        );
+      },
+    );
+
+    testWidgets(
+      'available publish on the notifier clears a previous unavailable ERROR',
+      (WidgetTester tester) async {
+        // Recovery flow: user reinstalled Japanese voice data, opened TTS
+        // settings, and the re-check now succeeds. The AppBar must follow
+        // back to a non-error icon without requiring a reconnect.
+        final SpeechAvailabilityNotifier notifier =
+            SpeechAvailabilityNotifier();
+        addTearDown(notifier.dispose);
+        notifier.publishUnavailable();
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+            androidTtsAvailability: notifier,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Sanity: starts in ERROR.
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsOneWidget,
+        );
+
+        notifier.publishAvailable();
+        await tester.pump();
+
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsNothing,
+          reason:
+              'A subsequent available publish must clear the cross-screen '
+              'ERROR override (Issue #694).',
+        );
+      },
+    );
+
+    testWidgets(
+      'notifier=available clears a stale local _speechEngineState ERROR (cycle-2-new)',
+      (WidgetTester tester) async {
+        // Cycle-2 (new sage cycle) #704 review: the local ERROR state set
+        // by this screen's own failed init must not stay sticky after
+        // the cross-screen notifier reports recovery. The icon used to
+        // OR `engineState == 'ERROR'` with `notifier.isUnavailable`, so
+        // a stale local ERROR kept the AppBar on `error_outline` forever
+        // even after settings published `available`.
+        final SpeechAvailabilityNotifier notifier =
+            SpeechAvailabilityNotifier();
+        addTearDown(notifier.dispose);
+        // Drive the screen down its Android-TTS init path with a check
+        // that fails — this sets the local _speechEngineState='ERROR'.
+        fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+          enabled: true,
+          engineState: 'UNINITIALIZED',
+          playerState: 'UNKNOWN',
+          queueSize: 0,
+          currentSpeakerId: 0,
+        );
+        fakePlatform.androidTtsAvailableToReturn = false;
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+            androidTtsAvailability: notifier,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Sanity: local ERROR set, icon is error_outline.
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsOneWidget,
+        );
+
+        // Now the user goes to TTS settings and the recovery is detected
+        // — settings publishes `available` to the notifier.
+        notifier.publishAvailable();
+        await tester.pump();
+
+        // The AppBar must lift out of ERROR (notifier flipped to available
+        // AND the listener cleared the stale local ERROR).
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsNothing,
+          reason:
+              'A stale local _speechEngineState=ERROR must not keep the '
+              'AppBar pinned to ERROR after the cross-screen notifier '
+              'publishes recovery (Issue #694 cycle-2-new reverse bug).',
+        );
+      },
+    );
+
+    testWidgets(
+      'notifier=available on VOICEVOX engine does NOT clear local ERROR (round-2 engineType gate)',
+      (WidgetTester tester) async {
+        // Round-2 review #7/#8: without the engineType gate, a stray
+        // `available` publish (e.g. during engine swap or from future
+        // VOICEVOX-related helpers that share the notifier) would silently
+        // clear a *VOICEVOX* ERROR via `_onAndroidTtsAvailabilityChanged`.
+        // This test pins the gate by:
+        //  1. starting the screen with VOICEVOX engine and a healthy init,
+        //  2. pushing engineState='ERROR' via an engineStateChanged event,
+        //  3. publishing `available` on the notifier, and
+        //  4. asserting the local ERROR persists (gate held).
+        final SpeechAvailabilityNotifier notifier =
+            SpeechAvailabilityNotifier();
+        addTearDown(notifier.dispose);
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.voicevox,
+            ),
+            androidTtsAvailability: notifier,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Push the engine into ERROR via the existing engineStateChanged
+        // path (VOICEVOX engine emitting ERROR mid-session).
+        fakePlatform.emitEvent(
+          const SpeechEvent(
+            type: SpeechEventType.engineStateChanged,
+            payload: <String, dynamic>{'state': 'ERROR'},
+          ),
+        );
+        // Drain microtasks for the broadcast stream listener and let the
+        // rebuild settle.
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsOneWidget,
+        );
+
+        // A stray `available` publish must NOT silently clear this
+        // VOICEVOX ERROR — the listener is gated on engineType.
+        notifier.publishAvailable();
+        await tester.pump();
+
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsOneWidget,
+          reason:
+              'A notifier=available publish must not clear a VOICEVOX-side '
+              'ERROR — the cross-screen notifier is Android-TTS-specific '
+              '(round-2 review).',
+        );
+      },
+    );
+
+    testWidgets(
+      'unavailable notifier on VOICEVOX engine does NOT flip the AppBar icon',
+      (WidgetTester tester) async {
+        // Acceptance criterion: VOICEVOX users must not be affected by the
+        // Android-TTS-specific notifier even when it carries a stale value.
+        final SpeechAvailabilityNotifier notifier =
+            SpeechAvailabilityNotifier();
+        addTearDown(notifier.dispose);
+        notifier.publishUnavailable();
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              // Default is voicevox, but stated explicitly for the reader.
+              engineType: SpeechEngineType.voicevox,
+            ),
+            androidTtsAvailability: notifier,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsNothing,
+          reason:
+              'VOICEVOX users must not see ERROR on the AppBar just because '
+              'the Android-TTS-specific notifier says unavailable (Issue '
+              '#694 acceptance criterion).',
+        );
+      },
+    );
+
+    testWidgets(
+      'CommentScreen Android-TTS init publishes available to the notifier',
+      (WidgetTester tester) async {
+        // The screen also publishes back to the notifier so a successful
+        // self-check seeds the cross-screen view. This way TTS settings
+        // does not have to re-run the platform check on first open.
+        final SpeechAvailabilityNotifier notifier =
+            SpeechAvailabilityNotifier();
+        addTearDown(notifier.dispose);
+        // Force the screen down its Android-TTS init path by reporting
+        // UNINITIALIZED so it actually calls checkAndroidTtsAvailability.
+        fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+          enabled: true,
+          engineState: 'UNINITIALIZED',
+          playerState: 'UNKNOWN',
+          queueSize: 0,
+          currentSpeakerId: 0,
+        );
+        fakePlatform.androidTtsAvailableToReturn = true;
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+            androidTtsAvailability: notifier,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          notifier.value,
+          SpeechAvailability.available,
+          reason:
+              'A successful Android TTS check on the comment screen must '
+              'publish available to the cross-screen notifier so other '
+              'screens see the same view (Issue #694).',
+        );
+      },
+    );
+
+    testWidgets(
+      'CommentScreen Android-TTS init publishes unavailable to the notifier on failure',
+      (WidgetTester tester) async {
+        final SpeechAvailabilityNotifier notifier =
+            SpeechAvailabilityNotifier();
+        addTearDown(notifier.dispose);
+        fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+          enabled: true,
+          engineState: 'UNINITIALIZED',
+          playerState: 'UNKNOWN',
+          queueSize: 0,
+          currentSpeakerId: 0,
+        );
+        fakePlatform.androidTtsAvailableToReturn = false;
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+            androidTtsAvailability: notifier,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(notifier.value, SpeechAvailability.unavailable);
+      },
+    );
+
+    testWidgets(
+      'cross-screen recovery resets the runtime failure counter (Issue #711 / CR-1)',
+      (WidgetTester tester) async {
+        // Integration of #694 (notifier) and #695 (failure counter): when
+        // the cross-screen notifier publishes available, the runtime
+        // failure counter must also be reset to 0. Otherwise after the
+        // user re-installs Japanese voice data via TTS settings and the
+        // AppBar visibly recovers, a single subsequent transient failure
+        // (counter at threshold + 1 = 4 ≥ 3) would re-trip ERROR
+        // immediately — an "ERROR rebound" that makes the recovery look
+        // ineffective from the user's perspective.
+        final SpeechAvailabilityNotifier notifier =
+            SpeechAvailabilityNotifier();
+        addTearDown(notifier.dispose);
+        fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+          enabled: true,
+          engineState: 'READY',
+          playerState: 'IDLE',
+          queueSize: 0,
+          currentSpeakerId: 0,
+        );
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+            androidTtsAvailability: notifier,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Drive the runtime counter to threshold via 3 consecutive
+        // android_tts_not_ready events from the native side.
+        for (int i = 0; i < 3; i++) {
+          fakePlatform.emitEvent(
+            const SpeechEvent(
+              type: SpeechEventType.speechFailed,
+              payload: <String, dynamic>{
+                'commentId': 'c-fail',
+                'message': 'android_tts_not_ready',
+              },
+            ),
+          );
+          await tester.pump();
+        }
+        await tester.pump();
+        // Sanity: ERROR icon is shown.
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsOneWidget,
+          reason: 'Sanity: 3 consecutive failures should have tripped ERROR.',
+        );
+
+        // Cross-screen recovery: TTS settings publishes available.
+        notifier.publishAvailable();
+        await tester.pump();
+        await tester.pump();
+        // ERROR icon must be gone (#704 listener clears local ERROR).
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsNothing,
+          reason: 'Notifier=available should clear the local ERROR.',
+        );
+
+        // Now a single transient failure arrives. WITHOUT the CR-1 fix,
+        // the residual counter (= threshold) would push to threshold+1
+        // and immediately re-trip ERROR. WITH the fix, the counter was
+        // reset on recovery, so a single failure cannot reach threshold.
+        fakePlatform.emitEvent(
+          const SpeechEvent(
+            type: SpeechEventType.speechFailed,
+            payload: <String, dynamic>{
+              'commentId': 'c-fail-after-recovery',
+              'message': 'android_tts_not_ready',
+            },
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsNothing,
+          reason:
+              'Issue #711 / CR-1: cross-screen recovery must reset the '
+              'runtime failure counter so a single subsequent transient '
+              'failure does not re-trip ERROR.',
+        );
+      },
+    );
+  });
+
+  // ---------------------------------------------------------------------------
   // Issue #695: Android-TTS runtime degradation must surface to the user.
   //
   // Native already emits `speech_failed` events with reasons
@@ -2319,7 +2793,6 @@ void main() {
     );
   });
 
-
   // ---------------------------------------------------------------------------
   // Issue #696: VOICEVOX setup failure / cancellation must surface ERROR.
   // Without the fix, the AppBar stayed on the neutral hourglass icon even
@@ -2571,6 +3044,7 @@ class _SpeechTestHost extends StatefulWidget {
     this.requestUserNameResolve,
     this.isSpeechMuted = false,
     this.onSpeechMuteToggled,
+    this.androidTtsAvailability,
   });
 
   final List<AppMessage> initialMessages;
@@ -2589,6 +3063,7 @@ class _SpeechTestHost extends StatefulWidget {
   final void Function(String userId)? requestUserNameResolve;
   final bool isSpeechMuted;
   final VoidCallback? onSpeechMuteToggled;
+  final SpeechAvailabilityNotifier? androidTtsAvailability;
 
   @override
   State<_SpeechTestHost> createState() => _SpeechTestHostState();
@@ -2665,6 +3140,7 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
         readGiftComment: widget.readGiftComment,
         readNicoadComment: widget.readNicoadComment,
         isSpeechMuted: widget.isSpeechMuted,
+        androidTtsAvailability: widget.androidTtsAvailability,
       ),
     );
   }
@@ -2687,6 +3163,7 @@ Widget _buildScreen({
   void Function(String userId)? requestUserNameResolve,
   bool isSpeechMuted = false,
   VoidCallback? onSpeechMuteToggled,
+  SpeechAvailabilityNotifier? androidTtsAvailability,
 }) {
   return MaterialApp(
     home: _SpeechTestHost(
@@ -2706,6 +3183,7 @@ Widget _buildScreen({
       requestUserNameResolve: requestUserNameResolve,
       isSpeechMuted: isSpeechMuted,
       onSpeechMuteToggled: onSpeechMuteToggled,
+      androidTtsAvailability: androidTtsAvailability,
     ),
   );
 }

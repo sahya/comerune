@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../application/settings/settings_store.dart';
+import '../../application/speech/speech_availability_notifier.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/connection/connection_method.dart';
@@ -271,6 +272,7 @@ class CommentSpeechConfig {
     this.readNicoadComment = false,
     this.settingsStore,
     this.isSpeechMuted = false,
+    this.androidTtsAvailability,
   });
 
   /// The platform channel bridge for VoiceVox speech synthesis.
@@ -304,4 +306,16 @@ class CommentSpeechConfig {
 
   /// Whether the speech output is currently muted.
   final bool isSpeechMuted;
+
+  /// Cross-screen single source of truth for Android TTS availability
+  /// (Issue #694). Optional — when null, the AppBar speech-status icon
+  /// falls back to the previous behaviour where availability detection in
+  /// other screens (e.g. TTS settings) does not propagate here.
+  ///
+  /// When provided AND `speechSettings.engineType == SpeechEngineType.androidTts`,
+  /// the comment screen treats `SpeechAvailability.unavailable` as a
+  /// `engineState == 'ERROR'` for icon-rendering purposes, so the user sees
+  /// the failure state immediately on returning from settings without
+  /// having to reconnect to the program.
+  final SpeechAvailabilityNotifier? androidTtsAvailability;
 }

@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../application/settings/settings_store.dart';
+import '../../application/speech/speech_availability_notifier.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../data/auth/user_session_store.dart';
 import '../../domain/models/app_settings.dart';
@@ -32,6 +33,7 @@ class SettingsScreen extends StatefulWidget {
     this.broadcasterIdNotifier,
     this.userNameResolution,
     this.speechPlatform,
+    this.androidTtsAvailability,
   });
 
   final SettingsStore settingsStore;
@@ -41,6 +43,10 @@ class SettingsScreen extends StatefulWidget {
   final ValueNotifier<String?>? broadcasterIdNotifier;
   final UserNameResolution? userNameResolution;
   final CommentSpeechPlatform? speechPlatform;
+
+  /// Issue #694: passed through to [TtsSettingsScreen] so its availability
+  /// check publishes to the cross-screen notifier.
+  final SpeechAvailabilityNotifier? androidTtsAvailability;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -471,6 +477,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 settingsStore: widget.settingsStore,
                 platform: widget.speechPlatform,
                 initialSettings: settings,
+                androidTtsAvailability: widget.androidTtsAvailability,
               ),
             ),
           );

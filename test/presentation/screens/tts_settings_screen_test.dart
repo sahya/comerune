@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/application/settings/settings_store.dart';
+import 'package:comerune/application/speech/speech_availability_notifier.dart';
 import 'package:comerune/comment_speech/comment_speech.dart';
 import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/presentation/screens/tts_settings_screen.dart';
@@ -2574,6 +2575,234 @@ void main() {
       },
     );
 
+    // -----------------------------------------------------------------
+    // Issue #694 cycle-1 review additions: cross-screen notifier coverage.
+    // -----------------------------------------------------------------
+    testWidgets(
+      'check publishes available to the notifier when platform returns true',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        await settingsStore.save(
+          AppSettings.defaults.copyWith(speechEngine: SpeechEngine.androidTts),
+        );
+        final FakeCommentSpeechPlatform fakePlatform =
+            FakeCommentSpeechPlatform();
+        fakePlatform.androidTtsAvailableToReturn = true;
+        final SpeechAvailabilityNotifier notifier =
+            SpeechAvailabilityNotifier();
+        addTearDown(notifier.dispose);
+
+        await tester.pumpWidget(
+          _buildScreenWithPlatform(
+            settingsStore,
+            fakePlatform,
+            androidTtsAvailability: notifier,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          notifier.value,
+          SpeechAvailability.available,
+          reason:
+              'Successful Android TTS availability check on the settings '
+              'screen must publish to the cross-screen notifier so other '
+              'screens see the same view (Issue #694).',
+        );
+      },
+    );
+
+    testWidgets(
+      'check publishes unavailable to the notifier when platform returns false',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        await settingsStore.save(
+          AppSettings.defaults.copyWith(speechEngine: SpeechEngine.androidTts),
+        );
+        final FakeCommentSpeechPlatform fakePlatform =
+            FakeCommentSpeechPlatform();
+        fakePlatform.androidTtsAvailableToReturn = false;
+        final SpeechAvailabilityNotifier notifier =
+            SpeechAvailabilityNotifier();
+        addTearDown(notifier.dispose);
+
+        await tester.pumpWidget(
+          _buildScreenWithPlatform(
+            settingsStore,
+            fakePlatform,
+            androidTtsAvailability: notifier,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(notifier.value, SpeechAvailability.unavailable);
+      },
+    );
+
+    testWidgets(
+      'check publishes unavailable to the notifier when platform throws',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        await settingsStore.save(
+          AppSettings.defaults.copyWith(speechEngine: SpeechEngine.androidTts),
+        );
+        final FakeCommentSpeechPlatform fakePlatform =
+            FakeCommentSpeechPlatform();
+        fakePlatform.checkAndroidTtsAvailabilityError = Exception(
+          'simulated platform channel failure',
+        );
+        final SpeechAvailabilityNotifier notifier =
+            SpeechAvailabilityNotifier();
+        addTearDown(notifier.dispose);
+
+        await tester.pumpWidget(
+          _buildScreenWithPlatform(
+            settingsStore,
+            fakePlatform,
+            androidTtsAvailability: notifier,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          notifier.value,
+          SpeechAvailability.unavailable,
+          reason:
+              'A thrown availability check must be treated as unavailable '
+              'for cross-screen consumers — same user-visible outcome '
+              '(Issue #694).',
+        );
+      },
+    );
+
+    testWidgets(
+      'switching engine to VOICEVOX resets the cross-screen notifier',
+      (WidgetTester tester) async {
+        // Without the reset, an `unavailable` value from the previous Android
+        // TTS check would linger and make the comment-screen icon flicker
+        // back to ERROR the moment the user switches back to Android TTS
+        // (before the new check completes).
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        await settingsStore.save(
+          AppSettings.defaults.copyWith(speechEngine: SpeechEngine.androidTts),
+        );
+        final FakeCommentSpeechPlatform fakePlatform =
+            FakeCommentSpeechPlatform();
+        fakePlatform.androidTtsAvailableToReturn = false;
+        final SpeechAvailabilityNotifier notifier =
+            SpeechAvailabilityNotifier();
+        addTearDown(notifier.dispose);
+
+        await tester.pumpWidget(
+          _buildScreenWithPlatform(
+            settingsStore,
+            fakePlatform,
+            androidTtsAvailability: notifier,
+          ),
+        );
+        await tester.pumpAndSettle();
+        // Sanity: initial check pushed unavailable.
+        expect(notifier.value, SpeechAvailability.unavailable);
+
+        await scrollToKeyInList(
+          tester,
+          _listKey,
+          const Key('speech-engine-selector'),
+        );
+        final SegmentedButton<SpeechEngine> segmented = tester
+            .widget<SegmentedButton<SpeechEngine>>(
+              find.byKey(
+                const Key('speech-engine-selector'),
+                skipOffstage: false,
+              ),
+            );
+        segmented.onSelectionChanged!(<SpeechEngine>{SpeechEngine.voicevox});
+        await tester.pumpAndSettle();
+
+        expect(
+          notifier.value,
+          SpeechAvailability.unknown,
+          reason:
+              'Switching engine to VOICEVOX must reset the Android-TTS '
+              'availability notifier so a stale unavailable value does not '
+              'flicker the comment-screen icon when the user switches back '
+              'later (Issue #694 review).',
+        );
+      },
+    );
+
+    testWidgets(
+      'engine round-trip Android TTS → VOICEVOX → Android TTS re-publishes the result (cycle-3)',
+      (WidgetTester tester) async {
+        // Cycle-3 review #2 follow-up: confirm that after the reset on
+        // engine switch, switching back triggers a fresh check that
+        // re-publishes to the notifier. Without this round-trip test the
+        // reset+republish contract had no end-to-end coverage.
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        await settingsStore.save(
+          AppSettings.defaults.copyWith(speechEngine: SpeechEngine.androidTts),
+        );
+        final FakeCommentSpeechPlatform fakePlatform =
+            FakeCommentSpeechPlatform();
+        fakePlatform.androidTtsAvailableToReturn = false;
+        final SpeechAvailabilityNotifier notifier =
+            SpeechAvailabilityNotifier();
+        addTearDown(notifier.dispose);
+
+        await tester.pumpWidget(
+          _buildScreenWithPlatform(
+            settingsStore,
+            fakePlatform,
+            androidTtsAvailability: notifier,
+          ),
+        );
+        await tester.pumpAndSettle();
+        // Initial check — Android TTS reports unavailable.
+        expect(notifier.value, SpeechAvailability.unavailable);
+
+        // Switch to VOICEVOX → reset to unknown.
+        await scrollToKeyInList(
+          tester,
+          _listKey,
+          const Key('speech-engine-selector'),
+        );
+        SegmentedButton<SpeechEngine> segmented = tester
+            .widget<SegmentedButton<SpeechEngine>>(
+              find.byKey(
+                const Key('speech-engine-selector'),
+                skipOffstage: false,
+              ),
+            );
+        segmented.onSelectionChanged!(<SpeechEngine>{SpeechEngine.voicevox});
+        await tester.pumpAndSettle();
+        expect(notifier.value, SpeechAvailability.unknown);
+
+        // Now Android-side recovers (e.g. user installed Japanese voice
+        // data). Switch back — the screen runs a fresh check and the
+        // notifier flips to available.
+        fakePlatform.androidTtsAvailableToReturn = true;
+        segmented = tester.widget<SegmentedButton<SpeechEngine>>(
+          find.byKey(const Key('speech-engine-selector'), skipOffstage: false),
+        );
+        segmented.onSelectionChanged!(<SpeechEngine>{SpeechEngine.androidTts});
+        await tester.pumpAndSettle();
+
+        expect(
+          notifier.value,
+          SpeechAvailability.available,
+          reason:
+              'After reset + switch back, the new check must publish the '
+              'fresh result to the cross-screen notifier '
+              '(Issue #694 cycle-3 review).',
+        );
+      },
+    );
+
     testWidgets('warning card disappears when switching back to VOICEVOX', (
       WidgetTester tester,
     ) async {
@@ -2822,9 +3051,14 @@ Widget _buildScreen(SettingsStore settingsStore) {
 
 Widget _buildScreenWithPlatform(
   SettingsStore settingsStore,
-  CommentSpeechPlatform platform,
-) {
+  CommentSpeechPlatform platform, {
+  SpeechAvailabilityNotifier? androidTtsAvailability,
+}) {
   return MaterialApp(
-    home: TtsSettingsScreen(settingsStore: settingsStore, platform: platform),
+    home: TtsSettingsScreen(
+      settingsStore: settingsStore,
+      platform: platform,
+      androidTtsAvailability: androidTtsAvailability,
+    ),
   );
 }
