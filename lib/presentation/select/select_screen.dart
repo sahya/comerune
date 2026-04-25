@@ -13,6 +13,7 @@ import '../../data/auth/user_session_store.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../data/broadcast/broadcast_control_repository.dart';
 import '../../data/follow/favorite_user_live_checker.dart';
+import '../../data/niconico/broadcaster_embed_resolver.dart';
 import '../../domain/models/follow_program.dart';
 import '../../data/follow/follow_program_repository.dart';
 import '../../data/follow/my_program_repository.dart';
@@ -65,6 +66,7 @@ class SelectScreen extends StatefulWidget {
     this.userAttributeStore,
     this.commentPostController,
     this.timeshiftFetchController,
+    this.broadcasterEmbedResolver,
     super.key,
   });
 
@@ -96,6 +98,12 @@ class SelectScreen extends StatefulWidget {
   final UserAttributeStore? userAttributeStore;
   final CommentPostController? commentPostController;
   final TimeshiftFetchController? timeshiftFetchController;
+
+  /// Resolves the broadcaster's numeric user ID from the public watch HTML
+  /// when LV-direct-input is used (Issue #681 Phase 2). Optional: callers
+  /// that do not provide one fall back to the legacy accumulate-and-flush
+  /// behaviour driven by `programinfo.supplierUserId`.
+  final BroadcasterEmbedResolver? broadcasterEmbedResolver;
 
   @override
   State<SelectScreen> createState() => _SelectScreenState();
@@ -393,13 +401,23 @@ class _SelectScreenState extends State<SelectScreen>
     );
     await widget.onPrepareConnection?.call(lv, settings);
     _currentBroadcasterId = null;
-    // Pre-bind supplier ID if already known (Issue #681). When only the lv
-    // is known we do NOT load here — loading under `lv` creates an orphan
-    // file and pollutes the merge. _onSupplierUserIdChanged will flush
-    // accumulated in-memory changes to the correct file once resolved.
+    // Pre-bind supplier ID if already known (Issue #681 Phase 1). When only
+    // the lv is known we do NOT load here — loading under `lv` creates an
+    // orphan file and pollutes the merge. _onSupplierUserIdChanged will
+    // flush accumulated in-memory changes to the correct file once
+    // resolved.
     if (preferredBroadcasterId != null) {
       widget.supplierUserIdNotifier?.value = preferredBroadcasterId;
       unawaited(_loadUserAttributes(preferredBroadcasterId));
+    } else {
+      // Issue #681 Phase 2: LV-direct-input has no follow-list metadata, so
+      // attempt to resolve the broadcaster's numeric user ID from the
+      // public watch-page embedded data in parallel with the WebSocket
+      // handshake. This gives user broadcasts (where programinfo's
+      // supplierUserId is sometimes missing) a chance to bind to the
+      // correct file before _onSupplierUserIdChanged would otherwise need
+      // to migrate from the lv-keyed orphan path.
+      unawaited(_tryResolveBroadcasterFromEmbed(lv));
     }
 
     final bool started = widget.connectionSupervisor.startConnection();
@@ -759,6 +777,52 @@ class _SelectScreenState extends State<SelectScreen>
     }
     _lastConnectedLv = nextLv;
     return Future<void>.value();
+  }
+
+  /// Best-effort attempt to bind `supplierUserIdNotifier` from the niconico
+  /// watch-page embedded data when only an `lv` is known (Issue #681
+  /// Phase 2). Never throws; any failure leaves the legacy accumulate-and-
+  /// flush path untouched.
+  Future<void> _tryResolveBroadcasterFromEmbed(String lv) async {
+    final BroadcasterEmbedResolver? resolver = widget.broadcasterEmbedResolver;
+    if (resolver == null) {
+      return;
+    }
+    final BroadcasterEmbedInfo? info = await resolver.resolve(lv);
+    if (!mounted || info == null) {
+      return;
+    }
+    // Reject the result when the user has switched to a different lv in
+    // the meantime — applying it would mis-key user attributes for the
+    // newly-connected broadcaster.
+    if (_lastConnectedLv != lv) {
+      return;
+    }
+    final ValueNotifier<String?>? notifier = widget.supplierUserIdNotifier;
+    if (notifier == null) {
+      return;
+    }
+    // If a real supplier ID has already arrived (e.g. programinfo resolved
+    // first), prefer that source of truth. Setting the same value here
+    // would be a harmless no-op but checking explicitly also avoids the
+    // ambiguous case where embed and programinfo somehow disagree.
+    if (notifier.value != null) {
+      // _onSupplierUserIdChanged will (or has already) loaded attributes
+      // under the existing supplier ID. Still seed the broadcaster name
+      // cache so the comment header can avoid a nickname-API round-trip.
+      _seedBroadcasterName(info);
+      return;
+    }
+    notifier.value = info.userId;
+    _seedBroadcasterName(info);
+  }
+
+  void _seedBroadcasterName(BroadcasterEmbedInfo info) {
+    final String? name = info.name;
+    if (name == null || name.isEmpty) {
+      return;
+    }
+    widget.userNameResolution?.seedCache?.call(info.userId, name);
   }
 
   void _onSupplierUserIdChanged() {

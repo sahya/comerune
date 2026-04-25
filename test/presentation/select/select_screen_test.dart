@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:comerune/application/settings/settings_store.dart';
@@ -6,6 +8,7 @@ import 'package:comerune/data/follow/favorite_user_live_checker.dart';
 import 'package:comerune/domain/models/follow_program.dart';
 import 'package:comerune/data/follow/follow_program_repository.dart';
 import 'package:comerune/data/follow/my_program_repository.dart';
+import 'package:comerune/data/niconico/broadcaster_embed_resolver.dart';
 import 'package:comerune/data/user/user_attribute_store.dart';
 import 'package:comerune/domain/connection/connection_supervisor.dart';
 import 'package:comerune/domain/models/app_message.dart';
@@ -14,6 +17,7 @@ import 'package:comerune/domain/models/user_name_resolution.dart';
 import 'package:comerune/presentation/select/select_screen.dart';
 import 'package:comerune/presentation/screens/comment_screen.dart';
 
+import '../../helpers/fake_broadcaster_embed_resolver.dart';
 import '../../helpers/in_memory_shared_preferences.dart';
 import '../../helpers/in_memory_user_attribute_store.dart';
 import '../../helpers/in_memory_user_session_store.dart';
@@ -1801,6 +1805,278 @@ void main() {
         final Map<String, String> realStored = await userAttributeStore
             .loadNicknames('broadcaster-1');
         expect(realStored['user-1'], '自動登録ニックネーム');
+      },
+    );
+
+    testWidgets(
+      'embed resolver result binds supplierUserIdNotifier for LV-direct input',
+      (WidgetTester tester) async {
+        // Pre-seed disk attrs for the broadcaster the embed will resolve.
+        await userAttributeStore.setNickname(
+          broadcasterId: '7654321',
+          userId: 'user-1',
+          nickname: 'Embed解決ニックネーム',
+        );
+
+        final FakeBroadcasterEmbedResolver embedResolver =
+            FakeBroadcasterEmbedResolver(
+              results: <String, BroadcasterEmbedInfo>{
+                'lv345678901': const BroadcasterEmbedInfo(
+                  userId: '7654321',
+                  name: '配信者A',
+                ),
+              },
+            );
+
+        timelineStore.add(
+          AppMessage(
+            id: 'msg-1',
+            timestamp: DateTime(2026, 4, 25, 12, 0, 0),
+            userId: 'user-1',
+            content: 'embed test',
+            type: AppMessageType.chat,
+          ),
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SelectScreen(
+              connectionSupervisor: supervisor,
+              timelineStore: timelineStore,
+              userAttributeStore: userAttributeStore,
+              supplierUserIdNotifier: supplierUserIdNotifier,
+              broadcasterEmbedResolver: embedResolver,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        await tester.enterText(inputField(), 'lv345678901');
+        await tester.pump();
+        await tester.tap(connectButton());
+        await tester.pumpAndSettle();
+
+        expect(embedResolver.resolvedLvs, <String>['lv345678901']);
+        expect(supplierUserIdNotifier.value, '7654321');
+        expect(
+          tester
+              .widget<CommentScreen>(find.byType(CommentScreen))
+              .contentFilter
+              .userNicknameMap['user-1'],
+          'Embed解決ニックネーム',
+        );
+      },
+    );
+
+    testWidgets(
+      'embed resolver is skipped when preferredBroadcasterId is provided',
+      (WidgetTester tester) async {
+        final FakeBroadcasterEmbedResolver embedResolver =
+            FakeBroadcasterEmbedResolver();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SelectScreen(
+              connectionSupervisor: supervisor,
+              timelineStore: timelineStore,
+              userAttributeStore: userAttributeStore,
+              supplierUserIdNotifier: supplierUserIdNotifier,
+              broadcasterEmbedResolver: embedResolver,
+              followProgramRepository:
+                  _FakeFollowProgramRepository(<FollowProgram>[
+                    FollowProgram(
+                      programId: 'lv345678901',
+                      title: 'タップ放送',
+                      providerName: '配信者X',
+                      providerUserId: '11111',
+                      status: ProgramStatus.onAir,
+                    ),
+                  ]),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('タップ放送'));
+        await tester.pumpAndSettle();
+
+        // pre-binding via FollowProgram.providerUserId already covers this
+        // case, so the embed resolver must not be called.
+        expect(embedResolver.resolvedLvs, isEmpty);
+        expect(supplierUserIdNotifier.value, '11111');
+      },
+    );
+
+    testWidgets(
+      'embed resolver returning null leaves notifier unchanged so the '
+      'accumulate-and-flush path remains in effect',
+      (WidgetTester tester) async {
+        final FakeBroadcasterEmbedResolver embedResolver =
+            FakeBroadcasterEmbedResolver();
+
+        timelineStore.add(
+          AppMessage(
+            id: 'msg-1',
+            timestamp: DateTime(2026, 4, 25, 12, 0, 0),
+            userId: 'user-1',
+            content: 'no embed',
+            type: AppMessageType.chat,
+          ),
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SelectScreen(
+              connectionSupervisor: supervisor,
+              timelineStore: timelineStore,
+              userAttributeStore: userAttributeStore,
+              supplierUserIdNotifier: supplierUserIdNotifier,
+              broadcasterEmbedResolver: embedResolver,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        await tester.enterText(inputField(), 'lv345678901');
+        await tester.pump();
+        await tester.tap(connectButton());
+        await tester.pumpAndSettle();
+
+        expect(embedResolver.resolvedLvs, <String>['lv345678901']);
+        expect(supplierUserIdNotifier.value, isNull);
+
+        // Programinfo eventually resolves the broadcaster — the legacy
+        // accumulate-and-flush path must still work.
+        supplierUserIdNotifier.value = 'broadcaster-late';
+        await tester.pumpAndSettle();
+        expect(supplierUserIdNotifier.value, 'broadcaster-late');
+      },
+    );
+
+    testWidgets(
+      'embed result for an old lv is discarded after the user switches lv',
+      (WidgetTester tester) async {
+        // Pre-seed disk attrs for the broadcaster the (stale) embed would
+        // resolve to so we can detect a mistaken bind.
+        await userAttributeStore.setNickname(
+          broadcasterId: '1111111',
+          userId: 'user-1',
+          nickname: 'Aの古い名前',
+        );
+
+        final Completer<void> embedGate = Completer<void>();
+        final FakeBroadcasterEmbedResolver embedResolver =
+            FakeBroadcasterEmbedResolver(
+              results: <String, BroadcasterEmbedInfo>{
+                'lv111': const BroadcasterEmbedInfo(userId: '1111111'),
+              },
+            )..setGate('lv111', embedGate.future);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SelectScreen(
+              connectionSupervisor: supervisor,
+              timelineStore: timelineStore,
+              userAttributeStore: userAttributeStore,
+              supplierUserIdNotifier: supplierUserIdNotifier,
+              broadcasterEmbedResolver: embedResolver,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        await tester.enterText(inputField(), 'lv111');
+        await tester.pump();
+        await tester.tap(connectButton());
+        await tester.pumpAndSettle();
+
+        // Embed for lv111 is still pending (gate not yet released).
+        expect(supplierUserIdNotifier.value, isNull);
+
+        // Simulate the user stopping the current connection, navigating
+        // back, and starting a different lv before lv111's embed completes.
+        await tester
+            .widget<CommentScreen>(find.byType(CommentScreen))
+            .callbacks
+            .onStopAllConnections();
+        await tester.pumpAndSettle();
+        Navigator.of(tester.element(find.byType(CommentScreen))).pop();
+        await tester.pumpAndSettle();
+        await tester.enterText(inputField(), 'lv222');
+        await tester.pump();
+        await tester.tap(connectButton());
+        await tester.pumpAndSettle();
+
+        // Now release the in-flight embed — it must NOT bind to lv111's
+        // userId because _lastConnectedLv has moved on.
+        embedGate.complete();
+        await tester.pumpAndSettle();
+
+        expect(
+          supplierUserIdNotifier.value,
+          isNot('1111111'),
+          reason: '古い lv の embed 結果で別放送者の supplierUserId にバインドしてはならない',
+        );
+      },
+    );
+
+    testWidgets(
+      'embed only seeds the name cache when supplierUserIdNotifier is '
+      'already populated by another source',
+      (WidgetTester tester) async {
+        final List<({String userId, String name})> seeds =
+            <({String userId, String name})>[];
+        final UserNameResolution userNameResolution = UserNameResolution(
+          resolve: (_) => null,
+          requestResolve: (_) {},
+          listenable: ValueNotifier<int>(0),
+          seedCache: (String userId, String name) {
+            seeds.add((userId: userId, name: name));
+          },
+        );
+
+        final FakeBroadcasterEmbedResolver embedResolver =
+            FakeBroadcasterEmbedResolver(
+              results: <String, BroadcasterEmbedInfo>{
+                'lv333': const BroadcasterEmbedInfo(
+                  userId: '3333333',
+                  name: 'Embed放送者',
+                ),
+              },
+            );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SelectScreen(
+              connectionSupervisor: supervisor,
+              timelineStore: timelineStore,
+              userAttributeStore: userAttributeStore,
+              supplierUserIdNotifier: supplierUserIdNotifier,
+              userNameResolution: userNameResolution,
+              broadcasterEmbedResolver: embedResolver,
+              onPrepareConnection: (String lv, AppSettings settings) async {
+                // Simulate programinfo resolving the supplier ID before
+                // the embed result lands.
+                supplierUserIdNotifier.value = '3333333';
+              },
+            ),
+          ),
+        );
+        await tester.pump();
+
+        await tester.enterText(inputField(), 'lv333');
+        await tester.pump();
+        await tester.tap(connectButton());
+        await tester.pumpAndSettle();
+
+        // The embed must not override the already-resolved supplier ID,
+        // but it should still seed the name cache so the comment header
+        // can skip a nickname-API round-trip.
+        expect(supplierUserIdNotifier.value, '3333333');
+        expect(seeds, <({String userId, String name})>[
+          (userId: '3333333', name: 'Embed放送者'),
+        ]);
       },
     );
 

@@ -25,6 +25,7 @@ import 'data/broadcast/broadcast_control_repository.dart';
 import 'data/follow/follow_program_repository.dart';
 import 'data/follow/my_program_repository.dart';
 import 'data/foreground_service/foreground_service_manager.dart';
+import 'data/niconico/broadcaster_embed_resolver.dart';
 import 'data/connection/web_socket_channel_legacy_web_socket.dart';
 import 'data/user/file_user_attribute_store.dart';
 import 'data/user/user_attribute_store.dart';
@@ -202,6 +203,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
   );
   late final ValueNotifier<AppThemeMode> _themeModeNotifier;
   late final UserNameResolver _userNameResolver;
+  late final BroadcasterEmbedResolver _broadcasterEmbedResolver;
   late final FollowProgramRepository _followProgramRepository;
   late final MyProgramRepository _myProgramRepository;
   late final BroadcastControlRepository _broadcastControlRepository;
@@ -232,6 +234,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
     )..addListener(_onThemeModeChanged);
 
     _userNameResolver = UserNameResolver();
+    _broadcasterEmbedResolver = BroadcasterEmbedResolver();
     _followProgramRepository = FollowProgramRepository();
     _myProgramRepository = MyProgramRepository();
     _broadcastControlRepository = BroadcastControlRepository();
@@ -364,6 +367,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _timelineStore.dispose();
     _statisticsStore.dispose();
     _userNameResolver.dispose();
+    _broadcasterEmbedResolver.dispose();
     // Dispose the CommentPostController before its dependencies so any
     // in-flight postComment / ensureBroadcasterStatus future sees the
     // disposed flag before we close the underlying HttpClients.
@@ -429,6 +433,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
           userNameResolution: UserNameResolution(
             resolve: _userNameResolver.getCachedName,
             requestResolve: _userNameResolver.requestResolve,
+            seedCache: _userNameResolver.seedCache,
             listenable: _userNameResolver,
           ),
           broadcasterNameNotifier: _broadcasterNameNotifier,
@@ -443,6 +448,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
           userAttributeStore: widget.userAttributeStore,
           commentPostController: _commentPostController,
           timeshiftFetchController: _timeshiftFetchController,
+          broadcasterEmbedResolver: _broadcasterEmbedResolver,
         ),
       ),
     );
