@@ -1209,6 +1209,10 @@ class _CommentScreenState extends State<CommentScreen>
     _speechInitializing = true;
 
     // Check if engine is already ready from a previous session.
+    // We also surface a previously-stuck ERROR (e.g. VOICEVOX setup was
+    // cancelled / failed in a prior call) to the AppBar icon so the user
+    // does not see a perpetual "hourglass" while native already knows
+    // initialization failed. See `_SpeechStatusIcon` for the icon priority.
     if (!_speechInitialized) {
       _debugLog('[CommentScreen] initSpeech: checking engine status...');
       try {
@@ -1221,9 +1225,46 @@ class _CommentScreenState extends State<CommentScreen>
         if (status.engineState == 'READY') {
           _speechInitialized = true;
           _debugLog('[CommentScreen] initSpeech: engine already READY');
+          // Round-2 post-merge review: clear any stale `_speechEngineState
+          // == 'ERROR'` left over from a previous failed init attempt
+          // (e.g. setup cancelled, then native recovered on its own and
+          // now reports READY). Without this, the icon priority logic
+          // would render `error_outline` even though the engine is
+          // actually ready, because the start() success path that
+          // normally sets state='READY' is reached only after a few
+          // awaits and the icon would briefly flicker ERROR in between.
+          if (_speechEngineState == 'ERROR' && mounted) {
+            setState(() {
+              _speechEngineState = '';
+            });
+          }
+        } else if (status.engineState == 'ERROR' && mounted) {
+          setState(() {
+            _speechEngineState = 'ERROR';
+          });
         }
       } catch (e) {
         _errorLog('[CommentScreen] initSpeech: getStatus failed', error: e);
+        // Issue #696 cycle-2-new review: a thrown getStatus is, from the
+        // user's perspective, the same kind of "the engine is not usable"
+        // signal as `engineState == 'ERROR'`. Without this branch the
+        // AppBar would stay on the neutral "hourglass" icon while native
+        // is in a broken state, which is the same hourglass-stuck bug
+        // Issue #696 was supposed to eliminate.
+        //
+        // Round-2 review note: control intentionally falls through to the
+        // setup dialog below. A getStatus failure does not necessarily
+        // mean the engine is permanently broken — it may be a transient
+        // platform-channel hiccup, in which case the setup dialog can
+        // still bring the engine to ready and the success path further
+        // down sets `_speechEngineState='READY'` again, naturally
+        // clearing the ERROR we just set. An early return here would
+        // remove the user's only recovery path within this init attempt.
+        if (mounted) {
+          setState(() {
+            _speechEngineState = 'ERROR';
+          });
+        }
       }
     }
 
@@ -1243,6 +1284,16 @@ class _CommentScreenState extends State<CommentScreen>
         () => '[CommentScreen] initSpeech: SetupDialog result=$success',
       );
       if (!success || !mounted) {
+        // VOICEVOX setup failed or was cancelled by the user. Mirror the
+        // Android TTS branch below: surface ERROR to the AppBar icon so the
+        // user can distinguish a real failure from "still initializing"
+        // (Issue #696). _speechInitialized stays false so toggling speech
+        // off/on retries from scratch.
+        if (mounted) {
+          setState(() {
+            _speechEngineState = 'ERROR';
+          });
+        }
         _speechInitializing = false;
         return;
       }
