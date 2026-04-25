@@ -1,3 +1,4 @@
+import 'package:characters/characters.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/domain/connection/ndgr_message_normalizer.dart';
@@ -1860,6 +1861,244 @@ void main() {
       );
       expect(forwardedResult!.type, AppMessageType.chat);
       expect(forwardedResult.content, 'クルーズ本文');
+    });
+
+    // --- Notification / advertiser body length cap (Issue #651) ---
+    //
+    // The cap applies only to simpleNotificationV2, simpleNotification v1,
+    // and nicoad bodies. Operator-comment and chat bodies are intentionally
+    // NOT capped — see [_kNotificationBodyMaxLength] doc-comment.
+    group('notification body length cap', () {
+      const int kCap = 512;
+
+      test(
+        'simpleNotificationV2 message of exactly the cap length is preserved',
+        () {
+          final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+          final String exactly = 'a' * kCap;
+
+          final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+            NdgrChunkedMessage(
+              id: 'ndgr-cap-v2-exact',
+              simpleNotificationV2: NdgrSimpleNotificationV2(
+                type: NdgrSimpleNotificationV2Type.ichiba,
+                message: exactly,
+              ),
+            ),
+          );
+
+          expect(normalized, isNotNull);
+          expect(normalized!.content, exactly);
+          expect(normalized.content.length, kCap);
+        },
+      );
+
+      test('simpleNotificationV2 message of cap - 1 graphemes is preserved '
+          'unchanged (off-by-one boundary guard)', () {
+        // Boundary guard against a future off-by-one regression in the
+        // `chars.take(N)` truncation: a body strictly shorter than the
+        // cap must round-trip verbatim with no length change.
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final String justUnder = 'a' * (kCap - 1);
+
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          NdgrChunkedMessage(
+            id: 'ndgr-cap-v2-under',
+            simpleNotificationV2: NdgrSimpleNotificationV2(
+              type: NdgrSimpleNotificationV2Type.ichiba,
+              message: justUnder,
+            ),
+          ),
+        );
+
+        expect(normalized, isNotNull);
+        expect(normalized!.content, justUnder);
+        expect(normalized.content.length, kCap - 1);
+      });
+
+      test(
+        'simpleNotificationV2 message of cap + 1 is truncated to cap graphemes',
+        () {
+          final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+          final String oversize = 'a' * (kCap + 1);
+
+          final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+            NdgrChunkedMessage(
+              id: 'ndgr-cap-v2-over',
+              simpleNotificationV2: NdgrSimpleNotificationV2(
+                type: NdgrSimpleNotificationV2Type.ichiba,
+                message: oversize,
+              ),
+            ),
+          );
+
+          expect(normalized, isNotNull);
+          expect(normalized!.content, 'a' * kCap);
+          expect(normalized.content.length, kCap);
+        },
+      );
+
+      test('simpleNotification v1 message of cap + 1 is truncated to cap '
+          'graphemes', () {
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final String oversize = 'b' * (kCap + 1);
+
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          NdgrChunkedMessage(
+            id: 'ndgr-cap-v1-over',
+            simpleNotification: NdgrSimpleNotificationV1(
+              type: NdgrSimpleNotificationV1Type.ichiba,
+              message: oversize,
+            ),
+          ),
+        );
+
+        expect(normalized, isNotNull);
+        expect(normalized!.content, 'b' * kCap);
+      });
+
+      test('nicoad message of cap + 1 is truncated to cap graphemes', () {
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final String oversize = 'c' * (kCap + 1);
+
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          NdgrChunkedMessage(
+            id: 'ndgr-cap-nicoad-over',
+            nicoad: NdgrNicoad(message: oversize),
+          ),
+        );
+
+        expect(normalized, isNotNull);
+        expect(normalized!.content, 'c' * kCap);
+      });
+
+      test('cap counts grapheme clusters, not code units (surrogate pairs are '
+          'not split)', () {
+        // Each `🎉` (U+1F389) is 2 UTF-16 code units but 1 grapheme cluster.
+        // 600 emoji is well over the 512 cap; if the cap counted code
+        // units, truncation would split the surrogate pair and the
+        // resulting String would either contain a lone surrogate or
+        // truncate at 256 emoji. We expect exactly 512 emoji preserved.
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        const String emoji = '🎉';
+        final String oversize = emoji * (kCap + 100);
+
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          NdgrChunkedMessage(
+            id: 'ndgr-cap-emoji',
+            simpleNotificationV2: NdgrSimpleNotificationV2(
+              type: NdgrSimpleNotificationV2Type.ichiba,
+              message: oversize,
+            ),
+          ),
+        );
+
+        expect(normalized, isNotNull);
+        // Cap counts grapheme clusters → exactly 512 emoji preserved.
+        expect(normalized!.content, emoji * kCap);
+      });
+
+      test('cap does not split a ZWJ-joined family emoji at the boundary', () {
+        // A ZWJ-joined family emoji `👨‍👩‍👧` is 1 grapheme cluster but
+        // 5 code points (U+1F468 ZWJ U+1F469 ZWJ U+1F467) and 8 UTF-16
+        // code units. The `Characters.take` cap must treat the whole
+        // sequence as a single unit: it must never slice the cluster
+        // mid-ZWJ, which would produce a half-formed emoji that
+        // renders as separate man / woman / girl glyphs.
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        const String family = '\u{1F468}‍\u{1F469}‍\u{1F467}';
+        // Sanity: family is exactly one grapheme cluster.
+        expect(Characters(family).length, 1);
+
+        // Case 1: 511 ASCII + family = 512 graphemes → fits the cap
+        // exactly and must round-trip verbatim, including the full
+        // ZWJ sequence at the trailing position.
+        final String atBoundary = ('a' * (kCap - 1)) + family;
+        expect(Characters(atBoundary).length, kCap);
+
+        final AppMessage? atBoundaryNormalized = normalizer
+            .normalizeChunkedMessage(
+              NdgrChunkedMessage(
+                id: 'ndgr-cap-zwj-at',
+                simpleNotificationV2: NdgrSimpleNotificationV2(
+                  type: NdgrSimpleNotificationV2Type.ichiba,
+                  message: atBoundary,
+                ),
+              ),
+            );
+
+        expect(atBoundaryNormalized, isNotNull);
+        expect(atBoundaryNormalized!.content, atBoundary);
+        // The full ZWJ sequence must still be present at the tail.
+        expect(atBoundaryNormalized.content.endsWith(family), isTrue);
+
+        // Case 2: 512 ASCII + family = 513 graphemes → cap drops the
+        // trailing emoji as a whole. The cap must not slice the
+        // cluster mid-ZWJ and leave a partial sequence behind.
+        final String overBoundary = ('a' * kCap) + family;
+        expect(Characters(overBoundary).length, kCap + 1);
+
+        final AppMessage? overBoundaryNormalized = normalizer
+            .normalizeChunkedMessage(
+              NdgrChunkedMessage(
+                id: 'ndgr-cap-zwj-over',
+                simpleNotificationV2: NdgrSimpleNotificationV2(
+                  type: NdgrSimpleNotificationV2Type.ichiba,
+                  message: overBoundary,
+                ),
+              ),
+            );
+
+        expect(overBoundaryNormalized, isNotNull);
+        expect(overBoundaryNormalized!.content, 'a' * kCap);
+        // Defence-in-depth against a partial slice: no fragment of
+        // the ZWJ sequence — neither the leading code point nor a
+        // trailing ZWJ — should remain in the truncated body.
+        expect(overBoundaryNormalized.content.contains('\u{1F468}'), isFalse);
+        expect(overBoundaryNormalized.content.contains('\u{1F469}'), isFalse);
+        expect(overBoundaryNormalized.content.contains('\u{1F467}'), isFalse);
+        expect(overBoundaryNormalized.content.contains('‍'), isFalse);
+      });
+
+      test('chat content longer than cap is NOT truncated (regression guard '
+          'for option-B decision)', () {
+        // Per Issue #651 option B: only notification / advertiser bodies
+        // are capped. Chat content has no observed UX issue and the
+        // orchestrator decided capping legitimate long viewer comments
+        // would be a regression.
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final String longChat = 'x' * (kCap + 500);
+
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          NdgrChunkedMessage(
+            id: 'ndgr-chat-long',
+            chat: NdgrChat(content: longChat, no: 1),
+          ),
+        );
+
+        expect(normalized, isNotNull);
+        expect(normalized!.content, longChat);
+        expect(normalized.content.length, kCap + 500);
+      });
+
+      test('operator content longer than cap is NOT truncated (broadcaster '
+          'trust)', () {
+        // Operator content is broadcaster-authenticated upstream; the
+        // orchestrator decided not to cap it.
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final String longOperator = 'y' * (kCap + 500);
+
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          NdgrChunkedMessage(
+            id: 'ndgr-op-long',
+            operatorComment: NdgrOperatorComment(content: longOperator),
+          ),
+        );
+
+        expect(normalized, isNotNull);
+        expect(normalized!.content, longOperator);
+        expect(normalized.content.length, kCap + 500);
+      });
     });
   });
 }

@@ -64,6 +64,33 @@ const int _kChatUserNameMaxLength = 64;
 /// spaces into a single space during user-name sanitisation.
 final RegExp _kWhitespaceRunPattern = RegExp(r'[ \u3000]+');
 
+/// Upper bound on the length of a notification / advertiser message body
+/// after sanitisation, in grapheme clusters.
+///
+/// Intentionally larger than the user-name label cap (64) because
+/// notification / nicoad bodies legitimately carry full sentences (system
+/// announcements, advertiser messages, cruise notifications), but still
+/// bounded so a malformed or abusive upstream payload cannot push a single
+/// notification row to occupy an unbounded amount of vertical space or
+/// starve the comment list renderer with a multi-megabyte string.
+///
+/// Rationale for the 512 ceiling: typical ichiba / cruise / nicoad
+/// notification bodies in known traffic are well under 100 grapheme
+/// clusters, so 512 is a conservative ceiling that sits comfortably
+/// above expected content while still strictly bounding pathological
+/// multi-megabyte payloads (e.g. a 10 MB upstream string). The ceiling
+/// can be tightened in a follow-up if real-world bodies turn out to be
+/// even shorter.
+///
+/// Applies only to notification / advertiser bodies (simpleNotificationV2,
+/// simpleNotification v1, nicoad). Operator-comment and chat content are
+/// intentionally NOT capped here:
+///   - operator content is broadcaster-authenticated upstream and has not
+///     exhibited the runaway-length pattern in practice;
+///   - chat content has no observed UX issue and capping legitimate long
+///     viewer comments would be a regression.
+const int _kNotificationBodyMaxLength = 512;
+
 /// Shared sanitisation pipeline for user-name labels (operator and chat).
 ///
 /// Steps:
@@ -133,6 +160,42 @@ String? _sanitizeMessageContent(String rawContent) {
   final String sanitized = removeControlAndInvisibleChars(rawContent);
   if (sanitized.isEmpty) {
     return null;
+  }
+  return sanitized;
+}
+
+/// Sanitises a notification / advertiser message body and additionally
+/// caps it at [maxGraphemes] grapheme clusters.
+///
+/// Wraps [_sanitizeMessageContent] (control / invisible / drop-on-empty
+/// policy) with a hard grapheme cap so a malformed or abusive
+/// notification / nicoad payload cannot push a single row to consume
+/// unbounded vertical space.  Returns `null` on the same drop-on-empty
+/// condition as [_sanitizeMessageContent].
+///
+/// Truncation is a hard cut (no ellipsis marker) to mirror the existing
+/// [_sanitizeUserName] policy and avoid embedding a synthesised character
+/// into broadcaster / advertiser-authored text.  Counts grapheme clusters
+/// (via [Characters]) instead of code units so surrogate pairs and
+/// ZWJ-composed emoji are not split mid-glyph.
+///
+/// Hard cut (no ellipsis marker) is consistent with the [_sanitizeUserName]
+/// policy. If product UX later prefers a visible truncation marker, replace
+/// the truncation step with `chars.take(maxGraphemes - 1).toString() + '…'`
+/// (note: this requires recomputing the length budget so the marker itself
+/// fits inside [maxGraphemes]). Tracked as a UX product decision; do not
+/// flip the policy without owner approval.
+///
+/// Intentionally not used for chat or operator content — see
+/// [_kNotificationBodyMaxLength] for the rationale.
+String? _sanitizeNotificationBody(String rawContent, int maxGraphemes) {
+  final String? sanitized = _sanitizeMessageContent(rawContent);
+  if (sanitized == null) {
+    return null;
+  }
+  final Characters chars = Characters(sanitized);
+  if (chars.length > maxGraphemes) {
+    return chars.take(maxGraphemes).toString();
   }
   return sanitized;
 }
@@ -221,8 +284,14 @@ class NdgrMessageNormalizer {
       // other invisible controls so a Trojan Source style payload cannot
       // be smuggled into the rendered system / emotion / notification
       // bubble. Drop-on-empty policy lives in [_sanitizeMessageContent].
-      final String? sanitizedContent = _sanitizeMessageContent(
+      //
+      // Additionally cap the body at [_kNotificationBodyMaxLength] grapheme
+      // clusters so a malformed / abusive payload cannot push a single
+      // notification row to consume unbounded vertical space (see the
+      // constant's doc-comment for rationale).
+      final String? sanitizedContent = _sanitizeNotificationBody(
         notification.message,
+        _kNotificationBodyMaxLength,
       );
       if (sanitizedContent == null) {
         return null;
@@ -245,8 +314,11 @@ class NdgrMessageNormalizer {
     // both are present in the same chunk, v2 wins.
     final NdgrSimpleNotificationV1? notificationV1 = source.simpleNotification;
     if (notificationV1 != null && notificationV1.message.isNotEmpty) {
-      final String? sanitizedContent = _sanitizeMessageContent(
+      // Same length-cap policy as the v2 branch above: bound the rendered
+      // row size while preserving the legitimate body verbatim.
+      final String? sanitizedContent = _sanitizeNotificationBody(
         notificationV1.message,
+        _kNotificationBodyMaxLength,
       );
       if (sanitizedContent == null) {
         return null;
@@ -273,7 +345,14 @@ class NdgrMessageNormalizer {
     // gift is synthesised from system fields only.
     final NdgrNicoad? nicoad = source.nicoad;
     if (nicoad != null && nicoad.message.isNotEmpty) {
-      final String? sanitizedContent = _sanitizeMessageContent(nicoad.message);
+      // Cap the advertiser-authored body at [_kNotificationBodyMaxLength]
+      // grapheme clusters in addition to the shared sanitisation, matching
+      // the notification branches above. Operator-comment / chat content
+      // intentionally bypass the cap — see the constant's doc-comment.
+      final String? sanitizedContent = _sanitizeNotificationBody(
+        nicoad.message,
+        _kNotificationBodyMaxLength,
+      );
       if (sanitizedContent == null) {
         return null;
       }
