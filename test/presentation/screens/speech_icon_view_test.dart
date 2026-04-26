@@ -24,6 +24,7 @@ void main() {
     bool isMuted = false,
     bool treatAsError = false,
     bool isAndroidTtsEngine = false,
+    bool hasRetryAffordance = false,
   }) {
     return speechIconViewFor(
       engineState: engineState,
@@ -33,6 +34,7 @@ void main() {
       treatAsError: treatAsError,
       themeColors: theme,
       isAndroidTtsEngine: isAndroidTtsEngine,
+      hasRetryAffordance: hasRetryAffordance,
     );
   }
 
@@ -94,6 +96,44 @@ void main() {
         );
         expect(v.tooltip, '読み上げ: エラー');
       });
+
+      // Issue #713 (UX-2): when the host wires a retry handler the
+      // tooltip advertises the inline retry path. The Android-TTS hint
+      // is preserved so users still know where to read the detailed
+      // warning if the retry doesn't recover the engine.
+      test('hasRetryAffordance=true rewrites the generic error tooltip to '
+          'advertise tap-to-retry', () {
+        final SpeechIconView v = call(
+          engineState: SpeechEngineState.error,
+          isAndroidTtsEngine: false,
+          hasRetryAffordance: true,
+        );
+        expect(v.tooltip, '読み上げ: エラー（タップで再試行）');
+      });
+
+      test('hasRetryAffordance=true on Android-TTS keeps the settings-detail '
+          'hint alongside the retry hint', () {
+        final SpeechIconView v = call(
+          engineState: SpeechEngineState.error,
+          isAndroidTtsEngine: true,
+          hasRetryAffordance: true,
+        );
+        expect(v.tooltip, '読み上げ: エラー（タップで再試行 / 読み上げ設定で詳細）');
+      });
+
+      test(
+        'hasRetryAffordance default (false) preserves the legacy tooltip',
+        () {
+          // Backward-compat guarantee for callers that haven't wired
+          // [onRetry] (e.g. older host code, unrelated screens that
+          // build the icon without retry).
+          final SpeechIconView v = call(
+            engineState: SpeechEngineState.error,
+            isAndroidTtsEngine: true,
+          );
+          expect(v.tooltip, '読み上げ: エラー（読み上げ設定で詳細を確認してください）');
+        },
+      );
     });
 
     group('priority ladder — non-error states', () {

@@ -1364,6 +1364,24 @@ class _CommentScreenState extends State<CommentScreen>
     });
   }
 
+  /// Issue #713 (UX-2): retry handler wired to the AppBar speech icon
+  /// when the engine is in ERROR. Resets [_speechInitialized] so the
+  /// next call to [_initializeAndStartSpeech] re-runs the full setup
+  /// (model load + start) instead of short-circuiting on the cached
+  /// "already initialised" branch.
+  ///
+  /// Multi-tap protection: [_initializeAndStartSpeech] early-returns
+  /// when [_speechInitializing] is true, so rapid double-taps cannot
+  /// re-enter the init path concurrently. We do NOT clear
+  /// [_speechEngineState] here — the icon stays on ERROR until the
+  /// init result determines the new state, mirroring the existing
+  /// "toggle off/on" recovery flow.
+  void _retrySpeechAfterError() {
+    if (_speechInitializing) return;
+    _speechInitialized = false;
+    unawaited(_initializeAndStartSpeech());
+  }
+
   Future<void> _initializeAndStartSpeech() async {
     _debugLogLazy(
       () =>
@@ -2630,6 +2648,16 @@ class _CommentScreenState extends State<CommentScreen>
                           isMuted: widget.speechConfig.isSpeechMuted,
                           themeColors: themeColors,
                           onTap: widget.callbacks.onSpeechMuteToggled,
+                          // Issue #713 (UX-2): in ERROR state the
+                          // mute toggle is disabled by design (see
+                          // canToggleMute in _SpeechStatusIcon). Wire a
+                          // separate retry callback so the icon becomes
+                          // tappable in ERROR and the user can recover
+                          // without leaving the screen. Multi-tap
+                          // protection is provided by the existing
+                          // _speechInitializing guard inside
+                          // _initializeAndStartSpeech (early return).
+                          onRetry: _retrySpeechAfterError,
                           // Issue #694: Android-TTS-only override. The
                           // icon listens to this notifier and surfaces
                           // ERROR when other screens (e.g. TTS settings)
@@ -5866,6 +5894,10 @@ class SpeechIconView {
 ///   distinction is signalled by [isAndroidTtsEngine] — the caller
 ///   passes `androidTtsAvailability != null` since that notifier is
 ///   only injected for the Android TTS engine.
+/// * [hasRetryAffordance] (Issue #713 / UX-2): when true, the error
+///   tooltip is rewritten to advertise the inline retry path
+///   ("タップで再試行"). Defaults to false to preserve the legacy
+///   tooltip wording for callers that have not wired a retry callback.
 SpeechIconView speechIconViewFor({
   required SpeechEngineState engineState,
   required bool isStarted,
@@ -5874,12 +5906,24 @@ SpeechIconView speechIconViewFor({
   required bool treatAsError,
   required AppThemeColors themeColors,
   required bool isAndroidTtsEngine,
+  bool hasRetryAffordance = false,
 }) {
   final bool isError = engineState == SpeechEngineState.error || treatAsError;
   if (isError) {
-    final String tooltip = isAndroidTtsEngine
-        ? '読み上げ: エラー（読み上げ設定で詳細を確認してください）'
-        : '読み上げ: エラー';
+    // Issue #713 (UX-2): when the host wires a retry handler the
+    // tooltip advertises the new tappable affordance. The Android-TTS
+    // hint is preserved so users still know where to read the detailed
+    // warning if the inline retry doesn't recover the engine.
+    final String tooltip;
+    if (hasRetryAffordance) {
+      tooltip = isAndroidTtsEngine
+          ? '読み上げ: エラー（タップで再試行 / 読み上げ設定で詳細）'
+          : '読み上げ: エラー（タップで再試行）';
+    } else {
+      tooltip = isAndroidTtsEngine
+          ? '読み上げ: エラー（読み上げ設定で詳細を確認してください）'
+          : '読み上げ: エラー';
+    }
     return SpeechIconView(
       icon: Icons.error_outline,
       color: themeColors.statusDisconnected,
@@ -5928,6 +5972,7 @@ class _SpeechStatusIcon extends StatelessWidget {
     required this.isMuted,
     required this.themeColors,
     this.onTap,
+    this.onRetry,
     this.androidTtsAvailability,
   });
 
@@ -5937,6 +5982,14 @@ class _SpeechStatusIcon extends StatelessWidget {
   final bool isMuted;
   final AppThemeColors themeColors;
   final VoidCallback? onTap;
+
+  /// Issue #713 (UX-2): callback fired when the user taps the icon
+  /// while the engine is in ERROR. The host wires this to a re-init
+  /// flow (`_speechInitialized = false; _initializeAndStartSpeech()`)
+  /// so the user can recover without leaving the screen. Multi-tap
+  /// protection is provided by the host's existing `_speechInitializing`
+  /// guard inside the init method.
+  final VoidCallback? onRetry;
 
   /// Issue #694: Android-TTS-only cross-screen availability source. When
   /// non-null and the latest publish was [SpeechAvailability.unavailable],
@@ -5960,6 +6013,11 @@ class _SpeechStatusIcon extends StatelessWidget {
   }
 
   Widget _buildIcon(BuildContext context, {required bool treatAsError}) {
+    // Issue #713 (UX-2): the pure view function takes
+    // `hasRetryAffordance` so the error tooltip advertises the new
+    // retry path when the host wires [onRetry]. When false (no
+    // host-side retry handler), the tooltip falls back to the
+    // settings-side recovery instruction.
     final SpeechIconView view = speechIconViewFor(
       engineState: engineState,
       isStarted: isStarted,
@@ -5968,11 +6026,17 @@ class _SpeechStatusIcon extends StatelessWidget {
       treatAsError: treatAsError,
       themeColors: themeColors,
       isAndroidTtsEngine: androidTtsAvailability != null,
+      hasRetryAffordance: onRetry != null,
     );
     final IconData icon = view.icon;
     final Color color = view.color;
     final String tooltip = view.tooltip;
     final bool canToggleMute = isInitialized && isStarted && !view.isError;
+    // Issue #713 (UX-2): in ERROR state the mute toggle is disabled by
+    // design (canToggleMute is false), but the icon should still be
+    // interactive when [onRetry] is wired so the user has a one-tap
+    // recovery path from the AppBar.
+    final bool canRetry = view.isError && onRetry != null;
 
     if (canToggleMute && onTap != null) {
       return Semantics(
@@ -5993,6 +6057,28 @@ class _SpeechStatusIcon extends StatelessWidget {
                 duration: const Duration(seconds: 2),
               ),
             );
+          },
+        ),
+      );
+    }
+
+    if (canRetry) {
+      return Semantics(
+        // Mirror the `tooltip` text exactly so screen-reader users and
+        // sighted hover users hear / see the same wording (sage UX/UI
+        // OPTIONAL #1).
+        label: tooltip,
+        button: true,
+        enabled: true,
+        child: IconButton(
+          key: const Key('speech-status-icon-retry'),
+          icon: Icon(icon, size: 24, color: color),
+          tooltip: tooltip,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+          onPressed: () {
+            HapticFeedback.lightImpact();
+            onRetry!();
           },
         ),
       );
