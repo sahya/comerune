@@ -1,6 +1,7 @@
 package com.example.comerune.speech.infrastructure.player
 
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -180,6 +181,156 @@ class AndroidTtsSpeakerTest {
         )
     }
 
+    // ----------------------------------------------------------------------
+    // Issue #737: stale UtteranceProgressListener callbacks must be ignored
+    // when their `id` no longer matches the in-flight speak() call. The
+    // platform may still deliver onStart/onDone/onError for a previously
+    // QUEUE_FLUSH'd utterance after speak() has installed a new continuation;
+    // resuming on a stale id would corrupt the new speak's result.
+    // ----------------------------------------------------------------------
+
+    @Test
+    fun `stale onError for previous utteranceId does not resume current speak`() = runBlocking {
+        val (speaker, factory, listener) = readySpeaker()
+
+        // Two back-to-back speak() calls: the second installs a fresh
+        // continuation/utteranceId (QUEUE_FLUSH semantics on the real
+        // platform). The first speak() coroutine is left orphaned because we
+        // never fire onDone/onError that match its id — we cancel it at the
+        // end so the test does not hang.
+        val aJob = async(Dispatchers.Default) { speaker.speak("hello A", "A") }
+        awaitSpeakRecorded(factory, "A")
+
+        val bJob = async(Dispatchers.Default) { speaker.speak("hello B", "B") }
+        awaitSpeakRecorded(factory, "B")
+
+        // Stale onError(id="A") arrives late from the platform.
+        listener.onError("A", -1)
+
+        // The current speak (B) must remain in flight — the stale callback
+        // must not have resumed it with a Failure.
+        assertTrue("speak(B) must remain in flight after stale onError(A)", bJob.isActive)
+
+        // The genuine onDone(id="B") must success-resume B.
+        listener.onDone("B")
+        val bResult = bJob.await()
+        assertTrue("speak(B) must succeed when its own onDone fires", bResult.isSuccess)
+
+        // A's continuation is orphaned by design; cancel to clean up.
+        aJob.cancel()
+    }
+
+    @Test
+    fun `stale onDone for previous utteranceId does not resume current speak`() = runBlocking {
+        val (speaker, factory, listener) = readySpeaker()
+
+        val aJob = async(Dispatchers.Default) { speaker.speak("hello A", "A") }
+        awaitSpeakRecorded(factory, "A")
+
+        val bJob = async(Dispatchers.Default) { speaker.speak("hello B", "B") }
+        awaitSpeakRecorded(factory, "B")
+
+        // Stale onDone(id="A") arrives late — must not resume B with success.
+        listener.onDone("A")
+        assertTrue("speak(B) must remain in flight after stale onDone(A)", bJob.isActive)
+
+        // The genuine onError(id="B") must failure-resume B.
+        listener.onError("B", -1)
+        val bResult = bJob.await()
+        assertTrue("speak(B) must fail when its own onError fires", bResult.isFailure)
+
+        aJob.cancel()
+    }
+
+    @Test
+    fun `stale onStart for previous utteranceId does not flip speaking flag`() = runBlocking {
+        val (speaker, factory, listener) = readySpeaker()
+
+        val aJob = async(Dispatchers.Default) { speaker.speak("hello A", "A") }
+        awaitSpeakRecorded(factory, "A")
+
+        val bJob = async(Dispatchers.Default) { speaker.speak("hello B", "B") }
+        awaitSpeakRecorded(factory, "B")
+
+        // No onStart has fired for B yet, so speaking must still be false.
+        assertFalse(
+            "speaking must be false before onStart fires for B",
+            speaker.isSpeaking(),
+        )
+
+        // Stale onStart(id="A") must NOT flip speaking to true.
+        listener.onStart("A")
+        assertFalse(
+            "stale onStart(A) must not flip speaking flag for current utterance",
+            speaker.isSpeaking(),
+        )
+
+        // The genuine onStart(B) does flip it.
+        listener.onStart("B")
+        assertTrue(
+            "onStart(B) must flip speaking flag to true",
+            speaker.isSpeaking(),
+        )
+
+        listener.onDone("B")
+        bJob.await()
+        aJob.cancel()
+    }
+
+    @Test
+    fun `deprecated onError single-arg ignores stale utteranceId`() = runBlocking {
+        val (speaker, factory, listener) = readySpeaker()
+
+        val aJob = async(Dispatchers.Default) { speaker.speak("hello A", "A") }
+        awaitSpeakRecorded(factory, "A")
+
+        val bJob = async(Dispatchers.Default) { speaker.speak("hello B", "B") }
+        awaitSpeakRecorded(factory, "B")
+
+        @Suppress("DEPRECATION")
+        listener.onError("A")
+        assertTrue(
+            "speak(B) must remain in flight after stale deprecated onError(A)",
+            bJob.isActive,
+        )
+
+        @Suppress("DEPRECATION")
+        listener.onError("B")
+        val bResult = bJob.await()
+        assertTrue(
+            "speak(B) must fail when its own deprecated onError fires",
+            bResult.isFailure,
+        )
+
+        aJob.cancel()
+    }
+
+    @Test
+    fun `same-id onDone resumes speak with success (regression)`() = runBlocking {
+        val (speaker, factory, listener) = readySpeaker()
+
+        val job = async(Dispatchers.Default) { speaker.speak("hello", "X") }
+        awaitSpeakRecorded(factory, "X")
+
+        listener.onDone("X")
+
+        val result = job.await()
+        assertTrue("matching onDone must resume speak with success", result.isSuccess)
+    }
+
+    @Test
+    fun `same-id onError resumes speak with failure (regression)`() = runBlocking {
+        val (speaker, factory, listener) = readySpeaker()
+
+        val job = async(Dispatchers.Default) { speaker.speak("hello", "Y") }
+        awaitSpeakRecorded(factory, "Y")
+
+        listener.onError("Y", -42)
+
+        val result = job.await()
+        assertTrue("matching onError must resume speak with failure", result.isFailure)
+    }
+
     @Test
     fun `initialize after release constructs a fresh engine`() = runBlocking {
         val factory = FakeTextToSpeechFactory()
@@ -247,6 +398,52 @@ private suspend fun waitUntil(
     while (!predicate()) {
         if (System.currentTimeMillis() > deadline) {
             throw AssertionError("$reason (timed out after ${timeoutMs}ms)")
+        }
+        delay(1)
+    }
+}
+
+/**
+ * Initializes a [AndroidTtsSpeaker] backed by a [FakeTextToSpeechFactory]
+ * and returns the fully-ready triple (speaker, factory, listener) so tests
+ * can drive the [UtteranceProgressListener] directly. Used by the issue
+ * #737 stale-callback tests.
+ */
+private suspend fun readySpeaker():
+    Triple<AndroidTtsSpeaker, FakeTextToSpeechFactory, UtteranceProgressListener> {
+    val factory = FakeTextToSpeechFactory()
+    val speaker = AndroidTtsSpeaker(factory)
+
+    coroutineScope {
+        val initJob = launch { speaker.initialize() }
+        factory.awaitPendingInit()
+        factory.completePendingInit(TextToSpeech.SUCCESS)
+        initJob.join()
+    }
+
+    val listener = factory.createdEngines.first().registeredProgressListeners.first()
+    return Triple(speaker, factory, listener)
+}
+
+/**
+ * Suspends until the fake's [FakeTextToSpeechAdapter.speak] has been
+ * invoked with [utteranceId]. This is the deterministic signal that
+ * [AndroidTtsSpeaker.speak] has installed both `currentContinuation` and
+ * `currentUtteranceId` for that id.
+ */
+private suspend fun awaitSpeakRecorded(
+    factory: FakeTextToSpeechFactory,
+    utteranceId: String,
+    timeoutMs: Long = 1000,
+) {
+    val deadline = System.currentTimeMillis() + timeoutMs
+    while (true) {
+        val recorded = factory.createdEngines.firstOrNull()?.speakUtteranceIds.orEmpty()
+        if (utteranceId in recorded) return
+        if (System.currentTimeMillis() > deadline) {
+            throw AssertionError(
+                "engine.speak was not invoked with id=$utteranceId within ${timeoutMs}ms",
+            )
         }
         delay(1)
     }

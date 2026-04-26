@@ -81,6 +81,7 @@ class FakeTextToSpeechAdapter(
     private val setSpeechRateCalls: MutableList<Float> = CopyOnWriteArrayList()
     private val setPitchCalls: MutableList<Float> = CopyOnWriteArrayList()
     private val progressListeners: MutableList<UtteranceProgressListener> = CopyOnWriteArrayList()
+    private val speakCalls: MutableList<String> = CopyOnWriteArrayList()
 
     @Volatile
     private var pendingLanguageResult: Int = defaultLanguageResult
@@ -97,6 +98,9 @@ class FakeTextToSpeechAdapter(
 
     val registeredProgressListeners: List<UtteranceProgressListener>
         get() = progressListeners.toList()
+
+    /** utteranceIds passed to [speak], in call order. */
+    val speakUtteranceIds: List<String> get() = speakCalls.toList()
 
     /** Overrides the value [setLanguage] returns on the next invocation. */
     fun setLanguageResultOverride(result: Int) {
@@ -123,7 +127,10 @@ class FakeTextToSpeechAdapter(
         queueMode: Int,
         params: Bundle?,
         utteranceId: String,
-    ): Int = TextToSpeech.SUCCESS
+    ): Int {
+        speakCalls.add(utteranceId)
+        return TextToSpeech.SUCCESS
+    }
 
     override fun stop(): Int {
         stopCounter.incrementAndGet()

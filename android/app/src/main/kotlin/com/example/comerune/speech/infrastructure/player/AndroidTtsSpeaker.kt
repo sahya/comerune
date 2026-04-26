@@ -70,6 +70,17 @@ class AndroidTtsSpeaker(
     @Volatile
     private var currentContinuation: CancellableContinuation<Result<Unit>>? = null
 
+    // utteranceId of the in-flight speak() call, paired with
+    // [currentContinuation]. Used by the [UtteranceProgressListener] callbacks
+    // to ignore stale events from a previously-flushed utterance: with
+    // QUEUE_FLUSH, the platform may still deliver onError/onDone for the
+    // cancelled utterance after a new speak() has installed its own
+    // continuation. Resuming on a stale id would wrongly fail/complete the
+    // current speak. This field must always be updated together with
+    // [currentContinuation] so the pair stays consistent.
+    @Volatile
+    private var currentUtteranceId: String? = null
+
     // Signals to an in-flight initialize() that the caller has released the
     // speaker and any freshly-constructed TextToSpeech must be shut down
     // instead of reported as ready. release() is not suspend, so it cannot
@@ -156,18 +167,28 @@ class AndroidTtsSpeaker(
                     state = PlayerState.IDLE
                     currentEngine.setOnUtteranceProgressListener(
                         object : UtteranceProgressListener() {
+                            // Each callback first compares `id` against the
+                            // currently-tracked utteranceId. With QUEUE_FLUSH,
+                            // a freshly-cancelled utterance can still emit
+                            // onStart/onDone/onError after speak() has moved
+                            // on to a new id; resuming the new continuation on
+                            // a stale event would corrupt its result. See
+                            // issue #737.
                             override fun onStart(id: String?) {
+                                if (id != currentUtteranceId) return
                                 speaking = true
                                 state = PlayerState.PLAYING
                             }
 
                             override fun onDone(id: String?) {
+                                if (id != currentUtteranceId) return
                                 speaking = false
                                 state = PlayerState.IDLE
                                 currentContinuation?.let { c ->
                                     if (c.isActive) c.resume(Result.success(Unit))
                                 }
                                 currentContinuation = null
+                                currentUtteranceId = null
                             }
 
                             // Override required by UtteranceProgressListener stub even though
@@ -176,6 +197,7 @@ class AndroidTtsSpeaker(
                             @Deprecated("Deprecated in API")
                             @Suppress("OVERRIDE_DEPRECATION")
                             override fun onError(id: String?) {
+                                if (id != currentUtteranceId) return
                                 speaking = false
                                 state = PlayerState.ERROR
                                 currentContinuation?.let { c ->
@@ -188,9 +210,11 @@ class AndroidTtsSpeaker(
                                     }
                                 }
                                 currentContinuation = null
+                                currentUtteranceId = null
                             }
 
                             override fun onError(id: String?, errorCode: Int) {
+                                if (id != currentUtteranceId) return
                                 speaking = false
                                 state = PlayerState.ERROR
                                 currentContinuation?.let { c ->
@@ -205,6 +229,7 @@ class AndroidTtsSpeaker(
                                     }
                                 }
                                 currentContinuation = null
+                                currentUtteranceId = null
                             }
                         }
                     )
@@ -284,7 +309,11 @@ class AndroidTtsSpeaker(
 
         val result = withTimeoutOrNull(SPEAK_TIMEOUT_MS) {
             suspendCancellableCoroutine { cont ->
+                // Pair the utteranceId with the continuation so the
+                // UtteranceProgressListener can ignore stale callbacks from
+                // a previously-flushed utterance (issue #737).
                 currentContinuation = cont
+                currentUtteranceId = utteranceId
 
                 val params = Bundle().apply {
                     putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, volume)
@@ -294,6 +323,7 @@ class AndroidTtsSpeaker(
                     engine.speak(text, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
                 if (speakResult != TextToSpeech.SUCCESS) {
                     currentContinuation = null
+                    currentUtteranceId = null
                     speaking = false
                     state = PlayerState.ERROR
                     if (cont.isActive) {
@@ -309,6 +339,7 @@ class AndroidTtsSpeaker(
 
                 cont.invokeOnCancellation {
                     currentContinuation = null
+                    currentUtteranceId = null
                     engine.stop()
                     speaking = false
                     state = PlayerState.STOPPED
@@ -318,6 +349,7 @@ class AndroidTtsSpeaker(
 
         if (result == null) {
             currentContinuation = null
+            currentUtteranceId = null
             engine.stop()
             speaking = false
             state = PlayerState.ERROR
@@ -330,6 +362,7 @@ class AndroidTtsSpeaker(
 
     override suspend fun stop(): Result<Unit> {
         currentContinuation = null
+        currentUtteranceId = null
         engine?.stop()
         speaking = false
         state = PlayerState.STOPPED
@@ -365,6 +398,7 @@ class AndroidTtsSpeaker(
         // instance we could not see yet.
         released = true
         currentContinuation = null
+        currentUtteranceId = null
         ready = false
         speaking = false
         state = PlayerState.IDLE
