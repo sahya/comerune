@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:comerune/application/settings/settings_store.dart';
 import 'package:comerune/application/speech/speech_availability_notifier.dart';
 import 'package:comerune/comment_speech/comment_speech.dart';
 import 'package:comerune/domain/connection/connection_supervisor.dart';
@@ -13,6 +14,7 @@ import 'package:comerune/presentation/screens/comment_screen.dart';
 import 'package:comerune/presentation/screens/comment_screen_config.dart';
 
 import '../../comment_speech/fake_comment_speech_platform.dart';
+import '../../helpers/in_memory_shared_preferences.dart';
 
 void main() {
   group('CommentScreen speech integration', () {
@@ -3019,6 +3021,169 @@ void main() {
       },
     );
   });
+
+  // ---------------------------------------------------------------------
+  // Issue #712 (UX-1): SnackBar fired on the transition INTO an ERROR
+  // engine state. Already-in-ERROR re-entries during the same episode
+  // must not re-fire (avoids spam). A fresh READY→ERROR cycle does fire.
+  // ---------------------------------------------------------------------
+  group('CommentScreen speech ERROR SnackBar notification (Issue #712)', () {
+    late FakeCommentSpeechPlatform fakePlatform;
+
+    setUp(() {
+      fakePlatform = FakeCommentSpeechPlatform();
+      fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+        enabled: true,
+        engineState: 'READY',
+        playerState: 'IDLE',
+        queueSize: 0,
+        currentSpeakerId: 0,
+      );
+    });
+
+    tearDown(() {
+      fakePlatform.dispose();
+    });
+
+    late SharedPreferencesSettingsStore settingsStore;
+
+    Future<void> pumpReady(WidgetTester tester) async {
+      settingsStore = SharedPreferencesSettingsStore(
+        prefs: InMemorySharedPreferences(),
+      );
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+          settingsStore: settingsStore,
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    SpeechEvent engineState(String state) {
+      return SpeechEvent(
+        type: SpeechEventType.engineStateChanged,
+        payload: <String, dynamic>{'state': state},
+      );
+    }
+
+    Future<void> pumpEvent(WidgetTester tester, SpeechEvent event) async {
+      fakePlatform.emitEvent(event);
+      await tester.pump();
+      // The SnackBar is queued via WidgetsBinding.addPostFrameCallback
+      // and needs an additional frame + the SnackBar's enter animation
+      // to materialize into the widget tree. pumpAndSettle drains both.
+      await tester.pumpAndSettle();
+    }
+
+    int countErrorSnackBars(WidgetTester tester) {
+      return tester
+          .widgetList<SnackBar>(find.byKey(const Key('speech-error-snackbar')))
+          .length;
+    }
+
+    testWidgets('READY → ERROR transition shows the SnackBar exactly once', (
+      WidgetTester tester,
+    ) async {
+      await pumpReady(tester);
+
+      await pumpEvent(tester, engineState('ERROR'));
+
+      expect(
+        countErrorSnackBars(tester),
+        1,
+        reason:
+            'A single READY → ERROR transition must surface exactly one '
+            'SnackBar. Issue #712 asks for active notification on first '
+            'failure detection.',
+      );
+      expect(find.text('読み上げエンジンでエラーが発生しました'), findsOneWidget);
+      expect(find.text('設定を開く'), findsOneWidget);
+    });
+
+    testWidgets(
+      'subsequent ERROR while still in ERROR does NOT re-fire (idempotent)',
+      (WidgetTester tester) async {
+        await pumpReady(tester);
+
+        await pumpEvent(tester, engineState('ERROR'));
+        // Second engineStateChanged with the same value is a no-op
+        // for the setter (`prev == next`), but even if a different
+        // path re-asserts ERROR mid-episode, the
+        // `_speechErrorNotified` flag suppresses duplicates.
+        await pumpEvent(tester, engineState('ERROR'));
+
+        expect(
+          countErrorSnackBars(tester),
+          1,
+          reason:
+              'ERROR re-entry within the same episode must not spam '
+              'additional SnackBars.',
+        );
+      },
+    );
+
+    testWidgets(
+      'READY → ERROR → READY → ERROR shows the SnackBar twice (one per fresh episode)',
+      (WidgetTester tester) async {
+        await pumpReady(tester);
+
+        await pumpEvent(tester, engineState('ERROR'));
+        // Dismiss the first SnackBar so the second one's appearance is
+        // observable cleanly.
+        ScaffoldMessenger.of(
+          tester.element(find.byKey(const Key('speech-error-snackbar'))),
+        ).removeCurrentSnackBar();
+        await tester.pump();
+
+        await pumpEvent(tester, engineState('READY'));
+        await pumpEvent(tester, engineState('ERROR'));
+
+        expect(
+          countErrorSnackBars(tester),
+          1,
+          reason:
+              'After ERROR → READY → ERROR, the second ERROR must fire '
+              'a fresh SnackBar (we dismissed the first one explicitly '
+              'so the messenger has a clean slate).',
+        );
+      },
+    );
+
+    testWidgets('tapping "設定を開く" navigates to TtsSettingsScreen', (
+      WidgetTester tester,
+    ) async {
+      await pumpReady(tester);
+      await pumpEvent(tester, engineState('ERROR'));
+
+      await tester.tap(find.text('設定を開く'));
+      await tester.pumpAndSettle();
+
+      // The TtsSettingsScreen renders the read-aloud settings list with
+      // a known list key.
+      expect(
+        find.byKey(const Key('tts-settings-list')),
+        findsOneWidget,
+        reason:
+            'The SnackBar action must push TtsSettingsScreen onto the '
+            'navigator (Issue #712).',
+      );
+    });
+
+    testWidgets(
+      'unknown engineState wires (defensive default) do NOT trigger the SnackBar',
+      (WidgetTester tester) async {
+        // Native is allowed to extend the wire format; unrecognised
+        // strings remain non-ERROR and must not produce a SnackBar.
+        await pumpReady(tester);
+        await pumpEvent(tester, engineState('UNINITIALIZED'));
+        await pumpEvent(tester, engineState('busy'));
+
+        expect(countErrorSnackBars(tester), 0);
+      },
+    );
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -3045,6 +3210,7 @@ class _SpeechTestHost extends StatefulWidget {
     this.isSpeechMuted = false,
     this.onSpeechMuteToggled,
     this.androidTtsAvailability,
+    this.settingsStore,
   });
 
   final List<AppMessage> initialMessages;
@@ -3064,6 +3230,7 @@ class _SpeechTestHost extends StatefulWidget {
   final bool isSpeechMuted;
   final VoidCallback? onSpeechMuteToggled;
   final SpeechAvailabilityNotifier? androidTtsAvailability;
+  final SettingsStore? settingsStore;
 
   @override
   State<_SpeechTestHost> createState() => _SpeechTestHostState();
@@ -3141,6 +3308,7 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
         readNicoadComment: widget.readNicoadComment,
         isSpeechMuted: widget.isSpeechMuted,
         androidTtsAvailability: widget.androidTtsAvailability,
+        settingsStore: widget.settingsStore,
       ),
     );
   }
@@ -3164,6 +3332,7 @@ Widget _buildScreen({
   bool isSpeechMuted = false,
   VoidCallback? onSpeechMuteToggled,
   SpeechAvailabilityNotifier? androidTtsAvailability,
+  SettingsStore? settingsStore,
 }) {
   return MaterialApp(
     home: _SpeechTestHost(
@@ -3184,6 +3353,7 @@ Widget _buildScreen({
       isSpeechMuted: isSpeechMuted,
       onSpeechMuteToggled: onSpeechMuteToggled,
       androidTtsAvailability: androidTtsAvailability,
+      settingsStore: settingsStore,
     ),
   );
 }

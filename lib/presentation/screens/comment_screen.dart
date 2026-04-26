@@ -41,6 +41,7 @@ import '../widgets/comment_input_bar.dart';
 import '../widgets/display_subcategory_warning_dialog.dart';
 import 'comment_log_stats_sheet.dart';
 import 'comment_screen_config.dart';
+import 'tts_settings_screen.dart';
 import '../widgets/timeshift_fetch_panel.dart';
 import 'user_detail_sheet.dart';
 
@@ -607,6 +608,13 @@ class _CommentScreenState extends State<CommentScreen>
   // heuristic) all funnel through a single typed setter
   // [_setSpeechEngineState] and a single comparison surface.
   SpeechEngineState _speechEngineState = SpeechEngineState.unknown;
+
+  /// Issue #712 (UX-1): tracks whether the SnackBar has already been
+  /// shown for the current ERROR episode. Set to true when the engine
+  /// transitions into `'ERROR'` from a non-ERROR state, reset back to
+  /// false on any transition out of ERROR. Subsequent ERROR re-entries
+  /// during the same episode are silenced to avoid SnackBar spam.
+  bool _speechErrorNotified = false;
 
   /// Number of consecutive Android-TTS `speech_failed` events received with
   /// no `speech_completed` in between. When this reaches
@@ -1247,7 +1255,8 @@ class _CommentScreenState extends State<CommentScreen>
   // Speech (VoiceVox) integration
   // ---------------------------------------------------------------------------
 
-  /// Single write point for [_speechEngineState] (Issue #717 / ARCH-2).
+  /// Single write point for [_speechEngineState] (Issue #717 / ARCH-2 +
+  /// Issue #712 / UX-1).
   ///
   /// All 4 historical source paths funnel through here:
   ///   1. native engine event (`engine_state_changed`)
@@ -1255,28 +1264,103 @@ class _CommentScreenState extends State<CommentScreen>
   ///   3. local init failure (#695, #696)
   ///   4. `speech_completed` recovery heuristic (PR #707 / #695)
   ///
-  /// Call this from any path that wants to mutate the engine state so
-  /// that:
-  ///   * the assignment is wrapped in `setState` consistently (the
-  ///     icon is part of the AppBar tree and must rebuild on change),
-  ///   * an idempotent no-op (same enum value) skips `setState` entirely
-  ///     to avoid unnecessary rebuilds,
-  ///   * future cross-cutting hooks (e.g. SnackBar on ERROR transition
-  ///     in #712) attach in **one** place rather than 8.
+  /// Behavioural contract:
+  ///   * No-op when [next] equals the current value (avoids spurious
+  ///     setState rebuilds).
+  ///   * When mounted, wraps the assignment in `setState` so the AppBar
+  ///     icon rebuilds; otherwise updates the field without setState
+  ///     so reads stay consistent during dispose.
+  ///   * Issue #712: on a `prev != error && next == error` transition,
+  ///     queues a SnackBar via [_showSpeechErrorSnackBar] (post-frame
+  ///     so the ScaffoldMessenger is reachable) and sets
+  ///     [_speechErrorNotified] to suppress duplicates inside the same
+  ///     episode.
+  ///   * Issue #712: on any transition out of error
+  ///     (`prev == error && next != error`), resets
+  ///     [_speechErrorNotified] so the next fresh ERROR episode can
+  ///     fire a new SnackBar.
   ///
   /// Invoke from OUTSIDE any caller's own `setState` block — the helper
-  /// performs its own `setState` only when mounted and only when the
-  /// value actually changes. When unmounted (the State is being torn
-  /// down), the field is updated without `setState` so reads stay
-  /// consistent during dispose.
+  /// performs its own `setState` only when needed.
   void _setSpeechEngineState(SpeechEngineState next) {
-    if (_speechEngineState == next) return;
+    final SpeechEngineState prev = _speechEngineState;
+    if (prev == next) return;
     if (!mounted) {
       _speechEngineState = next;
       return;
     }
     setState(() {
       _speechEngineState = next;
+    });
+    final bool enteredError =
+        prev != SpeechEngineState.error && next == SpeechEngineState.error;
+    final bool leftError =
+        prev == SpeechEngineState.error && next != SpeechEngineState.error;
+    if (enteredError && !_speechErrorNotified) {
+      _speechErrorNotified = true;
+      _showSpeechErrorSnackBar();
+    } else if (leftError) {
+      _speechErrorNotified = false;
+    }
+  }
+
+  /// Schedules a SnackBar that announces the TTS engine error and offers
+  /// a one-tap shortcut into the read-aloud settings screen (Issue #712 /
+  /// UX-1). Posted in a post-frame callback so callers from inside a
+  /// build() / setState() can invoke us without violating Flutter's
+  /// "ScaffoldMessenger.of(context) must not be called during build"
+  /// invariant.
+  void _showSpeechErrorSnackBar() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // Defensive re-check: between the setter setting the flag and
+      // the post-frame callback firing, another mutation path could
+      // have moved the engine out of ERROR (e.g. a `speech_completed`
+      // recovery for Android TTS). Suppress the SnackBar if the
+      // ERROR episode no longer applies, to avoid surprising the user
+      // with a notification for a state they cannot observe.
+      if (_speechEngineState != SpeechEngineState.error) return;
+      final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+      // Hide only the currently-visible SnackBar, NOT the queue, so
+      // unrelated NG-protection notifications already in flight are
+      // not silently dropped (mirrors the comment-post feedback path).
+      messenger.hideCurrentSnackBar();
+      final SettingsStore? settingsStore = widget.speechConfig.settingsStore;
+      messenger.showSnackBar(
+        SnackBar(
+          key: const Key('speech-error-snackbar'),
+          content: const Text('読み上げエンジンでエラーが発生しました'),
+          duration: const Duration(seconds: 6),
+          action: settingsStore == null
+              // When no SettingsStore is wired (rare, e.g. in tests
+              // without persistence), drop the action button — there is
+              // no destination to navigate to. The hint itself still
+              // surfaces.
+              ? null
+              : SnackBarAction(
+                  label: '設定を開く',
+                  onPressed: () {
+                    if (!mounted) return;
+                    Navigator.of(context).push<void>(
+                      MaterialPageRoute<void>(
+                        builder: (_) => TtsSettingsScreen(
+                          settingsStore: settingsStore,
+                          platform: widget.speechConfig.speechPlatform,
+                          // `initialSettings: null` causes the screen
+                          // to load fresh from `settingsStore` on
+                          // mount — preferred here because the user
+                          // came in from an ERROR notification and may
+                          // have edited persisted state outside the
+                          // current session.
+                          androidTtsAvailability:
+                              widget.speechConfig.androidTtsAvailability,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      );
     });
   }
 
