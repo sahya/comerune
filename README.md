@@ -81,7 +81,10 @@ comeruneはMITライセンスのオープンソースです。「こんな機能
 ## ご支援について
 
 comeruneを手に取っていただき、ありがとうございます。   
-もし気に入っていただけたら、[Ko-fi](https://ko-fi.com/norn_festa) からお茶一杯やお心づけをいただけましたら幸いです。
+もし気に入っていただけたら、以下からお心づけをいただけましたら幸いです。
+
+- [GitHub Sponsors](https://github.com/sponsors/sahya)
+- [BOOTH](https://norn-festa.booth.pm/items/8264245)
 
 ## おことわり
 
