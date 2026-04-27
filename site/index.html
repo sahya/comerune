@@ -67,18 +67,12 @@
       text-align: center;
     }
     .logo {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
       width: 88px; height: 88px;
       border-radius: 22px;
-      background: var(--accent);
-      color: #fff;
-      font-weight: 700;
-      font-size: 44px;
-      letter-spacing: -.04em;
       margin-bottom: 18px;
       box-shadow: var(--shadow);
+      object-fit: cover;
+      display: inline-block;
     }
     .hero h1 {
       font-size: clamp(36px, 6vw, 56px);
@@ -244,10 +238,9 @@
       font-weight: 600;
       letter-spacing: .01em;
       box-shadow: var(--shadow);
-      transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, color .15s ease;
+      transition: box-shadow .15s ease, border-color .15s ease, color .15s ease;
     }
     .gh-badge:hover {
-      transform: translateY(-1px) rotate(-1.5deg);
       border-color: var(--accent);
       color: var(--accent-ink);
       box-shadow: 0 2px 0 rgba(0,0,0,.04), 0 12px 28px rgba(255,122,89,.18);
@@ -271,7 +264,6 @@
       50% { transform: scale(1.12); }
     }
     @media (prefers-reduced-motion: reduce) {
-      .gh-badge:hover { transform: none; }
       .gh-badge .gh-heart { animation: none; }
     }
     @media (max-width: 480px) {
@@ -313,7 +305,7 @@
   </a>
 
   <header class="hero">
-    <div class="logo" aria-hidden="true">c</div>
+    <img class="logo" src="/icon.png" alt="comerune アイコン" width="88" height="88" />
     <h1>comerune</h1>
     <p class="tagline">ニコニコ生放送のコメントを、手のひらの上で。</p>
     <p class="lead">
