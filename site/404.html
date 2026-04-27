@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="robots" content="noindex" />
+  <title>ページが見つかりません — comerune</title>
+  <style>
+    :root {
+      --bg: #fafaf7;
+      --text: #1d1d1b;
+      --muted: #6a6a66;
+      --accent-ink: #b1452b;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #15140f;
+        --text: #f1efe7;
+        --muted: #a3a299;
+        --accent-ink: #ffb39d;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Segoe UI", Roboto, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.7;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px;
+    }
+    .box { max-width: 520px; }
+    h1 { font-size: 28px; margin: 0 0 8px; letter-spacing: -.01em; }
+    p { color: var(--muted); margin: 0 0 18px; }
+    a { color: var(--accent-ink); }
+    a:focus-visible {
+      outline: 2px solid var(--accent-ink);
+      outline-offset: 2px;
+      border-radius: 2px;
+    }
+    nav { margin-top: 8px; }
+    nav a { display: inline-block; margin: 0 8px; }
+  </style>
+</head>
+<body>
+  <main class="box">
+    <h1>ページが見つかりません</h1>
+    <p>お探しのページは移動・削除された可能性があります。</p>
+    <nav aria-label="関連リンク">
+      <a href="/">トップ</a>
+      <a href="/#features">主な機能</a>
+      <a href="https://github.com/sahya/comerune" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </nav>
+  </main>
+</body>
+</html>

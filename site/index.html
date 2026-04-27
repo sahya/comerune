@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>comerune — ニコニコ生放送のコメントを、手のひらの上で</title>
+  <meta name="description" content="ニコニコ生放送のコメントをリアルタイムに表示し、読み上げもできる非公式モバイルコメントビューア。" />
+
+  <meta property="og:title" content="comerune" />
+  <meta property="og:description" content="ニコニコ生放送のコメントを、手のひらの上で楽しむ非公式コメントビューア。" />
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="ja_JP" />
+  <meta name="twitter:card" content="summary" />
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23ff7a59'/%3E%3Ctext x='50%25' y='58%25' text-anchor='middle' font-family='system-ui,sans-serif' font-size='34' font-weight='700' fill='white'%3Ec%3C/text%3E%3C/svg%3E" />
+
+  <style>
+    :root {
+      --bg: #fafaf7;
+      --surface: #ffffff;
+      --text: #1d1d1b;
+      --muted: #6a6a66;
+      --line: #e7e6df;
+      --accent: #ff7a59;
+      --accent-ink: #b1452b;
+      --shadow: 0 1px 0 rgba(0,0,0,.03), 0 8px 24px rgba(20,20,20,.05);
+      --radius: 14px;
+      --max: 880px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #15140f;
+        --surface: #1d1c17;
+        --text: #f1efe7;
+        --muted: #a3a299;
+        --line: #2c2b25;
+        --accent: #ff8b6e;
+        --accent-ink: #ffb39d;
+        --shadow: 0 1px 0 rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.4);
+      }
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Segoe UI", Roboto, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--accent-ink); }
+    a:hover { color: var(--accent); }
+    a:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+      border-radius: 2px;
+    }
+
+    .wrap { max-width: var(--max); margin: 0 auto; padding: 0 20px; }
+
+    /* Hero */
+    .hero {
+      padding: 64px 20px 48px;
+      text-align: center;
+    }
+    .logo {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 88px; height: 88px;
+      border-radius: 22px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      font-size: 44px;
+      letter-spacing: -.04em;
+      margin-bottom: 18px;
+      box-shadow: var(--shadow);
+    }
+    .hero h1 {
+      font-size: clamp(36px, 6vw, 56px);
+      letter-spacing: -.02em;
+      margin: 0 0 8px;
+    }
+    .tagline {
+      color: var(--muted);
+      font-size: clamp(15px, 2.4vw, 18px);
+      margin: 0 auto;
+      max-width: 30em;
+    }
+    .lead {
+      margin: 28px auto 0;
+      max-width: 32em;
+      font-size: 16px;
+    }
+
+    /* Notice */
+    .notice {
+      max-width: var(--max);
+      margin: 24px auto 0;
+      padding: 12px 16px;
+      border: 1px dashed var(--line);
+      border-radius: 10px;
+      color: var(--muted);
+      font-size: 13px;
+      background: var(--surface);
+    }
+
+    /* Generic section */
+    section { padding: 56px 0; border-top: 1px solid var(--line); }
+    section:first-of-type { border-top: 0; }
+    h2 {
+      font-size: 22px;
+      letter-spacing: -.01em;
+      margin: 0 0 24px;
+    }
+    h2 .num {
+      display: inline-block;
+      width: 1.6em;
+      color: var(--accent-ink);
+      font-feature-settings: "tnum";
+    }
+
+    /* Features */
+    .features {
+      list-style: none;
+      padding: 0; margin: 0;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+    @media (min-width: 640px) {
+      .features { grid-template-columns: 1fr 1fr; gap: 14px; }
+    }
+    .features li {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      box-shadow: var(--shadow);
+    }
+    .features b {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 15px;
+    }
+    .features span {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    /* Easter / hidden teaser */
+    .teaser {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 22px 22px;
+      box-shadow: var(--shadow);
+    }
+    .teaser p { margin: 0 0 10px; }
+    .teaser p:last-child { margin: 0; color: var(--muted); font-size: 14px; }
+    .hidden-row {
+      list-style: none;
+      padding: 0;
+      display: flex; flex-wrap: wrap; gap: 8px;
+      margin: 14px 0 6px;
+    }
+    .chip {
+      font-size: 13px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      background: rgba(255,122,89,.12);
+      color: var(--accent-ink);
+      border: 1px solid rgba(255,122,89,.30);
+      font-feature-settings: "tnum";
+      letter-spacing: .02em;
+    }
+    .chip.dim { background: transparent; color: var(--text); border-color: var(--muted); }
+
+    /* Steps */
+    ol.steps {
+      counter-reset: step;
+      list-style: none;
+      padding: 0; margin: 0;
+    }
+    ol.steps li {
+      counter-increment: step;
+      padding: 10px 0 10px 38px;
+      position: relative;
+      border-bottom: 1px solid var(--line);
+    }
+    ol.steps li:last-child { border-bottom: 0; }
+    ol.steps li::before {
+      content: counter(step);
+      position: absolute; left: 0; top: 12px;
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+
+    /* Support links */
+    .support-links {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex; flex-wrap: wrap; gap: 10px 18px;
+      font-size: 15px;
+    }
+
+    /* Aside note */
+    .aside {
+      margin-top: 18px;
+      padding: 12px 14px;
+      border-left: 3px solid var(--line);
+      color: var(--muted);
+      font-size: 14px;
+      background: transparent;
+    }
+
+    /* Footer */
+    footer {
+      padding: 40px 20px 60px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    footer p { margin: 6px 0; }
+    .signoff {
+      margin-top: 40px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .signoff strong { color: var(--text); }
+  </style>
+</head>
+<body>
+
+  <header class="hero">
+    <div class="logo" aria-hidden="true">c</div>
+    <h1>comerune</h1>
+    <p class="tagline">ニコニコ生放送のコメントを、手のひらの上で。</p>
+    <p class="lead">
+      コメントをリアルタイムに表示するモバイル向けの非公式コメビュ。<br>
+      画面が見られないときは、読み上げ機能で耳から追いかけられます。
+    </p>
+  </header>
+
+  <div class="wrap">
+    <p class="notice">
+      ドワンゴ公式アプリではありません。ニコニコ側の仕様変更で動かなくなることもあります。コメントの取得にはニコニコアカウントへのログインが必要です。
+    </p>
+  </div>
+
+  <main class="wrap">
+
+    <!-- ============ FEATURES ============ -->
+    <section id="features">
+      <h2><span class="num">01</span>主な機能</h2>
+      <ul class="features">
+        <li>
+          <b>コメントのリアルタイム表示</b>
+          <span>放送番号やURLを入力するだけで、コメントが画面に流れてきます。</span>
+        </li>
+        <li>
+          <b>放送者名・番組タイトルの自動表示</b>
+          <span>いま誰の放送を見ているか、ひと目でわかります。</span>
+        </li>
+        <li>
+          <b>ユーザー名の表示</b>
+          <span>数字のIDではなく、名前でコメントを読めます。</span>
+        </li>
+        <li>
+          <b>表示のカスタマイズ</b>
+          <span>文字サイズ、ダークモード、色覚配慮テーマに対応。</span>
+        </li>
+        <li>
+          <b>NGユーザー管理</b>
+          <span>コメントを長押しして、ユーザーをそのまま NG にできます。</span>
+        </li>
+        <li>
+          <b>VOICEVOX による音声読み上げ</b>
+          <!-- VOICEVOX assets size: keep "約160MB" in sync with README.md -->
+          <span>端末内で音声合成。ネットワーク不要で、初回のみ音声データのダウンロード（約160MB）が必要です。</span>
+        </li>
+      </ul>
+    </section>
+
+    <!-- ============ TEASER (お楽しみ) ============ -->
+    <section id="more" aria-labelledby="more-heading">
+      <h2 id="more-heading"><span class="num">02</span>そのほか、いくつか</h2>
+      <div class="teaser">
+        <p>主な機能のうしろに、地味だけれど効くものを少しだけ忍ばせています。</p>
+        <ul class="hidden-row" aria-label="そのほかの機能の一部">
+          <li class="chip">コメントログの保存</li>
+          <li class="chip dim">自動再接続</li>
+          <li class="chip dim">配信中の番組から接続</li>
+          <li class="chip dim" aria-label="ほかにも機能があります">…ほか</li>
+        </ul>
+        <p>詳しい話は、起動してからのお楽しみに。</p>
+      </div>
+    </section>
+
+    <!-- ============ HOW TO USE ============ -->
+    <section id="howto">
+      <h2><span class="num">03</span>使いかた</h2>
+      <ol class="steps">
+        <li>歯車アイコン<span aria-hidden="true">（⚙）</span>から、ニコニコアカウントでログイン。</li>
+        <li>放送番号（<code>lv123456789</code>）か URL を入力して「接続」。</li>
+        <li>自分の配信中番組やフォロー中の放送は、一覧からそのまま接続できます。</li>
+        <li>コメントを長押しすると、ユーザー詳細やコメント履歴を確認できます。</li>
+      </ol>
+    </section>
+
+    <!-- ============ OPEN SOURCE ============ -->
+    <section id="oss">
+      <h2><span class="num">04</span>自分だけのコメビュをつくろう</h2>
+      <p>
+        comerune は MIT ライセンスのオープンソースです。「こんな機能がほしいな」を、フォークして自分の手で叶えてみてください。コードに詳しくなくても、AI と相談しながら改造できる時代です。
+      </p>
+      <p>
+        フォークしたアプリを公開するときは <strong>「comerune」とは別の名前</strong> でお願いします。同名のアプリが複数あると、本物がどれか分からなくなってしまうためです。
+      </p>
+      <p>
+        ソースコードは GitHub にあります — <a href="https://github.com/sahya/comerune" target="_blank" rel="noopener noreferrer">github.com/sahya/comerune</a>
+      </p>
+      <p class="aside">
+        いまのところ、ストアでの配布はありません。動かしてみたい方は、リポジトリを取得してビルドする形になります。
+      </p>
+    </section>
+
+    <!-- ============ SUPPORT ============ -->
+    <section id="support">
+      <h2><span class="num">05</span>ご支援について</h2>
+      <p>
+        comerune を手に取っていただき、ありがとうございます。もし気に入っていただけたら、以下からお心づけをいただけましたら幸いです。
+      </p>
+      <ul class="support-links">
+        <li><a href="https://github.com/sponsors/sahya" target="_blank" rel="noopener noreferrer">GitHub Sponsors</a></li>
+        <li><a href="https://norn-festa.booth.pm/items/8264245" target="_blank" rel="noopener noreferrer">BOOTH</a></li>
+      </ul>
+    </section>
+
+  </main>
+
+  <footer>
+    <p>ニコニコ生放送の非公式アプリです。株式会社ドワンゴとは関係ありません。</p>
+    <p>本アプリの利用により生じた問題について、開発者は責任を負いかねます。</p>
+    <p>© 2026 comerune — Released under the MIT License.</p>
+    <p class="signoff">
+      ニコニコ生放送を、もっと身近に、もっと快適に。<br>
+      <strong>comerune</strong>
+    </p>
+  </footer>
+
+</body>
+</html>
