@@ -16,6 +16,7 @@ import '../../application/timeshift_fetch/timeshift_fetch_controller.dart';
 import '../../application/settings/settings_store.dart';
 import '../../application/speech/speech_availability_notifier.dart';
 import '../../comment_speech/comment_speech.dart';
+import '../../data/broadcast/broadcast_control_repository.dart';
 import '../../data/comment_log/comment_log_tag.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/comment_log/comment_log_stats.dart';
@@ -408,7 +409,7 @@ enum CommentSortOrder { ascending, descending }
 
 /// Actions reachable through the AppBar overflow menu. Kept private to the
 /// screen because the menu's wiring lives entirely inside [CommentScreen].
-enum _AppBarMenuAction { search, saveLog, settings }
+enum _AppBarMenuAction { endBroadcast, search, saveLog, settings }
 
 /// Single source of truth for the "emphasize gift / nicoad" decision so
 /// that background color and leading icon stay in sync.
@@ -443,6 +444,21 @@ abstract interface class CommentScreenTestAccess {
   /// Delegates to the private `_messagesForLog()` method and returns the
   /// list of messages that would be written to the auto-saved comment log.
   List<AppMessage> messagesForLogForTesting();
+
+  /// Test-only: directly sets the `_isBroadcaster` flag (and optionally
+  /// the cached `_commentPostUserSession`), bypassing the async
+  /// `ensureBroadcasterStatus` pipeline that would otherwise require a
+  /// real `CommentPostController` + `MyProgramRepository`. Triggers a
+  /// rebuild so widgets gated on broadcaster mode (e.g. the
+  /// "配信を終了" overflow menu entry) appear immediately.
+  ///
+  /// [userSession] is the value to seed for `_commentPostUserSession`;
+  /// pass an empty string to exercise the "session required" branch in
+  /// `_endBroadcastFromMenu`.
+  void setBroadcasterForTesting({
+    required bool isBroadcaster,
+    String userSession = 'test-user-session',
+  });
 }
 
 class CommentScreen extends StatefulWidget {
@@ -474,6 +490,7 @@ class CommentScreen extends StatefulWidget {
     this.commentPostController,
     this.userSessionLoader,
     this.timeshiftFetchController,
+    this.broadcastControlRepository,
     this.clock,
   });
 
@@ -551,6 +568,15 @@ class CommentScreen extends StatefulWidget {
 
   final TimeshiftFetchController? timeshiftFetchController;
 
+  /// Optional repository used to end the user's own broadcast from the
+  /// AppBar overflow menu. When `null`, the "配信を終了" menu entry is
+  /// hidden regardless of [_CommentScreenState._isBroadcaster].
+  ///
+  /// Wired by [SelectScreen] to the same instance it uses for the
+  /// slide-to-end control on the program list, so both entry points share
+  /// the same niconico segment API client.
+  final BroadcastControlRepository? broadcastControlRepository;
+
   /// Clock abstraction used for the NG-protection snackbar throttle window.
   ///
   /// In production this is `null` and the implementation falls back to the
@@ -579,6 +605,11 @@ class _CommentScreenState extends State<CommentScreen>
   bool _autoScrollEnabled = true;
   bool _isStoppingForExit = false;
   bool _isSavingLog = false;
+
+  /// In-flight guard for the AppBar overflow "配信を終了" entry. While
+  /// `true` the menu item is rendered disabled and re-tapping after
+  /// re-opening the menu cannot trigger a second `endBroadcast` API call.
+  bool _isEndingBroadcast = false;
 
   /// Timestamp at which the broadcast transitioned to ended/stopped.
   /// Used to freeze the status-bar elapsed timer display.
@@ -3758,12 +3789,33 @@ class _CommentScreenState extends State<CommentScreen>
 
     final bool hasLogWriter = widget.logConfig.commentLogWriter != null;
     final bool hasSettings = widget.callbacks.onOpenSettings != null;
+    // The "配信を終了" entry is gated on both broadcaster mode AND a
+    // wired repository so non-broadcasters never see destructive copy and
+    // hosts that intentionally omit the repository (e.g. tests, debug
+    // builds) cannot trigger a no-op API call from the menu.
+    final bool canEndBroadcast =
+        _isBroadcaster && widget.broadcastControlRepository != null;
+    final bool showDividerAfterEndBroadcast = canEndBroadcast;
     final bool showDividerBeforeSettings = hasSettings;
+    final Color endBroadcastColor = Theme.of(context).colorScheme.error;
 
     final _AppBarMenuAction? action = await showMenu<_AppBarMenuAction>(
       context: context,
       position: position,
       items: <PopupMenuEntry<_AppBarMenuAction>>[
+        if (canEndBroadcast)
+          PopupMenuItem<_AppBarMenuAction>(
+            key: const Key('end-broadcast-button'),
+            value: _AppBarMenuAction.endBroadcast,
+            enabled: !_isEndingBroadcast,
+            child: _OverflowMenuRow(
+              icon: Icons.stop_circle_outlined,
+              label: '配信を終了',
+              enabled: !_isEndingBroadcast,
+              labelColor: endBroadcastColor,
+            ),
+          ),
+        if (showDividerAfterEndBroadcast) const PopupMenuDivider(),
         const PopupMenuItem<_AppBarMenuAction>(
           key: Key('comment-search-button'),
           value: _AppBarMenuAction.search,
@@ -3793,6 +3845,13 @@ class _CommentScreenState extends State<CommentScreen>
     if (!mounted || action == null) return;
 
     switch (action) {
+      case _AppBarMenuAction.endBroadcast:
+        // `_isEndingBroadcast` may have flipped to true between menu open
+        // and selection (e.g. user re-opened during an in-flight call),
+        // so re-check here on top of the `enabled:` guard on the menu item.
+        if (!_isEndingBroadcast) {
+          unawaited(_endBroadcastFromMenu());
+        }
       case _AppBarMenuAction.search:
         _openSearch();
       case _AppBarMenuAction.saveLog:
@@ -3807,6 +3866,110 @@ class _CommentScreenState extends State<CommentScreen>
         if (onOpen != null) {
           unawaited(onOpen());
         }
+    }
+  }
+
+  /// Confirms with the user, then calls
+  /// [BroadcastControlRepository.endBroadcast] for the currently viewed
+  /// program. Returns early on cancellation, missing repository, or empty
+  /// session — surfacing a session-required SnackBar in the last case so
+  /// the user understands why nothing happened.
+  ///
+  /// Feedback contract on completion:
+  /// - **success / `CONFLICT (already-ended)`**: this method shows no
+  ///   SnackBar. The server-side end closes the streaming connection and
+  ///   the existing `_showStatsPanel` flow surfaces the standard
+  ///   "放送が終了しました" SnackBar + auto-expanded stats panel. Showing
+  ///   our own SnackBar here would race with that one.
+  /// - **other failure**: SnackBar with the localized
+  ///   `broadcastControlErrorMessage('終了', result)` string. We do not
+  ///   `hideCurrentSnackBar()` because higher-priority notifications
+  ///   (NG protection, send errors) should not be silently dismissed.
+  Future<void> _endBroadcastFromMenu() async {
+    // Re-entrancy guard: the menu auto-closes on tap, but the user can
+    // re-open it and tap again before either the confirmation dialog or
+    // the API call resolves. Without this the second invocation would
+    // stack a duplicate dialog. The flag is set BEFORE the dialog (not
+    // only around the API call) so the menu item also renders disabled
+    // when re-opened during the confirm step.
+    if (_isEndingBroadcast) {
+      return;
+    }
+    final BroadcastControlRepository? repo = widget.broadcastControlRepository;
+    if (repo == null) {
+      return;
+    }
+    if (_commentPostUserSession.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          key: Key('end-broadcast-session-required-snackbar'),
+          content: Text('ログインが必要です'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isEndingBroadcast = true;
+    });
+    try {
+      final bool? confirmed = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext dialogContext) {
+          final ColorScheme colorScheme = Theme.of(dialogContext).colorScheme;
+          return AlertDialog(
+            key: const Key('end-broadcast-confirm-dialog'),
+            title: const Text('配信を終了しますか？'),
+            content: const Text('この操作は取り消せません。視聴者の接続も切断されます。'),
+            actions: <Widget>[
+              TextButton(
+                key: const Key('end-broadcast-cancel-button'),
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('キャンセル'),
+              ),
+              TextButton(
+                key: const Key('end-broadcast-confirm-button'),
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                style: TextButton.styleFrom(foregroundColor: colorScheme.error),
+                child: const Text('配信を終了'),
+              ),
+            ],
+          );
+        },
+      );
+      if (confirmed != true || !mounted) {
+        return;
+      }
+      final BroadcastControlResult result = await repo.endBroadcast(
+        programId: widget.programInfo.lv,
+        userSession: _commentPostUserSession,
+      );
+      if (result.success || result.isAlreadyEnded) {
+        // Flip the broadcaster-cache so any subsequent broadcaster check
+        // does not return the stale "broadcaster" outcome cached during
+        // the now-ended program (#752).
+        widget.commentPostController?.clearBroadcasterCache();
+      }
+      if (!mounted) {
+        return;
+      }
+      if (result.success || result.isAlreadyEnded) {
+        // Defer to the existing connection-close → _showStatsPanel flow;
+        // do not surface a competing SnackBar here.
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          key: const Key('end-broadcast-error-snackbar'),
+          content: Text(broadcastControlErrorMessage('終了', result)),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isEndingBroadcast = false;
+        });
+      }
     }
   }
 
@@ -4343,6 +4506,21 @@ class _CommentScreenState extends State<CommentScreen>
   @override
   List<AppMessage> messagesForLogForTesting() => _messagesForLog();
 
+  @override
+  void setBroadcasterForTesting({
+    required bool isBroadcaster,
+    String userSession = 'test-user-session',
+  }) {
+    if (_isBroadcaster == isBroadcaster &&
+        _commentPostUserSession == userSession) {
+      return;
+    }
+    setState(() {
+      _isBroadcaster = isBroadcaster;
+      _commentPostUserSession = userSession;
+    });
+  }
+
   List<AppMessage> _messagesForLog() {
     final List<AppMessage> out = <AppMessage>[];
     for (final AppMessage message in widget.messages) {
@@ -4521,14 +4699,22 @@ class _OverflowMenuRow extends StatelessWidget {
     required this.icon,
     required this.label,
     this.enabled = true,
+    this.labelColor,
   });
 
   final IconData icon;
   final String label;
   final bool enabled;
 
+  /// Optional override for both the icon and the label text color. Used by
+  /// the destructive "配信を終了" entry to render in
+  /// `theme.colorScheme.error` so the row reads as destructive at a glance.
+  /// When `null` the row inherits the default `PopupMenuItem` foreground.
+  final Color? labelColor;
+
   @override
   Widget build(BuildContext context) {
+    final Color? effectiveColor = enabled ? labelColor : null;
     return MergeSemantics(
       child: Semantics(
         button: true,
@@ -4539,9 +4725,9 @@ class _OverflowMenuRow extends StatelessWidget {
           child: ExcludeSemantics(
             child: Row(
               children: <Widget>[
-                Icon(icon),
+                Icon(icon, color: effectiveColor),
                 const SizedBox(width: 12),
-                Text(label),
+                Text(label, style: TextStyle(color: effectiveColor)),
               ],
             ),
           ),

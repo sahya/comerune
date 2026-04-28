@@ -260,6 +260,65 @@ void main() {
       repository.dispose();
     });
 
+    test(
+      'clearOwnProgramCache forces a tool re-query on the next call',
+      () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        // First call: front → empty, tool → empty (both queried). Cached.
+        httpClient.queuedResponses.addAll(<_FakeResponseConfig>[
+          _FakeResponseConfig(
+            statusCode: 200,
+            body: jsonEncode(<String, Object?>{
+              'data': <String, Object?>{'programs': <Object?>[]},
+            }),
+          ),
+          _FakeResponseConfig(
+            statusCode: 200,
+            body: jsonEncode(<String, Object?>{'data': <Object?>[]}),
+          ),
+          // Second call after cache clear: front → empty, tool → empty.
+          // Tool MUST be re-queried because the explicit cache flush
+          // overrides the within-TTL skip.
+          _FakeResponseConfig(
+            statusCode: 200,
+            body: jsonEncode(<String, Object?>{
+              'data': <String, Object?>{'programs': <Object?>[]},
+            }),
+          ),
+          _FakeResponseConfig(
+            statusCode: 200,
+            body: jsonEncode(<String, Object?>{'data': <Object?>[]}),
+          ),
+        ]);
+
+        final MyProgramRepository repository = MyProgramRepository(
+          httpClient: httpClient,
+        );
+
+        final result1 = await repository.fetchOwnProgram(
+          userSession: 'test_session',
+        );
+        expect(result1, isNull);
+        expect(httpClient.requests, hasLength(2));
+
+        // Without invalidation the next fetch would skip the tool endpoint
+        // (see "skips tool fallback on second call within cache duration").
+        // Explicit invalidation via the new method must restore the
+        // pre-cache behaviour so a freshly-started broadcast is observed
+        // immediately (#752).
+        repository.clearOwnProgramCache();
+
+        final result2 = await repository.fetchOwnProgram(
+          userSession: 'test_session',
+        );
+        expect(result2, isNull);
+        // Both front + tool should now have been queried again — total 4.
+        expect(httpClient.requests, hasLength(4));
+
+        repository.dispose();
+      },
+    );
+
     test('skips tool fallback on second call within cache duration', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       // First call: front → empty, tool → empty (both queried).

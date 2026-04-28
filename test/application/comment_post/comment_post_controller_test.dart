@@ -316,6 +316,43 @@ void main() {
       // Second call should not have issued a new request.
       expect(fake.requests.length, firstCount);
     });
+
+    test('clearBroadcasterCache forces the next call to re-query', () async {
+      final _FakeHttpClient fake = _FakeHttpClient();
+      fake.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200},
+        'data': <String, Object?>{
+          'programs': <Object?>[
+            <String, Object?>{
+              'id': 'lv345678901',
+              'title': 'My Broadcast',
+              'programProvider': <String, Object?>{'name': 'Me'},
+            },
+          ],
+        },
+      });
+      final CommentPostController controller = _buildController(fake);
+
+      await controller.ensureBroadcasterStatus(
+        lv: 'lv345678901',
+        userSession: 'session',
+      );
+      final int firstCount = fake.requests.length;
+      expect(firstCount, greaterThan(0));
+
+      controller.clearBroadcasterCache();
+      await controller.ensureBroadcasterStatus(
+        lv: 'lv345678901',
+        userSession: 'session',
+      );
+
+      // Cache invalidation must result in a fresh HTTP request even
+      // though `lv` and `userSession` are unchanged. This is the
+      // contract that lets `_startBroadcast` / `_endBroadcast` /
+      // `_endBroadcastFromMenu` flip broadcaster-gated UI without
+      // requiring a process restart (#752).
+      expect(fake.requests.length, firstCount + 1);
+    });
   });
 
   group('CommentPostController.postComment', () {

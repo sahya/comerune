@@ -735,6 +735,12 @@ class _SelectScreenState extends State<SelectScreen>
           commentPostController: widget.commentPostController,
           userSessionLoader: widget.userSessionStore?.load,
           timeshiftFetchController: widget.timeshiftFetchController,
+          // Plumbed through so the comment screen's AppBar overflow
+          // "配信を終了" entry can call the same niconico segment API used
+          // by the slide-to-end control on the program list (#750). The
+          // comment screen gates the menu entry on `_isBroadcaster`, so
+          // viewers never see a wired-but-non-applicable repository.
+          broadcastControlRepository: widget.broadcastControlRepository,
         );
       },
     );
@@ -1389,6 +1395,16 @@ class _SelectScreenState extends State<SelectScreen>
       programId: program.programId,
       userSession: userSession,
     );
+    if (result.success) {
+      // The user's broadcaster status just flipped; flush the in-memory
+      // caches that key broadcaster-gated UI (e.g. the comment screen's
+      // AppBar overflow "配信を終了" entry) so a comment screen opened
+      // immediately after start observes the freshly on-air program
+      // instead of returning the stale "no on-air program" tool-fallback
+      // null cache (#752).
+      widget.myProgramRepository?.clearOwnProgramCache();
+      widget.commentPostController?.clearBroadcasterCache();
+    }
     if (result.success && mounted) {
       final DateTime? endAt = result.endTime != null
           ? DateTime.fromMillisecondsSinceEpoch(
@@ -1421,6 +1437,13 @@ class _SelectScreenState extends State<SelectScreen>
       programId: program.programId,
       userSession: userSession,
     );
+    if (result.success || result.isAlreadyEnded) {
+      // Symmetric with _startBroadcast: invalidate caches that may now
+      // hold a stale "broadcaster" outcome so subsequent UI gating
+      // re-resolves against the post-end state (#752).
+      widget.myProgramRepository?.clearOwnProgramCache();
+      widget.commentPostController?.clearBroadcasterCache();
+    }
     if ((result.success || result.isAlreadyEnded) && mounted) {
       setState(() {
         _myProgram = null;

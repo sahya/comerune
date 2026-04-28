@@ -72,6 +72,15 @@ Future<void> main() async {
   // Clear ephemeral keys (transient runtime state) on APK update.
   // Runs before migrations so that stale ephemeral values do not
   // interfere with data transformations.
+  //
+  // Note: in-memory caches in `CommentPostController` /
+  // `MyProgramRepository` (broadcaster status, tool-fallback null) are
+  // NOT cleared here because Android kills the process on APK upgrade,
+  // so the controllers below are constructed with empty caches by
+  // definition. The runtime invalidation hooks live at the events that
+  // can flip broadcaster status mid-session — `_startBroadcast` /
+  // `_endBroadcast` in `select_screen` and `_endBroadcastFromMenu` in
+  // `comment_screen` — see #752 for the broader rationale.
   final UpgradeInitializer upgradeInitializer = UpgradeInitializer(
     prefs: prefsAdapter,
   );

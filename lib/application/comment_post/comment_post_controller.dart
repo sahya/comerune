@@ -93,6 +93,23 @@ class CommentPostController {
   /// Whether a post request is currently in-flight.
   bool get isSending => _isSending;
 
+  /// Forgets the cached broadcaster outcome so the next
+  /// [ensureBroadcasterStatus] call re-queries the network.
+  ///
+  /// Use after events that may flip the user's broadcaster status outside
+  /// of this controller's awareness — e.g. the user just started or ended
+  /// a broadcast through `select_screen`, or an APK upgrade was detected
+  /// (#752). Without this, a stale "viewer" outcome cached during a
+  /// transient null fetch would persist for the lifetime of this
+  /// controller, hiding broadcaster-only UI such as the AppBar overflow
+  /// "配信を終了" entry until the user reopens the screen on a different
+  /// `lv`.
+  void clearBroadcasterCache() {
+    _cachedBroadcasterOutcome = null;
+    _cachedBroadcasterLv = null;
+    _cachedBroadcasterSession = null;
+  }
+
   /// Client-side max length for the given comment type.
   ///
   /// [maxLength] overrides the default when supplied, keeping this helper

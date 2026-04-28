@@ -45,6 +45,22 @@ class MyProgramRepository {
   /// request is made for the new identity.
   String? _toolFallbackSession;
 
+  /// Forgets the cached "no on-air program" tool-fallback marker so the
+  /// next [fetchOwnProgram] call hits the network instead of returning a
+  /// stale `null`.
+  ///
+  /// Use after events that may flip the user's broadcasting status —
+  /// e.g. they just started a broadcast (so the previous null cache is
+  /// no longer accurate) or an APK upgrade was detected (#752). Without
+  /// this, a user who started broadcasting within 60 seconds of an empty
+  /// fetch would continue to see the cached `null` and broadcaster-only
+  /// UI (such as the AppBar overflow "配信を終了" entry) would not appear
+  /// until the cache TTL expired.
+  void clearOwnProgramCache() {
+    _toolFallbackNullAt = null;
+    _toolFallbackSession = null;
+  }
+
   /// Fetches the user's own on-air program, if any.
   ///
   /// Requires a valid [userSession] for authentication.
