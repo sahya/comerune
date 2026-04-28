@@ -1,10 +1,13 @@
 package com.example.comerune.speech.infrastructure.player
 
+import android.media.AudioAttributes
+import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import com.example.comerune.speech.domain.model.PlayerState
+import com.example.comerune.speech.domain.player.AudioFocusGuard
 import com.example.comerune.speech.domain.player.TtsSpeaker
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CoroutineDispatcher
@@ -39,6 +42,7 @@ import kotlin.coroutines.resume
  */
 class AndroidTtsSpeaker(
     private val factory: TextToSpeechFactory,
+    private val audioFocusGuard: AudioFocusGuard? = null,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : TtsSpeaker {
 
@@ -48,6 +52,64 @@ class AndroidTtsSpeaker(
     }
 
     private var tts: TextToSpeechAdapter? = null
+
+    /**
+     * Same `USAGE_ASSISTANT (Q+) | USAGE_MEDIA (older)` + `CONTENT_TYPE_SPEECH`
+     * profile the WAV players use, so the system applies a single ducking
+     * policy across all comerune voices and routes them through the
+     * media volume slider rather than the silent ringtone stream.
+     */
+    private val audioAttributes: AudioAttributes =
+        AudioAttributes.Builder().apply {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                setUsage(AudioAttributes.USAGE_ASSISTANT)
+            } else {
+                setUsage(AudioAttributes.USAGE_MEDIA)
+            }
+            setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+        }.build()
+
+    /**
+     * Listener registered against [audioFocusGuard] (when present) so
+     * losses on the shared session immediately silence the system TTS.
+     * Stops on permanent loss; transient losses are also stopped because
+     * Android's TextToSpeech does not support a true pause/resume —
+     * stopping is the safest user-visible response.
+     */
+    private val focusListener: AudioFocusGuard.FocusChangeListener =
+        AudioFocusGuard.FocusChangeListener { event ->
+            when (event) {
+                AudioFocusGuard.FocusEvent.LOSS,
+                AudioFocusGuard.FocusEvent.LOSS_TRANSIENT,
+                AudioFocusGuard.FocusEvent.LOSS_TRANSIENT_CAN_DUCK -> {
+                    val current = tts
+                    try {
+                        current?.stop()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "engine.stop() during focus loss failed: ${e.message}")
+                    }
+                    speaking = false
+                    state = PlayerState.STOPPED
+                    val cont = currentContinuation
+                    currentContinuation = null
+                    if (cont != null && cont.isActive) {
+                        cont.resume(
+                            Result.failure(
+                                RuntimeException("Audio focus lost during speak"),
+                            ),
+                        )
+                    }
+                }
+                AudioFocusGuard.FocusEvent.GAIN -> {
+                    // Re-acquire is requested per-speak(); nothing to do
+                    // here because TextToSpeech cannot resume mid-utterance.
+                }
+            }
+        }
+
+    init {
+        audioFocusGuard?.addListener(focusListener)
+    }
 
     @Volatile
     private var ready = false
@@ -163,6 +225,20 @@ class AndroidTtsSpeaker(
                     }
                     currentEngine.setSpeechRate(speechRate)
                     currentEngine.setPitch(pitch)
+                    // Apply the same focus profile (USAGE_ASSISTANT / SPEECH)
+                    // we use for the WAV pipeline. Without this, the
+                    // platform may treat system TTS output as
+                    // USAGE_UNKNOWN and silence it during DND or
+                    // battery-saver focus restrictions (#736).
+                    val attributesResult = currentEngine.setAudioAttributes(audioAttributes)
+                    if (attributesResult != TextToSpeech.SUCCESS) {
+                        Log.w(
+                            TAG,
+                            "setAudioAttributes failed (result=$attributesResult). " +
+                                "Continuing with engine defaults; voice may be ducked or routed " +
+                                "to an unexpected stream on this device.",
+                        )
+                    }
                     ready = true
                     state = PlayerState.IDLE
                     currentEngine.setOnUtteranceProgressListener(
@@ -307,6 +383,23 @@ class AndroidTtsSpeaker(
             return Result.failure(IllegalStateException("TTS not initialized"))
         }
 
+        // Acquire shared audio focus before handing the text to the system
+        // TTS engine. Without this, Android's focus policy can silence the
+        // engine in DND / battery-saver / focus-loss scenarios with no
+        // error surfaced (#736). Failures here propagate to the caller so
+        // the queue can move on instead of waiting for an utterance that
+        // will never come.
+        val guard = audioFocusGuard
+        if (guard != null) {
+            val focusResult = guard.acquire()
+            if (focusResult.isFailure) {
+                return Result.failure(
+                    focusResult.exceptionOrNull()
+                        ?: IllegalStateException("Audio focus request denied"),
+                )
+            }
+        }
+
         val result = withTimeoutOrNull(SPEAK_TIMEOUT_MS) {
             suspendCancellableCoroutine { cont ->
                 // Pair the utteranceId with the continuation so the
@@ -346,6 +439,10 @@ class AndroidTtsSpeaker(
                 }
             }
         }
+
+        // Release focus with a grace window so back-to-back utterances
+        // do not duck/unduck the rest of the system between every comment.
+        guard?.scheduleRelease()
 
         if (result == null) {
             currentContinuation = null
@@ -404,6 +501,13 @@ class AndroidTtsSpeaker(
         state = PlayerState.IDLE
         val engineToShutdown = tts
         tts = null
+        // Unsubscribe from the shared guard so it does not retain this
+        // torn-down speaker. We deliberately do NOT call guard.release()
+        // because the guard is shared with the WAV players and their
+        // playback may still need the focus token. Their release path
+        // (or a scheduleRelease() that fires after them) will abandon
+        // focus when no consumer is left.
+        audioFocusGuard?.removeListener(focusListener)
         // stop() is non-blocking per Android docs, keep it on the caller's
         // thread so any in-flight utterance is cancelled immediately.
         try {

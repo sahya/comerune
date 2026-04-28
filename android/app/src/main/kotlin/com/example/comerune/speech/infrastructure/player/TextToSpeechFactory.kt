@@ -1,6 +1,7 @@
 package com.example.comerune.speech.infrastructure.player
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
@@ -34,6 +35,14 @@ interface TextToSpeechAdapter {
     fun setSpeechRate(rate: Float): Int
 
     fun setPitch(pitch: Float): Int
+
+    /**
+     * Apply [AudioAttributes] to the underlying TTS engine so the system
+     * routes the speech with the correct usage / content-type. Without
+     * this, Android may treat the engine as USAGE_MEDIA and silence it
+     * during DND or battery-saver focus restrictions.
+     */
+    fun setAudioAttributes(attributes: AudioAttributes): Int
 
     fun speak(
         text: String,
@@ -70,6 +79,9 @@ private class RealTextToSpeechAdapter(
     override fun setSpeechRate(rate: Float): Int = tts.setSpeechRate(rate)
 
     override fun setPitch(pitch: Float): Int = tts.setPitch(pitch)
+
+    override fun setAudioAttributes(attributes: AudioAttributes): Int =
+        tts.setAudioAttributes(attributes)
 
     override fun speak(
         text: String,

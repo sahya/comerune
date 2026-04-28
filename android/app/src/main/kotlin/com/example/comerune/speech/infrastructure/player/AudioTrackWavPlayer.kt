@@ -2,14 +2,13 @@ package com.example.comerune.speech.infrastructure.player
 
 import android.content.Context
 import android.media.AudioAttributes
-import android.media.AudioFocusRequest
 import android.media.AudioFormat
-import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
 import com.example.comerune.speech.domain.model.PlayerState
+import com.example.comerune.speech.domain.player.AudioFocusGuard
 import com.example.comerune.speech.domain.player.WavPlayer
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CoroutineScope
@@ -28,7 +27,10 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 @RequiresApi(Build.VERSION_CODES.O)
-class AudioTrackWavPlayer(private val context: Context) : WavPlayer {
+class AudioTrackWavPlayer(
+    private val context: Context,
+    private val audioFocusGuard: AudioFocusGuard,
+) : WavPlayer {
 
     companion object {
         private const val TAG = "AudioTrackWavPlayer"
@@ -152,8 +154,12 @@ class AudioTrackWavPlayer(private val context: Context) : WavPlayer {
     private var activeContinuation: CancellableContinuation<Unit>? = null
     private var markerTimeoutJob: Job? = null
 
-    private val audioManager: AudioManager =
-        context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    /**
+     * Tracks whether the caller still wants playback to be live. See
+     * [MediaPlayerWavPlayer] for the same-pattern rationale.
+     */
+    @Volatile
+    private var shouldBePlaying: Boolean = false
 
     private val audioAttributes: AudioAttributes =
         AudioAttributes.Builder().apply {
@@ -165,30 +171,21 @@ class AudioTrackWavPlayer(private val context: Context) : WavPlayer {
             setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
         }.build()
 
-    private val focusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
-        when (focusChange) {
-            AudioManager.AUDIOFOCUS_LOSS -> {
-                stopInternal()
+    private val focusListener = AudioFocusGuard.FocusChangeListener { event ->
+        when (event) {
+            AudioFocusGuard.FocusEvent.LOSS -> stopInternal()
+            AudioFocusGuard.FocusEvent.LOSS_TRANSIENT -> pauseInternal()
+            AudioFocusGuard.FocusEvent.LOSS_TRANSIENT_CAN_DUCK -> {
+                // willPauseWhenDucked=true means the system normally maps this
+                // to LOSS_TRANSIENT. Defensive no-op kept so we never duck the
+                // assistant voice mid-utterance.
             }
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-                pauseInternal()
-            }
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-                // willPauseWhenDucked=true により通常は AUDIOFOCUS_LOSS_TRANSIENT として
-                // 通知されるため、この分岐には到達しない。防御的に残している。
-            }
-            AudioManager.AUDIOFOCUS_GAIN -> {
-                resumeInternal()
-            }
+            AudioFocusGuard.FocusEvent.GAIN -> resumeInternal()
         }
     }
 
-    private val audioFocusRequest: AudioFocusRequest by lazy {
-        AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-            .setAudioAttributes(audioAttributes)
-            .setWillPauseWhenDucked(true)
-            .setOnAudioFocusChangeListener(focusChangeListener)
-            .build()
+    init {
+        audioFocusGuard.addListener(focusListener)
     }
 
     override suspend fun play(wavBytes: ByteArray): Result<Unit> {
@@ -229,6 +226,20 @@ class AudioTrackWavPlayer(private val context: Context) : WavPlayer {
 
         // Stop any existing playback before starting new one
         stopInternal()
+
+        // Mark intent to play before any suspension so a focus-loss
+        // racing with track build can still trigger a correct resume later.
+        shouldBePlaying = true
+
+        // Acquire focus once for this logical utterance via the shared guard.
+        val focusResult = audioFocusGuard.acquire()
+        if (focusResult.isFailure) {
+            shouldBePlaying = false
+            return Result.failure(
+                focusResult.exceptionOrNull()
+                    ?: IllegalStateException("Audio focus request denied"),
+            )
+        }
 
         return withContext(Dispatchers.IO) {
             runCatching {
@@ -299,7 +310,8 @@ class AudioTrackWavPlayer(private val context: Context) : WavPlayer {
                                 override fun onMarkerReached(track: AudioTrack?) {
                                     markerTimeoutJob?.cancel()
                                     markerTimeoutJob = null
-                                    abandonAudioFocus()
+                                    shouldBePlaying = false
+                                    audioFocusGuard.scheduleRelease()
                                     releaseAudioTrack()
                                     val cont: CancellableContinuation<Unit>?
                                     synchronized(lock) {
@@ -320,18 +332,6 @@ class AudioTrackWavPlayer(private val context: Context) : WavPlayer {
                             stopInternal()
                         }
 
-                        val focusResult = audioManager.requestAudioFocus(audioFocusRequest)
-                        if (focusResult != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
-                            synchronized(lock) {
-                                activeContinuation = null
-                            }
-                            releaseAudioTrack()
-                            continuation.resumeWithException(
-                                IllegalStateException("Audio focus request denied")
-                            )
-                            return@suspendCancellableCoroutine
-                        }
-
                         synchronized(lock) {
                             state = PlayerState.PLAYING
                         }
@@ -345,7 +345,8 @@ class AudioTrackWavPlayer(private val context: Context) : WavPlayer {
                         markerTimeoutJob = timeoutScope.launch {
                             delay(timeoutMs)
                             Log.w(TAG, "Marker timeout fired after ${timeoutMs}ms — forcing completion")
-                            abandonAudioFocus()
+                            shouldBePlaying = false
+                            audioFocusGuard.scheduleRelease()
                             releaseAudioTrack()
                             val cont: CancellableContinuation<Unit>?
                             synchronized(lock) {
@@ -370,7 +371,9 @@ class AudioTrackWavPlayer(private val context: Context) : WavPlayer {
                         state = PlayerState.ERROR
                     }
                 }
+                shouldBePlaying = false
                 releaseAudioTrack()
+                audioFocusGuard.scheduleRelease()
             }
         }
     }
@@ -399,6 +402,7 @@ class AudioTrackWavPlayer(private val context: Context) : WavPlayer {
         }
         stopInternal()
         timeoutScope.cancel()
+        audioFocusGuard.removeListener(focusListener)
         synchronized(lock) {
             state = PlayerState.IDLE
         }
@@ -420,9 +424,10 @@ class AudioTrackWavPlayer(private val context: Context) : WavPlayer {
     }
 
     private fun resumeInternal() {
+        if (!shouldBePlaying) return
         val resumeFailed: Boolean
         synchronized(lock) {
-            resumeFailed = if (state == PlayerState.PAUSED) {
+            resumeFailed = if (state == PlayerState.PAUSED || state == PlayerState.STOPPED) {
                 audioTrack?.let { track ->
                     try {
                         track.play()
@@ -445,7 +450,7 @@ class AudioTrackWavPlayer(private val context: Context) : WavPlayer {
     private fun stopInternal() {
         markerTimeoutJob?.cancel()
         markerTimeoutJob = null
-        abandonAudioFocus()
+        shouldBePlaying = false
         val cont: CancellableContinuation<Unit>?
         synchronized(lock) {
             audioTrack?.let { track ->
@@ -462,10 +467,8 @@ class AudioTrackWavPlayer(private val context: Context) : WavPlayer {
             activeContinuation = null
         }
         releaseAudioTrack()
+        audioFocusGuard.scheduleRelease()
         // Resume the suspended play() coroutine so the worker loop is unblocked.
-        // Use IOException (not CancellationException) to avoid cancelling the entire
-        // worker coroutine — the caller treats this as a normal playback failure and
-        // proceeds to the next queue item.
         cont?.takeIf { it.isActive }?.resumeWithException(
             IOException("Playback interrupted")
         )
@@ -477,11 +480,4 @@ class AudioTrackWavPlayer(private val context: Context) : WavPlayer {
             audioTrack = null
         }
     }
-
-    private fun abandonAudioFocus() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            audioManager.abandonAudioFocusRequest(audioFocusRequest)
-        }
-    }
-
 }

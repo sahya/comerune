@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import androidx.annotation.RequiresApi
 import com.example.comerune.speech.domain.model.PlayerState
+import com.example.comerune.speech.domain.player.AudioFocusGuard
 import com.example.comerune.speech.domain.player.WavPlayer
 
 /**
@@ -13,9 +14,16 @@ import com.example.comerune.speech.domain.player.WavPlayer
  * The active player can be switched at runtime via [switchPlayerType].
  * The actual switch is deferred to the next [play] call to avoid
  * interrupting in-progress playback.
+ *
+ * Both delegates share the same [AudioFocusGuard] instance so the focus
+ * token survives the player swap and never gets orphaned by an
+ * out-of-order release on the previous delegate.
  */
 @RequiresApi(Build.VERSION_CODES.O)
-class SwitchableWavPlayer(private val context: Context) : WavPlayer {
+class SwitchableWavPlayer(
+    private val context: Context,
+    private val audioFocusGuard: AudioFocusGuard,
+) : WavPlayer {
 
     companion object {
         const val TYPE_AUDIO_TRACK = "audio_track"
@@ -25,7 +33,7 @@ class SwitchableWavPlayer(private val context: Context) : WavPlayer {
     private val lock = Any()
     private var currentType: String = TYPE_AUDIO_TRACK
     private var pendingType: String? = null
-    private var delegate: WavPlayer = AudioTrackWavPlayer(context)
+    private var delegate: WavPlayer = AudioTrackWavPlayer(context, audioFocusGuard)
 
     /**
      * Request a player type switch.
@@ -58,8 +66,8 @@ class SwitchableWavPlayer(private val context: Context) : WavPlayer {
             if (newType == currentType) return
             delegate.release()
             delegate = when (newType) {
-                TYPE_MEDIA_PLAYER -> MediaPlayerWavPlayer(context)
-                else -> AudioTrackWavPlayer(context)
+                TYPE_MEDIA_PLAYER -> MediaPlayerWavPlayer(context, audioFocusGuard)
+                else -> AudioTrackWavPlayer(context, audioFocusGuard)
             }
             currentType = newType
         }

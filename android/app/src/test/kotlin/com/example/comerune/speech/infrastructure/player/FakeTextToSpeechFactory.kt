@@ -1,5 +1,6 @@
 package com.example.comerune.speech.infrastructure.player
 
+import android.media.AudioAttributes
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
@@ -80,8 +81,15 @@ class FakeTextToSpeechAdapter(
     private val setLanguageCalls: MutableList<Locale> = CopyOnWriteArrayList()
     private val setSpeechRateCalls: MutableList<Float> = CopyOnWriteArrayList()
     private val setPitchCalls: MutableList<Float> = CopyOnWriteArrayList()
+    private val setAudioAttributesCalls: MutableList<AudioAttributes> = CopyOnWriteArrayList()
+    private val speakCalls: MutableList<SpeakInvocation> = CopyOnWriteArrayList()
     private val progressListeners: MutableList<UtteranceProgressListener> = CopyOnWriteArrayList()
-    private val speakCalls: MutableList<String> = CopyOnWriteArrayList()
+
+    data class SpeakInvocation(
+        val text: String,
+        val queueMode: Int,
+        val utteranceId: String,
+    )
 
     @Volatile
     private var pendingLanguageResult: Int = defaultLanguageResult
@@ -96,11 +104,18 @@ class FakeTextToSpeechAdapter(
 
     val pitches: List<Float> get() = setPitchCalls.toList()
 
+    val audioAttributesCalls: List<AudioAttributes>
+        get() = setAudioAttributesCalls.toList()
+
+    val speakInvocations: List<SpeakInvocation>
+        get() = speakCalls.toList()
+
     val registeredProgressListeners: List<UtteranceProgressListener>
         get() = progressListeners.toList()
 
     /** utteranceIds passed to [speak], in call order. */
-    val speakUtteranceIds: List<String> get() = speakCalls.toList()
+    val speakUtteranceIds: List<String>
+        get() = speakCalls.map { it.utteranceId }
 
     /** Overrides the value [setLanguage] returns on the next invocation. */
     fun setLanguageResultOverride(result: Int) {
@@ -122,13 +137,18 @@ class FakeTextToSpeechAdapter(
         return TextToSpeech.SUCCESS
     }
 
+    override fun setAudioAttributes(attributes: AudioAttributes): Int {
+        setAudioAttributesCalls.add(attributes)
+        return TextToSpeech.SUCCESS
+    }
+
     override fun speak(
         text: String,
         queueMode: Int,
         params: Bundle?,
         utteranceId: String,
     ): Int {
-        speakCalls.add(utteranceId)
+        speakCalls.add(SpeakInvocation(text, queueMode, utteranceId))
         return TextToSpeech.SUCCESS
     }
 

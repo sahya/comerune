@@ -28,8 +28,10 @@ import com.example.comerune.speech.domain.normalizer.InMemoryDuplicateDetector
 import com.example.comerune.speech.domain.queue.InMemorySpeechQueueManager
 import com.example.comerune.speech.domain.repository.VoicevoxModelRepository
 import com.example.comerune.speech.domain.settings.InMemorySettingsRepository
+import com.example.comerune.speech.domain.player.AudioFocusGuard
 import com.example.comerune.speech.infrastructure.engine.VoicevoxEngineImpl
 import com.example.comerune.speech.infrastructure.event.FlutterSpeechEventEmitter
+import com.example.comerune.speech.infrastructure.player.AndroidAudioFocusGuard
 import com.example.comerune.speech.infrastructure.player.AndroidTtsSpeaker
 import com.example.comerune.speech.infrastructure.player.DefaultTextToSpeechFactory
 import com.example.comerune.speech.infrastructure.player.SwitchableWavPlayer
@@ -55,6 +57,7 @@ class CommentSpeechPlugin :
     private var engine: VoicevoxEngine? = null
     private var switchablePlayer: SwitchableWavPlayer? = null
     private var androidTtsSpeaker: AndroidTtsSpeaker? = null
+    private var audioFocusGuard: AudioFocusGuard? = null
     private var applicationContext: Context? = null
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -77,10 +80,18 @@ class CommentSpeechPlugin :
         val emitter = FlutterSpeechEventEmitter()
         val voicevoxEngine = VoicevoxEngineImpl(context)
         voicevoxEngine.onDownloadEvent = { event -> emitter.emit(event) }
-        val player = SwitchableWavPlayer(context)
+        // Single shared AudioFocusGuard for both WAV pipelines and the
+        // system TTS speaker. See AudioFocusGuard for the rationale on
+        // why we no longer request/abandon per utterance.
+        val focusGuard: AudioFocusGuard = AndroidAudioFocusGuard(context)
+        audioFocusGuard = focusGuard
+        val player = SwitchableWavPlayer(context, focusGuard)
         switchablePlayer = player
 
-        val ttsSpeaker = AndroidTtsSpeaker(DefaultTextToSpeechFactory(context))
+        val ttsSpeaker = AndroidTtsSpeaker(
+            factory = DefaultTextToSpeechFactory(context),
+            audioFocusGuard = focusGuard,
+        )
         androidTtsSpeaker = ttsSpeaker
 
         eventEmitter = emitter
@@ -123,6 +134,11 @@ class CommentSpeechPlugin :
         engine = null
         switchablePlayer = null
         androidTtsSpeaker = null
+        // Abandon the shared focus token now that no consumer is left.
+        // Player release() above only unsubscribes their listeners; the
+        // plugin owns the guard's lifecycle.
+        audioFocusGuard?.release()
+        audioFocusGuard = null
         applicationContext = null
     }
 

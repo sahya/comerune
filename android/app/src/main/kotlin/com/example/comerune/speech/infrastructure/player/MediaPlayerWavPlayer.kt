@@ -2,12 +2,11 @@ package com.example.comerune.speech.infrastructure.player
 
 import android.content.Context
 import android.media.AudioAttributes
-import android.media.AudioFocusRequest
-import android.media.AudioManager
 import android.media.MediaPlayer
 import android.os.Build
 import androidx.annotation.RequiresApi
 import com.example.comerune.speech.domain.model.PlayerState
+import com.example.comerune.speech.domain.player.AudioFocusGuard
 import com.example.comerune.speech.domain.player.WavPlayer
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.Dispatchers
@@ -19,7 +18,10 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 @RequiresApi(Build.VERSION_CODES.O)
-class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
+class MediaPlayerWavPlayer(
+    private val context: Context,
+    private val audioFocusGuard: AudioFocusGuard,
+) : WavPlayer {
 
     private val lock = Any()
     private var mediaPlayer: MediaPlayer? = null
@@ -28,8 +30,14 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
     private var released: Boolean = false
     private var activeContinuation: CancellableContinuation<Unit>? = null
 
-    private val audioManager: AudioManager =
-        context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    /**
+     * Tracks whether the caller still wants playback to be live. Used to
+     * resume from a STOPPED-by-focus-loss state when focus comes back
+     * during the same logical utterance, and to avoid spurious resumes
+     * after the player has been intentionally stopped.
+     */
+    @Volatile
+    private var shouldBePlaying: Boolean = false
 
     private val audioAttributes: AudioAttributes =
         AudioAttributes.Builder().apply {
@@ -41,32 +49,21 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
             setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
         }.build()
 
-    private val focusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
-        when (focusChange) {
-            AudioManager.AUDIOFOCUS_LOSS -> {
-                stopInternal()
+    private val focusListener = AudioFocusGuard.FocusChangeListener { event ->
+        when (event) {
+            AudioFocusGuard.FocusEvent.LOSS -> stopInternal()
+            AudioFocusGuard.FocusEvent.LOSS_TRANSIENT -> pauseInternal()
+            AudioFocusGuard.FocusEvent.LOSS_TRANSIENT_CAN_DUCK -> {
+                // willPauseWhenDucked=true means the system normally maps this
+                // to LOSS_TRANSIENT. Defensive no-op kept so we never duck the
+                // assistant voice mid-utterance.
             }
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-                pauseInternal()
-            }
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-                // willPauseWhenDucked=true により通常は AUDIOFOCUS_LOSS_TRANSIENT として
-                // 通知されるため、この分岐には到達しない。防御的に残している。
-            }
-            AudioManager.AUDIOFOCUS_GAIN -> {
-                resumeInternal()
-            }
+            AudioFocusGuard.FocusEvent.GAIN -> resumeInternal()
         }
     }
 
-    // Lazy to avoid class-loading crash on API < 26 where AudioFocusRequest
-    // does not exist.  The play() method already guards with a runtime check.
-    private val audioFocusRequest: AudioFocusRequest by lazy {
-        AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-            .setAudioAttributes(audioAttributes)
-            .setWillPauseWhenDucked(true)
-            .setOnAudioFocusChangeListener(focusChangeListener)
-            .build()
+    init {
+        audioFocusGuard.addListener(focusListener)
     }
 
     override suspend fun play(wavBytes: ByteArray): Result<Unit> {
@@ -100,6 +97,22 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
         // Stop any existing playback before starting new one
         stopInternal()
 
+        // Mark intent to play before any suspension so a focus-loss
+        // racing with prepare() can still trigger a correct resume later.
+        shouldBePlaying = true
+
+        // Acquire focus once for this logical utterance. The guard
+        // handles DELAYED → GAIN, idempotency for back-to-back
+        // utterances, and abandons via scheduleRelease() afterwards.
+        val focusResult = audioFocusGuard.acquire()
+        if (focusResult.isFailure) {
+            shouldBePlaying = false
+            return Result.failure(
+                focusResult.exceptionOrNull()
+                    ?: IllegalStateException("Audio focus request denied"),
+            )
+        }
+
         return withContext(Dispatchers.IO) {
             runCatching {
                 val file = File.createTempFile("speech_", ".wav", context.cacheDir)
@@ -124,7 +137,8 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
                         player.prepare()
 
                         player.setOnCompletionListener {
-                            abandonAudioFocus()
+                            shouldBePlaying = false
+                            audioFocusGuard.scheduleRelease()
                             releaseMediaPlayer()
                             val cont: CancellableContinuation<Unit>?
                             synchronized(lock) {
@@ -137,7 +151,8 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
                         }
 
                         player.setOnErrorListener { _, what, extra ->
-                            abandonAudioFocus()
+                            shouldBePlaying = false
+                            audioFocusGuard.scheduleRelease()
                             releaseMediaPlayer()
                             val cont: CancellableContinuation<Unit>?
                             synchronized(lock) {
@@ -154,19 +169,6 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
 
                         continuation.invokeOnCancellation {
                             stopInternal()
-                        }
-
-                        val focusResult = audioManager.requestAudioFocus(audioFocusRequest)
-                        if (focusResult != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
-                            synchronized(lock) {
-                                activeContinuation = null
-                            }
-                            releaseMediaPlayer()
-                            cleanupTempFile()
-                            continuation.resumeWithException(
-                                IllegalStateException("Audio focus request denied")
-                            )
-                            return@suspendCancellableCoroutine
                         }
 
                         synchronized(lock) {
@@ -189,8 +191,10 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
                         state = PlayerState.ERROR
                     }
                 }
+                shouldBePlaying = false
                 releaseMediaPlayer()
                 cleanupTempFile()
+                audioFocusGuard.scheduleRelease()
             }
         }
     }
@@ -218,6 +222,7 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
             released = true
         }
         stopInternal()
+        audioFocusGuard.removeListener(focusListener)
         synchronized(lock) {
             state = PlayerState.IDLE
         }
@@ -239,9 +244,14 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
     }
 
     private fun resumeInternal() {
+        // Only attempt to resume if the caller still wants playback.
+        // shouldBePlaying remains true for the entire utterance lifetime
+        // (cleared only on completion / stop / error), so it is the
+        // single source of truth for "should GAIN restart playback?".
+        if (!shouldBePlaying) return
         val resumeFailed: Boolean
         synchronized(lock) {
-            resumeFailed = if (state == PlayerState.PAUSED) {
+            resumeFailed = if (state == PlayerState.PAUSED || state == PlayerState.STOPPED) {
                 mediaPlayer?.let { player ->
                     try {
                         player.start()
@@ -255,14 +265,13 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
                 false
             }
         }
-        // If resume failed, stop entirely so the worker loop can proceed.
         if (resumeFailed) {
             stopInternal()
         }
     }
 
     private fun stopInternal() {
-        abandonAudioFocus()
+        shouldBePlaying = false
         val cont: CancellableContinuation<Unit>?
         synchronized(lock) {
             mediaPlayer?.let { player ->
@@ -280,6 +289,8 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
         }
         releaseMediaPlayer()
         cleanupTempFile()
+        // Defer the focus abandon: another utterance may follow.
+        audioFocusGuard.scheduleRelease()
         // Resume the suspended play() coroutine so the worker loop is unblocked.
         // Use IOException (not CancellationException) to avoid cancelling the entire
         // worker coroutine — the caller treats this as a normal playback failure and
@@ -293,12 +304,6 @@ class MediaPlayerWavPlayer(private val context: Context) : WavPlayer {
         synchronized(lock) {
             mediaPlayer?.release()
             mediaPlayer = null
-        }
-    }
-
-    private fun abandonAudioFocus() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            audioManager.abandonAudioFocusRequest(audioFocusRequest)
         }
     }
 

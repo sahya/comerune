@@ -2,6 +2,7 @@ package com.example.comerune.speech.infrastructure.player
 
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import com.example.comerune.speech.domain.player.AudioFocusGuard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -329,6 +330,135 @@ class AndroidTtsSpeakerTest {
 
         val result = job.await()
         assertTrue("matching onError must resume speak with failure", result.isFailure)
+    }
+
+    @Test
+    fun `initialize applies AudioAttributes to the TTS engine`() = runBlocking {
+        val factory = FakeTextToSpeechFactory()
+        val speaker = AndroidTtsSpeaker(factory)
+
+        val job = launch { speaker.initialize() }
+        factory.awaitPendingInit()
+        factory.completePendingInit(TextToSpeech.SUCCESS)
+        job.join()
+
+        val engine = factory.createdEngines.last()
+        assertEquals(
+            "doInitialize must call setAudioAttributes exactly once",
+            1,
+            engine.audioAttributesCalls.size,
+        )
+    }
+
+    @Test
+    fun `speak acquires audio focus before delegating to the engine`() = runBlocking {
+        val factory = FakeTextToSpeechFactory()
+        val guard = FakeAudioFocusGuard()
+        val speaker = AndroidTtsSpeaker(factory, audioFocusGuard = guard)
+
+        val initJob = launch { speaker.initialize() }
+        factory.awaitPendingInit()
+        factory.completePendingInit(TextToSpeech.SUCCESS)
+        initJob.join()
+
+        val engine = factory.createdEngines.last()
+        // Drive a speak: completion is signalled by onDone via the
+        // registered progress listener. We schedule that on a different
+        // coroutine so speak() suspends first.
+        val speakJob = launch {
+            speaker.speak("hello", "u-1")
+        }
+        // Wait until speak() has actually invoked engine.speak.
+        waitUntil("speak must reach engine.speak") {
+            engine.speakInvocations.isNotEmpty()
+        }
+        assertEquals(
+            "audio focus must be acquired before engine.speak",
+            1,
+            guard.acquireCount,
+        )
+        // Fire onDone to release the suspending speak().
+        engine.registeredProgressListeners.first().onDone("u-1")
+        speakJob.join()
+
+        assertTrue(
+            "speak must scheduleRelease after completion to debounce focus",
+            guard.scheduleReleaseCount >= 1,
+        )
+    }
+
+    @Test
+    fun `speak fails fast when audio focus is denied`() = runBlocking {
+        val factory = FakeTextToSpeechFactory()
+        val guard = FakeAudioFocusGuard(
+            acquireResult = Result.failure(IllegalStateException("denied")),
+        )
+        val speaker = AndroidTtsSpeaker(factory, audioFocusGuard = guard)
+
+        val initJob = launch { speaker.initialize() }
+        factory.awaitPendingInit()
+        factory.completePendingInit(TextToSpeech.SUCCESS)
+        initJob.join()
+
+        val result = speaker.speak("hi", "u-1")
+        assertTrue("speak must fail when focus is denied", result.isFailure)
+        val engine = factory.createdEngines.last()
+        assertEquals(
+            "engine.speak must not be invoked when focus is denied",
+            0,
+            engine.speakInvocations.size,
+        )
+    }
+
+    @Test
+    fun `focus loss during speak stops the engine and resumes the suspending speak`() = runBlocking {
+        val factory = FakeTextToSpeechFactory()
+        val guard = FakeAudioFocusGuard()
+        val speaker = AndroidTtsSpeaker(factory, audioFocusGuard = guard)
+
+        val initJob = launch { speaker.initialize() }
+        factory.awaitPendingInit()
+        factory.completePendingInit(TextToSpeech.SUCCESS)
+        initJob.join()
+
+        val engine = factory.createdEngines.last()
+        val speakJob = async { speaker.speak("hello", "u-1") }
+        waitUntil("speak must reach engine.speak") {
+            engine.speakInvocations.isNotEmpty()
+        }
+
+        // Simulate a focus loss while speaking.
+        guard.emit(AudioFocusGuard.FocusEvent.LOSS_TRANSIENT)
+
+        val result = speakJob.await()
+        assertTrue(
+            "focus loss must surface as a failed speak so the queue moves on",
+            result.isFailure,
+        )
+        assertTrue(
+            "engine.stop must be invoked on focus loss",
+            engine.stopCount >= 1,
+        )
+    }
+
+    @Test
+    fun `release unsubscribes from the audio focus guard`() = runBlocking {
+        val factory = FakeTextToSpeechFactory()
+        val guard = FakeAudioFocusGuard()
+        val speaker = AndroidTtsSpeaker(factory, audioFocusGuard = guard)
+        val initJob = launch { speaker.initialize() }
+        factory.awaitPendingInit()
+        factory.completePendingInit(TextToSpeech.SUCCESS)
+        initJob.join()
+        assertEquals(1, guard.listenerCount)
+
+        speaker.release()
+
+        assertEquals(
+            "release must remove the speaker's listener from the shared guard",
+            0,
+            guard.listenerCount,
+        )
     }
 
     @Test
