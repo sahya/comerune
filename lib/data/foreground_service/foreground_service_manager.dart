@@ -11,6 +11,10 @@ import 'package:meta/meta.dart';
 /// - Keep the process alive during screen-off / app-switch
 /// - Stop the service when the connection ends
 ///
+/// The Android service is declared with `foregroundServiceType="dataSync"` in
+/// `AndroidManifest.xml` because the actual workload is keeping a comment
+/// streaming connection alive (data sync), not media playback.
+///
 /// Callers should only instantiate this class on Android.
 /// On non-Android platforms, pass `null` instead.
 class ForegroundServiceManager {

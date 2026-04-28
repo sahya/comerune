@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
@@ -30,9 +30,12 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Foreground service for keeping the comment WebSocket connection alive
+             while the app is backgrounded. dataSync matches actual usage; mediaPlayback
+             would risk Android 14+ revocation since no media is continuously played. -->
         <service
             android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
-            android:foregroundServiceType="mediaPlayback"
+            android:foregroundServiceType="dataSync"
             android:exported="false" />
     </application>
     <queries>
