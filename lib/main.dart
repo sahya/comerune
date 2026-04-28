@@ -212,6 +212,11 @@ class _ComeruneAppState extends State<ComeruneApp> {
     null,
   );
   late final ValueNotifier<AppThemeMode> _themeModeNotifier;
+  // Issue #739: cross-component view of the "broadcast-end grace" toggle.
+  // Owned by main so [_foregroundServiceController] can read the latest
+  // value at the moment of `ConnectionStatus.ended` even after the user
+  // changes the setting in the TTS settings screen.
+  late final ValueNotifier<bool> _playRemainingAfterEndedNotifier;
   // Issue #694: cross-screen Android TTS availability source. Lives for the
   // lifetime of the app so the comment screen and the TTS settings screen
   // share the same view of the latest check result.
@@ -247,6 +252,10 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _themeModeNotifier = ValueNotifier<AppThemeMode>(
       widget.initialSettings.themeMode,
     )..addListener(_onThemeModeChanged);
+
+    _playRemainingAfterEndedNotifier = ValueNotifier<bool>(
+      widget.initialSettings.playRemainingAfterEnded,
+    );
 
     _userNameResolver = UserNameResolver();
     _broadcasterEmbedResolver = BroadcasterEmbedResolver();
@@ -323,6 +332,9 @@ class _ComeruneAppState extends State<ComeruneApp> {
         foregroundServiceManager: widget.foregroundServiceManager!,
         connectionSupervisor: _connectionSupervisor,
         programTitleNotifier: _programTitleNotifier,
+        // Issue #739: read the live "grace on broadcast-end" preference at
+        // the moment the controller decides whether to grace.
+        playRemainingAfterEnded: () => _playRemainingAfterEndedNotifier.value,
       );
     }
 
@@ -409,6 +421,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _themeModeNotifier
       ..removeListener(_onThemeModeChanged)
       ..dispose();
+    _playRemainingAfterEndedNotifier.dispose();
     _androidTtsAvailability.dispose();
     super.dispose();
   }
@@ -474,6 +487,13 @@ class _ComeruneAppState extends State<ComeruneApp> {
           timeshiftFetchController: _timeshiftFetchController,
           androidTtsAvailability: _androidTtsAvailability,
           broadcasterEmbedResolver: _broadcasterEmbedResolver,
+          playRemainingAfterEndedSink: _playRemainingAfterEndedNotifier,
+          // Issue #739: when the comment screen finishes draining its speech
+          // queue inside the grace window, signal the FGS controller so its
+          // parallel grace timer can end early too instead of waiting out
+          // the full 30 s. No-op when the FGS controller is not configured.
+          onSpeechQueueDrained:
+              _foregroundServiceController?.notifyQueueDrained,
         ),
       ),
     );

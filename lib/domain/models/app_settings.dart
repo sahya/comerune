@@ -329,6 +329,7 @@ class AppSettings {
     required this.androidTtsSpeed,
     required this.androidTtsPitch,
     required this.androidTtsVolume,
+    required this.playRemainingAfterEnded,
   }) : assert(
          commentFontSize >= commentFontSizeMin &&
              commentFontSize <= commentFontSizeMax,
@@ -390,6 +391,7 @@ class AppSettings {
     androidTtsSpeed: 1.0,
     androidTtsPitch: 1.0,
     androidTtsVolume: 1.0,
+    playRemainingAfterEnded: true,
   );
 
   final AppThemeMode themeMode;
@@ -542,6 +544,14 @@ class AppSettings {
   /// Android標準TTS の音量。0.0〜1.0、デフォルト 1.0。
   final double androidTtsVolume;
 
+  /// 配信が `ended` になった後も、最大 30 秒間は読み上げキューを継続させる
+  /// （Issue #739）。`true` のとき、`ConnectionStatus.ended` を受けても
+  /// FGS とキューを即時停止せず、grace 期間内に未読み上げのコメントを
+  /// 読み終えるよう試みる。
+  ///
+  /// `failed` / `stopped` には適用されず、これらは従来通り即時停止する。
+  final bool playRemainingAfterEnded;
+
   /// Returns a list of lower-cased NG word pattern strings for filtering.
   ///
   /// When [ngWordRules] is populated (post-migration), only **enabled** rules
@@ -688,6 +698,7 @@ class AppSettings {
     double? androidTtsSpeed,
     double? androidTtsPitch,
     double? androidTtsVolume,
+    bool? playRemainingAfterEnded,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -760,6 +771,8 @@ class AppSettings {
       androidTtsSpeed: androidTtsSpeed ?? this.androidTtsSpeed,
       androidTtsPitch: androidTtsPitch ?? this.androidTtsPitch,
       androidTtsVolume: androidTtsVolume ?? this.androidTtsVolume,
+      playRemainingAfterEnded:
+          playRemainingAfterEnded ?? this.playRemainingAfterEnded,
     );
   }
 
@@ -853,6 +866,7 @@ class AppSettings {
       'androidTtsSpeed': androidTtsSpeed,
       'androidTtsPitch': androidTtsPitch,
       'androidTtsVolume': androidTtsVolume,
+      'playRemainingAfterEnded': playRemainingAfterEnded,
     };
   }
 
@@ -1027,6 +1041,13 @@ class AppSettings {
           (json['androidTtsPitch'] as num?)?.toDouble() ?? d.androidTtsPitch,
       androidTtsVolume:
           (json['androidTtsVolume'] as num?)?.toDouble() ?? d.androidTtsVolume,
+      // Issue #739: 旧 Export ファイル（このキーが存在しない）を Import しても
+      // 既定値 (true) で復元できる。`bool` 以外の不正値はデフォルトに
+      // フォールバックして安全側に倒す（他の parse* 関数と同じ規約）。
+      playRemainingAfterEnded: switch (json['playRemainingAfterEnded']) {
+        bool b => b,
+        _ => d.playRemainingAfterEnded,
+      },
     );
   }
 

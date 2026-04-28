@@ -25,11 +25,20 @@ void main() {
       titleNotifier.dispose();
     });
 
-    ForegroundServiceController createController() {
+    ForegroundServiceController createController({
+      bool Function()? playRemainingAfterEnded,
+      Duration graceDuration = const Duration(seconds: 30),
+    }) {
       return ForegroundServiceController(
         foregroundServiceManager: manager,
         connectionSupervisor: supervisor,
         programTitleNotifier: titleNotifier,
+        // Issue #739: keep the legacy "stop immediately on ended" semantics
+        // for the original test suite by defaulting the grace toggle to
+        // OFF here. The new grace tests live in
+        // foreground_service_controller_grace_test.dart.
+        playRemainingAfterEnded: playRemainingAfterEnded ?? () => false,
+        graceDuration: graceDuration,
       );
     }
 

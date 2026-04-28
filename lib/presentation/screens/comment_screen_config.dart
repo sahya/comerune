@@ -273,6 +273,8 @@ class CommentSpeechConfig {
     this.settingsStore,
     this.isSpeechMuted = false,
     this.androidTtsAvailability,
+    this.playRemainingAfterEnded = true,
+    this.onSpeechQueueDrained,
   });
 
   /// The platform channel bridge for VoiceVox speech synthesis.
@@ -318,4 +320,22 @@ class CommentSpeechConfig {
   /// the failure state immediately on returning from settings without
   /// having to reconnect to the program.
   final SpeechAvailabilityNotifier? androidTtsAvailability;
+
+  /// Issue #739: when true, [ConnectionStatus.ended] does not stop the
+  /// speech queue immediately. Instead the comment screen waits up to 30
+  /// seconds for the queue to drain, so the last few comments before a
+  /// broadcast end are still read out. Defaults to `true` — the same
+  /// default used by [AppSettings.playRemainingAfterEnded].
+  ///
+  /// Has no effect on `failed` / `stopped`, which always stop immediately.
+  final bool playRemainingAfterEnded;
+
+  /// Issue #739: optional callback fired when the comment screen's grace
+  /// window ends (timeout, queue drained, manual stop, etc.). Wired by the
+  /// app composition root to [ForegroundServiceController.notifyQueueDrained]
+  /// so the FGS notification can drop early when speech actually finishes,
+  /// instead of waiting out the controller's own 30 s timer.
+  ///
+  /// Null in test harnesses that do not need to assert FGS coordination.
+  final VoidCallback? onSpeechQueueDrained;
 }

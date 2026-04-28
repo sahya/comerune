@@ -1233,6 +1233,11 @@ void main() {
             speechConfig: CommentSpeechConfig(
               speechPlatform: fakePlatform,
               speechSettings: const SpeechSettings(enabled: true),
+              // Issue #739: this regression test asserts the legacy
+              // immediate-stop behaviour, so disable the grace toggle.
+              // The grace path has dedicated tests
+              // (broadcast end grace coverage) below.
+              playRemainingAfterEnded: false,
             ),
           ),
         ),
@@ -1246,6 +1251,250 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(fakePlatform.stopCalled, isTrue);
+    });
+
+    testWidgets(
+      'broadcast end with grace ON does not call stop(clearQueue:true) '
+      'immediately',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: CommentScreen(
+              programInfo: const CommentProgramInfo(lv: 'lv123456789'),
+              connectionSupervisor: supervisor,
+              messages: const <AppMessage>[],
+              callbacks: CommentCallbacks(
+                onStopAllConnections: () async {},
+                onReconnectSameLv: () async {},
+                onDifferentLvConnected: (_, _) async {},
+              ),
+              themeMode: AppThemeMode.light,
+              speechConfig: CommentSpeechConfig(
+                speechPlatform: fakePlatform,
+                speechSettings: const SpeechSettings(enabled: true),
+                // grace defaults to true here.
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(fakePlatform.startCalled, isTrue);
+        fakePlatform.stopCalled = false;
+
+        expect(supervisor.endBroadcast(), isTrue);
+        // Pump short windows; the grace timer is 30s so stop must not fire
+        // within these 5s of simulated time.
+        await tester.pump(const Duration(seconds: 1));
+        expect(fakePlatform.stopCalled, isFalse);
+        await tester.pump(const Duration(seconds: 5));
+        expect(fakePlatform.stopCalled, isFalse);
+
+        // Tear down — `addTearDown` lets the framework clean up the
+        // pending Timer so the test does not flag a leaked timer.
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+
+    testWidgets('broadcast end grace stops speech early when queue drains', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CommentScreen(
+            programInfo: const CommentProgramInfo(lv: 'lv123456789'),
+            connectionSupervisor: supervisor,
+            messages: const <AppMessage>[],
+            callbacks: CommentCallbacks(
+              onStopAllConnections: () async {},
+              onReconnectSameLv: () async {},
+              onDifferentLvConnected: (_, _) async {},
+            ),
+            themeMode: AppThemeMode.light,
+            speechConfig: CommentSpeechConfig(
+              speechPlatform: fakePlatform,
+              speechSettings: const SpeechSettings(enabled: true),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.startCalled, isTrue);
+      fakePlatform.stopCalled = false;
+
+      // Broadcast ends → grace timer starts.
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pump(const Duration(seconds: 1));
+      expect(fakePlatform.stopCalled, isFalse);
+
+      // Native side reports queue drained → grace should end early.
+      fakePlatform.emitEvent(
+        const SpeechEvent(
+          type: SpeechEventType.queueUpdated,
+          payload: <String, dynamic>{'size': 0},
+        ),
+      );
+      await tester.pump();
+      expect(
+        fakePlatform.stopCalled,
+        isTrue,
+        reason: 'queue drained during grace must trigger stop()',
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets(
+      'broadcast end grace fires the onSpeechQueueDrained callback when ending',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        int callbackInvocations = 0;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: CommentScreen(
+              programInfo: const CommentProgramInfo(lv: 'lv123456789'),
+              connectionSupervisor: supervisor,
+              messages: const <AppMessage>[],
+              callbacks: CommentCallbacks(
+                onStopAllConnections: () async {},
+                onReconnectSameLv: () async {},
+                onDifferentLvConnected: (_, _) async {},
+              ),
+              themeMode: AppThemeMode.light,
+              speechConfig: CommentSpeechConfig(
+                speechPlatform: fakePlatform,
+                speechSettings: const SpeechSettings(enabled: true),
+                onSpeechQueueDrained: () => callbackInvocations++,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(supervisor.endBroadcast(), isTrue);
+        await tester.pump(const Duration(seconds: 1));
+        expect(callbackInvocations, 0);
+
+        fakePlatform.emitEvent(
+          const SpeechEvent(
+            type: SpeechEventType.queueUpdated,
+            payload: <String, dynamic>{'size': 0},
+          ),
+        );
+        await tester.pump();
+        expect(
+          callbackInvocations,
+          1,
+          reason: 'onSpeechQueueDrained must fire exactly once on early end',
+        );
+
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+
+    testWidgets('broadcast end grace times out after 30s and stops speech', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CommentScreen(
+            programInfo: const CommentProgramInfo(lv: 'lv123456789'),
+            connectionSupervisor: supervisor,
+            messages: const <AppMessage>[],
+            callbacks: CommentCallbacks(
+              onStopAllConnections: () async {},
+              onReconnectSameLv: () async {},
+              onDifferentLvConnected: (_, _) async {},
+            ),
+            themeMode: AppThemeMode.light,
+            speechConfig: CommentSpeechConfig(
+              speechPlatform: fakePlatform,
+              speechSettings: const SpeechSettings(enabled: true),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      fakePlatform.stopCalled = false;
+
+      expect(supervisor.endBroadcast(), isTrue);
+      // Just before timeout: still no stop.
+      await tester.pump(const Duration(seconds: 29));
+      expect(fakePlatform.stopCalled, isFalse);
+
+      // After timeout: stop fires.
+      await tester.pump(const Duration(seconds: 2));
+      expect(
+        fakePlatform.stopCalled,
+        isTrue,
+        reason: 'grace timeout must stop speech',
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('broadcast end grace cancels on user-driven speech disable', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final ValueNotifier<SpeechSettings> settingsNotifier =
+          ValueNotifier<SpeechSettings>(const SpeechSettings(enabled: true));
+      addTearDown(settingsNotifier.dispose);
+
+      Widget buildHost(SpeechSettings settings) {
+        return MaterialApp(
+          home: CommentScreen(
+            programInfo: const CommentProgramInfo(lv: 'lv123456789'),
+            connectionSupervisor: supervisor,
+            messages: const <AppMessage>[],
+            callbacks: CommentCallbacks(
+              onStopAllConnections: () async {},
+              onReconnectSameLv: () async {},
+              onDifferentLvConnected: (_, _) async {},
+            ),
+            themeMode: AppThemeMode.light,
+            speechConfig: CommentSpeechConfig(
+              speechPlatform: fakePlatform,
+              speechSettings: settings,
+            ),
+          ),
+        );
+      }
+
+      await tester.pumpWidget(buildHost(settingsNotifier.value));
+      await tester.pumpAndSettle();
+
+      // Enter grace.
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pump(const Duration(seconds: 1));
+
+      // User disables speech mid-grace.
+      fakePlatform.stopCalled = false;
+      await tester.pumpWidget(buildHost(const SpeechSettings(enabled: false)));
+      await tester.pumpAndSettle();
+      expect(
+        fakePlatform.stopCalled,
+        isTrue,
+        reason: 'disabling speech mid-grace must stop immediately',
+      );
+
+      // 30s pump → no second stop fires (timer was cancelled).
+      fakePlatform.stopCalled = false;
+      await tester.pump(const Duration(seconds: 31));
+      expect(
+        fakePlatform.stopCalled,
+        isFalse,
+        reason: 'grace timer must not fire after cancel',
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
     });
 
     testWidgets(

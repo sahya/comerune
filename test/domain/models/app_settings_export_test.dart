@@ -408,5 +408,37 @@ void main() {
         expect(restored.favoriteUserIds, 'user-1\nuser-2\nuser-3');
       });
     });
+
+    group('playRemainingAfterEnded export/import (#739)', () {
+      test('default value is true', () {
+        expect(AppSettings.defaults.playRemainingAfterEnded, isTrue);
+      });
+
+      test('toJson emits the field', () {
+        final Map<String, dynamic> json = AppSettings.defaults.toJson();
+        expect(json['playRemainingAfterEnded'], isTrue);
+      });
+
+      test('roundtrip preserves the value', () {
+        final AppSettings original = AppSettings.defaults.copyWith(
+          playRemainingAfterEnded: false,
+        );
+        final AppSettings restored = AppSettings.fromJson(original.toJson());
+        expect(restored.playRemainingAfterEnded, isFalse);
+      });
+
+      test('old export without the key imports with the default (true) — '
+          'backwards-compatible', () {
+        final AppSettings result = AppSettings.fromJson(<String, dynamic>{});
+        expect(result.playRemainingAfterEnded, isTrue);
+      });
+
+      test('non-bool value falls back to default', () {
+        final AppSettings result = AppSettings.fromJson(<String, dynamic>{
+          'playRemainingAfterEnded': 'truthy',
+        });
+        expect(result.playRemainingAfterEnded, isTrue);
+      });
+    });
   });
 }

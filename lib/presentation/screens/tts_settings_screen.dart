@@ -1289,6 +1289,20 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                           );
                         },
                       ),
+                      // Issue #739: 配信終了時に残コメントを読み終えるための
+                      // grace 期間 ON/OFF。grace 値（30秒）はハードコード。
+                      SwitchListTile(
+                        key: const Key('play-remaining-after-ended-switch'),
+                        title: const Text('配信終了後も残コメントを読み上げる'),
+                        subtitle: const Text('配信が終わった後、最大30秒は残ったコメントを読み続けます'),
+                        contentPadding: EdgeInsets.zero,
+                        value: settings.playRemainingAfterEnded,
+                        onChanged: (bool value) {
+                          updateAndSave(
+                            settings.copyWith(playRemainingAfterEnded: value),
+                          );
+                        },
+                      ),
                     ],
                   ),
                   const SizedBox(height: 12),

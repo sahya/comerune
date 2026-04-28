@@ -207,6 +207,9 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   static const String _kAndroidTtsVolume = 'settings.androidTts.volume';
   static const String _kPreMuteAndroidTtsVolume =
       'settings.androidTts.preMuteVolume';
+  // Issue #739: ended grace 期間中も読み上げを継続するか。
+  static const String _kPlayRemainingAfterEnded =
+      'settings.tts.playRemainingAfterEnded';
 
   @override
   Future<AppSettings> load() async {
@@ -336,6 +339,9 @@ class SharedPreferencesSettingsStore implements SettingsStore {
           _prefs.getDouble(_kAndroidTtsPitch) ?? defaults.androidTtsPitch,
       androidTtsVolume:
           _prefs.getDouble(_kAndroidTtsVolume) ?? defaults.androidTtsVolume,
+      playRemainingAfterEnded:
+          _prefs.getBool(_kPlayRemainingAfterEnded) ??
+          defaults.playRemainingAfterEnded,
     );
   }
 
@@ -460,6 +466,10 @@ class SharedPreferencesSettingsStore implements SettingsStore {
     await _prefs.setDouble(_kAndroidTtsSpeed, settings.androidTtsSpeed);
     await _prefs.setDouble(_kAndroidTtsPitch, settings.androidTtsPitch);
     await _prefs.setDouble(_kAndroidTtsVolume, settings.androidTtsVolume);
+    await _prefs.setBool(
+      _kPlayRemainingAfterEnded,
+      settings.playRemainingAfterEnded,
+    );
   }
 
   List<NgWordRule> _loadNgWordRules() {

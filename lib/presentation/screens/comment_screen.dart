@@ -672,6 +672,14 @@ class _CommentScreenState extends State<CommentScreen>
   Timer? _speechPollTimer;
   StreamSubscription<SpeechEvent>? _speechEventSub;
 
+  /// Issue #739: countdown that delays the broadcast-end speech-stop so the
+  /// remaining queue can drain. Non-null only between
+  /// `ConnectionStatus.ended` and the moment grace expires (or is
+  /// cancelled). When [_isInSpeechGrace] is `true` the queue must NOT be
+  /// cleared yet — see [_endSpeechGrace] for the deferred stop call.
+  Timer? _speechGraceTimer;
+  bool _isInSpeechGrace = false;
+
   /// The ID of the last message processed for speech.
   /// Initialized when speech starts (baseline), then updated after each
   /// submission. This avoids depending on oldWidget.messages which may
@@ -1192,6 +1200,11 @@ class _CommentScreenState extends State<CommentScreen>
       () => '[CommentScreen] dispose: speechStarted=$_speechStarted',
     );
     _stopSpeechPollTimer();
+    // Issue #739: cancel any in-flight broadcast-end grace timer so it
+    // cannot fire after dispose and call into a torn-down widget.
+    _speechGraceTimer?.cancel();
+    _speechGraceTimer = null;
+    _isInSpeechGrace = false;
     _speechEventSub?.cancel();
     widget.speechConfig.androidTtsAvailability?.removeListener(
       _onAndroidTtsAvailabilityChanged,
@@ -1678,6 +1691,9 @@ class _CommentScreenState extends State<CommentScreen>
       await _initializeAndStartSpeech();
     } else if (oldSettings.enabled && !newSettings.enabled) {
       _debugLog('[CommentScreen] settingsChanged: → disabling speech');
+      // Issue #739: an explicit user-driven "disable speech" must override
+      // any in-flight grace and stop now, not 30 s later.
+      _cancelSpeechGrace(reason: 'speech_disabled_by_user');
       await _stopSpeech();
     } else if (newSettings.enabled && _speechStarted) {
       _debugLog('[CommentScreen] settingsChanged: → pushing update to engine');
@@ -1711,6 +1727,70 @@ class _CommentScreenState extends State<CommentScreen>
         _setSpeechEngineState(SpeechEngineState.unknown);
       }
     }
+  }
+
+  /// Issue #739: maximum time we keep the speech queue alive after a
+  /// broadcast ends, so the last few comments can finish reading. Matches
+  /// [ForegroundServiceController]'s grace window (30 s) on purpose so the
+  /// FGS notification and the speech queue tear down at roughly the same
+  /// time.
+  static const Duration _speechGraceDuration = Duration(seconds: 30);
+
+  /// Called once on the `idle/reconnecting/streaming → ended` edge. Either
+  /// stops speech immediately (grace disabled or no live queue) or arms
+  /// [_speechGraceTimer] so the queue can drain naturally.
+  void _onBroadcastEnded() {
+    final bool graceEnabled = widget.speechConfig.playRemainingAfterEnded;
+    if (!graceEnabled || !_speechStarted) {
+      // Pre-#739 behaviour: stop immediately.
+      unawaited(_stopSpeech());
+      return;
+    }
+    _debugLog(
+      '[CommentScreen] broadcastEnded: starting grace '
+      '(${_speechGraceDuration.inSeconds}s)',
+    );
+    _speechGraceTimer?.cancel();
+    _isInSpeechGrace = true;
+    _speechGraceTimer = Timer(_speechGraceDuration, () {
+      // Grace window expired — even if comments remain, force-stop so the
+      // engine and the FGS do not linger forever.
+      _endSpeechGrace(reason: 'timeout');
+    });
+  }
+
+  /// Cancels the grace timer without firing the deferred stop. Used when
+  /// the connection transitions to a non-ended status (reconnect / manual
+  /// stop) — those branches drive their own teardown.
+  void _cancelSpeechGrace({required String reason}) {
+    if (!_isInSpeechGrace && _speechGraceTimer == null) {
+      return;
+    }
+    _debugLog('[CommentScreen] grace: cancelled ($reason)');
+    _speechGraceTimer?.cancel();
+    _speechGraceTimer = null;
+    _isInSpeechGrace = false;
+  }
+
+  /// Completes the grace window, firing the deferred `_stopSpeech` exactly
+  /// once. [reason] is recorded in debug logs for AC4 traceability.
+  void _endSpeechGrace({required String reason}) {
+    if (!_isInSpeechGrace && _speechGraceTimer == null) {
+      return;
+    }
+    _debugLog('[CommentScreen] grace: ending ($reason)');
+    _speechGraceTimer?.cancel();
+    _speechGraceTimer = null;
+    _isInSpeechGrace = false;
+    // Notify the FGS controller so its parallel grace timer can end early
+    // too. The callback is no-op when not in FGS-grace, so calling on every
+    // reason (timeout / queue_drained / cancel) is safe.
+    widget.speechConfig.onSpeechQueueDrained?.call();
+    if (!mounted) {
+      // Widget already torn down — dispose() will (or did) call stop().
+      return;
+    }
+    unawaited(_stopSpeech());
   }
 
   /// Listener for [SpeechAvailabilityNotifier] changes.
@@ -1804,6 +1884,18 @@ class _CommentScreenState extends State<CommentScreen>
       () =>
           '[CommentScreen] speechEvent: ${event.type}, payload=${event.payload}',
     );
+    // Issue #739: if we are in the broadcast-end grace window, an empty
+    // queue means there is nothing left to read — finish immediately
+    // instead of waiting out the full 30s.
+    if (event.type == SpeechEventType.queueUpdated && _isInSpeechGrace) {
+      final dynamic rawSize = event.payload['size'];
+      final int? size = rawSize is num
+          ? rawSize.toInt()
+          : (rawSize is String ? int.tryParse(rawSize) : null);
+      if (size == 0) {
+        _endSpeechGrace(reason: 'queue_drained');
+      }
+    }
     if (event.type == SpeechEventType.engineStateChanged) {
       // Defensive cast: native is expected to send a String here, but a
       // malformed payload must not crash the listener (Issue #695 review #7).
@@ -3487,6 +3579,10 @@ class _CommentScreenState extends State<CommentScreen>
     _isStoppingForExit = true;
 
     try {
+      // Issue #739 AC2: an explicit user-stop must drop any pending grace
+      // window so the speech engine matches the user's intent, even if the
+      // supervisor was still in `ended` (no manual-stop transition fired).
+      _cancelSpeechGrace(reason: 'user_stop_for_exit');
       _markStoppedIfPossible();
       await widget.callbacks.onStopAllConnections();
     } finally {
@@ -3517,7 +3613,14 @@ class _CommentScreenState extends State<CommentScreen>
 
     if (_lastStatus != ConnectionStatus.ended &&
         currentStatus == ConnectionStatus.ended) {
-      unawaited(_stopSpeech());
+      _onBroadcastEnded();
+    }
+
+    // Issue #739: any reconnect / manual-stop status must cancel an
+    // in-progress grace so the queue is dropped immediately and the
+    // engine matches the user's intent.
+    if (currentStatus != ConnectionStatus.ended && _isInSpeechGrace) {
+      _cancelSpeechGrace(reason: 'status=${currentStatus.code}');
     }
 
     if (_lastStatus != ConnectionStatus.failed &&

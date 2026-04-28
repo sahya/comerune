@@ -1212,9 +1212,15 @@ void main() {
         // Pump once to build — models are still loading.
         await tester.pump();
 
-        // Loading indicator should be visible while models are null.
+        // Loading indicator should be visible while models are null. Use
+        // `skipOffstage: false` because the speaker dropdown sits below
+        // the (now larger) "読み上げ" toggle section and may be offscreen
+        // before the user scrolls down.
         expect(
-          find.byKey(const Key('speaker-loading-indicator')),
+          find.byKey(
+            const Key('speaker-loading-indicator'),
+            skipOffstage: false,
+          ),
           findsOneWidget,
         );
         // Dropdown should show "読み込み中…" text.
@@ -1226,7 +1232,10 @@ void main() {
 
         // Loading indicator should be gone.
         expect(
-          find.byKey(const Key('speaker-loading-indicator')),
+          find.byKey(
+            const Key('speaker-loading-indicator'),
+            skipOffstage: false,
+          ),
           findsNothing,
         );
       },

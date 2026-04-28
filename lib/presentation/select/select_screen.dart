@@ -69,6 +69,8 @@ class SelectScreen extends StatefulWidget {
     this.timeshiftFetchController,
     this.androidTtsAvailability,
     this.broadcasterEmbedResolver,
+    this.playRemainingAfterEndedSink,
+    this.onSpeechQueueDrained,
     super.key,
   });
 
@@ -112,6 +114,22 @@ class SelectScreen extends StatefulWidget {
   /// that do not provide one fall back to the legacy accumulate-and-flush
   /// behaviour driven by `programinfo.supplierUserId`.
   final BroadcasterEmbedResolver? broadcasterEmbedResolver;
+
+  /// Issue #739: optional sink kept in sync with
+  /// [AppSettings.playRemainingAfterEnded] whenever the local settings
+  /// notifier changes. The owner (e.g. main) reads this value from the
+  /// foreground service controller at the moment of `ConnectionStatus.ended`.
+  ///
+  /// Optional: when `null`, the controller falls back to the default value
+  /// passed at construction time and live setting changes are not
+  /// reflected. Provided to avoid forcing every test harness to wire up
+  /// the notifier.
+  final ValueNotifier<bool>? playRemainingAfterEndedSink;
+
+  /// Issue #739: forwarded to [CommentSpeechConfig.onSpeechQueueDrained].
+  /// Called when the comment screen's speech grace ends so the parallel FGS
+  /// grace can terminate early. Optional — null in test harnesses.
+  final VoidCallback? onSpeechQueueDrained;
 
   @override
   State<SelectScreen> createState() => _SelectScreenState();
@@ -169,6 +187,12 @@ class _SelectScreenState extends State<SelectScreen>
     _setFavoriteUserLiveChecker(widget.favoriteUserLiveChecker);
     _controller = TextEditingController();
     _settingsNotifier = ValueNotifier<AppSettings>(widget.initialSettings);
+    // Issue #739: keep the optional grace-toggle sink in sync with the
+    // local settings notifier so that the foreground service controller
+    // reads the latest value from the moment the user toggles the
+    // setting, without us needing to re-create that controller.
+    _settingsNotifier.addListener(_syncPlayRemainingAfterEndedSink);
+    _syncPlayRemainingAfterEndedSink();
     _previousStatus = widget.connectionSupervisor.status;
     widget.connectionSupervisor.addListener(_onSupervisorChanged);
     widget.supplierUserIdNotifier?.addListener(_onSupplierUserIdChanged);
@@ -237,6 +261,7 @@ class _SelectScreenState extends State<SelectScreen>
     unawaited(_flushPendingUserAttributeWrites());
     _loginStateNotifier.dispose();
     _userAttrNotifier.dispose();
+    _settingsNotifier.removeListener(_syncPlayRemainingAfterEndedSink);
     _settingsNotifier.dispose();
     _controller.dispose();
     super.dispose();
@@ -731,6 +756,9 @@ class _SelectScreenState extends State<SelectScreen>
             settingsStore: widget.settingsStore,
             isSpeechMuted: _isSpeechMuted,
             androidTtsAvailability: widget.androidTtsAvailability,
+            playRemainingAfterEnded:
+                _settingsNotifier.value.playRemainingAfterEnded,
+            onSpeechQueueDrained: widget.onSpeechQueueDrained,
           ),
           commentPostController: widget.commentPostController,
           userSessionLoader: widget.userSessionStore?.load,
@@ -1515,6 +1543,22 @@ class _SelectScreenState extends State<SelectScreen>
         preferredBroadcasterId: program.providerUserId,
       ),
     );
+  }
+
+  /// Issue #739: pushes the latest [AppSettings.playRemainingAfterEnded]
+  /// value to the optional sink supplied by the parent. Called both
+  /// initially and on every [_settingsNotifier] change so toggling the
+  /// switch in the TTS settings screen propagates without rebuilding the
+  /// foreground service controller.
+  void _syncPlayRemainingAfterEndedSink() {
+    final ValueNotifier<bool>? sink = widget.playRemainingAfterEndedSink;
+    if (sink == null) {
+      return;
+    }
+    final bool latest = _settingsNotifier.value.playRemainingAfterEnded;
+    if (sink.value != latest) {
+      sink.value = latest;
+    }
   }
 
   Future<void> _reloadSettingsFromStore() async {
