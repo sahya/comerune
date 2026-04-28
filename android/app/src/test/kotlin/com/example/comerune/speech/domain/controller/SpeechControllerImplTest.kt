@@ -1,11 +1,16 @@
 package com.example.comerune.speech.domain.controller
 
+import com.example.comerune.speech.domain.model.EngineType
+import com.example.comerune.speech.domain.model.SpeechSettings
+import com.example.comerune.speech.domain.model.TtsEngineState
 import com.example.comerune.speech.domain.queue.InMemorySpeechQueueManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -333,5 +338,94 @@ class SpeechControllerImplTest {
 
         val startedEvents = emitter.eventsOfType("speech_started")
         assertTrue("Expected at least 2 speech_started events", startedEvents.size >= 2)
+    }
+
+    // --- Engine type diagnostic (issue #734) ---
+
+    /**
+     * Engine fake whose [currentState] is configurable, used to simulate the
+     * "switched to VOICEVOX but engine never initialized" scenario.
+     */
+    private class StatefulFakeEngine(
+        var stateToReturn: TtsEngineState = TtsEngineState.UNINITIALIZED
+    ) : FakeEngine() {
+        override fun currentState(): TtsEngineState = stateToReturn
+    }
+
+    @Test
+    fun `updateSettings emits engine_not_ready when VOICEVOX engine is not READY`() = runBlocking {
+        val statefulEngine = StatefulFakeEngine(stateToReturn = TtsEngineState.UNINITIALIZED)
+        val ctrl = SpeechControllerImpl(
+            normalizer = normalizer,
+            queueManager = queue,
+            engine = statefulEngine,
+            player = player,
+            settingsRepository = settings,
+            eventEmitter = emitter,
+            dispatcher = Dispatchers.Default,
+            synthesisDispatcher = Dispatchers.Default
+        )
+        try {
+            ctrl.updateSettings(SpeechSettings(engineType = EngineType.VOICEVOX))
+
+            val events = emitter.eventsOfType("engine_not_ready")
+            assertEquals(1, events.size)
+            val payload = events.first()["payload"] as? Map<*, *>
+            assertNotNull(payload)
+            assertEquals(EngineType.VOICEVOX.name, payload?.get("engineType"))
+            assertEquals(TtsEngineState.UNINITIALIZED.name, payload?.get("engineState"))
+        } finally {
+            ctrl.release()
+        }
+    }
+
+    @Test
+    fun `updateSettings does not emit engine_not_ready when VOICEVOX engine is READY`() = runBlocking {
+        val statefulEngine = StatefulFakeEngine(stateToReturn = TtsEngineState.READY)
+        val ctrl = SpeechControllerImpl(
+            normalizer = normalizer,
+            queueManager = queue,
+            engine = statefulEngine,
+            player = player,
+            settingsRepository = settings,
+            eventEmitter = emitter,
+            dispatcher = Dispatchers.Default,
+            synthesisDispatcher = Dispatchers.Default
+        )
+        try {
+            ctrl.updateSettings(SpeechSettings(engineType = EngineType.VOICEVOX))
+
+            val events = emitter.eventsOfType("engine_not_ready")
+            assertEquals(0, events.size)
+        } finally {
+            ctrl.release()
+        }
+    }
+
+    @Test
+    fun `updateSettings does not emit engine_not_ready when engineType is ANDROID_TTS`() = runBlocking {
+        // Android TTS path should never trigger the VOICEVOX-specific diagnostic,
+        // even if the underlying VOICEVOX engine is not READY (it does not need to be).
+        val statefulEngine = StatefulFakeEngine(stateToReturn = TtsEngineState.UNINITIALIZED)
+        val ctrl = SpeechControllerImpl(
+            normalizer = normalizer,
+            queueManager = queue,
+            engine = statefulEngine,
+            player = player,
+            settingsRepository = settings,
+            eventEmitter = emitter,
+            dispatcher = Dispatchers.Default,
+            synthesisDispatcher = Dispatchers.Default
+        )
+        try {
+            ctrl.updateSettings(SpeechSettings(engineType = EngineType.ANDROID_TTS))
+
+            val events = emitter.eventsOfType("engine_not_ready")
+            assertEquals(0, events.size)
+            // Sanity: no engine_state_changed either; updateSettings is purely passive.
+            assertNull(emitter.eventsOfType("engine_state_changed").firstOrNull())
+        } finally {
+            ctrl.release()
+        }
     }
 }

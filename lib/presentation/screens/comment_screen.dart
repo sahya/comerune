@@ -1604,32 +1604,54 @@ class _CommentScreenState extends State<CommentScreen>
   }
 
   Future<void> _handleSpeechSettingsChanged(SpeechSettings oldSettings) async {
+    final SpeechSettings newSettings = widget.speechConfig.speechSettings;
     _debugLogLazy(
       () =>
           '[CommentScreen] settingsChanged: enabled ${oldSettings.enabled}→'
-          '${widget.speechConfig.speechSettings.enabled}, started=$_speechStarted',
+          '${newSettings.enabled}, '
+          'engine ${oldSettings.engineType}→${newSettings.engineType}, '
+          'started=$_speechStarted',
     );
-    // Reset the failure counter on any engine-type change so failures from
-    // the old engine cannot accumulate into a false ERROR for the new engine
-    // (Issue #695 review #8). This is a no-op when the engine type is
-    // unchanged.
-    if (oldSettings.engineType !=
-        widget.speechConfig.speechSettings.engineType) {
+    // engineType changed → tear down and re-initialize for the new engine.
+    // Without this branch, the flow falls through to updateSettings which
+    // does NOT run engine.initialize() on the native side, leaving the new
+    // engine uninitialized. See issue #734.
+    //
+    // Also reset the failure counter on the engine-type change so failures
+    // from the old engine cannot accumulate into a false ERROR for the new
+    // engine (Issue #695 review #8).
+    if (oldSettings.engineType != newSettings.engineType) {
+      _debugLog(
+        '[CommentScreen] settingsChanged: → engineType changed, '
+        're-initializing speech engine',
+      );
+      // Reset here covers the case where _speechStarted is false (then
+      // _stopSpeech is skipped); when _speechStarted is true, _stopSpeech
+      // also resets the counter — the duplication is intentional.
       _consecutiveAndroidTtsFailures = 0;
+      if (_speechStarted) {
+        await _stopSpeech();
+      }
+      // Drop the previous engine's "ready" state so _initializeAndStartSpeech
+      // re-runs the full setup path (status check → setup dialog if needed
+      // → updateSettings → start) for the new engine.
+      _speechInitialized = false;
+      if (newSettings.enabled) {
+        await _initializeAndStartSpeech();
+      }
+      return;
     }
-    if (!oldSettings.enabled && widget.speechConfig.speechSettings.enabled) {
+
+    if (!oldSettings.enabled && newSettings.enabled) {
       _debugLog('[CommentScreen] settingsChanged: → enabling speech');
       await _initializeAndStartSpeech();
-    } else if (oldSettings.enabled &&
-        !widget.speechConfig.speechSettings.enabled) {
+    } else if (oldSettings.enabled && !newSettings.enabled) {
       _debugLog('[CommentScreen] settingsChanged: → disabling speech');
       await _stopSpeech();
-    } else if (widget.speechConfig.speechSettings.enabled && _speechStarted) {
+    } else if (newSettings.enabled && _speechStarted) {
       _debugLog('[CommentScreen] settingsChanged: → pushing update to engine');
       try {
-        await widget.speechConfig.speechPlatform?.updateSettings(
-          widget.speechConfig.speechSettings,
-        );
+        await widget.speechConfig.speechPlatform?.updateSettings(newSettings);
       } catch (e) {
         _errorLog(
           '[CommentScreen] settingsChanged: updateSettings FAILED',

@@ -3397,6 +3397,250 @@ void main() {
       },
     );
   });
+
+  group('CommentScreen engine type switch (issue #734)', () {
+    late FakeCommentSpeechPlatform fakePlatform;
+
+    setUp(() {
+      fakePlatform = FakeCommentSpeechPlatform();
+      // Engine already ready so the setup dialog is not shown.
+      fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+        enabled: true,
+        engineState: 'READY',
+        playerState: 'IDLE',
+        queueSize: 0,
+        currentSpeakerId: 0,
+      );
+    });
+
+    tearDown(() {
+      fakePlatform.dispose();
+    });
+
+    testWidgets(
+      'switching engineType (androidTts → voicevox) re-initializes engine',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Initial init+start completed for Android TTS.
+        expect(fakePlatform.startCalled, isTrue);
+        expect(fakePlatform.stopCalled, isFalse);
+        final int updateCallsBeforeSwitch =
+            fakePlatform.updateSettingsCalls.length;
+        expect(updateCallsBeforeSwitch, greaterThanOrEqualTo(1));
+
+        // Reset trackers to observe what happens on the engine switch.
+        fakePlatform.startCalled = false;
+        fakePlatform.stopCalled = false;
+
+        // Switch to Voicevox.
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.updateSpeechSettings(
+          const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.voicevox,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Re-init flow must run: stop → updateSettings → start.
+        expect(
+          fakePlatform.stopCalled,
+          isTrue,
+          reason: 'stop() must be called before re-initializing',
+        );
+        expect(
+          fakePlatform.startCalled,
+          isTrue,
+          reason: 'start() must be called for the new engine',
+        );
+        expect(
+          fakePlatform.updateSettingsCalls.length,
+          greaterThan(updateCallsBeforeSwitch),
+          reason: 'updateSettings must be called with the new engineType',
+        );
+        expect(
+          fakePlatform.lastUpdatedSettings?.engineType,
+          SpeechEngineType.voicevox,
+        );
+      },
+    );
+
+    testWidgets(
+      'switching engineType (voicevox → androidTts) re-initializes engine',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.voicevox,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(fakePlatform.startCalled, isTrue);
+        fakePlatform.startCalled = false;
+        fakePlatform.stopCalled = false;
+        final int updateCallsBeforeSwitch =
+            fakePlatform.updateSettingsCalls.length;
+
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.updateSpeechSettings(
+          const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.androidTts,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(fakePlatform.stopCalled, isTrue);
+        expect(fakePlatform.startCalled, isTrue);
+        expect(
+          fakePlatform.updateSettingsCalls.length,
+          greaterThan(updateCallsBeforeSwitch),
+        );
+        expect(
+          fakePlatform.lastUpdatedSettings?.engineType,
+          SpeechEngineType.androidTts,
+        );
+      },
+    );
+
+    testWidgets(
+      'engineType switch with disabled=true→true does not start the new engine',
+      (WidgetTester tester) async {
+        // Speech is disabled to begin with — no init runs.
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: false,
+              engineType: SpeechEngineType.androidTts,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(fakePlatform.startCalled, isFalse);
+
+        // Switch engineType while still disabled.
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.updateSpeechSettings(
+          const SpeechSettings(
+            enabled: false,
+            engineType: SpeechEngineType.voicevox,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // No start should be triggered when newSettings.enabled is false.
+        expect(fakePlatform.startCalled, isFalse);
+        expect(fakePlatform.stopCalled, isFalse);
+      },
+    );
+
+    testWidgets(
+      'switching engineType resets _speechInitialized so getStatus runs again',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Initial init: getStatus is called once at startup.
+        final int statusCallsAfterInit = fakePlatform.getStatusCallCount;
+        expect(statusCallsAfterInit, greaterThanOrEqualTo(1));
+
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.updateSpeechSettings(
+          const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.voicevox,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Because _speechInitialized was reset, the re-init path calls
+        // getStatus again to (re)check engine state for the new engine.
+        expect(
+          fakePlatform.getStatusCallCount,
+          greaterThan(statusCallsAfterInit),
+          reason:
+              '_speechInitialized must be reset so the re-init path checks status again',
+        );
+      },
+    );
+
+    testWidgets(
+      'repeated engineType toggling continues to re-initialize each time',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+
+        const List<String> sequence = <String>[
+          SpeechEngineType.voicevox,
+          SpeechEngineType.androidTts,
+          SpeechEngineType.voicevox,
+          SpeechEngineType.androidTts,
+          SpeechEngineType.voicevox,
+        ];
+
+        int previousStartCount = 1;
+        for (final String engineType in sequence) {
+          fakePlatform.startCalled = false;
+          host.updateSpeechSettings(
+            SpeechSettings(enabled: true, engineType: engineType),
+          );
+          await tester.pumpAndSettle();
+          expect(
+            fakePlatform.startCalled,
+            isTrue,
+            reason: 'start() must be called for engineType=$engineType',
+          );
+          expect(fakePlatform.lastUpdatedSettings?.engineType, engineType);
+          previousStartCount++;
+        }
+        expect(previousStartCount, sequence.length + 1);
+      },
+    );
+  });
 }
 
 // ---------------------------------------------------------------------------

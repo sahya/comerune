@@ -262,6 +262,24 @@ class SpeechControllerImpl(
         // Clear regex cache when dictionary rules may have changed
         normalizer.clearRegexCache()
 
+        // Diagnostic-only: detect callers that rely on updateSettings to bring
+        // the VOICEVOX engine online without first calling initialize(). The
+        // primary fix for engine-type switching lives on the Flutter side
+        // (CommentScreen._handleSpeechSettingsChanged); this guard is purely
+        // observability so a missed code path is visible instead of silent.
+        // Behavior is unchanged: we only emit an event, never auto-initialize.
+        if (settings.engineType == EngineType.VOICEVOX) {
+            val state = engine.currentState()
+            if (state != TtsEngineState.READY) {
+                eventEmitter.emit(
+                    SpeechEvents.engineNotReady(
+                        engineType = EngineType.VOICEVOX.name,
+                        engineState = state.name
+                    )
+                )
+            }
+        }
+
         return Result.success(Unit)
     }
 

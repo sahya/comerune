@@ -43,4 +43,23 @@ object SpeechEvents {
 
     fun error(code: String, message: String): Map<String, Any?> =
         mapOf("type" to "error", "payload" to mapOf("code" to code, "message" to message))
+
+    /**
+     * Diagnostic event emitted when [SpeechController.updateSettings] is invoked
+     * with [com.example.comerune.speech.domain.model.EngineType.VOICEVOX] but the
+     * underlying engine has not reached
+     * [com.example.comerune.speech.domain.model.TtsEngineState.READY] yet.
+     *
+     * This signals a likely engine-switch path that bypassed the Flutter-side
+     * re-initialization branch (see issue #734). The Flutter listener is
+     * expected to ignore unknown event types, preserving backward compatibility.
+     */
+    fun engineNotReady(engineType: String, engineState: String): Map<String, Any?> =
+        mapOf(
+            "type" to "engine_not_ready",
+            "payload" to mapOf(
+                "engineType" to engineType,
+                "engineState" to engineState
+            )
+        )
 }
