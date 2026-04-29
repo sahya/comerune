@@ -29,6 +29,21 @@ enum class PlayerState {
     ERROR
 }
 
+// TODO(#741 Problem 4): a `PlayerState.shouldBePlaying` extension that
+// folds together `PLAYING` and `PAUSED` (i.e. "the user wants audio out
+// even though the AudioFocus has been transiently lost") would let the
+// AudioFocus / WAV player code stop hand-rolling the same OR check.
+// Deferred here because Issue #735 (PR #746) introduces an
+// AudioFocusGuard that already adds a similar predicate per WavPlayer
+// implementation; consolidating is owned by that work to avoid two
+// competing definitions.
+//
+// TODO(#741 Problem 3): consider exposing `started` on
+// [SpeechRuntimeStatus] so the Flutter side can reconcile its local
+// `_speechStarted` flag with the native worker loop after process
+// recreation (currently the two can drift). Deferred until Issue #743
+// (engine-switch fix) lands so the changes don't conflict.
+
 data class SpeechRuntimeStatus(
     val enabled: Boolean,
     val engineState: TtsEngineState,

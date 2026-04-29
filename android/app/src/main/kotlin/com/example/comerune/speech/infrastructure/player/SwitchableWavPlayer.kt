@@ -13,17 +13,38 @@ import com.example.comerune.speech.domain.player.WavPlayer
  *
  * The active player can be switched at runtime via [switchPlayerType].
  * The actual switch is deferred to the next [play] call to avoid
- * interrupting in-progress playback.
+ * interrupting in-progress playback. If the underlying player is still
+ * [PlayerState.PLAYING] at the time the next [play] is invoked, the
+ * switch is deferred again and applied at the following [play] call.
  *
  * Both delegates share the same [AudioFocusGuard] instance so the focus
  * token survives the player swap and never gets orphaned by an
  * out-of-order release on the previous delegate.
+ *
+ * Issue #741 (Problem 1): the previous implementation captured the
+ * delegate reference outside of [applyPendingSwitch] and did not check
+ * whether playback was already running. Adding the [PlayerState.PLAYING]
+ * guard means a `switchPlayerType()` issued mid-playback can never tear
+ * down the player that the in-flight `play()` is still using.
  */
 @RequiresApi(Build.VERSION_CODES.O)
-class SwitchableWavPlayer(
-    private val context: Context,
-    private val audioFocusGuard: AudioFocusGuard,
+class SwitchableWavPlayer internal constructor(
+    private val playerFactory: (String) -> WavPlayer,
 ) : WavPlayer {
+
+    /**
+     * Production constructor. The factory closes over [context] and creates
+     * the real Android-backed players, both sharing [audioFocusGuard] so
+     * the focus session survives a delegate swap.
+     */
+    constructor(context: Context, audioFocusGuard: AudioFocusGuard) : this(
+        playerFactory = { type ->
+            when (type) {
+                TYPE_MEDIA_PLAYER -> MediaPlayerWavPlayer(context, audioFocusGuard)
+                else -> AudioTrackWavPlayer(context, audioFocusGuard)
+            }
+        },
+    )
 
     companion object {
         const val TYPE_AUDIO_TRACK = "audio_track"
@@ -33,7 +54,7 @@ class SwitchableWavPlayer(
     private val lock = Any()
     private var currentType: String = TYPE_AUDIO_TRACK
     private var pendingType: String? = null
-    private var delegate: WavPlayer = AudioTrackWavPlayer(context, audioFocusGuard)
+    private var delegate: WavPlayer = createPlayer(TYPE_AUDIO_TRACK)
 
     /**
      * Request a player type switch.
@@ -45,11 +66,7 @@ class SwitchableWavPlayer(
     fun switchPlayerType(type: String) {
         synchronized(lock) {
             if (type == currentType && pendingType == null) return
-            if (type == currentType) {
-                pendingType = null
-            } else {
-                pendingType = type
-            }
+            pendingType = if (type == currentType) null else type
         }
     }
 
@@ -59,37 +76,47 @@ class SwitchableWavPlayer(
         }
     }
 
+    /**
+     * Apply a pending player switch, but only if the current delegate is
+     * not actively playing. The whole swap (state check, release, replace,
+     * type update) happens inside [lock] so a concurrent `switchPlayerType()`
+     * cannot leak a stale `pendingType` past the swap.
+     *
+     * If the delegate is still PLAYING (e.g. the worker calls `play()` again
+     * before the previous playback has fully drained), the pending request
+     * is preserved and re-evaluated on the next call.
+     */
     private fun applyPendingSwitch() {
         synchronized(lock) {
             val newType = pendingType ?: return
-            pendingType = null
-            if (newType == currentType) return
-            delegate.release()
-            delegate = when (newType) {
-                TYPE_MEDIA_PLAYER -> MediaPlayerWavPlayer(context, audioFocusGuard)
-                else -> AudioTrackWavPlayer(context, audioFocusGuard)
+            // Issue #741: defer the swap if playback is in progress so the
+            // in-flight play()'s WavPlayer reference is never released
+            // out from under it.
+            if (delegate.currentState() == PlayerState.PLAYING) return
+            if (newType == currentType) {
+                pendingType = null
+                return
             }
+            delegate.release()
+            delegate = createPlayer(newType)
             currentType = newType
+            pendingType = null
         }
     }
+
+    private fun createPlayer(type: String): WavPlayer = playerFactory(type)
 
     override suspend fun play(wavBytes: ByteArray): Result<Unit> {
         // Apply any pending player type switch before starting playback.
         // This is safe because play() is called from the worker loop
         // after the previous playback has completed.
         applyPendingSwitch()
-        val player: WavPlayer
-        synchronized(lock) {
-            player = delegate
-        }
+        val player = synchronized(lock) { delegate }
         return player.play(wavBytes)
     }
 
     override suspend fun stop(): Result<Unit> {
-        val player: WavPlayer
-        synchronized(lock) {
-            player = delegate
-        }
+        val player = synchronized(lock) { delegate }
         return player.stop()
     }
 

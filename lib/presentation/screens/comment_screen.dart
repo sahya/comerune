@@ -631,8 +631,36 @@ class _CommentScreenState extends State<CommentScreen>
   bool _touchActive = false;
 
   bool _speechInitializing = false;
-  bool _speechInitialized = false;
+
+  /// Issue #741 (Problem 2): replaces the previous `bool _speechInitialized`
+  /// magic-boolean with a typed marker that records WHICH engine the
+  /// platform was last brought to ready state for. The boolean form
+  /// silently survived an `engineType` switch — the user toggled from
+  /// VOICEVOX to Android TTS, the value stayed `true`, and the init
+  /// branch in [_initializeAndStartSpeech] was skipped even though
+  /// nothing on the native side had been initialised for the new engine.
+  ///
+  /// All readers should go through [_isInitializedForCurrentEngine] so
+  /// the comparison against [SpeechSettings.engineType] is centralised.
+  /// Writers set this to `widget.speechConfig.speechSettings.engineType`
+  /// on success and to `null` on teardown / retry.
+  ///
+  /// TODO(#741 follow-up — Problem 3): the Flutter-side `_speechStarted`
+  /// flag is still maintained independently of the native
+  /// `SpeechRuntimeStatus`. Once the native side exposes a `started`
+  /// field via getStatus(), this screen should reconcile both flags
+  /// instead of trusting only the local one.
+  String? _initializedEngineType;
   bool _speechStarted = false;
+
+  /// True when [_initializedEngineType] matches the engine type currently
+  /// configured in `widget.speechConfig.speechSettings`. The previous
+  /// `_speechInitialized` boolean answered the weaker question "did we
+  /// ever finish init?" — this getter answers the question that the
+  /// init / retry branches actually care about: "is the engine we are
+  /// configured to speak with right now in a ready state?"
+  bool get _isInitializedForCurrentEngine =>
+      _initializedEngineType == widget.speechConfig.speechSettings.engineType;
   // Issue #717 (ARCH-2): replaced inline magic strings (`'' / 'READY' /
   // 'ERROR'`) with [SpeechEngineState] so the 4 source paths
   // (native event / cross-screen notifier / init failure / recovery
@@ -1409,7 +1437,7 @@ class _CommentScreenState extends State<CommentScreen>
   }
 
   /// Issue #713 (UX-2): retry handler wired to the AppBar speech icon
-  /// when the engine is in ERROR. Resets [_speechInitialized] so the
+  /// when the engine is in ERROR. Resets [_initializedEngineType] so the
   /// next call to [_initializeAndStartSpeech] re-runs the full setup
   /// (model load + start) instead of short-circuiting on the cached
   /// "already initialised" branch.
@@ -1422,7 +1450,7 @@ class _CommentScreenState extends State<CommentScreen>
   /// "toggle off/on" recovery flow.
   void _retrySpeechAfterError() {
     if (_speechInitializing) return;
-    _speechInitialized = false;
+    _initializedEngineType = null;
     unawaited(_initializeAndStartSpeech());
   }
 
@@ -1430,7 +1458,9 @@ class _CommentScreenState extends State<CommentScreen>
     _debugLogLazy(
       () =>
           '[CommentScreen] initSpeech: enter '
-          '(initializing=$_speechInitializing, initialized=$_speechInitialized)',
+          '(initializing=$_speechInitializing, '
+          'initializedFor=$_initializedEngineType, '
+          'currentEngine=${widget.speechConfig.speechSettings.engineType})',
     );
     if (_speechInitializing) return;
     final CommentSpeechPlatform? platform = widget.speechConfig.speechPlatform;
@@ -1445,7 +1475,7 @@ class _CommentScreenState extends State<CommentScreen>
     // cancelled / failed in a prior call) to the AppBar icon so the user
     // does not see a perpetual "hourglass" while native already knows
     // initialization failed. See `_SpeechStatusIcon` for the icon priority.
-    if (!_speechInitialized) {
+    if (!_isInitializedForCurrentEngine) {
       _debugLog('[CommentScreen] initSpeech: checking engine status...');
       try {
         final SpeechRuntimeStatus status = await platform.getStatus();
@@ -1455,7 +1485,8 @@ class _CommentScreenState extends State<CommentScreen>
               'player=${status.playerState}, queue=${status.queueSize}',
         );
         if (status.engineState == 'READY') {
-          _speechInitialized = true;
+          _initializedEngineType =
+              widget.speechConfig.speechSettings.engineType;
           _debugLog('[CommentScreen] initSpeech: engine already READY');
           // Round-2 post-merge review: clear any stale `_speechEngineState
           // == 'ERROR'` left over from a previous failed init attempt
@@ -1497,7 +1528,7 @@ class _CommentScreenState extends State<CommentScreen>
     final bool isAndroidTts =
         widget.speechConfig.speechSettings.engineType ==
         SpeechEngineType.androidTts;
-    if (!_speechInitialized && !isAndroidTts) {
+    if (!_isInitializedForCurrentEngine && !isAndroidTts) {
       _debugLog('[CommentScreen] initSpeech: showing SetupDialog...');
       if (!mounted) {
         _speechInitializing = false;
@@ -1511,14 +1542,14 @@ class _CommentScreenState extends State<CommentScreen>
         // VOICEVOX setup failed or was cancelled by the user. Mirror the
         // Android TTS branch below: surface ERROR to the AppBar icon so the
         // user can distinguish a real failure from "still initializing"
-        // (Issue #696). _speechInitialized stays false so toggling speech
-        // off/on retries from scratch.
+        // (Issue #696). _initializedEngineType stays null so toggling
+        // speech off/on retries from scratch.
         _setSpeechEngineState(SpeechEngineState.error);
         _speechInitializing = false;
         return;
       }
-      _speechInitialized = true;
-    } else if (!_speechInitialized && isAndroidTts) {
+      _initializedEngineType = widget.speechConfig.speechSettings.engineType;
+    } else if (!_isInitializedForCurrentEngine && isAndroidTts) {
       // Android TTS does not need the setup dialog, but the native speaker
       // still has to be brought to ready state. Without this step
       // AndroidTtsSpeaker stays ready=false and later `start()` →
@@ -1558,14 +1589,14 @@ class _CommentScreenState extends State<CommentScreen>
           // Surface the failure via the ERROR icon. The status icon widget
           // evaluates engineState=='ERROR' BEFORE !isInitialized, so the
           // user sees "エラー" (not a stuck hourglass) even though
-          // _speechInitialized stays false. Keeping _speechInitialized=false
-          // also preserves the retry path: if the user toggles speech off
-          // and on again, this branch will run again and re-check.
+          // _initializedEngineType stays null. Keeping it null also
+          // preserves the retry path: if the user toggles speech off and
+          // on again, this branch will run again and re-check.
           _setSpeechEngineState(SpeechEngineState.error);
           _speechInitializing = false;
           return;
         }
-        _speechInitialized = true;
+        _initializedEngineType = widget.speechConfig.speechSettings.engineType;
       } catch (e, stackTrace) {
         _errorLog(
           '[CommentScreen] initSpeech: Android TTS availability check FAILED',
@@ -1576,8 +1607,8 @@ class _CommentScreenState extends State<CommentScreen>
         // consumers — the user-visible outcome is the same (no usable TTS).
         widget.speechConfig.androidTtsAvailability?.publishUnavailable();
         // Same reasoning as the (!available) branch above: leave
-        // _speechInitialized=false so the user can retry by toggling speech
-        // off/on. The ERROR engine state drives the icon regardless.
+        // _initializedEngineType=null so the user can retry by toggling
+        // speech off/on. The ERROR engine state drives the icon regardless.
         _setSpeechEngineState(SpeechEngineState.error);
         _speechInitializing = false;
         return;
@@ -1679,7 +1710,7 @@ class _CommentScreenState extends State<CommentScreen>
       // Drop the previous engine's "ready" state so _initializeAndStartSpeech
       // re-runs the full setup path (status check → setup dialog if needed
       // → updateSettings → start) for the new engine.
-      _speechInitialized = false;
+      _initializedEngineType = null;
       if (newSettings.enabled) {
         await _initializeAndStartSpeech();
       }
@@ -2789,7 +2820,7 @@ class _CommentScreenState extends State<CommentScreen>
                           key: const Key('speech-status-icon'),
                           engineState: _speechEngineState,
                           isStarted: _speechStarted,
-                          isInitialized: _speechInitialized,
+                          isInitialized: _isInitializedForCurrentEngine,
                           isMuted: widget.speechConfig.isSpeechMuted,
                           themeColors: themeColors,
                           onTap: widget.callbacks.onSpeechMuteToggled,
@@ -6296,7 +6327,7 @@ class _SpeechStatusIcon extends StatelessWidget {
 
   /// Issue #713 (UX-2): callback fired when the user taps the icon
   /// while the engine is in ERROR. The host wires this to a re-init
-  /// flow (`_speechInitialized = false; _initializeAndStartSpeech()`)
+  /// flow (`_initializedEngineType = null; _initializeAndStartSpeech()`)
   /// so the user can recover without leaving the screen. Multi-tap
   /// protection is provided by the host's existing `_speechInitializing`
   /// guard inside the init method.
