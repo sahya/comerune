@@ -129,10 +129,10 @@ GitHub Actions で生成した場合は、artifact `android-developer-verificati
 
 ローカルで手動生成する場合は、次の前提を満たしたうえで `make` ターゲットを利用できます。
 
-- `android/app_id.properties` がある
-- `android/key.properties` がある
+- `android/app_id.properties` がある（`Application ID の設定` を参照）
+- `android/key.properties` がある（`リリース署名の設定` を参照）
 - `android/key.properties` の `storeFile` が指す keystore ファイルが存在する
-- `android/app/src/main/assets/adi-registration.properties` が既に存在しない
+- `android/app/src/main/assets/adi-registration.properties` が **存在しない**（このターゲットがビルド時に一時生成するため）
 - 確認文字列を保存したローカルファイルがある
 
 ```bash
@@ -140,11 +140,15 @@ ANDROID_ADI_REGISTRATION_PUBLIC_CONTENT_FILE=/path/to/adi-registration.propertie
 make build-adi-verification
 ```
 
+前提が揃っていない場合、スクリプトは **不足分をすべてまとめて表示し** 、それぞれに修正コマンド例と該当ドキュメント節を案内します。
+表示された項目を解消してから再実行してください。
+
 生成物:
 - `build/app/outputs/flutter-apk/comerune-android-developer-verification-arm64.apk`
 
 このターゲットは `scripts/build-android-developer-verification-apk.sh` を呼び出し、ビルド時だけ
 `android/app/src/main/assets/adi-registration.properties` を一時生成して完了時に削除します。
+ビルド失敗時には未検証の `app-release.apk` も削除されるため、verification 用 APK と通常リリース APK が混在することはありません。
 通常の `make build-release` は `scripts/guard-no-adi-registration-asset.sh` を通すため、verification 用 asset が残っている場合は失敗します。
 
 ### Google Play App Signing

@@ -28,6 +28,8 @@ jobs:
       - name: Configure ADI registration snippet
         env:
           ANDROID_ADI_REGISTRATION_PUBLIC_CONTENT: ${{ secrets.ANDROID_ADI_REGISTRATION_PUBLIC_CONTENT }}
+          # Legacy alias kept for backward compatibility. Schedule for removal
+          # once all environments have migrated to ANDROID_ADI_REGISTRATION_PUBLIC_CONTENT.
           ANDROID_ADI_REGISTRATION_SNIPPET: ${{ secrets.ANDROID_ADI_REGISTRATION_SNIPPET }}
         run: |
           set +x
@@ -91,4 +93,6 @@ jobs:
         run: |
           rm -f android/keystore/release.jks
           rm -f android/key.properties
+          rm -f android/app_id.properties
+          rm -f android/app/src/main/assets/adi-registration.properties
           rm -f "$RUNNER_TEMP/adi-registration.properties"

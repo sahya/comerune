@@ -19,8 +19,13 @@ if [[ -z "${ANDROID_SIGNING_KEY_PASSWORD:-}" || -z "${ANDROID_SIGNING_STORE_PASS
 fi
 
 mkdir -p "$keystore_dir"
-echo "$ANDROID_SIGNING_KEYSTORE_BASE64" | base64 -d > "$keystore_path" \
-  || { echo "::error::Failed to decode keystore."; exit 1; }
+# On decode failure, remove the partial keystore so a later step does not see
+# a corrupt jks and produce a misleading downstream error.
+if ! echo "$ANDROID_SIGNING_KEYSTORE_BASE64" | base64 -d > "$keystore_path"; then
+  rm -f "$keystore_path"
+  echo "::error::Failed to decode keystore for ${secret_context}."
+  exit 1
+fi
 
 {
   printf 'storePassword=%s\n' "$ANDROID_SIGNING_STORE_PASSWORD"
