@@ -28,7 +28,7 @@ build: setup-libs ## Build debug APK
 	$(ENV) && flutter build apk --debug
 
 build-release: setup-libs ## Build release APK
-	$(ENV) && bash scripts/guard-no-adi-registration-asset.sh && flutter build apk --release --obfuscate --split-debug-info=build/debug-info
+	$(ENV) && bash scripts/guard-no-adi-registration-asset.sh && bash scripts/verify-release-keystore.sh && flutter build apk --release --obfuscate --split-debug-info=build/debug-info
 
 build-adi-verification: setup-libs ## Build Android Developer Verification APK (requires ANDROID_ADI_REGISTRATION_PUBLIC_CONTENT_FILE)
 	$(ENV) && bash scripts/build-android-developer-verification-apk.sh

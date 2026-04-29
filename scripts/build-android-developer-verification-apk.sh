@@ -121,6 +121,12 @@ if (( ${#preflight_errors[@]} > 0 )); then
   exit 1
 fi
 
+# Decisive keystore check: open the keystore with the configured password and
+# alias before flutter build apk runs. Skipping this lets a misconfigured
+# password fall through to Gradle's debug-signing fallback, which silently
+# produces a "release" APK signed with the Android debug key.
+bash scripts/verify-release-keystore.sh
+
 # Cleanup state, indirected through a function so the trap body stays short
 # and the intent of each phase is named rather than re-listed in three traps.
 # - asset_path: always remove (it is generated each run, must not leak into

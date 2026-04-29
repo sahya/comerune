@@ -97,6 +97,9 @@ jobs:
       - name: Guard against verification-only asset in release builds
         run: bash scripts/guard-no-adi-registration-asset.sh
 
+      - name: Verify release keystore opens with configured password
+        run: bash scripts/verify-release-keystore.sh
+
       - name: Check formatting
         run: dart format . --output=none --set-exit-if-changed
 

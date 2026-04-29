@@ -72,6 +72,11 @@ chmod 600 android/key.properties
 | `keyAlias` | 鍵のエイリアス名（上記コマンドでは `release`） |
 | `storeFile` | キーストアファイルへの相対パス（`build.gradle.kts` の `file()` で解決される） |
 
+> ⚠️ **`key.properties.example` の値（`your_store_password` など）をそのまま残さないでください。**
+> プレースホルダーのままだと release 署名が完了せず、Gradle が **debug 鍵で sign された "release" APK** を生成します。
+> 実害例: 別 keystore で署名された APK を後でアップデートインストールしようとすると `App not installed as package conflicts with an existing package` で失敗する／Play Console にアップロード後にアップロード鍵が固定されて差し替え不可になる。
+> `make build-release` は実行前に `scripts/verify-release-keystore.sh` で keystore が **実際に開けるか** を検証し、失敗時は abort します。
+
 ### キーストアのバックアップと復旧
 
 キーストアを紛失すると、同じ署名の APK を二度と生成できなくなります。

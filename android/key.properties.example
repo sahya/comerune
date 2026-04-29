@@ -3,6 +3,14 @@
 # If the file is absent, the release build falls back to debug signing
 # (suitable for local development only).
 #
+# WARNING: do NOT leave the placeholder values below (your_store_password /
+# your_key_password) in your key.properties. Gradle will accept the file as
+# "configured" and silently fall back to debug signing when the password
+# does not unlock the keystore, producing a "release" APK signed with the
+# Android default debug key. `make build-release` and the release CI now
+# call scripts/verify-release-keystore.sh to detect this, but the safest
+# habit is to fill in real credentials immediately after copying.
+#
 # See docs/build-guide.md for keystore generation instructions.
 storePassword=your_store_password
 keyPassword=your_key_password

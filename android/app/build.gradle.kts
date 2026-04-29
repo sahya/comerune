@@ -30,14 +30,36 @@ val keyProps = Properties().apply {
     }
 }
 
+// Values shipped in key.properties.example as illustrative placeholders.
+// If they ever appear in key.properties itself, the contributor most likely
+// copied the example without filling it in — fall back to debug signing and
+// log loudly, so we do not silently produce a "release" APK signed with the
+// wrong key. Past incidents: an example-derived key.properties produced an
+// APK that ended up debug-signed via Gradle's signingConfig fallback chain,
+// which only surfaced months later as a package-conflict on update install.
+val placeholderPasswordValues = setOf("your_store_password", "your_key_password")
+
 val keyPropsValid = if (keyPropsFile.exists()) {
     val requiredKeys = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
     val missingKeys = requiredKeys.filter { keyProps.getProperty(it) == null }
-    if (missingKeys.isNotEmpty()) {
-        logger.warn("key.properties is missing required keys: ${missingKeys.joinToString()}. See key.properties.example.")
-        false
-    } else {
-        true
+    val storePassword = keyProps.getProperty("storePassword") ?: ""
+    val keyPassword = keyProps.getProperty("keyPassword") ?: ""
+    val hasPlaceholder = storePassword in placeholderPasswordValues ||
+        keyPassword in placeholderPasswordValues
+    when {
+        missingKeys.isNotEmpty() -> {
+            logger.warn("key.properties is missing required keys: ${missingKeys.joinToString()}. See key.properties.example.")
+            false
+        }
+        hasPlaceholder -> {
+            logger.warn(
+                "key.properties contains placeholder values from key.properties.example. " +
+                "Falling back to debug signing. Edit android/key.properties with real " +
+                "credentials before producing a release APK. See docs/build-guide.md."
+            )
+            false
+        }
+        else -> true
     }
 } else {
     false
