@@ -112,6 +112,73 @@ void main() {
     });
 
     test(
+      'commentTwoLineMetaFontPercent defaults to 40 when not stored',
+      () async {
+        final SharedPreferencesSettingsStore store =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        final AppSettings loaded = await store.load();
+
+        expect(
+          loaded.commentTwoLineMetaFontPercent,
+          commentTwoLineMetaFontPercentDefault,
+        );
+      },
+    );
+
+    test('round-trips commentTwoLineMetaFontPercent value', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      for (final int percent in <int>[
+        commentTwoLineMetaFontPercentMin,
+        25,
+        50,
+        80,
+        commentTwoLineMetaFontPercentMax,
+      ]) {
+        final AppSettings original = AppSettings.defaults.copyWith(
+          commentTwoLineMetaFontPercent: percent,
+        );
+        await store.save(original);
+
+        final AppSettings loaded = await store.load();
+
+        expect(
+          loaded.commentTwoLineMetaFontPercent,
+          percent,
+          reason: '$percent% should round-trip',
+        );
+      }
+    });
+
+    test(
+      'clamps stored out-of-range commentTwoLineMetaFontPercent on load',
+      () async {
+        // A stored value outside the allowed range (e.g. set by an older
+        // version with a wider range, or corrupted prefs) must clamp instead
+        // of crashing the app via the AppSettings constructor assert.
+        final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+        final SharedPreferencesSettingsStore store =
+            SharedPreferencesSettingsStore(prefs: prefs);
+
+        await prefs.setInt('settings.comment.twoLineMetaFontPercent', 5);
+        AppSettings loaded = await store.load();
+        expect(
+          loaded.commentTwoLineMetaFontPercent,
+          commentTwoLineMetaFontPercentMin,
+        );
+
+        await prefs.setInt('settings.comment.twoLineMetaFontPercent', 9999);
+        loaded = await store.load();
+        expect(
+          loaded.commentTwoLineMetaFontPercent,
+          commentTwoLineMetaFontPercentMax,
+        );
+      },
+    );
+
+    test(
       'ngProtectionNotificationEnabled defaults to false when not stored',
       () async {
         final SharedPreferencesSettingsStore store =

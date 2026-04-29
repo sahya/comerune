@@ -247,6 +247,48 @@ class _CommentDisplaySettingsScreenState
                           );
                         },
                       ),
+                      // 二段表示が ON のときだけ意味があるサブ設定なので、
+                      // OFF 時は UI を隠して画面ノイズを減らす（OFF→ON した
+                      // 際は、保存済みの値で再表示される）。
+                      if (settings.commentTwoLineEnabled) ...<Widget>[
+                        const SizedBox(height: 4),
+                        SettingsIntSliderField(
+                          key: const Key(
+                            'comment-two-line-meta-font-percent-slider',
+                          ),
+                          label: '上段の文字サイズ（本文比）',
+                          value: settings.commentTwoLineMetaFontPercent,
+                          min: commentTwoLineMetaFontPercentMin,
+                          max: commentTwoLineMetaFontPercentMax,
+                          divisions:
+                              commentTwoLineMetaFontPercentMax -
+                              commentTwoLineMetaFontPercentMin,
+                          suffix: '%',
+                          sweetSpotMin: 35,
+                          sweetSpotMax: 60,
+                          sweetSpotLabel: 'おすすめ',
+                          onChanged: (int value) {
+                            updateAndSave(
+                              settings.copyWith(
+                                commentTwoLineMetaFontPercent: value,
+                              ),
+                            );
+                          },
+                        ),
+                        // Discloses the absolute 9px floor so users who pick
+                        // very low percentages don't think the slider is
+                        // broken when the rendered size stops shrinking.
+                        Padding(
+                          key: const Key(
+                            'comment-two-line-meta-font-percent-note',
+                          ),
+                          padding: const EdgeInsets.only(top: 2, bottom: 4),
+                          child: Text(
+                            '※ 視認性確保のため、最小サイズの制約により小さい%でも一定以下にはなりません。',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
                       SwitchListTile(
                         key: const Key('comment-zebra-striping-switch'),
                         title: const Text('行の明暗交互表示'),

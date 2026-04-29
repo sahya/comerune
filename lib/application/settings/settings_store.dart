@@ -175,6 +175,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       'settings.voicevox.termsAccepted';
   static const String _kNgWordRules = 'settings.filter.ngWordRules';
   static const String _kCommentTwoLineEnabled = 'settings.comment.twoLine';
+  static const String _kCommentTwoLineMetaFontPercent =
+      'settings.comment.twoLineMetaFontPercent';
   static const String _kCommentZebraStriping = 'settings.comment.zebraStriping';
   static const String _kShowOperatorComment = 'settings.comment.showOperator';
   static const String _kShowSystemMessage = 'settings.comment.showSystem';
@@ -299,6 +301,15 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       commentTwoLineEnabled:
           _prefs.getBool(_kCommentTwoLineEnabled) ??
           defaults.commentTwoLineEnabled,
+      // 既存ユーザー（このキー未設定）は従来挙動と同じ 40% で復元する。
+      // 不正値（範囲外）は clamp して AppSettings の assert を通すようにする。
+      commentTwoLineMetaFontPercent:
+          (_prefs.getInt(_kCommentTwoLineMetaFontPercent) ??
+                  defaults.commentTwoLineMetaFontPercent)
+              .clamp(
+                commentTwoLineMetaFontPercentMin,
+                commentTwoLineMetaFontPercentMax,
+              ),
       commentZebraStripingEnabled:
           _prefs.getBool(_kCommentZebraStriping) ??
           defaults.commentZebraStripingEnabled,
@@ -420,6 +431,10 @@ class SharedPreferencesSettingsStore implements SettingsStore {
     await _prefs.setBool(
       _kCommentTwoLineEnabled,
       settings.commentTwoLineEnabled,
+    );
+    await _prefs.setInt(
+      _kCommentTwoLineMetaFontPercent,
+      settings.commentTwoLineMetaFontPercent,
     );
     await _prefs.setBool(
       _kCommentZebraStriping,

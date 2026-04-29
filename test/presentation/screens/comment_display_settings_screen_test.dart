@@ -826,6 +826,8 @@ void _ngDisplayToggleTests() {
 
       expect(find.textContaining('1 / 4 表示中'), findsOneWidget);
     });
+
+    _runTwoLineMetaFontPercentSliderTests();
   });
 }
 
@@ -833,4 +835,74 @@ Widget _buildScreen(SettingsStore settingsStore) {
   return MaterialApp(
     home: CommentDisplaySettingsScreen(settingsStore: settingsStore),
   );
+}
+
+void _runTwoLineMetaFontPercentSliderTests() {
+  // Pinning the conditional-render contract: the meta-font slider only
+  // matters in two-line mode, so it must not appear when the toggle is
+  // off (avoiding noise in the most common single-line setup) and must
+  // appear once the user opts in. Persistence is also checked end-to-end
+  // since the slider lives behind a conditional and could otherwise
+  // be wired but never actually saved through the existing
+  // `updateAndSave` pipeline.
+  const Key sliderKey = Key('comment-two-line-meta-font-percent-slider');
+  const Key twoLineSwitch = Key('comment-two-line-switch');
+
+  testWidgets('two-line meta font slider is hidden when two-line is off', (
+    WidgetTester tester,
+  ) async {
+    final SharedPreferencesSettingsStore settingsStore =
+        SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+    await tester.pumpWidget(_buildScreen(settingsStore));
+    await tester.pumpAndSettle();
+
+    // Default: commentTwoLineEnabled=false → slider must NOT be in the tree.
+    expect(find.byKey(sliderKey, skipOffstage: false), findsNothing);
+  });
+
+  testWidgets('enabling two-line shows slider; disabling hides it again', (
+    WidgetTester tester,
+  ) async {
+    final SharedPreferencesSettingsStore settingsStore =
+        SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+    await tester.pumpWidget(_buildScreen(settingsStore));
+    await tester.pumpAndSettle();
+
+    await toggleSwitchByKey(tester, _listKey, twoLineSwitch);
+    expect(find.byKey(sliderKey, skipOffstage: false), findsOneWidget);
+
+    await toggleSwitchByKey(tester, _listKey, twoLineSwitch);
+    expect(find.byKey(sliderKey, skipOffstage: false), findsNothing);
+  });
+
+  testWidgets('slider value persists through SettingsStore round-trip', (
+    WidgetTester tester,
+  ) async {
+    // Pre-set commentTwoLineEnabled so the slider is already visible
+    // on first frame; this keeps the test independent of the toggle's
+    // animation/layout timing.
+    final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+    await prefs.setBool('settings.comment.twoLine', true);
+    final SharedPreferencesSettingsStore settingsStore =
+        SharedPreferencesSettingsStore(prefs: prefs);
+
+    await tester.pumpWidget(_buildScreen(settingsStore));
+    await tester.pumpAndSettle();
+
+    // Drive the slider via its onChanged hook; pumping a real drag
+    // gesture is brittle for percent sliders. The contract under
+    // test is that the value flows from UI → `updateAndSave` →
+    // SharedPreferences, which the onChanged path exercises end-to-end.
+    await scrollToKeyInList(tester, _listKey, sliderKey);
+    final Slider slider = tester.widget<Slider>(
+      find.descendant(of: find.byKey(sliderKey), matching: find.byType(Slider)),
+    );
+    slider.onChanged!.call(75);
+    await tester.pumpAndSettle();
+
+    final AppSettings loaded = await settingsStore.load();
+    expect(loaded.commentTwoLineMetaFontPercent, 75);
+  });
 }

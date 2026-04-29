@@ -686,6 +686,8 @@ class _SelectScreenState extends State<SelectScreen>
               ? widget.userNameResolution
               : null,
           commentTwoLineEnabled: _settingsNotifier.value.commentTwoLineEnabled,
+          commentTwoLineMetaFontPercent:
+              _settingsNotifier.value.commentTwoLineMetaFontPercent,
           commentZebraStripingEnabled:
               _settingsNotifier.value.commentZebraStripingEnabled,
           userColorMap: _userAttrNotifier.value.colors,

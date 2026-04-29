@@ -30,6 +30,10 @@ void main() {
       expect(restored.ngWordRules, original.ngWordRules);
       expect(restored.commentTwoLineEnabled, original.commentTwoLineEnabled);
       expect(
+        restored.commentTwoLineMetaFontPercent,
+        original.commentTwoLineMetaFontPercent,
+      );
+      expect(
         restored.commentZebraStripingEnabled,
         original.commentZebraStripingEnabled,
       );
@@ -47,6 +51,7 @@ void main() {
         commentFontSize: 24,
         pastCommentFetchCount: PastCommentFetchCount.all,
         commentTwoLineEnabled: true,
+        commentTwoLineMetaFontPercent: 70,
         commentZebraStripingEnabled: true,
         debugMode: true,
         dictionaryRules: const <ReplaceRule>[
@@ -65,6 +70,7 @@ void main() {
       expect(restored.commentFontSize, 24);
       expect(restored.pastCommentFetchCount, PastCommentFetchCount.all);
       expect(restored.commentTwoLineEnabled, isTrue);
+      expect(restored.commentTwoLineMetaFontPercent, 70);
       expect(restored.commentZebraStripingEnabled, isTrue);
       expect(restored.debugMode, isTrue);
       expect(restored.dictionaryRules.length, 1);
@@ -207,6 +213,10 @@ void main() {
         AppSettings.defaults.commentTwoLineEnabled,
       );
       expect(
+        result.commentTwoLineMetaFontPercent,
+        AppSettings.defaults.commentTwoLineMetaFontPercent,
+      );
+      expect(
         result.commentZebraStripingEnabled,
         AppSettings.defaults.commentZebraStripingEnabled,
       );
@@ -231,6 +241,39 @@ void main() {
       });
       expect(tooLarge.commentFontSize, commentFontSizeMax);
     });
+
+    test('import clamps out-of-range commentTwoLineMetaFontPercent', () {
+      // Out-of-range values must clamp instead of triggering the
+      // AppSettings constructor assert (which would crash import).
+      final AppSettings tooSmall = AppSettings.fromJson(<String, dynamic>{
+        'commentTwoLineMetaFontPercent': 1,
+      });
+      expect(
+        tooSmall.commentTwoLineMetaFontPercent,
+        commentTwoLineMetaFontPercentMin,
+      );
+
+      final AppSettings tooLarge = AppSettings.fromJson(<String, dynamic>{
+        'commentTwoLineMetaFontPercent': 9999,
+      });
+      expect(
+        tooLarge.commentTwoLineMetaFontPercent,
+        commentTwoLineMetaFontPercentMax,
+      );
+    });
+
+    test(
+      'import with non-numeric commentTwoLineMetaFontPercent uses default',
+      () {
+        final AppSettings result = AppSettings.fromJson(<String, dynamic>{
+          'commentTwoLineMetaFontPercent': 'not a number',
+        });
+        expect(
+          result.commentTwoLineMetaFontPercent,
+          AppSettings.defaults.commentTwoLineMetaFontPercent,
+        );
+      },
+    );
 
     test('import with invalid dictionaryRules falls back to defaults', () {
       final AppSettings result = AppSettings.fromJson(<String, dynamic>{

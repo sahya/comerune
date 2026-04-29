@@ -48,11 +48,29 @@ import 'user_detail_sheet.dart';
 
 const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
 
-/// Two-line mode: meta font size as a fraction of the comment font size.
-const double _twoLineMetaFontRatio = 0.4;
-
 /// Two-line mode: minimum meta font size in logical pixels.
+///
+/// The configurable [AppSettings.commentTwoLineMetaFontPercent] is allowed
+/// down to [commentTwoLineMetaFontPercentMin]% (currently 20%), which at the
+/// minimum body size could otherwise produce sub-pixel meta text. This
+/// floor keeps the timestamp + username row legible regardless of the
+/// percentage chosen.
 const double _twoLineMinMetaFontSize = 9.0;
+
+/// Computes the rendered font size of the two-line mode meta row
+/// (timestamp + username) for a given body [bodyFontSize] and
+/// configured [percent] (e.g. 40 for 40%).
+///
+/// Centralizes the percent→ratio conversion and the 9px absolute floor
+/// so the regular comment row and the pinned comment row stay in
+/// lock-step. If [_twoLineMinMetaFontSize] ever changes, only this
+/// function needs updating.
+double _resolveTwoLineMetaFontSize(double bodyFontSize, int percent) {
+  return (bodyFontSize * commentTwoLineMetaFontPercentToRatio(percent)).clamp(
+    _twoLineMinMetaFontSize,
+    bodyFontSize,
+  );
+}
 
 /// Zebra striping: background tint opacity applied to odd-indexed rows.
 const double _zebraStripingAlpha = 0.04;
@@ -306,6 +324,7 @@ class CommentRowHarness extends StatelessWidget {
     this.textScaler = TextScaler.noScaling,
     this.starPrefixHidingEnabled = false,
     this.commentTwoLineEnabled = false,
+    this.commentTwoLineMetaFontPercent = commentTwoLineMetaFontPercentDefault,
     this.zebraStripingEnabled = false,
     this.emphasizeGiftNicoadComment = true,
     this.commentIndex = 0,
@@ -324,6 +343,7 @@ class CommentRowHarness extends StatelessWidget {
   final TextScaler textScaler;
   final bool starPrefixHidingEnabled;
   final bool commentTwoLineEnabled;
+  final int commentTwoLineMetaFontPercent;
   final bool zebraStripingEnabled;
   final bool emphasizeGiftNicoadComment;
   final int commentIndex;
@@ -344,6 +364,7 @@ class CommentRowHarness extends StatelessWidget {
       textScaler: textScaler,
       starPrefixHidingEnabled: starPrefixHidingEnabled,
       commentTwoLineEnabled: commentTwoLineEnabled,
+      commentTwoLineMetaFontPercent: commentTwoLineMetaFontPercent,
       zebraStripingEnabled: zebraStripingEnabled,
       emphasizeGiftNicoadComment: emphasizeGiftNicoadComment,
       commentIndex: commentIndex,
@@ -368,6 +389,7 @@ class PinnedCommentRowHarness extends StatelessWidget {
     this.showUserName = true,
     required this.fontSize,
     this.commentTwoLineEnabled = false,
+    this.commentTwoLineMetaFontPercent = commentTwoLineMetaFontPercentDefault,
     this.userColor,
     required this.onUnpin,
     this.beginAt,
@@ -381,6 +403,7 @@ class PinnedCommentRowHarness extends StatelessWidget {
   final bool showUserName;
   final double fontSize;
   final bool commentTwoLineEnabled;
+  final int commentTwoLineMetaFontPercent;
   final Color? userColor;
   final VoidCallback onUnpin;
   final DateTime? beginAt;
@@ -396,6 +419,7 @@ class PinnedCommentRowHarness extends StatelessWidget {
       showUserName: showUserName,
       fontSize: fontSize,
       commentTwoLineEnabled: commentTwoLineEnabled,
+      commentTwoLineMetaFontPercent: commentTwoLineMetaFontPercent,
       userColor: userColor,
       onUnpin: onUnpin,
       beginAt: beginAt,
@@ -473,6 +497,7 @@ class CommentScreen extends StatefulWidget {
     this.commentFontSize = commentFontSizeDefault,
     this.userNameResolution,
     this.commentTwoLineEnabled = false,
+    this.commentTwoLineMetaFontPercent = commentTwoLineMetaFontPercentDefault,
     this.commentZebraStripingEnabled = false,
     this.userColorMap = const <String, int>{},
     this.onUserColorChanged,
@@ -513,6 +538,10 @@ class CommentScreen extends StatefulWidget {
   /// When true, comment rows are split into two lines:
   /// line 1 for timestamp/username, line 2 for content.
   final bool commentTwoLineEnabled;
+
+  /// Two-line mode: meta-row (timestamp + username) font size as a percentage
+  /// of [commentFontSize]. Ignored when [commentTwoLineEnabled] is false.
+  final int commentTwoLineMetaFontPercent;
 
   /// When true, alternating comment rows have a subtle background tint
   /// for easier visual scanning.
@@ -2941,6 +2970,8 @@ class _CommentScreenState extends State<CommentScreen>
                     onUnpin: _unpinMessage,
                     beginAt: widget.programInfo.beginAt,
                     commentTwoLineEnabled: widget.commentTwoLineEnabled,
+                    commentTwoLineMetaFontPercent:
+                        widget.commentTwoLineMetaFontPercent,
                     textScaler: textScaler,
                     ngMatcher: _ngMatcher,
                   ),
@@ -3023,6 +3054,8 @@ class _CommentScreenState extends State<CommentScreen>
                                     .starPrefixHidingEnabled,
                                 commentTwoLineEnabled:
                                     widget.commentTwoLineEnabled,
+                                commentTwoLineMetaFontPercent:
+                                    widget.commentTwoLineMetaFontPercent,
                                 zebraStripingEnabled:
                                     widget.commentZebraStripingEnabled,
                                 emphasizeGiftNicoadComment: widget
@@ -5192,6 +5225,7 @@ class _PinnedCommentsSection extends StatelessWidget {
     required this.onUnpin,
     this.beginAt,
     this.commentTwoLineEnabled = false,
+    this.commentTwoLineMetaFontPercent = commentTwoLineMetaFontPercentDefault,
     this.textScaler = TextScaler.noScaling,
     this.ngMatcher,
   });
@@ -5205,6 +5239,7 @@ class _PinnedCommentsSection extends StatelessWidget {
   final void Function(String messageId) onUnpin;
   final DateTime? beginAt;
   final bool commentTwoLineEnabled;
+  final int commentTwoLineMetaFontPercent;
   final TextScaler textScaler;
   final NgMatcher? ngMatcher;
 
@@ -5258,6 +5293,7 @@ class _PinnedCommentsSection extends StatelessWidget {
               showUserName: showUserName,
               fontSize: fontSize,
               commentTwoLineEnabled: commentTwoLineEnabled,
+              commentTwoLineMetaFontPercent: commentTwoLineMetaFontPercent,
               userColor:
                   message.userId != null &&
                       userColorMap.containsKey(message.userId!)
@@ -5283,6 +5319,7 @@ class _PinnedCommentRow extends StatelessWidget {
     this.showUserName = true,
     required this.fontSize,
     this.commentTwoLineEnabled = false,
+    this.commentTwoLineMetaFontPercent = commentTwoLineMetaFontPercentDefault,
     this.userColor,
     required this.onUnpin,
     this.beginAt,
@@ -5296,6 +5333,7 @@ class _PinnedCommentRow extends StatelessWidget {
   final bool showUserName;
   final double fontSize;
   final bool commentTwoLineEnabled;
+  final int commentTwoLineMetaFontPercent;
   final Color? userColor;
   final VoidCallback onUnpin;
   final DateTime? beginAt;
@@ -5434,9 +5472,9 @@ class _PinnedCommentRow extends StatelessWidget {
     NgDisplaySubcategory? matchedSubcategory,
   ) {
     final String timestamp = _formatHms(message.timestamp, beginAt: beginAt);
-    final double metaFontSize = (fontSize * _twoLineMetaFontRatio).clamp(
-      _twoLineMinMetaFontSize,
+    final double metaFontSize = _resolveTwoLineMetaFontSize(
       fontSize,
+      commentTwoLineMetaFontPercent,
     );
     final Color metaColor = themeColors.subtleTextColor;
     // Operator rows use the theme's operator text color (typically red) for
@@ -5566,6 +5604,7 @@ class _CommentRow extends StatefulWidget {
     this.textScaler = TextScaler.noScaling,
     this.starPrefixHidingEnabled = false,
     this.commentTwoLineEnabled = false,
+    this.commentTwoLineMetaFontPercent = commentTwoLineMetaFontPercentDefault,
     this.zebraStripingEnabled = false,
     this.emphasizeGiftNicoadComment = true,
     this.commentIndex = 0,
@@ -5588,6 +5627,7 @@ class _CommentRow extends StatefulWidget {
   final TextScaler textScaler;
   final bool starPrefixHidingEnabled;
   final bool commentTwoLineEnabled;
+  final int commentTwoLineMetaFontPercent;
   final bool zebraStripingEnabled;
 
   /// When true and the message is gift/nicoad, render with a shaded
@@ -5776,9 +5816,9 @@ class _CommentRowState extends State<_CommentRow> {
     if (widget.commentTwoLineEnabled && widget.showUserName) {
       final double twoLineMetaSize = hidden
           ? fontSize
-          : (fontSize * _twoLineMetaFontRatio).clamp(
-              _twoLineMinMetaFontSize,
+          : _resolveTwoLineMetaFontSize(
               fontSize,
+              widget.commentTwoLineMetaFontPercent,
             );
       return _buildTwoLineComment(
         context: context,

@@ -91,6 +91,31 @@ const double commentFontSizeMax = 48;
 /// コメント文字サイズのデフォルト値 (px)。
 const double commentFontSizeDefault = 14;
 
+/// 二段表示の上段（時刻・ユーザー名）の文字サイズが、本文サイズに対して
+/// 占める割合の最小値 (%)。極端に小さい値でも、表示時には別途 9px の
+/// 下限が適用される（[commentTwoLineMetaFontPercentToRatio] と
+/// クライアント側 clamp の組み合わせ）。
+const int commentTwoLineMetaFontPercentMin = 20;
+
+/// 二段表示の上段の文字サイズ割合の最大値 (%)。
+/// 100% を超えると本文より大きくなり「上段=メタ情報」という階層が崩れるため
+/// 100 を上限とする。
+const int commentTwoLineMetaFontPercentMax = 100;
+
+/// 二段表示の上段の文字サイズ割合のデフォルト値 (%)。
+/// 過去バージョンでハードコードされていた 0.4 と等価。
+const int commentTwoLineMetaFontPercentDefault = 40;
+
+/// 整数パーセンテージ (例: 40) を比率 (例: 0.4) に変換し、
+/// 想定範囲外の値を許容範囲へクランプする。
+double commentTwoLineMetaFontPercentToRatio(int percent) {
+  final int clamped = percent.clamp(
+    commentTwoLineMetaFontPercentMin,
+    commentTwoLineMetaFontPercentMax,
+  );
+  return clamped / 100.0;
+}
+
 /// 旧 enum 形式の保存値を px 値に変換する。
 ///
 /// 以前のバージョンでは `CommentFontSize` enum の `storageValue` (文字列)
@@ -310,6 +335,7 @@ class AppSettings {
     required this.voicevoxTermsAccepted,
     required this.ngWordRules,
     required this.commentTwoLineEnabled,
+    required this.commentTwoLineMetaFontPercent,
     required this.commentZebraStripingEnabled,
     required this.emphasizeGiftNicoadComment,
     required this.dictionaryRules,
@@ -335,6 +361,13 @@ class AppSettings {
              commentFontSize <= commentFontSizeMax,
          'commentFontSize must be between $commentFontSizeMin and $commentFontSizeMax, '
          'but was $commentFontSize',
+       ),
+       assert(
+         commentTwoLineMetaFontPercent >= commentTwoLineMetaFontPercentMin &&
+             commentTwoLineMetaFontPercent <= commentTwoLineMetaFontPercentMax,
+         'commentTwoLineMetaFontPercent must be between '
+         '$commentTwoLineMetaFontPercentMin and $commentTwoLineMetaFontPercentMax, '
+         'but was $commentTwoLineMetaFontPercent',
        );
 
   static const AppSettings defaults = AppSettings(
@@ -372,6 +405,7 @@ class AppSettings {
     voicevoxTermsAccepted: false,
     ngWordRules: <NgWordRule>[],
     commentTwoLineEnabled: false,
+    commentTwoLineMetaFontPercent: commentTwoLineMetaFontPercentDefault,
     commentZebraStripingEnabled: false,
     emphasizeGiftNicoadComment: true,
     dictionaryRules: defaultNicoDictionaryRules,
@@ -461,6 +495,15 @@ class AppSettings {
 
   /// 横幅が狭い端末向けにコメントを二段表示するかどうか。
   final bool commentTwoLineEnabled;
+
+  /// 二段表示時に上段（時刻・ユーザー名）に適用するフォントサイズの割合 (%)。
+  /// 本文サイズに対して [commentTwoLineMetaFontPercent]% のサイズで描画する。
+  ///
+  /// 表示側では追加で「9px の絶対下限」を適用するため、本値を最小値に
+  /// しても極端に潰れることはない。
+  ///
+  /// 1段表示時は無視される。
+  final int commentTwoLineMetaFontPercent;
 
   /// コメント行にゼブラストライプ（偶数/奇数で背景色交互）を適用するかどうか。
   final bool commentZebraStripingEnabled;
@@ -679,6 +722,7 @@ class AppSettings {
     bool? voicevoxTermsAccepted,
     List<NgWordRule>? ngWordRules,
     bool? commentTwoLineEnabled,
+    int? commentTwoLineMetaFontPercent,
     bool? commentZebraStripingEnabled,
     bool? emphasizeGiftNicoadComment,
     List<ReplaceRule>? dictionaryRules,
@@ -746,6 +790,8 @@ class AppSettings {
       ngWordRules: ngWordRules ?? this.ngWordRules,
       commentTwoLineEnabled:
           commentTwoLineEnabled ?? this.commentTwoLineEnabled,
+      commentTwoLineMetaFontPercent:
+          commentTwoLineMetaFontPercent ?? this.commentTwoLineMetaFontPercent,
       commentZebraStripingEnabled:
           commentZebraStripingEnabled ?? this.commentZebraStripingEnabled,
       emphasizeGiftNicoadComment:
@@ -845,6 +891,7 @@ class AppSettings {
       'voicevoxTermsAccepted': voicevoxTermsAccepted,
       'ngWordRules': ngWordRules.map((NgWordRule r) => r.toMap()).toList(),
       'commentTwoLineEnabled': commentTwoLineEnabled,
+      'commentTwoLineMetaFontPercent': commentTwoLineMetaFontPercent,
       'commentZebraStripingEnabled': commentZebraStripingEnabled,
       'emphasizeGiftNicoadComment': emphasizeGiftNicoadComment,
       'dictionaryRules': dictionaryRules
@@ -1003,6 +1050,19 @@ class AppSettings {
       ngWordRules: parseNgWordRules(),
       commentTwoLineEnabled:
           json['commentTwoLineEnabled'] as bool? ?? d.commentTwoLineEnabled,
+      // 旧 Export ファイル（このキーが存在しない）や型不整合な値は
+      // デフォルト (40%) にフォールバックし、許容範囲外の値は clamp して
+      // assert に引っかからないよう安全側に倒す。`as num?` キャストは
+      // String 等の不正値で失敗するため、明示的に型を判定して
+      // フォールバックする。
+      commentTwoLineMetaFontPercent:
+          switch (json['commentTwoLineMetaFontPercent']) {
+            num n => n.toInt().clamp(
+              commentTwoLineMetaFontPercentMin,
+              commentTwoLineMetaFontPercentMax,
+            ),
+            _ => d.commentTwoLineMetaFontPercent,
+          },
       commentZebraStripingEnabled:
           json['commentZebraStripingEnabled'] as bool? ??
           d.commentZebraStripingEnabled,

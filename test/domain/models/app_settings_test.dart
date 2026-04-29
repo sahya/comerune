@@ -289,6 +289,56 @@ void main() {
     });
   });
 
+  group('commentTwoLineMetaFontPercent', () {
+    test('defaults to 40 (matches the pre-#issue hardcoded ratio)', () {
+      expect(
+        AppSettings.defaults.commentTwoLineMetaFontPercent,
+        commentTwoLineMetaFontPercentDefault,
+      );
+      expect(commentTwoLineMetaFontPercentDefault, 40);
+    });
+
+    test('copyWith updates commentTwoLineMetaFontPercent', () {
+      final AppSettings updated = AppSettings.defaults.copyWith(
+        commentTwoLineMetaFontPercent: 75,
+      );
+      expect(updated.commentTwoLineMetaFontPercent, 75);
+    });
+
+    test('copyWith preserves value when not specified', () {
+      final AppSettings initial = AppSettings.defaults.copyWith(
+        commentTwoLineMetaFontPercent: 65,
+      );
+      final AppSettings updated = initial.copyWith(showUserName: false);
+      expect(updated.commentTwoLineMetaFontPercent, 65);
+    });
+
+    test('asserts on out-of-range value', () {
+      expect(
+        () => AppSettings.defaults.copyWith(commentTwoLineMetaFontPercent: 0),
+        throwsA(isA<AssertionError>()),
+      );
+      expect(
+        () => AppSettings.defaults.copyWith(commentTwoLineMetaFontPercent: 200),
+        throwsA(isA<AssertionError>()),
+      );
+    });
+
+    test('commentTwoLineMetaFontPercentToRatio converts and clamps', () {
+      expect(commentTwoLineMetaFontPercentToRatio(40), closeTo(0.4, 1e-9));
+      expect(commentTwoLineMetaFontPercentToRatio(100), closeTo(1.0, 1e-9));
+      // Out-of-range inputs should clamp instead of producing nonsense ratios.
+      expect(
+        commentTwoLineMetaFontPercentToRatio(5),
+        closeTo(commentTwoLineMetaFontPercentMin / 100.0, 1e-9),
+      );
+      expect(
+        commentTwoLineMetaFontPercentToRatio(500),
+        closeTo(commentTwoLineMetaFontPercentMax / 100.0, 1e-9),
+      );
+    });
+  });
+
   group('commentZebraStripingEnabled', () {
     test('defaults to false', () {
       expect(AppSettings.defaults.commentZebraStripingEnabled, isFalse);
