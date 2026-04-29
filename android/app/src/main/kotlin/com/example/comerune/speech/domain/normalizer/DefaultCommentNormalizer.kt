@@ -222,12 +222,18 @@ class DefaultCommentNormalizer(
     /**
      * Symbol compression (spec Section 3.5.3):
      * Compresses repeated symbols into speech-friendly words.
+     *
+     * Note: 3+ consecutive `8` / `８` are intentionally NOT compressed here.
+     * The user dictionary owns the rendering for that pattern (default:
+     * `8{3,}|８{3,}` → `ぱちぱちぱち`) so users can customize the spoken
+     * word, disable it, or change it without the hardcoded compression
+     * shadowing their preference. See `defaultNicoDictionaryRules` in
+     * `lib/domain/models/app_settings.dart`.
      */
     internal fun compressSymbols(text: String): String {
         var result = text
         result = PATTERN_W.replace(result, "わらわら")
         result = PATTERN_KUSA.replace(result, "くさ")
-        result = PATTERN_EIGHT.replace(result, "はくしゅ")
         result = PATTERN_EXCLAMATION.replace(result, "びっくり")
         result = PATTERN_QUESTION.replace(result, "はてな")
         result = PATTERN_PROLONGED.replace(result, "のばし")
@@ -409,7 +415,6 @@ class DefaultCommentNormalizer(
         // に圧縮される（URL_PATTERN と同じキャラクタークラス）。
         private val PATTERN_W = Regex("""[wWｗＷ]{2,}""")
         private val PATTERN_KUSA = Regex("""草{2,}""")
-        private val PATTERN_EIGHT = Regex("""[8８]{3,}""")
         private val PATTERN_EXCLAMATION = Regex("""[!！]{2,}""")
         private val PATTERN_QUESTION = Regex("""[?？]{2,}""")
         private val PATTERN_PROLONGED = Regex("""[ー～〜]{3,}""")

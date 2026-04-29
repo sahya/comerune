@@ -26,6 +26,23 @@ class DefaultCommentNormalizerTest {
         postedAtEpochMs = 0L
     )
 
+    /**
+     * Mirrors the default `8{3,}|８{3,}` → `ぱちぱちぱち` rule shipped in
+     * `defaultNicoDictionaryRules` (lib/domain/models/app_settings.dart).
+     *
+     * Centralized here so updating the canonical pattern only touches one
+     * place in this test file. If this rule diverges from the Flutter-side
+     * default, an end-to-end regression for "888 → ぱちぱちぱち" will be
+     * masked, so keep them in sync when changing either side.
+     */
+    private val defaultEightRule = ReplaceRule(
+        pattern = "8{3,}|８{3,}",
+        replacement = "ぱちぱちぱち"
+    )
+
+    private fun settingsWithEightRule(): SpeechSettings =
+        defaultSettings.copy(dictionaryRules = listOf(defaultEightRule))
+
     // --- Acceptance Criteria Tests ---
 
     @Test
@@ -56,9 +73,21 @@ class DefaultCommentNormalizerTest {
     }
 
     @Test
-    fun `AC5 - repeated 8 is compressed to はくしゅ`() {
+    fun `AC5 - repeated 8 is left to user dictionary, default rule reads ぱちぱちぱち`() {
+        // 3+ `8` / `８` are no longer compressed by symbol compression so the
+        // user dictionary fully owns this rendering (see compressSymbols).
+        val result = normalizer.normalize(raw("888888"), settingsWithEightRule())
+        assertEquals("ぱちぱちぱち", result.normalizedText)
+        assertNull(result.skipReason)
+    }
+
+    @Test
+    fun `repeated 8 is not symbol-compressed when no dictionary rule exists`() {
+        // Regression guard: with an empty user dictionary, 888 must NOT be
+        // silently rewritten (was: hardcoded "はくしゅ"). The raw text is
+        // passed through so the engine reads the digits directly.
         val result = normalizer.normalize(raw("888888"), defaultSettings)
-        assertEquals("はくしゅ", result.normalizedText)
+        assertEquals("888888", result.normalizedText)
         assertNull(result.skipReason)
     }
 
@@ -150,15 +179,15 @@ class DefaultCommentNormalizerTest {
     }
 
     @Test
-    fun `two 8s are not compressed - requires 3 or more`() {
-        val result = normalizer.normalize(raw("88"), defaultSettings)
+    fun `two 8s are not transformed - default rule pattern requires 3 or more`() {
+        val result = normalizer.normalize(raw("88"), settingsWithEightRule())
         assertEquals("88", result.normalizedText)
     }
 
     @Test
-    fun `three 8s compress to はくしゅ - boundary of 3`() {
-        val result = normalizer.normalize(raw("888"), defaultSettings)
-        assertEquals("はくしゅ", result.normalizedText)
+    fun `three 8s trigger ぱちぱちぱち via dictionary - boundary of 3`() {
+        val result = normalizer.normalize(raw("888"), settingsWithEightRule())
+        assertEquals("ぱちぱちぱち", result.normalizedText)
         assertNull(result.skipReason)
     }
 
@@ -181,9 +210,9 @@ class DefaultCommentNormalizerTest {
     }
 
     @Test
-    fun `full-width 8 is compressed`() {
-        val result = normalizer.normalize(raw("８８８"), defaultSettings)
-        assertEquals("はくしゅ", result.normalizedText)
+    fun `full-width 8 is rendered by user dictionary as ぱちぱちぱち`() {
+        val result = normalizer.normalize(raw("８８８"), settingsWithEightRule())
+        assertEquals("ぱちぱちぱち", result.normalizedText)
     }
 
     @Test
