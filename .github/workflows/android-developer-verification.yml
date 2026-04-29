@@ -1,0 +1,94 @@
+name: ADI Verification
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  build-verification-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    environment: android-developer-verification
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Configure application ID
+        env:
+          ANDROID_APPLICATION_ID: ${{ secrets.ANDROID_APPLICATION_ID }}
+          ANDROID_SECRET_CONTEXT: environment android-developer-verification
+        run: |
+          set +x
+          bash scripts/configure-android-application-id.sh
+
+      - name: Configure ADI registration snippet
+        env:
+          ANDROID_ADI_REGISTRATION_PUBLIC_CONTENT: ${{ secrets.ANDROID_ADI_REGISTRATION_PUBLIC_CONTENT }}
+          ANDROID_ADI_REGISTRATION_SNIPPET: ${{ secrets.ANDROID_ADI_REGISTRATION_SNIPPET }}
+        run: |
+          set +x
+          adi_registration_public_content="${ANDROID_ADI_REGISTRATION_PUBLIC_CONTENT:-$ANDROID_ADI_REGISTRATION_SNIPPET}"
+          if [ -z "$adi_registration_public_content" ]; then
+            echo "::error::Secret ANDROID_ADI_REGISTRATION_PUBLIC_CONTENT is not set for environment android-developer-verification."
+            exit 1
+          fi
+          adi_registration_file="$RUNNER_TEMP/adi-registration.properties"
+          printf '%s\n' "$adi_registration_public_content" > "$adi_registration_file"
+          printf 'ANDROID_ADI_REGISTRATION_PUBLIC_CONTENT_FILE=%s\n' "$adi_registration_file" >> "$GITHUB_ENV"
+
+      - name: Configure release signing
+        env:
+          ANDROID_SIGNING_KEYSTORE_BASE64: ${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}
+          ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
+          ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+          ANDROID_SECRET_CONTEXT: environment android-developer-verification
+        run: |
+          set +x
+          bash scripts/configure-android-signing.sh
+
+      - name: Set up Java
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Download VOICEVOX native libraries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/setup-voicevox-libs.sh
+
+      - name: Validate verification build script syntax
+        run: |
+          bash -n scripts/configure-android-application-id.sh
+          bash -n scripts/configure-android-signing.sh
+          bash -n scripts/build-android-developer-verification-apk.sh
+
+      - name: Build verification APK
+        run: bash scripts/build-android-developer-verification-apk.sh
+
+      - name: Upload verification APK
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: android-developer-verification-apk
+          path: build/app/outputs/flutter-apk/comerune-android-developer-verification-arm64.apk
+          retention-days: 30
+
+      - name: Clean up verification materials
+        if: always()
+        run: |
+          rm -f android/keystore/release.jks
+          rm -f android/key.properties
+          rm -f "$RUNNER_TEMP/adi-registration.properties"

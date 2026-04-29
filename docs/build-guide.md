@@ -100,9 +100,52 @@ GitHub Actions のリリースワークフローでは、以下の Repository Se
 鍵エイリアスは `release` 固定でワークフローに直接記述されているため、Secret の設定は不要です。
 
 **Secrets の設定手順:**
-1. キーストアを Base64 エンコード: `base64 -w 0 android/keystore/release.jks`
+1. キーストアを Base64 エンコード
+   - GNU/Linux: `base64 -w 0 android/keystore/release.jks`
+   - macOS: `base64 android/keystore/release.jks | tr -d '\n'`
 2. GitHub リポジトリの Settings → Secrets and variables → Actions を開く
 3. 上記 3 つの Repository Secrets を追加する
+
+### ADI Verification 用 APK
+
+Android Developer Console の所有権確認用 APK は、通常のリリースワークフローに混ぜず、専用の GitHub Actions workflow
+`.github/workflows/android-developer-verification.yml` で生成します。
+
+- workflow 名: `ADI Verification`
+- 想定用途: `adi-registration.properties` を含む確認専用 APK の生成
+- 推奨設定: GitHub の `environment` `android-developer-verification` を作成し、以下の secrets を **environment secrets** として設定する
+  - `ANDROID_APPLICATION_ID`
+  - `ANDROID_SIGNING_KEYSTORE_BASE64`
+  - `ANDROID_SIGNING_KEY_PASSWORD`
+  - `ANDROID_SIGNING_STORE_PASSWORD`
+  - `ANDROID_ADI_REGISTRATION_PUBLIC_CONTENT`
+
+`ANDROID_ADI_REGISTRATION_PUBLIC_CONTENT` は、所有権確認用 APK の `assets/adi-registration.properties`
+に埋め込まれる前提の値です。互換目的で旧名 `ANDROID_ADI_REGISTRATION_SNIPPET` も読めますが、新規設定では
+`ANDROID_ADI_REGISTRATION_PUBLIC_CONTENT` を使用してください。
+
+この workflow で生成した APK は所有権確認専用です。通常配布用の APK 生成には使わず、検証完了後は通常の `Release` workflow を利用してください。
+GitHub Actions で生成した場合は、artifact `android-developer-verification-apk` をダウンロードして利用します。
+
+ローカルで手動生成する場合は、次の前提を満たしたうえで `make` ターゲットを利用できます。
+
+- `android/app_id.properties` がある
+- `android/key.properties` がある
+- `android/key.properties` の `storeFile` が指す keystore ファイルが存在する
+- `android/app/src/main/assets/adi-registration.properties` が既に存在しない
+- 確認文字列を保存したローカルファイルがある
+
+```bash
+ANDROID_ADI_REGISTRATION_PUBLIC_CONTENT_FILE=/path/to/adi-registration.properties \
+make build-adi-verification
+```
+
+生成物:
+- `build/app/outputs/flutter-apk/comerune-android-developer-verification-arm64.apk`
+
+このターゲットは `scripts/build-android-developer-verification-apk.sh` を呼び出し、ビルド時だけ
+`android/app/src/main/assets/adi-registration.properties` を一時生成して完了時に削除します。
+通常の `make build-release` は `scripts/guard-no-adi-registration-asset.sh` を通すため、verification 用 asset が残っている場合は失敗します。
 
 ### Google Play App Signing
 
@@ -146,6 +189,7 @@ Makefileも用意しています。
 ```bash
 make build           # デバッグAPK
 make build-release   # リリースAPK
+make build-adi-verification  # Android Developer Verification 用APK
 make test            # テスト実行
 make format          # 安全フォーマット（既存の作業差分以外は自動で戻す）
 make format-all      # 全体フォーマット（専用PR向け）

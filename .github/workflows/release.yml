@@ -64,38 +64,20 @@ jobs:
       - name: Configure application ID
         env:
           ANDROID_APPLICATION_ID: ${{ secrets.ANDROID_APPLICATION_ID }}
+          ANDROID_SECRET_CONTEXT: repository secrets
         run: |
           set +x
-          if [ -z "$ANDROID_APPLICATION_ID" ]; then
-            echo "::error::Repository secret ANDROID_APPLICATION_ID is not set. See docs/build-guide.md."
-            exit 1
-          fi
-          printf 'applicationId=%s\n' "$ANDROID_APPLICATION_ID" > android/app_id.properties
+          bash scripts/configure-android-application-id.sh
 
       - name: Configure release signing
         env:
           ANDROID_SIGNING_KEYSTORE_BASE64: ${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}
           ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
           ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+          ANDROID_SECRET_CONTEXT: repository secrets
         run: |
           set +x
-          if [ -z "$ANDROID_SIGNING_KEYSTORE_BASE64" ]; then
-            echo "::error::Repository secret ANDROID_SIGNING_KEYSTORE_BASE64 is not set. See docs/build-guide.md."
-            exit 1
-          fi
-          if [ -z "$ANDROID_SIGNING_KEY_PASSWORD" ] || [ -z "$ANDROID_SIGNING_STORE_PASSWORD" ]; then
-            echo "::error::One or more signing secrets are missing. Required: ANDROID_SIGNING_KEY_PASSWORD, ANDROID_SIGNING_STORE_PASSWORD."
-            exit 1
-          fi
-          mkdir -p android/keystore
-          echo "$ANDROID_SIGNING_KEYSTORE_BASE64" | base64 -d > android/keystore/release.jks \
-            || { echo "::error::Failed to decode keystore. Verify ANDROID_SIGNING_KEYSTORE_BASE64 contains valid base64."; exit 1; }
-          {
-            printf 'storePassword=%s\n' "$ANDROID_SIGNING_STORE_PASSWORD"
-            printf 'keyPassword=%s\n' "$ANDROID_SIGNING_KEY_PASSWORD"
-            printf 'keyAlias=release\n'
-            printf 'storeFile=../keystore/release.jks\n'
-          } > android/key.properties
+          bash scripts/configure-android-signing.sh
 
       - name: Set up Java
         uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
@@ -111,6 +93,9 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Guard against verification-only asset in release builds
+        run: bash scripts/guard-no-adi-registration-asset.sh
 
       - name: Check formatting
         run: dart format . --output=none --set-exit-if-changed
