@@ -33,7 +33,6 @@ import '../screens/comment_screen.dart';
 import '../screens/comment_screen_config.dart';
 import '../screens/settings_screen.dart';
 import '../theme/app_theme.dart';
-import '../widgets/broadcast_control_panel.dart';
 
 void _debugLogLazy(String Function() messageBuilder) {
   appDebugLogLazy(messageBuilder);
@@ -567,20 +566,12 @@ class _SelectScreenState extends State<SelectScreen>
               ],
             ),
           ),
-          if (_myProgram != null) ...<Widget>[
+          if (_myProgram != null)
             _MyBroadcastSection(
               program: _myProgram!,
               enabled: !_isConnectionInProgress,
               onTap: () => _connectToProgram(_myProgram!),
             ),
-            if (widget.broadcastControlRepository != null)
-              BroadcastControlPanel(
-                program: _myProgram!,
-                enabled: !_isConnectionInProgress,
-                onStart: () => _startBroadcast(_myProgram!),
-                onEnd: () => _endBroadcast(_myProgram!),
-              ),
-          ],
           Expanded(
             child: _CombinedProgramList(
               followPrograms: _followPrograms,
@@ -1413,78 +1404,6 @@ class _SelectScreenState extends State<SelectScreen>
 
   bool _isFutureBeginAt(DateTime value) {
     return value.isAfter(DateTime.now());
-  }
-
-  Future<BroadcastControlResult> _startBroadcast(FollowProgram program) async {
-    final BroadcastControlRepository? repo = widget.broadcastControlRepository;
-    if (repo == null) {
-      return const BroadcastControlResult(
-        success: false,
-        errorCode: 'NO_REPOSITORY',
-      );
-    }
-
-    final String userSession = await _loadUserSession();
-    final BroadcastControlResult result = await repo.startBroadcast(
-      programId: program.programId,
-      userSession: userSession,
-    );
-    if (result.success) {
-      // The user's broadcaster status just flipped; flush the in-memory
-      // caches that key broadcaster-gated UI (e.g. the comment screen's
-      // AppBar overflow "配信を終了" entry) so a comment screen opened
-      // immediately after start observes the freshly on-air program
-      // instead of returning the stale "no on-air program" tool-fallback
-      // null cache (#752).
-      widget.myProgramRepository?.clearOwnProgramCache();
-      widget.commentPostController?.clearBroadcasterCache();
-    }
-    if (result.success && mounted) {
-      final DateTime? endAt = result.endTime != null
-          ? DateTime.fromMillisecondsSinceEpoch(
-              result.endTime! * 1000,
-              isUtc: true,
-            )
-          : null;
-      setState(() {
-        _myProgram = program.copyWith(
-          status: ProgramStatus.onAir,
-          endAt: endAt,
-        );
-      });
-      unawaited(_fetchAllPrograms());
-    }
-    return result;
-  }
-
-  Future<BroadcastControlResult> _endBroadcast(FollowProgram program) async {
-    final BroadcastControlRepository? repo = widget.broadcastControlRepository;
-    if (repo == null) {
-      return const BroadcastControlResult(
-        success: false,
-        errorCode: 'NO_REPOSITORY',
-      );
-    }
-
-    final String userSession = await _loadUserSession();
-    final BroadcastControlResult result = await repo.endBroadcast(
-      programId: program.programId,
-      userSession: userSession,
-    );
-    if (result.success || result.isAlreadyEnded) {
-      // Symmetric with _startBroadcast: invalidate caches that may now
-      // hold a stale "broadcaster" outcome so subsequent UI gating
-      // re-resolves against the post-end state (#752).
-      widget.myProgramRepository?.clearOwnProgramCache();
-      widget.commentPostController?.clearBroadcasterCache();
-    }
-    if ((result.success || result.isAlreadyEnded) && mounted) {
-      setState(() {
-        _myProgram = null;
-      });
-      unawaited(_fetchAllPrograms());
-    }
-    return result;
   }
 
   void _connectToProgram(FollowProgram program) {

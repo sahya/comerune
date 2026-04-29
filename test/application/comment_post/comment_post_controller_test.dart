@@ -348,9 +348,8 @@ void main() {
 
       // Cache invalidation must result in a fresh HTTP request even
       // though `lv` and `userSession` are unchanged. This is the
-      // contract that lets `_startBroadcast` / `_endBroadcast` /
-      // `_endBroadcastFromMenu` flip broadcaster-gated UI without
-      // requiring a process restart (#752).
+      // contract that lets `_endBroadcastFromMenu` flip broadcaster-gated
+      // UI without requiring a process restart (#752).
       expect(fake.requests.length, firstCount + 1);
     });
   });
