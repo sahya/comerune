@@ -761,6 +761,10 @@ class _SelectScreenState extends State<SelectScreen>
             playRemainingAfterEnded:
                 _settingsNotifier.value.playRemainingAfterEnded,
             onSpeechQueueDrained: widget.onSpeechQueueDrained,
+            // Issue #758: bg poll timer reads the latest snapshot directly
+            // from the store (widget.messages stops updating in bg because
+            // frame scheduling is paused).
+            timelineStore: widget.timelineStore,
           ),
           commentPostController: widget.commentPostController,
           userSessionLoader: widget.userSessionStore?.load,

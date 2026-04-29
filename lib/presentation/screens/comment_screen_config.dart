@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../application/settings/settings_store.dart';
 import '../../application/speech/speech_availability_notifier.dart';
+import '../../application/timeline/timeline_store.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/connection/connection_method.dart';
@@ -275,6 +276,7 @@ class CommentSpeechConfig {
     this.androidTtsAvailability,
     this.playRemainingAfterEnded = true,
     this.onSpeechQueueDrained,
+    this.timelineStore,
   });
 
   /// The platform channel bridge for VoiceVox speech synthesis.
@@ -338,4 +340,22 @@ class CommentSpeechConfig {
   ///
   /// Null in test harnesses that do not need to assert FGS coordination.
   final VoidCallback? onSpeechQueueDrained;
+
+  /// Issue #758: optional source for the background speech poll timer.
+  ///
+  /// In foreground, [CommentScreen.didUpdateWidget] propagates the latest
+  /// [TimelineStore] snapshot to `widget.messages` on every rebuild. In
+  /// background the Flutter engine suspends frame scheduling, so
+  /// `widget.messages` remains the snapshot captured at the last build
+  /// before backgrounding and the periodic poll timer would never see new
+  /// arrivals. The poll timer reads from this store directly so it always
+  /// observes the current snapshot, even when the widget tree is not
+  /// rebuilding. PR #721 made [TimelineStore.messages] return a cached
+  /// view that is replaced on every mutation, so direct reads are always
+  /// fresh and identity-stable between mutations.
+  ///
+  /// Null in test harnesses that do not need background simulation; in
+  /// that case the timer falls back to `widget.messages` (which is
+  /// foreground-only correct).
+  final TimelineStore? timelineStore;
 }

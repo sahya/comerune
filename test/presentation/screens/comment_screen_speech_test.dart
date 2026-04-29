@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/application/settings/settings_store.dart';
 import 'package:comerune/application/speech/speech_availability_notifier.dart';
+import 'package:comerune/application/timeline/timeline_store.dart';
 import 'package:comerune/comment_speech/comment_speech.dart';
 import 'package:comerune/domain/connection/connection_supervisor.dart';
 import 'package:comerune/domain/models/app_message.dart';
@@ -3890,6 +3891,337 @@ void main() {
       },
     );
   });
+
+  // -------------------------------------------------------------------------
+  // Issue #758: background poll timer reads latest TimelineStore snapshot.
+  //
+  // In foreground the widget tree rebuild cycle pushes the latest
+  // `messages` snapshot into `widget.messages` via didUpdateWidget, and the
+  // existing tests cover that path. When the activity is backgrounded the
+  // Flutter engine pauses frame scheduling, so didUpdateWidget never fires
+  // and `widget.messages` becomes stale. The poll timer is the only safety
+  // net, and it must read the latest snapshot directly from the
+  // TimelineStore to detect new arrivals while in bg.
+  // -------------------------------------------------------------------------
+  group('CommentScreen background poll timer (Issue #758)', () {
+    late FakeCommentSpeechPlatform fakePlatform;
+
+    setUp(() {
+      fakePlatform = FakeCommentSpeechPlatform();
+      fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+        enabled: true,
+        engineState: 'READY',
+        playerState: 'IDLE',
+        queueSize: 0,
+        currentSpeakerId: 0,
+      );
+    });
+
+    testWidgets('bg lifecycle: TimelineStore mutation submits via poll timer', (
+      WidgetTester tester,
+    ) async {
+      final TimelineStore store = TimelineStore(capacity: 100);
+      addTearDown(store.dispose);
+
+      await tester.pumpWidget(
+        _buildBgPollScreen(
+          timelineStore: store,
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(fakePlatform.startCalled, isTrue);
+
+      // Simulate going to background. didUpdateWidget will not fire on the
+      // CommentScreen anymore for any TimelineStore mutation we make.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+
+      // New comment arrives while in bg. widget.messages is the empty
+      // snapshot captured at the last build, so without the fix the
+      // poll timer would never detect this.
+      store.add(_chatMessage(id: 'bg-1', content: 'バックグラウンド'));
+
+      // Poll timer is Timer.periodic(2 seconds). Advancing the test
+      // clock by slightly more than 2s lets it fire once.
+      await tester.pump(const Duration(seconds: 2, milliseconds: 100));
+
+      expect(fakePlatform.submittedComments, hasLength(1));
+      expect(fakePlatform.submittedComments.first.text, 'バックグラウンド');
+
+      // Drain pending timers before the test ends.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('dispose cancels bg poll timer (no submit after teardown)', (
+      WidgetTester tester,
+    ) async {
+      // Verifies the timer is cancelled in dispose. Regardless of fg/bg,
+      // a disposed CommentScreen must not submit any further comments.
+      final TimelineStore store = TimelineStore(capacity: 100);
+      addTearDown(store.dispose);
+
+      await tester.pumpWidget(
+        _buildBgPollScreen(
+          timelineStore: store,
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Dispose the screen by replacing it with an empty widget tree.
+      // Stay in resumed state so pumpWidget actually unmounts (paused
+      // state pauses frame scheduling and would queue the dispose).
+      await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+      await tester.pumpAndSettle();
+
+      final int submitsBeforeMutation = fakePlatform.submittedComments.length;
+
+      // Move to background and mutate the store. If the timer was leaked
+      // the submit path would still fire.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      store.add(_chatMessage(id: 'after-dispose-1', content: 'もう死んでる'));
+      await tester.pump(const Duration(seconds: 3));
+
+      expect(
+        fakePlatform.submittedComments.length,
+        submitsBeforeMutation,
+        reason:
+            'No new submit must occur after CommentScreen.dispose(); '
+            'the bg poll timer must be cancelled.',
+      );
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+    });
+
+    testWidgets(
+      'fg→disable→bg: poll does not submit after speech is disabled',
+      (WidgetTester tester) async {
+        // Real-world flow: settings UI is touched in fg, so the disable
+        // path runs while resumed (didUpdateWidget fires). Then we bg and
+        // verify the poll path stays silent.
+        final TimelineStore store = TimelineStore(capacity: 100);
+        addTearDown(store.dispose);
+
+        await tester.pumpWidget(
+          _buildBgPollScreen(
+            timelineStore: store,
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(fakePlatform.startCalled, isTrue);
+
+        // Disable speech in foreground (typical UI path).
+        final _BgPollHostState host = tester.state(find.byType(_BgPollHost));
+        host.updateSpeechSettings(const SpeechSettings(enabled: false));
+        await tester.pumpAndSettle();
+        expect(fakePlatform.stopCalled, isTrue);
+
+        // Now go to bg and add a comment — the poll path must NOT submit
+        // because speech is disabled and the timer is cancelled.
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        await tester.pump();
+
+        store.add(_chatMessage(id: 'disabled-1', content: '無音'));
+        await tester.pump(const Duration(seconds: 3));
+
+        expect(fakePlatform.submittedComments, isEmpty);
+
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets('bg → fg → bg cycle preserves cursor (no duplicate submit)', (
+      WidgetTester tester,
+    ) async {
+      final TimelineStore store = TimelineStore(capacity: 100);
+      addTearDown(store.dispose);
+
+      await tester.pumpWidget(
+        _buildBgPollScreen(
+          timelineStore: store,
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Phase 1: bg, add a comment, poll fires and submits.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      store.add(_chatMessage(id: 'cycle-bg-1', content: 'one'));
+      await tester.pump(const Duration(seconds: 2, milliseconds: 100));
+      expect(fakePlatform.submittedComments, hasLength(1));
+
+      // Phase 2: resume → fg path (didUpdateWidget) on next host setState.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      // Push the latest snapshot into widget.messages explicitly via the
+      // host (mirrors how SelectScreen rebuilds on store notification).
+      final _BgPollHostState host = tester.state(find.byType(_BgPollHost));
+      host.syncFromStore();
+      await tester.pumpAndSettle();
+      // No new comment in fg, no extra submit.
+      expect(fakePlatform.submittedComments, hasLength(1));
+
+      // Phase 3: bg again, add another comment.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      store.add(_chatMessage(id: 'cycle-bg-2', content: 'two'));
+      await tester.pump(const Duration(seconds: 2, milliseconds: 100));
+
+      // Only the new comment is submitted; the cursor prevented re-submit
+      // of cycle-bg-1.
+      expect(fakePlatform.submittedComments, hasLength(2));
+      expect(fakePlatform.submittedComments.last.text, 'two');
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('multiple bg mutations all submit on next poll', (
+      WidgetTester tester,
+    ) async {
+      final TimelineStore store = TimelineStore(capacity: 100);
+      addTearDown(store.dispose);
+
+      await tester.pumpWidget(
+        _buildBgPollScreen(
+          timelineStore: store,
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+
+      // Three comments arrive in close succession during bg.
+      store.add(_chatMessage(id: 'multi-1', content: 'A'));
+      store.add(_chatMessage(id: 'multi-2', content: 'B'));
+      store.add(_chatMessage(id: 'multi-3', content: 'C'));
+
+      // One poll cycle should drain all three (they are after the cursor).
+      await tester.pump(const Duration(seconds: 2, milliseconds: 100));
+
+      expect(fakePlatform.submittedComments, hasLength(3));
+      expect(
+        fakePlatform.submittedComments.map((RawComment c) => c.text).toList(),
+        <String>['A', 'B', 'C'],
+      );
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Test helpers
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Helpers for Issue #758 background poll tests
+// ---------------------------------------------------------------------------
+
+/// Hosts a [CommentScreen] wired to a real [TimelineStore] so the bg poll
+/// timer can pick up store mutations. Distinct from [_SpeechTestHost] to
+/// keep the bg-specific scaffolding isolated and easy to read.
+class _BgPollHost extends StatefulWidget {
+  const _BgPollHost({
+    required this.timelineStore,
+    required this.speechPlatform,
+    required this.speechSettings,
+  });
+
+  final TimelineStore timelineStore;
+  final CommentSpeechPlatform? speechPlatform;
+  final SpeechSettings speechSettings;
+
+  @override
+  State<_BgPollHost> createState() => _BgPollHostState();
+}
+
+class _BgPollHostState extends State<_BgPollHost> {
+  late SpeechSettings _speechSettings;
+  late List<AppMessage> _messages;
+  // Cache the supervisor across rebuilds so didUpdateWidget detects identity
+  // stability — otherwise CommentScreen would treat every rebuild as a new
+  // connection and re-init speech, masking the bg poll path under test.
+  late final ConnectionSupervisor _supervisor = _buildStreamingSupervisor();
+
+  @override
+  void initState() {
+    super.initState();
+    _speechSettings = widget.speechSettings;
+    _messages = widget.timelineStore.messages.toList(growable: false);
+  }
+
+  @override
+  void dispose() {
+    _supervisor.dispose();
+    super.dispose();
+  }
+
+  void updateSpeechSettings(SpeechSettings settings) {
+    setState(() {
+      _speechSettings = settings;
+    });
+  }
+
+  /// Mirrors the SelectScreen behaviour of forwarding the latest store
+  /// snapshot to widget.messages via a rebuild. Used to verify cursor
+  /// behaviour across bg → fg → bg transitions.
+  void syncFromStore() {
+    setState(() {
+      _messages = widget.timelineStore.messages.toList(growable: false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CommentScreen(
+      programInfo: const CommentProgramInfo(lv: 'lv123456789'),
+      connectionSupervisor: _supervisor,
+      messages: _messages,
+      callbacks: CommentCallbacks(
+        onStopAllConnections: () async {},
+        onReconnectSameLv: () async {},
+        onDifferentLvConnected: (_, _) async {},
+      ),
+      themeMode: AppThemeMode.light,
+      speechConfig: CommentSpeechConfig(
+        speechPlatform: widget.speechPlatform,
+        speechSettings: _speechSettings,
+        timelineStore: widget.timelineStore,
+      ),
+    );
+  }
+}
+
+Widget _buildBgPollScreen({
+  required TimelineStore timelineStore,
+  FakeCommentSpeechPlatform? speechPlatform,
+  SpeechSettings speechSettings = const SpeechSettings(enabled: true),
+}) {
+  return MaterialApp(
+    home: _BgPollHost(
+      timelineStore: timelineStore,
+      speechPlatform: speechPlatform,
+      speechSettings: speechSettings,
+    ),
+  );
 }
 
 // ---------------------------------------------------------------------------

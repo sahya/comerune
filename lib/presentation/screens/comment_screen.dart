@@ -2043,7 +2043,18 @@ class _CommentScreenState extends State<CommentScreen>
       if (lifecycleState == AppLifecycleState.resumed) return;
 
       if (_speechStarted && widget.speechConfig.speechSettings.enabled) {
-        _submitNewCommentsForSpeech(widget.messages);
+        // Issue #758: in foreground, didUpdateWidget propagates the latest
+        // TimelineStore snapshot to widget.messages. In background the
+        // widget tree rebuild is paused (Flutter engine suspends frame
+        // scheduling), so widget.messages remains the snapshot captured
+        // at the last build before backgrounding. Read directly from the
+        // store here so the poll timer always sees the current snapshot.
+        // PR #721 made the messages getter return a cached view that is
+        // replaced on every mutation, so direct reads are always fresh.
+        // Falls back to widget.messages when no store is wired (tests).
+        final List<AppMessage> latest =
+            widget.speechConfig.timelineStore?.messages ?? widget.messages;
+        _submitNewCommentsForSpeech(latest);
       }
     });
   }
