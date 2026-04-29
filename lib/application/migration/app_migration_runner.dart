@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:developer';
 
+import '../../comment_speech/src/models/replace_rule.dart';
+import '../../domain/models/app_settings.dart';
 import '../../domain/models/ng_word_rule.dart';
 import '../settings/settings_store.dart';
 
@@ -21,7 +23,7 @@ class AppMigrationRunner {
 
   /// Bump this constant and add a corresponding case in [_runMigration]
   /// whenever a new migration is needed.
-  static const int currentMigrationVersion = 2;
+  static const int currentMigrationVersion = 3;
 
   /// Run all pending migrations. Safe to call on every app startup.
   ///
@@ -74,6 +76,11 @@ class AppMigrationRunner {
         // JSON format with per-word enable/disable toggle.
         await _migrateNgWordsToRules();
         break;
+      case 3:
+        // Migration v3: Backfill the "single w/ｗ → わら" dictionary preset
+        // for users whose saved dictionary predates that preset being added.
+        await _backfillSingleWDictionaryPresets();
+        break;
       default:
         log(
           'Unknown migration version: $version — skipping',
@@ -117,6 +124,96 @@ class AppMigrationRunner {
 
     log(
       'Migrated ${rules.length} NG words to structured format',
+      name: 'AppMigrationRunner',
+    );
+  }
+
+  /// Patterns that read a single `w` / `ｗ` as 「わら」.
+  ///
+  /// These rules were added to [defaultNicoDictionaryRules] after some users
+  /// had already persisted their dictionary. Without this backfill, those
+  /// users keep seeing only the older multi-`w` rules.
+  ///
+  /// The patterns are a subset of [defaultNicoDictionaryRules] and must stay
+  /// in sync; the migration appends only the rules whose `pattern` is missing
+  /// from the user's saved dictionary so previously-deleted built-ins are not
+  /// re-added more than once.
+  static const List<String> _singleWPresetPatterns = <String>[
+    r'[wｗ]$',
+    r'(?<![A-Za-z0-9])[wｗ](?![A-Za-z0-9])',
+  ];
+
+  /// Append any missing "single w/ｗ → わら" preset rules to the user's
+  /// saved dictionary. No-op when the dictionary key is unset (fresh install
+  /// — defaults will be loaded on first read) or when the stored JSON is
+  /// malformed (avoid clobbering user data on parse failure).
+  Future<void> _backfillSingleWDictionaryPresets() async {
+    const String key = 'settings.speech.dictionaryRules';
+
+    final String? raw = _prefs.getString(key);
+    if (raw == null) {
+      // Fresh install: defaults are returned by the store when the key is
+      // null, so no migration is needed.
+      return;
+    }
+
+    final List<ReplaceRule> rules;
+    try {
+      final List<dynamic> decoded = jsonDecode(raw) as List<dynamic>;
+      rules = decoded
+          .map((dynamic e) => ReplaceRule.fromMap(e as Map<String, dynamic>))
+          .toList();
+    } on Object catch (e) {
+      log(
+        'Skipping single-w preset backfill: failed to parse dictionary JSON: $e',
+        name: 'AppMigrationRunner',
+      );
+      return;
+    }
+
+    final Set<String> existingPatterns = rules
+        .map((ReplaceRule r) => r.pattern)
+        .toSet();
+
+    final List<ReplaceRule> additions = <ReplaceRule>[];
+    for (final String pattern in _singleWPresetPatterns) {
+      if (existingPatterns.contains(pattern)) continue;
+      // Pull the canonical rule (replacement + enabled defaults) from the
+      // built-in defaults so the inserted rule matches a fresh install.
+      // The defensive null-fallback guards against subset drift between
+      // [_singleWPresetPatterns] and [defaultNicoDictionaryRules]: if a
+      // future edit removes a referenced pattern from the defaults, skip
+      // it instead of crashing app startup. The subset is also asserted
+      // by a unit test so this branch should be unreachable in practice.
+      ReplaceRule? preset;
+      for (final ReplaceRule r in defaultNicoDictionaryRules) {
+        if (r.pattern == pattern) {
+          preset = r;
+          break;
+        }
+      }
+      if (preset == null) {
+        log(
+          'Single-w preset pattern not found in defaults; skipping: $pattern',
+          name: 'AppMigrationRunner',
+        );
+        continue;
+      }
+      additions.add(preset);
+    }
+
+    if (additions.isEmpty) {
+      return;
+    }
+
+    final List<ReplaceRule> merged = <ReplaceRule>[...rules, ...additions];
+    await _prefs.setString(
+      key,
+      jsonEncode(merged.map((ReplaceRule r) => r.toMap()).toList()),
+    );
+
+    log(
+      'Backfilled ${additions.length} single-w preset dictionary rule(s)',
       name: 'AppMigrationRunner',
     );
   }
