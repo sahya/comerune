@@ -483,5 +483,59 @@ void main() {
         expect(result.playRemainingAfterEnded, isTrue);
       });
     });
+
+    group('commentSortOrder export/import (#774)', () {
+      test('default value is ascending', () {
+        expect(
+          AppSettings.defaults.commentSortOrder,
+          CommentSortOrder.ascending,
+        );
+      });
+
+      test('toJson emits the field as enum.name', () {
+        final Map<String, dynamic> json = AppSettings.defaults.toJson();
+        expect(json['commentSortOrder'], 'ascending');
+
+        final Map<String, dynamic> descJson = AppSettings.defaults
+            .copyWith(commentSortOrder: CommentSortOrder.descending)
+            .toJson();
+        expect(descJson['commentSortOrder'], 'descending');
+      });
+
+      test('roundtrip preserves descending', () {
+        final AppSettings original = AppSettings.defaults.copyWith(
+          commentSortOrder: CommentSortOrder.descending,
+        );
+        final AppSettings restored = AppSettings.fromJson(original.toJson());
+        expect(restored.commentSortOrder, CommentSortOrder.descending);
+      });
+
+      test('roundtrip preserves ascending', () {
+        const AppSettings original = AppSettings.defaults;
+        final AppSettings restored = AppSettings.fromJson(original.toJson());
+        expect(restored.commentSortOrder, CommentSortOrder.ascending);
+      });
+
+      test('old export without the key falls back to ascending — '
+          'backwards-compatible', () {
+        final AppSettings result = AppSettings.fromJson(<String, dynamic>{});
+        expect(result.commentSortOrder, AppSettings.defaults.commentSortOrder);
+        expect(result.commentSortOrder, CommentSortOrder.ascending);
+      });
+
+      test('unknown string value falls back to default', () {
+        final AppSettings result = AppSettings.fromJson(<String, dynamic>{
+          'commentSortOrder': 'sideways',
+        });
+        expect(result.commentSortOrder, AppSettings.defaults.commentSortOrder);
+      });
+
+      test('non-string value falls back to default', () {
+        final AppSettings result = AppSettings.fromJson(<String, dynamic>{
+          'commentSortOrder': 42,
+        });
+        expect(result.commentSortOrder, AppSettings.defaults.commentSortOrder);
+      });
+    });
   });
 }

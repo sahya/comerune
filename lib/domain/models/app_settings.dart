@@ -149,6 +149,42 @@ double commentFontSizeFromStorageValue(String? raw) {
   }
 }
 
+/// コメントスクロール（タイムライン表示）の並び順。
+///
+/// `ascending` は古いコメントが上、新しいコメントが下に並ぶ。
+/// `descending` は逆。AppBar のソート切替ボタンで反転する。
+///
+/// 永続化は [SharedPreferencesSettingsStore] が `String?` 経由で行う。
+/// 未保存・不正値・未知値はすべて [AppSettings.defaults.commentSortOrder]
+/// (=`ascending`) にフォールバックする。
+enum CommentSortOrder { ascending, descending }
+
+extension CommentSortOrderValue on CommentSortOrder {
+  /// 永続化や JSON Export に使う安定した文字列表現（`enum.name` に揃える）。
+  String get storageValue => name;
+
+  /// 保存値（または JSON 値）から [CommentSortOrder] を復元する。
+  /// `null`・未知値はデフォルト ([AppSettings.defaults.commentSortOrder]) に
+  /// フォールバックする。
+  static CommentSortOrder fromStorageValue(String? raw) {
+    switch (raw) {
+      case 'descending':
+        return CommentSortOrder.descending;
+      case 'ascending':
+        return CommentSortOrder.ascending;
+      case null:
+        return AppSettings.defaults.commentSortOrder;
+      default:
+        developer.log(
+          'Unknown CommentSortOrder storage value: "$raw", '
+          'falling back to default',
+          name: 'CommentSortOrder',
+        );
+        return AppSettings.defaults.commentSortOrder;
+    }
+  }
+}
+
 enum PastCommentFetchCount { count100, count500, count1000, all }
 
 /// タイムライン表示容量を算出する際に、過去コメント取得数へ上乗せする
@@ -356,6 +392,7 @@ class AppSettings {
     required this.androidTtsPitch,
     required this.androidTtsVolume,
     required this.playRemainingAfterEnded,
+    required this.commentSortOrder,
   }) : assert(
          commentFontSize >= commentFontSizeMin &&
              commentFontSize <= commentFontSizeMax,
@@ -426,6 +463,7 @@ class AppSettings {
     androidTtsPitch: 1.0,
     androidTtsVolume: 1.0,
     playRemainingAfterEnded: true,
+    commentSortOrder: CommentSortOrder.ascending,
   );
 
   final AppThemeMode themeMode;
@@ -595,6 +633,13 @@ class AppSettings {
   /// `failed` / `stopped` には適用されず、これらは従来通り即時停止する。
   final bool playRemainingAfterEnded;
 
+  /// コメント画面のスクロール方向（並び順）。
+  ///
+  /// `ascending`（既定）は古いコメントが上、新しいコメントが下に並ぶ。
+  /// `descending` は逆順。AppBar のソート切替ボタンで反転し、
+  /// 値はセッションをまたいで永続化される（Issue #774）。
+  final CommentSortOrder commentSortOrder;
+
   /// Returns a list of lower-cased NG word pattern strings for filtering.
   ///
   /// When [ngWordRules] is populated (post-migration), only **enabled** rules
@@ -743,6 +788,7 @@ class AppSettings {
     double? androidTtsPitch,
     double? androidTtsVolume,
     bool? playRemainingAfterEnded,
+    CommentSortOrder? commentSortOrder,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -819,6 +865,7 @@ class AppSettings {
       androidTtsVolume: androidTtsVolume ?? this.androidTtsVolume,
       playRemainingAfterEnded:
           playRemainingAfterEnded ?? this.playRemainingAfterEnded,
+      commentSortOrder: commentSortOrder ?? this.commentSortOrder,
     );
   }
 
@@ -914,6 +961,7 @@ class AppSettings {
       'androidTtsPitch': androidTtsPitch,
       'androidTtsVolume': androidTtsVolume,
       'playRemainingAfterEnded': playRemainingAfterEnded,
+      'commentSortOrder': commentSortOrder.storageValue,
     };
   }
 
@@ -1107,6 +1155,12 @@ class AppSettings {
       playRemainingAfterEnded: switch (json['playRemainingAfterEnded']) {
         bool b => b,
         _ => d.playRemainingAfterEnded,
+      },
+      // Issue #774: 旧 Export ファイル（このキーが存在しない）や不正値は
+      // デフォルト (ascending) にフォールバックする。
+      commentSortOrder: switch (json['commentSortOrder']) {
+        String s => CommentSortOrderValue.fromStorageValue(s),
+        _ => d.commentSortOrder,
       },
     );
   }

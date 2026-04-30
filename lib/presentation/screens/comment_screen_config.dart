@@ -105,6 +105,7 @@ class CommentCallbacks {
     this.onUserColorRemoved,
     this.onNicknameChanged,
     this.onNicknameRemoved,
+    this.onSortOrderChanged,
   });
 
   final Future<void> Function() onStopAllConnections;
@@ -133,6 +134,12 @@ class CommentCallbacks {
 
   /// Called when a nickname is removed for a user.
   final void Function(String userId)? onNicknameRemoved;
+
+  /// Called when the user toggles the comment scroll order via the
+  /// AppBar sort button. The argument is the **new** sort order after the
+  /// toggle. The composition root is responsible for persisting this via
+  /// [SettingsStore.save]. Issue #774.
+  final void Function(CommentSortOrder)? onSortOrderChanged;
 }
 
 /// Content-based filtering and per-user rendering attributes for

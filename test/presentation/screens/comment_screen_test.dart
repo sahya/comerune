@@ -1721,6 +1721,145 @@ void main() {
       expect(secondYAfter, lessThan(firstYAfter));
     });
 
+    testWidgets(
+      'initial commentSortOrder=descending shows comments newest-first '
+      'and sets the matching tooltip (#774)',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          AppMessage(
+            id: 'first',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'u1',
+            content: 'first comment',
+            type: AppMessageType.chat,
+          ),
+          AppMessage(
+            id: 'second',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 10),
+            userId: 'u2',
+            content: 'second comment',
+            type: AppMessageType.chat,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            commentSortOrder: CommentSortOrder.descending,
+          ),
+        );
+
+        // Newest comment ("second") should be drawn above the older one
+        // ("first") right from the first build, because the persisted
+        // descending order is honored without needing a button tap.
+        final Finder firstRow = find.byKey(const Key('comment-row-first'));
+        final Finder secondRow = find.byKey(const Key('comment-row-second'));
+        expect(firstRow, findsOneWidget);
+        expect(secondRow, findsOneWidget);
+        final double firstY = tester.getTopLeft(firstRow).dy;
+        final double secondY = tester.getTopLeft(secondRow).dy;
+        expect(secondY, lessThan(firstY));
+
+        // Tooltip should reflect "古い順に切替" because we are currently
+        // showing newest-first (descending).
+        final IconButton button = tester.widget<IconButton>(
+          find.byKey(const Key('sort-toggle-button')),
+        );
+        expect(button.tooltip, '古い順に切替');
+      },
+    );
+
+    testWidgets(
+      '_toggleSortOrder invokes onSortOrderChanged with the new order (#774)',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<CommentSortOrder> received = <CommentSortOrder>[];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: const <AppMessage>[],
+            onSortOrderChanged: received.add,
+          ),
+        );
+
+        // Default starts at ascending. Tapping flips to descending.
+        await tester.tap(find.byKey(const Key('sort-toggle-button')));
+        await tester.pumpAndSettle();
+
+        expect(received, <CommentSortOrder>[CommentSortOrder.descending]);
+
+        // Tapping again flips back to ascending and the callback is
+        // invoked with the new value (not just the toggle event).
+        await tester.tap(find.byKey(const Key('sort-toggle-button')));
+        await tester.pumpAndSettle();
+
+        expect(received, <CommentSortOrder>[
+          CommentSortOrder.descending,
+          CommentSortOrder.ascending,
+        ]);
+      },
+    );
+
+    testWidgets('tapping the toggle when initial commentSortOrder=descending '
+        'reverses the visible order back to ascending and emits ascending '
+        'via the callback (#774)', (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+      final List<CommentSortOrder> received = <CommentSortOrder>[];
+      final List<AppMessage> messages = <AppMessage>[
+        AppMessage(
+          id: 'first',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+          userId: 'u1',
+          content: 'first comment',
+          type: AppMessageType.chat,
+        ),
+        AppMessage(
+          id: 'second',
+          timestamp: DateTime(2026, 3, 22, 12, 0, 10),
+          userId: 'u2',
+          content: 'second comment',
+          type: AppMessageType.chat,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: messages,
+          commentSortOrder: CommentSortOrder.descending,
+          onSortOrderChanged: received.add,
+        ),
+      );
+
+      // Sanity check: starts in descending (newest-first).
+      final Finder firstRow = find.byKey(const Key('comment-row-first'));
+      final Finder secondRow = find.byKey(const Key('comment-row-second'));
+      final double firstYBefore = tester.getTopLeft(firstRow).dy;
+      final double secondYBefore = tester.getTopLeft(secondRow).dy;
+      expect(secondYBefore, lessThan(firstYBefore));
+
+      // Tap the toggle: should flip to ascending.
+      await tester.tap(find.byKey(const Key('sort-toggle-button')));
+      await tester.pumpAndSettle();
+
+      // Visible order is reversed (older comment now on top).
+      final double firstYAfter = tester.getTopLeft(firstRow).dy;
+      final double secondYAfter = tester.getTopLeft(secondRow).dy;
+      expect(firstYAfter, lessThan(secondYAfter));
+
+      // Tooltip now reflects the inverse direction.
+      final IconButton button = tester.widget<IconButton>(
+        find.byKey(const Key('sort-toggle-button')),
+      );
+      expect(button.tooltip, '新しい順に切替');
+
+      // Callback emitted exactly the new (ascending) value.
+      expect(received, <CommentSortOrder>[CommentSortOrder.ascending]);
+    });
+
     testWidgets('displays resolved user name with user ID', (
       WidgetTester tester,
     ) async {
@@ -8218,6 +8357,8 @@ Widget _buildScreen({
   bool showNicoadComment = true,
   AppThemeMode themeMode = AppThemeMode.light,
   bool ngProtectionNotificationEnabled = false,
+  CommentSortOrder commentSortOrder = CommentSortOrder.ascending,
+  void Function(CommentSortOrder)? onSortOrderChanged,
 }) {
   final UserNameResolution? userNameResolution = resolveUserName == null
       ? null
@@ -8243,10 +8384,12 @@ Widget _buildScreen({
         onReconnectSameLv: onReconnectSameLv ?? () async {},
         onDifferentLvConnected: (_, _) async {},
         onOpenSettings: onOpenSettings,
+        onSortOrderChanged: onSortOrderChanged,
       ),
       debugMode: debugMode,
       userNameResolution: userNameResolution,
       commentTwoLineEnabled: commentTwoLineEnabled,
+      commentSortOrder: commentSortOrder,
       commentFontSize: commentFontSize,
       themeMode: themeMode,
       statistics: CommentStatisticsConfig(

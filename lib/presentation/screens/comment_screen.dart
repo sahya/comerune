@@ -429,8 +429,6 @@ class PinnedCommentRowHarness extends StatelessWidget {
   }
 }
 
-enum CommentSortOrder { ascending, descending }
-
 /// Actions reachable through the AppBar overflow menu. Kept private to the
 /// screen because the menu's wiring lives entirely inside [CommentScreen].
 enum _AppBarMenuAction { endBroadcast, search, saveLog, settings }
@@ -499,6 +497,7 @@ class CommentScreen extends StatefulWidget {
     this.commentTwoLineEnabled = false,
     this.commentTwoLineMetaFontPercent = commentTwoLineMetaFontPercentDefault,
     this.commentZebraStripingEnabled = false,
+    this.commentSortOrder = CommentSortOrder.ascending,
     this.userColorMap = const <String, int>{},
     this.onUserColorChanged,
     this.onUserColorRemoved,
@@ -546,6 +545,12 @@ class CommentScreen extends StatefulWidget {
   /// When true, alternating comment rows have a subtle background tint
   /// for easier visual scanning.
   final bool commentZebraStripingEnabled;
+
+  /// 初期スクロール方向。永続化された値（[AppSettings.commentSortOrder]）から
+  /// `_CommentScreenState._sortOrder` の初期化に使う。AppBar のソート切替
+  /// ボタンが押されたら `CommentCallbacks.onSortOrderChanged` を呼んで
+  /// 上位レイヤーで永続化される（Issue #774）。
+  final CommentSortOrder commentSortOrder;
 
   /// Per-user comment color map. Keys are user IDs, values are ARGB32 ints.
   final Map<String, int> userColorMap;
@@ -655,7 +660,7 @@ class _CommentScreenState extends State<CommentScreen>
   /// (header bar only, tappable to restore). Only consulted when
   /// [_pendingStats] is non-null.
   bool _statsPanelExpanded = false;
-  CommentSortOrder _sortOrder = CommentSortOrder.ascending;
+  late CommentSortOrder _sortOrder = widget.commentSortOrder;
   final Set<String> _pinnedMessageIds = <String>{};
   bool _touchActive = false;
 
@@ -3563,6 +3568,10 @@ class _CommentScreenState extends State<CommentScreen>
           ? CommentSortOrder.descending
           : CommentSortOrder.ascending;
     });
+    // Issue #774: 永続化は上位レイヤー (SelectScreen) に委譲する。
+    // ここでは UI 状態を確定させた後の新しい値を通知するだけにとどめ、
+    // SharedPreferences への書き込みは presentation 層から切り離す。
+    widget.callbacks.onSortOrderChanged?.call(_sortOrder);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToEdge(animated: false);
     });

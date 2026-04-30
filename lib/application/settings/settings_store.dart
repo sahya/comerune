@@ -212,6 +212,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   // Issue #739: ended grace 期間中も読み上げを継続するか。
   static const String _kPlayRemainingAfterEnded =
       'settings.tts.playRemainingAfterEnded';
+  // Issue #774: コメント画面のスクロール方向（昇順/降順）の永続化キー。
+  static const String _kCommentSortOrder = 'settings.comment.sortOrder';
 
   @override
   Future<AppSettings> load() async {
@@ -353,6 +355,9 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       playRemainingAfterEnded:
           _prefs.getBool(_kPlayRemainingAfterEnded) ??
           defaults.playRemainingAfterEnded,
+      commentSortOrder: CommentSortOrderValue.fromStorageValue(
+        _prefs.getString(_kCommentSortOrder),
+      ),
     );
   }
 
@@ -484,6 +489,10 @@ class SharedPreferencesSettingsStore implements SettingsStore {
     await _prefs.setBool(
       _kPlayRemainingAfterEnded,
       settings.playRemainingAfterEnded,
+    );
+    await _prefs.setString(
+      _kCommentSortOrder,
+      settings.commentSortOrder.storageValue,
     );
   }
 

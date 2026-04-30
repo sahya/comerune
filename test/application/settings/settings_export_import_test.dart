@@ -216,6 +216,47 @@ void main() {
       },
     );
 
+    test('roundtrip preserves commentSortOrder (#774)', () async {
+      final AppSettings original = AppSettings.defaults.copyWith(
+        commentSortOrder: CommentSortOrder.descending,
+      );
+      await store.save(original);
+
+      final String exported = await store.exportAsJson();
+      final Map<String, dynamic> json =
+          jsonDecode(exported) as Map<String, dynamic>;
+      expect(json['commentSortOrder'], 'descending');
+
+      final InMemorySharedPreferences newPrefs = InMemorySharedPreferences();
+      final SharedPreferencesSettingsStore newStore =
+          SharedPreferencesSettingsStore(prefs: newPrefs);
+      final AppSettings imported = await newStore.importFromJson(exported);
+      expect(imported.commentSortOrder, CommentSortOrder.descending);
+
+      // Re-load from the same prefs to confirm the value was persisted.
+      final AppSettings reloaded = await newStore.load();
+      expect(reloaded.commentSortOrder, CommentSortOrder.descending);
+    });
+
+    test('importing a legacy export without commentSortOrder leaves it at '
+        'default (ascending) — backwards-compatible', () async {
+      final Map<String, dynamic> legacyJson = <String, dynamic>{
+        '_version': 1,
+        'themeMode': 'dark',
+      };
+      final String legacyJsonString = const JsonEncoder.withIndent(
+        '  ',
+      ).convert(legacyJson);
+
+      final AppSettings imported = await store.importFromJson(legacyJsonString);
+
+      expect(imported.commentSortOrder, CommentSortOrder.ascending);
+      expect(imported.commentSortOrder, AppSettings.defaults.commentSortOrder);
+
+      final AppSettings reloaded = await store.load();
+      expect(reloaded.commentSortOrder, CommentSortOrder.ascending);
+    });
+
     test('roundtrip preserves gift/nicoad display + TTS toggles', () async {
       final AppSettings original = AppSettings.defaults.copyWith(
         showGiftComment: false,

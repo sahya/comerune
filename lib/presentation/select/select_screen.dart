@@ -669,6 +669,7 @@ class _SelectScreenState extends State<SelectScreen>
             onSpeechMuteToggled: widget.settingsStore != null
                 ? _toggleSpeechMute
                 : null,
+            onSortOrderChanged: _onSortOrderChanged,
           ),
           debugMode: _settingsNotifier.value.debugMode,
           showUserName: _settingsNotifier.value.showUserName,
@@ -681,6 +682,7 @@ class _SelectScreenState extends State<SelectScreen>
               _settingsNotifier.value.commentTwoLineMetaFontPercent,
           commentZebraStripingEnabled:
               _settingsNotifier.value.commentZebraStripingEnabled,
+          commentSortOrder: _settingsNotifier.value.commentSortOrder,
           userColorMap: _userAttrNotifier.value.colors,
           onUserColorChanged: widget.userAttributeStore != null
               ? _onUserColorChanged
@@ -1143,6 +1145,23 @@ class _SelectScreenState extends State<SelectScreen>
     final AppSettings updated = current.isNgUser(userId)
         ? current.removeNgUserId(userId)
         : current.addNgUserId(userId);
+    _settingsNotifier.value = updated;
+    final SettingsStore? settingsStore = widget.settingsStore;
+    if (settingsStore != null) {
+      unawaited(settingsStore.save(updated));
+    }
+  }
+
+  /// Issue #774: コメント画面のソート切替を SharedPreferences に永続化する。
+  /// CommentScreen 側で UI 状態が確定した後に呼ばれるため、ここでは
+  /// `_settingsNotifier` を更新して再ビルド時に同じ値が再注入されるよう
+  /// 揃え、`SettingsStore.save` で次回起動でも復元できるようにする。
+  void _onSortOrderChanged(CommentSortOrder next) {
+    final AppSettings current = _settingsNotifier.value;
+    if (current.commentSortOrder == next) {
+      return;
+    }
+    final AppSettings updated = current.copyWith(commentSortOrder: next);
     _settingsNotifier.value = updated;
     final SettingsStore? settingsStore = widget.settingsStore;
     if (settingsStore != null) {
