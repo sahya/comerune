@@ -63,6 +63,9 @@ dependencies:
   # Dart エコシステム標準・小規模・安定版 API のみ使用。
   clock: 1.1.2
 
+  # ユーザーコメント色のカスタムカラー選択（プリセット 12 色に加えて任意色を選択可能にする）
+  flutter_colorpicker: 1.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
 import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
@@ -351,11 +352,135 @@ class _ColorPaletteRow extends StatelessWidget {
                   isSelected: currentColorValue == _colorToARGB32(entry.color),
                   onTap: () => onColorChanged(_colorToARGB32(entry.color)),
                 ),
+              _CustomColorButton(
+                key: const Key('user-color-custom-button'),
+                currentColorValue: currentColorValue,
+                onColorChanged: onColorChanged,
+              ),
             ],
           ),
         ],
       ),
     );
+  }
+}
+
+/// ARGB32 values for the preset palette, precomputed for O(1) membership
+/// checks. Used by the custom color button to decide whether the currently
+/// selected color is one of the presets or a user-picked custom color.
+final Set<int> _kPresetColorValues = <int>{
+  for (final ({Color color, String label}) entry in kUserColorPaletteEntries)
+    _colorToARGB32(entry.color),
+};
+
+/// Returns true when the given ARGB32 value corresponds to one of the
+/// preset palette colors. Used to decide whether the custom color button
+/// should display the current custom color or just the "+" affordance.
+bool _isPresetColor(int colorValue) => _kPresetColorValues.contains(colorValue);
+
+/// Round button shown after the preset palette that lets users pick an
+/// arbitrary color via [ColorPicker]. The button doubles as a status
+/// indicator: it shows a "+" icon when the active color is a preset (or no
+/// color is set), and switches to a checkmark with the picked color filled
+/// in when the active color is not in the preset set.
+class _CustomColorButton extends StatelessWidget {
+  const _CustomColorButton({
+    super.key,
+    required this.currentColorValue,
+    required this.onColorChanged,
+  });
+
+  final int? currentColorValue;
+  final void Function(int colorValue) onColorChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool hasCustom =
+        currentColorValue != null && !_isPresetColor(currentColorValue!);
+    final Color displayColor = hasCustom
+        ? Color(currentColorValue!)
+        : Theme.of(context).colorScheme.surfaceContainerHighest;
+    final Color borderColor = Theme.of(context).colorScheme.outline;
+
+    return Semantics(
+      button: true,
+      label: hasCustom ? 'カスタムカラー 選択中' : 'カスタムカラーを選択',
+      child: GestureDetector(
+        onTap: () => _showCustomColorDialog(context),
+        child: Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: displayColor,
+            shape: BoxShape.circle,
+            border: hasCustom
+                ? Border.all(color: Colors.white, width: 2)
+                : Border.all(color: borderColor, width: 1),
+            boxShadow: hasCustom
+                ? <BoxShadow>[
+                    BoxShadow(
+                      color: displayColor.withValues(alpha: 0.6),
+                      blurRadius: 4,
+                      spreadRadius: 1,
+                    ),
+                  ]
+                : null,
+          ),
+          child: Icon(
+            hasCustom ? Icons.check : Icons.add,
+            color: hasCustom
+                ? Colors.white
+                : Theme.of(context).colorScheme.onSurfaceVariant,
+            size: 18,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showCustomColorDialog(BuildContext context) async {
+    Color picked = currentColorValue != null
+        ? Color(currentColorValue!)
+        : kUserColorPaletteEntries.first.color;
+
+    final Color? result = await showDialog<Color>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('カスタムカラー'),
+          content: SingleChildScrollView(
+            child: ColorPicker(
+              pickerColor: picked,
+              onColorChanged: (Color value) {
+                picked = value;
+              },
+              pickerAreaHeightPercent: 0.6,
+              enableAlpha: false,
+              displayThumbColor: true,
+              paletteType: PaletteType.hueWheel,
+              labelTypes: const <ColorLabelType>[],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              key: const Key('user-color-custom-dialog-cancel-button'),
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('キャンセル'),
+            ),
+            TextButton(
+              key: const Key('user-color-custom-dialog-apply-button'),
+              onPressed: () => Navigator.of(dialogContext).pop(picked),
+              child: const Text('適用'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result == null) {
+      return;
+    }
+    onColorChanged(_colorToARGB32(result));
   }
 }
 
