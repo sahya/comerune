@@ -1,6 +1,7 @@
 import 'dart:developer' as developer;
 
 import 'package:characters/characters.dart';
+import 'package:meta/meta.dart';
 
 import '../../app_logging.dart';
 import '../models/app_message.dart';
@@ -30,6 +31,23 @@ const String kNdgrNicoadIdPrefix = 'ndgr-nicoad-';
 /// upstream ChunkedMessageMeta.id is missing but the chat carries a
 /// comment number. Library-private so the refactor does not widen the
 /// public surface of this file — the prior behaviour inlined this literal.
+///
+/// **Caveat (Issue #784)**: `chat.no` is documented by upstream as a
+/// best-effort numbering with no guarantee of continuity or uniqueness
+/// (see NDGRClient Python docstring). Using it for ID composition is a
+/// pragmatic fallback for the rare case where `meta.id` is missing, but
+/// it can in principle produce duplicate ids across messages with the
+/// same `no`. When that happens, downstream `AppMessage.==` would treat
+/// them as equal — undesirable for a comment list. The next fallback
+/// (`_kNdgrChatFallbackTimestampPrefix` + microseconds + seq) is
+/// collision-free.
+///
+/// TODO(#784-followup): once production traffic confirms `meta.id` is
+/// always present, drop this fallback entirely so `commentNo` (which the
+/// upstream service does not promise to be unique) is never used as part
+/// of an identity.  Deletion is a strictly subtractive change to
+/// [_buildNdgrId]; the timestamp-sequence fallback already handles the
+/// "no `meta.id` and no `no`" path that this branch was added to cover.
 const String _kNdgrChatNoIdPrefix = 'ndgr-chat-';
 
 /// Prefix for forwarded-chat ids when the upstream payload carries a stable
@@ -201,6 +219,36 @@ String? _sanitizeNotificationBody(String rawContent, int maxGraphemes) {
     return chars.take(maxGraphemes).toString();
   }
   return sanitized;
+}
+
+/// Upper bound (inclusive) on the comment number we accept from upstream.
+///
+/// Matches the proto declaration `int32 no = 8;` so any value that would
+/// not fit in an int32 (zero, negative, or above `2^31 - 1`) is treated
+/// as "no usable number" rather than rendered verbatim. Defence-in-depth:
+/// the underlying `_ProtoReader.readVarint` reads up to 64 bits, so an
+/// adversarial or malformed payload could in theory carry a value the
+/// upstream proto would never emit. A nonsensical "コメント
+/// 9223372036854775807" rendered in the meta row would push the comment
+/// list off-screen, so we coerce to `null` instead.
+const int _kMaxValidCommentNo = 0x7FFFFFFF;
+
+/// Coerces an upstream `Chat.no` value into a UI-safe comment number.
+///
+/// Returns `null` when the input is missing, non-positive (`0` is the
+/// proto default for an absent int32 field; negative values are protocol
+/// drift), or above the int32 ceiling. Otherwise echoes [raw] back.
+///
+/// Exposed via [sanitizeCommentNoForTest] so the boundary policy can be
+/// pinned in tests without re-importing the private helper.
+@visibleForTesting
+int? sanitizeCommentNoForTest(int? raw) => _sanitizeCommentNo(raw);
+
+int? _sanitizeCommentNo(int? raw) {
+  if (raw == null || raw <= 0 || raw > _kMaxValidCommentNo) {
+    return null;
+  }
+  return raw;
 }
 
 class NdgrMessageNormalizer {
@@ -502,6 +550,12 @@ class NdgrMessageNormalizer {
       userName: _sanitizeChatUserName(chat.name),
       content: sanitizedContent,
       type: AppMessageType.chat,
+      // Surface only locally-originated comment numbers. Range-checked via
+      // [_sanitizeCommentNo] so out-of-range upstream values do not bleed
+      // into the UI. Forwarded chats (handled in the branch above) are
+      // intentionally null because their `no` belongs to the source stream
+      // and would mislead viewers about the current stream's count.
+      commentNo: _sanitizeCommentNo(chat.no),
       raw: source,
     );
   }

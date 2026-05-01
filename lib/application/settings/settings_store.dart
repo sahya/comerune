@@ -214,6 +214,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       'settings.tts.playRemainingAfterEnded';
   // Issue #774: コメント画面のスクロール方向（昇順/降順）の永続化キー。
   static const String _kCommentSortOrder = 'settings.comment.sortOrder';
+  // Issue #784: コメント番号 (NDGR `Chat.no`) の表示 ON/OFF の永続化キー。
+  static const String _kShowCommentNo = 'settings.comment.showCommentNo';
 
   @override
   Future<AppSettings> load() async {
@@ -358,6 +360,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       commentSortOrder: CommentSortOrderValue.fromStorageValue(
         _prefs.getString(_kCommentSortOrder),
       ),
+      showCommentNo: _prefs.getBool(_kShowCommentNo) ?? defaults.showCommentNo,
     );
   }
 
@@ -494,6 +497,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       _kCommentSortOrder,
       settings.commentSortOrder.storageValue,
     );
+    await _prefs.setBool(_kShowCommentNo, settings.showCommentNo);
   }
 
   List<NgWordRule> _loadNgWordRules() {

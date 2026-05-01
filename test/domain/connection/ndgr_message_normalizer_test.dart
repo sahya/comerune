@@ -2180,5 +2180,228 @@ void main() {
         expect(normalized.content.length, kCap + 500);
       });
     });
+
+    group('commentNo (Issue #784)', () {
+      test('chat with no=123 surfaces commentNo on AppMessage', () {
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final NdgrChunkedMessage source = NdgrChunkedMessage(
+          id: 'meta-id-1',
+          serverTimestamp: DateTime.parse('2026-05-01T00:00:00Z'),
+          chat: const NdgrChat(content: 'hi', rawUserId: 1, no: 123),
+        );
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          source,
+        );
+        expect(normalized, isNotNull);
+        expect(normalized!.commentNo, 123);
+      });
+
+      test('chat without no surfaces commentNo == null', () {
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final NdgrChunkedMessage source = NdgrChunkedMessage(
+          id: 'meta-id-2',
+          serverTimestamp: DateTime.parse('2026-05-01T00:00:00Z'),
+          chat: const NdgrChat(content: 'hi', rawUserId: 1),
+        );
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          source,
+        );
+        expect(normalized, isNotNull);
+        expect(normalized!.commentNo, isNull);
+      });
+
+      test(
+        'chat with no=0 (proto default) is coerced to commentNo == null',
+        () {
+          final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+          final NdgrChunkedMessage source = NdgrChunkedMessage(
+            id: 'meta-id-3',
+            serverTimestamp: DateTime.parse('2026-05-01T00:00:00Z'),
+            chat: const NdgrChat(content: 'hi', rawUserId: 1, no: 0),
+          );
+          final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+            source,
+          );
+          expect(normalized, isNotNull);
+          expect(normalized!.commentNo, isNull);
+        },
+      );
+
+      test('chat with negative no is coerced to commentNo == null', () {
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final NdgrChunkedMessage source = NdgrChunkedMessage(
+          id: 'meta-id-4',
+          serverTimestamp: DateTime.parse('2026-05-01T00:00:00Z'),
+          chat: const NdgrChat(content: 'hi', rawUserId: 1, no: -1),
+        );
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          source,
+        );
+        expect(normalized, isNotNull);
+        expect(normalized!.commentNo, isNull);
+      });
+
+      test('chat with above-int32 no is coerced to commentNo == null', () {
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        const int aboveInt32 = 0x80000000; // 2^31, one past int32 max.
+        final NdgrChunkedMessage source = NdgrChunkedMessage(
+          id: 'meta-id-5',
+          serverTimestamp: DateTime.parse('2026-05-01T00:00:00Z'),
+          chat: const NdgrChat(content: 'hi', rawUserId: 1, no: aboveInt32),
+        );
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          source,
+        );
+        expect(normalized, isNotNull);
+        expect(normalized!.commentNo, isNull);
+      });
+
+      test('chat with no == int32 max preserves commentNo verbatim', () {
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        const int int32Max = 0x7FFFFFFF;
+        final NdgrChunkedMessage source = NdgrChunkedMessage(
+          id: 'meta-id-5b',
+          serverTimestamp: DateTime.parse('2026-05-01T00:00:00Z'),
+          chat: const NdgrChat(content: 'hi', rawUserId: 1, no: int32Max),
+        );
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          source,
+        );
+        expect(normalized, isNotNull);
+        expect(normalized!.commentNo, int32Max);
+      });
+
+      test('forwarded chat (cruise) drops source-stream commentNo', () {
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final NdgrChunkedMessage source = NdgrChunkedMessage(
+          id: 'meta-id-6',
+          serverTimestamp: DateTime.parse('2026-05-01T00:00:00Z'),
+          forwardedChat: const NdgrForwardedChat(
+            chat: NdgrChat(content: 'forwarded', rawUserId: 5, no: 999),
+            messageId: 'fwd-1',
+            sourceLiveId: 12345,
+            mode: NdgrForwardingMode.fromCruise,
+          ),
+        );
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          source,
+        );
+        expect(normalized, isNotNull);
+        expect(normalized!.type, AppMessageType.chat);
+        expect(normalized.commentNo, isNull);
+      });
+
+      test('operator comment surfaces commentNo == null', () {
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final NdgrChunkedMessage source = NdgrChunkedMessage(
+          id: 'meta-id-7-op',
+          serverTimestamp: DateTime.parse('2026-05-01T00:00:00Z'),
+          operatorComment: const NdgrOperatorComment(
+            content: '運営からのお知らせ',
+            name: '運営',
+          ),
+        );
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          source,
+        );
+        expect(normalized, isNotNull);
+        expect(normalized!.type, AppMessageType.operator);
+        expect(normalized.commentNo, isNull);
+      });
+
+      test('simpleNotificationV2 (ichiba) surfaces commentNo == null', () {
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final NdgrChunkedMessage source = NdgrChunkedMessage(
+          id: 'meta-id-7-sn2',
+          serverTimestamp: DateTime.parse('2026-05-01T00:00:00Z'),
+          simpleNotificationV2: const NdgrSimpleNotificationV2(
+            type: NdgrSimpleNotificationV2Type.ichiba,
+            message: 'ichiba notice',
+          ),
+        );
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          source,
+        );
+        expect(normalized, isNotNull);
+        expect(normalized!.commentNo, isNull);
+      });
+
+      test('gift surfaces commentNo == null', () {
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final NdgrChunkedMessage source = NdgrChunkedMessage(
+          id: 'meta-id-7-gift',
+          serverTimestamp: DateTime.parse('2026-05-01T00:00:00Z'),
+          gift: const NdgrGift(
+            itemName: 'Cake',
+            advertiserName: 'Alice',
+            point: 100,
+          ),
+        );
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          source,
+        );
+        expect(normalized, isNotNull);
+        expect(normalized!.type, AppMessageType.gift);
+        expect(normalized.commentNo, isNull);
+      });
+
+      test('nicoad surfaces commentNo == null', () {
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        final NdgrChunkedMessage source = NdgrChunkedMessage(
+          id: 'meta-id-7-nicoad',
+          serverTimestamp: DateTime.parse('2026-05-01T00:00:00Z'),
+          nicoad: const NdgrNicoad(message: 'ad message', totalPoint: 500),
+        );
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          source,
+        );
+        expect(normalized, isNotNull);
+        expect(normalized!.commentNo, isNull);
+      });
+
+      test('_buildNdgrId still composes id from no when meta.id missing', () {
+        final NdgrMessageNormalizer normalizer = NdgrMessageNormalizer();
+        const NdgrChunkedMessage source = NdgrChunkedMessage(
+          chat: NdgrChat(content: 'no-meta', rawUserId: 1, no: 42),
+        );
+        final AppMessage? normalized = normalizer.normalizeChunkedMessage(
+          source,
+          receivedAt: DateTime.parse('2026-05-01T00:00:00Z'),
+        );
+        expect(normalized, isNotNull);
+        expect(normalized!.id, 'ndgr-chat-42');
+        expect(normalized.commentNo, 42);
+      });
+    });
+
+    // _sanitizeCommentNo boundary policy, exposed via top-level
+    // sanitizeCommentNoForTest. Includes the int64 extreme values
+    // raised in the sage review (品質仙人 SHOULD).
+    group('sanitizeCommentNoForTest (Issue #784)', () {
+      test('returns null for null input', () {
+        expect(sanitizeCommentNoForTest(null), isNull);
+      });
+      test('returns null for 0 (proto default)', () {
+        expect(sanitizeCommentNoForTest(0), isNull);
+      });
+      test('returns null for negative input', () {
+        expect(sanitizeCommentNoForTest(-1), isNull);
+        expect(sanitizeCommentNoForTest(-2147483648), isNull);
+        // int64 minimum: a malformed varint could in theory deliver this.
+        expect(sanitizeCommentNoForTest(-9223372036854775808), isNull);
+      });
+      test('returns null for above-int32 input', () {
+        expect(sanitizeCommentNoForTest(0x80000000), isNull);
+        expect(sanitizeCommentNoForTest(0x7FFFFFFF + 1), isNull);
+        expect(sanitizeCommentNoForTest(1 << 62), isNull);
+        // int64 maximum, the upper bound a 64-bit varint could deliver.
+        expect(sanitizeCommentNoForTest(9223372036854775807), isNull);
+      });
+      test('echoes back valid positive int32 values', () {
+        expect(sanitizeCommentNoForTest(1), 1);
+        expect(sanitizeCommentNoForTest(123), 123);
+        expect(sanitizeCommentNoForTest(0x7FFFFFFF), 0x7FFFFFFF);
+      });
+    });
   });
 }

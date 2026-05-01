@@ -393,6 +393,7 @@ class AppSettings {
     required this.androidTtsVolume,
     required this.playRemainingAfterEnded,
     required this.commentSortOrder,
+    required this.showCommentNo,
   }) : assert(
          commentFontSize >= commentFontSizeMin &&
              commentFontSize <= commentFontSizeMax,
@@ -464,6 +465,9 @@ class AppSettings {
     androidTtsVolume: 1.0,
     playRemainingAfterEnded: true,
     commentSortOrder: CommentSortOrder.ascending,
+    // Issue #784. Default OFF so existing users see no change; opt-in via
+    // CommentDisplaySettingsScreen.
+    showCommentNo: false,
   );
 
   final AppThemeMode themeMode;
@@ -640,6 +644,17 @@ class AppSettings {
   /// 値はセッションをまたいで永続化される（Issue #774）。
   final CommentSortOrder commentSortOrder;
 
+  /// `true` のとき、コメント行のメタ情報領域に NDGR `Chat.no` 由来の
+  /// コメント番号を時刻の前に表示する（Issue #784）。
+  ///
+  /// 既定 `false`。番号は NDGR chat 経路のメッセージにのみ付与され、
+  /// 運営コメント / システム通知 / ギフト / ニコニ広告 / 転送コメント
+  /// （ニコ生クルーズ等）には表示されない。Legacy WebSocket 経路で
+  /// 受信したコメントにも現状は付与されない（Phase 2 以降）。
+  /// 一意性・連番性は upstream から保証されないため、ソートキー・
+  /// 重複排除キーとしての利用は禁止。
+  final bool showCommentNo;
+
   /// Returns a list of lower-cased NG word pattern strings for filtering.
   ///
   /// When [ngWordRules] is populated (post-migration), only **enabled** rules
@@ -789,6 +804,7 @@ class AppSettings {
     double? androidTtsVolume,
     bool? playRemainingAfterEnded,
     CommentSortOrder? commentSortOrder,
+    bool? showCommentNo,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -866,6 +882,7 @@ class AppSettings {
       playRemainingAfterEnded:
           playRemainingAfterEnded ?? this.playRemainingAfterEnded,
       commentSortOrder: commentSortOrder ?? this.commentSortOrder,
+      showCommentNo: showCommentNo ?? this.showCommentNo,
     );
   }
 
@@ -962,6 +979,7 @@ class AppSettings {
       'androidTtsVolume': androidTtsVolume,
       'playRemainingAfterEnded': playRemainingAfterEnded,
       'commentSortOrder': commentSortOrder.storageValue,
+      'showCommentNo': showCommentNo,
     };
   }
 
@@ -1161,6 +1179,15 @@ class AppSettings {
       commentSortOrder: switch (json['commentSortOrder']) {
         String s => CommentSortOrderValue.fromStorageValue(s),
         _ => d.commentSortOrder,
+      },
+      // Issue #784: 旧 Export ファイル（このキーが存在しない）はデフォルト
+      // (false) にフォールバックする。型が違う値（文字列・数値等）も同様に
+      // デフォルトへ落とす — `as bool?` キャストだと `String` を読み込んだ
+      // 瞬間 `TypeError` を投げて Import 全体が失敗するため、defensive な
+      // switch で受ける（commentSortOrder と同じ流儀）。
+      showCommentNo: switch (json['showCommentNo']) {
+        bool b => b,
+        _ => d.showCommentNo,
       },
     );
   }

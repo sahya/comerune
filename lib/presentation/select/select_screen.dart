@@ -708,6 +708,7 @@ class _SelectScreenState extends State<SelectScreen>
           commentZebraStripingEnabled:
               _settingsNotifier.value.commentZebraStripingEnabled,
           commentSortOrder: _settingsNotifier.value.commentSortOrder,
+          showCommentNo: _settingsNotifier.value.showCommentNo,
           userColorMap: _userAttrNotifier.value.colors,
           onUserColorChanged: widget.userAttributeStore != null
               ? _onUserColorChanged

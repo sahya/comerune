@@ -537,5 +537,56 @@ void main() {
         expect(result.commentSortOrder, AppSettings.defaults.commentSortOrder);
       });
     });
+
+    // Issue #784: showCommentNo persistence and backward compatibility.
+    group('showCommentNo (Issue #784)', () {
+      test('default is false (existing users see no change)', () {
+        expect(AppSettings.defaults.showCommentNo, isFalse);
+      });
+
+      test(
+        'fromJson without showCommentNo key falls back to default (false)',
+        () {
+          final AppSettings restored = AppSettings.fromJson(
+            <String, dynamic>{},
+          );
+          expect(restored.showCommentNo, AppSettings.defaults.showCommentNo);
+          expect(restored.showCommentNo, isFalse);
+        },
+      );
+
+      test('toJson → fromJson round-trip preserves true', () {
+        final AppSettings original = AppSettings.defaults.copyWith(
+          showCommentNo: true,
+        );
+        final Map<String, dynamic> json = original.toJson();
+        expect(json['showCommentNo'], isTrue);
+        final AppSettings restored = AppSettings.fromJson(json);
+        expect(restored.showCommentNo, isTrue);
+      });
+
+      test('toJson → fromJson round-trip preserves false', () {
+        final AppSettings original = AppSettings.defaults.copyWith(
+          showCommentNo: false,
+        );
+        final Map<String, dynamic> json = original.toJson();
+        expect(json['showCommentNo'], isFalse);
+        final AppSettings restored = AppSettings.fromJson(json);
+        expect(restored.showCommentNo, isFalse);
+      });
+
+      test('fromJson with non-bool showCommentNo falls back to default', () {
+        final AppSettings result = AppSettings.fromJson(<String, dynamic>{
+          'showCommentNo': 'yes',
+        });
+        expect(result.showCommentNo, AppSettings.defaults.showCommentNo);
+      });
+
+      test('fromJsonString with legacy JSON (no key) does not throw', () {
+        const String legacyJson = '{"themeMode":"light"}';
+        final AppSettings restored = AppSettings.fromJsonString(legacyJson);
+        expect(restored.showCommentNo, AppSettings.defaults.showCommentNo);
+      });
+    });
   });
 }

@@ -303,6 +303,28 @@ class _CommentDisplaySettingsScreenState
                           );
                         },
                       ),
+                      // Issue #784. Subtitle:
+                      //   - 「コメント番号」「時刻の前」のユーザー向け表現に
+                      //     とどめ、`NDGR Chat.no` のような内部仕様は出さない
+                      //     (CLAUDE.md の「内部実装の詳細を表示しない」方針)。
+                      //   - Legacy WebSocket 経路では現状番号が出ない事実を
+                      //     明示し、視聴中に番号が表示されない配信があっても
+                      //     ユーザーが「壊れている」と誤解しないようにする。
+                      SwitchListTile(
+                        key: const Key('comment-show-comment-no-switch'),
+                        title: const Text('コメント番号を表示'),
+                        subtitle: const Text(
+                          'コメント番号を時刻の前に表示します（一部の配信や種類の'
+                          'コメントでは番号が付きません）',
+                        ),
+                        contentPadding: EdgeInsets.zero,
+                        value: settings.showCommentNo,
+                        onChanged: (bool value) {
+                          updateAndSave(
+                            settings.copyWith(showCommentNo: value),
+                          );
+                        },
+                      ),
                       const SizedBox(height: 16),
                       DropdownButtonFormField<PastCommentFetchCount>(
                         key: const Key('past-comment-count-dropdown'),

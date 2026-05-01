@@ -926,5 +926,52 @@ void main() {
         expect(store.loadPreMuteAndroidTtsVolume(), 0.8);
       },
     );
+
+    // Issue #784: comment number visibility persistence.
+    test('showCommentNo defaults to false when not stored', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.showCommentNo, isFalse);
+    });
+
+    test('round-trips showCommentNo true', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await store.save(AppSettings.defaults.copyWith(showCommentNo: true));
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.showCommentNo, isTrue);
+    });
+
+    test('round-trips showCommentNo false', () async {
+      final SharedPreferencesSettingsStore store =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+      await store.save(AppSettings.defaults.copyWith(showCommentNo: false));
+      final AppSettings loaded = await store.load();
+
+      expect(loaded.showCommentNo, isFalse);
+    });
+
+    // Issue #784: 賢者2 (品質仙人) Optional 反映:
+    // 同一の SharedPreferences を共有し、別 store インスタンスで load しても
+    // 設定が引き継がれることを pin。Settings Import 後に新しい store
+    // インスタンスが起動しても保存値が読み出せる、という運用前提を保証する。
+    test('showCommentNo persists across SettingsStore instances', () async {
+      final InMemorySharedPreferences shared = InMemorySharedPreferences();
+      final SharedPreferencesSettingsStore writer =
+          SharedPreferencesSettingsStore(prefs: shared);
+      await writer.save(AppSettings.defaults.copyWith(showCommentNo: true));
+
+      final SharedPreferencesSettingsStore reader =
+          SharedPreferencesSettingsStore(prefs: shared);
+      final AppSettings loaded = await reader.load();
+
+      expect(loaded.showCommentNo, isTrue);
+    });
   });
 }

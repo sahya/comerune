@@ -174,8 +174,40 @@ List<InlineSpan> _buildMetaSpans({
   Color? effectiveUserColor,
   required bool hidden,
   FontWeight? idFontWeight,
+  // Issue #784. `commentNo` is the NDGR `Chat.no` already range-checked by
+  // the normalizer (1..int32-max). When `showCommentNo` is false the field
+  // is ignored — the bool / int? pair lets callers decide visibility per
+  // setting without forcing them to fork the value upstream.
+  bool showCommentNo = false,
+  int? commentNo,
 }) {
-  final List<InlineSpan> spans = <InlineSpan>[
+  final List<InlineSpan> spans = <InlineSpan>[];
+  // Issue #784: comment number sits in front of the timestamp. The hidden
+  // (NG-masked) variant inherits the grey + italic policy that the
+  // timestamp / displayName branches use so the meta row stays visually
+  // coherent when a comment is folded into the read-skipped affordance.
+  if (showCommentNo && commentNo != null) {
+    final double commentNoSeparatorFontSize = timestampFontSize > idFontSize
+        ? timestampFontSize
+        : idFontSize;
+    spans.add(
+      TextSpan(
+        text: '$commentNo',
+        style: TextStyle(
+          fontSize: idFontSize,
+          color: hidden ? Colors.grey : idColor,
+          fontStyle: hidden ? FontStyle.italic : null,
+        ),
+      ),
+    );
+    spans.add(
+      TextSpan(
+        text: '  ',
+        style: TextStyle(fontSize: commentNoSeparatorFontSize),
+      ),
+    );
+  }
+  spans.add(
     TextSpan(
       text: timestamp,
       style: TextStyle(
@@ -184,7 +216,7 @@ List<InlineSpan> _buildMetaSpans({
         fontStyle: hidden ? FontStyle.italic : null,
       ),
     ),
-  ];
+  );
   if (showUserName && displayName != null) {
     // Explicitly size the whitespace separator so an inherited
     // DefaultTextStyle (typically ~14px body text) cannot inflate the meta
@@ -233,6 +265,8 @@ List<InlineSpan> buildMetaSpansForTesting({
   Color? effectiveUserColor,
   required bool hidden,
   FontWeight? idFontWeight,
+  bool showCommentNo = false,
+  int? commentNo,
 }) {
   return _buildMetaSpans(
     timestamp: timestamp,
@@ -245,6 +279,8 @@ List<InlineSpan> buildMetaSpansForTesting({
     effectiveUserColor: effectiveUserColor,
     hidden: hidden,
     idFontWeight: idFontWeight,
+    showCommentNo: showCommentNo,
+    commentNo: commentNo,
   );
 }
 
@@ -255,12 +291,22 @@ String _commentLineText({
   String? contentOverride,
   DateTime? beginAt,
   bool twoLine = false,
+  // Issue #784. When `showCommentNo` is true and the message carries a
+  // non-null `commentNo`, the rendered string is prepended with
+  // `${commentNo}  ` to mirror the inline meta row that
+  // [_buildMetaSpans] produces. Defaulting to false keeps every existing
+  // call site (operator copy / log line / pinned single-line) byte-for-
+  // byte unchanged when the toggle is off.
+  bool showCommentNo = false,
 }) {
   final String timestamp = _formatHms(message.timestamp, beginAt: beginAt);
   final String content = contentOverride ?? message.content;
+  final String prefix = showCommentNo && message.commentNo != null
+      ? '${message.commentNo}  '
+      : '';
 
   if (!showUserName) {
-    return '$timestamp  $content';
+    return '$prefix$timestamp  $content';
   }
 
   final String? displayName = _displayNameForMessage(
@@ -269,14 +315,14 @@ String _commentLineText({
   );
 
   if (displayName == null) {
-    return '$timestamp  $content';
+    return '$prefix$timestamp  $content';
   }
 
   if (twoLine) {
-    return '$timestamp  $displayName\n$content';
+    return '$prefix$timestamp  $displayName\n$content';
   }
 
-  return '$timestamp  $displayName  $content';
+  return '$prefix$timestamp  $displayName  $content';
 }
 
 /// Test-only accessor for [_commentLineText].
@@ -293,6 +339,7 @@ String commentLineTextForTesting({
   String? contentOverride,
   DateTime? beginAt,
   bool twoLine = false,
+  bool showCommentNo = false,
 }) {
   return _commentLineText(
     message: message,
@@ -301,6 +348,7 @@ String commentLineTextForTesting({
     contentOverride: contentOverride,
     beginAt: beginAt,
     twoLine: twoLine,
+    showCommentNo: showCommentNo,
   );
 }
 
@@ -327,6 +375,7 @@ class CommentRowHarness extends StatelessWidget {
     this.commentTwoLineMetaFontPercent = commentTwoLineMetaFontPercentDefault,
     this.zebraStripingEnabled = false,
     this.emphasizeGiftNicoadComment = true,
+    this.showCommentNo = false,
     this.commentIndex = 0,
     this.userColor,
     this.onLongPress,
@@ -346,6 +395,7 @@ class CommentRowHarness extends StatelessWidget {
   final int commentTwoLineMetaFontPercent;
   final bool zebraStripingEnabled;
   final bool emphasizeGiftNicoadComment;
+  final bool showCommentNo;
   final int commentIndex;
   final Color? userColor;
   final VoidCallback? onLongPress;
@@ -367,6 +417,7 @@ class CommentRowHarness extends StatelessWidget {
       commentTwoLineMetaFontPercent: commentTwoLineMetaFontPercent,
       zebraStripingEnabled: zebraStripingEnabled,
       emphasizeGiftNicoadComment: emphasizeGiftNicoadComment,
+      showCommentNo: showCommentNo,
       commentIndex: commentIndex,
       userColor: userColor,
       onLongPress: onLongPress,
@@ -390,6 +441,7 @@ class PinnedCommentRowHarness extends StatelessWidget {
     required this.fontSize,
     this.commentTwoLineEnabled = false,
     this.commentTwoLineMetaFontPercent = commentTwoLineMetaFontPercentDefault,
+    this.showCommentNo = false,
     this.userColor,
     required this.onUnpin,
     this.beginAt,
@@ -404,6 +456,7 @@ class PinnedCommentRowHarness extends StatelessWidget {
   final double fontSize;
   final bool commentTwoLineEnabled;
   final int commentTwoLineMetaFontPercent;
+  final bool showCommentNo;
   final Color? userColor;
   final VoidCallback onUnpin;
   final DateTime? beginAt;
@@ -420,6 +473,7 @@ class PinnedCommentRowHarness extends StatelessWidget {
       fontSize: fontSize,
       commentTwoLineEnabled: commentTwoLineEnabled,
       commentTwoLineMetaFontPercent: commentTwoLineMetaFontPercent,
+      showCommentNo: showCommentNo,
       userColor: userColor,
       onUnpin: onUnpin,
       beginAt: beginAt,
@@ -498,6 +552,7 @@ class CommentScreen extends StatefulWidget {
     this.commentTwoLineMetaFontPercent = commentTwoLineMetaFontPercentDefault,
     this.commentZebraStripingEnabled = false,
     this.commentSortOrder = CommentSortOrder.ascending,
+    this.showCommentNo = false,
     this.userColorMap = const <String, int>{},
     this.onUserColorChanged,
     this.onUserColorRemoved,
@@ -551,6 +606,10 @@ class CommentScreen extends StatefulWidget {
   /// ボタンが押されたら `CommentCallbacks.onSortOrderChanged` を呼んで
   /// 上位レイヤーで永続化される（Issue #774）。
   final CommentSortOrder commentSortOrder;
+
+  /// `true` のとき、コメント行のメタ情報先頭（時刻の前）に
+  /// `AppMessage.commentNo` を表示する。Issue #784。
+  final bool showCommentNo;
 
   /// Per-user comment color map. Keys are user IDs, values are ARGB32 ints.
   final Map<String, int> userColorMap;
@@ -2988,6 +3047,7 @@ class _CommentScreenState extends State<CommentScreen>
                     commentTwoLineEnabled: widget.commentTwoLineEnabled,
                     commentTwoLineMetaFontPercent:
                         widget.commentTwoLineMetaFontPercent,
+                    showCommentNo: widget.showCommentNo,
                     textScaler: textScaler,
                     ngMatcher: _ngMatcher,
                   ),
@@ -3077,6 +3137,7 @@ class _CommentScreenState extends State<CommentScreen>
                                 emphasizeGiftNicoadComment: widget
                                     .contentFilter
                                     .emphasizeGiftNicoadComment,
+                                showCommentNo: widget.showCommentNo,
                                 commentIndex: index,
                                 userColor: userColor != null
                                     ? colorFromARGB32(userColor)
@@ -4756,6 +4817,18 @@ class _CommentScreenState extends State<CommentScreen>
               tag: CommentLogTag.filtered(presetSub),
             ),
             type: message.type,
+            // Issue #784 (re-review 構造仙人 / 価値仙人 SHOULD): preserve
+            // commentNo when wrapping the message with a [filtered:...] tag,
+            // otherwise the saved log would silently drop the comment number
+            // for NG-preset matched chat rows, contradicting the
+            // RELEASE_NOTES contract that promises "番号が無いコメントでは
+            // 番号列が空欄" (the row HAS a number, it just gets re-tagged).
+            //
+            // TODO(#784-followup): introduce `AppMessage.copyWith` so this
+            // and any future field addition does not silently drop on
+            // re-construction. The current explicit field list is the
+            // structural reason this kind of drop can happen.
+            commentNo: message.commentNo,
             raw: message.raw,
           ),
         );
@@ -5246,6 +5319,7 @@ class _PinnedCommentsSection extends StatelessWidget {
     this.beginAt,
     this.commentTwoLineEnabled = false,
     this.commentTwoLineMetaFontPercent = commentTwoLineMetaFontPercentDefault,
+    this.showCommentNo = false,
     this.textScaler = TextScaler.noScaling,
     this.ngMatcher,
   });
@@ -5260,6 +5334,9 @@ class _PinnedCommentsSection extends StatelessWidget {
   final DateTime? beginAt;
   final bool commentTwoLineEnabled;
   final int commentTwoLineMetaFontPercent;
+  // Issue #784. Plumbed through so the pinned panel and the inline list
+  // present the comment number consistently — see [_PinnedCommentRow].
+  final bool showCommentNo;
   final TextScaler textScaler;
   final NgMatcher? ngMatcher;
 
@@ -5314,6 +5391,7 @@ class _PinnedCommentsSection extends StatelessWidget {
               fontSize: fontSize,
               commentTwoLineEnabled: commentTwoLineEnabled,
               commentTwoLineMetaFontPercent: commentTwoLineMetaFontPercent,
+              showCommentNo: showCommentNo,
               userColor:
                   message.userId != null &&
                       userColorMap.containsKey(message.userId!)
@@ -5340,6 +5418,7 @@ class _PinnedCommentRow extends StatelessWidget {
     required this.fontSize,
     this.commentTwoLineEnabled = false,
     this.commentTwoLineMetaFontPercent = commentTwoLineMetaFontPercentDefault,
+    this.showCommentNo = false,
     this.userColor,
     required this.onUnpin,
     this.beginAt,
@@ -5354,6 +5433,12 @@ class _PinnedCommentRow extends StatelessWidget {
   final double fontSize;
   final bool commentTwoLineEnabled;
   final int commentTwoLineMetaFontPercent;
+
+  /// Issue #784. Mirrors the value passed into the inline `_CommentRow` so
+  /// the pinned panel keeps the comment-number prefix consistent with the
+  /// list-row presentation.
+  final bool showCommentNo;
+
   final Color? userColor;
   final VoidCallback onUnpin;
   final DateTime? beginAt;
@@ -5443,6 +5528,7 @@ class _PinnedCommentRow extends StatelessWidget {
         showUserName: showUserName,
         resolvedUserName: resolvedUserName,
         beginAt: beginAt,
+        showCommentNo: showCommentNo,
       );
       return Text(lineText, style: bodyStyle);
     }
@@ -5458,6 +5544,7 @@ class _PinnedCommentRow extends StatelessWidget {
       resolvedUserName: resolvedUserName,
       contentOverride: '',
       beginAt: beginAt,
+      showCommentNo: showCommentNo,
     );
     return Text.rich(
       TextSpan(
@@ -5537,6 +5624,8 @@ class _PinnedCommentRow extends StatelessWidget {
         idColor: metaColor,
         effectiveUserColor: effectiveUserColor,
         hidden: false,
+        showCommentNo: showCommentNo,
+        commentNo: message.commentNo,
       ),
     );
 
@@ -5627,6 +5716,7 @@ class _CommentRow extends StatefulWidget {
     this.commentTwoLineMetaFontPercent = commentTwoLineMetaFontPercentDefault,
     this.zebraStripingEnabled = false,
     this.emphasizeGiftNicoadComment = true,
+    this.showCommentNo = false,
     this.commentIndex = 0,
     this.userColor,
     this.onLongPress,
@@ -5654,6 +5744,12 @@ class _CommentRow extends StatefulWidget {
   /// background and a small leading type icon. When false, gift/nicoad rows
   /// render with the same styling as regular chat messages.
   final bool emphasizeGiftNicoadComment;
+
+  /// Issue #784. When true, the meta row prepends `AppMessage.commentNo` in
+  /// front of the timestamp. Ignored when `commentNo` is null on the message
+  /// (operator / system / forwarded chats).
+  final bool showCommentNo;
+
   final int commentIndex;
   final Color? userColor;
   final VoidCallback? onLongPress;
@@ -5893,6 +5989,8 @@ class _CommentRowState extends State<_CommentRow> {
         effectiveUserColor: effectiveUserColor,
         hidden: hidden,
         idFontWeight: FontWeight.w500,
+        showCommentNo: widget.showCommentNo,
+        commentNo: message.commentNo,
       ),
     );
 
@@ -6053,6 +6151,8 @@ class _CommentRowState extends State<_CommentRow> {
         effectiveUserColor: effectiveUserColor,
         hidden: hidden,
         idFontWeight: FontWeight.w500,
+        showCommentNo: widget.showCommentNo,
+        commentNo: widget.message.commentNo,
       ),
     );
 

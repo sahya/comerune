@@ -133,6 +133,53 @@ void main() {
       },
     );
 
+    // Issue #784 (re-review 構造仙人 / 価値仙人 SHOULD).
+    // Pin that NG-preset tagged chat rows preserve commentNo when the
+    // log-side helper rebuilds the AppMessage with a `[filtered:...]`
+    // prefix. Regression guard: dropping commentNo here would silently
+    // produce empty number columns in the saved log for filtered rows
+    // only, contradicting the RELEASE_NOTES contract that `''` (empty
+    // commentNo column) means "no number on the message", not "number
+    // existed but was dropped during tagging".
+    testWidgets(
+      'scenario 2.1 (#784): preset-tagged chat preserves commentNo on log re-build',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          _chat(id: 'chat-clean', content: 'こんばんは', second: 1, commentNo: 100),
+          _chat(id: 'chat-violent', content: '爆弾の話', second: 2, commentNo: 555),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            ngDisplayPreferences: const NgDisplayPreferences(),
+          ),
+        );
+        await _settlePresetLoad(tester);
+
+        final List<AppMessage> log = _logFor(tester);
+
+        expect(log, hasLength(2));
+        // Untouched chat keeps its commentNo, as before.
+        expect(log[0].id, 'chat-clean');
+        expect(log[0].commentNo, 100);
+        // The preset-tagged chat must retain its commentNo even though
+        // _messagesForLog() rebuilds it with the [filtered:...] prefix.
+        expect(log[1].id, 'chat-violent');
+        expect(log[1].content, '[filtered:violence] 爆弾の話');
+        expect(
+          log[1].commentNo,
+          555,
+          reason:
+              'commentNo must survive the [filtered:...] re-construction so '
+              'PR-2 (4-column log) does not silently emit an empty commentNo '
+              'column for NG-preset-matched rows.',
+        );
+      },
+    );
+
     testWidgets(
       'scenario 3: preset violence hit with showViolentComment=true → still tagged [filtered:violence] (log always tags preset matches)',
       (WidgetTester tester) async {
@@ -486,6 +533,7 @@ AppMessage _chat({
   required int second,
   String? userId = 'user-1',
   String? userName,
+  int? commentNo,
 }) {
   return AppMessage(
     id: id,
@@ -494,6 +542,7 @@ AppMessage _chat({
     userName: userName,
     content: content,
     type: AppMessageType.chat,
+    commentNo: commentNo,
   );
 }
 
