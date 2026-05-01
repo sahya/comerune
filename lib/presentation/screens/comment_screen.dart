@@ -3239,7 +3239,13 @@ class _CommentScreenState extends State<CommentScreen>
                     },
                     onToggleExpanded: _toggleStatsPanelExpanded,
                   ),
-                if (_commentInputExpanded &&
+                // Issue #580 / #581: 入力バーは FAB タップ経由でしか展開
+                // できないため、FAB を `kCommentPostFeatureEnabled` でゲート
+                // していれば実質的に到達しないが、将来別経路から
+                // `_commentInputExpanded` を true にする変更が入った場合の
+                // 防御として、ここでもフラグを評価する。
+                if (kCommentPostFeatureEnabled &&
+                    _commentInputExpanded &&
                     widget.commentPostController != null)
                   CommentInputBar(
                     key: const Key('comment-input-bar'),
