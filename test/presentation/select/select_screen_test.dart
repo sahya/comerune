@@ -2568,6 +2568,278 @@ void main() {
       // case.
       expect(supplierUserIdNotifier.value, isNull);
     });
+
+    testWidgets('throttles favorite-user polling to background cadence while '
+        'CommentScreen is on top', (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+      final _FakeFavoriteUserLiveChecker checker = _FakeFavoriteUserLiveChecker(
+        resultMap: <String, FollowProgram>{
+          '12345': FollowProgram(
+            programId: 'lv777888999',
+            title: 'テスト放送',
+            providerName: 'テストユーザー',
+            status: ProgramStatus.onAir,
+          ),
+        },
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: supervisor,
+            initialSettings: AppSettings.defaults.copyWith(
+              favoriteUserIds: '12345',
+            ),
+            favoriteUserLiveChecker: checker,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Initial fetch from initState.
+      expect(checker.checkCallCount, 1);
+
+      // While the connection list is on top, the foreground 15-second
+      // cadence is in effect: advancing 16 seconds should fire one tick.
+      await tester.pump(const Duration(seconds: 16));
+      await tester.pumpAndSettle();
+      expect(
+        checker.checkCallCount,
+        2,
+        reason: 'foreground cadence should fire within 16 seconds',
+      );
+
+      // Navigate to the comment screen by tapping the favorite tile.
+      await tester.tap(find.text('テスト放送'));
+      await tester.pumpAndSettle();
+      expect(find.byType(CommentScreen), findsOneWidget);
+
+      final int countBeforeThrottle = checker.checkCallCount;
+
+      // Advance well past the 15-second foreground interval but short
+      // of the 120-second throttled interval. No additional fetches
+      // should occur while the comment screen is the visible surface.
+      await tester.pump(const Duration(seconds: 60));
+      await tester.pumpAndSettle();
+      expect(
+        checker.checkCallCount,
+        countBeforeThrottle,
+        reason:
+            'polling must be throttled while CommentScreen is on top — '
+            'no foreground-cadence ticks should fire',
+      );
+
+      // Boundary check: advancing past the 120-second background
+      // interval (60s already + 65s more = 125s total) MUST fire a
+      // single throttled tick — guards against accidentally raising
+      // the interval to a value that would never fire.
+      await tester.pump(const Duration(seconds: 65));
+      await tester.pumpAndSettle();
+      expect(
+        checker.checkCallCount,
+        countBeforeThrottle + 1,
+        reason:
+            'one throttled-cadence tick should fire after the '
+            '120-second interval elapses while CommentScreen is on top',
+      );
+
+      // Pop back to the connection list.
+      Navigator.of(tester.element(find.byType(CommentScreen))).pop();
+      await tester.pumpAndSettle();
+      expect(find.byType(SelectScreen), findsOneWidget);
+
+      // Returning to the connection list triggers an immediate refresh
+      // so any state change during the throttled window is reflected
+      // right away.
+      expect(
+        checker.checkCallCount,
+        greaterThan(countBeforeThrottle),
+        reason:
+            'an immediate fetch must run after returning from '
+            'CommentScreen',
+      );
+    });
+
+    testWidgets(
+      'app lifecycle resume while CommentScreen is on top does NOT trigger '
+      'an immediate favorite refresh',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = ConnectionSupervisor();
+        final _FakeFavoriteUserLiveChecker checker =
+            _FakeFavoriteUserLiveChecker(
+              resultMap: <String, FollowProgram>{
+                '12345': FollowProgram(
+                  programId: 'lv777888999',
+                  title: 'テスト放送',
+                  providerName: 'テストユーザー',
+                  status: ProgramStatus.onAir,
+                ),
+              },
+            );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SelectScreen(
+              connectionSupervisor: supervisor,
+              initialSettings: AppSettings.defaults.copyWith(
+                favoriteUserIds: '12345',
+              ),
+              favoriteUserLiveChecker: checker,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('テスト放送'));
+        await tester.pumpAndSettle();
+        expect(find.byType(CommentScreen), findsOneWidget);
+
+        final int countOnComment = checker.checkCallCount;
+
+        // Simulate the app being backgrounded while the user is on the
+        // comment screen, and then coming back to foreground. Without the
+        // _isCommentScreenActive guard, the resume path would fire an
+        // immediate fetch even though the favorite list isn't visible.
+        // Flutter requires lifecycle transitions to follow the documented
+        // graph: resumed → inactive → hidden → paused → hidden → inactive
+        // → resumed. Stepping through each intermediate is necessary even
+        // though our handler only reacts at the resumed transition.
+        final TestWidgetsFlutterBinding binding =
+            TestWidgetsFlutterBinding.ensureInitialized();
+        for (final AppLifecycleState state in <AppLifecycleState>[
+          AppLifecycleState.inactive,
+          AppLifecycleState.hidden,
+          AppLifecycleState.paused,
+          AppLifecycleState.hidden,
+          AppLifecycleState.inactive,
+          AppLifecycleState.resumed,
+        ]) {
+          binding.handleAppLifecycleStateChanged(state);
+          await tester.pump();
+        }
+        await tester.pumpAndSettle();
+
+        expect(
+          checker.checkCallCount,
+          countOnComment,
+          reason:
+              'foreground resume must NOT trigger an immediate fetch '
+              'while CommentScreen is on top — the favorite list is '
+              'hidden so the request would be wasted traffic',
+        );
+
+        // The throttled 120s cadence must still hold after the resume —
+        // advancing 60s must not fire a tick.
+        await tester.pump(const Duration(seconds: 60));
+        await tester.pumpAndSettle();
+        expect(
+          checker.checkCallCount,
+          countOnComment,
+          reason:
+              'background cadence (120s) must remain in effect after '
+              'lifecycle resume while CommentScreen is on top',
+        );
+
+        addTearDown(() {
+          binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        });
+      },
+    );
+
+    testWidgets(
+      'pull-to-refresh invalidates the favorite cache so the user sees '
+      'fresh data rather than a value cached from a throttled tick',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = ConnectionSupervisor();
+        final _FakeFavoriteUserLiveChecker checker =
+            _FakeFavoriteUserLiveChecker(
+              resultMap: <String, FollowProgram>{
+                '12345': FollowProgram(
+                  programId: 'lv777888999',
+                  title: 'テスト放送',
+                  providerName: 'テストユーザー',
+                  status: ProgramStatus.onAir,
+                ),
+              },
+            );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SelectScreen(
+              connectionSupervisor: supervisor,
+              initialSettings: AppSettings.defaults.copyWith(
+                favoriteUserIds: '12345',
+              ),
+              favoriteUserLiveChecker: checker,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(checker.invalidateCacheCallCount, 0);
+
+        // Trigger pull-to-refresh by invoking the RefreshIndicator's
+        // onRefresh callback directly — a real fling gesture would be
+        // brittle in widget tests.
+        final RefreshIndicator refreshIndicator = tester
+            .widget<RefreshIndicator>(find.byType(RefreshIndicator).first);
+        await refreshIndicator.onRefresh();
+        await tester.pumpAndSettle();
+
+        expect(
+          checker.invalidateCacheCallCount,
+          1,
+          reason:
+              'pull-to-refresh must bypass the favorite TTL cache so '
+              'the user sees the up-to-date result rather than a value '
+              'cached from a recent throttled tick',
+        );
+      },
+    );
+
+    testWidgets('with zero favorites the polling timer is not scheduled', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+      final _FakeFavoriteUserLiveChecker checker = _FakeFavoriteUserLiveChecker(
+        resultMap: const <String, FollowProgram>{},
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: supervisor,
+            // Default settings: empty favoriteUserIds.
+            favoriteUserLiveChecker: checker,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // No favorites means no polling — checkBroadcastStatus must not
+      // be invoked even after a long time passes. This is mainly a
+      // CPU/timer hygiene optimisation; the network was already
+      // gated by the favorites set being empty.
+      expect(checker.checkCallCount, 0);
+
+      await tester.pump(const Duration(seconds: 16));
+      await tester.pumpAndSettle();
+      expect(
+        checker.checkCallCount,
+        0,
+        reason: 'no favorites → no foreground-cadence ticks should fire',
+      );
+
+      await tester.pump(const Duration(seconds: 200));
+      await tester.pumpAndSettle();
+      expect(
+        checker.checkCallCount,
+        0,
+        reason:
+            'no favorites → no background-cadence ticks should fire '
+            'either',
+      );
+    });
   });
 
   group('my broadcast section', () {
@@ -2911,11 +3183,14 @@ class _FakeFavoriteUserLiveChecker extends FavoriteUserLiveChecker {
 
   final Map<String, FollowProgram> resultMap;
   Set<String> lastRequestedUserIds = const <String>{};
+  int checkCallCount = 0;
+  int invalidateCacheCallCount = 0;
 
   @override
   Future<Map<String, FollowProgram>> checkBroadcastStatus(
     Set<String> userIds,
   ) async {
+    checkCallCount += 1;
     lastRequestedUserIds = Set<String>.from(userIds);
     final Map<String, FollowProgram> filtered = <String, FollowProgram>{};
     for (final String userId in userIds) {
@@ -2925,6 +3200,12 @@ class _FakeFavoriteUserLiveChecker extends FavoriteUserLiveChecker {
       }
     }
     return filtered;
+  }
+
+  @override
+  void invalidateCache() {
+    invalidateCacheCallCount += 1;
+    super.invalidateCache();
   }
 
   @override

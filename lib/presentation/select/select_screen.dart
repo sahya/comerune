@@ -178,6 +178,15 @@ class _SelectScreenState extends State<SelectScreen>
     seconds: 120,
   );
   bool _isInForeground = true;
+  // True while CommentScreen is somewhere on top of SelectScreen in the
+  // navigation stack — including any further screens pushed from
+  // CommentScreen (TtsSettingsScreen, CommentDisplaySettingsScreen,
+  // etc.). The favorite-user list is not visible during this time, so we
+  // throttle the live-status polling cadence to the longer background
+  // interval to reduce traffic and server load. If more screens ever
+  // need the same treatment, consider migrating to a RouteAware /
+  // RouteObserver based mechanism instead of adding more flags.
+  bool _isCommentScreenActive = false;
 
   @override
   void initState() {
@@ -276,11 +285,16 @@ class _SelectScreenState extends State<SelectScreen>
       unawaited(_flushPendingUserAttributeWrites());
     }
     if (!wasForeground && _isInForeground) {
-      // Returning to foreground: invalidate cache and trigger an immediate
-      // check so the user sees up-to-date status right away.
-      _favoriteUserLiveChecker.invalidateCache();
-      unawaited(_fetchFavoriteUserStatus());
-      _scheduleFavoriteRefresh();
+      if (_isCommentScreenActive) {
+        // Comment screen is the visible surface; the favorite list is not
+        // shown, so skip the immediate fetch and just keep the throttled
+        // cadence.
+        _scheduleFavoriteRefresh();
+      } else {
+        // Returning to foreground: invalidate cache and trigger an immediate
+        // check so the user sees up-to-date status right away.
+        _refreshFavoritesNowAndReschedule();
+      }
     } else if (wasForeground && !_isInForeground) {
       // Moving to background: reschedule with the longer interval.
       _scheduleFavoriteRefresh();
@@ -474,15 +488,26 @@ class _SelectScreenState extends State<SelectScreen>
 
     _lastConnectedLv = lv;
 
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (BuildContext routeContext) =>
-            _buildCommentScreen(routeContext, lv),
-      ),
-    );
+    _isCommentScreenActive = true;
+    _scheduleFavoriteRefresh();
+    try {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (BuildContext routeContext) =>
+              _buildCommentScreen(routeContext, lv),
+        ),
+      );
+    } finally {
+      _isCommentScreenActive = false;
+    }
 
     if (mounted) {
       unawaited(_fetchAllPrograms());
+      // Returning to the connection list: invalidate cache and trigger an
+      // immediate favorite-status check so any state changes during the
+      // throttled window become visible right away. Then resume the
+      // foreground cadence.
+      _refreshFavoritesNowAndReschedule();
     }
   }
 
@@ -1239,8 +1264,14 @@ class _SelectScreenState extends State<SelectScreen>
   }
 
   /// Refreshes all data: follow programs, own broadcast, and favorite user
-  /// broadcast status. Called by pull-to-refresh.
+  /// broadcast status. Called by pull-to-refresh and after the settings
+  /// screen returns.
   Future<void> _refreshAll() async {
+    // Both call sites — pull-to-refresh and post-settings — imply "give
+    // me fresh data". Bypass the favorite checker's TTL cache so the
+    // user sees the up-to-date result rather than a value cached from
+    // a recent throttled tick.
+    _favoriteUserLiveChecker.invalidateCache();
     await Future.wait<void>(<Future<void>>[
       _fetchAllPrograms(),
       _fetchFavoriteUserStatus(),
@@ -1283,7 +1314,7 @@ class _SelectScreenState extends State<SelectScreen>
     );
   }
 
-  /// Fetches favorite user status once, then starts the 30-second refresh
+  /// Fetches favorite user status once, then starts the adaptive refresh
   /// cycle. Called from [initState].
   Future<void> _fetchFavoriteUserStatusAndSchedule() async {
     await _fetchFavoriteUserStatus();
@@ -1292,20 +1323,49 @@ class _SelectScreenState extends State<SelectScreen>
     }
   }
 
-  /// Schedules the next favorite-user broadcast check using an adaptive
-  /// interval that depends on whether the app is in the foreground or
-  /// background.
-  void _scheduleFavoriteRefresh() {
-    _favoriteRefreshTimer?.cancel();
-    final Duration interval = _isInForeground
+  /// The cadence at which the favorite-user list should be polled given
+  /// the current app state. The foreground interval is only used when the
+  /// list is actually visible — i.e. the app is in the foreground AND
+  /// CommentScreen is not on top of the connection list.
+  Duration get _favoriteRefreshInterval {
+    final bool useForegroundCadence =
+        _isInForeground && !_isCommentScreenActive;
+    return useForegroundCadence
         ? _favoriteRefreshIntervalForeground
         : _favoriteRefreshIntervalBackground;
-    _favoriteRefreshTimer = Timer(interval, () async {
+  }
+
+  /// Schedules the next favorite-user broadcast check using
+  /// [_favoriteRefreshInterval]. If the user has zero favorites the
+  /// timer is cancelled and not rescheduled — there is nothing to poll
+  /// for. Favorites can currently only change via the settings screen,
+  /// so the schedule is reactivated through [_refreshAll] (called on
+  /// settings exit) once a favorite has been added. If a future feature
+  /// adds another path that mutates `favoriteUserIdSet`, that path
+  /// MUST call [_scheduleFavoriteRefresh] (or [_refreshAll]) so the
+  /// timer comes back to life.
+  void _scheduleFavoriteRefresh() {
+    _favoriteRefreshTimer?.cancel();
+    if (_settingsNotifier.value.favoriteUserIdSet.isEmpty) {
+      return;
+    }
+    _favoriteRefreshTimer = Timer(_favoriteRefreshInterval, () async {
       await _fetchFavoriteUserStatus();
       if (mounted) {
         _scheduleFavoriteRefresh();
       }
     });
+  }
+
+  /// Invalidates the favorite-user cache, fires an immediate refresh and
+  /// resumes the polling cycle. Used whenever the favorite list becomes
+  /// visible again after a period in which we may have been showing
+  /// stale data — namely returning from the comment screen and resuming
+  /// the app from background.
+  void _refreshFavoritesNowAndReschedule() {
+    _favoriteUserLiveChecker.invalidateCache();
+    unawaited(_fetchFavoriteUserStatus());
+    _scheduleFavoriteRefresh();
   }
 
   Future<void> _fetchMyProgram(String userSession) async {
