@@ -53,6 +53,19 @@ For every issue, follow this order:
 - Prefer small and well-maintained dependencies.
 - Avoid adding multiple packages for a single small feature.
 
+## Optional Reference Two-Stage Fallback
+
+Public repo — referenced code/resources/config may be **absent** in some clones. Dependent code MUST be two-stage:
+
+1. **Primary** — call the real implementation when available
+2. **Fallback** — when unavailable, first try an alternative built on the repo's **internal (public) APIs**. If no alternative exists and the reference is functionally required, swallow the error and **leave only an error log**, then continue (no-op)
+
+**Forbidden**: absence breaking build / static analysis / startup / unrelated features; assuming "always present"; names, comments, or error messages that hint at a private artifact (use neutral terms like `optional integration`).
+
+**Techniques**: conditional `import`; `try`/`catch` around the optional access; feature flag or DI swapping in a no-op; runtime symbol-presence check.
+
+**Review checklist**: fallback on every path touching the optional reference; absence covered by a test or documented manual check; user-visible messages/logs do not leak internal structure.
+
 ## Change Scope Rules
 - One issue should correspond to one main responsibility.
 - If the issue appears too large, say so and propose a split before implementation.
