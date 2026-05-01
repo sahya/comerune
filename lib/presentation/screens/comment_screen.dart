@@ -48,6 +48,19 @@ import 'user_detail_sheet.dart';
 
 const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
 
+/// Feature flag: コメント投稿 UI（FAB + 入力バー）の有効化。
+///
+/// Issue #580 / #581 暫定対応。`user_session` cookie 認証ではツール API
+/// （`/unama/tool/v2/programs/{lv}/comments`）が `AUTHORIZATION_FAILED` を
+/// 返し、UI 上は送信できているように見えてバックエンドで全件失敗する。
+/// OAuth 認証（Issue #581）が実装され投稿が成立するまでは UI を一時的に
+/// 非表示にし、無効体験とログ汚染を防ぐ。バックエンドの
+/// [CommentPostController] / [LiveCommentRepository] / 関連テストは維持する。
+///
+/// 再有効化手順: 本フラグを `true` に戻し、必要に応じて UI 文言・
+/// テストの skip 解除を行うだけで従来挙動に復帰する。
+const bool kCommentPostFeatureEnabled = false;
+
 /// Two-line mode: minimum meta font size in logical pixels.
 ///
 /// The configurable [AppSettings.commentTwoLineMetaFontPercent] is allowed
@@ -2424,9 +2437,18 @@ class _CommentScreenState extends State<CommentScreen>
   /// Whether the comment-post FAB should be shown as a bottom-right overlay
   /// on the comment list.
   ///
-  /// Shown when the feature is wired up, the user is logged in, and the
-  /// input overlay is not already expanded.
+  /// Shown when the feature is wired up, the user is logged in, the
+  /// input overlay is not already expanded, **and** the comment-post
+  /// feature flag is enabled.
+  ///
+  /// Issue #580 / #581 暫定対応: 現状の `user_session` cookie 認証では
+  /// `/unama/tool/v2/programs/{lv}/comments` が `AUTHORIZATION_FAILED` を
+  /// 返し、コメント投稿が裏側で必ず失敗する。ユーザは送信ボタンを押下した
+  /// 後にしかエラーを認知できず、入力分の体験が無駄になるため OAuth 実装
+  /// （Issue #581）が完了するまで FAB / 入力 UI を一時的に隠す。バックエンド
+  /// 側コントローラ・ルーティングは維持して再有効化に備える。
   bool get _shouldShowCommentPostFab =>
+      kCommentPostFeatureEnabled &&
       widget.commentPostController != null &&
       _commentPostUserSession.isNotEmpty &&
       !_commentInputExpanded;
