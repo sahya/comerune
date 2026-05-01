@@ -170,4 +170,22 @@ final class TimeshiftStrings {
   /// 同じ URL の再試行で解消しない種別のエラー（権限不足など）時に、
   /// リトライボタンの代わりに表示する案内。Issue #639 cause 5。
   String get nonRetryableNotice => 'このタイムシフトは再試行しても取得できません。';
+
+  /// タイムシフト未対応ダイアログのタイトル。
+  ///
+  /// Issue #639 / #654 / #173 のフォローアップ。viewUri 取得経路の確立まで
+  /// 取得機能を一時無効化する暫定 UI のための文言。実装が整い次第
+  /// `kTimeshiftFetchEnabled` フラグを true に戻して再有効化する。
+  String get unsupportedDialogTitle => 'タイムシフトは現在未対応です';
+
+  /// タイムシフト未対応ダイアログの本文。
+  ///
+  /// 「将来的に対応予定」であることをユーザに伝え、リトライ誘導や
+  /// 内部エラー表示を抑止する。生ログエラーへの誤遷移を避けるための措置。
+  String get unsupportedDialogBody =>
+      'タイムシフト（過去放送）のコメント取得は現在対応していません。\n'
+      '今後のアップデートで対応予定です。';
+
+  /// 未対応ダイアログの確認ボタン。
+  String get unsupportedDialogConfirm => 'OK';
 }

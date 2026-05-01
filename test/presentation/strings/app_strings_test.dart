@@ -111,6 +111,24 @@ void main() {
     });
   });
 
+  group('AppStrings.timeshift unsupported dialog', () {
+    test('未対応ダイアログの文言が既定ロケールで固定される（Issue #639 / #654 暫定）', () {
+      // 暫定実装の文言が振動しないようバイト完全一致を維持する。
+      // viewUri 取得経路（Issue #654）が確立して `kTimeshiftFetchEnabled` を
+      // true へ戻す PR では、本テストごと削除して問題ない。
+      expect(
+        AppStrings.timeshift.unsupportedDialogTitle,
+        'タイムシフトは現在未対応です',
+      );
+      expect(
+        AppStrings.timeshift.unsupportedDialogBody,
+        'タイムシフト（過去放送）のコメント取得は現在対応していません。\n'
+        '今後のアップデートで対応予定です。',
+      );
+      expect(AppStrings.timeshift.unsupportedDialogConfirm, 'OK');
+    });
+  });
+
   group('AppStrings.commentDisplaySettings', () {
     test('pastCommentFetchCountDescription は取得数と表示保持数の区別を説明し、'
         'buffer サイズは引数で注入される（Issue #668）', () {

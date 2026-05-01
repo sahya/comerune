@@ -44,7 +44,22 @@ import 'domain/models/app_settings.dart';
 import 'domain/models/user_name_resolution.dart';
 import 'presentation/screens/onboarding_screen.dart';
 import 'presentation/select/select_screen.dart';
+import 'presentation/strings/app_strings.dart';
 import 'presentation/theme/app_theme.dart';
+
+/// Feature flag: タイムシフト（過去放送）コメント取得の有効化。
+///
+/// Issue #639 / #654 / #173 のフォローアップ。`programinfo` レスポンスから
+/// 真の `viewUri` を取得する経路が未確立のため、`fetchInitial` を呼ぶと
+/// 内部で 4xx / 5xx を踏んで生ログエラーへ落ちる。暫定対応として本フラグを
+/// `false` に固定し、検出時はユーザ向けに「未対応」ダイアログを 1 度だけ
+/// 提示する no-op に差し替える。
+///
+/// 取得経路の調査・実装が完了したら本フラグを `true` に戻し、
+/// `_tryStartTimeshiftInitial` の no-op 分岐を削除して
+/// `fetchInitial(viewApiUri)` を再配線する。`AppStrings.timeshift.unsupported*`
+/// と関連 widget テストもそのタイミングで除去対象になる。
+const bool kTimeshiftFetchEnabled = false;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -188,6 +203,10 @@ class _ComeruneAppState extends State<ComeruneApp> {
 
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   String _currentLv = '';
+  // Issue #639 / #654: 同一 lv で再接続が走るたびに「未対応」ダイアログを
+  // 重ねて出さないよう、最後に提示した lv を記録する。
+  // `kTimeshiftFetchEnabled` を true に戻す際は本フィールドも併せて削除する。
+  String? _lastTimeshiftUnsupportedDialogLv;
   // initState で initialSettings.pastCommentFetchCount.historyCount に
   // 上書きされるため値そのものは一時的なもの。AppSettings.defaults と
   // 整合を取るため 500 を初期値としている。
@@ -372,7 +391,18 @@ class _ComeruneAppState extends State<ComeruneApp> {
   /// initial-fetches when session resolution happens more than once
   /// (e.g. reconnect attempts) while the previous fetch is still running
   /// or already collected past comments.
+  ///
+  /// Issue #639 / #654 暫定対応: [kTimeshiftFetchEnabled] が `false` の間は
+  /// `fetchInitial` を呼ばず、ユーザに「未対応（将来対応予定）」ダイアログを
+  /// 1 度だけ提示する no-op として動作する。`viewApiUri` は将来の再有効化を
+  /// 見越して引数として残してあり、フラグを true に戻すだけで本来の経路に
+  /// 復帰できる。生ログエラーへの誤遷移防止が主目的のため、ダイアログ表示が
+  /// 失敗してもアプリの他機能は影響を受けないよう副作用は最小に留める。
   Future<void> _tryStartTimeshiftInitial(Uri viewApiUri) async {
+    if (!kTimeshiftFetchEnabled) {
+      _showTimeshiftUnsupportedDialogIfNeeded();
+      return;
+    }
     if (_timeshiftFetchController.status != TimeshiftFetchStatus.idle) {
       return;
     }
@@ -386,6 +416,62 @@ class _ComeruneAppState extends State<ComeruneApp> {
         stackTrace: stackTrace,
       );
     }
+  }
+
+  /// 「タイムシフト未対応」ダイアログを同一 lv あたり 1 度だけ提示する。
+  ///
+  /// Issue #639 / #654 / #173 暫定対応。本来の取得経路が確立したら
+  /// 呼び出し元の no-op 分岐ごと削除する。Navigator が未マウント等で
+  /// ダイアログを出せない場合は副作用なく抜ける（`AGENTS.md` の
+  /// 「Optional Reference Two-Stage Fallback」方針に準じ、内部構造を
+  /// 露出しないログだけ残す）。
+  void _showTimeshiftUnsupportedDialogIfNeeded() {
+    final String lv = _currentLv;
+    if (lv.isEmpty) {
+      return;
+    }
+    if (_lastTimeshiftUnsupportedDialogLv == lv) {
+      return;
+    }
+    _lastTimeshiftUnsupportedDialogLv = lv;
+
+    final NavigatorState? navigator = _navigatorKey.currentState;
+    if (navigator == null || !navigator.mounted) {
+      log(
+        'Skipped timeshift-unsupported dialog (no navigator yet)',
+        name: 'App',
+      );
+      return;
+    }
+
+    // ダイアログの非同期表示中に lv が切り替わっても問題ないよう、
+    // 状態は引数経由で閉じ込める。表示失敗時は黙ってスキップ。
+    unawaited(
+      showDialog<void>(
+        context: navigator.context,
+        builder: (BuildContext dialogContext) {
+          return AlertDialog(
+            key: const Key('timeshift-unsupported-dialog'),
+            title: Text(AppStrings.timeshift.unsupportedDialogTitle),
+            content: Text(AppStrings.timeshift.unsupportedDialogBody),
+            actions: <Widget>[
+              TextButton(
+                key: const Key('timeshift-unsupported-dialog-confirm'),
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: Text(AppStrings.timeshift.unsupportedDialogConfirm),
+              ),
+            ],
+          );
+        },
+      ).catchError((Object error, StackTrace stackTrace) {
+        log(
+          'Failed to present timeshift-unsupported dialog',
+          name: 'App',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }),
+    );
   }
 
   @override
@@ -431,6 +517,12 @@ class _ComeruneAppState extends State<ComeruneApp> {
 
   Future<void> _prepareConnection(String lv, AppSettings settings) async {
     _currentLv = lv;
+    // 異なる lv へ切り替わったタイミングで「未対応」ダイアログの提示履歴を
+    // リセットし、次回の検出で再度ユーザに案内できるようにする。
+    if (_lastTimeshiftUnsupportedDialogLv != null &&
+        _lastTimeshiftUnsupportedDialogLv != lv) {
+      _lastTimeshiftUnsupportedDialogLv = null;
+    }
     _programTitleNotifier.value = null;
     _broadcasterNameNotifier.value = null;
     _supplierUserIdNotifier.value = null;
