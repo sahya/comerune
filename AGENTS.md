@@ -12,7 +12,8 @@ Agents must read and follow:
 - `AGENTS.md`
 - `.ai/flutter_rules.md`
 
-If instructions conflict, prefer the more restrictive rule unless explicitly overridden by the issue.
+If `AGENTS.local.md` exists at the repository root, agents must also read and follow it as a supplemental private rule file.
+If instructions conflict, prefer direct user/developer instructions first; otherwise prefer the more restrictive repository rule unless explicitly overridden by the issue.
 
 ## Product Context
 - This is a Flutter application.
