@@ -487,6 +487,9 @@ class AppSettings {
   final String ngWords;
 
   /// Newline-separated user IDs to filter out from display.
+  // TODO(#727 follow-up): now vestigial after PR2 removed the read path
+  // and PR3 keeps them only for legacy export/import compatibility.
+  // Plan a deprecation issue once a few releases ship the new schema.
   final String ngUserIds;
 
   /// Newline-separated user IDs to monitor in the connection list.
@@ -533,6 +536,9 @@ class AppSettings {
   ///
   /// 空リストの場合は旧形式の [ngWords] 文字列にフォールバックする。
   /// マイグレーション後は常にこちらが使用される。
+  // TODO(#727 follow-up): now vestigial after PR2 removed the read path
+  // and PR3 keeps them only for legacy export/import compatibility.
+  // Plan a deprecation issue once a few releases ship the new schema.
   final List<NgWordRule> ngWordRules;
 
   /// 横幅が狭い端末向けにコメントを二段表示するかどうか。

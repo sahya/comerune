@@ -12,12 +12,14 @@ import '../../application/settings/settings_store.dart';
 import '../../application/speech/speech_availability_notifier.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../data/auth/user_session_store.dart';
+import '../../data/filter/broadcaster_ng_store.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/user_name_resolution.dart';
 import '../../data/user/user_attribute_store.dart';
 import '../mixins/settings_screen_mixin.dart';
 import '../strings/app_strings.dart';
 import '../widgets/settings_widgets.dart';
+import 'broadcaster_ng_list_screen.dart';
 import 'comment_display_settings_screen.dart';
 import 'login_screen.dart';
 import 'tts_settings_screen.dart';
@@ -30,6 +32,7 @@ class SettingsScreen extends StatefulWidget {
     this.userSessionStore,
     this.themeModeNotifier,
     this.userAttributeStore,
+    this.broadcasterNgStore,
     this.broadcasterIdNotifier,
     this.userNameResolution,
     this.speechPlatform,
@@ -40,6 +43,10 @@ class SettingsScreen extends StatefulWidget {
   final UserSessionStore? userSessionStore;
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
   final UserAttributeStore? userAttributeStore;
+
+  /// Issue #727: per-broadcaster NG management store. Forwarded to the
+  /// child screens that expose NG editing UI.
+  final BroadcasterNgStore? broadcasterNgStore;
   final ValueNotifier<String?>? broadcasterIdNotifier;
   final UserNameResolution? userNameResolution;
   final CommentSpeechPlatform? speechPlatform;
@@ -338,6 +345,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                 _buildTtsTile(context, settings),
                 const SizedBox(height: 12),
                 _buildUserManagementTile(context, settings),
+                const SizedBox(height: 12),
+                _buildBroadcasterNgTile(context),
                 const Divider(height: 24),
                 // --- 管理・上級 ---
                 _buildDataManagementSection(context),
@@ -503,6 +512,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               builder: (_) => UserManagementSettingsScreen(
                 settingsStore: widget.settingsStore,
                 userAttributeStore: widget.userAttributeStore,
+                broadcasterNgStore: widget.broadcasterNgStore,
                 broadcasterIdNotifier: widget.broadcasterIdNotifier,
                 userNameResolution: widget.userNameResolution,
                 initialSettings: settings,
@@ -513,6 +523,43 @@ class _SettingsScreenState extends State<SettingsScreen>
             await _loadSettings();
           }
         },
+      ),
+    );
+  }
+
+  Widget _buildBroadcasterNgTile(BuildContext context) {
+    // Issue #727: single Settings-level entry into the per-broadcaster NG
+    // editor. When no [BroadcasterNgStore] is wired the tile is shown as
+    // disabled with a 「未対応」 subtitle so legacy embedders / minimally
+    // wired tests still render without crashing.
+    final BroadcasterNgStore? store = widget.broadcasterNgStore;
+    final bool enabled = store != null;
+    return Card(
+      child: ListTile(
+        key: const Key('broadcaster-ng-filter-tile'),
+        enabled: enabled,
+        leading: const Icon(Icons.block),
+        title: const Text('NG フィルタ'),
+        subtitle: Text(enabled ? 'NG ユーザー / NG ワードを放送者ごとに管理' : '未対応'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: !enabled
+            ? null
+            : () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => BroadcasterNgListScreen(
+                      broadcasterNgStore: store,
+                      broadcasterIdNotifier: widget.broadcasterIdNotifier,
+                    ),
+                  ),
+                );
+                // Refresh settings on return so any side-effects in the NG
+                // editor (e.g. future writes that touch settings) are
+                // reflected without requiring the user to leave the screen.
+                if (mounted) {
+                  await _loadSettings();
+                }
+              },
       ),
     );
   }
