@@ -159,9 +159,12 @@ def main() -> int:
         title_font = load_latin_font(int(110 * max_title_w / title_w))
         tbbox = draw.textbbox((0, 0), title, font=title_font)
     tx = text_left
-    ty = 110
+    ty = 90
     draw.text((tx + 3, ty + 4), title, font=title_font, fill=(60, 25, 95, 160))
     draw.text((tx, ty), title, font=title_font, fill=(255, 255, 255, 255))
+
+    title_ascent, title_descent = title_font.getmetrics()
+    title_bottom_y = ty + title_ascent + title_descent
 
     sub_font = load_jp_font(34)
     subtitle = "ニコ生コメントを表示・読み上げ"
@@ -169,7 +172,7 @@ def main() -> int:
     sub_w = sbbox[2] - sbbox[0]
     sub_h = sbbox[3] - sbbox[1]
     sx = tx
-    sy = ty + (tbbox[3] - tbbox[1]) + 36
+    sy = title_bottom_y + 32
     plate_pad_x, plate_pad_y = 18, 10
     plate_box = (
         sx - plate_pad_x,
