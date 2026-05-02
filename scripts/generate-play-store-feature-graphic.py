@@ -136,19 +136,20 @@ def main() -> int:
     add_decorative_bars(bg)
 
     icon = Image.open(ICON_PATH).convert("RGBA")
-    icon_size = 340
+    icon_size = 300
     icon = icon.resize((icon_size, icon_size), Image.LANCZOS)
     icon = round_corners(icon, radius=int(icon_size * 0.22))
     icon_with_shadow = drop_shadow(icon, offset=(6, 14), blur=22, opacity=140)
 
-    icon_x = 80 - 44
-    icon_y = (H - icon_size) // 2 - 36
+    shadow_pad = 22 * 2
+    icon_x = 110 - shadow_pad
+    icon_y = (H - icon_size) // 2 - shadow_pad
     bg.alpha_composite(icon_with_shadow, (icon_x, icon_y))
 
     draw = ImageDraw.Draw(bg)
 
-    safe_right = 100
-    text_left = 460
+    safe_right = 80
+    text_left = 470
 
     title = "comerune"
     title_font = load_latin_font(110)
@@ -158,43 +159,56 @@ def main() -> int:
     if title_w > max_title_w:
         title_font = load_latin_font(int(110 * max_title_w / title_w))
         tbbox = draw.textbbox((0, 0), title, font=title_font)
-    tx = text_left
-    ty = 90
-    draw.text((tx + 3, ty + 4), title, font=title_font, fill=(60, 25, 95, 160))
-    draw.text((tx, ty), title, font=title_font, fill=(255, 255, 255, 255))
-
-    title_ascent, title_descent = title_font.getmetrics()
-    title_bottom_y = ty + title_ascent + title_descent
+    title_visual_top = tbbox[1]
+    title_visual_h = tbbox[3] - tbbox[1]
 
     sub_font = load_jp_font(34)
     subtitle = "ニコ生コメントを表示・読み上げ"
     sbbox = draw.textbbox((0, 0), subtitle, font=sub_font)
     sub_w = sbbox[2] - sbbox[0]
     sub_h = sbbox[3] - sbbox[1]
-    sx = tx
-    sy = title_bottom_y + 32
-    plate_pad_x, plate_pad_y = 18, 10
-    plate_box = (
-        sx - plate_pad_x,
-        sy - plate_pad_y,
-        sx + sub_w + plate_pad_x,
-        sy + sub_h + plate_pad_y,
-    )
-    draw_plate(bg, plate_box, radius=14, fill=(40, 15, 70, 95))
-    draw.text((sx, sy - sbbox[1]), subtitle, font=sub_font, fill=(255, 255, 255, 255))
 
     tag_font = load_jp_font(24)
     tag = "ながら見でも聞き逃さない"
-    tbbox2 = draw.textbbox((0, 0), tag, font=tag_font)
-    tw = tbbox2[2] - tbbox2[0]
-    th = tbbox2[3] - tbbox2[1]
-    pad_x, pad_y = 18, 10
-    bx0 = tx
-    by0 = plate_box[3] + 22
-    bx1 = bx0 + tw + pad_x * 2
-    by1 = by0 + th + pad_y * 2
-    draw_plate(bg, (bx0, by0, bx1, by1), radius=(by1 - by0) // 2, fill=(20, 10, 40, 130))
-    draw.text((bx0 + pad_x, by0 + pad_y - tbbox2[1]), tag, font=tag_font, fill=(255, 255, 255, 255))
+    gbbox = draw.textbbox((0, 0), tag, font=tag_font)
+    tag_w = gbbox[2] - gbbox[0]
+    tag_h = gbbox[3] - gbbox[1]
+
+    sub_pad_x, sub_pad_y = 18, 12
+    tag_pad_x, tag_pad_y = 18, 10
+    gap_title_sub = 30
+    gap_sub_tag = 22
+
+    sub_plate_h = sub_h + sub_pad_y * 2
+    tag_plate_h = tag_h + tag_pad_y * 2
+    block_h = title_visual_h + gap_title_sub + sub_plate_h + gap_sub_tag + tag_plate_h
+    block_top = (H - block_h) // 2
+
+    title_y_for_visual_top = block_top - title_visual_top
+    tx = text_left
+    ty = title_y_for_visual_top
+    draw.text((tx + 3, ty + 4), title, font=title_font, fill=(60, 25, 95, 160))
+    draw.text((tx, ty), title, font=title_font, fill=(255, 255, 255, 255))
+
+    sub_plate_top = block_top + title_visual_h + gap_title_sub
+    sub_plate_box = (
+        tx - sub_pad_x,
+        sub_plate_top,
+        tx + sub_w + sub_pad_x,
+        sub_plate_top + sub_plate_h,
+    )
+    draw_plate(bg, sub_plate_box, radius=14, fill=(40, 15, 70, 95))
+    draw.text((tx, sub_plate_top + sub_pad_y - sbbox[1]), subtitle, font=sub_font, fill=(255, 255, 255, 255))
+
+    tag_plate_top = sub_plate_box[3] + gap_sub_tag
+    tag_plate_box = (
+        tx,
+        tag_plate_top,
+        tx + tag_w + tag_pad_x * 2,
+        tag_plate_top + tag_plate_h,
+    )
+    draw_plate(bg, tag_plate_box, radius=tag_plate_h // 2, fill=(20, 10, 40, 130))
+    draw.text((tx + tag_pad_x, tag_plate_top + tag_pad_y - gbbox[1]), tag, font=tag_font, fill=(255, 255, 255, 255))
 
     final = bg.convert("RGB")
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
