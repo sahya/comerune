@@ -44,6 +44,75 @@ void _errorLog(String message, {Object? error}) {
   appErrorLog(name: 'SelectScreen', message: message, error: error);
 }
 
+/// Issue #727: per-broadcaster NG snapshot record.
+///
+/// The `broadcasterId` field tags which broadcaster the [ngUserIds] and
+/// [rules] belong to; consumers compare it against the currently-active
+/// broadcaster to detect stale async loads. `null` means "no snapshot
+/// loaded" (initial state, or after disconnect/clear).
+///
+/// Public so the testable [resolveContentFilterLogic] helper below — and
+/// its tests — can reference the same record shape rather than restating
+/// it.
+typedef BroadcasterNgSnapshot = ({
+  String? broadcasterId,
+  Set<String> ngUserIds,
+  List<NgWordRule> rules,
+});
+
+/// Convenience getter to avoid spelling out the empty record at every
+/// call-site. Returns a fresh value each time; the constituent fields
+/// themselves are still const collections so the cost is negligible.
+BroadcasterNgSnapshot get _emptyBroadcasterNgSnapshot => (
+  broadcasterId: null,
+  ngUserIds: const <String>{},
+  rules: const <NgWordRule>[],
+);
+
+/// Pure logic for [_SelectScreenState._resolveContentFilter], extracted as
+/// a top-level function so it can be unit-tested without spinning up a
+/// full widget tree.
+///
+/// See [_SelectScreenState._resolveContentFilter] for the resolution
+/// rules and the rationale for the legacy union (Issue #727 PR1).
+@visibleForTesting
+({Set<String> ngUserIds, List<String> ngWords}) resolveContentFilterLogic({
+  required AppSettings settings,
+  required String? currentBroadcasterId,
+  required BroadcasterNgSnapshot snapshot,
+  required bool hasStore,
+}) {
+  // Per-broadcaster path: store is wired AND we are connected AND the
+  // in-memory snapshot reflects the currently-active broadcaster (i.e.
+  // not a stale load from a previous broadcaster).
+  final bool perBroadcasterActive =
+      hasStore &&
+      currentBroadcasterId != null &&
+      snapshot.broadcasterId == currentBroadcasterId;
+  if (perBroadcasterActive) {
+    // Issue #727 MUST FIX 1: union legacy fields into the snapshot so
+    // edits from the not-yet-retargeted NgUserListScreen /
+    // NgWordListScreen do not silently disappear while a broadcaster is
+    // connected. Both sides go through `enabledNgWordPatterns` /
+    // lower-cased dedup so the shape stays consistent.
+    // TODO(#727): remove legacy union once PR2 lands.
+    final Set<String> mergedUserIds = <String>{
+      ...snapshot.ngUserIds,
+      ...settings.ngUserIdSet,
+    };
+    // Use a LinkedHashSet so the patterns remain deterministic for
+    // tests while still de-duplicating across the two sources.
+    final Set<String> mergedWordSet = <String>{
+      ...enabledNgWordPatterns(snapshot.rules),
+      ...settings.ngWordList,
+    };
+    return (ngUserIds: mergedUserIds, ngWords: mergedWordSet.toList());
+  }
+  // TODO(#727): remove together with PR2 once NG list screens write
+  // through BroadcasterNgStore.
+  return (ngUserIds: settings.ngUserIdSet, ngWords: settings.ngWordList);
+}
+
 class SelectScreen extends StatefulWidget {
   const SelectScreen({
     required this.connectionSupervisor,
@@ -174,21 +243,19 @@ class _SelectScreenState extends State<SelectScreen>
   /// [ContentFilterConfig]. Mirrors the [_userAttrNotifier] pattern so the
   /// existing ListenableBuilder rebuild flow drives filter updates.
   ///
-  /// Initial value is empty; a real snapshot is populated by
-  /// `_loadBroadcasterNgState`. When [SelectScreen.broadcasterNgStore] is
-  /// null the notifier stays empty and the legacy global fields on
-  /// `AppSettings` provide the filter input via [_resolveContentFilter].
-  final ValueNotifier<({Set<String> ngUserIds, List<NgWordRule> rules})>
-  _broadcasterNgNotifier =
-      ValueNotifier<({Set<String> ngUserIds, List<NgWordRule> rules})>((
-        ngUserIds: const <String>{},
-        rules: const <NgWordRule>[],
-      ));
-
-  /// Tracks the broadcaster ID that [_broadcasterNgNotifier] reflects.
-  /// Used to ignore stale async loads when the user reconnects to a
-  /// different broadcaster mid-load.
-  String? _broadcasterNgLoadedFor;
+  /// The `broadcasterId` tag travels with the snapshot itself so a stale
+  /// async load that completes after the user has reconnected to a
+  /// different broadcaster can be detected by comparing the tag against
+  /// [_currentBroadcasterId] — there is no longer a separate "loaded for"
+  /// field that could drift out of sync with the snapshot value.
+  ///
+  /// Initial value is empty (broadcasterId == null); a real snapshot is
+  /// populated by `_loadBroadcasterNgState`. When
+  /// [SelectScreen.broadcasterNgStore] is null the notifier stays empty
+  /// and the legacy global fields on `AppSettings` provide the filter
+  /// input via [_resolveContentFilter].
+  final ValueNotifier<BroadcasterNgSnapshot> _broadcasterNgNotifier =
+      ValueNotifier<BroadcasterNgSnapshot>(_emptyBroadcasterNgSnapshot);
   final MethodChannelCommentSpeech _speechPlatform =
       MethodChannelCommentSpeech();
   int _broadcastEndedNotificationSequence = 0;
@@ -349,11 +416,9 @@ class _SelectScreenState extends State<SelectScreen>
     // Issue #727: reset the per-broadcaster NG snapshot too so that
     // disconnecting / switching broadcasters does not leak the previous
     // broadcaster's filtered IDs into the next session's filter config.
-    _broadcasterNgNotifier.value = (
-      ngUserIds: const <String>{},
-      rules: const <NgWordRule>[],
-    );
-    _broadcasterNgLoadedFor = null;
+    // Setting broadcasterId back to null also marks the snapshot as
+    // "not yet loaded" for any in-flight `_resolveContentFilter` reader.
+    _broadcasterNgNotifier.value = _emptyBroadcasterNgSnapshot;
   }
 
   Future<void> _flushPendingUserAttributeWrites() async {
@@ -1073,13 +1138,19 @@ class _SelectScreenState extends State<SelectScreen>
       return;
     }
     try {
-      final Set<String> ids = await store.loadNgUserIds(broadcasterId);
-      final List<NgWordRule> rules = await store.loadNgWordRules(broadcasterId);
+      // Issue #727 review fix: single combined load avoids the duplicate
+      // template-seeding round-trip that calling loadNgUserIds + loadNg
+      // WordRules back to back would do on first access.
+      final ({Set<String> ngUserIds, List<NgWordRule> rules}) snapshot =
+          await store.loadBroadcasterNgAttributes(broadcasterId);
       if (!mounted || _currentBroadcasterId != broadcasterId) {
         return;
       }
-      _broadcasterNgLoadedFor = broadcasterId;
-      _broadcasterNgNotifier.value = (ngUserIds: ids, rules: rules);
+      _broadcasterNgNotifier.value = (
+        broadcasterId: broadcasterId,
+        ngUserIds: snapshot.ngUserIds,
+        rules: snapshot.rules,
+      );
     } on Object catch (error, stackTrace) {
       _errorLog(
         '_loadBroadcasterNgState: failed for $broadcasterId',
@@ -1124,28 +1195,32 @@ class _SelectScreenState extends State<SelectScreen>
   ///
   /// Resolution order:
   ///   1. When a broadcaster is connected and the per-broadcaster store
-  ///      has produced a snapshot for that broadcaster, use it.
+  ///      has produced a snapshot tagged with that same broadcaster, use
+  ///      the snapshot — but **union** the current legacy
+  ///      `settings.ngUserIdSet` / `settings.ngWordList` into the result.
   ///   2. Otherwise fall back to the legacy global fields on
   ///      [AppSettings] so unconnected users (and hosts that do not pass
   ///      a [BroadcasterNgStore]) still see their existing NG filter.
   ///
-  /// Both paths produce the same shape, so callers can switch transparently.
+  /// **Why union?** The legacy `NgUserListScreen` / `NgWordListScreen`
+  /// management screens still write to `AppSettings.ngUserIds` /
+  /// `AppSettings.ngWordRules` in this PR. Without the union, a user
+  /// editing NG entries from those screens while connected to a
+  /// broadcaster would see no filter effect — a silent regression.
+  /// The per-broadcaster path remains the source of truth for writes
+  /// (the long-press toggle in `_toggleNgUser` writes only there); the
+  /// union is a temporary read-side bridge so legacy edits leak through
+  /// until PR2 retargets those screens to write through
+  /// [BroadcasterNgStore].
+  ///
+  /// TODO(#727): remove legacy union once PR2 lands.
   ({Set<String> ngUserIds, List<String> ngWords}) _resolveContentFilter() {
-    final AppSettings settings = _settingsNotifier.value;
-    final String? broadcasterId = _currentBroadcasterId;
-    final ({Set<String> ngUserIds, List<NgWordRule> rules}) snapshot =
-        _broadcasterNgNotifier.value;
-    if (widget.broadcasterNgStore != null &&
-        broadcasterId != null &&
-        _broadcasterNgLoadedFor == broadcasterId) {
-      final List<String> ngWords = snapshot.rules
-          .where((NgWordRule r) => r.enabled)
-          .map((NgWordRule r) => r.pattern.trim().toLowerCase())
-          .where((String s) => s.isNotEmpty)
-          .toList();
-      return (ngUserIds: snapshot.ngUserIds, ngWords: ngWords);
-    }
-    return (ngUserIds: settings.ngUserIdSet, ngWords: settings.ngWordList);
+    return resolveContentFilterLogic(
+      settings: _settingsNotifier.value,
+      currentBroadcasterId: _currentBroadcasterId,
+      snapshot: _broadcasterNgNotifier.value,
+      hasStore: widget.broadcasterNgStore != null,
+    );
   }
 
   void _onUserColorChanged(String userId, int colorValue) {
@@ -1301,8 +1376,7 @@ class _SelectScreenState extends State<SelectScreen>
     final BroadcasterNgStore? ngStore = widget.broadcasterNgStore;
     final String? broadcasterId = _currentBroadcasterId;
     if (ngStore != null && broadcasterId != null) {
-      final ({Set<String> ngUserIds, List<NgWordRule> rules}) snapshot =
-          _broadcasterNgNotifier.value;
+      final BroadcasterNgSnapshot snapshot = _broadcasterNgNotifier.value;
       final bool isCurrentlyNg = snapshot.ngUserIds.contains(userId);
       final Set<String> nextIds = <String>{...snapshot.ngUserIds};
       if (isCurrentlyNg) {
@@ -1310,15 +1384,43 @@ class _SelectScreenState extends State<SelectScreen>
       } else {
         nextIds.add(userId);
       }
-      _broadcasterNgNotifier.value = (
+      // Optimistic in-memory update tagged with the current broadcaster.
+      // The optimistic value is captured up front so we can revert it if
+      // the store write fails below.
+      final BroadcasterNgSnapshot previous = snapshot;
+      final BroadcasterNgSnapshot next = (
+        broadcasterId: broadcasterId,
         ngUserIds: nextIds,
         rules: snapshot.rules,
       );
-      _broadcasterNgLoadedFor = broadcasterId;
+      _broadcasterNgNotifier.value = next;
+      final Future<void> write = isCurrentlyNg
+          ? ngStore.removeNgUserId(broadcasterId, userId)
+          : ngStore.addNgUserId(broadcasterId, userId);
+      // Issue #727 review fix: roll back the optimistic in-memory state
+      // on persistence failure so the UI does not drift from the stored
+      // truth. Only reverts when the broadcaster is still active and our
+      // optimistic value is still in place — otherwise a later edit
+      // (toggle, switch broadcaster, disconnect) has superseded this
+      // one and rolling back would clobber the newer state.
       unawaited(
-        isCurrentlyNg
-            ? ngStore.removeNgUserId(broadcasterId, userId)
-            : ngStore.addNgUserId(broadcasterId, userId),
+        write.catchError((Object error) {
+          _errorLog(
+            '_toggleNgUser: persistence failed; rolling back '
+            '(userId=$userId, isCurrentlyNg=$isCurrentlyNg)',
+            error: error,
+          );
+          if (!mounted) {
+            return;
+          }
+          if (_currentBroadcasterId != broadcasterId) {
+            return;
+          }
+          if (!identical(_broadcasterNgNotifier.value, next)) {
+            return;
+          }
+          _broadcasterNgNotifier.value = previous;
+        }),
       );
       return;
     }
@@ -1326,6 +1428,8 @@ class _SelectScreenState extends State<SelectScreen>
     // or when the store is not wired (e.g. tests). When PR2 retargets the
     // list screens this branch is the last remaining writer of the
     // legacy fields, but it remains as a safety net.
+    // TODO(#727): remove together with PR2 once NG list screens write
+    // through BroadcasterNgStore.
     final AppSettings current = _settingsNotifier.value;
     final AppSettings updated = current.isNgUser(userId)
         ? current.removeNgUserId(userId)

@@ -321,6 +321,34 @@ class SharedPreferencesUserAttributeStore implements UserAttributeStore {
         .catchError((Object error, StackTrace stackTrace) {});
     return scheduled;
   }
+
+  /// Reads the legacy broadcaster index entry as a list of broadcaster IDs.
+  ///
+  /// Used at startup as the seed list for the one-shot NG-filter migration
+  /// so already-known broadcasters inherit the user's pre-migration NG
+  /// configuration. Centralising the JSON-decode here keeps the storage-key
+  /// shape an implementation detail of this class — callers do not need to
+  /// know the underlying SharedPreferences key name.
+  ///
+  /// Returns an empty list when the entry is missing or malformed; callers
+  /// must treat that as "no known broadcasters yet" rather than an error.
+  static List<String> readKnownBroadcasterIdsFromPrefs(
+    SharedPreferencesLike prefs,
+  ) {
+    final String? raw = prefs.getString(_indexKey);
+    if (raw == null || raw.isEmpty) {
+      return const <String>[];
+    }
+    try {
+      final Object? decoded = json.decode(raw);
+      if (decoded is List) {
+        return decoded.whereType<String>().toList();
+      }
+    } on Object {
+      // Malformed legacy index — treat as empty.
+    }
+    return const <String>[];
+  }
 }
 
 // ---------------------------------------------------------------------------

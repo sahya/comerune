@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
 import 'dart:ui';
@@ -159,7 +158,10 @@ Future<void> main() async {
   await BroadcasterNgMigrator.migrateIfNeeded(
     prefs: prefsAdapter,
     store: broadcasterNgStore,
-    knownBroadcasterIds: _readKnownBroadcasterIds(prefsAdapter),
+    knownBroadcasterIds:
+        SharedPreferencesUserAttributeStore.readKnownBroadcasterIdsFromPrefs(
+          prefsAdapter,
+        ),
   );
 
   // Run one-time migration tasks when the app version changes.
@@ -217,28 +219,6 @@ Future<void> main() async {
       oauthAuthController: oauthAuthController,
     ),
   );
-}
-
-/// Reads the legacy `usercolor._index` SharedPreferences entry into a
-/// deduplicated list of broadcaster IDs. Used at startup as the seed list
-/// for the one-shot NG-filter migration so already-known broadcasters
-/// inherit the user's pre-migration NG configuration. Returns empty when
-/// the key is missing or malformed — callers must treat that as "no known
-/// broadcasters yet" rather than an error.
-List<String> _readKnownBroadcasterIds(SharedPreferencesLike prefs) {
-  final String? raw = prefs.getString('usercolor._index');
-  if (raw == null || raw.isEmpty) {
-    return const <String>[];
-  }
-  try {
-    final Object? decoded = jsonDecode(raw);
-    if (decoded is List) {
-      return decoded.whereType<String>().toList();
-    }
-  } on Object {
-    // Malformed legacy index — treat as empty.
-  }
-  return const <String>[];
 }
 
 class ComeruneApp extends StatefulWidget {

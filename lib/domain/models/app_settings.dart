@@ -661,11 +661,9 @@ class AppSettings {
   /// are returned. Otherwise falls back to the legacy [ngWords] string.
   List<String> get ngWordList {
     if (ngWordRules.isNotEmpty) {
-      return ngWordRules
-          .where((NgWordRule r) => r.enabled)
-          .map((NgWordRule r) => r.pattern.trim().toLowerCase())
-          .where((String s) => s.isNotEmpty)
-          .toList();
+      // Issue #727: shared helper so the legacy and per-broadcaster paths
+      // normalize patterns identically.
+      return enabledNgWordPatterns(ngWordRules);
     }
     return parseNewlineSeparatedLowerList(ngWords);
   }

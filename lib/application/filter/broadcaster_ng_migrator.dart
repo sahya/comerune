@@ -37,7 +37,7 @@ class BroadcasterNgMigrator {
 
   /// SharedPreferences flag key that records the migration as done.
   /// Subsequent calls to [migrateIfNeeded] short-circuit when this is set.
-  static const String migrationFlagKey = 'settings.filter.migration.v1Done';
+  static const String migrationFlagKey = 'settings.filter.migration.v1Completed';
 
   // Legacy key names — kept aligned with [SharedPreferencesSettingsStore].
   static const String _legacyNgWordsKey = 'settings.filter.ngWords';
@@ -114,7 +114,8 @@ class BroadcasterNgMigrator {
         await store.saveNgWordRules(broadcasterId, ngWordRules);
       } on Object catch (error, stackTrace) {
         developer.log(
-          'Failed to seed NG data for broadcaster $broadcasterId: $error',
+          'Failed to seed NG data for broadcaster '
+          '${_redactBroadcasterId(broadcasterId)}: $error',
           name: 'BroadcasterNgMigrator',
           error: error,
           stackTrace: stackTrace,
@@ -199,5 +200,15 @@ class BroadcasterNgMigrator {
     }
 
     return rules;
+  }
+
+  /// Returns a short prefix-only form of [broadcasterId] suitable for
+  /// developer-log output, so error messages do not leak full IDs into
+  /// device logs / crash reports.
+  static String _redactBroadcasterId(String broadcasterId) {
+    if (broadcasterId.length > 4) {
+      return '${broadcasterId.substring(0, 4)}***';
+    }
+    return '***';
   }
 }

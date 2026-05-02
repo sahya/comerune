@@ -37,6 +37,15 @@ abstract class BroadcasterNgStore {
   /// semantics as [loadNgUserIds].
   Future<List<NgWordRule>> loadNgWordRules(String broadcasterId);
 
+  /// Combined load that minimizes I/O round-trips. Returns the per-broadcaster
+  /// snapshot, after first-access template seeding if needed.
+  ///
+  /// Prefer this over calling [loadNgUserIds] and [loadNgWordRules] back to
+  /// back: the underlying initialize-from-template check runs only once.
+  /// The two field-by-field methods are retained for backward compatibility.
+  Future<({Set<String> ngUserIds, List<NgWordRule> rules})>
+  loadBroadcasterNgAttributes(String broadcasterId);
+
   /// Replace all NG user IDs for [broadcasterId].
   Future<void> saveNgUserIds(String broadcasterId, Iterable<String> ids);
 
@@ -113,6 +122,20 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
     _validateBroadcasterId(broadcasterId);
     await _ensureInitialized(broadcasterId);
     return _readNgWordRules(_ngWordRulesKey(broadcasterId));
+  }
+
+  @override
+  Future<({Set<String> ngUserIds, List<NgWordRule> rules})>
+  loadBroadcasterNgAttributes(String broadcasterId) async {
+    _validateBroadcasterId(broadcasterId);
+    // Single template-seeding round-trip, then both reads against the
+    // already-initialized slot.
+    await _ensureInitialized(broadcasterId);
+    final Set<String> ids = _readNgUserIds(_ngUserIdsKey(broadcasterId));
+    final List<NgWordRule> rules = _readNgWordRules(
+      _ngWordRulesKey(broadcasterId),
+    );
+    return (ngUserIds: ids, rules: rules);
   }
 
   @override
@@ -274,7 +297,7 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
       return decoded.whereType<String>().toSet();
     } on Object catch (e) {
       developer.log(
-        'Failed to parse NG user IDs at $key: $e',
+        'Failed to parse NG user IDs at ${_redactKey(key)}: $e',
         name: 'BroadcasterNgStore',
       );
       return <String>{};
@@ -297,11 +320,28 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
           .toList();
     } on Object catch (e) {
       developer.log(
-        'Failed to parse NG word rules at $key: $e',
+        'Failed to parse NG word rules at ${_redactKey(key)}: $e',
         name: 'BroadcasterNgStore',
       );
       return <NgWordRule>[];
     }
+  }
+
+  /// Redacts the broadcaster-id segment of a per-broadcaster preferences
+  /// key for developer-log output, so error messages do not leak full IDs
+  /// into device logs or crash reports.
+  static String _redactKey(String key) {
+    if (!key.startsWith(_broadcasterKeyPrefix)) {
+      return key;
+    }
+    final String tail = key.substring(_broadcasterKeyPrefix.length);
+    final int dot = tail.indexOf('.');
+    final String idPart = dot < 0 ? tail : tail.substring(0, dot);
+    final String suffix = dot < 0 ? '' : tail.substring(dot);
+    final String redactedId = idPart.length > 4
+        ? '${idPart.substring(0, 4)}***'
+        : '***';
+    return '$_broadcasterKeyPrefix$redactedId$suffix';
   }
 
   List<String> _normalizeIds(Iterable<String> ids) {
