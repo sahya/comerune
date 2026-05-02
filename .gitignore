@@ -35,6 +35,10 @@ android/**/GeneratedPluginRegistrant.java
 # Application ID (fork-protected — see android/app_id.properties.example)
 android/app_id.properties
 
+# Android Developer Verification snippet (account-specific identifier from Play Console)
+# Used as ANDROID_ADI_REGISTRATION_PUBLIC_CONTENT_FILE input for `make build-adi-verification`.
+adi-registration.properties
+
 # IDE files
 .idea/
 *.iml
