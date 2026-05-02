@@ -365,7 +365,8 @@ class _LoginScreenState extends State<LoginScreen> {
     // OAuth ログイン入口は debug ビルドの開発者向け検証用としてのみ
     // 表示する。release ではボタン自体を出さないことで、フローを通しても
     // 機能差が生まれないボタンをユーザーに見せない (取得した access_token を
-    // アプリ内 API 呼び出しに反映する配線は別 PR で順次実装予定)。
+    // アプリ内 API 呼び出しに反映する配線は #795 で対応予定。完了時に
+    // 本 `kDebugMode &&` ガードと tooltip の "(debug 限定)" を併せて外す)。
     final bool oauthAvailable =
         kDebugMode && (_oauthController?.isFullyConfigured ?? false);
     return Scaffold(
