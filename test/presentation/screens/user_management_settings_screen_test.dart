@@ -61,12 +61,39 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(find.text('放送者ごとに NG ユーザー / NG ワードを管理'), findsOneWidget);
+        // 0 件 form when no broadcaster slots exist yet.
+        expect(find.text('未登録 / 放送者ごとに NG ユーザー / NG ワードを管理'), findsOneWidget);
 
         await tester.tap(find.byKey(const Key('broadcaster-ng-list-tile')));
         await tester.pumpAndSettle();
 
         expect(find.byType(BroadcasterNgListScreen), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'broadcaster NG tile subtitle reflects broadcaster slot count',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final FakeBroadcasterNgStore ngStore = FakeBroadcasterNgStore()
+          ..seedBroadcaster('caster-a')
+          ..seedBroadcaster('caster-b');
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: UserManagementSettingsScreen(
+              settingsStore: settingsStore,
+              broadcasterNgStore: ngStore,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text('2 件の放送者で設定済み / 放送者ごとに NG ユーザー / NG ワードを管理'),
+          findsOneWidget,
+        );
       },
     );
 

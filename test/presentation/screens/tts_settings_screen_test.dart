@@ -172,22 +172,34 @@ void main() {
       expect(loaded.queueLimit, 50);
     });
 
-    // Issue #727 PR2: NG word tile no longer shows a count — it now opens
-    // the per-broadcaster picker instead of the global NG word screen.
-    testWidgets('shows NG word list tile with per-broadcaster subtitle', (
-      WidgetTester tester,
-    ) async {
-      final SharedPreferencesSettingsStore settingsStore =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+    // Issue #727 PR2: NG word tile is disabled with a 「未対応」 subtitle when
+    // no `BroadcasterNgStore` is wired (legacy embedders / minimally-wired
+    // tests). This avoids silent in-memory data loss.
+    testWidgets(
+      'NG word tile is disabled when broadcasterNgStore is not wired',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
-      await tester.pumpWidget(_buildScreen(settingsStore));
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
 
-      await scrollToKeyInList(tester, _listKey, const Key('ng-word-list-tile'));
+        await scrollToKeyInList(
+          tester,
+          _listKey,
+          const Key('ng-word-list-tile'),
+        );
 
-      expect(find.text('NGワード管理', skipOffstage: false), findsOneWidget);
-      expect(find.text('放送者ごとに編集します', skipOffstage: false), findsOneWidget);
-    });
+        expect(find.text('NGワード管理', skipOffstage: false), findsOneWidget);
+        expect(find.text('未対応', skipOffstage: false), findsOneWidget);
+
+        final ListTile tile = tester.widget(
+          find.byKey(const Key('ng-word-list-tile'), skipOffstage: false),
+        );
+        expect(tile.enabled, isFalse);
+        expect(tile.onTap, isNull);
+      },
+    );
 
     testWidgets('auto-read toggle persists value', (WidgetTester tester) async {
       final SharedPreferencesSettingsStore settingsStore =

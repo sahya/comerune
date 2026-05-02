@@ -79,6 +79,31 @@ class _UserManagementSettingsScreenState
     setState(() {});
   }
 
+  /// Subtitle for the per-broadcaster NG tile.
+  ///
+  /// `listBroadcasters()` is a synchronous read — calling it from `build`
+  /// is safe and stays consistent with `setState` triggered by
+  /// `loadSettings()` returning from the picker.
+  String _broadcasterNgSubtitle() {
+    final BroadcasterNgStore? store = widget.broadcasterNgStore;
+    if (store == null) {
+      return '未対応';
+    }
+    int count;
+    try {
+      count = store.listBroadcasters().length;
+    } on Object {
+      // Defensive: an optional integration can fail to enumerate the
+      // slot list; degrade to the bare description rather than break
+      // the screen.
+      return '放送者ごとに NG ユーザー / NG ワードを管理';
+    }
+    if (count == 0) {
+      return '未登録 / 放送者ごとに NG ユーザー / NG ワードを管理';
+    }
+    return '$count 件の放送者で設定済み / 放送者ごとに NG ユーザー / NG ワードを管理';
+  }
+
   @override
   Widget build(BuildContext context) {
     final AppSettings? settings = this.settings;
@@ -138,11 +163,7 @@ class _UserManagementSettingsScreenState
                         enabled: widget.broadcasterNgStore != null,
                         leading: const Icon(Icons.person_off),
                         title: const Text('放送者別 NG 一覧'),
-                        subtitle: Text(
-                          widget.broadcasterNgStore == null
-                              ? '未対応'
-                              : '放送者ごとに NG ユーザー / NG ワードを管理',
-                        ),
+                        subtitle: Text(_broadcasterNgSubtitle()),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: widget.broadcasterNgStore == null
                             ? null

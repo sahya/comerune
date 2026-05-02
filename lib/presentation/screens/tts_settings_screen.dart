@@ -8,11 +8,9 @@ import '../../application/speech/speech_availability_notifier.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../data/filter/broadcaster_ng_store.dart';
 import '../../domain/models/app_settings.dart';
-import '../../domain/models/ng_word_rule.dart';
 import '../../domain/models/voicevox_model_info.dart';
 import '../mixins/settings_screen_mixin.dart';
 import '../widgets/settings_widgets.dart';
-import 'broadcaster_ng_detail_screen.dart';
 import 'broadcaster_ng_list_screen.dart';
 import 'dictionary_rules_screen.dart';
 import 'voice_library_screen.dart';
@@ -1575,42 +1573,37 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                       ListTile(
                         key: const Key('ng-word-list-tile'),
                         contentPadding: EdgeInsets.zero,
+                        enabled: widget.broadcasterNgStore != null,
                         leading: const Icon(Icons.block),
                         title: const Text('NGワード管理'),
-                        subtitle: const Text('放送者ごとに編集します'),
+                        subtitle: Text(
+                          widget.broadcasterNgStore == null
+                              ? '未対応'
+                              : '放送者ごとに編集します',
+                        ),
                         trailing: const Icon(Icons.chevron_right),
-                        onTap: () async {
-                          // Issue #727: route through the per-broadcaster
-                          // picker when the store is wired (production).
-                          // When no store is wired (legacy embedders /
-                          // minimally-wired tests) fall back to the
-                          // template scope detail backed by a transient
-                          // in-memory store. Edits in that fallback path
-                          // do not persist; this is an intentional no-op
-                          // bridge to avoid hard-failing legacy embedders.
-                          final BroadcasterNgStore store =
-                              widget.broadcasterNgStore ??
-                              _InMemoryBroadcasterNgStore();
-                          await Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => widget.broadcasterNgStore != null
-                                  ? BroadcasterNgListScreen(
-                                      broadcasterNgStore: store,
+                        onTap: widget.broadcasterNgStore == null
+                            ? null
+                            : () async {
+                                // Issue #727: route through the
+                                // per-broadcaster picker. When no store is
+                                // wired the tile is disabled above to
+                                // avoid silent in-memory data loss.
+                                await Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => BroadcasterNgListScreen(
+                                      broadcasterNgStore:
+                                          widget.broadcasterNgStore!,
                                       broadcasterIdNotifier:
                                           widget.broadcasterIdNotifier,
-                                    )
-                                  : BroadcasterNgDetailScreen(
-                                      broadcasterNgStore: store,
-                                      broadcasterId: null,
-                                      scopeLabel: 'テンプレート',
                                     ),
-                            ),
-                          );
-                          await loadSettings();
-                          if (this.settings != null) {
-                            _pushSettingsToEngine(this.settings!);
-                          }
-                        },
+                                  ),
+                                );
+                                await loadSettings();
+                                if (this.settings != null) {
+                                  _pushSettingsToEngine(this.settings!);
+                                }
+                              },
                       ),
                       ListTile(
                         key: const Key('dictionary-rules-tile'),
@@ -1674,81 +1667,5 @@ class _MutedFromCommentScreenIndicator extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-/// Issue #727: minimal in-memory [BroadcasterNgStore] used as a fallback
-/// when [TtsSettingsScreen] is opened without a wired store (legacy
-/// embedders / tests). Edits are not persisted; the goal is to keep the
-/// detail screen functional rather than crash. Production code paths
-/// always flow through the real shared-preferences store, so this is
-/// only reachable from tests / legacy hosts.
-class _InMemoryBroadcasterNgStore implements BroadcasterNgStore {
-  final Map<String, Set<String>> _userIds = <String, Set<String>>{};
-  final Map<String, List<NgWordRule>> _rules = <String, List<NgWordRule>>{};
-  Set<String> _templateUserIds = <String>{};
-  List<NgWordRule> _templateRules = <NgWordRule>[];
-
-  @override
-  Future<void> addNgUserId(String broadcasterId, String userId) async {
-    (_userIds[broadcasterId] ??= <String>{}).add(userId);
-  }
-
-  @override
-  Future<void> flushPendingWrites() async {}
-
-  @override
-  List<String> listBroadcasters() => _userIds.keys.toList();
-
-  @override
-  Future<BroadcasterNgPayload> loadBroadcasterNgAttributes(
-    String broadcasterId,
-  ) async {
-    return (
-      ngUserIds: _userIds[broadcasterId] ?? <String>{},
-      rules: _rules[broadcasterId] ?? <NgWordRule>[],
-    );
-  }
-
-  @override
-  Future<Set<String>> loadNgUserIds(String broadcasterId) async =>
-      _userIds[broadcasterId] ?? <String>{};
-
-  @override
-  Future<List<NgWordRule>> loadNgWordRules(String broadcasterId) async =>
-      _rules[broadcasterId] ?? <NgWordRule>[];
-
-  @override
-  Future<Set<String>> loadTemplateNgUserIds() async => _templateUserIds;
-
-  @override
-  Future<List<NgWordRule>> loadTemplateNgWordRules() async => _templateRules;
-
-  @override
-  Future<void> removeNgUserId(String broadcasterId, String userId) async {
-    _userIds[broadcasterId]?.remove(userId);
-  }
-
-  @override
-  Future<void> saveNgUserIds(String broadcasterId, Iterable<String> ids) async {
-    _userIds[broadcasterId] = ids.toSet();
-  }
-
-  @override
-  Future<void> saveNgWordRules(
-    String broadcasterId,
-    List<NgWordRule> rules,
-  ) async {
-    _rules[broadcasterId] = List<NgWordRule>.from(rules);
-  }
-
-  @override
-  Future<void> saveTemplateNgUserIds(Iterable<String> ids) async {
-    _templateUserIds = ids.toSet();
-  }
-
-  @override
-  Future<void> saveTemplateNgWordRules(List<NgWordRule> rules) async {
-    _templateRules = List<NgWordRule>.from(rules);
   }
 }

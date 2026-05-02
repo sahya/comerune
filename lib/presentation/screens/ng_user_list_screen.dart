@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 
 import '../../data/filter/broadcaster_ng_store.dart';
@@ -39,6 +41,7 @@ class NgUserListScreen extends StatefulWidget {
 class _NgUserListScreenState extends State<NgUserListScreen> {
   List<String> _ngUserIds = const <String>[];
   bool _isLoading = true;
+  bool _loadFailed = false;
 
   @override
   void initState() {
@@ -47,14 +50,37 @@ class _NgUserListScreenState extends State<NgUserListScreen> {
   }
 
   Future<void> _loadNgUserIds() async {
-    final Set<String> ids = await _readIds();
-    if (!mounted) {
-      return;
+    if (_loadFailed || !_isLoading) {
+      setState(() {
+        _isLoading = true;
+        _loadFailed = false;
+      });
     }
-    setState(() {
-      _ngUserIds = ids.toList();
-      _isLoading = false;
-    });
+    try {
+      final Set<String> ids = await _readIds();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _ngUserIds = ids.toList();
+        _isLoading = false;
+        _loadFailed = false;
+      });
+    } on Object catch (e, st) {
+      developer.log(
+        'NgUserListScreen: failed to load NG user IDs',
+        name: 'ng_user_list_screen',
+        error: e,
+        stackTrace: st,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isLoading = false;
+        _loadFailed = true;
+      });
+    }
   }
 
   Future<Set<String>> _readIds() async {
@@ -109,12 +135,21 @@ class _NgUserListScreenState extends State<NgUserListScreen> {
       ..showSnackBar(SnackBar(content: Text('$userId のNGを解除しました')));
   }
 
+  /// Keeps the AppBar title short for long broadcaster scope labels. The
+  /// bottom subtitle keeps the full label.
+  String _truncateForTitle(String label) {
+    if (label.length <= 20) {
+      return label;
+    }
+    return '${label.substring(0, 20)}…';
+  }
+
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: Text('NGユーザーID — ${widget.scopeLabel}'),
+        title: Text('NGユーザーID — ${_truncateForTitle(widget.scopeLabel)}'),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(24),
           child: Padding(
@@ -140,6 +175,28 @@ class _NgUserListScreenState extends State<NgUserListScreen> {
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
+                : _loadFailed
+                ? Center(
+                    key: const Key('ng-user-list-error'),
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          const Text(
+                            'NG リストの読込みに失敗しました',
+                            style: TextStyle(fontSize: 14),
+                          ),
+                          const SizedBox(height: 12),
+                          OutlinedButton(
+                            key: const Key('ng-user-list-retry'),
+                            onPressed: _loadNgUserIds,
+                            child: const Text('再試行'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
                 : _ngUserIds.isEmpty
                 ? const EmptyStateMessage(
                     key: Key('ng-user-list-empty'),

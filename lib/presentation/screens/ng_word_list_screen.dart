@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 
 import '../../data/filter/broadcaster_ng_store.dart';
@@ -33,6 +35,7 @@ class NgWordListScreen extends StatefulWidget {
 class _NgWordListScreenState extends State<NgWordListScreen> {
   List<NgWordRule> _rules = const <NgWordRule>[];
   bool _isLoading = true;
+  bool _loadFailed = false;
 
   @override
   void initState() {
@@ -58,14 +61,37 @@ class _NgWordListScreenState extends State<NgWordListScreen> {
   }
 
   Future<void> _loadRules() async {
-    final List<NgWordRule> rules = await _readRules();
-    if (!mounted) {
-      return;
+    if (_loadFailed || !_isLoading) {
+      setState(() {
+        _isLoading = true;
+        _loadFailed = false;
+      });
     }
-    setState(() {
-      _rules = List<NgWordRule>.from(rules);
-      _isLoading = false;
-    });
+    try {
+      final List<NgWordRule> rules = await _readRules();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _rules = List<NgWordRule>.from(rules);
+        _isLoading = false;
+        _loadFailed = false;
+      });
+    } on Object catch (e, st) {
+      developer.log(
+        'NgWordListScreen: failed to load NG word rules',
+        name: 'ng_word_list_screen',
+        error: e,
+        stackTrace: st,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isLoading = false;
+        _loadFailed = true;
+      });
+    }
   }
 
   Future<void> _saveRules(List<NgWordRule> rules) async {
@@ -172,12 +198,21 @@ class _NgWordListScreenState extends State<NgWordListScreen> {
     await _saveRules(updated);
   }
 
+  /// Keeps the AppBar title short for long broadcaster scope labels. The
+  /// bottom subtitle keeps the full label.
+  String _truncateForTitle(String label) {
+    if (label.length <= 20) {
+      return label;
+    }
+    return '${label.substring(0, 20)}…';
+  }
+
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: Text('NGワード — ${widget.scopeLabel}'),
+        title: Text('NGワード — ${_truncateForTitle(widget.scopeLabel)}'),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(24),
           child: Padding(
@@ -211,6 +246,28 @@ class _NgWordListScreenState extends State<NgWordListScreen> {
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
+                : _loadFailed
+                ? Center(
+                    key: const Key('ng-word-list-error'),
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          const Text(
+                            'NG リストの読込みに失敗しました',
+                            style: TextStyle(fontSize: 14),
+                          ),
+                          const SizedBox(height: 12),
+                          OutlinedButton(
+                            key: const Key('ng-word-list-retry'),
+                            onPressed: _loadRules,
+                            child: const Text('再試行'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
                 : _rules.isEmpty
                 ? const Center(
                     child: Padding(

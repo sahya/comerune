@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:comerune/data/filter/broadcaster_ng_store.dart';
 import 'package:comerune/domain/models/ng_word_rule.dart';
 import 'package:comerune/presentation/screens/ng_word_list_screen.dart';
 
@@ -318,4 +319,97 @@ void main() {
       ]);
     });
   });
+
+  group('NgWordListScreen (load failure)', () {
+    testWidgets('shows error UI with retry when the store throws', (
+      WidgetTester tester,
+    ) async {
+      final _ThrowingBroadcasterNgStore store = _ThrowingBroadcasterNgStore();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NgWordListScreen(
+            broadcasterNgStore: store,
+            broadcasterId: 'caster-1',
+            scopeLabel: 'caster-1',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('ng-word-list-error')), findsOneWidget);
+      expect(find.text('NG リストの読込みに失敗しました'), findsOneWidget);
+      expect(find.byKey(const Key('ng-word-list-retry')), findsOneWidget);
+
+      // Retry succeeds when the throw flag is cleared.
+      store.shouldThrow = false;
+      await tester.tap(find.byKey(const Key('ng-word-list-retry')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('ng-word-list-error')), findsNothing);
+    });
+  });
+}
+
+class _ThrowingBroadcasterNgStore implements BroadcasterNgStore {
+  bool shouldThrow = true;
+
+  @override
+  Future<void> addNgUserId(String broadcasterId, String userId) async {}
+
+  @override
+  Future<void> flushPendingWrites() async {}
+
+  @override
+  List<String> listBroadcasters() => const <String>[];
+
+  @override
+  Future<BroadcasterNgPayload> loadBroadcasterNgAttributes(
+    String broadcasterId,
+  ) async => (ngUserIds: <String>{}, rules: <NgWordRule>[]);
+
+  @override
+  Future<Set<String>> loadNgUserIds(String broadcasterId) async {
+    if (shouldThrow) throw StateError('boom');
+    return <String>{};
+  }
+
+  @override
+  Future<List<NgWordRule>> loadNgWordRules(String broadcasterId) async {
+    if (shouldThrow) throw StateError('boom');
+    return <NgWordRule>[];
+  }
+
+  @override
+  Future<Set<String>> loadTemplateNgUserIds() async {
+    if (shouldThrow) throw StateError('boom');
+    return <String>{};
+  }
+
+  @override
+  Future<List<NgWordRule>> loadTemplateNgWordRules() async {
+    if (shouldThrow) throw StateError('boom');
+    return <NgWordRule>[];
+  }
+
+  @override
+  Future<void> removeNgUserId(String broadcasterId, String userId) async {}
+
+  @override
+  Future<void> saveNgUserIds(
+    String broadcasterId,
+    Iterable<String> ids,
+  ) async {}
+
+  @override
+  Future<void> saveNgWordRules(
+    String broadcasterId,
+    List<NgWordRule> rules,
+  ) async {}
+
+  @override
+  Future<void> saveTemplateNgUserIds(Iterable<String> ids) async {}
+
+  @override
+  Future<void> saveTemplateNgWordRules(List<NgWordRule> rules) async {}
 }
