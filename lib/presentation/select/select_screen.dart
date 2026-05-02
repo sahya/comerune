@@ -40,29 +40,30 @@ void _debugLogLazy(String Function() messageBuilder) {
   appDebugLogLazy(messageBuilder);
 }
 
-void _errorLog(String message, {Object? error}) {
-  appErrorLog(name: 'SelectScreen', message: message, error: error);
+void _errorLog(String message, {Object? error, StackTrace? stackTrace}) {
+  appErrorLog(
+    name: 'SelectScreen',
+    message: message,
+    error: error,
+    stackTrace: stackTrace,
+  );
 }
 
-/// Issue #727: per-broadcaster NG snapshot record.
-///
-/// The `broadcasterId` field tags which broadcaster the [ngUserIds] and
-/// [rules] belong to; consumers compare it against the currently-active
-/// broadcaster to detect stale async loads. `null` means "no snapshot
-/// loaded" (initial state, or after disconnect/clear).
-///
-/// Public so the testable [resolveContentFilterLogic] helper below — and
-/// its tests — can reference the same record shape rather than restating
-/// it.
-typedef BroadcasterNgSnapshot = ({
-  String? broadcasterId,
-  Set<String> ngUserIds,
-  List<NgWordRule> rules,
-});
+// Issue #727: [BroadcasterNgSnapshot] is the in-memory tagged variant of
+// the per-broadcaster NG payload. The shape is now defined in the data
+// layer ([BroadcasterNgPayload] / [BroadcasterNgSnapshot] in
+// `broadcaster_ng_store.dart`) so the testable helper
+// [computeContentFilterInputs] below — and its tests — can reference the
+// same record shape without depending on this widget file.
 
 /// Convenience getter to avoid spelling out the empty record at every
 /// call-site. Returns a fresh value each time; the constituent fields
 /// themselves are still const collections so the cost is negligible.
+//
+// const-record-with-collections compat: the analyzer (Dart 3.x) does not
+// accept a top-level `const BroadcasterNgSnapshot empty = (...)` even
+// though every constituent field is itself const, so we keep the getter
+// form. Revisit if the const-record story improves in a future SDK.
 BroadcasterNgSnapshot get _emptyBroadcasterNgSnapshot => (
   broadcasterId: null,
   ngUserIds: const <String>{},
@@ -76,7 +77,7 @@ BroadcasterNgSnapshot get _emptyBroadcasterNgSnapshot => (
 /// See [_SelectScreenState._resolveContentFilter] for the resolution
 /// rules and the rationale for the legacy union (Issue #727 PR1).
 @visibleForTesting
-({Set<String> ngUserIds, List<String> ngWords}) resolveContentFilterLogic({
+({Set<String> ngUserIds, List<String> ngWords}) computeContentFilterInputs({
   required AppSettings settings,
   required String? currentBroadcasterId,
   required BroadcasterNgSnapshot snapshot,
@@ -256,6 +257,17 @@ class _SelectScreenState extends State<SelectScreen>
   /// input via [_resolveContentFilter].
   final ValueNotifier<BroadcasterNgSnapshot> _broadcasterNgNotifier =
       ValueNotifier<BroadcasterNgSnapshot>(_emptyBroadcasterNgSnapshot);
+
+  /// Issue #727 SHOULD FIX 2: monotonic generation counter for the
+  /// optimistic NG-toggle rollback guard. Each call to [_toggleNgUser]
+  /// increments this counter and captures the new value; the deferred
+  /// rollback only fires if the counter has not advanced in the meantime
+  /// (i.e. no later toggle has superseded this optimistic update).
+  ///
+  /// Replaces the previous `identical(_broadcasterNgNotifier.value, next)`
+  /// check, which relied on Dart record identity stability — not a
+  /// guaranteed property of records.
+  int _toggleNgGeneration = 0;
   final MethodChannelCommentSpeech _speechPlatform =
       MethodChannelCommentSpeech();
   int _broadcastEndedNotificationSequence = 0;
@@ -1215,7 +1227,7 @@ class _SelectScreenState extends State<SelectScreen>
   ///
   /// TODO(#727): remove legacy union once PR2 lands.
   ({Set<String> ngUserIds, List<String> ngWords}) _resolveContentFilter() {
-    return resolveContentFilterLogic(
+    return computeContentFilterInputs(
       settings: _settingsNotifier.value,
       currentBroadcasterId: _currentBroadcasterId,
       snapshot: _broadcasterNgNotifier.value,
@@ -1393,22 +1405,27 @@ class _SelectScreenState extends State<SelectScreen>
         ngUserIds: nextIds,
         rules: snapshot.rules,
       );
+      // Issue #727 SHOULD FIX 2: capture the per-toggle generation so the
+      // deferred rollback below can detect a later toggle and bail out
+      // without clobbering newer state.
+      final int gen = ++_toggleNgGeneration;
       _broadcasterNgNotifier.value = next;
       final Future<void> write = isCurrentlyNg
           ? ngStore.removeNgUserId(broadcasterId, userId)
           : ngStore.addNgUserId(broadcasterId, userId);
       // Issue #727 review fix: roll back the optimistic in-memory state
       // on persistence failure so the UI does not drift from the stored
-      // truth. Only reverts when the broadcaster is still active and our
-      // optimistic value is still in place — otherwise a later edit
+      // truth. Only reverts when the broadcaster is still active and the
+      // generation counter has not advanced — otherwise a later edit
       // (toggle, switch broadcaster, disconnect) has superseded this
       // one and rolling back would clobber the newer state.
       unawaited(
-        write.catchError((Object error) {
+        write.onError<Object>((Object error, StackTrace stackTrace) {
           _errorLog(
             '_toggleNgUser: persistence failed; rolling back '
             '(userId=$userId, isCurrentlyNg=$isCurrentlyNg)',
             error: error,
+            stackTrace: stackTrace,
           );
           if (!mounted) {
             return;
@@ -1416,10 +1433,30 @@ class _SelectScreenState extends State<SelectScreen>
           if (_currentBroadcasterId != broadcasterId) {
             return;
           }
-          if (!identical(_broadcasterNgNotifier.value, next)) {
+          // Issue #727 SHOULD FIX 2: replaces the previous
+          // `identical(_broadcasterNgNotifier.value, next)` check; Dart
+          // records do not guarantee stable identity so the generation
+          // counter is the robust signal that no later toggle has
+          // superseded this one.
+          if (_toggleNgGeneration != gen) {
             return;
           }
           _broadcasterNgNotifier.value = previous;
+          // Issue #727 SHOULD FIX 1: surface the failure to the user so
+          // they know the toggle did not stick. Reuses the existing
+          // `ScaffoldMessenger.of(context)` flow for styling/lifecycle
+          // consistency with other snackbars in this file (no GlobalKey
+          // is wired). The string is inlined for now; it will move to
+          // `AppStrings` once a `SelectScreenStrings` group is added.
+          // TODO(#476): centralise this string under AppStrings.
+          final ScaffoldMessengerState? messenger = ScaffoldMessenger.maybeOf(
+            context,
+          );
+          messenger
+            ?..hideCurrentSnackBar()
+            ..showSnackBar(
+              const SnackBar(content: Text('NG ユーザー設定の保存に失敗しました')),
+            );
         }),
       );
       return;

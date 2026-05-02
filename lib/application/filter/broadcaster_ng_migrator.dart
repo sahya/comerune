@@ -45,6 +45,11 @@ class BroadcasterNgMigrator {
   static const String _legacyNgUserIdsKey = 'settings.filter.ngUserIds';
   static const String _legacyNgWordRulesKey = 'settings.filter.ngWordRules';
 
+  /// Number of leading characters of a broadcaster ID kept verbatim in
+  /// redacted log output. Anything past this prefix is replaced with
+  /// `***` so device logs / crash reports never carry the full ID.
+  static const int _redactPrefixLength = 4;
+
   /// Runs the migration unless [migrationFlagKey] is already set.
   ///
   /// [knownBroadcasterIds] is the set of broadcasters that should receive
@@ -207,8 +212,8 @@ class BroadcasterNgMigrator {
   /// developer-log output, so error messages do not leak full IDs into
   /// device logs / crash reports.
   static String _redactBroadcasterId(String broadcasterId) {
-    if (broadcasterId.length > 4) {
-      return '${broadcasterId.substring(0, 4)}***';
+    if (broadcasterId.length > _redactPrefixLength) {
+      return '${broadcasterId.substring(0, _redactPrefixLength)}***';
     }
     return '***';
   }

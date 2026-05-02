@@ -1,18 +1,19 @@
 // Issue #727 SHOULD FIX 7: receipt-level coverage of the resolution logic
 // that decides which (ngUserIds, ngWords) pair feeds the content filter.
 //
-// The function under test — [resolveContentFilterLogic] — is exposed via
+// The function under test — [computeContentFilterInputs] — is exposed via
 // `@visibleForTesting` from `select_screen.dart` as a top-level function,
 // so we can exercise the resolution rules without spinning up the full
 // SelectScreen widget tree.
 
+import 'package:comerune/data/filter/broadcaster_ng_store.dart';
 import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/domain/models/ng_word_rule.dart';
 import 'package:comerune/presentation/select/select_screen.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  group('resolveContentFilterLogic', () {
+  group('computeContentFilterInputs', () {
     AppSettings settingsWith({
       String ngUserIds = '',
       List<NgWordRule> ngWordRules = const <NgWordRule>[],
@@ -38,7 +39,7 @@ void main() {
       );
 
       final ({Set<String> ngUserIds, List<String> ngWords}) result =
-          resolveContentFilterLogic(
+          computeContentFilterInputs(
             settings: settings,
             currentBroadcasterId: 'caster1',
             snapshot: snapshot,
@@ -63,7 +64,7 @@ void main() {
       );
 
       final ({Set<String> ngUserIds, List<String> ngWords}) result =
-          resolveContentFilterLogic(
+          computeContentFilterInputs(
             settings: settings,
             currentBroadcasterId: 'caster1',
             snapshot: snapshot,
@@ -89,7 +90,7 @@ void main() {
         );
 
         final ({Set<String> ngUserIds, List<String> ngWords}) result =
-            resolveContentFilterLogic(
+            computeContentFilterInputs(
               settings: settings,
               currentBroadcasterId: null,
               snapshot: snapshot,
@@ -116,7 +117,7 @@ void main() {
       );
 
       final ({Set<String> ngUserIds, List<String> ngWords}) result =
-          resolveContentFilterLogic(
+          computeContentFilterInputs(
             settings: settings,
             currentBroadcasterId: 'new-caster',
             snapshot: snapshot,
@@ -146,7 +147,7 @@ void main() {
       );
 
       final ({Set<String> ngUserIds, List<String> ngWords}) result =
-          resolveContentFilterLogic(
+          computeContentFilterInputs(
             settings: settings,
             currentBroadcasterId: 'caster1',
             snapshot: snapshot,

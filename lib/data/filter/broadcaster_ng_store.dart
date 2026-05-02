@@ -4,6 +4,28 @@ import 'dart:developer' as developer;
 import '../../application/settings/settings_store.dart';
 import '../../domain/models/ng_word_rule.dart';
 
+/// Issue #727: payload returned by [BroadcasterNgStore.loadBroadcasterNgAttributes].
+///
+/// Pure (broadcasterId-less) per-broadcaster NG attributes, used by load
+/// and save callers that already know which broadcaster the values
+/// belong to.
+typedef BroadcasterNgPayload = ({
+  Set<String> ngUserIds,
+  List<NgWordRule> rules,
+});
+
+/// Issue #727: in-memory tagged variant of [BroadcasterNgPayload].
+///
+/// The `broadcasterId` field tags which broadcaster the [ngUserIds] and
+/// [rules] belong to so consumers can compare it against the currently
+/// active broadcaster to detect stale async loads. `null` means
+/// "no snapshot loaded" (initial state, or after disconnect/clear).
+typedef BroadcasterNgSnapshot = ({
+  String? broadcasterId,
+  Set<String> ngUserIds,
+  List<NgWordRule> rules,
+});
+
 /// Persists per-broadcaster NG user IDs and NG word rules.
 ///
 /// On first access for a broadcaster, the per-broadcaster slot is initialized
@@ -43,8 +65,9 @@ abstract class BroadcasterNgStore {
   /// Prefer this over calling [loadNgUserIds] and [loadNgWordRules] back to
   /// back: the underlying initialize-from-template check runs only once.
   /// The two field-by-field methods are retained for backward compatibility.
-  Future<({Set<String> ngUserIds, List<NgWordRule> rules})>
-  loadBroadcasterNgAttributes(String broadcasterId);
+  Future<BroadcasterNgPayload> loadBroadcasterNgAttributes(
+    String broadcasterId,
+  );
 
   /// Replace all NG user IDs for [broadcasterId].
   Future<void> saveNgUserIds(String broadcasterId, Iterable<String> ids);
@@ -91,6 +114,11 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
   static const String _templateNgWordRulesKey =
       'settings.filter.template.ngWordRules';
 
+  /// Number of leading characters of a broadcaster ID kept verbatim in
+  /// redacted log output. Anything past this prefix is replaced with
+  /// `***` so device logs / crash reports never carry the full ID.
+  static const int _redactPrefixLength = 4;
+
   static String _ngUserIdsKey(String broadcasterId) =>
       '$_broadcasterKeyPrefix$broadcasterId$_ngUserIdsSuffix';
 
@@ -125,8 +153,9 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
   }
 
   @override
-  Future<({Set<String> ngUserIds, List<NgWordRule> rules})>
-  loadBroadcasterNgAttributes(String broadcasterId) async {
+  Future<BroadcasterNgPayload> loadBroadcasterNgAttributes(
+    String broadcasterId,
+  ) async {
     _validateBroadcasterId(broadcasterId);
     // Single template-seeding round-trip, then both reads against the
     // already-initialized slot.
@@ -338,8 +367,8 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
     final int dot = tail.indexOf('.');
     final String idPart = dot < 0 ? tail : tail.substring(0, dot);
     final String suffix = dot < 0 ? '' : tail.substring(dot);
-    final String redactedId = idPart.length > 4
-        ? '${idPart.substring(0, 4)}***'
+    final String redactedId = idPart.length > _redactPrefixLength
+        ? '${idPart.substring(0, _redactPrefixLength)}***'
         : '***';
     return '$_broadcasterKeyPrefix$redactedId$suffix';
   }
