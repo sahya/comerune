@@ -145,10 +145,10 @@
       </p>
     </section>
 
-    <section id="collect">
+    <section id="collected-data">
       <h2><span class="num">02</span>収集する情報</h2>
       <p>
-        本アプリ自体は、開発者が管理するサーバーにユーザーの個人情報を送信・保存しません。アカウント情報や視聴履歴、コメント内容などを開発者側で収集・蓄積する仕組みはありません。
+        本アプリは、開発者が管理するサーバーに利用者の個人情報を保存しません。アカウント情報、視聴履歴、コメント内容などを開発者側で収集・蓄積する仕組みはありません。
       </p>
       <p>
         アプリの設定（テーマ、文字サイズ、NG ユーザーリスト、コメントログなど）は、すべて利用者の端末内にのみ保存されます。
@@ -161,33 +161,54 @@
         コメントの取得には、ニコニコアカウントへのログインが必要です。ログイン時に発行される Cookie や認証トークン（以下「認証情報」）は、以下のとおり取り扱います。
       </p>
       <ul>
-        <li>認証情報は、利用者の端末内（OS が提供する安全な領域）にのみ保存されます。開発者が管理するサーバーには送信されません。</li>
-        <li>認証情報は、ニコニコ動画／ニコニコ生放送（株式会社ドワンゴ）のサーバーとの直接通信にのみ使用されます。</li>
+        <li>認証情報は、利用者の端末内（OS が提供する安全な領域）にのみ保存されます。</li>
+        <li>認証情報は、原則としてニコニコ動画／ニコニコ生放送（株式会社ドワンゴ）のサーバーとの直接通信にのみ使用されます。</li>
+        <li>OAuth ログイン方式を利用する場合に限り、認可コードおよびリフレッシュトークンを、後述の中継サーバー（BFF）経由でニコニコのトークン発行エンドポイントへ送信します。</li>
         <li>本アプリをアンインストールすると、端末に保存された認証情報を含むすべてのデータが削除されます。</li>
       </ul>
       <p>
-        ニコニコ側で取得・利用される情報については、ニコニコのプライバシーポリシーをご確認ください。
+        ニコニコ側で取得・利用される情報については、株式会社ドワンゴおよびニコニコの利用規約・プライバシーポリシーをご確認ください。
       </p>
       <ul>
         <li>
-          ニコニコ プライバシーポリシー：
-          <a href="https://account.nicovideo.jp/rules/account" target="_blank" rel="noopener noreferrer">https://account.nicovideo.jp/rules/account</a>
+          ニコニコ アカウント規約・関連ポリシー：
+          <a href="https://account.nicovideo.jp/" target="_blank" rel="noopener noreferrer">https://account.nicovideo.jp/</a>
         </li>
       </ul>
     </section>
 
-    <section id="third-party">
-      <h2><span class="num">04</span>第三者サービス</h2>
+    <section id="bff">
+      <h2><span class="num">04</span>OAuth 中継サーバー（BFF）について</h2>
       <p>
-        本アプリは、広告 SDK や利用状況分析（アナリティクス）ツールを使用していません。クラッシュレポートを含め、開発者側で第三者に利用者の情報を送信する仕組みは組み込まれていません。
+        OAuth ログイン方式を有効にしたビルドでは、ニコニコの OAuth クライアントシークレットを安全に保つため、開発者が運用する中継サーバー（Backend-For-Frontend、以下「BFF」）を経由してトークン交換を行います。
+      </p>
+      <ul>
+        <li>BFF が中継するのは、ニコニコのトークン発行エンドポイントへの認可コード／リフレッシュトークンの交換リクエストのみです。</li>
+        <li>BFF は、利用者ごとの個人情報・コメント内容・視聴履歴を保存しません。リクエストの中継ログは、運用上必要な最小範囲（接続元 IP、HTTP ステータス、エラー診断情報など）に限り、短期間で破棄されます。</li>
+        <li>取得されたアクセストークン・リフレッシュトークンは、BFF を素通しで利用者の端末に返され、端末内（OS が提供する安全な領域）に保存されます。</li>
+        <li>WebView による Cookie ログイン方式を利用する場合は、BFF を経由せず、利用者の端末からニコニコのサーバーへ直接通信します。</li>
+      </ul>
+    </section>
+
+    <section id="children">
+      <h2><span class="num">05</span>子供のプライバシー</h2>
+      <p>
+        本アプリは 13 歳未満の児童を対象とした設計を行っておらず、開発者は意図的に 13 歳未満の児童から個人情報を収集することはありません。
+      </p>
+    </section>
+
+    <section id="third-party">
+      <h2><span class="num">06</span>第三者サービス</h2>
+      <p>
+        本アプリは、広告 SDK や利用状況分析（アナリティクス）ツールを使用していません。クラッシュレポート SDK も組み込んでおらず、開発者側で第三者へ利用者の情報を送信する仕組みはありません。
       </p>
       <p>
-        本アプリは、ニコニコのサーバーと直接通信する目的でのみ、外部のネットワーク通信を行います。
+        本アプリが行う外部のネットワーク通信は、ニコニコのサーバー（コメント取得・配信情報取得・WebView ログイン時）への通信、および前節に記載した OAuth 中継サーバー（BFF）への通信に限られます。
       </p>
     </section>
 
     <section id="rights">
-      <h2><span class="num">05</span>ユーザーの権利</h2>
+      <h2><span class="num">07</span>ユーザーの権利</h2>
       <p>
         本アプリは開発者側にデータを保持しないため、データの削除はアプリのアンインストールによって完了します。アンインストールすると、端末内に保存されていた設定・認証情報・コメントログ等は削除されます。
       </p>
@@ -197,20 +218,27 @@
     </section>
 
     <section id="contact">
-      <h2><span class="num">06</span>連絡先</h2>
+      <h2><span class="num">08</span>開発者・連絡先</h2>
       <p>
-        本ポリシーや本アプリに関するお問い合わせは、以下の GitHub リポジトリの Issue よりご連絡ください。
+        本アプリは、GitHub アカウント <a href="https://github.com/sahya" target="_blank" rel="noopener noreferrer">sahya</a> によって個人開発・公開されています。本ポリシーや本アプリに関するお問い合わせは、以下の GitHub リポジトリの Issue よりご連絡ください。
       </p>
       <ul>
         <li>
-          GitHub：
+          GitHub Issues：
           <a href="https://github.com/sahya/comerune/issues" target="_blank" rel="noopener noreferrer">https://github.com/sahya/comerune/issues</a>
         </li>
       </ul>
     </section>
 
+    <!--
+      ポリシーを変更したときは、必ずこの最終更新日も更新してください。
+      また、本アプリの認証フロー（OAuth BFF / WebView Cookie 方式）や
+      第三者 SDK 構成を変更したときは、関連セクション（03 / 04 / 06）と
+      本ページ全体の整合を必ず取り直してください。
+      Google Play Console の Data Safety 申告とも整合を取ること。
+    -->
     <section id="updated">
-      <h2><span class="num">07</span>改定日</h2>
+      <h2><span class="num">09</span>改定日</h2>
       <div class="card">
         <p>最終更新日：<strong>2026 年 5 月 2 日</strong></p>
         <p class="meta">
