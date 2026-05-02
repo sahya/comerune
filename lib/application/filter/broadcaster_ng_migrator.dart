@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 import '../../data/filter/broadcaster_ng_store.dart';
 import '../../domain/models/ng_word_rule.dart';
 import '../settings/settings_store.dart';
+import 'broadcaster_id_redaction.dart';
 import 'legacy_ng_parser.dart';
 
 /// One-shot migrator that converts the legacy global NG configuration
@@ -38,11 +39,6 @@ class BroadcasterNgMigrator {
   /// Subsequent calls to [migrateIfNeeded] short-circuit when this is set.
   static const String migrationFlagKey =
       'settings.filter.migration.v1Completed';
-
-  /// Number of leading characters of a broadcaster ID kept verbatim in
-  /// redacted log output. Anything past this prefix is replaced with
-  /// `***` so device logs / crash reports never carry the full ID.
-  static const int _redactPrefixLength = 4;
 
   /// Runs the migration unless [migrationFlagKey] is already set.
   ///
@@ -115,7 +111,7 @@ class BroadcasterNgMigrator {
       } on Object catch (error, stackTrace) {
         developer.log(
           'Failed to seed NG data for broadcaster '
-          '${_redactBroadcasterId(broadcasterId)}: $error',
+          '${redactBroadcasterId(broadcasterId)}: $error',
           name: 'BroadcasterNgMigrator',
           error: error,
           stackTrace: stackTrace,
@@ -133,15 +129,5 @@ class BroadcasterNgMigrator {
         stackTrace: stackTrace,
       );
     }
-  }
-
-  /// Returns a short prefix-only form of [broadcasterId] suitable for
-  /// developer-log output, so error messages do not leak full IDs into
-  /// device logs / crash reports.
-  static String _redactBroadcasterId(String broadcasterId) {
-    if (broadcasterId.length > _redactPrefixLength) {
-      return '${broadcasterId.substring(0, _redactPrefixLength)}***';
-    }
-    return '***';
   }
 }

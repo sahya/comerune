@@ -13,6 +13,15 @@ import '../settings/settings_store.dart';
 /// Both code paths must agree on what counts as "the user's pre-migration
 /// NG state", otherwise import-after-fresh-install behaves differently
 /// from the in-place migration.
+///
+/// Two flavors of helpers live here:
+///   - [readLegacyNgUserIds] / [readLegacyNgWordRules] operate directly
+///     on a [SharedPreferencesLike] backend and are used by the migrator
+///     during app startup, when only raw preference strings are available.
+///   - [mergeLegacyNgWordRules] operates on already-parsed
+///     `AppSettings.ngWordRules` / `AppSettings.ngWords` fields and is
+///     used by the importer, which has decoded the export JSON into the
+///     model and only needs the merge / dedup logic.
 class LegacyNgParser {
   const LegacyNgParser._();
 
