@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -39,6 +41,10 @@ void main() {
       expect(
         fakeOps.lastNotificationIcon?.metaDataName,
         'com.example.comerune.service.NOTIFICATION_ICON',
+      );
+      expect(
+        fakeOps.lastNotificationIcon?.backgroundColor,
+        const Color(0xFF000000),
       );
     });
 
