@@ -152,62 +152,54 @@ def main() -> int:
     text_left = 470
 
     title = "comerune"
-    title_font = load_latin_font(110)
+    title_font = load_jp_font(108)
     tbbox = draw.textbbox((0, 0), title, font=title_font)
     title_w = tbbox[2] - tbbox[0]
     max_title_w = W - text_left - safe_right
     if title_w > max_title_w:
-        title_font = load_latin_font(int(110 * max_title_w / title_w))
+        title_font = load_jp_font(int(108 * max_title_w / title_w))
         tbbox = draw.textbbox((0, 0), title, font=title_font)
     title_visual_top = tbbox[1]
     title_visual_h = tbbox[3] - tbbox[1]
 
-    sub_font = load_jp_font(34)
+    sub_font = load_jp_font(36)
     subtitle = "ニコ生コメントを表示・読み上げ"
     sbbox = draw.textbbox((0, 0), subtitle, font=sub_font)
-    sub_w = sbbox[2] - sbbox[0]
-    sub_h = sbbox[3] - sbbox[1]
+    sub_visual_top = sbbox[1]
+    sub_visual_h = sbbox[3] - sbbox[1]
 
-    tag_font = load_jp_font(24)
+    tag_font = load_jp_font(26)
     tag = "ながら見でも聞き逃さない"
     gbbox = draw.textbbox((0, 0), tag, font=tag_font)
     tag_w = gbbox[2] - gbbox[0]
     tag_h = gbbox[3] - gbbox[1]
 
-    sub_pad_x, sub_pad_y = 18, 12
-    tag_pad_x, tag_pad_y = 18, 10
-    gap_title_sub = 30
-    gap_sub_tag = 22
+    tag_pad_x, tag_pad_y = 20, 10
+    gap_title_sub = 26
+    gap_sub_tag = 24
 
-    sub_plate_h = sub_h + sub_pad_y * 2
     tag_plate_h = tag_h + tag_pad_y * 2
-    block_h = title_visual_h + gap_title_sub + sub_plate_h + gap_sub_tag + tag_plate_h
+    block_h = title_visual_h + gap_title_sub + sub_visual_h + gap_sub_tag + tag_plate_h
     block_top = (H - block_h) // 2
 
-    title_y_for_visual_top = block_top - title_visual_top
     tx = text_left
-    ty = title_y_for_visual_top
-    draw.text((tx + 3, ty + 4), title, font=title_font, fill=(60, 25, 95, 160))
+    ty = block_top - title_visual_top
+    draw.text((tx + 2, ty + 3), title, font=title_font, fill=(60, 30, 90, 130))
     draw.text((tx, ty), title, font=title_font, fill=(255, 255, 255, 255))
 
-    sub_plate_top = block_top + title_visual_h + gap_title_sub
-    sub_plate_box = (
-        tx - sub_pad_x,
-        sub_plate_top,
-        tx + sub_w + sub_pad_x,
-        sub_plate_top + sub_plate_h,
-    )
-    draw_plate(bg, sub_plate_box, radius=14, fill=(40, 15, 70, 95))
-    draw.text((tx, sub_plate_top + sub_pad_y - sbbox[1]), subtitle, font=sub_font, fill=(255, 255, 255, 255))
+    sub_top = block_top + title_visual_h + gap_title_sub
+    sy = sub_top - sub_visual_top
+    draw.text((tx + 2, sy + 2), subtitle, font=sub_font, fill=(60, 30, 90, 120))
+    draw.text((tx, sy), subtitle, font=sub_font, fill=(255, 255, 255, 255))
 
-    tag_plate_top = sub_plate_box[3] + gap_sub_tag
+    tag_plate_top = sub_top + sub_visual_h + gap_sub_tag
     tag_plate_box = (
         tx,
         tag_plate_top,
         tx + tag_w + tag_pad_x * 2,
         tag_plate_top + tag_plate_h,
     )
-    draw_plate(bg, tag_plate_box, radius=tag_plate_h // 2, fill=(20, 10, 40, 130))
+    draw_plate(bg, tag_plate_box, radius=tag_plate_h // 2, fill=(255, 255, 255, 70))
     draw.text((tx + tag_pad_x, tag_plate_top + tag_pad_y - gbbox[1]), tag, font=tag_font, fill=(255, 255, 255, 255))
 
     final = bg.convert("RGB")
