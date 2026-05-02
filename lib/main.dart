@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
 import 'dart:ui';
@@ -11,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'application/auth/oauth_auth_controller.dart';
 import 'application/auth/oauth_auth_scope.dart';
 import 'application/comment_post/comment_post_controller.dart';
+import 'application/filter/broadcaster_ng_migrator.dart';
 import 'application/foreground_service/foreground_service_controller.dart';
 import 'application/migration/app_migration_runner.dart';
 import 'application/onboarding/onboarding_store.dart';
@@ -30,6 +32,7 @@ import 'data/auth/user_session_store.dart';
 import 'data/comment/live_comment_repository.dart';
 import 'data/comment_log/comment_log_writer.dart';
 import 'data/connection/program_info_resolver.dart';
+import 'data/filter/broadcaster_ng_store.dart';
 import 'data/broadcast/broadcast_control_repository.dart';
 import 'data/follow/follow_program_repository.dart';
 import 'data/follow/my_program_repository.dart';
@@ -140,6 +143,25 @@ Future<void> main() async {
   ).run();
   final UserAttributeStore userAttributeStore = fileUserAttributeStore;
 
+  // Per-broadcaster NG store (Issue #727). Models the same template +
+  // per-broadcaster duplication pattern used for user attributes, so the
+  // user's existing global NG settings remain effective for newly-seen
+  // broadcasters while still allowing per-broadcaster divergence.
+  //
+  // The migrator seeds the new layout once per install. The seed list of
+  // broadcaster IDs is read from the legacy `usercolor._index` key in
+  // SharedPreferences — this is the most accurate "broadcasters the user
+  // has interacted with" signal available at startup without forcing the
+  // file-based user attribute store to expose its index publicly.
+  // Failures inside the migrator are logged and do not block startup.
+  final BroadcasterNgStore broadcasterNgStore =
+      SharedPreferencesBroadcasterNgStore(prefs: prefsAdapter);
+  await BroadcasterNgMigrator.migrateIfNeeded(
+    prefs: prefsAdapter,
+    store: broadcasterNgStore,
+    knownBroadcasterIds: _readKnownBroadcasterIds(prefsAdapter),
+  );
+
   // Run one-time migration tasks when the app version changes.
   // Awaited so that migrations complete before the app reads settings or
   // user data that a migration might alter.
@@ -189,11 +211,34 @@ Future<void> main() async {
       userSessionStore: userSessionStore,
       commentLogWriter: commentLogWriter,
       userAttributeStore: userAttributeStore,
+      broadcasterNgStore: broadcasterNgStore,
       foregroundServiceManager: foregroundServiceManager,
       onboardingStore: onboardingStore,
       oauthAuthController: oauthAuthController,
     ),
   );
+}
+
+/// Reads the legacy `usercolor._index` SharedPreferences entry into a
+/// deduplicated list of broadcaster IDs. Used at startup as the seed list
+/// for the one-shot NG-filter migration so already-known broadcasters
+/// inherit the user's pre-migration NG configuration. Returns empty when
+/// the key is missing or malformed — callers must treat that as "no known
+/// broadcasters yet" rather than an error.
+List<String> _readKnownBroadcasterIds(SharedPreferencesLike prefs) {
+  final String? raw = prefs.getString('usercolor._index');
+  if (raw == null || raw.isEmpty) {
+    return const <String>[];
+  }
+  try {
+    final Object? decoded = jsonDecode(raw);
+    if (decoded is List) {
+      return decoded.whereType<String>().toList();
+    }
+  } on Object {
+    // Malformed legacy index — treat as empty.
+  }
+  return const <String>[];
 }
 
 class ComeruneApp extends StatefulWidget {
@@ -204,6 +249,7 @@ class ComeruneApp extends StatefulWidget {
     required this.userSessionStore,
     this.commentLogWriter,
     this.userAttributeStore,
+    this.broadcasterNgStore,
     this.foregroundServiceManager,
     required this.onboardingStore,
     required this.oauthAuthController,
@@ -214,6 +260,7 @@ class ComeruneApp extends StatefulWidget {
   final UserSessionStore userSessionStore;
   final CommentLogWriter? commentLogWriter;
   final UserAttributeStore? userAttributeStore;
+  final BroadcasterNgStore? broadcasterNgStore;
   final ForegroundServiceManager? foregroundServiceManager;
   final OnboardingStore onboardingStore;
   final OAuthAuthController oauthAuthController;
@@ -620,6 +667,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
             myProgramRepository: _myProgramRepository,
             broadcastControlRepository: _broadcastControlRepository,
             userAttributeStore: widget.userAttributeStore,
+            broadcasterNgStore: widget.broadcasterNgStore,
             commentPostController: _commentPostController,
             timeshiftFetchController: _timeshiftFetchController,
             androidTtsAvailability: _androidTtsAvailability,
