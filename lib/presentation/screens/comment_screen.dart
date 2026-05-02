@@ -15,6 +15,7 @@ import '../../application/comment_post/comment_post_controller.dart';
 import '../../application/timeshift_fetch/timeshift_fetch_controller.dart';
 import '../../application/settings/settings_store.dart';
 import '../../application/speech/speech_availability_notifier.dart';
+import '../../application/timeline/timeline_store.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../data/broadcast/broadcast_control_repository.dart';
 import '../../data/comment_log/comment_log_tag.dart';
@@ -824,10 +825,6 @@ class _CommentScreenState extends State<CommentScreen>
 
   Timer? _wakelockReleaseTimer;
 
-  /// Periodic timer that ensures new comments are submitted for speech
-  /// even when the widget tree is not rebuilt (e.g. while the app is
-  /// backgrounded and [didUpdateWidget] is not called).
-  Timer? _speechPollTimer;
   StreamSubscription<SpeechEvent>? _speechEventSub;
 
   /// Issue #739: countdown that delays the broadcast-end speech-stop so the
@@ -1116,6 +1113,16 @@ class _CommentScreenState extends State<CommentScreen>
       _onAndroidTtsAvailabilityChanged,
     );
 
+    // Issue #762: subscribe to TimelineStore mutations so that new comments
+    // are submitted for speech the moment they arrive — both in foreground
+    // (immediate) and in background (no longer waiting up to 2 s for the
+    // previous Timer.periodic poll). The foreground submit path in
+    // [didUpdateWidget] is intentionally retained: callers may pass
+    // `widget.messages` from a source other than [timelineStore], and the
+    // `_lastSpeechMessageId` cursor in [_submitNewCommentsForSpeech]
+    // de-duplicates between the two entry points.
+    widget.speechConfig.timelineStore?.addListener(_onTimelineStoreChanged);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToEdge(animated: false);
     });
@@ -1151,6 +1158,17 @@ class _CommentScreenState extends State<CommentScreen>
     if (!identical(oldNotifier, newNotifier)) {
       oldNotifier?.removeListener(_onAndroidTtsAvailabilityChanged);
       newNotifier?.addListener(_onAndroidTtsAvailabilityChanged);
+    }
+
+    // Issue #762: re-attach the TimelineStore listener if the parent swapped
+    // in a different store instance. Without this swap the listener would
+    // silently keep firing on the previous store and miss mutations on the
+    // new one — symmetric with the [SpeechAvailabilityNotifier] swap above.
+    final TimelineStore? oldStore = oldWidget.speechConfig.timelineStore;
+    final TimelineStore? newStore = widget.speechConfig.timelineStore;
+    if (!identical(oldStore, newStore)) {
+      oldStore?.removeListener(_onTimelineStoreChanged);
+      newStore?.addListener(_onTimelineStoreChanged);
     }
 
     final bool presetCategoriesChanged = !identical(
@@ -1393,7 +1411,10 @@ class _CommentScreenState extends State<CommentScreen>
     _debugLogLazy(
       () => '[CommentScreen] dispose: speechStarted=$_speechStarted',
     );
-    _stopSpeechPollTimer();
+    // Issue #762: detach the reactive submit listener before tearing down
+    // any other speech state so a late mutation racing with dispose cannot
+    // call back into a half-disposed widget.
+    widget.speechConfig.timelineStore?.removeListener(_onTimelineStoreChanged);
     // Issue #739: cancel any in-flight broadcast-end grace timer so it
     // cannot fire after dispose and call into a torn-down widget.
     _speechGraceTimer?.cancel();
@@ -1826,7 +1847,6 @@ class _CommentScreenState extends State<CommentScreen>
         });
         _setSpeechEngineState(SpeechEngineState.ready);
       }
-      _startSpeechPollTimer();
       _debugLogLazy(
         () =>
             '[CommentScreen] Speech started. baseline=$_lastSpeechMessageId, '
@@ -1907,7 +1927,6 @@ class _CommentScreenState extends State<CommentScreen>
 
   Future<void> _stopSpeech() async {
     _debugLogLazy(() => '[CommentScreen] stopSpeech: started=$_speechStarted');
-    _stopSpeechPollTimer();
     if (_speechStarted) {
       try {
         await widget.speechConfig.speechPlatform?.stop(clearQueue: true);
@@ -2182,36 +2201,37 @@ class _CommentScreenState extends State<CommentScreen>
     }
   }
 
-  void _startSpeechPollTimer() {
-    _stopSpeechPollTimer();
-    _speechPollTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+  /// Issue #762: reactive replacement for the previous bg poll timer.
+  ///
+  /// Fires synchronously from [TimelineStore.notifyListeners], which the
+  /// store dispatches AFTER `_publishSnapshot()` so `messages` already
+  /// reflects the new entry by the time we read it here. Runs in BOTH
+  /// foreground and background — the foreground path was previously the
+  /// `didUpdateWidget` submit, which is retained for callers that pass
+  /// `widget.messages` from a non-store source. The `_lastSpeechMessageId`
+  /// cursor in [_submitNewCommentsForSpeech] de-duplicates between the two
+  /// entry points so a comment is never spoken twice.
+  ///
+  /// Wrapped in try/catch so a single buggy invocation cannot tear down
+  /// the [TimelineStore]'s listener list (which would silently disable
+  /// reactive submit for the rest of the screen's lifetime). Mirrors the
+  /// defensive wrapper around [_onAndroidTtsAvailabilityChanged].
+  void _onTimelineStoreChanged() {
+    try {
       if (!mounted) return;
-      // Only poll when the app is not in a resumed (foreground) state.
-      // When resumed, didUpdateWidget already submits new comments.
-      final AppLifecycleState? lifecycleState =
-          WidgetsBinding.instance.lifecycleState;
-      if (lifecycleState == AppLifecycleState.resumed) return;
-
-      if (_speechStarted && widget.speechConfig.speechSettings.enabled) {
-        // Issue #758: in foreground, didUpdateWidget propagates the latest
-        // TimelineStore snapshot to widget.messages. In background the
-        // widget tree rebuild is paused (Flutter engine suspends frame
-        // scheduling), so widget.messages remains the snapshot captured
-        // at the last build before backgrounding. Read directly from the
-        // store here so the poll timer always sees the current snapshot.
-        // PR #721 made the messages getter return a cached view that is
-        // replaced on every mutation, so direct reads are always fresh.
-        // Falls back to widget.messages when no store is wired (tests).
-        final List<AppMessage> latest =
-            widget.speechConfig.timelineStore?.messages ?? widget.messages;
-        _submitNewCommentsForSpeech(latest);
-      }
-    });
-  }
-
-  void _stopSpeechPollTimer() {
-    _speechPollTimer?.cancel();
-    _speechPollTimer = null;
+      if (!_speechStarted) return;
+      if (!widget.speechConfig.speechSettings.enabled) return;
+      final List<AppMessage>? latest =
+          widget.speechConfig.timelineStore?.messages;
+      if (latest == null) return;
+      _submitNewCommentsForSpeech(latest);
+    } catch (e, stackTrace) {
+      _errorLog(
+        '[CommentScreen] _onTimelineStoreChanged: handler threw',
+        error: e,
+        stackTrace: stackTrace,
+      );
+    }
   }
 
   void _submitNewCommentsForSpeech(List<AppMessage> messages) {
