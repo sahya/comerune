@@ -4604,12 +4604,13 @@ void main() {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Helpers for Issue #758 background poll tests
+// Helpers for Issue #762 reactive listener tests
 // ---------------------------------------------------------------------------
 
-/// Hosts a [CommentScreen] wired to a real [TimelineStore] so the bg poll
-/// timer can pick up store mutations. Distinct from [_SpeechTestHost] to
-/// keep the bg-specific scaffolding isolated and easy to read.
+/// Hosts a [CommentScreen] wired to a real [TimelineStore] so the reactive
+/// [TimelineStore] listener can pick up store mutations. Distinct from
+/// [_SpeechTestHost] to keep the reactive-submit scaffolding isolated and
+/// easy to read.
 class _BgPollHost extends StatefulWidget {
   const _BgPollHost({
     required this.timelineStore,
