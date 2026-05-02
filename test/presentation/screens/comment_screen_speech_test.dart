@@ -4440,14 +4440,16 @@ void main() {
               'error_outline. _speechEngineState must remain unchanged '
               '(Issue #753).',
         );
-        // The icon widget itself must still be present — the subscription
-        // must not have been torn down.
+        // The icon widget itself must still be present — confirming the widget
+        // tree was not disrupted. Note: icon presence alone does not prove
+        // subscription liveness; the companion test below proves that by
+        // verifying a subsequent known event is still delivered.
         expect(
           find.byKey(const Key('speech-status-icon')),
           findsOneWidget,
           reason:
               'Speech-status icon must still be present after the unknown '
-              'event — the subscription must not have been torn down.',
+              'event — the widget tree must not have been disrupted.',
         );
       });
 
@@ -4542,13 +4544,15 @@ void main() {
                 'must clear the ERROR icon, proving the subscription was '
                 'still live (Issue #753).',
           );
-          // The icon widget itself must still be present.
+          // The icon widget itself must still be present. Combined with the
+          // error_outline assertion above (READY cleared it), this confirms the
+          // full event sequence was processed — proving subscription liveness.
           expect(
             find.byKey(const Key('speech-status-icon')),
             findsOneWidget,
             reason:
                 'Speech-status icon must still be present after all events — '
-                'the subscription must remain active.',
+                'the widget tree must remain intact.',
           );
         },
       );
