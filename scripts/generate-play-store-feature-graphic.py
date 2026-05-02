@@ -3,11 +3,10 @@
 
 Output: android/fastlane/metadata/android/ja-JP/images/featureGraphic.png
 
-Designer review対応版:
-- Latin タイトルは DejaVu Sans Bold で字形を安定化
-- 右側 100px をセーフゾーンとして空け、Play ストア各サーフェスでのトリミングに耐える
-- サブコピー / キャッチに半透明黒プレートを敷きコントラストを確保
-- 背景の装飾は数を減らし、画面端寄せ・低彩度に
+優先フォント:
+- Zen Maru Gothic Medium / Bold (柔らかい丸ゴシック、SIL OFL)
+  - `bash scripts/fetch-play-store-fonts.sh` で scripts/fonts/ に取得
+  - 取得できない環境では IPAGothic にフォールバック
 """
 from __future__ import annotations
 
@@ -26,30 +25,35 @@ W, H = 1024, 500
 COLOR_TOP_LEFT = (139, 107, 247)
 COLOR_BOTTOM_RIGHT = (217, 117, 210)
 
-JP_FONT_CANDIDATES = [
-    "/usr/share/fonts/opentype/ipafont-gothic/ipagp.ttf",
-    "/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf",
-    "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf",
+LOCAL_FONT_DIR = ROOT / "scripts" / "fonts"
+
+SOFT_FONT_REGULAR_CANDIDATES = [
+    LOCAL_FONT_DIR / "ZenMaruGothic-Medium.ttf",
+]
+SOFT_FONT_BOLD_CANDIDATES = [
+    LOCAL_FONT_DIR / "ZenMaruGothic-Bold.ttf",
+    LOCAL_FONT_DIR / "ZenMaruGothic-Medium.ttf",
+]
+FALLBACK_JP_CANDIDATES = [
+    Path("/usr/share/fonts/opentype/ipafont-gothic/ipagp.ttf"),
+    Path("/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf"),
+    Path("/usr/share/fonts/truetype/fonts-japanese-gothic.ttf"),
 ]
 
-LATIN_FONT_CANDIDATES = [
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-]
 
-
-def load_jp_font(size: int) -> ImageFont.FreeTypeFont:
-    for path in JP_FONT_CANDIDATES:
-        if os.path.exists(path):
-            return ImageFont.truetype(path, size=size)
+def _load(candidates: list[Path], size: int) -> ImageFont.FreeTypeFont:
+    for path in candidates:
+        if path.exists():
+            return ImageFont.truetype(str(path), size=size)
     return ImageFont.load_default()
 
 
-def load_latin_font(size: int) -> ImageFont.FreeTypeFont:
-    for path in LATIN_FONT_CANDIDATES:
-        if os.path.exists(path):
-            return ImageFont.truetype(path, size=size)
-    return load_jp_font(size)
+def load_soft_font(size: int) -> ImageFont.FreeTypeFont:
+    return _load(SOFT_FONT_REGULAR_CANDIDATES + FALLBACK_JP_CANDIDATES, size)
+
+
+def load_soft_bold_font(size: int) -> ImageFont.FreeTypeFont:
+    return _load(SOFT_FONT_BOLD_CANDIDATES + FALLBACK_JP_CANDIDATES, size)
 
 
 def make_diagonal_gradient(size: tuple[int, int], c1: tuple[int, int, int], c2: tuple[int, int, int]) -> Image.Image:
@@ -152,23 +156,23 @@ def main() -> int:
     text_left = 470
 
     title = "comerune"
-    title_font = load_jp_font(108)
+    title_font = load_soft_bold_font(116)
     tbbox = draw.textbbox((0, 0), title, font=title_font)
     title_w = tbbox[2] - tbbox[0]
     max_title_w = W - text_left - safe_right
     if title_w > max_title_w:
-        title_font = load_jp_font(int(108 * max_title_w / title_w))
+        title_font = load_soft_bold_font(int(116 * max_title_w / title_w))
         tbbox = draw.textbbox((0, 0), title, font=title_font)
     title_visual_top = tbbox[1]
     title_visual_h = tbbox[3] - tbbox[1]
 
-    sub_font = load_jp_font(36)
+    sub_font = load_soft_font(34)
     subtitle = "ニコ生コメントを表示・読み上げ"
     sbbox = draw.textbbox((0, 0), subtitle, font=sub_font)
     sub_visual_top = sbbox[1]
     sub_visual_h = sbbox[3] - sbbox[1]
 
-    tag_font = load_jp_font(26)
+    tag_font = load_soft_font(26)
     tag = "ながら見でも聞き逃さない"
     gbbox = draw.textbbox((0, 0), tag, font=tag_font)
     tag_w = gbbox[2] - gbbox[0]

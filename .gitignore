@@ -72,3 +72,7 @@ niconame-integration-docs/
 # OpenAI Codex local project settings
 .codex
 .codex.project.toml
+
+# Locally-fetched fonts used only by Play Store asset generator scripts.
+# Re-fetch via `bash scripts/fetch-play-store-fonts.sh` when needed.
+scripts/fonts/
