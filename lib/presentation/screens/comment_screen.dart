@@ -2212,6 +2212,11 @@ class _CommentScreenState extends State<CommentScreen>
   /// cursor in [_submitNewCommentsForSpeech] de-duplicates between the two
   /// entry points so a comment is never spoken twice.
   ///
+  /// Note: [TimelineStore.setCapacity] also calls [notifyListeners] even
+  /// when no messages are evicted (capacity-only change). In that case
+  /// `messages.last.id == _lastSpeechMessageId` and
+  /// [_submitNewCommentsForSpeech] exits early — no spurious submit.
+  ///
   /// Wrapped in try/catch so a single buggy invocation cannot tear down
   /// the [TimelineStore]'s listener list (which would silently disable
   /// reactive submit for the rest of the screen's lifetime). Mirrors the

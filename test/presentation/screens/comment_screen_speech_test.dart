@@ -4517,6 +4517,85 @@ void main() {
         await tester.pumpAndSettle();
       },
     );
+
+    testWidgets('didUpdateWidget store swap: listener re-attaches to new store, '
+        'old store no longer triggers submit', (WidgetTester tester) async {
+      // Verify that when the parent rebuilds CommentScreen with a
+      // different TimelineStore, the screen:
+      // (a) removes its listener from the old store, and
+      // (b) adds a listener to the new store.
+      // Without the didUpdateWidget swap in comment_screen.dart, the
+      // screen would keep listening on the old store and miss mutations
+      // on the new one.
+      final _ListenerCountingTimelineStore storeA =
+          _ListenerCountingTimelineStore(capacity: 100);
+      addTearDown(storeA.dispose);
+      final _ListenerCountingTimelineStore storeB =
+          _ListenerCountingTimelineStore(capacity: 100);
+      addTearDown(storeB.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: _StoreSwapHost(store: storeA, speechPlatform: fakePlatform),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(fakePlatform.startCalled, isTrue);
+
+      // storeA has listener; storeB does not yet.
+      expect(
+        storeA.exposedHasListeners,
+        isTrue,
+        reason: 'CommentScreen must subscribe to the initial store.',
+      );
+      expect(
+        storeB.exposedHasListeners,
+        isFalse,
+        reason: 'CommentScreen must not listen to storeB before swap.',
+      );
+
+      // Swap the store from storeA to storeB via the host state.
+      final _StoreSwapHostState hostState = tester.state(
+        find.byType(_StoreSwapHost),
+      );
+      hostState.swapStore(storeB);
+      await tester.pumpAndSettle();
+
+      expect(
+        storeA.exposedHasListeners,
+        isFalse,
+        reason:
+            'CommentScreen.didUpdateWidget must remove listener from old store.',
+      );
+      expect(
+        storeB.exposedHasListeners,
+        isTrue,
+        reason: 'CommentScreen.didUpdateWidget must add listener to new store.',
+      );
+
+      // Mutations on storeB now trigger submit; storeA does not.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+
+      storeA.add(_chatMessage(id: 'old-store-msg', content: '古い'));
+      await tester.pumpAndSettle();
+      expect(
+        fakePlatform.submittedComments.map((RawComment c) => c.id),
+        isNot(contains('old-store-msg')),
+        reason: 'Old store must no longer trigger submit after swap.',
+      );
+
+      storeB.add(_chatMessage(id: 'new-store-msg', content: '新しい'));
+      await tester.pumpAndSettle();
+      expect(
+        fakePlatform.submittedComments.map((RawComment c) => c.id),
+        contains('new-store-msg'),
+        reason: 'New store must trigger submit after swap.',
+      );
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+    });
   });
 }
 
@@ -4598,6 +4677,65 @@ class _BgPollHostState extends State<_BgPollHost> {
         speechPlatform: widget.speechPlatform,
         speechSettings: _speechSettings,
         timelineStore: widget.timelineStore,
+      ),
+    );
+  }
+}
+
+/// Hosts a [CommentScreen] whose [TimelineStore] can be swapped at runtime
+/// via [_StoreSwapHostState.swapStore]. Used to verify that
+/// [CommentScreen.didUpdateWidget] correctly removes the listener from the
+/// old store and attaches it to the new one when the store identity changes.
+class _StoreSwapHost extends StatefulWidget {
+  const _StoreSwapHost({required this.store, required this.speechPlatform});
+
+  final TimelineStore store;
+  final FakeCommentSpeechPlatform? speechPlatform;
+
+  @override
+  State<_StoreSwapHost> createState() => _StoreSwapHostState();
+}
+
+class _StoreSwapHostState extends State<_StoreSwapHost> {
+  late TimelineStore _currentStore;
+  late final ConnectionSupervisor _supervisor = _buildStreamingSupervisor();
+
+  @override
+  void initState() {
+    super.initState();
+    _currentStore = widget.store;
+  }
+
+  @override
+  void dispose() {
+    _supervisor.dispose();
+    super.dispose();
+  }
+
+  /// Replace the active [TimelineStore]. Triggers a rebuild, causing
+  /// [CommentScreen.didUpdateWidget] to swap its listener.
+  void swapStore(TimelineStore newStore) {
+    setState(() {
+      _currentStore = newStore;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CommentScreen(
+      programInfo: const CommentProgramInfo(lv: 'lv123456789'),
+      connectionSupervisor: _supervisor,
+      messages: _currentStore.messages.toList(growable: false),
+      callbacks: CommentCallbacks(
+        onStopAllConnections: () async {},
+        onReconnectSameLv: () async {},
+        onDifferentLvConnected: (_, _) async {},
+      ),
+      themeMode: AppThemeMode.light,
+      speechConfig: CommentSpeechConfig(
+        speechPlatform: widget.speechPlatform,
+        speechSettings: const SpeechSettings(enabled: true),
+        timelineStore: _currentStore,
       ),
     );
   }
