@@ -395,6 +395,7 @@ class CommentRowHarness extends StatelessWidget {
     this.onOpenUrl,
     this.beginAt,
     this.ngMatcher,
+    this.normalizedSearchQuery,
   });
 
   final AppMessage message;
@@ -415,6 +416,10 @@ class CommentRowHarness extends StatelessWidget {
   final ValueChanged<AppMessage>? onOpenUrl;
   final DateTime? beginAt;
   final NgMatcher? ngMatcher;
+
+  /// Forwarded to [_CommentRow.normalizedSearchQuery]. Tests pass this in
+  /// to verify search highlighting without spinning up the full screen.
+  final String? normalizedSearchQuery;
 
   @override
   Widget build(BuildContext context) {
@@ -437,6 +442,7 @@ class CommentRowHarness extends StatelessWidget {
       onOpenUrl: onOpenUrl,
       beginAt: beginAt,
       ngMatcher: ngMatcher,
+      normalizedSearchQuery: normalizedSearchQuery,
     );
   }
 }
@@ -460,6 +466,7 @@ class PinnedCommentRowHarness extends StatelessWidget {
     this.beginAt,
     this.textScaler = TextScaler.noScaling,
     this.ngMatcher,
+    this.normalizedSearchQuery,
   });
 
   final AppMessage message;
@@ -475,6 +482,11 @@ class PinnedCommentRowHarness extends StatelessWidget {
   final DateTime? beginAt;
   final TextScaler textScaler;
   final NgMatcher? ngMatcher;
+
+  /// Forwarded to [_PinnedCommentRow.normalizedSearchQuery]. Tests pass
+  /// this in to verify search highlighting on pinned rows without
+  /// spinning up the full screen.
+  final String? normalizedSearchQuery;
 
   @override
   Widget build(BuildContext context) {
@@ -492,6 +504,7 @@ class PinnedCommentRowHarness extends StatelessWidget {
       beginAt: beginAt,
       textScaler: textScaler,
       ngMatcher: ngMatcher,
+      normalizedSearchQuery: normalizedSearchQuery,
     );
   }
 }
@@ -3137,6 +3150,9 @@ class _CommentScreenState extends State<CommentScreen>
                     showCommentNo: widget.showCommentNo,
                     textScaler: textScaler,
                     ngMatcher: _ngMatcher,
+                    normalizedSearchQuery: _normalizedSearchQuery.isEmpty
+                        ? null
+                        : _normalizedSearchQuery,
                   ),
                 if (widget.speechConfig.speechSettings.enabled &&
                     widget.speechConfig.isSpeechMuted)
@@ -3233,6 +3249,10 @@ class _CommentScreenState extends State<CommentScreen>
                                 onOpenUrl: _showUrlConfirmDialog,
                                 beginAt: widget.programInfo.beginAt,
                                 ngMatcher: _ngMatcher,
+                                normalizedSearchQuery:
+                                    _normalizedSearchQuery.isEmpty
+                                    ? null
+                                    : _normalizedSearchQuery,
                               );
                             },
                           ),
@@ -5408,6 +5428,152 @@ class _BroadcasterIcon extends StatelessWidget {
   }
 }
 
+/// Builds inline spans for [content], highlighting every occurrence of
+/// [query] with [matchStyle] and rendering the rest with [baseStyle].
+///
+/// Behavior (Issue #471):
+/// - Empty / null query short-circuits to a single [baseStyle] span so
+///   the non-search render path stays allocation-cheap.
+/// - Matching is case- and width-insensitive: both [content] and [query]
+///   are folded via [normalizeForSearch] (the same normalizer used by
+///   the filter) so the visual highlight stays in lock-step with which
+///   rows the search filter actually selects.
+/// - Match offsets are snapped to grapheme-cluster boundaries (via the
+///   [Characters] API) so emoji, ZWJ sequences, and combined characters
+///   are never split mid-codepoint. If a match overlaps a grapheme only
+///   partially, the highlight widens to cover the whole grapheme.
+///
+/// Hoisted to file scope so both [_CommentRow] and [_PinnedCommentRow] can
+/// share the exact same highlighter (Issue #471 acceptance criteria — the
+/// pinned panel must use the same decoration as the inline list).
+List<TextSpan> _buildHighlightedContent(
+  String content,
+  String? query,
+  TextStyle baseStyle,
+  TextStyle matchStyle,
+) {
+  if (query == null || query.isEmpty || content.isEmpty) {
+    return <TextSpan>[TextSpan(text: content, style: baseStyle)];
+  }
+
+  // Walk grapheme clusters of [content] and build a parallel normalized
+  // string. We record the cumulative original / normalized end-offsets
+  // *at every grapheme boundary* so a match found in normalized space
+  // can be widened back to the nearest enclosing graphemes — preventing
+  // an emoji or ZWJ sequence from being split.
+  final Characters chars = Characters(content);
+  final List<int> origBoundaries = <int>[0];
+  final List<int> normBoundaries = <int>[0];
+  final StringBuffer normBuf = StringBuffer();
+  int origCursor = 0;
+  int normCursor = 0;
+  for (final String grapheme in chars) {
+    origCursor += grapheme.length;
+    final String normGrapheme = normalizeForSearch(grapheme);
+    normBuf.write(normGrapheme);
+    normCursor += normGrapheme.length;
+    origBoundaries.add(origCursor);
+    normBoundaries.add(normCursor);
+  }
+  final String normContent = normBuf.toString();
+  if (normContent.isEmpty) {
+    return <TextSpan>[TextSpan(text: content, style: baseStyle)];
+  }
+
+  // Cheap pre-check: if the normalized body does not contain the query at
+  // all, skip the match-collection / boundary-mapping work entirely. This
+  // keeps the steady-state cost of "user typed a query that filters most
+  // rows out" down to a single grapheme walk per row.
+  if (!normContent.contains(query)) {
+    return <TextSpan>[TextSpan(text: content, style: baseStyle)];
+  }
+
+  // Find all match ranges in normalized space.
+  final List<List<int>> matches = <List<int>>[];
+  int searchFrom = 0;
+  while (true) {
+    final int hit = normContent.indexOf(query, searchFrom);
+    if (hit < 0) break;
+    final int end = hit + query.length;
+    matches.add(<int>[hit, end]);
+    // Advance by at least one to avoid infinite loops on a degenerate
+    // empty-query case (already guarded above) and to skip past the
+    // current match so highlights do not overlap.
+    searchFrom = end > hit ? end : hit + 1;
+  }
+  if (matches.isEmpty) {
+    return <TextSpan>[TextSpan(text: content, style: baseStyle)];
+  }
+
+  // Map normalized ranges back to original-content ranges, snapping to
+  // grapheme boundaries so we never split a grapheme.
+  int origStartFor(int normIndex) {
+    // Largest boundary i with normBoundaries[i] <= normIndex.
+    int lo = 0;
+    int hi = normBoundaries.length - 1;
+    while (lo < hi) {
+      final int mid = (lo + hi + 1) >> 1;
+      if (normBoundaries[mid] <= normIndex) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return origBoundaries[lo];
+  }
+
+  int origEndFor(int normIndex) {
+    // Smallest boundary i with normBoundaries[i] >= normIndex.
+    int lo = 0;
+    int hi = normBoundaries.length - 1;
+    while (lo < hi) {
+      final int mid = (lo + hi) >> 1;
+      if (normBoundaries[mid] >= normIndex) {
+        hi = mid;
+      } else {
+        lo = mid + 1;
+      }
+    }
+    return origBoundaries[lo];
+  }
+
+  final List<TextSpan> spans = <TextSpan>[];
+  int cursor = 0;
+  for (final List<int> range in matches) {
+    final int origStart = origStartFor(range[0]);
+    final int origEnd = origEndFor(range[1]);
+    // Skip overlapping / non-progressing matches that resolve to the
+    // same widened span as the previous match.
+    if (origEnd <= cursor) continue;
+    final int safeStart = origStart < cursor ? cursor : origStart;
+    if (safeStart > cursor) {
+      spans.add(
+        TextSpan(text: content.substring(cursor, safeStart), style: baseStyle),
+      );
+    }
+    spans.add(
+      TextSpan(text: content.substring(safeStart, origEnd), style: matchStyle),
+    );
+    cursor = origEnd;
+  }
+  if (cursor < content.length) {
+    spans.add(TextSpan(text: content.substring(cursor), style: baseStyle));
+  }
+  return spans;
+}
+
+/// Resolves the highlight [TextStyle] used for matched substrings inside
+/// comment bodies. Centralized so `_CommentRow` and `_PinnedCommentRow`
+/// always pick up the same Material-3 (`secondaryContainer` /
+/// `onSecondaryContainer`) color pair.
+TextStyle _searchMatchStyle(BuildContext context) {
+  final ColorScheme cs = Theme.of(context).colorScheme;
+  return TextStyle(
+    backgroundColor: cs.secondaryContainer,
+    color: cs.onSecondaryContainer,
+  );
+}
+
 class _PinnedCommentsSection extends StatelessWidget {
   const _PinnedCommentsSection({
     super.key,
@@ -5424,6 +5590,7 @@ class _PinnedCommentsSection extends StatelessWidget {
     this.showCommentNo = false,
     this.textScaler = TextScaler.noScaling,
     this.ngMatcher,
+    this.normalizedSearchQuery,
   });
 
   final List<AppMessage> pinnedMessages;
@@ -5441,6 +5608,12 @@ class _PinnedCommentsSection extends StatelessWidget {
   final bool showCommentNo;
   final TextScaler textScaler;
   final NgMatcher? ngMatcher;
+
+  /// Issue #471. When non-null and non-empty, matched substrings inside
+  /// each pinned comment body are highlighted with the same decoration as
+  /// the inline list. Already normalized via [normalizeForSearch] on the
+  /// parent side.
+  final String? normalizedSearchQuery;
 
   @override
   Widget build(BuildContext context) {
@@ -5503,6 +5676,7 @@ class _PinnedCommentsSection extends StatelessWidget {
               beginAt: beginAt,
               textScaler: textScaler,
               ngMatcher: ngMatcher,
+              normalizedSearchQuery: normalizedSearchQuery,
             ),
         ],
       ),
@@ -5526,6 +5700,7 @@ class _PinnedCommentRow extends StatelessWidget {
     this.beginAt,
     this.textScaler = TextScaler.noScaling,
     this.ngMatcher,
+    this.normalizedSearchQuery,
   });
 
   final AppMessage message;
@@ -5554,6 +5729,14 @@ class _PinnedCommentRow extends StatelessWidget {
   /// pinned-specific semantics label so screen-reader users can tell a
   /// read-skipped pinned comment apart from a read-skipped inline comment.
   final NgMatcher? ngMatcher;
+
+  /// Issue #471. Already-normalized search query forwarded from the
+  /// parent. When non-null and non-empty, matched substrings in the pinned
+  /// body are highlighted with the same decoration as the inline list.
+  /// Read-skipped pinned bodies (NG match) intentionally skip highlighting
+  /// because the body is dimmed to ~30% opacity and we do not want to fight
+  /// the dimming with a high-contrast background swatch.
+  final String? normalizedSearchQuery;
 
   @override
   Widget build(BuildContext context) {
@@ -5624,15 +5807,48 @@ class _PinnedCommentRow extends StatelessWidget {
       fontSize: fontSize,
       color: effectiveUserColor,
     );
+    final bool hasQuery =
+        normalizedSearchQuery != null && normalizedSearchQuery!.isNotEmpty;
     if (matchedSubcategory == null) {
-      final String lineText = _commentLineText(
+      if (!hasQuery) {
+        final String lineText = _commentLineText(
+          message: message,
+          showUserName: showUserName,
+          resolvedUserName: resolvedUserName,
+          beginAt: beginAt,
+          showCommentNo: showCommentNo,
+        );
+        return Text(lineText, style: bodyStyle);
+      }
+      // Issue #471. Search active → split meta-prefix from body so the
+      // matched substring inside the body can be highlighted. We reuse
+      // [_commentLineText] with [contentOverride] = '' for the meta
+      // formatting so the prefix stays in lock-step with the no-query
+      // path (operator handling, anonymous, comment-no, etc.).
+      final String metaPrefix = _commentLineText(
         message: message,
         showUserName: showUserName,
         resolvedUserName: resolvedUserName,
+        contentOverride: '',
         beginAt: beginAt,
         showCommentNo: showCommentNo,
       );
-      return Text(lineText, style: bodyStyle);
+      final TextStyle matchStyle = _searchMatchStyle(
+        context,
+      ).copyWith(fontSize: fontSize);
+      return Text.rich(
+        TextSpan(
+          children: <InlineSpan>[
+            TextSpan(text: metaPrefix, style: bodyStyle),
+            ..._buildHighlightedContent(
+              message.content,
+              normalizedSearchQuery,
+              bodyStyle,
+              matchStyle,
+            ),
+          ],
+        ),
+      );
     }
     // Only the body content is dimmed; timestamp + display name stay at
     // full contrast so the row still reads as a legitimate pinned message.
@@ -5640,6 +5856,12 @@ class _PinnedCommentRow extends StatelessWidget {
     // stays in lock-step with the unmatched path — any future change to
     // [_commentLineText] (operator handling, anonymous, etc.) propagates
     // here automatically instead of drifting.
+    //
+    // Read-skipped (NG-matched) bodies intentionally skip search-match
+    // highlighting: the body is rendered at ~30% opacity and a high-
+    // contrast highlight swatch would visually fight that dimming. The
+    // user can still locate the row because the row remains visible
+    // (filter passed it) and the meta line is unaffected.
     final String metaPrefix = _commentLineText(
       message: message,
       showUserName: showUserName,
@@ -5731,10 +5953,34 @@ class _PinnedCommentRow extends StatelessWidget {
       ),
     );
 
-    Widget bodyText = Text(
-      message.content,
-      style: TextStyle(fontSize: fontSize, color: effectiveUserColor),
+    final TextStyle bodyStyle = TextStyle(
+      fontSize: fontSize,
+      color: effectiveUserColor,
     );
+    final bool hasQuery =
+        normalizedSearchQuery != null && normalizedSearchQuery!.isNotEmpty;
+    // Issue #471: when search is active and the row is not read-skipped,
+    // highlight matches inside the body. Read-skipped bodies skip the
+    // highlight for the same reason as in [_buildSingleLinePinned] —
+    // the dimming would fight a high-contrast highlight swatch.
+    Widget bodyText;
+    if (hasQuery && matchedSubcategory == null) {
+      final TextStyle matchStyle = _searchMatchStyle(
+        context,
+      ).copyWith(fontSize: fontSize);
+      bodyText = Text.rich(
+        TextSpan(
+          children: _buildHighlightedContent(
+            message.content,
+            normalizedSearchQuery,
+            bodyStyle,
+            matchStyle,
+          ),
+        ),
+      );
+    } else {
+      bodyText = Text(message.content, style: bodyStyle);
+    }
     if (matchedSubcategory != null) {
       bodyText = Opacity(opacity: _readSkippedBodyOpacity, child: bodyText);
     }
@@ -5825,6 +6071,7 @@ class _CommentRow extends StatefulWidget {
     this.onOpenUrl,
     this.beginAt,
     this.ngMatcher,
+    this.normalizedSearchQuery,
   });
 
   final AppMessage message;
@@ -5865,6 +6112,14 @@ class _CommentRow extends StatefulWidget {
   /// glance that TTS is skipping the row. `null` matches (user-defined NG
   /// or no match) render the row unchanged.
   final NgMatcher? ngMatcher;
+
+  /// Active normalized search query forwarded from the parent screen.
+  ///
+  /// When non-null and non-empty, matched substrings inside the body are
+  /// highlighted with the theme's secondary container colors. Issue #471.
+  /// Already normalized via [normalizeForSearch] on the parent side so the
+  /// row does not pay the fold cost again.
+  final String? normalizedSearchQuery;
 
   @override
   State<_CommentRow> createState() => _CommentRowState();
@@ -6108,6 +6363,10 @@ class _CommentRowState extends State<_CommentRow> {
       content: content,
       urlMatches: urlMatches,
       baseStyle: contentStyle,
+      // Issue #471: highlight matched substrings inside the body when a
+      // search query is active. Hidden bodies (ネタバレ防止) are placeholder
+      // text, not the actual content, so skip highlighting for them.
+      searchQuery: hidden ? null : widget.normalizedSearchQuery,
     );
     if (matchedSubcategory != null) {
       // Wrap the body in an inline Opacity so timestamp/username stay at
@@ -6271,6 +6530,10 @@ class _CommentRowState extends State<_CommentRow> {
           content: content,
           urlMatches: urlMatches,
           baseStyle: contentStyle,
+          // Issue #471: highlight matched substrings inside the body when a
+          // search query is active. Hidden bodies (ネタバレ防止) are placeholder
+          // text, not the actual content, so skip highlighting for them.
+          searchQuery: hidden ? null : widget.normalizedSearchQuery,
         ),
       ),
     );
@@ -6294,42 +6557,87 @@ class _CommentRowState extends State<_CommentRow> {
   /// When [urlMatches] is empty the result is a single [TextSpan] with the
   /// full content, preserving the previous rendering behavior for non-URL
   /// comments.
+  ///
+  /// When [searchQuery] is non-null and non-empty (Issue #471), each text
+  /// segment is further split via [_buildHighlightedContent] so the matched
+  /// substring is rendered with the theme's secondary container colors.
+  /// Highlighting layers on top of URL coloring: a query that lands inside
+  /// a URL span paints over the URL's link style, which is the expected
+  /// behavior since the user is currently filtering by that query.
   List<InlineSpan> _buildContentSpans({
     required BuildContext context,
     required String content,
     required List<UrlMatch> urlMatches,
     required TextStyle baseStyle,
+    String? searchQuery,
   }) {
+    final ThemeData theme = Theme.of(context);
+    final TextStyle matchStyle = _searchMatchStyle(context);
+    final bool hasQuery = searchQuery != null && searchQuery.isNotEmpty;
+
     if (urlMatches.isEmpty) {
-      return <InlineSpan>[TextSpan(text: content, style: baseStyle)];
+      if (!hasQuery) {
+        return <InlineSpan>[TextSpan(text: content, style: baseStyle)];
+      }
+      return _buildHighlightedContent(
+        content,
+        searchQuery,
+        baseStyle,
+        matchStyle,
+      );
     }
-    final Color linkColor = Theme.of(context).colorScheme.primary;
+
+    final Color linkColor = theme.colorScheme.primary;
     final TextStyle linkStyle = baseStyle.copyWith(
       color: linkColor,
       decoration: TextDecoration.underline,
       decorationColor: linkColor,
     );
+    // For URL spans we keep the link decoration but layer the highlight
+    // background/foreground on top so the URL still reads as a link while
+    // the matched fragment is visible.
+    final TextStyle linkMatchStyle = linkStyle.copyWith(
+      backgroundColor: matchStyle.backgroundColor,
+      color: matchStyle.color,
+    );
+
+    void appendSegment(
+      List<InlineSpan> sink,
+      String text,
+      TextStyle style,
+      TextStyle highlightStyle,
+    ) {
+      if (text.isEmpty) return;
+      if (!hasQuery) {
+        sink.add(TextSpan(text: text, style: style));
+      } else {
+        sink.addAll(
+          _buildHighlightedContent(text, searchQuery, style, highlightStyle),
+        );
+      }
+    }
+
     final List<InlineSpan> spans = <InlineSpan>[];
     int cursor = 0;
     for (final UrlMatch match in urlMatches) {
       if (match.start > cursor) {
-        spans.add(
-          TextSpan(
-            text: content.substring(cursor, match.start),
-            style: baseStyle,
-          ),
+        appendSegment(
+          spans,
+          content.substring(cursor, match.start),
+          baseStyle,
+          matchStyle,
         );
       }
-      spans.add(
-        TextSpan(
-          text: content.substring(match.start, match.end),
-          style: linkStyle,
-        ),
+      appendSegment(
+        spans,
+        content.substring(match.start, match.end),
+        linkStyle,
+        linkMatchStyle,
       );
       cursor = match.end;
     }
     if (cursor < content.length) {
-      spans.add(TextSpan(text: content.substring(cursor), style: baseStyle));
+      appendSegment(spans, content.substring(cursor), baseStyle, matchStyle);
     }
     return spans;
   }
