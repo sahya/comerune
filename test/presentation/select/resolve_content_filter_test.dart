@@ -5,6 +5,11 @@
 // `@visibleForTesting` from `select_screen.dart` as a top-level function,
 // so we can exercise the resolution rules without spinning up the full
 // SelectScreen widget tree.
+//
+// PR2 retargeted the NG list / NG word management screens to write
+// through [BroadcasterNgStore], so the per-broadcaster path now returns
+// the snapshot verbatim. The legacy union with `AppSettings` fields has
+// been removed; tests assert that behaviour explicitly.
 
 import 'package:comerune/data/filter/broadcaster_ng_store.dart';
 import 'package:comerune/domain/models/app_settings.dart';
@@ -26,11 +31,13 @@ void main() {
       );
     }
 
-    test('per-broadcaster path unions snapshot with legacy AppSettings '
-        'fields (MUST FIX 1 semantics)', () {
+    test('per-broadcaster path returns ONLY the snapshot values (no legacy '
+        'union, PR2 semantics)', () {
+      // The legacy AppSettings fields hold values that should be
+      // ignored: writes now go through BroadcasterNgStore.
       final AppSettings settings = settingsWith(
-        ngUserIds: 'B',
-        ngWordRules: const <NgWordRule>[NgWordRule(pattern: 'X')],
+        ngUserIds: 'legacy-user',
+        ngWordRules: const <NgWordRule>[NgWordRule(pattern: 'legacy')],
       );
       final BroadcasterNgSnapshot snapshot = (
         broadcasterId: 'caster1',
@@ -46,10 +53,32 @@ void main() {
             hasStore: true,
           );
 
-      expect(result.ngUserIds, equals(<String>{'A', 'B'}));
-      // Patterns are normalised to lower case via enabledNgWordPatterns
-      // / AppSettings.ngWordList; the union must contain both sources.
-      expect(result.ngWords.toSet(), equals(<String>{'x', 'y'}));
+      expect(result.ngUserIds, equals(<String>{'A'}));
+      // Snapshot patterns are normalised through enabledNgWordPatterns.
+      expect(result.ngWords, equals(<String>['y']));
+    });
+
+    test('per-broadcaster path drops disabled snapshot rules and empty '
+        'patterns', () {
+      final BroadcasterNgSnapshot snapshot = (
+        broadcasterId: 'caster1',
+        ngUserIds: const <String>{},
+        rules: const <NgWordRule>[
+          NgWordRule(pattern: '  Snapshot  '),
+          NgWordRule(pattern: 'off', enabled: false),
+          NgWordRule(pattern: '   '),
+        ],
+      );
+
+      final ({Set<String> ngUserIds, List<String> ngWords}) result =
+          computeContentFilterInputs(
+            settings: settingsWith(),
+            currentBroadcasterId: 'caster1',
+            snapshot: snapshot,
+            hasStore: true,
+          );
+
+      expect(result.ngWords, equals(<String>['snapshot']));
     });
 
     test('legacy fallback — store not wired returns only legacy values', () {
@@ -82,7 +111,6 @@ void main() {
           ngUserIds: 'L',
           ngWords: 'legacy-word',
         );
-        // Snapshot for a previous broadcaster, but we are not connected.
         final BroadcasterNgSnapshot snapshot = (
           broadcasterId: 'caster1',
           ngUserIds: <String>{'stale'},
@@ -108,8 +136,6 @@ void main() {
         ngUserIds: 'L',
         ngWords: 'legacy-word',
       );
-      // The snapshot's broadcasterId is from an earlier connection;
-      // the resolver must not leak those IDs into the new connection.
       final BroadcasterNgSnapshot snapshot = (
         broadcasterId: 'old-caster',
         ngUserIds: <String>{'stale-id'},
@@ -126,37 +152,6 @@ void main() {
 
       expect(result.ngUserIds, equals(<String>{'L'}));
       expect(result.ngWords, equals(<String>['legacy-word']));
-    });
-
-    test('per-broadcaster path drops disabled snapshot rules and empty '
-        'patterns when unioning with legacy ngWordList', () {
-      final AppSettings settings = settingsWith(
-        ngWordRules: const <NgWordRule>[
-          NgWordRule(pattern: ' Legacy '),
-          NgWordRule(pattern: 'disabled-legacy', enabled: false),
-        ],
-      );
-      final BroadcasterNgSnapshot snapshot = (
-        broadcasterId: 'caster1',
-        ngUserIds: const <String>{},
-        rules: const <NgWordRule>[
-          NgWordRule(pattern: '  Snapshot  '),
-          NgWordRule(pattern: 'off', enabled: false),
-          NgWordRule(pattern: '   '),
-        ],
-      );
-
-      final ({Set<String> ngUserIds, List<String> ngWords}) result =
-          computeContentFilterInputs(
-            settings: settings,
-            currentBroadcasterId: 'caster1',
-            snapshot: snapshot,
-            hasStore: true,
-          );
-
-      // Both sources go through the trim+lower normalisation. Disabled
-      // and empty patterns are dropped.
-      expect(result.ngWords.toSet(), equals(<String>{'snapshot', 'legacy'}));
     });
   });
 }

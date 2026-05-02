@@ -44,10 +44,6 @@ typedef BroadcasterNgSnapshot = ({
 ///     `settings.filter.template.ngWordRules` — JSON [{pattern,enabled}]
 ///     `settings.filter.broadcaster._index` — JSON list of broadcaster IDs
 ///
-/// TODO(#727): PR2 will retarget the NG list / NG word management screens
-/// to write through this store instead of `AppSettings.ngUserIds` /
-/// `AppSettings.ngWordRules`. Until then, those screens edit the legacy
-/// AppSettings fields, which act as the migration source only.
 abstract class BroadcasterNgStore {
   /// Returns NG user IDs for [broadcasterId].
   ///
