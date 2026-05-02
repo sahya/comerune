@@ -112,14 +112,12 @@ Future<void> main() async {
 
   final Directory appDocDir = await getApplicationDocumentsDirectory();
   final Directory tempDir = await getTemporaryDirectory();
-  final SettingsStore settingsStore = SharedPreferencesSettingsStore(
-    prefs: prefsAdapter,
-    tempDirectory: tempDir,
-  );
-  final AppSettings initialSettings = await settingsStore.load();
   final UserSessionStore userSessionStore = SecureUserSessionStore(
     prefs: prefs,
   );
+  // Settings store is constructed below, after the BroadcasterNgStore is
+  // available, so the export/import flow can include the per-broadcaster
+  // NG layout (Issue #727).
 
   final CommentLogWriter commentLogWriter = FileCommentLogWriter(
     directory: Directory('${appDocDir.path}/comment_logs'),
@@ -163,6 +161,16 @@ Future<void> main() async {
           prefsAdapter,
         ),
   );
+
+  // Settings store is wired with the broadcaster NG store so the
+  // export/import flow understands the new per-broadcaster + template
+  // layout (Issue #727).
+  final SettingsStore settingsStore = SharedPreferencesSettingsStore(
+    prefs: prefsAdapter,
+    tempDirectory: tempDir,
+    broadcasterNgStore: broadcasterNgStore,
+  );
+  final AppSettings initialSettings = await settingsStore.load();
 
   // Run one-time migration tasks when the app version changes.
   // Awaited so that migrations complete before the app reads settings or

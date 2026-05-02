@@ -438,6 +438,33 @@ void main() {
       expect(restored.showMinorsRelatedComment, isFalse);
     });
 
+    test('fromJson ignores top-level broadcasterNgFilter key (Issue #727)', () {
+      // The settings importer for Issue #727 adds a top-level
+      // `broadcasterNgFilter` block that lives outside AppSettings.
+      // AppSettings.fromJson must tolerate that key (and any inner
+      // structure) without throwing — the broadcaster NG layout is
+      // applied by the SettingsStore, not the domain model.
+      final Map<String, dynamic> json = AppSettings.defaults.toJson()
+        ..['broadcasterNgFilter'] = <String, dynamic>{
+          'version': 1,
+          'template': <String, dynamic>{
+            'ngUserIds': <String>['u1'],
+            'ngWordRules': <Map<String, dynamic>>[
+              <String, dynamic>{'pattern': 'p1', 'enabled': true},
+            ],
+          },
+          'broadcasters': <String, dynamic>{
+            'b1': <String, dynamic>{
+              'ngUserIds': <String>['u2'],
+              'ngWordRules': <Map<String, dynamic>>[],
+            },
+          },
+        };
+      // Must not throw and must return a populated AppSettings.
+      final AppSettings restored = AppSettings.fromJson(json);
+      expect(restored.themeMode, AppSettings.defaults.themeMode);
+    });
+
     test(
       'fromJson with legacy payload (no toggle keys) falls back to false',
       () {
