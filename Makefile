@@ -10,6 +10,15 @@ ENV := $(MISE_ACTIVATE) && \
        export ANDROID_HOME=$(ANDROID_HOME) && \
        export PATH=$(FLUTTER_BIN):$(ANDROID_HOME)/cmdline-tools/latest/bin:$(ANDROID_HOME)/platform-tools:$$PATH
 
+# OAuth + App Links + BFF build-time defines.
+# android/oauth_bff.env is gitignored (see android/oauth_bff.env.example).
+# When present the file's KEY=VALUE entries are injected as Dart compile-time
+# constants via --dart-define-from-file; when absent the flag is omitted so
+# build still succeeds and OAuthBffConfig.isFullyConfigured returns false at
+# runtime (UI hides the OAuth login entry point).
+OAUTH_BFF_ENV_FILE := android/oauth_bff.env
+DART_DEFINE_OAUTH_BFF := $(if $(wildcard $(OAUTH_BFF_ENV_FILE)),--dart-define-from-file=$(OAUTH_BFF_ENV_FILE),)
+
 .PHONY: help doctor clean build build-release build-release-aab build-adi-verification build-clean test pub-get analyze format format-all check setup-libs
 
 help: ## Show this help
@@ -25,14 +34,14 @@ setup-libs: ## Download VOICEVOX native libraries if missing
 	@bash scripts/setup-voicevox-libs.sh
 
 build: setup-libs ## Build debug APK
-	$(ENV) && flutter build apk --debug
+	$(ENV) && flutter build apk --debug $(DART_DEFINE_OAUTH_BFF)
 
 build-release: setup-libs ## Build release APK
-	$(ENV) && bash scripts/guard-no-adi-registration-asset.sh && bash scripts/verify-release-keystore.sh && flutter build apk --release --obfuscate --split-debug-info=build/debug-info
+	$(ENV) && bash scripts/guard-no-adi-registration-asset.sh && bash scripts/verify-release-keystore.sh && flutter build apk --release --obfuscate --split-debug-info=build/debug-info $(DART_DEFINE_OAUTH_BFF)
 
 # AAB は本来複数 ABI 同梱が強みだが、現状は arm64-v8a のみ（android/app/build.gradle.kts の release abiFilters による）。
 build-release-aab: setup-libs ## Build release AAB (arm64-v8a only — for Google Play upload)
-	$(ENV) && bash scripts/guard-no-adi-registration-asset.sh && bash scripts/verify-release-keystore.sh && flutter build appbundle --release --obfuscate --split-debug-info=build/debug-info
+	$(ENV) && bash scripts/guard-no-adi-registration-asset.sh && bash scripts/verify-release-keystore.sh && flutter build appbundle --release --obfuscate --split-debug-info=build/debug-info $(DART_DEFINE_OAUTH_BFF)
 
 build-adi-verification: setup-libs ## Build Android Developer Verification APK (requires ANDROID_ADI_REGISTRATION_PUBLIC_CONTENT_FILE)
 	$(ENV) && bash scripts/build-android-developer-verification-apk.sh
