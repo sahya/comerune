@@ -1,10 +1,9 @@
-import 'dart:convert';
 import 'dart:developer' as developer;
 
 import '../../data/filter/broadcaster_ng_store.dart';
 import '../../domain/models/ng_word_rule.dart';
-import '../../domain/utils/newline_parser.dart';
 import '../settings/settings_store.dart';
+import 'legacy_ng_parser.dart';
 
 /// One-shot migrator that converts the legacy global NG configuration
 /// (`settings.filter.ngWords`, `settings.filter.ngUserIds`,
@@ -40,11 +39,6 @@ class BroadcasterNgMigrator {
   static const String migrationFlagKey =
       'settings.filter.migration.v1Completed';
 
-  // Legacy key names — kept aligned with [SharedPreferencesSettingsStore].
-  static const String _legacyNgWordsKey = 'settings.filter.ngWords';
-  static const String _legacyNgUserIdsKey = 'settings.filter.ngUserIds';
-  static const String _legacyNgWordRulesKey = 'settings.filter.ngWordRules';
-
   /// Number of leading characters of a broadcaster ID kept verbatim in
   /// redacted log output. Anything past this prefix is replaced with
   /// `***` so device logs / crash reports never carry the full ID.
@@ -74,7 +68,7 @@ class BroadcasterNgMigrator {
     List<NgWordRule> ngWordRules = <NgWordRule>[];
 
     try {
-      ngUserIds = _readLegacyNgUserIds(prefs);
+      ngUserIds = LegacyNgParser.readLegacyNgUserIds(prefs);
     } on Object catch (error, stackTrace) {
       developer.log(
         'Failed to read legacy ngUserIds: $error',
@@ -85,7 +79,7 @@ class BroadcasterNgMigrator {
     }
 
     try {
-      ngWordRules = _readLegacyNgWordRules(prefs);
+      ngWordRules = LegacyNgParser.readLegacyNgWordRules(prefs);
     } on Object catch (error, stackTrace) {
       developer.log(
         'Failed to read legacy ngWordRules / ngWords: $error',
@@ -139,73 +133,6 @@ class BroadcasterNgMigrator {
         stackTrace: stackTrace,
       );
     }
-  }
-
-  static Set<String> _readLegacyNgUserIds(SharedPreferencesLike prefs) {
-    final String? raw = prefs.getString(_legacyNgUserIdsKey);
-    if (raw == null || raw.isEmpty) {
-      return <String>{};
-    }
-    return parseNewlineSeparatedSet(raw);
-  }
-
-  /// Combined view of the legacy `ngWordRules` JSON list and the older
-  /// newline-separated `ngWords` plain string. Lines from `ngWords` whose
-  /// pattern is already present in `ngWordRules` are skipped to avoid
-  /// double-listing the same word after migration.
-  static List<NgWordRule> _readLegacyNgWordRules(SharedPreferencesLike prefs) {
-    final List<NgWordRule> rules = <NgWordRule>[];
-    final Set<String> seenPatterns = <String>{};
-
-    final String? rulesRaw = prefs.getString(_legacyNgWordRulesKey);
-    if (rulesRaw != null && rulesRaw.isNotEmpty) {
-      try {
-        final List<dynamic> decoded = json.decode(rulesRaw) as List<dynamic>;
-        for (final dynamic item in decoded) {
-          if (item is! Map) {
-            continue;
-          }
-          try {
-            final NgWordRule rule = NgWordRule.fromMap(
-              item.cast<String, dynamic>(),
-            );
-            if (rule.pattern.isEmpty) {
-              continue;
-            }
-            if (seenPatterns.add(rule.pattern)) {
-              rules.add(rule);
-            }
-          } on Object catch (error) {
-            developer.log(
-              'Skipped malformed ngWordRules entry: $error',
-              name: 'BroadcasterNgMigrator',
-            );
-          }
-        }
-      } on Object catch (error, stackTrace) {
-        developer.log(
-          'Failed to parse legacy ngWordRules JSON: $error',
-          name: 'BroadcasterNgMigrator',
-          error: error,
-          stackTrace: stackTrace,
-        );
-      }
-    }
-
-    final String? wordsRaw = prefs.getString(_legacyNgWordsKey);
-    if (wordsRaw != null && wordsRaw.isNotEmpty) {
-      for (final String line in wordsRaw.split('\n')) {
-        final String pattern = line.trim();
-        if (pattern.isEmpty) {
-          continue;
-        }
-        if (seenPatterns.add(pattern)) {
-          rules.add(NgWordRule(pattern: pattern));
-        }
-      }
-    }
-
-    return rules;
   }
 
   /// Returns a short prefix-only form of [broadcasterId] suitable for

@@ -6,8 +6,10 @@ import 'package:clock/clock.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../comment_speech/src/models/replace_rule.dart';
+import '../../data/filter/broadcaster_ng_store.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/ng_word_rule.dart';
+import '../filter/legacy_ng_parser.dart';
 
 abstract class SettingsStore {
   Future<AppSettings> load();
@@ -120,14 +122,35 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   const SharedPreferencesSettingsStore({
     required SharedPreferencesLike prefs,
     Directory? tempDirectory,
+    BroadcasterNgStore? broadcasterNgStore,
   }) : _prefs = prefs,
-       _tempDirectory = tempDirectory;
+       _tempDirectory = tempDirectory,
+       _broadcasterNgStore = broadcasterNgStore;
 
   final SharedPreferencesLike _prefs;
 
   /// Temp directory used by [writeExportToTempFile].  When null, falls back
   /// to `path_provider`'s `getTemporaryDirectory()` at call time.
   final Directory? _tempDirectory;
+
+  /// Issue #727: optional integration. When provided, settings export adds
+  /// a `broadcasterNgFilter` block describing the template + per-broadcaster
+  /// NG layout, and import understands the same block. When null (older
+  /// host scenarios / tests that do not need the NG layout), export skips
+  /// the new key and import behaves like before.
+  final BroadcasterNgStore? _broadcasterNgStore;
+
+  /// Top-level export key carrying the per-broadcaster NG layout.
+  /// Documented as a public constant so tests can reference the same
+  /// string and the importer can detect "new schema present" without
+  /// re-declaring the literal.
+  static const String exportBroadcasterNgKey = 'broadcasterNgFilter';
+
+  /// Schema version for [exportBroadcasterNgKey]. Bumped only when the
+  /// JSON shape changes incompatibly. Unknown versions are still
+  /// applied best-effort with a warning so newer-than-app exports do
+  /// not silently drop NG state.
+  static const int broadcasterNgFilterSchemaVersion = 1;
 
   static const String _kThemeMode = 'settings.themeMode';
   static const String _kAutoReadEnabled = 'settings.autoReadEnabled';
@@ -567,8 +590,64 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   Future<String> exportAsJson() async {
     final AppSettings settings = await load();
     final Map<String, dynamic> json = settings.toJson();
+    final Map<String, dynamic>? ngBlock = await _buildBroadcasterNgExport();
+    if (ngBlock != null) {
+      json[exportBroadcasterNgKey] = ngBlock;
+    }
     const JsonEncoder encoder = JsonEncoder.withIndent('  ');
     return encoder.convert(json);
+  }
+
+  /// Builds the `broadcasterNgFilter` JSON block from the current
+  /// [BroadcasterNgStore] snapshot. Returns null when no store is wired
+  /// — older host scenarios / tests that do not exercise the NG layout
+  /// must still produce a valid export without the new key.
+  ///
+  /// Failures while reading individual broadcaster slots are logged and
+  /// the offending slot is skipped — a single malformed slot must not
+  /// abort the whole export.
+  Future<Map<String, dynamic>?> _buildBroadcasterNgExport() async {
+    final BroadcasterNgStore? store = _broadcasterNgStore;
+    if (store == null) {
+      return null;
+    }
+    final Set<String> templateIds = await store.loadTemplateNgUserIds();
+    final List<NgWordRule> templateRules = await store
+        .loadTemplateNgWordRules();
+
+    final Map<String, dynamic> broadcasters = <String, dynamic>{};
+    for (final String id in store.listBroadcasters()) {
+      if (id.isEmpty) {
+        continue;
+      }
+      try {
+        final BroadcasterNgPayload payload = await store
+            .loadBroadcasterNgAttributes(id);
+        broadcasters[id] = <String, dynamic>{
+          'ngUserIds': payload.ngUserIds.toList(),
+          'ngWordRules': payload.rules
+              .map((NgWordRule r) => r.toMap())
+              .toList(),
+        };
+      } on Object catch (error, stackTrace) {
+        developer.log(
+          'Failed to read NG slot for export; skipping one broadcaster: '
+          '$error',
+          name: 'SettingsStore',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+    }
+
+    return <String, dynamic>{
+      'version': broadcasterNgFilterSchemaVersion,
+      'template': <String, dynamic>{
+        'ngUserIds': templateIds.toList(),
+        'ngWordRules': templateRules.map((NgWordRule r) => r.toMap()).toList(),
+      },
+      'broadcasters': broadcasters,
+    };
   }
 
   @override
@@ -619,8 +698,251 @@ class SharedPreferencesSettingsStore implements SettingsStore {
 
   @override
   Future<AppSettings> importFromJson(String jsonString) async {
+    // Parse legacy fields via AppSettings (unknown keys are ignored, so the
+    // new `broadcasterNgFilter` block falls through unharmed).
     final AppSettings imported = AppSettings.fromJsonString(jsonString);
     await save(imported);
+
+    // Re-parse the same JSON to inspect the optional `broadcasterNgFilter`
+    // block at the top level. AppSettings.fromJson already discarded it, so
+    // we do not have access to the structured block from `imported`.
+    final BroadcasterNgStore? store = _broadcasterNgStore;
+    if (store == null) {
+      return imported;
+    }
+
+    Map<String, dynamic>? root;
+    try {
+      final dynamic decoded = jsonDecode(jsonString);
+      if (decoded is Map<String, dynamic>) {
+        root = decoded;
+      }
+    } on Object catch (error) {
+      // AppSettings.fromJsonString already validated the JSON; reaching this
+      // catch means a race or non-Map top-level. Log and bail out without
+      // touching the NG store.
+      developer.log(
+        'Failed to re-parse import JSON for broadcasterNgFilter: $error',
+        name: 'SettingsStore',
+      );
+      return imported;
+    }
+    if (root == null) {
+      return imported;
+    }
+
+    final Object? rawBlock = root[exportBroadcasterNgKey];
+    if (rawBlock is Map<String, dynamic>) {
+      // New schema present. New schema wins over legacy fields per the
+      // import-precedence rule (the new key is more specific and
+      // describes both template + per-broadcaster slots).
+      await _applyBroadcasterNgFilterBlock(store, rawBlock);
+    } else {
+      // Legacy fallback: restore template + already-known broadcasters
+      // from the legacy fields parsed into `imported`. Mirrors
+      // BroadcasterNgMigrator's first-install behaviour.
+      await _applyLegacyNgFallback(store, imported);
+    }
+
     return imported;
+  }
+
+  /// Applies the parsed `broadcasterNgFilter` block to [store].
+  ///
+  /// Skips malformed inner sections (logged) instead of throwing — a
+  /// single bad slot must not abort the whole import.
+  Future<void> _applyBroadcasterNgFilterBlock(
+    BroadcasterNgStore store,
+    Map<String, dynamic> block,
+  ) async {
+    final Object? rawVersion = block['version'];
+    if (rawVersion is int && rawVersion != broadcasterNgFilterSchemaVersion) {
+      developer.log(
+        'broadcasterNgFilter version $rawVersion differs from expected '
+        '$broadcasterNgFilterSchemaVersion; applying best-effort.',
+        name: 'SettingsStore',
+      );
+    }
+
+    // Template.
+    final Object? rawTemplate = block['template'];
+    if (rawTemplate is Map<String, dynamic>) {
+      final Set<String> templateIds = _parseNgUserIdsList(
+        rawTemplate['ngUserIds'],
+      );
+      final List<NgWordRule> templateRules = _parseNgWordRulesList(
+        rawTemplate['ngWordRules'],
+      );
+      try {
+        await store.saveTemplateNgUserIds(templateIds);
+        await store.saveTemplateNgWordRules(templateRules);
+      } on Object catch (error, stackTrace) {
+        developer.log(
+          'Failed to apply imported NG template: $error',
+          name: 'SettingsStore',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+    } else if (rawTemplate != null) {
+      developer.log(
+        'broadcasterNgFilter.template is not a Map; skipping template.',
+        name: 'SettingsStore',
+      );
+    }
+
+    // Broadcasters.
+    int applied = 0;
+    final Object? rawBroadcasters = block['broadcasters'];
+    if (rawBroadcasters is Map<String, dynamic>) {
+      for (final MapEntry<String, dynamic> entry in rawBroadcasters.entries) {
+        final String broadcasterId = entry.key;
+        if (broadcasterId.isEmpty) {
+          developer.log(
+            'Skipping empty broadcasterId key in broadcasterNgFilter.',
+            name: 'SettingsStore',
+          );
+          continue;
+        }
+        final Object? slot = entry.value;
+        if (slot is! Map) {
+          developer.log(
+            'broadcasterNgFilter.broadcasters[$broadcasterId] is not a Map; '
+            'skipping.',
+            name: 'SettingsStore',
+          );
+          continue;
+        }
+        final Map<String, dynamic> typed = slot.cast<String, dynamic>();
+        final Set<String> ids = _parseNgUserIdsList(typed['ngUserIds']);
+        final List<NgWordRule> rules = _parseNgWordRulesList(
+          typed['ngWordRules'],
+        );
+        try {
+          await store.saveNgUserIds(broadcasterId, ids);
+          await store.saveNgWordRules(broadcasterId, rules);
+          applied++;
+        } on Object catch (error, stackTrace) {
+          developer.log(
+            'Failed to apply imported NG slot for one broadcaster: $error',
+            name: 'SettingsStore',
+            error: error,
+            stackTrace: stackTrace,
+          );
+        }
+      }
+    } else if (rawBroadcasters != null) {
+      developer.log(
+        'broadcasterNgFilter.broadcasters is not a Map; skipping all '
+        'per-broadcaster slots.',
+        name: 'SettingsStore',
+      );
+    }
+    developer.log(
+      'Imported broadcasterNgFilter: $applied broadcaster slot(s) applied.',
+      name: 'SettingsStore',
+    );
+  }
+
+  /// Legacy fallback: when the import JSON has no `broadcasterNgFilter`
+  /// block, treat the legacy global NG fields as the user's prior
+  /// state. Seed the template AND every already-known broadcaster slot
+  /// with the legacy values so "import = restore my old NG settings
+  /// everywhere" matches the user's mental model.
+  ///
+  /// Broadcasters that are not yet in the store's index are NOT created
+  /// — this matches the migrator's "known broadcasters only" rule.
+  Future<void> _applyLegacyNgFallback(
+    BroadcasterNgStore store,
+    AppSettings imported,
+  ) async {
+    final Set<String> legacyIds = imported.ngUserIdSet;
+    final List<NgWordRule> legacyRules = LegacyNgParser.mergeLegacyNgWordRules(
+      structuredRules: imported.ngWordRules,
+      legacyNgWords: imported.ngWords,
+    );
+
+    try {
+      await store.saveTemplateNgUserIds(legacyIds);
+      await store.saveTemplateNgWordRules(legacyRules);
+    } on Object catch (error, stackTrace) {
+      developer.log(
+        'Legacy import: failed to seed NG template: $error',
+        name: 'SettingsStore',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return;
+    }
+
+    int reseeded = 0;
+    for (final String broadcasterId in store.listBroadcasters()) {
+      if (broadcasterId.isEmpty) {
+        continue;
+      }
+      try {
+        await store.saveNgUserIds(broadcasterId, legacyIds);
+        await store.saveNgWordRules(broadcasterId, legacyRules);
+        reseeded++;
+      } on Object catch (error, stackTrace) {
+        developer.log(
+          'Legacy import: failed to reseed one broadcaster slot: $error',
+          name: 'SettingsStore',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+    }
+    developer.log(
+      'Legacy NG import: $reseeded broadcaster slot(s) reseeded from legacy '
+      'fields.',
+      name: 'SettingsStore',
+    );
+  }
+
+  static Set<String> _parseNgUserIdsList(Object? raw) {
+    if (raw is! List) {
+      return <String>{};
+    }
+    final Set<String> ids = <String>{};
+    for (final Object? item in raw) {
+      if (item is String) {
+        final String trimmed = item.trim();
+        if (trimmed.isNotEmpty) {
+          ids.add(trimmed);
+        }
+      }
+    }
+    return ids;
+  }
+
+  static List<NgWordRule> _parseNgWordRulesList(Object? raw) {
+    if (raw is! List) {
+      return <NgWordRule>[];
+    }
+    final List<NgWordRule> rules = <NgWordRule>[];
+    final Set<String> seen = <String>{};
+    for (final Object? item in raw) {
+      if (item is! Map) {
+        continue;
+      }
+      try {
+        final NgWordRule rule = NgWordRule.fromMap(
+          item.cast<String, dynamic>(),
+        );
+        if (rule.pattern.isEmpty) {
+          continue;
+        }
+        if (seen.add(rule.pattern)) {
+          rules.add(rule);
+        }
+      } on Object catch (error) {
+        developer.log(
+          'Skipped malformed ngWordRules entry during import: $error',
+          name: 'SettingsStore',
+        );
+      }
+    }
+    return rules;
   }
 }
