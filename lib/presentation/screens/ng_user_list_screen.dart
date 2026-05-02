@@ -39,6 +39,8 @@ class NgUserListScreen extends StatefulWidget {
 }
 
 class _NgUserListScreenState extends State<NgUserListScreen> {
+  static const int _maxScopeTitleLength = 20;
+
   List<String> _ngUserIds = const <String>[];
   bool _isLoading = true;
   bool _loadFailed = false;
@@ -138,10 +140,10 @@ class _NgUserListScreenState extends State<NgUserListScreen> {
   /// Keeps the AppBar title short for long broadcaster scope labels. The
   /// bottom subtitle keeps the full label.
   String _truncateForTitle(String label) {
-    if (label.length <= 20) {
+    if (label.length <= _maxScopeTitleLength) {
       return label;
     }
-    return '${label.substring(0, 20)}…';
+    return '${label.substring(0, _maxScopeTitleLength)}…';
   }
 
   @override

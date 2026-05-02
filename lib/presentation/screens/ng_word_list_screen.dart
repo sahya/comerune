@@ -33,6 +33,8 @@ class NgWordListScreen extends StatefulWidget {
 }
 
 class _NgWordListScreenState extends State<NgWordListScreen> {
+  static const int _maxScopeTitleLength = 20;
+
   List<NgWordRule> _rules = const <NgWordRule>[];
   bool _isLoading = true;
   bool _loadFailed = false;
@@ -201,10 +203,10 @@ class _NgWordListScreenState extends State<NgWordListScreen> {
   /// Keeps the AppBar title short for long broadcaster scope labels. The
   /// bottom subtitle keeps the full label.
   String _truncateForTitle(String label) {
-    if (label.length <= 20) {
+    if (label.length <= _maxScopeTitleLength) {
       return label;
     }
-    return '${label.substring(0, 20)}…';
+    return '${label.substring(0, _maxScopeTitleLength)}…';
   }
 
   @override

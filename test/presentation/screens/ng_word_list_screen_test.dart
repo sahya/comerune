@@ -348,11 +348,43 @@ void main() {
 
       expect(find.byKey(const Key('ng-word-list-error')), findsNothing);
     });
+
+    testWidgets('retry recovers and renders the list correctly', (
+      WidgetTester tester,
+    ) async {
+      final _ThrowingBroadcasterNgStore store = _ThrowingBroadcasterNgStore()
+        ..seededRules = <NgWordRule>[
+          const NgWordRule(pattern: 'recovered-word', enabled: true),
+        ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NgWordListScreen(
+            broadcasterNgStore: store,
+            broadcasterId: 'caster-1',
+            scopeLabel: 'caster-1',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('ng-word-list-error')), findsOneWidget);
+
+      // Flip throw flag and retry.
+      store.shouldThrow = false;
+      await tester.tap(find.byKey(const Key('ng-word-list-retry')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('ng-word-list-error')), findsNothing);
+      expect(find.byKey(const Key('ng-word-list')), findsOneWidget);
+      expect(find.text('recovered-word'), findsOneWidget);
+    });
   });
 }
 
 class _ThrowingBroadcasterNgStore implements BroadcasterNgStore {
   bool shouldThrow = true;
+  List<NgWordRule> seededRules = <NgWordRule>[];
 
   @override
   Future<void> addNgUserId(String broadcasterId, String userId) async {}
@@ -377,7 +409,7 @@ class _ThrowingBroadcasterNgStore implements BroadcasterNgStore {
   @override
   Future<List<NgWordRule>> loadNgWordRules(String broadcasterId) async {
     if (shouldThrow) throw StateError('boom');
-    return <NgWordRule>[];
+    return List<NgWordRule>.of(seededRules);
   }
 
   @override

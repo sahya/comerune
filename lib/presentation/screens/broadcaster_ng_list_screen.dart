@@ -65,6 +65,11 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
         error: e,
         stackTrace: st,
       );
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(
+          context,
+        )?.showSnackBar(const SnackBar(content: Text('放送者一覧の更新に失敗しました')));
+      }
       return;
     }
     setState(() {
@@ -103,6 +108,7 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
   @override
   Widget build(BuildContext context) {
     final ValueNotifier<String?>? notifier = widget.broadcasterIdNotifier;
+    final ThemeData theme = Theme.of(context);
 
     Widget buildList(String? activeId) {
       final List<String> ids = _broadcasterIds;
@@ -123,20 +129,23 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
             ),
             const Divider(height: 1),
             if (ids.isEmpty)
-              const Padding(
-                key: Key('broadcaster-ng-list-empty'),
-                padding: EdgeInsets.all(24),
+              Padding(
+                key: const Key('broadcaster-ng-list-empty'),
+                padding: const EdgeInsets.all(24),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text(
+                    const Text(
                       'まだ放送者ごとの NG 設定はありません',
                       style: TextStyle(fontSize: 14),
                     ),
-                    SizedBox(height: 8),
+                    const SizedBox(height: 8),
                     Text(
                       'コメント画面で長押しして NG 登録すると、その放送者の設定として記録されます',
-                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),

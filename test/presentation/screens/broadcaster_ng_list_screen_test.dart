@@ -220,6 +220,28 @@ void main() {
       );
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets('shows SnackBar when pull-to-refresh fails', (
+      WidgetTester tester,
+    ) async {
+      final _ThrowingListBroadcasterNgStore store =
+          _ThrowingListBroadcasterNgStore();
+
+      await tester.pumpWidget(
+        MaterialApp(home: BroadcasterNgListScreen(broadcasterNgStore: store)),
+      );
+      await tester.pumpAndSettle();
+
+      store.shouldThrow = true;
+      await tester.fling(
+        find.byKey(const Key('broadcaster-ng-list-view')),
+        const Offset(0, 400),
+        1500,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('放送者一覧の更新に失敗しました'), findsOneWidget);
+    });
   });
 }
 

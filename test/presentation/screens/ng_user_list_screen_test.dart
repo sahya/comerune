@@ -194,11 +194,41 @@ void main() {
 
       expect(find.byKey(const Key('ng-user-list-error')), findsNothing);
     });
+
+    testWidgets('retry recovers and renders the list correctly', (
+      WidgetTester tester,
+    ) async {
+      final _ThrowingBroadcasterNgStore store = _ThrowingBroadcasterNgStore()
+        ..seededIds = <String>{'recovered-user'};
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NgUserListScreen(
+            broadcasterNgStore: store,
+            broadcasterId: 'caster-1',
+            scopeLabel: 'caster-1',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('ng-user-list-error')), findsOneWidget);
+
+      // Flip throw flag and retry.
+      store.shouldThrow = false;
+      await tester.tap(find.byKey(const Key('ng-user-list-retry')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('ng-user-list-error')), findsNothing);
+      expect(find.byKey(const Key('ng-user-id-list')), findsOneWidget);
+      expect(find.text('recovered-user'), findsOneWidget);
+    });
   });
 }
 
 class _ThrowingBroadcasterNgStore implements BroadcasterNgStore {
   bool shouldThrow = true;
+  Set<String> seededIds = <String>{};
 
   @override
   Future<void> addNgUserId(String broadcasterId, String userId) async {}
@@ -217,7 +247,7 @@ class _ThrowingBroadcasterNgStore implements BroadcasterNgStore {
   @override
   Future<Set<String>> loadNgUserIds(String broadcasterId) async {
     if (shouldThrow) throw StateError('boom');
-    return <String>{};
+    return seededIds.toSet();
   }
 
   @override
