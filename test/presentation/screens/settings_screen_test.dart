@@ -12,9 +12,12 @@ import 'package:share_plus_platform_interface/share_plus_platform_interface.dart
 
 import 'package:comerune/application/settings/settings_store.dart';
 import 'package:comerune/data/auth/user_session_store.dart';
+import 'package:comerune/data/filter/broadcaster_ng_store.dart';
 import 'package:comerune/domain/models/app_settings.dart';
+import 'package:comerune/presentation/screens/broadcaster_ng_list_screen.dart';
 import 'package:comerune/presentation/screens/settings_screen.dart';
 
+import '../../helpers/fake_broadcaster_ng_store.dart';
 import '../../helpers/fake_file_picker_platform.dart';
 import '../../helpers/fake_share_platform.dart';
 import '../../helpers/in_memory_shared_preferences.dart';
@@ -470,6 +473,67 @@ void main() {
             'pubspec.yaml の依存に一本化してください: $offenders',
       );
     });
+
+    // Issue #727 PR2 (UX flatten): per-broadcaster NG management is now a
+    // top-level Settings tile. The screen pushes [BroadcasterNgListScreen]
+    // when the store is wired, and renders disabled with 「未対応」 when
+    // not.
+    testWidgets(
+      'NG フィルタ tile is disabled with 「未対応」 when broadcasterNgStore is null',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
+
+        final Finder scrollable = find.byType(Scrollable).first;
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('broadcaster-ng-filter-tile')),
+          200,
+          scrollable: scrollable,
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('NG フィルタ'), findsOneWidget);
+        expect(find.text('未対応'), findsOneWidget);
+
+        final ListTile tile = tester.widget(
+          find.byKey(const Key('broadcaster-ng-filter-tile')),
+        );
+        expect(tile.enabled, isFalse);
+        expect(tile.onTap, isNull);
+      },
+    );
+
+    testWidgets(
+      'NG フィルタ tile pushes BroadcasterNgListScreen when store wired',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final FakeBroadcasterNgStore ngStore = FakeBroadcasterNgStore();
+
+        await tester.pumpWidget(
+          _buildScreen(settingsStore, broadcasterNgStore: ngStore),
+        );
+        await tester.pumpAndSettle();
+
+        final Finder scrollable = find.byType(Scrollable).first;
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('broadcaster-ng-filter-tile')),
+          200,
+          scrollable: scrollable,
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('NG ユーザー / NG ワードを放送者ごとに管理'), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('broadcaster-ng-filter-tile')));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(BroadcasterNgListScreen), findsOneWidget);
+      },
+    );
   });
 
   group('SettingsScreen export/import', () {
@@ -942,12 +1006,16 @@ Widget _buildScreen(
   SettingsStore settingsStore, {
   UserSessionStore? userSessionStore,
   ValueNotifier<AppThemeMode>? themeModeNotifier,
+  BroadcasterNgStore? broadcasterNgStore,
+  ValueNotifier<String?>? broadcasterIdNotifier,
 }) {
   return MaterialApp(
     home: SettingsScreen(
       settingsStore: settingsStore,
       userSessionStore: userSessionStore,
       themeModeNotifier: themeModeNotifier,
+      broadcasterNgStore: broadcasterNgStore,
+      broadcasterIdNotifier: broadcasterIdNotifier,
     ),
   );
 }

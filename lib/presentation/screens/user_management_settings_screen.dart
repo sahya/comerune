@@ -1,19 +1,20 @@
 import 'package:flutter/material.dart';
 
 import '../../application/settings/settings_store.dart';
+import '../../data/filter/broadcaster_ng_store.dart';
 import '../../data/user/user_attribute_store.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/user_name_resolution.dart';
 import '../mixins/settings_screen_mixin.dart';
 import '../widgets/settings_widgets.dart';
 import 'favorite_user_list_screen.dart';
-import 'ng_user_list_screen.dart';
 
 class UserManagementSettingsScreen extends StatefulWidget {
   const UserManagementSettingsScreen({
     super.key,
     required this.settingsStore,
     this.userAttributeStore,
+    this.broadcasterNgStore,
     this.broadcasterIdNotifier,
     this.userNameResolution,
     this.initialSettings,
@@ -21,6 +22,13 @@ class UserManagementSettingsScreen extends StatefulWidget {
 
   final SettingsStore settingsStore;
   final UserAttributeStore? userAttributeStore;
+
+  /// Issue #727: kept on the constructor signature so existing call sites
+  /// (and the Settings screen wiring) continue to compile after the
+  /// per-broadcaster NG management entry was promoted to a top-level
+  /// Settings tile. The fields are unused here for now; future
+  /// per-broadcaster コテハン work will reuse them.
+  final BroadcasterNgStore? broadcasterNgStore;
   final ValueNotifier<String?>? broadcasterIdNotifier;
   final UserNameResolution? userNameResolution;
 
@@ -113,34 +121,6 @@ class _UserManagementSettingsScreenState
                               builder: (_) => FavoriteUserListScreen(
                                 settingsStore: widget.settingsStore,
                                 userNameResolution: widget.userNameResolution,
-                              ),
-                            ),
-                          );
-                          await loadSettings();
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  SettingsSection(
-                    title: 'NGユーザー',
-                    children: <Widget>[
-                      ListTile(
-                        key: const Key('ng-user-list-tile'),
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.person_off),
-                        title: const Text('NGユーザーID管理'),
-                        subtitle: Text(
-                          settings.ngUserIdSet.isEmpty
-                              ? '未登録'
-                              : '${settings.ngUserIdSet.length}件登録中',
-                        ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () async {
-                          await Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => NgUserListScreen(
-                                settingsStore: widget.settingsStore,
                               ),
                             ),
                           );
