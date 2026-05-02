@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/data/filter/broadcaster_ng_store.dart';
 import 'package:comerune/domain/models/ng_word_rule.dart';
-import 'package:comerune/presentation/screens/broadcaster_ng_detail_screen.dart';
+import 'package:comerune/presentation/screens/broadcaster_ng_edit_screen.dart';
 import 'package:comerune/presentation/screens/broadcaster_ng_list_screen.dart';
 
 import '../../helpers/fake_broadcaster_ng_store.dart';
@@ -116,7 +116,7 @@ void main() {
       expect(find.text('caster-b'), findsOneWidget);
     });
 
-    testWidgets('tapping the template tile pushes the detail screen with '
+    testWidgets('tapping the template tile pushes the edit screen with '
         'broadcasterId == null', (WidgetTester tester) async {
       final FakeBroadcasterNgStore store = FakeBroadcasterNgStore();
 
@@ -126,12 +126,12 @@ void main() {
       await tester.tap(find.byKey(const Key('broadcaster-ng-template-tile')));
       await tester.pumpAndSettle();
 
-      // Detail screen rendered.
-      expect(find.byType(BroadcasterNgDetailScreen), findsOneWidget);
+      // Edit screen rendered.
+      expect(find.byType(BroadcasterNgEditScreen), findsOneWidget);
       expect(find.text('NG設定 — テンプレート'), findsOneWidget);
     });
 
-    testWidgets('tapping a broadcaster tile pushes the detail screen with '
+    testWidgets('tapping a broadcaster tile pushes the edit screen with '
         'that scope', (WidgetTester tester) async {
       final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
         ..seedBroadcaster('caster-a');
@@ -144,7 +144,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.byType(BroadcasterNgDetailScreen), findsOneWidget);
+      expect(find.byType(BroadcasterNgEditScreen), findsOneWidget);
       expect(find.text('NG設定 — caster-a'), findsOneWidget);
     });
 

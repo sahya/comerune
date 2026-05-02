@@ -172,34 +172,10 @@ void main() {
       expect(loaded.queueLimit, 50);
     });
 
-    // Issue #727 PR2: NG word tile is disabled with a 「未対応」 subtitle when
-    // no `BroadcasterNgStore` is wired (legacy embedders / minimally-wired
-    // tests). This avoids silent in-memory data loss.
-    testWidgets(
-      'NG word tile is disabled when broadcasterNgStore is not wired',
-      (WidgetTester tester) async {
-        final SharedPreferencesSettingsStore settingsStore =
-            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-
-        await tester.pumpWidget(_buildScreen(settingsStore));
-        await tester.pumpAndSettle();
-
-        await scrollToKeyInList(
-          tester,
-          _listKey,
-          const Key('ng-word-list-tile'),
-        );
-
-        expect(find.text('NGワード管理', skipOffstage: false), findsOneWidget);
-        expect(find.text('未対応', skipOffstage: false), findsOneWidget);
-
-        final ListTile tile = tester.widget(
-          find.byKey(const Key('ng-word-list-tile'), skipOffstage: false),
-        );
-        expect(tile.enabled, isFalse);
-        expect(tile.onTap, isNull);
-      },
-    );
+    // Issue #727 PR2 (UX flatten): the NG word management tile moved out
+    // of the TTS settings screen and is now reachable from the top-level
+    // Settings 「NG フィルタ」 tile. The corresponding assertions live in
+    // `settings_screen_test.dart`.
 
     testWidgets('auto-read toggle persists value', (WidgetTester tester) async {
       final SharedPreferencesSettingsStore settingsStore =

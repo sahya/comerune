@@ -3,21 +3,33 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/data/filter/broadcaster_ng_store.dart';
 import 'package:comerune/domain/models/ng_word_rule.dart';
-import 'package:comerune/presentation/screens/ng_user_list_screen.dart';
+import 'package:comerune/presentation/screens/ng_user_list_view.dart';
 
 import '../../helpers/fake_broadcaster_ng_store.dart';
 
+Widget _buildView(
+  FakeBroadcasterNgStore store, {
+  required String? broadcasterId,
+}) {
+  return MaterialApp(
+    home: Scaffold(
+      body: NgUserListView(
+        broadcasterNgStore: store,
+        broadcasterId: broadcasterId,
+      ),
+    ),
+  );
+}
+
 void main() {
-  group('NgUserListScreen (broadcaster scope)', () {
+  group('NgUserListView (broadcaster scope)', () {
     testWidgets('shows empty message when no NG user IDs exist', (
       WidgetTester tester,
     ) async {
       final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
         ..seedBroadcaster('caster-1');
 
-      await tester.pumpWidget(
-        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
-      );
+      await tester.pumpWidget(_buildView(store, broadcasterId: 'caster-1'));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('ng-user-list-empty')), findsOneWidget);
@@ -30,9 +42,7 @@ void main() {
       final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
         ..seedBroadcaster('caster-1');
 
-      await tester.pumpWidget(
-        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
-      );
+      await tester.pumpWidget(_buildView(store, broadcasterId: 'caster-1'));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('ng-user-local-notice')), findsOneWidget);
@@ -45,9 +55,7 @@ void main() {
       final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
         ..seedBroadcaster('caster-1');
 
-      await tester.pumpWidget(
-        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
-      );
+      await tester.pumpWidget(_buildView(store, broadcasterId: 'caster-1'));
       // Do NOT pumpAndSettle: the notice must be visible even before the
       // settings load completes.
       expect(find.byKey(const Key('ng-user-local-notice')), findsOneWidget);
@@ -62,9 +70,7 @@ void main() {
       final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
         ..seedBroadcaster('caster-1', userIds: <String>{'user123', 'user456'});
 
-      await tester.pumpWidget(
-        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
-      );
+      await tester.pumpWidget(_buildView(store, broadcasterId: 'caster-1'));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('ng-user-id-list')), findsOneWidget);
@@ -80,9 +86,7 @@ void main() {
       final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
         ..seedBroadcaster('caster-1', userIds: <String>{'user123', 'user456'});
 
-      await tester.pumpWidget(
-        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
-      );
+      await tester.pumpWidget(_buildView(store, broadcasterId: 'caster-1'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('ng-user-remove-0')));
@@ -109,9 +113,7 @@ void main() {
       final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
         ..seedBroadcaster('caster-1', userIds: <String>{'user123'});
 
-      await tester.pumpWidget(
-        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
-      );
+      await tester.pumpWidget(_buildView(store, broadcasterId: 'caster-1'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('ng-user-remove-0')));
@@ -125,32 +127,15 @@ void main() {
       final Set<String> remaining = await store.loadNgUserIds('caster-1');
       expect(remaining, <String>{'user123'});
     });
-
-    testWidgets('shows scope label in app bar subtitle', (
-      WidgetTester tester,
-    ) async {
-      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
-        ..seedBroadcaster('caster-1');
-
-      await tester.pumpWidget(
-        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('ng-user-scope-label')), findsOneWidget);
-      expect(find.text('NGユーザーID — caster-1'), findsOneWidget);
-    });
   });
 
-  group('NgUserListScreen (template scope)', () {
+  group('NgUserListView (template scope)', () {
     testWidgets('reads and writes the template list when broadcasterId is '
         'null', (WidgetTester tester) async {
       final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
         ..seedTemplate(userIds: <String>{'tpl-user'});
 
-      await tester.pumpWidget(
-        _buildScreen(store, broadcasterId: null, scopeLabel: 'テンプレート'),
-      );
+      await tester.pumpWidget(_buildView(store, broadcasterId: null));
       await tester.pumpAndSettle();
 
       expect(find.text('tpl-user'), findsOneWidget);
@@ -166,7 +151,7 @@ void main() {
     });
   });
 
-  group('NgUserListScreen (load failure)', () {
+  group('NgUserListView (load failure)', () {
     testWidgets('shows error UI with retry when the store throws', (
       WidgetTester tester,
     ) async {
@@ -174,10 +159,11 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          home: NgUserListScreen(
-            broadcasterNgStore: store,
-            broadcasterId: 'caster-1',
-            scopeLabel: 'caster-1',
+          home: Scaffold(
+            body: NgUserListView(
+              broadcasterNgStore: store,
+              broadcasterId: 'caster-1',
+            ),
           ),
         ),
       );
@@ -203,10 +189,11 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          home: NgUserListScreen(
-            broadcasterNgStore: store,
-            broadcasterId: 'caster-1',
-            scopeLabel: 'caster-1',
+          home: Scaffold(
+            body: NgUserListView(
+              broadcasterNgStore: store,
+              broadcasterId: 'caster-1',
+            ),
           ),
         ),
       );
@@ -288,18 +275,4 @@ class _ThrowingBroadcasterNgStore implements BroadcasterNgStore {
 
   @override
   Future<void> saveTemplateNgWordRules(List<NgWordRule> rules) async {}
-}
-
-Widget _buildScreen(
-  FakeBroadcasterNgStore store, {
-  required String? broadcasterId,
-  required String scopeLabel,
-}) {
-  return MaterialApp(
-    home: NgUserListScreen(
-      broadcasterNgStore: store,
-      broadcasterId: broadcasterId,
-      scopeLabel: scopeLabel,
-    ),
-  );
 }

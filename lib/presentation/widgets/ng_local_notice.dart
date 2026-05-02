@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 /// affects this app's local comment filtering and is **not** linked with
 /// niconico's own NG features (e.g. broadcaster-side NG users / NG words).
 ///
-/// Used on `NgUserListScreen` and `NgWordListScreen` to prevent users from
+/// Used on `NgUserListView` and `NgWordListView` to prevent users from
 /// expecting their NG entries here to propagate to the niconico service.
 class NgLocalNotice extends StatelessWidget {
   const NgLocalNotice({super.key});

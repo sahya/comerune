@@ -7,7 +7,6 @@ import '../../domain/models/app_settings.dart';
 import '../../domain/models/user_name_resolution.dart';
 import '../mixins/settings_screen_mixin.dart';
 import '../widgets/settings_widgets.dart';
-import 'broadcaster_ng_list_screen.dart';
 import 'favorite_user_list_screen.dart';
 
 class UserManagementSettingsScreen extends StatefulWidget {
@@ -24,9 +23,11 @@ class UserManagementSettingsScreen extends StatefulWidget {
   final SettingsStore settingsStore;
   final UserAttributeStore? userAttributeStore;
 
-  /// Issue #727: when wired, the per-broadcaster NG management flow is
-  /// available. When null the corresponding tile renders disabled with a
-  /// 「未対応」 subtitle so unconnected/legacy embedders don't crash.
+  /// Issue #727: kept on the constructor signature so existing call sites
+  /// (and the Settings screen wiring) continue to compile after the
+  /// per-broadcaster NG management entry was promoted to a top-level
+  /// Settings tile. The fields are unused here for now; future
+  /// per-broadcaster コテハン work will reuse them.
   final BroadcasterNgStore? broadcasterNgStore;
   final ValueNotifier<String?>? broadcasterIdNotifier;
   final UserNameResolution? userNameResolution;
@@ -79,31 +80,6 @@ class _UserManagementSettingsScreenState
     setState(() {});
   }
 
-  /// Subtitle for the per-broadcaster NG tile.
-  ///
-  /// `listBroadcasters()` is a synchronous read — calling it from `build`
-  /// is safe and stays consistent with `setState` triggered by
-  /// `loadSettings()` returning from the picker.
-  String _broadcasterNgSubtitle() {
-    final BroadcasterNgStore? store = widget.broadcasterNgStore;
-    if (store == null) {
-      return '未対応';
-    }
-    int count;
-    try {
-      count = store.listBroadcasters().length;
-    } on Object {
-      // Defensive: an optional integration can fail to enumerate the
-      // slot list; degrade to the bare description rather than break
-      // the screen.
-      return '放送者ごとに NG ユーザー / NG ワードを管理';
-    }
-    if (count == 0) {
-      return '未登録 / 放送者ごとに NG ユーザー / NG ワードを管理';
-    }
-    return '$count 件の放送者で設定済み / 放送者ごとに NG ユーザー / NG ワードを管理';
-  }
-
   @override
   Widget build(BuildContext context) {
     final AppSettings? settings = this.settings;
@@ -150,36 +126,6 @@ class _UserManagementSettingsScreenState
                           );
                           await loadSettings();
                         },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  SettingsSection(
-                    title: 'NG管理',
-                    children: <Widget>[
-                      ListTile(
-                        key: const Key('broadcaster-ng-list-tile'),
-                        contentPadding: EdgeInsets.zero,
-                        enabled: widget.broadcasterNgStore != null,
-                        leading: const Icon(Icons.person_off),
-                        title: const Text('放送者別 NG 一覧'),
-                        subtitle: Text(_broadcasterNgSubtitle()),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: widget.broadcasterNgStore == null
-                            ? null
-                            : () async {
-                                await Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => BroadcasterNgListScreen(
-                                      broadcasterNgStore:
-                                          widget.broadcasterNgStore!,
-                                      broadcasterIdNotifier:
-                                          widget.broadcasterIdNotifier,
-                                    ),
-                                  ),
-                                );
-                                await loadSettings();
-                              },
                       ),
                     ],
                   ),

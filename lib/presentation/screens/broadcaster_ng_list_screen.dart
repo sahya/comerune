@@ -4,13 +4,13 @@ import 'package:flutter/material.dart';
 
 import '../../data/filter/broadcaster_ng_store.dart';
 import '../widgets/ng_local_notice.dart';
-import 'broadcaster_ng_detail_screen.dart';
+import 'broadcaster_ng_edit_screen.dart';
 
 /// Issue #727: picker screen that lists every broadcaster the user has a
 /// per-broadcaster NG slot for, plus a fixed "template" entry that seeds
 /// any future broadcaster's first-access state.
 ///
-/// Tapping a row pushes [BroadcasterNgDetailScreen] for that scope.
+/// Tapping a row pushes [BroadcasterNgEditScreen] for that scope.
 ///
 /// TODO(#727): broadcaster name resolution is out of scope for the initial
 /// PR — tiles currently show the raw broadcaster ID. A follow-up issue
@@ -77,11 +77,11 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
     });
   }
 
-  void _openDetail(String? broadcasterId, String scopeLabel) {
+  void _openEditor(String? broadcasterId, String scopeLabel) {
     Navigator.of(context)
         .push(
           MaterialPageRoute<void>(
-            builder: (_) => BroadcasterNgDetailScreen(
+            builder: (_) => BroadcasterNgEditScreen(
               broadcasterNgStore: widget.broadcasterNgStore,
               broadcasterId: broadcasterId,
               scopeLabel: scopeLabel,
@@ -125,7 +125,7 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
               title: const Text('テンプレート（新規放送者の初期値）'),
               subtitle: const Text('新しく見る放送者の初期値として使われます'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => _openDetail(null, 'テンプレート'),
+              onTap: () => _openEditor(null, 'テンプレート'),
             ),
             const Divider(height: 1),
             if (ids.isEmpty)
@@ -166,7 +166,7 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
                         )
                       : null,
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openDetail(id, name),
+                  onTap: () => _openEditor(id, name),
                 );
               }),
           ],
@@ -175,7 +175,7 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('放送者別 NG 一覧')),
+      appBar: AppBar(title: const Text('NG フィルタ')),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[

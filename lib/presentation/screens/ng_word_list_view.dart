@@ -7,18 +7,21 @@ import '../../domain/models/ng_word_rule.dart';
 import '../widgets/ng_local_notice.dart';
 import '../widgets/text_input_dialog.dart';
 
-/// Issue #727: per-scope NG word management.
+/// Issue #727: per-scope NG word management view.
 ///
-/// When [broadcasterId] is null the screen edits the template — the seed
+/// When [broadcasterId] is null the view edits the template — the seed
 /// list copied into any future broadcaster's first-access state.
 /// When non-null it edits the specific broadcaster's slot through
 /// [BroadcasterNgStore].
-class NgWordListScreen extends StatefulWidget {
-  const NgWordListScreen({
+///
+/// This widget does **not** provide its own `Scaffold` / `AppBar`: it is
+/// intended to be embedded inside [BroadcasterNgEditScreen] under a tab,
+/// which owns the chrome.
+class NgWordListView extends StatefulWidget {
+  const NgWordListView({
     super.key,
     required this.broadcasterNgStore,
     required this.broadcasterId,
-    required this.scopeLabel,
   });
 
   final BroadcasterNgStore broadcasterNgStore;
@@ -26,15 +29,11 @@ class NgWordListScreen extends StatefulWidget {
   /// `null` = template scope.
   final String? broadcasterId;
 
-  final String scopeLabel;
-
   @override
-  State<NgWordListScreen> createState() => _NgWordListScreenState();
+  State<NgWordListView> createState() => _NgWordListViewState();
 }
 
-class _NgWordListScreenState extends State<NgWordListScreen> {
-  static const int _maxScopeTitleLength = 20;
-
+class _NgWordListViewState extends State<NgWordListView> {
   List<NgWordRule> _rules = const <NgWordRule>[];
   bool _isLoading = true;
   bool _loadFailed = false;
@@ -81,8 +80,8 @@ class _NgWordListScreenState extends State<NgWordListScreen> {
       });
     } on Object catch (e, st) {
       developer.log(
-        'NgWordListScreen: failed to load NG word rules',
-        name: 'ng_word_list_screen',
+        'NgWordListView: failed to load NG word rules',
+        name: 'ng_word_list_view',
         error: e,
         stackTrace: st,
       );
@@ -200,120 +199,98 @@ class _NgWordListScreenState extends State<NgWordListScreen> {
     await _saveRules(updated);
   }
 
-  /// Keeps the AppBar title short for long broadcaster scope labels. The
-  /// bottom subtitle keeps the full label.
-  String _truncateForTitle(String label) {
-    if (label.length <= _maxScopeTitleLength) {
-      return label;
-    }
-    return '${label.substring(0, _maxScopeTitleLength)}…';
-  }
-
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('NGワード — ${_truncateForTitle(widget.scopeLabel)}'),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(24),
-          child: Padding(
-            key: const Key('ng-word-scope-label'),
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                widget.broadcasterId == null
-                    ? 'テンプレート（新規放送者の初期値）'
-                    : 'スコープ: ${widget.scopeLabel}',
-                style: theme.textTheme.bodySmall,
-              ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        const NgLocalNotice(key: Key('ng-word-local-notice')),
+        const Divider(height: 1),
+        // The "add" affordance lives inline at the top of the list, since
+        // the parent screen's AppBar is shared across both tabs and a
+        // FAB would require GlobalKey/ValueNotifier plumbing across the
+        // tab boundary that exceeds the readability win.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton.icon(
+              key: const Key('ng-word-add-button'),
+              onPressed: _addRule,
+              icon: const Icon(Icons.add),
+              label: const Text('NGワード追加'),
             ),
           ),
         ),
-        actions: <Widget>[
-          IconButton(
-            key: const Key('ng-word-add-button'),
-            icon: const Icon(Icons.add),
-            tooltip: 'NGワード追加',
-            onPressed: _addRule,
-          ),
-        ],
-      ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          const NgLocalNotice(key: Key('ng-word-local-notice')),
-          const Divider(height: 1),
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _loadFailed
-                ? Center(
-                    key: const Key('ng-word-list-error'),
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          const Text(
-                            'NG リストの読込みに失敗しました',
-                            style: TextStyle(fontSize: 14),
-                          ),
-                          const SizedBox(height: 12),
-                          OutlinedButton(
-                            key: const Key('ng-word-list-retry'),
-                            onPressed: _loadRules,
-                            child: const Text('再試行'),
-                          ),
-                        ],
-                      ),
+        const Divider(height: 1),
+        Expanded(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _loadFailed
+              ? Center(
+                  key: const Key('ng-word-list-error'),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const Text(
+                          'NG リストの読込みに失敗しました',
+                          style: TextStyle(fontSize: 14),
+                        ),
+                        const SizedBox(height: 12),
+                        OutlinedButton(
+                          key: const Key('ng-word-list-retry'),
+                          onPressed: _loadRules,
+                          child: const Text('再試行'),
+                        ),
+                      ],
                     ),
-                  )
-                : _rules.isEmpty
-                ? const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text(
-                        key: Key('ng-word-list-empty'),
-                        'NGワードは登録されていません',
-                        style: TextStyle(fontSize: 14),
-                      ),
-                    ),
-                  )
-                : ListView.separated(
-                    key: const Key('ng-word-list'),
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemCount: _rules.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (BuildContext context, int index) {
-                      final NgWordRule rule = _rules[index];
-                      return ListTile(
-                        key: Key('ng-word-tile-$index'),
-                        leading: Switch(
-                          key: Key('ng-word-toggle-$index'),
-                          value: rule.enabled,
-                          onChanged: (_) => _toggleRule(index),
-                        ),
-                        title: Text(
-                          rule.pattern,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: rule.enabled ? null : Colors.grey,
-                          ),
-                        ),
-                        trailing: IconButton(
-                          key: Key('ng-word-delete-$index'),
-                          icon: const Icon(Icons.delete_outline),
-                          tooltip: '削除',
-                          onPressed: () => _deleteRule(index),
-                        ),
-                      );
-                    },
                   ),
-          ),
-        ],
-      ),
+                )
+              : _rules.isEmpty
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text(
+                      key: Key('ng-word-list-empty'),
+                      'NGワードは登録されていません',
+                      style: TextStyle(fontSize: 14),
+                    ),
+                  ),
+                )
+              : ListView.separated(
+                  key: const Key('ng-word-list'),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: _rules.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (BuildContext context, int index) {
+                    final NgWordRule rule = _rules[index];
+                    return ListTile(
+                      key: Key('ng-word-tile-$index'),
+                      leading: Switch(
+                        key: Key('ng-word-toggle-$index'),
+                        value: rule.enabled,
+                        onChanged: (_) => _toggleRule(index),
+                      ),
+                      title: Text(
+                        rule.pattern,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: rule.enabled ? null : Colors.grey,
+                        ),
+                      ),
+                      trailing: IconButton(
+                        key: Key('ng-word-delete-$index'),
+                        icon: const Icon(Icons.delete_outline),
+                        tooltip: '削除',
+                        onPressed: () => _deleteRule(index),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 }

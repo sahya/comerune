@@ -3,26 +3,26 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/data/filter/broadcaster_ng_store.dart';
 import 'package:comerune/domain/models/ng_word_rule.dart';
-import 'package:comerune/presentation/screens/ng_word_list_screen.dart';
+import 'package:comerune/presentation/screens/ng_word_list_view.dart';
 
 import '../../helpers/fake_broadcaster_ng_store.dart';
 
-Widget _buildScreen(
+Widget _buildView(
   FakeBroadcasterNgStore store, {
   required String? broadcasterId,
-  required String scopeLabel,
 }) {
   return MaterialApp(
-    home: NgWordListScreen(
-      broadcasterNgStore: store,
-      broadcasterId: broadcasterId,
-      scopeLabel: scopeLabel,
+    home: Scaffold(
+      body: NgWordListView(
+        broadcasterNgStore: store,
+        broadcasterId: broadcasterId,
+      ),
     ),
   );
 }
 
 void main() {
-  group('NgWordListScreen (broadcaster scope)', () {
+  group('NgWordListView (broadcaster scope)', () {
     testWidgets('shows loading then displays rule list', (
       WidgetTester tester,
     ) async {
@@ -35,9 +35,7 @@ void main() {
           ],
         );
 
-      await tester.pumpWidget(
-        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
-      );
+      await tester.pumpWidget(_buildView(store, broadcasterId: 'caster-1'));
 
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
@@ -54,9 +52,7 @@ void main() {
       final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
         ..seedBroadcaster('caster-1');
 
-      await tester.pumpWidget(
-        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
-      );
+      await tester.pumpWidget(_buildView(store, broadcasterId: 'caster-1'));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('ng-word-list-empty')), findsOneWidget);
@@ -69,9 +65,7 @@ void main() {
       final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
         ..seedBroadcaster('caster-1');
 
-      await tester.pumpWidget(
-        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
-      );
+      await tester.pumpWidget(_buildView(store, broadcasterId: 'caster-1'));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('ng-word-local-notice')), findsOneWidget);
@@ -84,9 +78,7 @@ void main() {
       final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
         ..seedBroadcaster('caster-1');
 
-      await tester.pumpWidget(
-        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
-      );
+      await tester.pumpWidget(_buildView(store, broadcasterId: 'caster-1'));
       expect(find.byKey(const Key('ng-word-local-notice')), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
@@ -102,9 +94,7 @@ void main() {
           rules: const <NgWordRule>[NgWordRule(pattern: 'word1')],
         );
 
-      await tester.pumpWidget(
-        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
-      );
+      await tester.pumpWidget(_buildView(store, broadcasterId: 'caster-1'));
       await tester.pumpAndSettle();
 
       final Switch toggle = tester.widget(
@@ -130,9 +120,7 @@ void main() {
           rules: const <NgWordRule>[NgWordRule(pattern: 'to-delete')],
         );
 
-      await tester.pumpWidget(
-        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
-      );
+      await tester.pumpWidget(_buildView(store, broadcasterId: 'caster-1'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('ng-word-delete-0')));
@@ -155,9 +143,7 @@ void main() {
       final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
         ..seedBroadcaster('caster-1');
 
-      await tester.pumpWidget(
-        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
-      );
+      await tester.pumpWidget(_buildView(store, broadcasterId: 'caster-1'));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('ng-word-list-empty')), findsOneWidget);
@@ -165,7 +151,7 @@ void main() {
       await tester.tap(find.byKey(const Key('ng-word-add-button')));
       await tester.pumpAndSettle();
 
-      expect(find.text('NGワード追加'), findsOneWidget);
+      expect(find.text('NGワード追加'), findsWidgets);
 
       await tester.enterText(
         find.byKey(const Key('ng-word-add-input')),
@@ -190,9 +176,7 @@ void main() {
       final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
         ..seedBroadcaster('caster-1');
 
-      await tester.pumpWidget(
-        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
-      );
+      await tester.pumpWidget(_buildView(store, broadcasterId: 'caster-1'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('ng-word-add-button')));
@@ -219,9 +203,7 @@ void main() {
       final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
         ..seedBroadcaster('caster-1');
 
-      await tester.pumpWidget(
-        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
-      );
+      await tester.pumpWidget(_buildView(store, broadcasterId: 'caster-1'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('ng-word-add-button')));
@@ -245,9 +227,7 @@ void main() {
           rules: const <NgWordRule>[NgWordRule(pattern: 'existing')],
         );
 
-      await tester.pumpWidget(
-        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
-      );
+      await tester.pumpWidget(_buildView(store, broadcasterId: 'caster-1'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('ng-word-add-button')));
@@ -279,9 +259,7 @@ void main() {
           ],
         );
 
-      await tester.pumpWidget(
-        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
-      );
+      await tester.pumpWidget(_buildView(store, broadcasterId: 'caster-1'));
       await tester.pumpAndSettle();
 
       final Text text = tester.widget(find.text('disabled-word'));
@@ -289,15 +267,13 @@ void main() {
     });
   });
 
-  group('NgWordListScreen (template scope)', () {
+  group('NgWordListView (template scope)', () {
     testWidgets('reads and writes the template list when broadcasterId is '
         'null', (WidgetTester tester) async {
       final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
         ..seedTemplate(rules: const <NgWordRule>[NgWordRule(pattern: 'tpl')]);
 
-      await tester.pumpWidget(
-        _buildScreen(store, broadcasterId: null, scopeLabel: 'テンプレート'),
-      );
+      await tester.pumpWidget(_buildView(store, broadcasterId: null));
       await tester.pumpAndSettle();
 
       expect(find.text('tpl'), findsOneWidget);
@@ -320,7 +296,7 @@ void main() {
     });
   });
 
-  group('NgWordListScreen (load failure)', () {
+  group('NgWordListView (load failure)', () {
     testWidgets('shows error UI with retry when the store throws', (
       WidgetTester tester,
     ) async {
@@ -328,10 +304,11 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          home: NgWordListScreen(
-            broadcasterNgStore: store,
-            broadcasterId: 'caster-1',
-            scopeLabel: 'caster-1',
+          home: Scaffold(
+            body: NgWordListView(
+              broadcasterNgStore: store,
+              broadcasterId: 'caster-1',
+            ),
           ),
         ),
       );
@@ -359,10 +336,11 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          home: NgWordListScreen(
-            broadcasterNgStore: store,
-            broadcasterId: 'caster-1',
-            scopeLabel: 'caster-1',
+          home: Scaffold(
+            body: NgWordListView(
+              broadcasterNgStore: store,
+              broadcasterId: 'caster-1',
+            ),
           ),
         ),
       );

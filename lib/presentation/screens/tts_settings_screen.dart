@@ -6,12 +6,10 @@ import '../../app_logging.dart';
 import '../../application/settings/settings_store.dart';
 import '../../application/speech/speech_availability_notifier.dart';
 import '../../comment_speech/comment_speech.dart';
-import '../../data/filter/broadcaster_ng_store.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/voicevox_model_info.dart';
 import '../mixins/settings_screen_mixin.dart';
 import '../widgets/settings_widgets.dart';
-import 'broadcaster_ng_list_screen.dart';
 import 'dictionary_rules_screen.dart';
 import 'voice_library_screen.dart';
 
@@ -37,8 +35,6 @@ class TtsSettingsScreen extends StatefulWidget {
     this.platform,
     this.initialSettings,
     this.androidTtsAvailability,
-    this.broadcasterNgStore,
-    this.broadcasterIdNotifier,
   });
 
   final SettingsStore settingsStore;
@@ -51,16 +47,6 @@ class TtsSettingsScreen extends StatefulWidget {
   /// non-null, every check this screen runs is also published to the
   /// notifier so the comment screen's AppBar icon stays in sync.
   final SpeechAvailabilityNotifier? androidTtsAvailability;
-
-  /// Issue #727: passed through to the per-broadcaster NG flow opened from
-  /// the "NG word management" tile. When null we fall back to the
-  /// template scope so legacy embedders / tests still get a working
-  /// editor.
-  final BroadcasterNgStore? broadcasterNgStore;
-
-  /// Issue #727: when provided, the broadcaster picker decorates the
-  /// active broadcaster.
-  final ValueNotifier<String?>? broadcasterIdNotifier;
 
   @override
   State<TtsSettingsScreen> createState() => _TtsSettingsScreenState();
@@ -1569,41 +1555,6 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                             settings.copyWith(suppressDuplicate: value),
                           );
                         },
-                      ),
-                      ListTile(
-                        key: const Key('ng-word-list-tile'),
-                        contentPadding: EdgeInsets.zero,
-                        enabled: widget.broadcasterNgStore != null,
-                        leading: const Icon(Icons.block),
-                        title: const Text('NGワード管理'),
-                        subtitle: Text(
-                          widget.broadcasterNgStore == null
-                              ? '未対応'
-                              : '放送者ごとに編集します',
-                        ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: widget.broadcasterNgStore == null
-                            ? null
-                            : () async {
-                                // Issue #727: route through the
-                                // per-broadcaster picker. When no store is
-                                // wired the tile is disabled above to
-                                // avoid silent in-memory data loss.
-                                await Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => BroadcasterNgListScreen(
-                                      broadcasterNgStore:
-                                          widget.broadcasterNgStore!,
-                                      broadcasterIdNotifier:
-                                          widget.broadcasterIdNotifier,
-                                    ),
-                                  ),
-                                );
-                                await loadSettings();
-                                if (this.settings != null) {
-                                  _pushSettingsToEngine(this.settings!);
-                                }
-                              },
                       ),
                       ListTile(
                         key: const Key('dictionary-rules-tile'),
