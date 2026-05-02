@@ -1900,10 +1900,15 @@ class _CommentScreenState extends State<CommentScreen>
   /// the connection transitions to a non-ended status (reconnect / manual
   /// stop) — those branches drive their own teardown.
   ///
-  /// When [reason] is `'speech_disabled_by_user'`, also fires
-  /// [CommentSpeechConfig.onSpeechGraceEnded] so the FGS controller's
-  /// parallel grace timer ends immediately instead of waiting out the full
-  /// 30 s with a stale "読み上げ完了待ち..." notification.
+  /// [onSpeechGraceEnded] callback behaviour by [reason]:
+  /// - `'speech_disabled_by_user'`: fires the callback so the FGS
+  ///   controller's parallel grace timer ends immediately instead of
+  ///   waiting out the full 30 s (Issue #764 Phase 2).
+  /// - `'user_stop_for_exit'`, `'status=<code>'` (reconnect/manual-stop):
+  ///   does NOT fire the callback — these paths handle their own FGS
+  ///   teardown independently.
+  ///
+  /// For the path that fires the callback unconditionally, see [_endSpeechGrace].
   void _cancelSpeechGrace({required String reason}) {
     if (!_isInSpeechGrace && _speechGraceTimer == null) {
       return;

@@ -1570,6 +1570,105 @@ void main() {
     );
 
     testWidgets(
+      'disabling speech while NOT in grace does not fire onSpeechGraceEnded',
+      (WidgetTester tester) async {
+        // Regression guard: _cancelSpeechGrace has an early-return when grace
+        // is not active, so onSpeechGraceEnded must NOT fire when speech is
+        // disabled outside of a grace window.
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        int graceEndedCount = 0;
+
+        Widget buildHost(SpeechSettings settings) {
+          return MaterialApp(
+            home: CommentScreen(
+              programInfo: const CommentProgramInfo(lv: 'lv123456789'),
+              connectionSupervisor: supervisor,
+              messages: const <AppMessage>[],
+              callbacks: CommentCallbacks(
+                onStopAllConnections: () async {},
+                onReconnectSameLv: () async {},
+                onDifferentLvConnected: (_, _) async {},
+              ),
+              themeMode: AppThemeMode.light,
+              speechConfig: CommentSpeechConfig(
+                speechPlatform: fakePlatform,
+                speechSettings: settings,
+                onSpeechGraceEnded: () => graceEndedCount++,
+              ),
+            ),
+          );
+        }
+
+        // Start with speech enabled — no grace window is running.
+        await tester.pumpWidget(
+          buildHost(const SpeechSettings(enabled: true)),
+        );
+        await tester.pumpAndSettle();
+
+        // Disable speech while the broadcast is still live (no grace active).
+        await tester.pumpWidget(
+          buildHost(const SpeechSettings(enabled: false)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          graceEndedCount,
+          0,
+          reason:
+              'onSpeechGraceEnded must not fire when grace was never armed',
+        );
+
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+
+    testWidgets(
+      'speech disabled mid-grace with null onSpeechGraceEnded does not crash',
+      (WidgetTester tester) async {
+        // Regression guard: null callback must be tolerated (?.call() pattern).
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+        Widget buildHost(SpeechSettings settings) {
+          return MaterialApp(
+            home: CommentScreen(
+              programInfo: const CommentProgramInfo(lv: 'lv123456789'),
+              connectionSupervisor: supervisor,
+              messages: const <AppMessage>[],
+              callbacks: CommentCallbacks(
+                onStopAllConnections: () async {},
+                onReconnectSameLv: () async {},
+                onDifferentLvConnected: (_, _) async {},
+              ),
+              themeMode: AppThemeMode.light,
+              speechConfig: CommentSpeechConfig(
+                speechPlatform: fakePlatform,
+                speechSettings: settings,
+                // onSpeechGraceEnded intentionally omitted (null).
+              ),
+            ),
+          );
+        }
+
+        await tester.pumpWidget(
+          buildHost(const SpeechSettings(enabled: true)),
+        );
+        await tester.pumpAndSettle();
+
+        // Enter grace.
+        expect(supervisor.endBroadcast(), isTrue);
+        await tester.pump(const Duration(seconds: 1));
+
+        // Disable speech mid-grace — must not throw.
+        await tester.pumpWidget(
+          buildHost(const SpeechSettings(enabled: false)),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+
+    testWidgets(
       'speech startup aborts if the broadcast ends while start is pending',
       (WidgetTester tester) async {
         final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
