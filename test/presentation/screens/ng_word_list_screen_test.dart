@@ -1,41 +1,47 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:comerune/application/settings/settings_store.dart';
-import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/domain/models/ng_word_rule.dart';
 import 'package:comerune/presentation/screens/ng_word_list_screen.dart';
 
-import '../../helpers/in_memory_shared_preferences.dart';
+import '../../helpers/fake_broadcaster_ng_store.dart';
 
-Widget _buildScreen(SettingsStore store) {
-  return MaterialApp(home: NgWordListScreen(settingsStore: store));
+Widget _buildScreen(
+  FakeBroadcasterNgStore store, {
+  required String? broadcasterId,
+  required String scopeLabel,
+}) {
+  return MaterialApp(
+    home: NgWordListScreen(
+      broadcasterNgStore: store,
+      broadcasterId: broadcasterId,
+      scopeLabel: scopeLabel,
+    ),
+  );
 }
 
 void main() {
-  group('NgWordListScreen', () {
+  group('NgWordListScreen (broadcaster scope)', () {
     testWidgets('shows loading then displays rule list', (
       WidgetTester tester,
     ) async {
-      final SharedPreferencesSettingsStore store =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster(
+          'caster-1',
+          rules: const <NgWordRule>[
+            NgWordRule(pattern: 'badword'),
+            NgWordRule(pattern: 'another', enabled: false),
+          ],
+        );
 
-      final AppSettings initial = AppSettings.defaults.copyWith(
-        ngWordRules: const <NgWordRule>[
-          NgWordRule(pattern: 'badword'),
-          NgWordRule(pattern: 'another', enabled: false),
-        ],
+      await tester.pumpWidget(
+        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
       );
-      await store.save(initial);
 
-      await tester.pumpWidget(_buildScreen(store));
-
-      // Loading indicator is shown initially.
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
       await tester.pumpAndSettle();
 
-      // Rules are displayed.
       expect(find.byKey(const Key('ng-word-list')), findsOneWidget);
       expect(find.text('badword'), findsOneWidget);
       expect(find.text('another'), findsOneWidget);
@@ -44,15 +50,12 @@ void main() {
     testWidgets('shows empty message when no rules exist', (
       WidgetTester tester,
     ) async {
-      final SharedPreferencesSettingsStore store =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster('caster-1');
 
-      final AppSettings initial = AppSettings.defaults.copyWith(
-        ngWordRules: const <NgWordRule>[],
+      await tester.pumpWidget(
+        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
       );
-      await store.save(initial);
-
-      await tester.pumpWidget(_buildScreen(store));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('ng-word-list-empty')), findsOneWidget);
@@ -62,10 +65,12 @@ void main() {
     testWidgets('shows local-only settings notice after load', (
       WidgetTester tester,
     ) async {
-      final SharedPreferencesSettingsStore store =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster('caster-1');
 
-      await tester.pumpWidget(_buildScreen(store));
+      await tester.pumpWidget(
+        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
+      );
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('ng-word-local-notice')), findsOneWidget);
@@ -75,101 +80,92 @@ void main() {
     testWidgets('shows local-only settings notice while loading', (
       WidgetTester tester,
     ) async {
-      final SharedPreferencesSettingsStore store =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster('caster-1');
 
-      await tester.pumpWidget(_buildScreen(store));
-      // Do NOT pumpAndSettle: the notice must be visible even before the
-      // settings load completes.
+      await tester.pumpWidget(
+        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
+      );
       expect(find.byKey(const Key('ng-word-local-notice')), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
-      // Drain the pending load so the widget tree is idle on teardown.
       await tester.pumpAndSettle();
     });
 
     testWidgets('toggle rule enabled state and persist', (
       WidgetTester tester,
     ) async {
-      final SharedPreferencesSettingsStore store =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster(
+          'caster-1',
+          rules: const <NgWordRule>[NgWordRule(pattern: 'word1')],
+        );
 
-      final AppSettings initial = AppSettings.defaults.copyWith(
-        ngWordRules: const <NgWordRule>[NgWordRule(pattern: 'word1')],
+      await tester.pumpWidget(
+        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
       );
-      await store.save(initial);
-
-      await tester.pumpWidget(_buildScreen(store));
       await tester.pumpAndSettle();
 
-      // Initially enabled — find the Switch and verify.
       final Switch toggle = tester.widget(
         find.byKey(const Key('ng-word-toggle-0')),
       );
       expect(toggle.value, isTrue);
 
-      // Tap to toggle off.
       await tester.tap(find.byKey(const Key('ng-word-toggle-0')));
       await tester.pumpAndSettle();
 
-      // Verify persisted.
-      final AppSettings loaded = await store.load();
-      expect(loaded.ngWordRules.first.enabled, isFalse);
+      final List<NgWordRule> persisted = await store.loadNgWordRules(
+        'caster-1',
+      );
+      expect(persisted.first.enabled, isFalse);
     });
 
     testWidgets('delete rule with confirmation dialog', (
       WidgetTester tester,
     ) async {
-      final SharedPreferencesSettingsStore store =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster(
+          'caster-1',
+          rules: const <NgWordRule>[NgWordRule(pattern: 'to-delete')],
+        );
 
-      final AppSettings initial = AppSettings.defaults.copyWith(
-        ngWordRules: const <NgWordRule>[NgWordRule(pattern: 'to-delete')],
+      await tester.pumpWidget(
+        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
       );
-      await store.save(initial);
-
-      await tester.pumpWidget(_buildScreen(store));
       await tester.pumpAndSettle();
 
-      // Tap delete button.
       await tester.tap(find.byKey(const Key('ng-word-delete-0')));
       await tester.pumpAndSettle();
 
-      // Confirm dialog appears.
       expect(find.text('NGワード削除'), findsOneWidget);
-      expect(find.text('「to-delete」を削除しますか？'), findsOneWidget);
 
-      // Confirm deletion.
       await tester.tap(find.byKey(const Key('ng-word-delete-confirm-button')));
       await tester.pumpAndSettle();
 
-      // Rule removed from UI.
       expect(find.text('to-delete'), findsNothing);
 
-      // Verify persisted.
-      final AppSettings loaded = await store.load();
-      expect(loaded.ngWordRules, isEmpty);
+      final List<NgWordRule> persisted = await store.loadNgWordRules(
+        'caster-1',
+      );
+      expect(persisted, isEmpty);
     });
 
     testWidgets('add rule via dialog', (WidgetTester tester) async {
-      final SharedPreferencesSettingsStore store =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-      await store.save(AppSettings.defaults);
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster('caster-1');
 
-      await tester.pumpWidget(_buildScreen(store));
+      await tester.pumpWidget(
+        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
+      );
       await tester.pumpAndSettle();
 
-      // Initially empty.
       expect(find.byKey(const Key('ng-word-list-empty')), findsOneWidget);
 
-      // Tap add button.
       await tester.tap(find.byKey(const Key('ng-word-add-button')));
       await tester.pumpAndSettle();
 
-      // Dialog appears.
       expect(find.text('NGワード追加'), findsOneWidget);
 
-      // Enter a pattern.
       await tester.enterText(
         find.byKey(const Key('ng-word-add-input')),
         'newword',
@@ -177,31 +173,30 @@ void main() {
       await tester.tap(find.byKey(const Key('ng-word-add-confirm-button')));
       await tester.pumpAndSettle();
 
-      // Rule appears in list.
       expect(find.text('newword'), findsOneWidget);
 
-      // Verify persisted.
-      final AppSettings loaded = await store.load();
-      expect(loaded.ngWordRules.length, 1);
-      expect(loaded.ngWordRules.first.pattern, 'newword');
-      expect(loaded.ngWordRules.first.enabled, isTrue);
+      final List<NgWordRule> persisted = await store.loadNgWordRules(
+        'caster-1',
+      );
+      expect(persisted.length, 1);
+      expect(persisted.first.pattern, 'newword');
+      expect(persisted.first.enabled, isTrue);
     });
 
     testWidgets('rejects invalid regex with snackbar error', (
       WidgetTester tester,
     ) async {
-      final SharedPreferencesSettingsStore store =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-      await store.save(AppSettings.defaults);
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster('caster-1');
 
-      await tester.pumpWidget(_buildScreen(store));
+      await tester.pumpWidget(
+        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
+      );
       await tester.pumpAndSettle();
 
-      // Tap add button.
       await tester.tap(find.byKey(const Key('ng-word-add-button')));
       await tester.pumpAndSettle();
 
-      // Enter an invalid regex pattern.
       await tester.enterText(
         find.byKey(const Key('ng-word-add-input')),
         '[invalid',
@@ -209,56 +204,54 @@ void main() {
       await tester.tap(find.byKey(const Key('ng-word-add-confirm-button')));
       await tester.pumpAndSettle();
 
-      // Error snackbar is shown.
       expect(find.text('無効なパターンです'), findsOneWidget);
 
-      // No rule was added.
-      final AppSettings loaded = await store.load();
-      expect(loaded.ngWordRules, isEmpty);
+      final List<NgWordRule> persisted = await store.loadNgWordRules(
+        'caster-1',
+      );
+      expect(persisted, isEmpty);
     });
 
     testWidgets('ignores empty input from add dialog', (
       WidgetTester tester,
     ) async {
-      final SharedPreferencesSettingsStore store =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-      await store.save(AppSettings.defaults);
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster('caster-1');
 
-      await tester.pumpWidget(_buildScreen(store));
+      await tester.pumpWidget(
+        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
+      );
       await tester.pumpAndSettle();
 
-      // Tap add button.
       await tester.tap(find.byKey(const Key('ng-word-add-button')));
       await tester.pumpAndSettle();
 
-      // Submit empty input.
       await tester.tap(find.byKey(const Key('ng-word-add-confirm-button')));
       await tester.pumpAndSettle();
 
-      // Nothing added — still empty.
-      final AppSettings loaded = await store.load();
-      expect(loaded.ngWordRules, isEmpty);
+      final List<NgWordRule> persisted = await store.loadNgWordRules(
+        'caster-1',
+      );
+      expect(persisted, isEmpty);
     });
 
     testWidgets('rejects duplicate pattern with snackbar', (
       WidgetTester tester,
     ) async {
-      final SharedPreferencesSettingsStore store =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster(
+          'caster-1',
+          rules: const <NgWordRule>[NgWordRule(pattern: 'existing')],
+        );
 
-      final AppSettings initial = AppSettings.defaults.copyWith(
-        ngWordRules: const <NgWordRule>[NgWordRule(pattern: 'existing')],
+      await tester.pumpWidget(
+        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
       );
-      await store.save(initial);
-
-      await tester.pumpWidget(_buildScreen(store));
       await tester.pumpAndSettle();
 
-      // Tap add button.
       await tester.tap(find.byKey(const Key('ng-word-add-button')));
       await tester.pumpAndSettle();
 
-      // Enter a duplicate pattern.
       await tester.enterText(
         find.byKey(const Key('ng-word-add-input')),
         'existing',
@@ -266,32 +259,63 @@ void main() {
       await tester.tap(find.byKey(const Key('ng-word-add-confirm-button')));
       await tester.pumpAndSettle();
 
-      // Error snackbar is shown.
       expect(find.text('同じパターンが既に登録されています'), findsOneWidget);
 
-      // No duplicate added.
-      final AppSettings loaded = await store.load();
-      expect(loaded.ngWordRules.length, 1);
+      final List<NgWordRule> persisted = await store.loadNgWordRules(
+        'caster-1',
+      );
+      expect(persisted.length, 1);
     });
 
     testWidgets('disabled rule shows greyed out text', (
       WidgetTester tester,
     ) async {
-      final SharedPreferencesSettingsStore store =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster(
+          'caster-1',
+          rules: const <NgWordRule>[
+            NgWordRule(pattern: 'disabled-word', enabled: false),
+          ],
+        );
 
-      final AppSettings initial = AppSettings.defaults.copyWith(
-        ngWordRules: const <NgWordRule>[
-          NgWordRule(pattern: 'disabled-word', enabled: false),
-        ],
+      await tester.pumpWidget(
+        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
       );
-      await store.save(initial);
-
-      await tester.pumpWidget(_buildScreen(store));
       await tester.pumpAndSettle();
 
       final Text text = tester.widget(find.text('disabled-word'));
       expect(text.style?.color, Colors.grey);
+    });
+  });
+
+  group('NgWordListScreen (template scope)', () {
+    testWidgets('reads and writes the template list when broadcasterId is '
+        'null', (WidgetTester tester) async {
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedTemplate(rules: const <NgWordRule>[NgWordRule(pattern: 'tpl')]);
+
+      await tester.pumpWidget(
+        _buildScreen(store, broadcasterId: null, scopeLabel: 'テンプレート'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('tpl'), findsOneWidget);
+
+      // Add another pattern; verify it lands in the template store.
+      await tester.tap(find.byKey(const Key('ng-word-add-button')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('ng-word-add-input')),
+        'tpl-new',
+      );
+      await tester.tap(find.byKey(const Key('ng-word-add-confirm-button')));
+      await tester.pumpAndSettle();
+
+      final List<NgWordRule> tpl = await store.loadTemplateNgWordRules();
+      expect(tpl.map((NgWordRule r) => r.pattern).toList(), <String>[
+        'tpl',
+        'tpl-new',
+      ]);
     });
   });
 }

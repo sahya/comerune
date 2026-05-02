@@ -1,19 +1,30 @@
 import 'package:flutter/material.dart';
 
-import '../../application/settings/settings_store.dart';
-import '../../domain/models/app_settings.dart';
+import '../../data/filter/broadcaster_ng_store.dart';
 import '../../domain/models/ng_word_rule.dart';
 import '../widgets/ng_local_notice.dart';
 import '../widgets/text_input_dialog.dart';
 
-/// Screen that displays and manages the list of NG word rules.
+/// Issue #727: per-scope NG word management.
 ///
-/// Users can add, toggle, and delete rules from this screen.
-/// Changes are persisted via [SettingsStore].
+/// When [broadcasterId] is null the screen edits the template — the seed
+/// list copied into any future broadcaster's first-access state.
+/// When non-null it edits the specific broadcaster's slot through
+/// [BroadcasterNgStore].
 class NgWordListScreen extends StatefulWidget {
-  const NgWordListScreen({super.key, required this.settingsStore});
+  const NgWordListScreen({
+    super.key,
+    required this.broadcasterNgStore,
+    required this.broadcasterId,
+    required this.scopeLabel,
+  });
 
-  final SettingsStore settingsStore;
+  final BroadcasterNgStore broadcasterNgStore;
+
+  /// `null` = template scope.
+  final String? broadcasterId;
+
+  final String scopeLabel;
 
   @override
   State<NgWordListScreen> createState() => _NgWordListScreenState();
@@ -29,21 +40,36 @@ class _NgWordListScreenState extends State<NgWordListScreen> {
     _loadRules();
   }
 
+  Future<List<NgWordRule>> _readRules() async {
+    final String? broadcasterId = widget.broadcasterId;
+    if (broadcasterId == null) {
+      return widget.broadcasterNgStore.loadTemplateNgWordRules();
+    }
+    return widget.broadcasterNgStore.loadNgWordRules(broadcasterId);
+  }
+
+  Future<void> _writeRules(List<NgWordRule> rules) async {
+    final String? broadcasterId = widget.broadcasterId;
+    if (broadcasterId == null) {
+      await widget.broadcasterNgStore.saveTemplateNgWordRules(rules);
+    } else {
+      await widget.broadcasterNgStore.saveNgWordRules(broadcasterId, rules);
+    }
+  }
+
   Future<void> _loadRules() async {
-    final AppSettings settings = await widget.settingsStore.load();
+    final List<NgWordRule> rules = await _readRules();
     if (!mounted) {
       return;
     }
     setState(() {
-      _rules = List<NgWordRule>.from(settings.ngWordRules);
+      _rules = List<NgWordRule>.from(rules);
       _isLoading = false;
     });
   }
 
   Future<void> _saveRules(List<NgWordRule> rules) async {
-    final AppSettings current = await widget.settingsStore.load();
-    final AppSettings updated = current.copyWith(ngWordRules: rules);
-    await widget.settingsStore.save(updated);
+    await _writeRules(rules);
     if (!mounted) {
       return;
     }
@@ -148,9 +174,26 @@ class _NgWordListScreenState extends State<NgWordListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('NGワード管理'),
+        title: Text('NGワード — ${widget.scopeLabel}'),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(24),
+          child: Padding(
+            key: const Key('ng-word-scope-label'),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                widget.broadcasterId == null
+                    ? 'テンプレート（新規放送者の初期値）'
+                    : 'スコープ: ${widget.scopeLabel}',
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+          ),
+        ),
         actions: <Widget>[
           IconButton(
             key: const Key('ng-word-add-button'),

@@ -1,15 +1,36 @@
 import 'package:flutter/material.dart';
 
-import '../../application/settings/settings_store.dart';
-import '../../domain/models/app_settings.dart';
+import '../../data/filter/broadcaster_ng_store.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/empty_state_message.dart';
 import '../widgets/ng_local_notice.dart';
 
+/// Issue #727: per-scope NG user ID management.
+///
+/// When [broadcasterId] is null the screen edits the template — the seed
+/// list copied into any future broadcaster's first-access state.
+/// When non-null it edits the specific broadcaster's slot through
+/// [BroadcasterNgStore].
+///
+/// TODO(#727): the existing screen historically only supports delete.
+/// Adding a flow that lets users append a new NG user from this screen
+/// is tracked in a follow-up issue; long-press on a comment in
+/// [SelectScreen] remains the canonical "add" entry point for now.
 class NgUserListScreen extends StatefulWidget {
-  const NgUserListScreen({super.key, required this.settingsStore});
+  const NgUserListScreen({
+    super.key,
+    required this.broadcasterNgStore,
+    required this.broadcasterId,
+    required this.scopeLabel,
+  });
 
-  final SettingsStore settingsStore;
+  final BroadcasterNgStore broadcasterNgStore;
+
+  /// `null` = template scope (seed for new broadcasters).
+  final String? broadcasterId;
+
+  /// Display label used in the AppBar subtitle / title.
+  final String scopeLabel;
 
   @override
   State<NgUserListScreen> createState() => _NgUserListScreenState();
@@ -26,14 +47,22 @@ class _NgUserListScreenState extends State<NgUserListScreen> {
   }
 
   Future<void> _loadNgUserIds() async {
-    final AppSettings settings = await widget.settingsStore.load();
+    final Set<String> ids = await _readIds();
     if (!mounted) {
       return;
     }
     setState(() {
-      _ngUserIds = settings.ngUserIdSet.toList();
+      _ngUserIds = ids.toList();
       _isLoading = false;
     });
+  }
+
+  Future<Set<String>> _readIds() async {
+    final String? broadcasterId = widget.broadcasterId;
+    if (broadcasterId == null) {
+      return widget.broadcasterNgStore.loadTemplateNgUserIds();
+    }
+    return widget.broadcasterNgStore.loadNgUserIds(broadcasterId);
   }
 
   Future<void> _removeNgUserId(String userId) async {
@@ -49,16 +78,30 @@ class _NgUserListScreenState extends State<NgUserListScreen> {
       return;
     }
 
-    final AppSettings current = await widget.settingsStore.load();
-    final AppSettings updated = current.removeNgUserId(userId);
-    await widget.settingsStore.save(updated);
+    final String? broadcasterId = widget.broadcasterId;
+    if (broadcasterId == null) {
+      // Template scope: persist the filtered set verbatim.
+      final Set<String> current = await widget.broadcasterNgStore
+          .loadTemplateNgUserIds();
+      final List<String> filtered = current
+          .where((String id) => id != userId)
+          .toList();
+      await widget.broadcasterNgStore.saveTemplateNgUserIds(filtered);
+    } else {
+      await widget.broadcasterNgStore.removeNgUserId(broadcasterId, userId);
+    }
 
     if (!mounted) {
       return;
     }
 
+    final Set<String> updated = await _readIds();
+    if (!mounted) {
+      return;
+    }
+
     setState(() {
-      _ngUserIds = updated.ngUserIdSet.toList();
+      _ngUserIds = updated.toList();
     });
 
     ScaffoldMessenger.of(context)
@@ -68,8 +111,27 @@ class _NgUserListScreenState extends State<NgUserListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('NGユーザーID管理')),
+      appBar: AppBar(
+        title: Text('NGユーザーID — ${widget.scopeLabel}'),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(24),
+          child: Padding(
+            key: const Key('ng-user-scope-label'),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                widget.broadcasterId == null
+                    ? 'テンプレート（新規放送者の初期値）'
+                    : 'スコープ: ${widget.scopeLabel}',
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+          ),
+        ),
+      ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[

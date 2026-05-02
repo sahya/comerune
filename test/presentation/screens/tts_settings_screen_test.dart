@@ -172,27 +172,9 @@ void main() {
       expect(loaded.queueLimit, 50);
     });
 
-    testWidgets('shows NG word list tile with count', (
-      WidgetTester tester,
-    ) async {
-      final InMemorySharedPreferences prefs = InMemorySharedPreferences();
-      await prefs.setString(
-        'settings.filter.ngWordRules',
-        '[{"pattern":"test","enabled":true},{"pattern":"foo","enabled":false}]',
-      );
-      final SharedPreferencesSettingsStore settingsStore =
-          SharedPreferencesSettingsStore(prefs: prefs);
-
-      await tester.pumpWidget(_buildScreen(settingsStore));
-      await tester.pumpAndSettle();
-
-      await scrollToKeyInList(tester, _listKey, const Key('ng-word-list-tile'));
-
-      expect(find.text('NGワード管理', skipOffstage: false), findsOneWidget);
-      expect(find.text('2件登録中', skipOffstage: false), findsOneWidget);
-    });
-
-    testWidgets('shows empty subtitle when no NG word rules exist', (
+    // Issue #727 PR2: NG word tile no longer shows a count — it now opens
+    // the per-broadcaster picker instead of the global NG word screen.
+    testWidgets('shows NG word list tile with per-broadcaster subtitle', (
       WidgetTester tester,
     ) async {
       final SharedPreferencesSettingsStore settingsStore =
@@ -203,7 +185,8 @@ void main() {
 
       await scrollToKeyInList(tester, _listKey, const Key('ng-word-list-tile'));
 
-      expect(find.text('未登録', skipOffstage: false), findsOneWidget);
+      expect(find.text('NGワード管理', skipOffstage: false), findsOneWidget);
+      expect(find.text('放送者ごとに編集します', skipOffstage: false), findsOneWidget);
     });
 
     testWidgets('auto-read toggle persists value', (WidgetTester tester) async {

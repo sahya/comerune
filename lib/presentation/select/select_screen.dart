@@ -74,8 +74,18 @@ BroadcasterNgSnapshot get _emptyBroadcasterNgSnapshot => (
 /// a top-level function so it can be unit-tested without spinning up a
 /// full widget tree.
 ///
-/// See [_SelectScreenState._resolveContentFilter] for the resolution
-/// rules and the rationale for the legacy union (Issue #727 PR1).
+/// Resolution rules (Issue #727 PR2):
+///   1. **Per-broadcaster path** — when the store is wired AND we are
+///      connected AND the in-memory snapshot is tagged for the same
+///      broadcaster, return the snapshot values verbatim. The NG list
+///      screens now write directly through [BroadcasterNgStore], so the
+///      snapshot is the single source of truth and no union with the
+///      legacy `AppSettings.ngUserIds` / `ngWordRules` is needed.
+///   2. **Legacy fallback** — used only for unconnected sessions (no
+///      broadcaster yet) and for minimally-wired tests / hosts that do
+///      not pass a [BroadcasterNgStore]. Returns the legacy
+///      [AppSettings] fields so unconnected users still see their
+///      saved NG filter.
 @visibleForTesting
 ({Set<String> ngUserIds, List<String> ngWords}) computeContentFilterInputs({
   required AppSettings settings,
@@ -83,34 +93,20 @@ BroadcasterNgSnapshot get _emptyBroadcasterNgSnapshot => (
   required BroadcasterNgSnapshot snapshot,
   required bool hasStore,
 }) {
-  // Per-broadcaster path: store is wired AND we are connected AND the
-  // in-memory snapshot reflects the currently-active broadcaster (i.e.
-  // not a stale load from a previous broadcaster).
   final bool perBroadcasterActive =
       hasStore &&
       currentBroadcasterId != null &&
       snapshot.broadcasterId == currentBroadcasterId;
   if (perBroadcasterActive) {
-    // Issue #727 MUST FIX 1: union legacy fields into the snapshot so
-    // edits from the not-yet-retargeted NgUserListScreen /
-    // NgWordListScreen do not silently disappear while a broadcaster is
-    // connected. Both sides go through `enabledNgWordPatterns` /
-    // lower-cased dedup so the shape stays consistent.
-    // TODO(#727): remove legacy union once PR2 lands.
-    final Set<String> mergedUserIds = <String>{
-      ...snapshot.ngUserIds,
-      ...settings.ngUserIdSet,
-    };
-    // Use a LinkedHashSet so the patterns remain deterministic for
-    // tests while still de-duplicating across the two sources.
-    final Set<String> mergedWordSet = <String>{
-      ...enabledNgWordPatterns(snapshot.rules),
-      ...settings.ngWordList,
-    };
-    return (ngUserIds: mergedUserIds, ngWords: mergedWordSet.toList());
+    return (
+      ngUserIds: snapshot.ngUserIds,
+      ngWords: enabledNgWordPatterns(snapshot.rules),
+    );
   }
-  // TODO(#727): remove together with PR2 once NG list screens write
-  // through BroadcasterNgStore.
+  // Legacy fallback: serves unconnected sessions and minimally-wired
+  // tests / hosts. The NG list screens write through the per-broadcaster
+  // store, but `AppSettings.ngUserIds` / `ngWordRules` may still hold
+  // values from before the migration.
   return (ngUserIds: settings.ngUserIdSet, ngWords: settings.ngWordList);
 }
 
@@ -1208,24 +1204,13 @@ class _SelectScreenState extends State<SelectScreen>
   /// Resolution order:
   ///   1. When a broadcaster is connected and the per-broadcaster store
   ///      has produced a snapshot tagged with that same broadcaster, use
-  ///      the snapshot — but **union** the current legacy
-  ///      `settings.ngUserIdSet` / `settings.ngWordList` into the result.
+  ///      the snapshot values verbatim. Since PR2 retargeted the NG
+  ///      management screens to write through [BroadcasterNgStore], the
+  ///      snapshot is the single source of truth and no legacy union is
+  ///      necessary.
   ///   2. Otherwise fall back to the legacy global fields on
   ///      [AppSettings] so unconnected users (and hosts that do not pass
   ///      a [BroadcasterNgStore]) still see their existing NG filter.
-  ///
-  /// **Why union?** The legacy `NgUserListScreen` / `NgWordListScreen`
-  /// management screens still write to `AppSettings.ngUserIds` /
-  /// `AppSettings.ngWordRules` in this PR. Without the union, a user
-  /// editing NG entries from those screens while connected to a
-  /// broadcaster would see no filter effect — a silent regression.
-  /// The per-broadcaster path remains the source of truth for writes
-  /// (the long-press toggle in `_toggleNgUser` writes only there); the
-  /// union is a temporary read-side bridge so legacy edits leak through
-  /// until PR2 retargets those screens to write through
-  /// [BroadcasterNgStore].
-  ///
-  /// TODO(#727): remove legacy union once PR2 lands.
   ({Set<String> ngUserIds, List<String> ngWords}) _resolveContentFilter() {
     return computeContentFilterInputs(
       settings: _settingsNotifier.value,
@@ -1461,12 +1446,11 @@ class _SelectScreenState extends State<SelectScreen>
       );
       return;
     }
-    // Fallback: legacy global path. Used when no broadcaster is connected
-    // or when the store is not wired (e.g. tests). When PR2 retargets the
-    // list screens this branch is the last remaining writer of the
-    // legacy fields, but it remains as a safety net.
-    // TODO(#727): remove together with PR2 once NG list screens write
-    // through BroadcasterNgStore.
+    // Fallback: legacy global path for unconnected sessions and
+    // minimally-wired tests. The NG management screens now write through
+    // BroadcasterNgStore in the per-broadcaster path, but this branch
+    // remains so unconnected toggles (no broadcasterId, no store) still
+    // produce a working filter against the legacy AppSettings fields.
     final AppSettings current = _settingsNotifier.value;
     final AppSettings updated = current.isNgUser(userId)
         ? current.removeNgUserId(userId)
@@ -1511,6 +1495,7 @@ class _SelectScreenState extends State<SelectScreen>
           userSessionStore: userSessionStore,
           themeModeNotifier: widget.themeModeNotifier,
           userAttributeStore: widget.userAttributeStore,
+          broadcasterNgStore: widget.broadcasterNgStore,
           broadcasterIdNotifier: widget.supplierUserIdNotifier,
           userNameResolution: widget.userNameResolution,
           speechPlatform: MethodChannelCommentSpeech(),

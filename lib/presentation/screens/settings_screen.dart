@@ -12,6 +12,7 @@ import '../../application/settings/settings_store.dart';
 import '../../application/speech/speech_availability_notifier.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../data/auth/user_session_store.dart';
+import '../../data/filter/broadcaster_ng_store.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/user_name_resolution.dart';
 import '../../data/user/user_attribute_store.dart';
@@ -30,6 +31,7 @@ class SettingsScreen extends StatefulWidget {
     this.userSessionStore,
     this.themeModeNotifier,
     this.userAttributeStore,
+    this.broadcasterNgStore,
     this.broadcasterIdNotifier,
     this.userNameResolution,
     this.speechPlatform,
@@ -40,6 +42,10 @@ class SettingsScreen extends StatefulWidget {
   final UserSessionStore? userSessionStore;
   final ValueNotifier<AppThemeMode>? themeModeNotifier;
   final UserAttributeStore? userAttributeStore;
+
+  /// Issue #727: per-broadcaster NG management store. Forwarded to the
+  /// child screens that expose NG editing UI.
+  final BroadcasterNgStore? broadcasterNgStore;
   final ValueNotifier<String?>? broadcasterIdNotifier;
   final UserNameResolution? userNameResolution;
   final CommentSpeechPlatform? speechPlatform;
@@ -478,6 +484,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                 platform: widget.speechPlatform,
                 initialSettings: settings,
                 androidTtsAvailability: widget.androidTtsAvailability,
+                broadcasterNgStore: widget.broadcasterNgStore,
+                broadcasterIdNotifier: widget.broadcasterIdNotifier,
               ),
             ),
           );
@@ -503,6 +511,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               builder: (_) => UserManagementSettingsScreen(
                 settingsStore: widget.settingsStore,
                 userAttributeStore: widget.userAttributeStore,
+                broadcasterNgStore: widget.broadcasterNgStore,
                 broadcasterIdNotifier: widget.broadcasterIdNotifier,
                 userNameResolution: widget.userNameResolution,
                 initialSettings: settings,

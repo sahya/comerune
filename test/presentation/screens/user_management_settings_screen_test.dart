@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/application/settings/settings_store.dart';
+import 'package:comerune/presentation/screens/broadcaster_ng_list_screen.dart';
 import 'package:comerune/presentation/screens/user_management_settings_screen.dart';
 
+import '../../helpers/fake_broadcaster_ng_store.dart';
 import '../../helpers/in_memory_shared_preferences.dart';
 
 void main() {
@@ -16,10 +18,57 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('favorite-user-list-tile')), findsOneWidget);
-      expect(find.byKey(const Key('ng-user-list-tile')), findsOneWidget);
-      // Both favorite and NG user sections show '未登録' when empty.
-      expect(find.text('未登録'), findsNWidgets(2));
     });
+
+    testWidgets(
+      'broadcaster NG tile shows 未対応 and is disabled when no store is wired',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        await tester.pumpWidget(_buildScreen(settingsStore));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('broadcaster-ng-list-tile')),
+          findsOneWidget,
+        );
+        expect(find.text('放送者別 NG 一覧'), findsOneWidget);
+        expect(find.text('未対応'), findsOneWidget);
+
+        final ListTile tile = tester.widget(
+          find.byKey(const Key('broadcaster-ng-list-tile')),
+        );
+        expect(tile.enabled, isFalse);
+        expect(tile.onTap, isNull);
+      },
+    );
+
+    testWidgets(
+      'broadcaster NG tile pushes BroadcasterNgListScreen when store wired',
+      (WidgetTester tester) async {
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final FakeBroadcasterNgStore ngStore = FakeBroadcasterNgStore();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: UserManagementSettingsScreen(
+              settingsStore: settingsStore,
+              broadcasterNgStore: ngStore,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('放送者ごとに NG ユーザー / NG ワードを管理'), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('broadcaster-ng-list-tile')));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(BroadcasterNgListScreen), findsOneWidget);
+      },
+    );
 
     testWidgets(
       'dispose does not throw when broadcasterIdNotifier is provided',
@@ -40,11 +89,9 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // Navigate away to trigger dispose
         await tester.pumpWidget(const MaterialApp(home: Scaffold()));
         await tester.pumpAndSettle();
 
-        // Changing the notifier after dispose should not throw
         notifier.value = 'broadcaster-2';
         await tester.pump();
 
@@ -65,7 +112,6 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Navigate away to trigger dispose – should not throw
       await tester.pumpWidget(const MaterialApp(home: Scaffold()));
       await tester.pumpAndSettle();
     });

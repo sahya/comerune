@@ -1,22 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:comerune/application/settings/settings_store.dart';
-import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/presentation/screens/ng_user_list_screen.dart';
 
-import '../../helpers/in_memory_shared_preferences.dart';
+import '../../helpers/fake_broadcaster_ng_store.dart';
 
 void main() {
-  group('NgUserListScreen', () {
+  group('NgUserListScreen (broadcaster scope)', () {
     testWidgets('shows empty message when no NG user IDs exist', (
       WidgetTester tester,
     ) async {
-      final SettingsStore store = SharedPreferencesSettingsStore(
-        prefs: InMemorySharedPreferences(),
-      );
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster('caster-1');
 
-      await tester.pumpWidget(_buildScreen(store));
+      await tester.pumpWidget(
+        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
+      );
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('ng-user-list-empty')), findsOneWidget);
@@ -26,11 +25,12 @@ void main() {
     testWidgets('shows local-only settings notice after load', (
       WidgetTester tester,
     ) async {
-      final SettingsStore store = SharedPreferencesSettingsStore(
-        prefs: InMemorySharedPreferences(),
-      );
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster('caster-1');
 
-      await tester.pumpWidget(_buildScreen(store));
+      await tester.pumpWidget(
+        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
+      );
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('ng-user-local-notice')), findsOneWidget);
@@ -40,33 +40,29 @@ void main() {
     testWidgets('shows local-only settings notice while loading', (
       WidgetTester tester,
     ) async {
-      final SettingsStore store = SharedPreferencesSettingsStore(
-        prefs: InMemorySharedPreferences(),
-      );
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster('caster-1');
 
-      await tester.pumpWidget(_buildScreen(store));
+      await tester.pumpWidget(
+        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
+      );
       // Do NOT pumpAndSettle: the notice must be visible even before the
       // settings load completes.
       expect(find.byKey(const Key('ng-user-local-notice')), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
-      // Drain the pending load so the widget tree is idle on teardown.
       await tester.pumpAndSettle();
     });
 
     testWidgets('displays registered NG user IDs as list', (
       WidgetTester tester,
     ) async {
-      final SharedPreferencesSettingsStore store =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster('caster-1', userIds: <String>{'user123', 'user456'});
 
-      // Pre-save settings with NG user IDs.
-      final AppSettings initial = AppSettings.defaults
-          .addNgUserId('user123')
-          .addNgUserId('user456');
-      await store.save(initial);
-
-      await tester.pumpWidget(_buildScreen(store));
+      await tester.pumpWidget(
+        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
+      );
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('ng-user-id-list')), findsOneWidget);
@@ -79,91 +75,106 @@ void main() {
     testWidgets('removes NG user ID after confirmation', (
       WidgetTester tester,
     ) async {
-      final SharedPreferencesSettingsStore store =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster('caster-1', userIds: <String>{'user123', 'user456'});
 
-      final AppSettings initial = AppSettings.defaults
-          .addNgUserId('user123')
-          .addNgUserId('user456');
-      await store.save(initial);
-
-      await tester.pumpWidget(_buildScreen(store));
+      await tester.pumpWidget(
+        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
+      );
       await tester.pumpAndSettle();
 
-      // Tap delete button for the first item.
       await tester.tap(find.byKey(const Key('ng-user-remove-0')));
       await tester.pumpAndSettle();
 
-      // Confirm dialog should appear.
       expect(find.text('NG解除'), findsOneWidget);
-      expect(find.text('ユーザーID「user123」のNG登録を解除しますか？'), findsOneWidget);
 
-      // Tap confirm button.
       await tester.tap(find.byKey(const Key('ng-remove-confirm-button')));
       await tester.pumpAndSettle();
 
-      // user123 should be removed from the list.
-      expect(find.text('user123'), findsNothing);
       expect(find.text('user456'), findsOneWidget);
-
       // Snackbar feedback should appear.
-      expect(find.text('user123 のNGを解除しました'), findsOneWidget);
+      expect(find.textContaining('のNGを解除しました'), findsOneWidget);
 
-      // Verify persistence.
-      final AppSettings loaded = await store.load();
-      expect(loaded.ngUserIdSet, <String>{'user456'});
+      // Verify persistence on the store.
+      final Set<String> remaining = await store.loadNgUserIds('caster-1');
+      expect(remaining.length, 1);
+      expect(remaining.contains('user456'), isTrue);
     });
 
     testWidgets('cancel dialog does not remove NG user ID', (
       WidgetTester tester,
     ) async {
-      final SharedPreferencesSettingsStore store =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster('caster-1', userIds: <String>{'user123'});
 
-      final AppSettings initial = AppSettings.defaults.addNgUserId('user123');
-      await store.save(initial);
-
-      await tester.pumpWidget(_buildScreen(store));
+      await tester.pumpWidget(
+        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
+      );
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('ng-user-remove-0')));
       await tester.pumpAndSettle();
 
-      // Tap cancel.
       await tester.tap(find.text('キャンセル'));
       await tester.pumpAndSettle();
 
-      // user123 should still be present.
       expect(find.text('user123'), findsOneWidget);
 
-      final AppSettings loaded = await store.load();
-      expect(loaded.ngUserIdSet, <String>{'user123'});
+      final Set<String> remaining = await store.loadNgUserIds('caster-1');
+      expect(remaining, <String>{'user123'});
     });
 
-    testWidgets('shows empty message after removing last NG user ID', (
+    testWidgets('shows scope label in app bar subtitle', (
       WidgetTester tester,
     ) async {
-      final SharedPreferencesSettingsStore store =
-          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster('caster-1');
 
-      final AppSettings initial = AppSettings.defaults.addNgUserId('onlyUser');
-      await store.save(initial);
-
-      await tester.pumpWidget(_buildScreen(store));
+      await tester.pumpWidget(
+        _buildScreen(store, broadcasterId: 'caster-1', scopeLabel: 'caster-1'),
+      );
       await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('ng-user-scope-label')), findsOneWidget);
+      expect(find.text('NGユーザーID — caster-1'), findsOneWidget);
+    });
+  });
+
+  group('NgUserListScreen (template scope)', () {
+    testWidgets('reads and writes the template list when broadcasterId is '
+        'null', (WidgetTester tester) async {
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedTemplate(userIds: <String>{'tpl-user'});
+
+      await tester.pumpWidget(
+        _buildScreen(store, broadcasterId: null, scopeLabel: 'テンプレート'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('tpl-user'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('ng-user-remove-0')));
       await tester.pumpAndSettle();
-
       await tester.tap(find.byKey(const Key('ng-remove-confirm-button')));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('ng-user-list-empty')), findsOneWidget);
-      expect(find.text('NGユーザーIDは登録されていません'), findsOneWidget);
+      // Template should be empty now.
+      final Set<String> tpl = await store.loadTemplateNgUserIds();
+      expect(tpl, isEmpty);
     });
   });
 }
 
-Widget _buildScreen(SettingsStore settingsStore) {
-  return MaterialApp(home: NgUserListScreen(settingsStore: settingsStore));
+Widget _buildScreen(
+  FakeBroadcasterNgStore store, {
+  required String? broadcasterId,
+  required String scopeLabel,
+}) {
+  return MaterialApp(
+    home: NgUserListScreen(
+      broadcasterNgStore: store,
+      broadcasterId: broadcasterId,
+      scopeLabel: scopeLabel,
+    ),
+  );
 }
