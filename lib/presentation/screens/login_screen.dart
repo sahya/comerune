@@ -1,5 +1,6 @@
 import 'dart:developer';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -361,14 +362,19 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bool oauthAvailable = _oauthController?.isFullyConfigured ?? false;
+    // OAuth ログイン入口は debug ビルドの開発者向け検証用としてのみ
+    // 表示する。release ではボタン自体を出さないことで、フローを通しても
+    // 機能差が生まれないボタンをユーザーに見せない (取得した access_token を
+    // アプリ内 API 呼び出しに反映する配線は別 PR で順次実装予定)。
+    final bool oauthAvailable =
+        kDebugMode && (_oauthController?.isFullyConfigured ?? false);
     return Scaffold(
       appBar: AppBar(
         title: const Text('ニコニコログイン'),
         actions: <Widget>[
           if (oauthAvailable)
             IconButton(
-              tooltip: 'OAuth でログイン (実験的)',
+              tooltip: 'OAuth でログイン (debug 限定)',
               icon: const Icon(Icons.vpn_key),
               onPressed: _startOAuthLogin,
             ),
