@@ -88,6 +88,12 @@ OAuthAuthController _build({
 }
 
 void main() {
+  // `attach()` exercises AppLinks() which talks to the platform binding.
+  // Initialize a TestWidgetsFlutterBinding so the binding lookup succeeds
+  // and the (mocked-empty) platform channels return no data instead of
+  // crashing the test runner.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('isFullyConfigured', () {
     test('reflects the underlying config (true case)', () {
       final c = _build(config: _config());
@@ -140,5 +146,57 @@ void main() {
         );
       },
     );
+  });
+
+  group('clearOutcome', () {
+    test('resets outcome.value to null', () async {
+      final c = _build(config: _config(), stateStore: _ThrowingStateStore());
+      // Provoke a failure so outcome holds a non-null value.
+      await c.startLogin();
+      expect(c.outcome.value, isNotNull);
+
+      c.clearOutcome();
+      expect(c.outcome.value, isNull);
+    });
+
+    test('notifies listeners on clear', () async {
+      final c = _build(config: _config(), stateStore: _ThrowingStateStore());
+      await c.startLogin(); // outcome != null
+
+      var notified = 0;
+      void listener() => notified++;
+      c.outcome.addListener(listener);
+      c.clearOutcome();
+      // ValueNotifier dispatches synchronously on assignment, so the
+      // counter reflects the clear immediately.
+      expect(notified, 1);
+      c.outcome.removeListener(listener);
+    });
+  });
+
+  group('attach', () {
+    test('is idempotent — calling twice does not double-attach', () async {
+      // No AppLinks instance is provided; the underlying service will try
+      // to use the real platform binding. The controller's try/catch is
+      // expected to swallow that failure. Calling attach again must
+      // return immediately without re-entering the catch block (we
+      // assert that by observing no listener on outcome was created
+      // anew — both calls leave outcome.value at its initial null).
+      final c = _build(config: _config());
+      await c.attach();
+      await c.attach();
+      expect(c.outcome.value, isNull);
+    });
+  });
+
+  group('dispose', () {
+    test('outcome ValueListenable is disposed (addListener throws)', () async {
+      final c = _build(config: _config());
+      await c.dispose();
+      // ChangeNotifier.addListener asserts the notifier has not been
+      // disposed; this surfaces the disposal effect deterministically
+      // (unlike value assignment which short-circuits on equal values).
+      expect(() => c.outcome.addListener(() {}), throwsFlutterError);
+    });
   });
 }

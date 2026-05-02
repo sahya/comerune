@@ -304,20 +304,26 @@ class _LoginScreenState extends State<LoginScreen> {
     controller.clearOutcome();
   }
 
+  /// Map an [OAuthFailureReason] to a Japanese, user-facing message.
+  ///
+  /// The wording deliberately avoids OAuth-protocol jargon (`state`,
+  /// `callback`, `token exchange`) because end users do not know what
+  /// those terms mean. Internal details are still available via
+  /// developer logs (controller / service log entries) for debugging.
   String _humanReadableFailure(OAuthFailure failure) {
     switch (failure.reason) {
       case OAuthFailureReason.upstreamAuthorizationError:
-        return 'OAuth ログインがキャンセル / 拒否されました';
+        return 'ログインがキャンセル / 拒否されました';
       case OAuthFailureReason.malformedCallback:
-        return 'OAuth コールバックが不正でした';
+        return 'ログインの応答が不正でした';
       case OAuthFailureReason.stateMismatch:
-        return 'OAuth state 検証に失敗しました (再度お試しください)';
+        return 'ログインの整合性チェックに失敗しました。もう一度お試しください。';
       case OAuthFailureReason.tokenExchangeFailed:
-        return 'OAuth トークン交換に失敗しました';
+        return 'ログイン処理中にエラーが発生しました';
       case OAuthFailureReason.networkFailure:
-        return 'OAuth トークン交換時にネットワークエラーが発生しました';
+        return 'ネットワークエラーが発生しました。接続を確認してもう一度お試しください。';
       case OAuthFailureReason.persistenceFailed:
-        return 'OAuth 認証情報の保存に失敗しました';
+        return 'ログイン情報の保存に失敗しました';
     }
   }
 
@@ -335,10 +341,17 @@ class _LoginScreenState extends State<LoginScreen> {
       // failure outcome itself; nothing more to do here.
       return;
     }
-    final bool launched = await launchUrl(
-      uri,
-      mode: LaunchMode.externalApplication,
-    );
+    bool launched;
+    try {
+      launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      // url_launcher can throw PlatformException on devices without a
+      // suitable browser, on missing-activity errors, etc. Treat it as
+      // a launch failure and surface the same snackbar so the user is
+      // not left wondering why nothing happened.
+      log('launchUrl threw: $e', name: 'LoginScreen');
+      launched = false;
+    }
     if (!launched && mounted) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
