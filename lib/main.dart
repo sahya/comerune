@@ -8,6 +8,8 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'application/auth/oauth_auth_controller.dart';
+import 'application/auth/oauth_auth_scope.dart';
 import 'application/comment_post/comment_post_controller.dart';
 import 'application/foreground_service/foreground_service_controller.dart';
 import 'application/migration/app_migration_runner.dart';
@@ -18,6 +20,12 @@ import 'application/speech/speech_availability_notifier.dart';
 import 'application/upgrade/upgrade_initializer.dart';
 import 'application/statistics/statistics_store.dart';
 import 'application/timeline/timeline_store.dart';
+import 'data/auth/oauth_bff/oauth_bff_auth_service.dart';
+import 'data/auth/oauth_bff/oauth_bff_client.dart';
+import 'data/auth/oauth_bff/oauth_bff_config.dart';
+import 'data/auth/oauth_bff/oauth_state_generator.dart';
+import 'data/auth/oauth_bff/oauth_state_store.dart';
+import 'data/auth/oauth_bff/oauth_token_store.dart';
 import 'data/auth/user_session_store.dart';
 import 'data/comment/live_comment_repository.dart';
 import 'data/comment_log/comment_log_writer.dart';
@@ -153,6 +161,27 @@ Future<void> main() async {
     foregroundServiceManager.init();
   }
 
+  // OAuth + App Links + BFF login orchestrator. Constructed once at app
+  // startup so the App Links listener it attaches in initState lives for
+  // the app lifetime — callbacks delivered while the user is anywhere in
+  // the app must not get lost.
+  //
+  // The underlying config is read from --dart-define values
+  // (NICONICO_OAUTH_CLIENT_ID / OAUTH_BFF_HOST / OAUTH_AUTHORIZE_ENDPOINT).
+  // When any are missing, OAuthAuthController.isFullyConfigured returns
+  // false and UI screens hide the OAuth login entry point — the
+  // controller is still safe to construct in that state.
+  final OAuthBffConfig oauthConfig = OAuthBffConfig.production();
+  final OAuthAuthController oauthAuthController = OAuthAuthController(
+    service: OAuthBffAuthService(
+      config: oauthConfig,
+      stateGenerator: SecureOAuthStateGenerator(),
+      stateStore: SecureOAuthStateStore(),
+      tokenStore: SecureOAuthTokenStore(),
+      bffClient: OAuthBffClient(tokenEndpoint: oauthConfig.bffTokenEndpoint),
+    ),
+  );
+
   runApp(
     ComeruneApp(
       settingsStore: settingsStore,
@@ -162,6 +191,7 @@ Future<void> main() async {
       userAttributeStore: userAttributeStore,
       foregroundServiceManager: foregroundServiceManager,
       onboardingStore: onboardingStore,
+      oauthAuthController: oauthAuthController,
     ),
   );
 }
@@ -176,6 +206,7 @@ class ComeruneApp extends StatefulWidget {
     this.userAttributeStore,
     this.foregroundServiceManager,
     required this.onboardingStore,
+    required this.oauthAuthController,
   });
 
   final SettingsStore settingsStore;
@@ -185,6 +216,7 @@ class ComeruneApp extends StatefulWidget {
   final UserAttributeStore? userAttributeStore;
   final ForegroundServiceManager? foregroundServiceManager;
   final OnboardingStore onboardingStore;
+  final OAuthAuthController oauthAuthController;
 
   @override
   State<ComeruneApp> createState() => _ComeruneAppState();
@@ -379,6 +411,13 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _ndgrViewerCountSubscription = _ndgrClient.viewerCounts.listen(
       _statisticsStore.updateViewerCount,
     );
+
+    // Subscribe to App Links so the OIDC callback delivered by Android
+    // after the user returns from the browser is routed into the
+    // OAuthBffAuthService. Idempotent inside the controller; safe even
+    // if the OAuth login entry point is hidden (the flow simply never
+    // gets triggered, and no callback arrives).
+    unawaited(widget.oauthAuthController.attach());
   }
 
   /// Called when [_SessionWsClientAdapter] detects a timeshift (ended)
@@ -508,6 +547,11 @@ class _ComeruneAppState extends State<ComeruneApp> {
       ..dispose();
     _playRemainingAfterEndedNotifier.dispose();
     _androidTtsAvailability.dispose();
+    // Detach the App Links listener and close the OAuth BFF http.Client.
+    // dispose() returns a Future but State.dispose() is sync — the
+    // teardown is fire-and-forget at app shutdown, which is safe because
+    // the process is about to be torn down by Android.
+    unawaited(widget.oauthAuthController.dispose());
     super.dispose();
   }
 
@@ -539,52 +583,55 @@ class _ComeruneAppState extends State<ComeruneApp> {
   Widget build(BuildContext context) {
     final AppThemeMode currentMode = _themeModeNotifier.value;
     return WithForegroundTask(
-      child: MaterialApp(
-        title: 'comerune',
-        theme: AppTheme.themeDataFor(currentMode),
-        darkTheme: currentMode == AppThemeMode.system
-            ? AppTheme.themeDataFor(AppThemeMode.dark)
-            : null,
-        themeMode: currentMode == AppThemeMode.system
-            ? ThemeMode.system
-            : ThemeMode.light,
-        navigatorKey: _navigatorKey,
-        home: SelectScreen(
-          connectionSupervisor: _connectionSupervisor,
-          timelineStore: _timelineStore,
-          statisticsStore: _statisticsStore,
-          settingsStore: widget.settingsStore,
-          initialSettings: widget.initialSettings,
-          onPrepareConnection: _prepareConnection,
-          userSessionStore: widget.userSessionStore,
-          programTitleNotifier: _programTitleNotifier,
-          userNameResolution: UserNameResolution(
-            resolve: _userNameResolver.getCachedName,
-            requestResolve: _userNameResolver.requestResolve,
-            seedCache: _userNameResolver.seedCache,
-            listenable: _userNameResolver,
+      child: OAuthAuthScope(
+        controller: widget.oauthAuthController,
+        child: MaterialApp(
+          title: 'comerune',
+          theme: AppTheme.themeDataFor(currentMode),
+          darkTheme: currentMode == AppThemeMode.system
+              ? AppTheme.themeDataFor(AppThemeMode.dark)
+              : null,
+          themeMode: currentMode == AppThemeMode.system
+              ? ThemeMode.system
+              : ThemeMode.light,
+          navigatorKey: _navigatorKey,
+          home: SelectScreen(
+            connectionSupervisor: _connectionSupervisor,
+            timelineStore: _timelineStore,
+            statisticsStore: _statisticsStore,
+            settingsStore: widget.settingsStore,
+            initialSettings: widget.initialSettings,
+            onPrepareConnection: _prepareConnection,
+            userSessionStore: widget.userSessionStore,
+            programTitleNotifier: _programTitleNotifier,
+            userNameResolution: UserNameResolution(
+              resolve: _userNameResolver.getCachedName,
+              requestResolve: _userNameResolver.requestResolve,
+              seedCache: _userNameResolver.seedCache,
+              listenable: _userNameResolver,
+            ),
+            broadcasterNameNotifier: _broadcasterNameNotifier,
+            supplierUserIdNotifier: _supplierUserIdNotifier,
+            beginAtNotifier: _beginAtNotifier,
+            vposBaseAtNotifier: _vposBaseAtNotifier,
+            commentLogWriter: widget.commentLogWriter,
+            themeModeNotifier: _themeModeNotifier,
+            followProgramRepository: _followProgramRepository,
+            myProgramRepository: _myProgramRepository,
+            broadcastControlRepository: _broadcastControlRepository,
+            userAttributeStore: widget.userAttributeStore,
+            commentPostController: _commentPostController,
+            timeshiftFetchController: _timeshiftFetchController,
+            androidTtsAvailability: _androidTtsAvailability,
+            broadcasterEmbedResolver: _broadcasterEmbedResolver,
+            playRemainingAfterEndedSink: _playRemainingAfterEndedNotifier,
+            // Issue #739: when the comment screen finishes draining its speech
+            // queue inside the grace window, signal the FGS controller so its
+            // parallel grace timer can end early too instead of waiting out
+            // the full 30 s. No-op when the FGS controller is not configured.
+            onSpeechQueueDrained:
+                _foregroundServiceController?.notifyQueueDrained,
           ),
-          broadcasterNameNotifier: _broadcasterNameNotifier,
-          supplierUserIdNotifier: _supplierUserIdNotifier,
-          beginAtNotifier: _beginAtNotifier,
-          vposBaseAtNotifier: _vposBaseAtNotifier,
-          commentLogWriter: widget.commentLogWriter,
-          themeModeNotifier: _themeModeNotifier,
-          followProgramRepository: _followProgramRepository,
-          myProgramRepository: _myProgramRepository,
-          broadcastControlRepository: _broadcastControlRepository,
-          userAttributeStore: widget.userAttributeStore,
-          commentPostController: _commentPostController,
-          timeshiftFetchController: _timeshiftFetchController,
-          androidTtsAvailability: _androidTtsAvailability,
-          broadcasterEmbedResolver: _broadcasterEmbedResolver,
-          playRemainingAfterEndedSink: _playRemainingAfterEndedNotifier,
-          // Issue #739: when the comment screen finishes draining its speech
-          // queue inside the grace window, signal the FGS controller so its
-          // parallel grace timer can end early too instead of waiting out
-          // the full 30 s. No-op when the FGS controller is not configured.
-          onSpeechQueueDrained:
-              _foregroundServiceController?.notifyQueueDrained,
         ),
       ),
     );

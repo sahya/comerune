@@ -8,6 +8,7 @@ import 'package:comerune/main.dart';
 
 import 'helpers/in_memory_shared_preferences.dart';
 import 'helpers/in_memory_user_session_store.dart';
+import 'helpers/test_oauth_auth_controller.dart';
 
 void main() {
   testWidgets('ComeruneApp boots to select screen', (
@@ -30,6 +31,7 @@ void main() {
         initialSettings: AppSettings.defaults,
         userSessionStore: InMemoryUserSessionStore(),
         onboardingStore: onboardingStore,
+        oauthAuthController: buildTestOAuthAuthController(),
       ),
     );
     await tester.pumpAndSettle();
@@ -65,6 +67,7 @@ void main() {
         initialSettings: AppSettings.defaults,
         userSessionStore: InMemoryUserSessionStore(),
         onboardingStore: onboardingStore,
+        oauthAuthController: buildTestOAuthAuthController(),
       ),
     );
     await tester.pumpAndSettle();

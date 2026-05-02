@@ -1,9 +1,15 @@
 import 'dart:developer';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../../application/auth/oauth_auth_controller.dart';
+import '../../application/auth/oauth_auth_scope.dart';
+import '../../data/auth/oauth_bff/oauth_bff_auth_service.dart';
+import '../../data/auth/oauth_bff/oauth_bff_models.dart';
 import '../../data/auth/user_session_store.dart';
 
 /// Hosts allowed during the niconico login flow.
@@ -78,6 +84,12 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _loginDetected = false;
   bool _hasError = false;
   int _postLoginPageCount = 0;
+
+  /// Optional OAuth + App Links + BFF login orchestrator. Read from the
+  /// inherited [OAuthAuthScope]. May be `null` when the scope is not wired
+  /// up (e.g. in widget tests that pump a bare LoginScreen) — in that
+  /// case the OAuth login entry point is simply not exposed.
+  OAuthAuthController? _oauthController;
 
   @override
   void initState() {
@@ -257,9 +269,118 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final OAuthAuthController? next = OAuthAuthScope.maybeOf(context);
+    if (next != _oauthController) {
+      _oauthController?.outcome.removeListener(_onOAuthOutcomeChanged);
+      _oauthController = next;
+      _oauthController?.outcome.addListener(_onOAuthOutcomeChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    _oauthController?.outcome.removeListener(_onOAuthOutcomeChanged);
+    super.dispose();
+  }
+
+  /// Listener attached to [OAuthAuthController.outcome]. When a non-null
+  /// outcome arrives (after the user returns from the browser via App
+  /// Links), surface a snackbar then mark the outcome consumed so the
+  /// same value does not re-fire when the user navigates back to this
+  /// screen.
+  void _onOAuthOutcomeChanged() {
+    final OAuthAuthController? controller = _oauthController;
+    if (controller == null || !mounted) return;
+    final OAuthCallbackOutcome? outcome = controller.outcome.value;
+    if (outcome == null) return;
+    final String message = switch (outcome) {
+      OAuthCallbackSuccess() => 'OAuth ログインに成功しました',
+      OAuthCallbackFailure(:final failure) => _humanReadableFailure(failure),
+    };
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+    controller.clearOutcome();
+  }
+
+  /// Map an [OAuthFailureReason] to a Japanese, user-facing message.
+  ///
+  /// The wording deliberately avoids OAuth-protocol jargon (`state`,
+  /// `callback`, `token exchange`) because end users do not know what
+  /// those terms mean. Internal details are still available via
+  /// developer logs (controller / service log entries) for debugging.
+  String _humanReadableFailure(OAuthFailure failure) {
+    switch (failure.reason) {
+      case OAuthFailureReason.upstreamAuthorizationError:
+        return 'ログインがキャンセル / 拒否されました';
+      case OAuthFailureReason.malformedCallback:
+        return 'ログインの応答が不正でした';
+      case OAuthFailureReason.stateMismatch:
+        return 'ログインの整合性チェックに失敗しました。もう一度お試しください。';
+      case OAuthFailureReason.tokenExchangeFailed:
+        return 'ログイン処理中にエラーが発生しました';
+      case OAuthFailureReason.networkFailure:
+        return 'ネットワークエラーが発生しました。接続を確認してもう一度お試しください。';
+      case OAuthFailureReason.persistenceFailed:
+        return 'ログイン情報の保存に失敗しました';
+    }
+  }
+
+  /// Trigger the OAuth + BFF login flow: ask the controller for the
+  /// authorize URI then hand it off to the OS browser. The result
+  /// (success / failure) is delivered asynchronously via
+  /// [_onOAuthOutcomeChanged] when Android delivers the App Links
+  /// callback.
+  Future<void> _startOAuthLogin() async {
+    final OAuthAuthController? controller = _oauthController;
+    if (controller == null) return;
+    final Uri? uri = await controller.startLogin();
+    if (uri == null) {
+      // startLogin() either no-ops (not configured) or pushes the
+      // failure outcome itself; nothing more to do here.
+      return;
+    }
+    bool launched;
+    try {
+      launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      // url_launcher can throw PlatformException on devices without a
+      // suitable browser, on missing-activity errors, etc. Treat it as
+      // a launch failure and surface the same snackbar so the user is
+      // not left wondering why nothing happened.
+      log('launchUrl threw: $e', name: 'LoginScreen');
+      launched = false;
+    }
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('ブラウザを起動できませんでした')));
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // OAuth ログイン入口は debug ビルドの開発者向け検証用としてのみ
+    // 表示する。release ではボタン自体を出さないことで、フローを通しても
+    // 機能差が生まれないボタンをユーザーに見せない (取得した access_token を
+    // アプリ内 API 呼び出しに反映する配線は #795 で対応予定。完了時に
+    // 本 `kDebugMode &&` ガードと tooltip の "(debug 限定)" を併せて外す)。
+    final bool oauthAvailable =
+        kDebugMode && (_oauthController?.isFullyConfigured ?? false);
     return Scaffold(
-      appBar: AppBar(title: const Text('ニコニコログイン')),
+      appBar: AppBar(
+        title: const Text('ニコニコログイン'),
+        actions: <Widget>[
+          if (oauthAvailable)
+            IconButton(
+              tooltip: 'OAuth でログイン (debug 限定)',
+              icon: const Icon(Icons.vpn_key),
+              onPressed: _startOAuthLogin,
+            ),
+        ],
+      ),
       body: Stack(
         children: <Widget>[
           WebViewWidget(controller: _controller),
