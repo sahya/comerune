@@ -31,3 +31,22 @@ class NgWordRule {
   @override
   String toString() => 'NgWordRule(pattern: $pattern, enabled: $enabled)';
 }
+
+/// Returns the lower-cased, trimmed pattern strings of the enabled rules.
+///
+/// Mirrors the normalization performed by `AppSettings.ngWordList` so that
+/// any caller — whether it reads the legacy global field or the
+/// per-broadcaster snapshot — produces the same shape of `List<String>`
+/// for downstream filter matching.
+///
+/// Filtering rules:
+/// - `enabled == false` rules are dropped
+/// - patterns are trimmed and lower-cased
+/// - empty patterns (after trimming) are dropped
+List<String> enabledNgWordPatterns(Iterable<NgWordRule> rules) {
+  return rules
+      .where((NgWordRule r) => r.enabled)
+      .map((NgWordRule r) => r.pattern.trim().toLowerCase())
+      .where((String s) => s.isNotEmpty)
+      .toList();
+}

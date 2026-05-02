@@ -13,12 +13,14 @@ import '../../application/timeline/timeline_store.dart';
 import '../../data/auth/user_session_store.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../data/broadcast/broadcast_control_repository.dart';
+import '../../data/filter/broadcaster_ng_store.dart';
 import '../../data/follow/favorite_user_live_checker.dart';
 import '../../data/niconico/broadcaster_embed_resolver.dart';
 import '../../domain/models/follow_program.dart';
 import '../../data/follow/follow_program_repository.dart';
 import '../../data/follow/my_program_repository.dart';
 import '../../data/user/user_attribute_store.dart';
+import '../../domain/models/ng_word_rule.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/matchers/ng_matcher.dart';
@@ -38,8 +40,78 @@ void _debugLogLazy(String Function() messageBuilder) {
   appDebugLogLazy(messageBuilder);
 }
 
-void _errorLog(String message, {Object? error}) {
-  appErrorLog(name: 'SelectScreen', message: message, error: error);
+void _errorLog(String message, {Object? error, StackTrace? stackTrace}) {
+  appErrorLog(
+    name: 'SelectScreen',
+    message: message,
+    error: error,
+    stackTrace: stackTrace,
+  );
+}
+
+// Issue #727: [BroadcasterNgSnapshot] is the in-memory tagged variant of
+// the per-broadcaster NG payload. The shape is now defined in the data
+// layer ([BroadcasterNgPayload] / [BroadcasterNgSnapshot] in
+// `broadcaster_ng_store.dart`) so the testable helper
+// [computeContentFilterInputs] below — and its tests — can reference the
+// same record shape without depending on this widget file.
+
+/// Convenience getter to avoid spelling out the empty record at every
+/// call-site. Returns a fresh value each time; the constituent fields
+/// themselves are still const collections so the cost is negligible.
+//
+// const-record-with-collections compat: the analyzer (Dart 3.x) does not
+// accept a top-level `const BroadcasterNgSnapshot empty = (...)` even
+// though every constituent field is itself const, so we keep the getter
+// form. Revisit if the const-record story improves in a future SDK.
+BroadcasterNgSnapshot get _emptyBroadcasterNgSnapshot => (
+  broadcasterId: null,
+  ngUserIds: const <String>{},
+  rules: const <NgWordRule>[],
+);
+
+/// Pure logic for [_SelectScreenState._resolveContentFilter], extracted as
+/// a top-level function so it can be unit-tested without spinning up a
+/// full widget tree.
+///
+/// See [_SelectScreenState._resolveContentFilter] for the resolution
+/// rules and the rationale for the legacy union (Issue #727 PR1).
+@visibleForTesting
+({Set<String> ngUserIds, List<String> ngWords}) computeContentFilterInputs({
+  required AppSettings settings,
+  required String? currentBroadcasterId,
+  required BroadcasterNgSnapshot snapshot,
+  required bool hasStore,
+}) {
+  // Per-broadcaster path: store is wired AND we are connected AND the
+  // in-memory snapshot reflects the currently-active broadcaster (i.e.
+  // not a stale load from a previous broadcaster).
+  final bool perBroadcasterActive =
+      hasStore &&
+      currentBroadcasterId != null &&
+      snapshot.broadcasterId == currentBroadcasterId;
+  if (perBroadcasterActive) {
+    // Issue #727 MUST FIX 1: union legacy fields into the snapshot so
+    // edits from the not-yet-retargeted NgUserListScreen /
+    // NgWordListScreen do not silently disappear while a broadcaster is
+    // connected. Both sides go through `enabledNgWordPatterns` /
+    // lower-cased dedup so the shape stays consistent.
+    // TODO(#727): remove legacy union once PR2 lands.
+    final Set<String> mergedUserIds = <String>{
+      ...snapshot.ngUserIds,
+      ...settings.ngUserIdSet,
+    };
+    // Use a LinkedHashSet so the patterns remain deterministic for
+    // tests while still de-duplicating across the two sources.
+    final Set<String> mergedWordSet = <String>{
+      ...enabledNgWordPatterns(snapshot.rules),
+      ...settings.ngWordList,
+    };
+    return (ngUserIds: mergedUserIds, ngWords: mergedWordSet.toList());
+  }
+  // TODO(#727): remove together with PR2 once NG list screens write
+  // through BroadcasterNgStore.
+  return (ngUserIds: settings.ngUserIdSet, ngWords: settings.ngWordList);
 }
 
 class SelectScreen extends StatefulWidget {
@@ -64,6 +136,7 @@ class SelectScreen extends StatefulWidget {
     this.broadcastControlRepository,
     this.favoriteUserLiveChecker,
     this.userAttributeStore,
+    this.broadcasterNgStore,
     this.commentPostController,
     this.timeshiftFetchController,
     this.androidTtsAvailability,
@@ -99,6 +172,11 @@ class SelectScreen extends StatefulWidget {
   final BroadcastControlRepository? broadcastControlRepository;
   final FavoriteUserLiveChecker? favoriteUserLiveChecker;
   final UserAttributeStore? userAttributeStore;
+
+  /// Issue #727: per-broadcaster NG store. When null, the screen falls back
+  /// to the legacy global NG fields on [AppSettings] so existing tests and
+  /// embedding scenarios that do not wire a store keep working.
+  final BroadcasterNgStore? broadcasterNgStore;
   final CommentPostController? commentPostController;
   final TimeshiftFetchController? timeshiftFetchController;
 
@@ -161,6 +239,35 @@ class _SelectScreenState extends State<SelectScreen>
         (colors: const <String, int>{}, nicknames: const <String, String>{}),
       );
   String? _currentBroadcasterId;
+
+  /// Issue #727: per-broadcaster NG snapshot used to build
+  /// [ContentFilterConfig]. Mirrors the [_userAttrNotifier] pattern so the
+  /// existing ListenableBuilder rebuild flow drives filter updates.
+  ///
+  /// The `broadcasterId` tag travels with the snapshot itself so a stale
+  /// async load that completes after the user has reconnected to a
+  /// different broadcaster can be detected by comparing the tag against
+  /// [_currentBroadcasterId] — there is no longer a separate "loaded for"
+  /// field that could drift out of sync with the snapshot value.
+  ///
+  /// Initial value is empty (broadcasterId == null); a real snapshot is
+  /// populated by `_loadBroadcasterNgState`. When
+  /// [SelectScreen.broadcasterNgStore] is null the notifier stays empty
+  /// and the legacy global fields on `AppSettings` provide the filter
+  /// input via [_resolveContentFilter].
+  final ValueNotifier<BroadcasterNgSnapshot> _broadcasterNgNotifier =
+      ValueNotifier<BroadcasterNgSnapshot>(_emptyBroadcasterNgSnapshot);
+
+  /// Issue #727 SHOULD FIX 2: monotonic generation counter for the
+  /// optimistic NG-toggle rollback guard. Each call to [_toggleNgUser]
+  /// increments this counter and captures the new value; the deferred
+  /// rollback only fires if the counter has not advanced in the meantime
+  /// (i.e. no later toggle has superseded this optimistic update).
+  ///
+  /// Replaces the previous `identical(_broadcasterNgNotifier.value, next)`
+  /// check, which relied on Dart record identity stability — not a
+  /// guaranteed property of records.
+  int _toggleNgGeneration = 0;
   final MethodChannelCommentSpeech _speechPlatform =
       MethodChannelCommentSpeech();
   int _broadcastEndedNotificationSequence = 0;
@@ -269,6 +376,7 @@ class _SelectScreenState extends State<SelectScreen>
     unawaited(_flushPendingUserAttributeWrites());
     _loginStateNotifier.dispose();
     _userAttrNotifier.dispose();
+    _broadcasterNgNotifier.dispose();
     _settingsNotifier.removeListener(_syncPlayRemainingAfterEndedSink);
     _settingsNotifier.dispose();
     _controller.dispose();
@@ -317,6 +425,12 @@ class _SelectScreenState extends State<SelectScreen>
 
   void _clearInMemoryUserAttributes() {
     _userAttrNotifier.value = _emptyUserAttributes;
+    // Issue #727: reset the per-broadcaster NG snapshot too so that
+    // disconnecting / switching broadcasters does not leak the previous
+    // broadcaster's filtered IDs into the next session's filter config.
+    // Setting broadcasterId back to null also marks the snapshot as
+    // "not yet loaded" for any in-flight `_resolveContentFilter` reader.
+    _broadcasterNgNotifier.value = _emptyBroadcasterNgSnapshot;
   }
 
   Future<void> _flushPendingUserAttributeWrites() async {
@@ -618,6 +732,7 @@ class _SelectScreenState extends State<SelectScreen>
       widget.connectionSupervisor,
       _settingsNotifier,
       _userAttrNotifier,
+      _broadcasterNgNotifier,
       if (widget.timelineStore != null) widget.timelineStore!,
       if (widget.statisticsStore != null) widget.statisticsStore!,
       if (widget.programTitleNotifier != null) widget.programTitleNotifier!,
@@ -738,23 +853,12 @@ class _SelectScreenState extends State<SelectScreen>
             totalCommentCount: widget.statisticsStore?.totalCommentCount ?? 0,
             activeUserCount: widget.statisticsStore?.activeUserCount ?? 0,
           ),
-          contentFilter: ContentFilterConfig(
-            ngUserIds: _settingsNotifier.value.ngUserIdSet,
-            ngWords: _settingsNotifier.value.ngWordList,
-            starPrefixHidingEnabled:
-                _settingsNotifier.value.starPrefixHidingEnabled,
-            slashPrefixSkipEnabled:
-                _settingsNotifier.value.slashPrefixSkipEnabled,
-            emphasizeGiftNicoadComment:
-                _settingsNotifier.value.emphasizeGiftNicoadComment,
-            userColorMap: _userAttrNotifier.value.colors,
-            userNicknameMap: _userAttrNotifier.value.nicknames,
-            ngProtectionNotificationEnabled:
-                _settingsNotifier.value.ngProtectionNotificationEnabled,
-            ngDisplayPreferences: NgDisplayPreferences.fromAppSettings(
-              _settingsNotifier.value,
-            ),
-          ),
+          // Issue #727: route NG filter input through the per-broadcaster
+          // store when one is wired and a snapshot is loaded for the
+          // active broadcaster. Falls back to the legacy global fields
+          // otherwise so unconnected users / minimally-wired hosts still
+          // get the user's pre-migration NG configuration.
+          contentFilter: _buildContentFilterConfig(),
           messageTypeVisibility: MessageTypeVisibilityConfig(
             showOperatorComment: _settingsNotifier.value.showOperatorComment,
             showSystemMessage: _settingsNotifier.value.showSystemMessage,
@@ -956,6 +1060,10 @@ class _SelectScreenState extends State<SelectScreen>
           '(broadcasterId=$broadcasterId)',
     );
     _currentBroadcasterId = broadcasterId;
+    // Issue #727: kick off the per-broadcaster NG load alongside user
+    // attributes. Independent future so a slow NG load cannot stall the
+    // color/nickname display, and vice versa.
+    unawaited(_loadBroadcasterNgState(broadcasterId));
     final UserAttributesSnapshot loaded = await widget.userAttributeStore!
         .loadAttributes(broadcasterId);
     final Map<String, int> diskColors = loaded.colors;
@@ -1027,6 +1135,104 @@ class _SelectScreenState extends State<SelectScreen>
         );
       }
     }
+  }
+
+  /// Issue #727: load the per-broadcaster NG snapshot for [broadcasterId]
+  /// from [SelectScreen.broadcasterNgStore] and update
+  /// [_broadcasterNgNotifier]. No-op when the store is not wired.
+  ///
+  /// Discards stale results when the user has switched to a different
+  /// broadcaster mid-load; this matches the user-attribute load pattern
+  /// just above.
+  Future<void> _loadBroadcasterNgState(String broadcasterId) async {
+    final BroadcasterNgStore? store = widget.broadcasterNgStore;
+    if (store == null) {
+      return;
+    }
+    try {
+      // Issue #727 review fix: single combined load avoids the duplicate
+      // template-seeding round-trip that calling loadNgUserIds + loadNg
+      // WordRules back to back would do on first access.
+      final ({Set<String> ngUserIds, List<NgWordRule> rules}) snapshot =
+          await store.loadBroadcasterNgAttributes(broadcasterId);
+      if (!mounted || _currentBroadcasterId != broadcasterId) {
+        return;
+      }
+      _broadcasterNgNotifier.value = (
+        broadcasterId: broadcasterId,
+        ngUserIds: snapshot.ngUserIds,
+        rules: snapshot.rules,
+      );
+    } on Object catch (error, stackTrace) {
+      _errorLog(
+        '_loadBroadcasterNgState: failed for $broadcasterId',
+        error: error,
+      );
+      // Defensive fallback: leave the previous snapshot in place rather
+      // than wiping it on a transient read failure. The legacy global
+      // settings still flow through `_resolveContentFilter` while this
+      // runs because the notifier value never goes stale into the build.
+      appDebugLogLazy(
+        () => '[SelectScreen] _loadBroadcasterNgState stack: $stackTrace',
+      );
+    }
+  }
+
+  /// Issue #727: composes a [ContentFilterConfig] sourced from the
+  /// per-broadcaster store when available, or the legacy global settings
+  /// otherwise. The non-NG fields always come from [_settingsNotifier]
+  /// since they remain global in PR1.
+  ContentFilterConfig _buildContentFilterConfig() {
+    final ({Set<String> ngUserIds, List<String> ngWords}) ng =
+        _resolveContentFilter();
+    return ContentFilterConfig(
+      ngUserIds: ng.ngUserIds,
+      ngWords: ng.ngWords,
+      starPrefixHidingEnabled: _settingsNotifier.value.starPrefixHidingEnabled,
+      slashPrefixSkipEnabled: _settingsNotifier.value.slashPrefixSkipEnabled,
+      emphasizeGiftNicoadComment:
+          _settingsNotifier.value.emphasizeGiftNicoadComment,
+      userColorMap: _userAttrNotifier.value.colors,
+      userNicknameMap: _userAttrNotifier.value.nicknames,
+      ngProtectionNotificationEnabled:
+          _settingsNotifier.value.ngProtectionNotificationEnabled,
+      ngDisplayPreferences: NgDisplayPreferences.fromAppSettings(
+        _settingsNotifier.value,
+      ),
+    );
+  }
+
+  /// Issue #727: returns the (ngUserIds, ngWords) pair to feed into the
+  /// active [ContentFilterConfig].
+  ///
+  /// Resolution order:
+  ///   1. When a broadcaster is connected and the per-broadcaster store
+  ///      has produced a snapshot tagged with that same broadcaster, use
+  ///      the snapshot — but **union** the current legacy
+  ///      `settings.ngUserIdSet` / `settings.ngWordList` into the result.
+  ///   2. Otherwise fall back to the legacy global fields on
+  ///      [AppSettings] so unconnected users (and hosts that do not pass
+  ///      a [BroadcasterNgStore]) still see their existing NG filter.
+  ///
+  /// **Why union?** The legacy `NgUserListScreen` / `NgWordListScreen`
+  /// management screens still write to `AppSettings.ngUserIds` /
+  /// `AppSettings.ngWordRules` in this PR. Without the union, a user
+  /// editing NG entries from those screens while connected to a
+  /// broadcaster would see no filter effect — a silent regression.
+  /// The per-broadcaster path remains the source of truth for writes
+  /// (the long-press toggle in `_toggleNgUser` writes only there); the
+  /// union is a temporary read-side bridge so legacy edits leak through
+  /// until PR2 retargets those screens to write through
+  /// [BroadcasterNgStore].
+  ///
+  /// TODO(#727): remove legacy union once PR2 lands.
+  ({Set<String> ngUserIds, List<String> ngWords}) _resolveContentFilter() {
+    return computeContentFilterInputs(
+      settings: _settingsNotifier.value,
+      currentBroadcasterId: _currentBroadcasterId,
+      snapshot: _broadcasterNgNotifier.value,
+      hasStore: widget.broadcasterNgStore != null,
+    );
   }
 
   void _onUserColorChanged(String userId, int colorValue) {
@@ -1166,7 +1372,101 @@ class _SelectScreenState extends State<SelectScreen>
     );
   }
 
+  /// Issue #727: long-press NG toggle writes through the per-broadcaster
+  /// NG store when available, scoping the block to the active broadcaster.
+  /// Falls back to the legacy global field on [AppSettings] when either
+  /// the store or the broadcaster ID is missing — this preserves behavior
+  /// for tests and minimally-wired embedders.
+  ///
+  /// In the per-broadcaster path the [_settingsNotifier] is intentionally
+  /// NOT mutated; the legacy global fields are managed by the dedicated
+  /// list screens (PR2 will retarget them to the new store).
   void _toggleNgUser(String userId) {
+    if (userId.isEmpty) {
+      return;
+    }
+    final BroadcasterNgStore? ngStore = widget.broadcasterNgStore;
+    final String? broadcasterId = _currentBroadcasterId;
+    if (ngStore != null && broadcasterId != null) {
+      final BroadcasterNgSnapshot snapshot = _broadcasterNgNotifier.value;
+      final bool isCurrentlyNg = snapshot.ngUserIds.contains(userId);
+      final Set<String> nextIds = <String>{...snapshot.ngUserIds};
+      if (isCurrentlyNg) {
+        nextIds.remove(userId);
+      } else {
+        nextIds.add(userId);
+      }
+      // Optimistic in-memory update tagged with the current broadcaster.
+      // The optimistic value is captured up front so we can revert it if
+      // the store write fails below.
+      final BroadcasterNgSnapshot previous = snapshot;
+      final BroadcasterNgSnapshot next = (
+        broadcasterId: broadcasterId,
+        ngUserIds: nextIds,
+        rules: snapshot.rules,
+      );
+      // Issue #727 SHOULD FIX 2: capture the per-toggle generation so the
+      // deferred rollback below can detect a later toggle and bail out
+      // without clobbering newer state.
+      final int gen = ++_toggleNgGeneration;
+      _broadcasterNgNotifier.value = next;
+      final Future<void> write = isCurrentlyNg
+          ? ngStore.removeNgUserId(broadcasterId, userId)
+          : ngStore.addNgUserId(broadcasterId, userId);
+      // Issue #727 review fix: roll back the optimistic in-memory state
+      // on persistence failure so the UI does not drift from the stored
+      // truth. Only reverts when the broadcaster is still active and the
+      // generation counter has not advanced — otherwise a later edit
+      // (toggle, switch broadcaster, disconnect) has superseded this
+      // one and rolling back would clobber the newer state.
+      unawaited(
+        write.onError<Object>((Object error, StackTrace stackTrace) {
+          _errorLog(
+            '_toggleNgUser: persistence failed; rolling back '
+            '(userId=$userId, isCurrentlyNg=$isCurrentlyNg)',
+            error: error,
+            stackTrace: stackTrace,
+          );
+          if (!mounted) {
+            return;
+          }
+          if (_currentBroadcasterId != broadcasterId) {
+            return;
+          }
+          // Issue #727 SHOULD FIX 2: replaces the previous
+          // `identical(_broadcasterNgNotifier.value, next)` check; Dart
+          // records do not guarantee stable identity so the generation
+          // counter is the robust signal that no later toggle has
+          // superseded this one.
+          if (_toggleNgGeneration != gen) {
+            return;
+          }
+          _broadcasterNgNotifier.value = previous;
+          // Issue #727 SHOULD FIX 1: surface the failure to the user so
+          // they know the toggle did not stick. Reuses the existing
+          // `ScaffoldMessenger.of(context)` flow for styling/lifecycle
+          // consistency with other snackbars in this file (no GlobalKey
+          // is wired). The string is inlined for now; it will move to
+          // `AppStrings` once a `SelectScreenStrings` group is added.
+          // TODO(#476): centralise this string under AppStrings.
+          final ScaffoldMessengerState? messenger = ScaffoldMessenger.maybeOf(
+            context,
+          );
+          messenger
+            ?..hideCurrentSnackBar()
+            ..showSnackBar(
+              const SnackBar(content: Text('NG ユーザー設定の保存に失敗しました')),
+            );
+        }),
+      );
+      return;
+    }
+    // Fallback: legacy global path. Used when no broadcaster is connected
+    // or when the store is not wired (e.g. tests). When PR2 retargets the
+    // list screens this branch is the last remaining writer of the
+    // legacy fields, but it remains as a safety net.
+    // TODO(#727): remove together with PR2 once NG list screens write
+    // through BroadcasterNgStore.
     final AppSettings current = _settingsNotifier.value;
     final AppSettings updated = current.isNgUser(userId)
         ? current.removeNgUserId(userId)
