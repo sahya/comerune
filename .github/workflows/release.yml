@@ -126,8 +126,46 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/setup-voicevox-libs.sh
 
+      - name: Configure OAuth build-time defines
+        env:
+          NICONICO_OAUTH_CLIENT_ID: ${{ secrets.NICONICO_OAUTH_CLIENT_ID }}
+          OAUTH_BFF_HOST: ${{ secrets.OAUTH_BFF_HOST }}
+          OAUTH_AUTHORIZE_ENDPOINT: ${{ secrets.OAUTH_AUTHORIZE_ENDPOINT }}
+        run: |
+          # Generate android/oauth_bff.env in the same shape that local
+          # `make build-release` expects. The file is consumed by:
+          #   1. Flutter via --dart-define-from-file (compile-time const
+          #      values for OAuthBffConfig.production())
+          #   2. android/app/build.gradle.kts via Properties().load() to
+          #      inject OAUTH_BFF_HOST into the App Links intent-filter
+          #      manifestPlaceholder
+          # Both must read the same source so the AndroidManifest host
+          # and the Dart-side redirectUri stay in sync. Without this
+          # file gradle would fall back to oauth-bff.example.invalid and
+          # the App Links intent-filter would never match the real
+          # production host.
+          #
+          # Treated as non-secret per OAuth spec (client_id appears in
+          # authorize URLs; host appears in the publicly served
+          # assetlinks.json) but sourced from repository secrets so they
+          # are not exposed in the public workflow file.
+          #
+          # Use printf with positional args rather than a heredoc so the
+          # secret values bypass shell metacharacter interpretation
+          # ($(), backticks, parameter expansion) entirely.
+          {
+            printf 'NICONICO_OAUTH_CLIENT_ID=%s\n' "$NICONICO_OAUTH_CLIENT_ID"
+            printf 'OAUTH_BFF_HOST=%s\n' "$OAUTH_BFF_HOST"
+            printf 'OAUTH_AUTHORIZE_ENDPOINT=%s\n' "$OAUTH_AUTHORIZE_ENDPOINT"
+          } > android/oauth_bff.env
+
       - name: Build release APK for size check
-        run: flutter build apk --release --target-platform android-arm64 --obfuscate --split-debug-info=build/debug-info
+        run: |
+          flutter build apk --release \
+            --target-platform android-arm64 \
+            --obfuscate \
+            --split-debug-info=build/debug-info \
+            --dart-define-from-file=android/oauth_bff.env
 
       - name: Report APK size threshold warning
         env:
@@ -168,6 +206,7 @@ jobs:
           rm -f android/keystore/release.jks
           rm -f android/key.properties
           rm -f android/app_id.properties
+          rm -f android/oauth_bff.env
 
   # TODO: チーム拡大時は environment protection rules + required reviewers を設定し、
   #       リリース実行者を制限する（workflow_dispatch は write 権限者全員が実行可能なため）
