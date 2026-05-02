@@ -2,7 +2,7 @@ name: comerune
 description: ニコ生コメント取得・表示・読み上げアプリ
 publish_to: "none"
 
-version: 1.2.0+1
+version: 1.0.0+2
 
 environment:
   sdk: ">=3.11.0 <4.0.0"
