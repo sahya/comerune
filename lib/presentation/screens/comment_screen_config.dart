@@ -282,7 +282,7 @@ class CommentSpeechConfig {
     this.isSpeechMuted = false,
     this.androidTtsAvailability,
     this.playRemainingAfterEnded = true,
-    this.onSpeechQueueDrained,
+    this.onSpeechGraceEnded,
     this.timelineStore,
   });
 
@@ -340,13 +340,14 @@ class CommentSpeechConfig {
   final bool playRemainingAfterEnded;
 
   /// Issue #739: optional callback fired when the comment screen's grace
-  /// window ends (timeout, queue drained, manual stop, etc.). Wired by the
-  /// app composition root to [ForegroundServiceController.notifyQueueDrained]
-  /// so the FGS notification can drop early when speech actually finishes,
-  /// instead of waiting out the controller's own 30 s timer.
+  /// window ends (timeout, queue drained, or speech disabled mid-grace).
+  /// Wired by the app composition root to
+  /// [ForegroundServiceController.notifyQueueDrained] so the FGS notification
+  /// can drop early when speech actually finishes or is cancelled, instead of
+  /// waiting out the controller's own 30 s timer.
   ///
   /// Null in test harnesses that do not need to assert FGS coordination.
-  final VoidCallback? onSpeechQueueDrained;
+  final VoidCallback? onSpeechGraceEnded;
 
   /// Issue #758: optional source for the background speech poll timer.
   ///

@@ -69,7 +69,7 @@ class SelectScreen extends StatefulWidget {
     this.androidTtsAvailability,
     this.broadcasterEmbedResolver,
     this.playRemainingAfterEndedSink,
-    this.onSpeechQueueDrained,
+    this.onSpeechGraceEnded,
     super.key,
   });
 
@@ -125,10 +125,11 @@ class SelectScreen extends StatefulWidget {
   /// the notifier.
   final ValueNotifier<bool>? playRemainingAfterEndedSink;
 
-  /// Issue #739: forwarded to [CommentSpeechConfig.onSpeechQueueDrained].
-  /// Called when the comment screen's speech grace ends so the parallel FGS
-  /// grace can terminate early. Optional — null in test harnesses.
-  final VoidCallback? onSpeechQueueDrained;
+  /// Issue #739: forwarded to [CommentSpeechConfig.onSpeechGraceEnded].
+  /// Called when the comment screen's speech grace ends (timeout, queue
+  /// drained, or speech disabled mid-grace) so the parallel FGS grace can
+  /// terminate early. Optional — null in test harnesses.
+  final VoidCallback? onSpeechGraceEnded;
 
   @override
   State<SelectScreen> createState() => _SelectScreenState();
@@ -779,7 +780,7 @@ class _SelectScreenState extends State<SelectScreen>
             androidTtsAvailability: widget.androidTtsAvailability,
             playRemainingAfterEnded:
                 _settingsNotifier.value.playRemainingAfterEnded,
-            onSpeechQueueDrained: widget.onSpeechQueueDrained,
+            onSpeechGraceEnded: widget.onSpeechGraceEnded,
             // Issue #758: bg poll timer reads the latest snapshot directly
             // from the store (widget.messages stops updating in bg because
             // frame scheduling is paused).

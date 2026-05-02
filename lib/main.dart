@@ -629,7 +629,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
             // queue inside the grace window, signal the FGS controller so its
             // parallel grace timer can end early too instead of waiting out
             // the full 30 s. No-op when the FGS controller is not configured.
-            onSpeechQueueDrained:
+            onSpeechGraceEnded:
                 _foregroundServiceController?.notifyQueueDrained,
           ),
         ),

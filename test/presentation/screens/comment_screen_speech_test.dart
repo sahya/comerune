@@ -1351,7 +1351,7 @@ void main() {
     });
 
     testWidgets(
-      'broadcast end grace fires the onSpeechQueueDrained callback when ending',
+      'broadcast end grace fires the onSpeechGraceEnded callback when ending',
       (WidgetTester tester) async {
         final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
         int callbackInvocations = 0;
@@ -1371,7 +1371,7 @@ void main() {
               speechConfig: CommentSpeechConfig(
                 speechPlatform: fakePlatform,
                 speechSettings: const SpeechSettings(enabled: true),
-                onSpeechQueueDrained: () => callbackInvocations++,
+                onSpeechGraceEnded: () => callbackInvocations++,
               ),
             ),
           ),
@@ -1391,7 +1391,7 @@ void main() {
         expect(
           callbackInvocations,
           1,
-          reason: 'onSpeechQueueDrained must fire exactly once on early end',
+          reason: 'onSpeechGraceEnded must fire exactly once on early end',
         );
 
         await tester.pumpWidget(const SizedBox.shrink());
@@ -1497,6 +1497,77 @@ void main() {
 
       await tester.pumpWidget(const SizedBox.shrink());
     });
+
+    testWidgets(
+      'speech disabled mid-grace fires onSpeechGraceEnded immediately',
+      (WidgetTester tester) async {
+        // Verifies Phase 2 of Issue #764: when the user disables speech while
+        // a grace timer is running, _cancelSpeechGrace fires onSpeechGraceEnded
+        // so the FGS controller's "読み上げ完了待ち..." notification clears
+        // immediately instead of persisting for the full 30 s.
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        int graceEndedCount = 0;
+
+        Widget buildHost(SpeechSettings settings) {
+          return MaterialApp(
+            home: CommentScreen(
+              programInfo: const CommentProgramInfo(lv: 'lv123456789'),
+              connectionSupervisor: supervisor,
+              messages: const <AppMessage>[],
+              callbacks: CommentCallbacks(
+                onStopAllConnections: () async {},
+                onReconnectSameLv: () async {},
+                onDifferentLvConnected: (_, _) async {},
+              ),
+              themeMode: AppThemeMode.light,
+              speechConfig: CommentSpeechConfig(
+                speechPlatform: fakePlatform,
+                speechSettings: settings,
+                onSpeechGraceEnded: () => graceEndedCount++,
+              ),
+            ),
+          );
+        }
+
+        await tester.pumpWidget(buildHost(const SpeechSettings(enabled: true)));
+        await tester.pumpAndSettle();
+        expect(fakePlatform.startCalled, isTrue);
+
+        // Broadcast ends → grace timer arms.
+        expect(supervisor.endBroadcast(), isTrue);
+        await tester.pump(const Duration(seconds: 1));
+        expect(graceEndedCount, 0, reason: 'grace not yet ended');
+
+        // User disables speech mid-grace (e.g. via settings UI).
+        fakePlatform.stopCalled = false;
+        await tester.pumpWidget(
+          buildHost(const SpeechSettings(enabled: false)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          graceEndedCount,
+          1,
+          reason:
+              'onSpeechGraceEnded must fire when speech is disabled mid-grace',
+        );
+        expect(
+          fakePlatform.stopCalled,
+          isTrue,
+          reason: 'speech must also stop immediately on mid-grace disable',
+        );
+
+        // Grace timer must also be cancelled — no second fire after 30 s.
+        await tester.pump(const Duration(seconds: 31));
+        expect(
+          graceEndedCount,
+          1,
+          reason: 'onSpeechGraceEnded must fire at most once',
+        );
+
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
 
     testWidgets(
       'speech startup aborts if the broadcast ends while start is pending',
