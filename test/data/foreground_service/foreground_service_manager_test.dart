@@ -32,6 +32,16 @@ void main() {
       expect(fakeOps.lastForegroundTaskOptions?.autoRunOnBoot, isFalse);
     });
 
+    test('start passes notificationIcon to operations', () async {
+      await manager.start(title: 'Test', text: 'body');
+
+      expect(fakeOps.lastNotificationIcon, isNotNull);
+      expect(
+        fakeOps.lastNotificationIcon?.metaDataName,
+        'com.example.comerune.service.NOTIFICATION_ICON',
+      );
+    });
+
     test('start sets isRunning to true and calls operations', () async {
       await manager.start(title: 'Test', text: 'body');
 
@@ -136,6 +146,7 @@ class FakeForegroundTaskOperations extends ForegroundTaskOperations {
   int updateCallCount = 0;
   String? lastStartTitle;
   String? lastStartText;
+  NotificationIcon? lastNotificationIcon;
   String? lastUpdateTitle;
   String? lastUpdateText;
   bool canStartResult = true;
@@ -163,11 +174,13 @@ class FakeForegroundTaskOperations extends ForegroundTaskOperations {
   Future<void> start({
     required String notificationTitle,
     required String notificationText,
+    NotificationIcon? notificationIcon,
     required Function callback,
   }) async {
     startCallCount++;
     lastStartTitle = notificationTitle;
     lastStartText = notificationText;
+    lastNotificationIcon = notificationIcon;
     if (startException != null) {
       throw startException!;
     }
