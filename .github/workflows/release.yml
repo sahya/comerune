@@ -2,16 +2,6 @@ name: Release
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Release version (e.g. v1.2.0, v1.3.0-beta.1)'
-        required: true
-        type: string
-      prerelease:
-        description: 'Mark as pre-release'
-        required: false
-        type: boolean
-        default: false
 
 permissions: {}
 
@@ -21,30 +11,49 @@ jobs:
     timeout-minutes: 1
     permissions:
       contents: read
+    outputs:
+      version: ${{ steps.derive.outputs.version }}
+      prerelease: ${{ steps.derive.outputs.prerelease }}
 
     steps:
-      - name: Validate version format
-        env:
-          VERSION: ${{ inputs.version }}
-        run: |
-          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
-            echo "::error::Invalid version format: ${VERSION}"
-            echo "Expected: v{major}.{minor}.{patch} or v{major}.{minor}.{patch}-{prerelease}"
-            exit 1
-          fi
-
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Derive version from pubspec.yaml
+        id: derive
+        run: |
+          # Parse `version: X.Y.Z+N` from pubspec.yaml and derive `vX.Y.Z`.
+          # Single-source rationale: prevents drift between the GitHub Release
+          # tag/name and the versionName burned into the APK/AAB.
+          NAME=$(awk '/^version:/ {gsub(/\r/,""); split($2, a, "+"); print a[1]; exit}' pubspec.yaml)
+          if [[ -z "$NAME" ]]; then
+            echo "::error::pubspec.yaml is missing a top-level 'version:' line"
+            exit 1
+          fi
+          if [[ ! "$NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "::error::pubspec.yaml version must be SemVer (X.Y.Z or X.Y.Z-prerelease): ${NAME}"
+            exit 1
+          fi
+          VERSION="v${NAME}"
+          # SemVer's "-" denotes a prerelease (e.g. v1.0.0-beta.1)
+          if [[ "$NAME" == *-* ]]; then
+            PRE=true
+          else
+            PRE=false
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${PRE}" >> "$GITHUB_OUTPUT"
+          echo "Derived: ${VERSION} (prerelease=${PRE})"
+
       - name: Check tag does not already exist
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ steps.derive.outputs.version }}
         run: |
           if git tag --list "$VERSION" | grep -q .; then
-            echo "::error::Tag ${VERSION} already exists. Semantic versioning tags are immutable."
+            echo "::error::Tag ${VERSION} already exists. Bump pubspec.yaml version to release a new tag (semantic versioning tags are immutable)."
             exit 1
           fi
 
@@ -142,14 +151,14 @@ jobs:
       - name: Upload debug symbols
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: debug-info-${{ inputs.version }}
+          name: debug-info-${{ needs.validate.outputs.version }}
           path: build/debug-info/
           retention-days: 180
 
       - name: Upload release APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: release-apk-${{ inputs.version }}
+          name: release-apk-${{ needs.validate.outputs.version }}
           path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 90
 
@@ -165,7 +174,7 @@ jobs:
   # NOTE: タグ push 後に Release 作成が失敗した場合、孤児タグが残る。
   #       再実行するには手動でタグを削除する必要がある: git push --delete origin <tag>
   release:
-    needs: ci
+    needs: [validate, ci]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -181,17 +190,17 @@ jobs:
       - name: Download release APK
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: release-apk-${{ inputs.version }}
+          name: release-apk-${{ needs.validate.outputs.version }}
           path: ./release-assets/
 
       - name: Rename release APK
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.validate.outputs.version }}
         run: mv ./release-assets/app-release.apk "./release-assets/comerune-${VERSION}-arm64.apk"
 
       - name: Create and push annotated tag
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.validate.outputs.version }}
         run: |
           git tag -a "$VERSION" -m "Release $VERSION"
           git push origin "$VERSION"
@@ -199,7 +208,7 @@ jobs:
       - name: Generate release notes
         id: notes
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.validate.outputs.version }}
         run: |
           PREV_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$' | sed -n '2p')
           DELIMITER="RELEASE_EOF_$(openssl rand -hex 8)"
@@ -255,10 +264,10 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2.2.2
         with:
-          tag_name: ${{ inputs.version }}
-          name: ${{ inputs.version }}
+          tag_name: ${{ needs.validate.outputs.version }}
+          name: ${{ needs.validate.outputs.version }}
           body: ${{ steps.notes.outputs.body }}
           draft: false
-          prerelease: ${{ inputs.prerelease }}
-          make_latest: ${{ !inputs.prerelease }}
-          files: ./release-assets/comerune-${{ inputs.version }}-arm64.apk
+          prerelease: ${{ needs.validate.outputs.prerelease }}
+          make_latest: ${{ needs.validate.outputs.prerelease == 'false' }}
+          files: ./release-assets/comerune-${{ needs.validate.outputs.version }}-arm64.apk
