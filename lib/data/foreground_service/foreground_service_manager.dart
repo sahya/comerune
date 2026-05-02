@@ -1,6 +1,6 @@
 import 'dart:developer' as developer;
+import 'dart:ui';
 
-import 'package:flutter/painting.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:meta/meta.dart';
 
