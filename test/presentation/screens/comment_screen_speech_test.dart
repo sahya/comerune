@@ -4349,6 +4349,211 @@ void main() {
       await tester.pumpAndSettle();
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Issue #753: backward-compat — unknown Kotlin event types are silently
+  // ignored by the Flutter side.
+  //
+  // The Kotlin side may emit new event types before the Flutter code is
+  // updated (e.g. `engine_not_ready`). The event subscription must survive
+  // unknown types without throwing, without altering `_speechEngineState`,
+  // and without mutating `_consecutiveAndroidTtsFailures`.
+  // ---------------------------------------------------------------------------
+  group(
+    'CommentScreen backward-compat: unknown SpeechEvent types (Issue #753)',
+    () {
+      late FakeCommentSpeechPlatform fakePlatform;
+
+      setUp(() {
+        fakePlatform = FakeCommentSpeechPlatform();
+        // Start with engine READY so the AppBar speech-status icon is visible
+        // and we can observe any unintended state change.
+        fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+          enabled: true,
+          engineState: 'READY',
+          playerState: 'IDLE',
+          queueSize: 0,
+          currentSpeakerId: 0,
+        );
+      });
+
+      tearDown(() {
+        fakePlatform.dispose();
+      });
+
+      testWidgets('unknown event type (engine_not_ready) is silently ignored', (
+        WidgetTester tester,
+      ) async {
+        // Emit an unknown event type that Kotlin may introduce before Flutter
+        // has added handling for it. The screen must not throw, must not flip
+        // the AppBar icon to error_outline, and must not call
+        // _setSpeechEngineState(error).
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Confirm the icon is visible and NOT in error state before emitting.
+        expect(
+          find.byKey(const Key('speech-status-icon')),
+          findsOneWidget,
+          reason:
+              'Speech-status icon must be present before the unknown event.',
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsNothing,
+          reason: 'Icon must not be in error state before the unknown event.',
+        );
+
+        // Emit the unknown event — `engine_not_ready` is not listed in
+        // SpeechEventType and therefore falls through _onSpeechEventInner
+        // without touching any state.
+        fakePlatform.emitEvent(
+          const SpeechEvent(
+            type: 'engine_not_ready',
+            payload: <String, dynamic>{
+              'engineType': 'VOICEVOX',
+              'engineState': 'UNINITIALIZED',
+            },
+          ),
+        );
+        // Drain the broadcast stream listener and let any rebuild settle.
+        await tester.pump();
+        await tester.pump();
+
+        // _speechEngineState must remain unchanged — no error icon.
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsNothing,
+          reason:
+              'An unknown event type must not flip the AppBar icon to '
+              'error_outline. _speechEngineState must remain unchanged '
+              '(Issue #753).',
+        );
+        // The icon widget itself must still be present — the subscription
+        // must not have been torn down.
+        expect(
+          find.byKey(const Key('speech-status-icon')),
+          findsOneWidget,
+          reason:
+              'Speech-status icon must still be present after the unknown '
+              'event — the subscription must not have been torn down.',
+        );
+      });
+
+      testWidgets(
+        'subscription stays live: valid engine_state_changed after engine_not_ready is processed',
+        (WidgetTester tester) async {
+          // After an unknown event is silently dropped the subscription must
+          // remain active. This test proves liveness by:
+          //   1. Driving the engine into ERROR via engineStateChanged: ERROR
+          //      (establishes a visible "before" state).
+          //   2. Emitting the unknown engine_not_ready — must NOT clear ERROR.
+          //   3. Emitting engineStateChanged: READY — must clear ERROR,
+          //      proving the subscription was still alive and the event was
+          //      processed (not silently dropped because the sub was torn down).
+          await tester.pumpWidget(
+            _buildScreen(
+              speechPlatform: fakePlatform,
+              speechSettings: const SpeechSettings(enabled: true),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          // Step 1: drive the engine into ERROR via the known event type.
+          fakePlatform.emitEvent(
+            const SpeechEvent(
+              type: SpeechEventType.engineStateChanged,
+              payload: <String, dynamic>{'state': 'ERROR'},
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+
+          // Sanity: ERROR icon must be present.
+          expect(
+            find.descendant(
+              of: find.byKey(const Key('speech-status-icon')),
+              matching: find.byIcon(Icons.error_outline),
+            ),
+            findsOneWidget,
+            reason:
+                'Sanity: engineStateChanged:ERROR must flip the icon to '
+                'error_outline before the unknown-event step.',
+          );
+
+          // Step 2: emit the unknown type — must NOT clear the ERROR state.
+          fakePlatform.emitEvent(
+            const SpeechEvent(
+              type: 'engine_not_ready',
+              payload: <String, dynamic>{
+                'engineType': 'VOICEVOX',
+                'engineState': 'UNINITIALIZED',
+              },
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+
+          // ERROR must still be present — the unknown event must not have
+          // called _setSpeechEngineState with any value.
+          expect(
+            find.descendant(
+              of: find.byKey(const Key('speech-status-icon')),
+              matching: find.byIcon(Icons.error_outline),
+            ),
+            findsOneWidget,
+            reason:
+                'engine_not_ready must leave _speechEngineState=ERROR '
+                'unchanged (Issue #753).',
+          );
+
+          // Step 3: emit a valid engine_state_changed: READY. If the
+          // subscription were torn down this event would be silently dropped
+          // and the ERROR icon would persist. A successful recovery here
+          // proves the subscription is still alive.
+          fakePlatform.emitEvent(
+            const SpeechEvent(
+              type: SpeechEventType.engineStateChanged,
+              payload: <String, dynamic>{'state': 'READY'},
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+
+          expect(
+            find.descendant(
+              of: find.byKey(const Key('speech-status-icon')),
+              matching: find.byIcon(Icons.error_outline),
+            ),
+            findsNothing,
+            reason:
+                'engineStateChanged:READY after engine_not_ready (ignored) '
+                'must clear the ERROR icon, proving the subscription was '
+                'still live (Issue #753).',
+          );
+          // The icon widget itself must still be present.
+          expect(
+            find.byKey(const Key('speech-status-icon')),
+            findsOneWidget,
+            reason:
+                'Speech-status icon must still be present after all events — '
+                'the subscription must remain active.',
+          );
+        },
+      );
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------
