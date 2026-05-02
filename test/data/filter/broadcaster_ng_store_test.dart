@@ -132,35 +132,32 @@ void main() {
       expect(await store.loadNgUserIds('b1'), equals(<String>{'u1', 'u2'}));
     });
 
-    test(
-      'loadBroadcasterNgAttributes seeds from template once and returns '
-      'both NG user IDs and rules in a single call',
-      () async {
-        await store.saveTemplateNgUserIds(<String>{'tu1', 'tu2'});
-        await store.saveTemplateNgWordRules(<NgWordRule>[
-          const NgWordRule(pattern: 'tw'),
-          const NgWordRule(pattern: 'off', enabled: false),
-        ]);
+    test('loadBroadcasterNgAttributes seeds from template once and returns '
+        'both NG user IDs and rules in a single call', () async {
+      await store.saveTemplateNgUserIds(<String>{'tu1', 'tu2'});
+      await store.saveTemplateNgWordRules(<NgWordRule>[
+        const NgWordRule(pattern: 'tw'),
+        const NgWordRule(pattern: 'off', enabled: false),
+      ]);
 
-        // First combined load on `b1` should template-seed and then return
-        // both halves of the snapshot consistently.
-        final ({Set<String> ngUserIds, List<NgWordRule> rules}) first =
-            await store.loadBroadcasterNgAttributes('b1');
-        expect(first.ngUserIds, equals(<String>{'tu1', 'tu2'}));
-        expect(first.rules.length, 2);
-        expect(first.rules[0].pattern, 'tw');
-        expect(first.rules[1].pattern, 'off');
-        expect(first.rules[1].enabled, isFalse);
-        expect(store.listBroadcasters(), contains('b1'));
+      // First combined load on `b1` should template-seed and then return
+      // both halves of the snapshot consistently.
+      final ({Set<String> ngUserIds, List<NgWordRule> rules}) first =
+          await store.loadBroadcasterNgAttributes('b1');
+      expect(first.ngUserIds, equals(<String>{'tu1', 'tu2'}));
+      expect(first.rules.length, 2);
+      expect(first.rules[0].pattern, 'tw');
+      expect(first.rules[1].pattern, 'off');
+      expect(first.rules[1].enabled, isFalse);
+      expect(store.listBroadcasters(), contains('b1'));
 
-        // Second call must reflect the stored slot, not the template
-        // (mutating the template afterwards must not bleed back into `b1`).
-        await store.saveTemplateNgUserIds(<String>{'changed'});
-        final ({Set<String> ngUserIds, List<NgWordRule> rules}) second =
-            await store.loadBroadcasterNgAttributes('b1');
-        expect(second.ngUserIds, equals(<String>{'tu1', 'tu2'}));
-      },
-    );
+      // Second call must reflect the stored slot, not the template
+      // (mutating the template afterwards must not bleed back into `b1`).
+      await store.saveTemplateNgUserIds(<String>{'changed'});
+      final ({Set<String> ngUserIds, List<NgWordRule> rules}) second =
+          await store.loadBroadcasterNgAttributes('b1');
+      expect(second.ngUserIds, equals(<String>{'tu1', 'tu2'}));
+    });
 
     test('malformed stored JSON degrades to empty without throwing', () async {
       // Pollute the slot directly so we exercise the catch branch.

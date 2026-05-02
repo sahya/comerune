@@ -37,7 +37,8 @@ class BroadcasterNgMigrator {
 
   /// SharedPreferences flag key that records the migration as done.
   /// Subsequent calls to [migrateIfNeeded] short-circuit when this is set.
-  static const String migrationFlagKey = 'settings.filter.migration.v1Completed';
+  static const String migrationFlagKey =
+      'settings.filter.migration.v1Completed';
 
   // Legacy key names — kept aligned with [SharedPreferencesSettingsStore].
   static const String _legacyNgWordsKey = 'settings.filter.ngWords';
