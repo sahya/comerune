@@ -35,6 +35,11 @@ android/**/GeneratedPluginRegistrant.java
 # Application ID (fork-protected — see android/app_id.properties.example)
 android/app_id.properties
 
+# OAuth BFF / OIDC build-time defines (fork-protected — see android/oauth_bff.env.example)
+# Consumed by both `flutter build --dart-define-from-file=android/oauth_bff.env`
+# and android/app/build.gradle.kts (reads OAUTH_BFF_HOST for the App Links host).
+android/oauth_bff.env
+
 # Android Developer Verification snippet (account-specific identifier from Play Console)
 # Used as ANDROID_ADI_REGISTRATION_PUBLIC_CONTENT_FILE input for `make build-adi-verification`.
 adi-registration.properties

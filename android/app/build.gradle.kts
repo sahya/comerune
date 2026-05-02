@@ -23,6 +23,32 @@ if (!appIdPropsFile.exists()) {
     logger.warn("app_id.properties not found — using fallback applicationId. See app_id.properties.example.")
 }
 
+// OAuth BFF host (App Links intent-filter target). Sourced from
+// android/oauth_bff.env which is the single source for all three OAuth
+// build-time defines (also consumed by `flutter build` via
+// --dart-define-from-file). Java Properties().load() parses the same
+// KEY=VALUE / # comments format that Flutter's .env loader does. Falls
+// back to a non-resolvable .invalid host (RFC 2606) when the contributor
+// has not provisioned the file yet, so a missing file cannot
+// accidentally bind the intent-filter to a stale/incorrect production
+// host.
+val oauthBffEnvFile = rootProject.file("oauth_bff.env")
+val oauthBffEnv = Properties().apply {
+    if (oauthBffEnvFile.exists()) {
+        oauthBffEnvFile.inputStream().use { load(it) }
+    }
+}
+val oauthBffHost: String =
+    oauthBffEnv.getProperty("OAUTH_BFF_HOST", "oauth-bff.example.invalid")
+
+if (!oauthBffEnvFile.exists()) {
+    logger.warn(
+        "oauth_bff.env not found — App Links intent-filter will use the " +
+        "fallback host '$oauthBffHost' which never resolves. See " +
+        "oauth_bff.env.example to configure the real BFF host."
+    )
+}
+
 val keyPropsFile = rootProject.file("key.properties")
 val keyProps = Properties().apply {
     if (keyPropsFile.exists()) {
@@ -83,6 +109,10 @@ android {
 
     defaultConfig {
         applicationId = configuredAppId
+        // Inject the OAuth BFF host into AndroidManifest's App Links
+        // intent-filter via the ${bffHost} placeholder. Sourced from
+        // android/oauth_bff.env so prod values are never committed.
+        manifestPlaceholders["bffHost"] = oauthBffHost
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

@@ -26,6 +26,21 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- App Links: receive the OIDC authorization callback after upstream redirect.
+                 The host is build-time injected via the bffHost manifest placeholder
+                 (sourced from android/oauth_bff.env — see oauth_bff.env.example).
+                 The same host must publish assetlinks.json under
+                 /.well-known/assetlinks.json so Android can auto-verify and intercept the
+                 callback URL into this app instead of the browser. autoVerify="true"
+                 triggers Google's offline verification on app install. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https"
+                      android:host="${bffHost}"
+                      android:pathPrefix="/auth/callback"/>
+            </intent-filter>
         </activity>
         <meta-data
             android:name="flutterEmbedding"
