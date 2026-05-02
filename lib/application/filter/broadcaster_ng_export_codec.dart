@@ -47,6 +47,8 @@ class BroadcasterNgExportCodec {
   /// a defense against oversized / malicious JSON payloads. Real
   /// broadcaster IDs are short numeric strings, so 256 is well above
   /// the legitimate range.
+  // TODO(#727 follow-up): once broadcaster IDs have a documented upper
+  // bound in the data layer, pin this constant to that bound + slack.
   static const int _maxBroadcasterIdLength = 256;
 
   /// Builds the `broadcasterNgFilter` block from the current
@@ -105,6 +107,14 @@ class BroadcasterNgExportCodec {
     // Forward-compat: tolerate any version. Known fields below are
     // read; unknown siblings are ignored without warning.
     // (We intentionally do NOT abort on `version > schemaVersion`.)
+    final Object? rawVersion = block['version'];
+    if (rawVersion is int && rawVersion > schemaVersion) {
+      developer.log(
+        'broadcasterNgFilter version $rawVersion > app schemaVersion '
+        '$schemaVersion; applying best-effort with known fields only.',
+        name: 'BroadcasterNgExportCodec',
+      );
+    }
 
     // Template.
     final Object? rawTemplate = block['template'];
