@@ -162,12 +162,12 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
   Future<void> saveNgUserIds(String broadcasterId, Iterable<String> ids) async {
     _validateBroadcasterId(broadcasterId);
     await _enqueueWrite(() async {
-      await _prefs.setString(
-        _ngUserIdsKey(broadcasterId),
-        json.encode(_normalizeIds(ids)),
+      await _ensureInitializedInline(broadcasterId);
+      await _persistInitializedSlotState(
+        broadcasterId: broadcasterId,
+        ids: _normalizeIds(ids),
+        rules: _readNgWordRules(_ngWordRulesKey(broadcasterId)),
       );
-      await _prefs.setString(_initializedKey(broadcasterId), 'true');
-      await _addToIndex(broadcasterId);
     });
   }
 
@@ -178,12 +178,12 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
   ) async {
     _validateBroadcasterId(broadcasterId);
     await _enqueueWrite(() async {
-      await _prefs.setString(
-        _ngWordRulesKey(broadcasterId),
-        json.encode(rules.map((NgWordRule r) => r.toMap()).toList()),
+      await _ensureInitializedInline(broadcasterId);
+      await _persistInitializedSlotState(
+        broadcasterId: broadcasterId,
+        ids: _readNgUserIds(_ngUserIdsKey(broadcasterId)).toList(),
+        rules: rules,
       );
-      await _prefs.setString(_initializedKey(broadcasterId), 'true');
-      await _addToIndex(broadcasterId);
     });
   }
 
@@ -199,13 +199,11 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
       if (current.contains(userId)) {
         return;
       }
-      final List<String> updated = <String>[...current, userId];
-      await _prefs.setString(
-        _ngUserIdsKey(broadcasterId),
-        json.encode(updated),
+      await _persistInitializedSlotState(
+        broadcasterId: broadcasterId,
+        ids: <String>[...current, userId],
+        rules: _readNgWordRules(_ngWordRulesKey(broadcasterId)),
       );
-      await _prefs.setString(_initializedKey(broadcasterId), 'true');
-      await _addToIndex(broadcasterId);
     });
   }
 
@@ -224,12 +222,11 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
       final List<String> updated = current
           .where((String id) => id != userId)
           .toList();
-      await _prefs.setString(
-        _ngUserIdsKey(broadcasterId),
-        json.encode(updated),
+      await _persistInitializedSlotState(
+        broadcasterId: broadcasterId,
+        ids: updated,
+        rules: _readNgWordRules(_ngWordRulesKey(broadcasterId)),
       );
-      await _prefs.setString(_initializedKey(broadcasterId), 'true');
-      await _addToIndex(broadcasterId);
     });
   }
 
@@ -310,6 +307,31 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
     );
     await _prefs.setString(_initializedKey(broadcasterId), 'true');
     await _addToIndex(broadcasterId);
+  }
+
+  Future<void> _persistInitializedSlotState({
+    required String broadcasterId,
+    required List<String> ids,
+    required List<NgWordRule> rules,
+  }) async {
+    if (ids.isEmpty && rules.isEmpty) {
+      await _removeBroadcasterSlot(broadcasterId);
+      return;
+    }
+    await _prefs.setString(_ngUserIdsKey(broadcasterId), json.encode(ids));
+    await _prefs.setString(
+      _ngWordRulesKey(broadcasterId),
+      json.encode(rules.map((NgWordRule r) => r.toMap()).toList()),
+    );
+    await _prefs.setString(_initializedKey(broadcasterId), 'true');
+    await _addToIndex(broadcasterId);
+  }
+
+  Future<void> _removeBroadcasterSlot(String broadcasterId) async {
+    await _prefs.remove(_ngUserIdsKey(broadcasterId));
+    await _prefs.remove(_ngWordRulesKey(broadcasterId));
+    await _prefs.remove(_initializedKey(broadcasterId));
+    await _removeFromIndex(broadcasterId);
   }
 
   Set<String> _readNgUserIds(String key) {
@@ -403,6 +425,17 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
     }
     index.add(broadcasterId);
     await _prefs.setString(_indexKey, json.encode(index));
+  }
+
+  Future<void> _removeFromIndex(String broadcasterId) async {
+    final List<String> remaining = _readIndex()
+        .where((String id) => id != broadcasterId)
+        .toList();
+    if (remaining.isEmpty) {
+      await _prefs.remove(_indexKey);
+      return;
+    }
+    await _prefs.setString(_indexKey, json.encode(remaining));
   }
 
   Future<T> _enqueueWrite<T>(Future<T> Function() operation) {

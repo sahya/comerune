@@ -175,6 +175,7 @@ void main() {
     test(
       'saveNgWordRules creates a broadcaster slot after template-backed edit',
       () async {
+        await store.saveTemplateNgUserIds(<String>{'seed-user'});
         await store.saveTemplateNgWordRules(<NgWordRule>[
           const NgWordRule(pattern: 'seed-word'),
         ]);
@@ -190,9 +191,53 @@ void main() {
           persisted.map((NgWordRule rule) => rule.pattern).toList(),
           <String>['seed-word', 'added-word'],
         );
+        expect(await store.loadNgUserIds('b1'), equals(<String>{'seed-user'}));
         expect(store.listBroadcasters(), <String>['b1']);
       },
     );
+
+    test('saveNgUserIds creates a broadcaster slot after template-backed edit '
+        'while preserving template NG word rules', () async {
+      await store.saveTemplateNgWordRules(<NgWordRule>[
+        const NgWordRule(pattern: 'seed-word'),
+      ]);
+
+      await store.saveNgUserIds('b1', <String>['added-user']);
+
+      expect(await store.loadNgUserIds('b1'), equals(<String>{'added-user'}));
+      expect(
+        (await store.loadNgWordRules('b1')).map((NgWordRule r) => r.pattern),
+        <String>['seed-word'],
+      );
+      expect(store.listBroadcasters(), <String>['b1']);
+    });
+
+    test(
+      'saveNgWordRules removes the broadcaster slot when both rules and users '
+      'become empty',
+      () async {
+        await store.saveNgUserIds('b1', <String>['u1']);
+        await store.saveNgWordRules('b1', <NgWordRule>[
+          const NgWordRule(pattern: 'word1'),
+        ]);
+
+        await store.saveNgUserIds('b1', const <String>[]);
+        expect(store.listBroadcasters(), <String>['b1']);
+
+        await store.saveNgWordRules('b1', const <NgWordRule>[]);
+
+        expect(store.listBroadcasters(), isEmpty);
+      },
+    );
+
+    test('removeNgUserId removes the broadcaster slot when the last user is '
+        'deleted and no rules remain', () async {
+      await store.saveNgUserIds('b1', <String>['u1']);
+
+      await store.removeNgUserId('b1', 'u1');
+
+      expect(store.listBroadcasters(), isEmpty);
+    });
 
     test('malformed stored JSON degrades to empty without throwing', () async {
       // Pollute the slot directly so we exercise the catch branch.
