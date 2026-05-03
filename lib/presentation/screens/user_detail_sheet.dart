@@ -6,6 +6,27 @@ import '../../domain/models/app_settings.dart';
 import '../../domain/utils/elapsed_formatter.dart';
 import '../theme/app_theme.dart';
 
+// --- Color picker layout constants ---
+//
+// Visible diameter of each color circle button. Matches the previous design
+// so this change is purely about the hit-target, not the visual size.
+const double _kColorCircleVisualSize = 32.0;
+
+// Material/WCAG minimum recommended interactive target size. Each preset color
+// circle and the custom-color button is wrapped in a transparent 48×48 box
+// so taps register reliably even when the visible circle is smaller. The
+// surrounding `Wrap` uses `spacing: 0` so the transparent padding alone
+// (8dp on each side) creates a 16dp visual gap between adjacent circles
+// while keeping their hit areas non-overlapping.
+const double _kColorCircleHitTargetSize = 48.0;
+
+// Cap for the custom color picker dialog. The hue wheel inside
+// flutter_colorpicker grows with available width, so on tablets / landscape
+// the dialog can become unreadably large. These caps keep the picker at a
+// usable size on big screens while leaving small phones unaffected.
+const double _kColorPickerDialogMaxWidth = 420.0;
+const double _kColorPickerDialogMaxHeight = 640.0;
+
 /// Converts a [Color] to its ARGB32 integer representation without using the
 /// deprecated `Color.value` getter.
 int _colorToARGB32(Color c) =>
@@ -217,34 +238,37 @@ class UserDetailSheet extends StatelessWidget {
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text(
-            'コメント履歴（${userComments.length}件）',
-            key: const Key('user-detail-comment-count'),
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
-        ),
-        Expanded(
-          child: ListView.builder(
-            key: const Key('user-detail-comment-list'),
-            controller: scrollController,
-            itemCount: userComments.length,
-            itemBuilder: (BuildContext context, int index) {
-              final AppMessage message = userComments[index];
-              return _UserCommentRow(
-                key: Key('user-comment-row-$index'),
-                message: message,
-                themeColors: themeColors,
-                beginAt: beginAt,
-              );
-            },
-          ),
-        ),
-      ],
+    // The header (count) used to be a separate Padding above an
+    // Expanded(ListView). Wrapping the list in Expanded inside the
+    // DraggableScrollableSheet column became fragile after the color
+    // palette grew vertically (48dp hit targets), causing a small
+    // overflow at the bottom of the sheet. Folding the header into the
+    // list as item 0 lets the ListView own all vertical space and
+    // removes the overflow without changing visible layout.
+    return ListView.builder(
+      key: const Key('user-detail-comment-list'),
+      controller: scrollController,
+      itemCount: userComments.length + 1,
+      itemBuilder: (BuildContext context, int index) {
+        if (index == 0) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              'コメント履歴（${userComments.length}件）',
+              key: const Key('user-detail-comment-count'),
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          );
+        }
+        final int messageIndex = index - 1;
+        final AppMessage message = userComments[messageIndex];
+        return _UserCommentRow(
+          key: Key('user-comment-row-$messageIndex'),
+          message: message,
+          themeColors: themeColors,
+          beginAt: beginAt,
+        );
+      },
     );
   }
 }
@@ -340,8 +364,14 @@ class _ColorPaletteRow extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            // Each child is a 48×48 hit-target box that contains a 32dp
+            // visible circle centered with 8dp transparent padding. With
+            // spacing/runSpacing 0, adjacent boxes touch exactly at the
+            // hit-area boundary, which keeps the visual gap between the
+            // visible circles at 16dp (8dp + 8dp) without overlapping
+            // tap regions.
+            spacing: 0,
+            runSpacing: 0,
             children: <Widget>[
               for (final ({Color color, String label}) entry
                   in kUserColorPaletteEntries)
@@ -405,33 +435,44 @@ class _CustomColorButton extends StatelessWidget {
     return Semantics(
       button: true,
       label: hasCustom ? 'カスタムカラー 選択中' : 'カスタムカラーを選択',
-      child: GestureDetector(
-        onTap: () => _showCustomColorDialog(context),
-        child: Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            color: displayColor,
-            shape: BoxShape.circle,
-            border: hasCustom
-                ? Border.all(color: Colors.white, width: 2)
-                : Border.all(color: borderColor, width: 1),
-            boxShadow: hasCustom
-                ? <BoxShadow>[
-                    BoxShadow(
-                      color: displayColor.withValues(alpha: 0.6),
-                      blurRadius: 4,
-                      spreadRadius: 1,
-                    ),
-                  ]
-                : null,
-          ),
-          child: Icon(
-            hasCustom ? Icons.check : Icons.add,
-            color: hasCustom
-                ? Colors.white
-                : Theme.of(context).colorScheme.onSurfaceVariant,
-            size: 18,
+      // 48×48 transparent hit target wraps the visible 32dp circle so
+      // taps register reliably (Material/WCAG min target). HitTestBehavior
+      // .opaque ensures the surrounding transparent area still counts as
+      // tappable.
+      child: SizedBox(
+        width: _kColorCircleHitTargetSize,
+        height: _kColorCircleHitTargetSize,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _showCustomColorDialog(context),
+          child: Center(
+            child: Container(
+              width: _kColorCircleVisualSize,
+              height: _kColorCircleVisualSize,
+              decoration: BoxDecoration(
+                color: displayColor,
+                shape: BoxShape.circle,
+                border: hasCustom
+                    ? Border.all(color: Colors.white, width: 2)
+                    : Border.all(color: borderColor, width: 1),
+                boxShadow: hasCustom
+                    ? <BoxShadow>[
+                        BoxShadow(
+                          color: displayColor.withValues(alpha: 0.6),
+                          blurRadius: 4,
+                          spreadRadius: 1,
+                        ),
+                      ]
+                    : null,
+              ),
+              child: Icon(
+                hasCustom ? Icons.check : Icons.add,
+                color: hasCustom
+                    ? Colors.white
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
+                size: 18,
+              ),
+            ),
           ),
         ),
       ),
@@ -448,17 +489,38 @@ class _CustomColorButton extends StatelessWidget {
       builder: (BuildContext dialogContext) {
         return AlertDialog(
           title: const Text('カスタムカラー'),
-          content: SingleChildScrollView(
-            child: ColorPicker(
-              pickerColor: picked,
-              onColorChanged: (Color value) {
-                picked = value;
-              },
-              pickerAreaHeightPercent: 0.6,
-              enableAlpha: false,
-              displayThumbColor: true,
-              paletteType: PaletteType.hueWheel,
-              labelTypes: const <ColorLabelType>[],
+          // Cap the dialog content so the hue wheel does not balloon on
+          // tablets / landscape. ConstrainedBox is intentionally outside
+          // the SingleChildScrollView so the scroll view inherits the cap
+          // and the picker lays out against a bounded width.
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: _kColorPickerDialogMaxWidth,
+              maxHeight: _kColorPickerDialogMaxHeight,
+            ),
+            child: SingleChildScrollView(
+              child: ColorPicker(
+                pickerColor: picked,
+                onColorChanged: (Color value) {
+                  picked = value;
+                },
+                pickerAreaHeightPercent: 0.6,
+                enableAlpha: false,
+                displayThumbColor: true,
+                paletteType: PaletteType.hueWheel,
+                labelTypes: const <ColorLabelType>[],
+                // Show a Hex (#RRGGBB) text field below the wheel so users
+                // can paste / type a brand color directly. The package
+                // already validates the input and ignores invalid Hex
+                // strings, so a malformed Hex cannot crash the dialog.
+                hexInputBar: true,
+                // Force the single-column (portrait) layout regardless of
+                // the actual orientation. The package's landscape branch
+                // assumes a wider canvas than _kColorPickerDialogMaxWidth
+                // and overflows when constrained, so we keep portrait
+                // layout for both orientations.
+                portraitOnly: true,
+              ),
             ),
           ),
           actions: <Widget>[
@@ -503,30 +565,39 @@ class _ColorCircle extends StatelessWidget {
     return Semantics(
       button: true,
       label: isSelected ? '$colorLabel 選択中' : colorLabel,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-            border: isSelected
-                ? Border.all(color: Colors.white, width: 2)
-                : null,
-            boxShadow: isSelected
-                ? <BoxShadow>[
-                    BoxShadow(
-                      color: color.withValues(alpha: 0.6),
-                      blurRadius: 4,
-                      spreadRadius: 1,
-                    ),
-                  ]
-                : null,
+      // 48×48 transparent hit-target wrapping the visible 32dp circle.
+      // See class-level constants for the spacing rationale.
+      child: SizedBox(
+        width: _kColorCircleHitTargetSize,
+        height: _kColorCircleHitTargetSize,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: Center(
+            child: Container(
+              width: _kColorCircleVisualSize,
+              height: _kColorCircleVisualSize,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                border: isSelected
+                    ? Border.all(color: Colors.white, width: 2)
+                    : null,
+                boxShadow: isSelected
+                    ? <BoxShadow>[
+                        BoxShadow(
+                          color: color.withValues(alpha: 0.6),
+                          blurRadius: 4,
+                          spreadRadius: 1,
+                        ),
+                      ]
+                    : null,
+              ),
+              child: isSelected
+                  ? const Icon(Icons.check, color: Colors.white, size: 18)
+                  : null,
+            ),
           ),
-          child: isSelected
-              ? const Icon(Icons.check, color: Colors.white, size: 18)
-              : null,
         ),
       ),
     );
