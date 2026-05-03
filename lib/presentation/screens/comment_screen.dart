@@ -2209,8 +2209,7 @@ class _CommentScreenState extends State<CommentScreen>
     for (int i = start; i < messages.length; i++) {
       final AppMessage message = messages[i];
       // Skip messages that arrived before speech was initialized.
-      if (_speechBaselineTimestamp != null &&
-          message.timestamp.isBefore(_speechBaselineTimestamp!)) {
+      if (_isBeforeSpeechBaseline(message)) {
         continue;
       }
       // Decide whether this message type should ever be spoken.
@@ -2258,15 +2257,14 @@ class _CommentScreenState extends State<CommentScreen>
       }
       // Skip NG users.
       final String? userId = message.userId;
-      if (userId != null && widget.contentFilter.ngUserIds.contains(userId)) {
+      if (_isNgUserSkippable(message)) {
         _debugLogLazy(
           () => '[CommentScreen] submitComment: SKIP NG user=$userId',
         );
         continue;
       }
       // Skip star-prefix hidden comments.
-      if (widget.contentFilter.starPrefixHidingEnabled &&
-          message.content.startsWith('☆')) {
+      if (_isStarPrefixSkippable(message)) {
         _debugLog('[CommentScreen] submitComment: SKIP star-prefix');
         continue;
       }
@@ -2281,8 +2279,7 @@ class _CommentScreenState extends State<CommentScreen>
         continue;
       }
       // Skip slash-prefix comments (shown in the list, but not read aloud).
-      if (widget.contentFilter.slashPrefixSkipEnabled &&
-          message.content.startsWith('/')) {
+      if (_isSlashPrefixSkippable(message)) {
         _debugLog('[CommentScreen] submitComment: SKIP slash-prefix');
         continue;
       }
@@ -2316,6 +2313,38 @@ class _CommentScreenState extends State<CommentScreen>
         }),
       );
     }
+  }
+
+  /// True when [message] arrived before speech was initialized and therefore
+  /// must not be spoken. Pure predicate extracted from
+  /// [_submitNewCommentsForSpeech].
+  bool _isBeforeSpeechBaseline(AppMessage message) {
+    return _speechBaselineTimestamp != null &&
+        message.timestamp.isBefore(_speechBaselineTimestamp!);
+  }
+
+  /// True when [message] is authored by an NG user and therefore must be
+  /// skipped for speech. Pure predicate extracted from
+  /// [_submitNewCommentsForSpeech].
+  bool _isNgUserSkippable(AppMessage message) {
+    final String? userId = message.userId;
+    return userId != null && widget.contentFilter.ngUserIds.contains(userId);
+  }
+
+  /// True when [message] is a star-prefix hidden comment that must be
+  /// skipped for speech. Pure predicate extracted from
+  /// [_submitNewCommentsForSpeech].
+  bool _isStarPrefixSkippable(AppMessage message) {
+    return widget.contentFilter.starPrefixHidingEnabled &&
+        message.content.startsWith('☆');
+  }
+
+  /// True when [message] is a slash-prefix comment that must be skipped for
+  /// speech (still shown in the list). Pure predicate extracted from
+  /// [_submitNewCommentsForSpeech].
+  bool _isSlashPrefixSkippable(AppMessage message) {
+    return widget.contentFilter.slashPrefixSkipEnabled &&
+        message.content.startsWith('/');
   }
 
   /// Submits a gift / ニコニ広告 message body to TTS.
