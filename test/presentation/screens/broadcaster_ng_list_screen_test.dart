@@ -217,6 +217,16 @@ void main() {
       expect(find.text('caster-b'), findsOneWidget);
     });
 
+    testWidgets('shows NG設定 as the AppBar title', (WidgetTester tester) async {
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster('caster-a');
+
+      await tester.pumpWidget(_buildScreen(store));
+      await tester.pumpAndSettle();
+
+      expect(find.text('NG設定'), findsOneWidget);
+    });
+
     testWidgets('tile title shows 名前(ID) when the resolver returns a name', (
       WidgetTester tester,
     ) async {
@@ -286,8 +296,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(BroadcasterNgEditScreen), findsOneWidget);
-      // AppBar title is "NG 設定 - <name>" (just the name, no parenthesised ID).
-      expect(find.text('NG 設定 - Alice'), findsOneWidget);
+      // AppBar title is "NG設定 - <name>" (just the name, no parenthesised ID).
+      expect(find.text('NG設定 - Alice'), findsOneWidget);
     });
 
     testWidgets('tapping a tile pushes the edit screen with scopeLabel == ID '
@@ -304,7 +314,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(BroadcasterNgEditScreen), findsOneWidget);
-      expect(find.text('NG 設定 - caster-a'), findsOneWidget);
+      expect(find.text('NG設定 - caster-a'), findsOneWidget);
     });
 
     testWidgets(

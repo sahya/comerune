@@ -538,7 +538,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     // Issue #727 follow-up: single Settings-level entry into the
     // per-broadcaster NG editor. Title chosen to match sibling tiles
     // (「コメント表示設定」「読み上げ設定」) and the AppBar of the editor
-    // (「NG 設定 - <放送者名>」). Subtitle is shown ONLY when the store
+    // (「NG設定 - <放送者名>」). Subtitle is shown ONLY when the store
     // is unwired, so legacy embedders see a 「未対応」 hint instead of an
     // unresponsive tile.
     final BroadcasterNgStore? store = widget.broadcasterNgStore;

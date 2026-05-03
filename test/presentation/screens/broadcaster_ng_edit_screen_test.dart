@@ -61,7 +61,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('NG 設定 - caster-1'), findsOneWidget);
+      expect(find.text('NG設定 - caster-1'), findsOneWidget);
     });
 
     testWidgets(
@@ -176,7 +176,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Truncated to 20 chars + ellipsis.
-      expect(find.text('NG 設定 - this-is-a-very-long-…'), findsOneWidget);
+      expect(find.text('NG設定 - this-is-a-very-long-…'), findsOneWidget);
     });
   });
 }

@@ -52,8 +52,8 @@ void main() {
       expect(AppStrings.settings.userManagementTileSubtitle, 'お気に入りユーザー');
     });
 
-    test('放送者別 NG 設定タイル文言が AppStrings に集約されている (Issue #727)', () {
-      expect(AppStrings.settings.ngFilterTileTitle, '放送者別 NG 設定');
+    test('NG設定タイル文言が AppStrings に集約されている (Issue #727)', () {
+      expect(AppStrings.settings.ngFilterTileTitle, 'NG設定');
       expect(AppStrings.settings.ngFilterTileSubtitleDisabled, '未対応');
     });
 
