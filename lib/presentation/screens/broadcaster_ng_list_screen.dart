@@ -11,9 +11,11 @@ import 'broadcaster_ng_edit_screen.dart';
 ///
 /// Tapping a row pushes [BroadcasterNgEditScreen] for that scope.
 ///
-/// The template scope (seed for newly-encountered broadcasters) is an
-/// internal concept and is intentionally NOT exposed as a tile here — the
-/// migrator and `_ensureInitialized` paths use it implicitly.
+/// The template scope (seed for future broadcaster-specific customizations) is
+/// an internal concept and is intentionally NOT exposed as a tile here.
+/// When a broadcaster is currently connected, that broadcaster is also shown
+/// even before a dedicated slot exists so the user can create one by adding an
+/// NGワード.
 class BroadcasterNgListScreen extends StatefulWidget {
   const BroadcasterNgListScreen({
     super.key,
@@ -182,13 +184,21 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
     return _resolvedName(broadcasterId) ?? broadcasterId;
   }
 
+  List<String> _visibleBroadcasterIds(String? activeId) {
+    final List<String> ids = List<String>.from(_broadcasterIds);
+    if (activeId == null || activeId.isEmpty || ids.contains(activeId)) {
+      return ids;
+    }
+    return <String>[activeId, ...ids];
+  }
+
   @override
   Widget build(BuildContext context) {
     final ValueNotifier<String?>? notifier = widget.broadcasterIdNotifier;
     final ThemeData theme = Theme.of(context);
 
     Widget buildList(String? activeId) {
-      final List<String> ids = _broadcasterIds;
+      final List<String> ids = _visibleBroadcasterIds(activeId);
       return RefreshIndicator(
         key: const Key('broadcaster-ng-list-refresh'),
         onRefresh: _refresh,
@@ -209,7 +219,7 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'コメント画面で長押しして NG 登録すると、その放送者の設定として記録されます',
+                      'コメント画面で NGユーザーを追加するか、現在接続中の放送者で NGワードを追加すると、その放送者の設定として記録されます',
                       style: TextStyle(
                         fontSize: 12,
                         color: theme.colorScheme.onSurfaceVariant,

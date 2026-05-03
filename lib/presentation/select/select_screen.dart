@@ -1153,9 +1153,8 @@ class _SelectScreenState extends State<SelectScreen>
       return;
     }
     try {
-      // Issue #727 review fix: single combined load avoids the duplicate
-      // template-seeding round-trip that calling loadNgUserIds + loadNg
-      // WordRules back to back would do on first access.
+      // Issue #727 review fix: single combined load keeps the NG snapshot
+      // consistent across user IDs and word rules with one store read.
       final ({Set<String> ngUserIds, List<NgWordRule> rules}) snapshot =
           await store.loadBroadcasterNgAttributes(broadcasterId);
       if (!mounted || _currentBroadcasterId != broadcasterId) {

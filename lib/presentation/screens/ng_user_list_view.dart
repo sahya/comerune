@@ -10,7 +10,7 @@ import '../widgets/ng_local_notice.dart';
 /// Issue #727: per-scope NG user ID management view.
 ///
 /// When [broadcasterId] is null the view edits the template — the seed
-/// list copied into any future broadcaster's first-access state.
+/// list copied into any future broadcaster's first customization.
 /// When non-null it edits the specific broadcaster's slot through
 /// [BroadcasterNgStore].
 ///
