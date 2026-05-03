@@ -6,8 +6,10 @@ import 'package:clock/clock.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../comment_speech/src/models/replace_rule.dart';
+import '../../data/filter/broadcaster_ng_store.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/ng_word_rule.dart';
+import '../filter/broadcaster_ng_export_codec.dart';
 
 abstract class SettingsStore {
   Future<AppSettings> load();
@@ -120,14 +122,32 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   const SharedPreferencesSettingsStore({
     required SharedPreferencesLike prefs,
     Directory? tempDirectory,
+    BroadcasterNgStore? broadcasterNgStore,
   }) : _prefs = prefs,
-       _tempDirectory = tempDirectory;
+       _tempDirectory = tempDirectory,
+       _broadcasterNgStore = broadcasterNgStore;
 
   final SharedPreferencesLike _prefs;
 
   /// Temp directory used by [writeExportToTempFile].  When null, falls back
   /// to `path_provider`'s `getTemporaryDirectory()` at call time.
   final Directory? _tempDirectory;
+
+  /// Issue #727: optional integration. When provided, settings export adds
+  /// a `broadcasterNgFilter` block describing the template + per-broadcaster
+  /// NG layout, and import understands the same block. When null (older
+  /// host scenarios / tests that do not need the NG layout), export skips
+  /// the new key and import behaves like before.
+  final BroadcasterNgStore? _broadcasterNgStore;
+
+  /// Top-level export key carrying the per-broadcaster NG layout.
+  ///
+  /// Re-exported as a backward-compatible alias for tests and external
+  /// callers that referenced the constant on the settings store before
+  /// the codec was extracted. New code should use
+  /// [BroadcasterNgExportCodec.exportKey] directly.
+  static const String exportBroadcasterNgKey =
+      BroadcasterNgExportCodec.exportKey;
 
   static const String _kThemeMode = 'settings.themeMode';
   static const String _kAutoReadEnabled = 'settings.autoReadEnabled';
@@ -567,6 +587,13 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   Future<String> exportAsJson() async {
     final AppSettings settings = await load();
     final Map<String, dynamic> json = settings.toJson();
+    final BroadcasterNgStore? ngStore = _broadcasterNgStore;
+    if (ngStore != null) {
+      final BroadcasterNgExportCodec codec = BroadcasterNgExportCodec(
+        store: ngStore,
+      );
+      json[BroadcasterNgExportCodec.exportKey] = await codec.buildExportBlock();
+    }
     const JsonEncoder encoder = JsonEncoder.withIndent('  ');
     return encoder.convert(json);
   }
@@ -619,8 +646,41 @@ class SharedPreferencesSettingsStore implements SettingsStore {
 
   @override
   Future<AppSettings> importFromJson(String jsonString) async {
-    final AppSettings imported = AppSettings.fromJsonString(jsonString);
+    // Single decode: parse the JSON object once, hand the structured
+    // map to AppSettings.fromJson for legacy-field parsing, then check
+    // the same map for the optional `broadcasterNgFilter` block.
+    // Avoids paying the JSON-decode cost twice for large export files.
+    final Object? rootObj = jsonDecode(jsonString);
+    if (rootObj is! Map<String, dynamic>) {
+      throw const FormatException(
+        'Invalid settings JSON: expected a JSON object',
+      );
+    }
+    final Map<String, dynamic> root = rootObj;
+    final AppSettings imported = AppSettings.fromJson(root);
     await save(imported);
+
+    final BroadcasterNgStore? store = _broadcasterNgStore;
+    if (store == null) {
+      return imported;
+    }
+
+    final BroadcasterNgExportCodec codec = BroadcasterNgExportCodec(
+      store: store,
+    );
+    final Object? rawBlock = root[BroadcasterNgExportCodec.exportKey];
+    if (rawBlock is Map<String, dynamic>) {
+      // New schema present. New schema wins over legacy fields per the
+      // import-precedence rule (the new key is more specific and
+      // describes both template + per-broadcaster slots).
+      await codec.applyExportBlock(rawBlock);
+    } else {
+      // Legacy fallback: restore template + already-known broadcasters
+      // from the legacy fields parsed into `imported`. Mirrors
+      // BroadcasterNgMigrator's first-install behaviour.
+      await codec.applyLegacyFallback(imported);
+    }
+
     return imported;
   }
 }

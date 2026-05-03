@@ -1021,7 +1021,18 @@ class _CommentScreenState extends State<CommentScreen>
     _syncWakelockForStatus(_lastStatus);
 
     _requestUserNameResolution(widget.messages);
-    _effectivePresetNgWords = widget.contentFilter.presetNgWords;
+    // Issue #628: structured `presetCategories` injection seam takes
+    // precedence over the flat `presetNgWords` list. When provided, the
+    // matcher is seeded with the categories directly and the asset-load
+    // fallback is skipped.
+    if (widget.contentFilter.presetCategories.isNotEmpty) {
+      _effectivePresetCategories = widget.contentFilter.presetCategories;
+      _effectivePresetNgWords = NgPresetCategory.flattenWords(
+        widget.contentFilter.presetCategories,
+      );
+    } else {
+      _effectivePresetNgWords = widget.contentFilter.presetNgWords;
+    }
     _rebuildNgMatcher();
 
     // Seed the NG-protection cursor with the current tail so that messages
@@ -1047,7 +1058,10 @@ class _CommentScreenState extends State<CommentScreen>
     if (widget.messages.isNotEmpty) {
       _lastProcessedTailMessageId = widget.messages.last.id;
     }
-    if (widget.contentFilter.presetNgWords.isEmpty) {
+    // Issue #628: only fall back to asset load when neither the structured
+    // `presetCategories` nor the flat `presetNgWords` were provided.
+    if (widget.contentFilter.presetCategories.isEmpty &&
+        widget.contentFilter.presetNgWords.isEmpty) {
       unawaited(_loadPresetNgWordsFromAsset());
     }
 
@@ -1115,6 +1129,10 @@ class _CommentScreenState extends State<CommentScreen>
       newNotifier?.addListener(_onAndroidTtsAvailabilityChanged);
     }
 
+    final bool presetCategoriesChanged = !identical(
+      oldWidget.contentFilter.presetCategories,
+      widget.contentFilter.presetCategories,
+    );
     if (!_listEqualsShallow(
           oldWidget.contentFilter.ngWords,
           widget.contentFilter.ngWords,
@@ -1122,8 +1140,18 @@ class _CommentScreenState extends State<CommentScreen>
         !_listEqualsShallow(
           oldWidget.contentFilter.presetNgWords,
           widget.contentFilter.presetNgWords,
-        )) {
-      if (widget.contentFilter.presetNgWords.isNotEmpty) {
+        ) ||
+        presetCategoriesChanged) {
+      // Issue #628: structured `presetCategories` injection seam wins over
+      // the flat `presetNgWords` fallback and over asset loading. Mirrors
+      // the priority order in [initState].
+      if (widget.contentFilter.presetCategories.isNotEmpty) {
+        _effectivePresetCategories = widget.contentFilter.presetCategories;
+        _effectivePresetNgWords = NgPresetCategory.flattenWords(
+          widget.contentFilter.presetCategories,
+        );
+        _rebuildNgMatcher();
+      } else if (widget.contentFilter.presetNgWords.isNotEmpty) {
         _effectivePresetNgWords = widget.contentFilter.presetNgWords;
         // Flat list provided by the caller loses category info; drop any
         // previously loaded structured categories so the matcher does not
@@ -1133,8 +1161,16 @@ class _CommentScreenState extends State<CommentScreen>
         // returns null for flat-fallback entries.
         _effectivePresetCategories = const <NgPresetCategory>[];
         _rebuildNgMatcher();
-      } else if (oldWidget.contentFilter.presetNgWords.isNotEmpty &&
-          widget.contentFilter.presetNgWords.isEmpty) {
+      } else if ((oldWidget.contentFilter.presetNgWords.isNotEmpty ||
+              oldWidget.contentFilter.presetCategories.isNotEmpty) &&
+          widget.contentFilter.presetNgWords.isEmpty &&
+          widget.contentFilter.presetCategories.isEmpty) {
+        // Issue #628: caller cleared *both* injection seams (the
+        // structured `presetCategories` and the flat `presetNgWords`).
+        // Drop our cached state and fall back to the bundled
+        // `preset_ng_words.json` asset, mirroring the cold-start path
+        // in [initState] so the matcher never observes a stale
+        // category list after a clear.
         _effectivePresetNgWords = const <String>[];
         _effectivePresetCategories = const <NgPresetCategory>[];
         _rebuildNgMatcher();
@@ -4412,6 +4448,13 @@ class _CommentScreenState extends State<CommentScreen>
   }
 
   Future<void> _loadPresetNgWordsFromAsset() async {
+    // Issue #628 defense-in-depth: when the structured `presetCategories`
+    // injection seam is populated, the asset load is irrelevant. Bail out
+    // early so a stray scheduled call cannot clobber the injected
+    // categories.
+    if (widget.contentFilter.presetCategories.isNotEmpty) {
+      return;
+    }
     try {
       final String jsonText = await rootBundle.loadString(
         'android/app/src/main/assets/preset_ng_words.json',
@@ -4421,7 +4464,9 @@ class _CommentScreenState extends State<CommentScreen>
         decoded,
       );
       final List<String> words = NgPresetCategory.flattenWords(categories);
-      if (!mounted || widget.contentFilter.presetNgWords.isNotEmpty) {
+      if (!mounted ||
+          widget.contentFilter.presetNgWords.isNotEmpty ||
+          widget.contentFilter.presetCategories.isNotEmpty) {
         return;
       }
       _effectivePresetNgWords = words;
