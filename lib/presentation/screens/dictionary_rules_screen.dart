@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../application/settings/settings_save_helper.dart';
 import '../../application/settings/settings_store.dart';
 import '../../comment_speech/src/models/replace_rule.dart';
 import '../../domain/models/app_settings.dart';
@@ -43,7 +44,7 @@ class _DictionaryRulesScreenState extends State<DictionaryRulesScreen> {
   Future<void> _saveRules(List<ReplaceRule> rules) async {
     final AppSettings current = await widget.settingsStore.load();
     final AppSettings updated = current.copyWith(dictionaryRules: rules);
-    await widget.settingsStore.save(updated);
+    await saveSettings(widget.settingsStore, updated);
     if (!mounted) {
       return;
     }

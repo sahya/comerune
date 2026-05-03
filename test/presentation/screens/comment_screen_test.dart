@@ -1864,6 +1864,200 @@ void main() {
       expect(received, <CommentSortOrder>[CommentSortOrder.ascending]);
     });
 
+    testWidgets('parent rebuild changing commentSortOrder ascending→descending '
+        're-seeds the local sort state and updates the toggle tooltip (#782)', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(supervisor: supervisor, messages: const <AppMessage>[]),
+      );
+
+      // Sanity: ascending → tooltip says "switch to newest-first".
+      IconButton button = tester.widget<IconButton>(
+        find.byKey(const Key('sort-toggle-button')),
+      );
+      expect(button.tooltip, '新しい順に切替');
+
+      // Simulate Settings Import: parent rebuilds CommentScreen with the
+      // imported sort order without going through the in-screen toggle.
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          commentSortOrder: CommentSortOrder.descending,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      button = tester.widget<IconButton>(
+        find.byKey(const Key('sort-toggle-button')),
+      );
+      expect(
+        button.tooltip,
+        '古い順に切替',
+        reason:
+            'didUpdateWidget should re-seed _sortOrder from the new prop '
+            'so the tooltip reflects the imported descending order.',
+      );
+    });
+
+    testWidgets('parent rebuild changing commentSortOrder descending→ascending '
+        're-seeds the local sort state and updates the toggle tooltip (#782)', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          commentSortOrder: CommentSortOrder.descending,
+        ),
+      );
+
+      IconButton button = tester.widget<IconButton>(
+        find.byKey(const Key('sort-toggle-button')),
+      );
+      expect(button.tooltip, '古い順に切替');
+
+      await tester.pumpWidget(
+        _buildScreen(supervisor: supervisor, messages: const <AppMessage>[]),
+      );
+      await tester.pumpAndSettle();
+
+      button = tester.widget<IconButton>(
+        find.byKey(const Key('sort-toggle-button')),
+      );
+      expect(
+        button.tooltip,
+        '新しい順に切替',
+        reason:
+            'didUpdateWidget should re-seed _sortOrder when the imported '
+            'sort order flips back to ascending.',
+      );
+    });
+
+    testWidgets('parent rebuild with the same commentSortOrder preserves the '
+        'user\'s manual toggle state (#782)', (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          commentSortOrder: CommentSortOrder.ascending,
+        ),
+      );
+
+      // User manually flips the order in the AppBar. The parent has not
+      // yet persisted/round-tripped the new value, so widget.commentSortOrder
+      // remains ascending.
+      await tester.tap(find.byKey(const Key('sort-toggle-button')));
+      await tester.pumpAndSettle();
+
+      IconButton button = tester.widget<IconButton>(
+        find.byKey(const Key('sort-toggle-button')),
+      );
+      expect(
+        button.tooltip,
+        '古い順に切替',
+        reason:
+            'After tapping the toggle, the local _sortOrder should now be '
+            'descending and the tooltip should reflect that.',
+      );
+
+      // Parent rebuilds with the same (ascending) prop — e.g. an unrelated
+      // setState in the parent. didUpdateWidget MUST NOT clobber the
+      // user\'s in-progress toggle state.
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          commentSortOrder: CommentSortOrder.ascending,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      button = tester.widget<IconButton>(
+        find.byKey(const Key('sort-toggle-button')),
+      );
+      expect(
+        button.tooltip,
+        '古い順に切替',
+        reason:
+            'A same-value parent rebuild must not reset _sortOrder back to '
+            'the prop, otherwise the user\'s manual toggle would be lost.',
+      );
+    });
+
+    testWidgets(
+      'parent rebuild changing commentFontSize is reflected without a '
+      'didUpdateWidget bridge (Phase 0 verification, #782)',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          AppMessage(
+            id: 'first',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'u1',
+            content: 'hello world',
+            type: AppMessageType.chat,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            commentFontSize: 14,
+          ),
+        );
+
+        // The comment row uses Text.rich; the content TextSpan is the last
+        // child of the root span. We read its fontSize before and after the
+        // parent rebuild to confirm the value flows through widget.commentFontSize.
+        double readContentFontSize() {
+          final Text textWidget = tester.widget<Text>(
+            find.descendant(
+              of: find.byKey(const Key('comment-row-first')),
+              matching: find.byType(Text),
+            ),
+          );
+          final TextSpan root = textWidget.textSpan! as TextSpan;
+          final TextSpan contentSpan = root.children!.last as TextSpan;
+          final double? size = contentSpan.style?.fontSize;
+          expect(size, isNotNull);
+          return size!;
+        }
+
+        final double smallSize = readContentFontSize();
+
+        // Parent rebuild bumps commentFontSize. CommentScreen reads
+        // widget.commentFontSize directly per build, so no didUpdateWidget
+        // bridge is required for the new value to take effect.
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            commentFontSize: 28,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final double largeSize = readContentFontSize();
+        expect(
+          largeSize,
+          greaterThan(smallSize),
+          reason:
+              'commentFontSize is read via widget.commentFontSize each build, '
+              'so a parent rebuild with a new value must take effect '
+              'immediately without any didUpdateWidget plumbing.',
+        );
+      },
+    );
+
     testWidgets('displays resolved user name with user ID', (
       WidgetTester tester,
     ) async {

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 import '../../app_logging.dart';
+import '../../application/settings/settings_save_helper.dart';
 import '../../application/settings/settings_store.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../domain/models/app_settings.dart';
@@ -189,7 +190,7 @@ class _VoiceLibraryScreenState extends State<VoiceLibraryScreen> {
     // Persist acceptance for compatibility with existing settings schema.
     if (!settings.voicevoxTermsAccepted) {
       final updated = settings.copyWith(voicevoxTermsAccepted: true);
-      await widget.settingsStore.save(updated);
+      await saveSettings(widget.settingsStore, updated);
     }
     try {
       _debugLogLazy(

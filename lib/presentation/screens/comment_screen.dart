@@ -1149,6 +1149,26 @@ class _CommentScreenState extends State<CommentScreen>
   void didUpdateWidget(covariant CommentScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
 
+    // Issue #782: re-seed [_sortOrder] when the parent rebuilds CommentScreen
+    // with a different [commentSortOrder]. The presentation layer keeps a
+    // local copy so the AppBar toggle can flip direction without waiting for
+    // the parent's persisted value to round-trip through SharedPreferences.
+    // The same local copy means any external change to the prop (Settings
+    // Import replacing AppSettings, restore-defaults, etc.) would otherwise
+    // be silently ignored. Equality check guarantees:
+    //   - same-value parent rebuilds (which happen on every unrelated parent
+    //     setState) leave the user's last manual toggle direction intact;
+    //   - only a genuine prop change triggers the re-seed and the
+    //     accompanying scroll-to-edge so the user does not end up staring at
+    //     the opposite end of the timeline after a sort flip.
+    if (oldWidget.commentSortOrder != widget.commentSortOrder) {
+      _sortOrder = widget.commentSortOrder;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _scrollToEdge(animated: false);
+      });
+    }
+
     if (oldWidget.connectionSupervisor != widget.connectionSupervisor) {
       oldWidget.connectionSupervisor.removeListener(_handleConnectionChanged);
       widget.connectionSupervisor.addListener(_handleConnectionChanged);
