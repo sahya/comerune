@@ -69,7 +69,7 @@ comeruneはMITライセンスのオープンソースです。「こんな機能
 
 ### ビルド手順
 
-ビルドに必要な Flutter SDK / Dart SDK のバージョンは [`pubspec.yaml`](pubspec.yaml) の `environment.sdk` を参照してください（バージョンを README にハードコードすると更新時にずれが起きやすいため、真実の源は pubspec.yaml に一本化しています）。あわせて Android SDK が必要です。
+ビルドに必要な Flutter SDK / Dart SDK のバージョンは [`pubspec.yaml`](pubspec.yaml) の `environment.sdk` を参照してください。あわせて Android SDK が必要です。
 ビルド方法や Makefile の使い方は [docs/build-guide.md](docs/build-guide.md) を参照してください。
 
 直接プルリクエストを送る場合のルールは [CONTRIBUTING.md](CONTRIBUTING.md) にまとめています。コミュニティ参加時のお願いは [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) を、セキュリティ上の問題を見つけた場合の報告フローは [SECURITY.md](SECURITY.md) を参照してください。
