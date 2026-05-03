@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'application/auth/oauth_auth_controller.dart';
 import 'application/auth/oauth_auth_scope.dart';
 import 'application/comment_post/comment_post_controller.dart';
+import 'application/filter/broadcaster_ng_migrator.dart';
 import 'application/foreground_service/foreground_service_controller.dart';
 import 'application/migration/app_migration_runner.dart';
 import 'application/onboarding/onboarding_store.dart';
@@ -30,6 +31,8 @@ import 'data/auth/user_session_store.dart';
 import 'data/comment/live_comment_repository.dart';
 import 'data/comment_log/comment_log_writer.dart';
 import 'data/connection/program_info_resolver.dart';
+import 'data/broadcaster/broadcaster_name_store.dart';
+import 'data/filter/broadcaster_ng_store.dart';
 import 'data/broadcast/broadcast_control_repository.dart';
 import 'data/follow/follow_program_repository.dart';
 import 'data/follow/my_program_repository.dart';
@@ -110,14 +113,12 @@ Future<void> main() async {
 
   final Directory appDocDir = await getApplicationDocumentsDirectory();
   final Directory tempDir = await getTemporaryDirectory();
-  final SettingsStore settingsStore = SharedPreferencesSettingsStore(
-    prefs: prefsAdapter,
-    tempDirectory: tempDir,
-  );
-  final AppSettings initialSettings = await settingsStore.load();
   final UserSessionStore userSessionStore = SecureUserSessionStore(
     prefs: prefs,
   );
+  // Settings store is constructed below, after the BroadcasterNgStore is
+  // available, so the export/import flow can include the per-broadcaster
+  // NG layout (Issue #727).
 
   final CommentLogWriter commentLogWriter = FileCommentLogWriter(
     directory: Directory('${appDocDir.path}/comment_logs'),
@@ -139,6 +140,44 @@ Future<void> main() async {
     fileStore: fileUserAttributeStore,
   ).run();
   final UserAttributeStore userAttributeStore = fileUserAttributeStore;
+
+  // Per-broadcaster NG store (Issue #727). Models the same template +
+  // per-broadcaster duplication pattern used for user attributes, so the
+  // user's existing global NG settings remain effective for newly-seen
+  // broadcasters while still allowing per-broadcaster divergence.
+  //
+  // The migrator seeds the new layout once per install. The seed list of
+  // broadcaster IDs is read from the legacy `usercolor._index` key in
+  // SharedPreferences — this is the most accurate "broadcasters the user
+  // has interacted with" signal available at startup without forcing the
+  // file-based user attribute store to expose its index publicly.
+  // Failures inside the migrator are logged and do not block startup.
+  final BroadcasterNgStore broadcasterNgStore =
+      SharedPreferencesBroadcasterNgStore(prefs: prefsAdapter);
+  // Issue #727 follow-up: persistent cache of `broadcasterId → display name`.
+  // Populated opportunistically when the app resolves broadcaster names
+  // (see `_onBroadcasterNameResolved` below) and read by the NG picker
+  // tile titles so the user can recognise broadcasters by name.
+  final BroadcasterNameStore broadcasterNameStore =
+      SharedPreferencesBroadcasterNameStore(prefs: prefsAdapter);
+  await BroadcasterNgMigrator.migrateIfNeeded(
+    prefs: prefsAdapter,
+    store: broadcasterNgStore,
+    knownBroadcasterIds:
+        SharedPreferencesUserAttributeStore.readKnownBroadcasterIdsFromPrefs(
+          prefsAdapter,
+        ),
+  );
+
+  // Settings store is wired with the broadcaster NG store so the
+  // export/import flow understands the new per-broadcaster + template
+  // layout (Issue #727).
+  final SettingsStore settingsStore = SharedPreferencesSettingsStore(
+    prefs: prefsAdapter,
+    tempDirectory: tempDir,
+    broadcasterNgStore: broadcasterNgStore,
+  );
+  final AppSettings initialSettings = await settingsStore.load();
 
   // Run one-time migration tasks when the app version changes.
   // Awaited so that migrations complete before the app reads settings or
@@ -189,6 +228,8 @@ Future<void> main() async {
       userSessionStore: userSessionStore,
       commentLogWriter: commentLogWriter,
       userAttributeStore: userAttributeStore,
+      broadcasterNgStore: broadcasterNgStore,
+      broadcasterNameStore: broadcasterNameStore,
       foregroundServiceManager: foregroundServiceManager,
       onboardingStore: onboardingStore,
       oauthAuthController: oauthAuthController,
@@ -204,6 +245,8 @@ class ComeruneApp extends StatefulWidget {
     required this.userSessionStore,
     this.commentLogWriter,
     this.userAttributeStore,
+    this.broadcasterNgStore,
+    this.broadcasterNameStore,
     this.foregroundServiceManager,
     required this.onboardingStore,
     required this.oauthAuthController,
@@ -214,6 +257,13 @@ class ComeruneApp extends StatefulWidget {
   final UserSessionStore userSessionStore;
   final CommentLogWriter? commentLogWriter;
   final UserAttributeStore? userAttributeStore;
+  final BroadcasterNgStore? broadcasterNgStore;
+
+  /// Issue #727 follow-up: persistent cache of broadcaster display names
+  /// keyed by broadcaster (user) ID. Optional so legacy embedders that do
+  /// not wire the store keep working — the picker simply falls back to
+  /// rendering raw IDs in that case.
+  final BroadcasterNameStore? broadcasterNameStore;
   final ForegroundServiceManager? foregroundServiceManager;
   final OnboardingStore onboardingStore;
   final OAuthAuthController oauthAuthController;
@@ -336,6 +386,15 @@ class _ComeruneAppState extends State<ComeruneApp> {
         _broadcasterNameNotifier.value = name;
         if (userId != null) {
           _userNameResolver.seedCache(userId, name);
+        }
+        // Issue #727 follow-up: persist `broadcasterId → name` so the NG
+        // picker can render friendly tile titles for broadcasters the
+        // user has previously connected to. Fire-and-forget; we do not
+        // block UI on cache writes. The store's [setName] is itself a
+        // no-op when either argument is empty.
+        final BroadcasterNameStore? nameStore = widget.broadcasterNameStore;
+        if (nameStore != null && userId != null && userId.isNotEmpty) {
+          unawaited(nameStore.setName(userId, name));
         }
       },
       onBeginAtResolved: (DateTime beginAt) {
@@ -620,6 +679,8 @@ class _ComeruneAppState extends State<ComeruneApp> {
             myProgramRepository: _myProgramRepository,
             broadcastControlRepository: _broadcastControlRepository,
             userAttributeStore: widget.userAttributeStore,
+            broadcasterNgStore: widget.broadcasterNgStore,
+            broadcasterNameStore: widget.broadcasterNameStore,
             commentPostController: _commentPostController,
             timeshiftFetchController: _timeshiftFetchController,
             androidTtsAvailability: _androidTtsAvailability,
