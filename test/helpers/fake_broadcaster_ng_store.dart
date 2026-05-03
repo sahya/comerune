@@ -34,6 +34,12 @@ class FakeBroadcasterNgStore implements BroadcasterNgStore {
     }
   }
 
+  void clearBroadcaster(String broadcasterId) {
+    _ngUserIds.remove(broadcasterId);
+    _ngWordRules.remove(broadcasterId);
+    _broadcasters.remove(broadcasterId);
+  }
+
   @override
   Future<void> addNgUserId(String broadcasterId, String userId) async {
     (_ngUserIds[broadcasterId] ??= <String>{}).add(userId);

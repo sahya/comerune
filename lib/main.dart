@@ -31,6 +31,7 @@ import 'data/auth/user_session_store.dart';
 import 'data/comment/live_comment_repository.dart';
 import 'data/comment_log/comment_log_writer.dart';
 import 'data/connection/program_info_resolver.dart';
+import 'data/broadcaster/broadcaster_name_store.dart';
 import 'data/filter/broadcaster_ng_store.dart';
 import 'data/broadcast/broadcast_control_repository.dart';
 import 'data/follow/follow_program_repository.dart';
@@ -153,6 +154,12 @@ Future<void> main() async {
   // Failures inside the migrator are logged and do not block startup.
   final BroadcasterNgStore broadcasterNgStore =
       SharedPreferencesBroadcasterNgStore(prefs: prefsAdapter);
+  // Issue #727 follow-up: persistent cache of `broadcasterId → display name`.
+  // Populated opportunistically when the app resolves broadcaster names
+  // (see `_onBroadcasterNameResolved` below) and read by the NG picker
+  // tile titles so the user can recognise broadcasters by name.
+  final BroadcasterNameStore broadcasterNameStore =
+      SharedPreferencesBroadcasterNameStore(prefs: prefsAdapter);
   await BroadcasterNgMigrator.migrateIfNeeded(
     prefs: prefsAdapter,
     store: broadcasterNgStore,
@@ -222,6 +229,7 @@ Future<void> main() async {
       commentLogWriter: commentLogWriter,
       userAttributeStore: userAttributeStore,
       broadcasterNgStore: broadcasterNgStore,
+      broadcasterNameStore: broadcasterNameStore,
       foregroundServiceManager: foregroundServiceManager,
       onboardingStore: onboardingStore,
       oauthAuthController: oauthAuthController,
@@ -238,6 +246,7 @@ class ComeruneApp extends StatefulWidget {
     this.commentLogWriter,
     this.userAttributeStore,
     this.broadcasterNgStore,
+    this.broadcasterNameStore,
     this.foregroundServiceManager,
     required this.onboardingStore,
     required this.oauthAuthController,
@@ -249,6 +258,12 @@ class ComeruneApp extends StatefulWidget {
   final CommentLogWriter? commentLogWriter;
   final UserAttributeStore? userAttributeStore;
   final BroadcasterNgStore? broadcasterNgStore;
+
+  /// Issue #727 follow-up: persistent cache of broadcaster display names
+  /// keyed by broadcaster (user) ID. Optional so legacy embedders that do
+  /// not wire the store keep working — the picker simply falls back to
+  /// rendering raw IDs in that case.
+  final BroadcasterNameStore? broadcasterNameStore;
   final ForegroundServiceManager? foregroundServiceManager;
   final OnboardingStore onboardingStore;
   final OAuthAuthController oauthAuthController;
@@ -371,6 +386,15 @@ class _ComeruneAppState extends State<ComeruneApp> {
         _broadcasterNameNotifier.value = name;
         if (userId != null) {
           _userNameResolver.seedCache(userId, name);
+        }
+        // Issue #727 follow-up: persist `broadcasterId → name` so the NG
+        // picker can render friendly tile titles for broadcasters the
+        // user has previously connected to. Fire-and-forget; we do not
+        // block UI on cache writes. The store's [setName] is itself a
+        // no-op when either argument is empty.
+        final BroadcasterNameStore? nameStore = widget.broadcasterNameStore;
+        if (nameStore != null && userId != null && userId.isNotEmpty) {
+          unawaited(nameStore.setName(userId, name));
         }
       },
       onBeginAtResolved: (DateTime beginAt) {
@@ -656,6 +680,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
             broadcastControlRepository: _broadcastControlRepository,
             userAttributeStore: widget.userAttributeStore,
             broadcasterNgStore: widget.broadcasterNgStore,
+            broadcasterNameStore: widget.broadcasterNameStore,
             commentPostController: _commentPostController,
             timeshiftFetchController: _timeshiftFetchController,
             androidTtsAvailability: _androidTtsAvailability,
@@ -665,7 +690,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
             // queue inside the grace window, signal the FGS controller so its
             // parallel grace timer can end early too instead of waiting out
             // the full 30 s. No-op when the FGS controller is not configured.
-            onSpeechQueueDrained:
+            onSpeechGraceEnded:
                 _foregroundServiceController?.notifyQueueDrained,
           ),
         ),
