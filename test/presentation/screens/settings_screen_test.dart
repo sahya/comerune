@@ -435,44 +435,62 @@ void main() {
       expect(find.text(sentinelPackage), findsOneWidget);
     });
 
-    test('app code does not call LicenseRegistry.addLicense '
-        '(no hardcoded package/license text policy)', () async {
-      // アプリ本体でパッケージ名・ライセンス本文のハードコードを禁止する
-      // ポリシーを、lib/ 配下に `LicenseRegistry.addLicense` / `LicenseEntry`
-      // のリテラルが現れないことで担保する。
-      // Flutter ツールチェーンが pubspec.yaml 依存を自動登録するため、
-      // アプリ側からの手動登録は不要であり、手動登録が復活した場合は
-      // 同期漏れリスクが再発する。
-      final Directory libDir = Directory('lib');
-      expect(
-        libDir.existsSync(),
-        isTrue,
-        reason: 'lib/ ディレクトリがテスト実行パスから見つかりません',
-      );
-      final List<File> dartFiles = libDir
-          .listSync(recursive: true)
-          .whereType<File>()
-          .where((File f) => f.path.endsWith('.dart'))
-          .toList();
-      final List<String> offenders = <String>[];
-      for (final File file in dartFiles) {
-        final String src = file.readAsStringSync();
-        // コメントは許容（ポリシー説明で語を使うため）。実呼び出しのみを検出する。
-        if (src.contains('LicenseRegistry.addLicense(') ||
-            src.contains('LicenseEntryWithLineBreaks(') ||
-            RegExp(r'\bLicenseEntry\s*\(').hasMatch(src)) {
+    test(
+      'app code does not hardcode package or license text '
+      '(only bundled-asset registrations via rootBundle are allowed)',
+      () async {
+        // アプリ本体でパッケージ名・ライセンス本文のハードコードを禁止する
+        // ポリシーを、lib/ 配下の `LicenseRegistry.addLicense` / `LicenseEntry`
+        // 呼び出しが必ず `rootBundle.loadString` 経由のアセット読み込みと
+        // 同居していることで担保する。
+        //
+        // 例外: 同梱アセット由来のライセンス（VOICEVOX TERMS.txt など）。
+        // pubspec.yaml の `flutter:.assets` で同梱された第三者アセットは
+        // pub の解決経路に乗らないため、Flutter ツールチェーンによる自動
+        // 登録の対象外で、明示的な `LicenseRegistry.addLicense` が必要。
+        // これらは「ハードコードされた license 本文」とは異なり、アセット
+        // 本文を実行時に読み出す実装になっているため、`rootBundle.loadString`
+        // の有無で機械的に区別できる。
+        final Directory libDir = Directory('lib');
+        expect(
+          libDir.existsSync(),
+          isTrue,
+          reason: 'lib/ ディレクトリがテスト実行パスから見つかりません',
+        );
+        final List<File> dartFiles = libDir
+            .listSync(recursive: true)
+            .whereType<File>()
+            .where((File f) => f.path.endsWith('.dart'))
+            .toList();
+        final List<String> offenders = <String>[];
+        for (final File file in dartFiles) {
+          final String src = file.readAsStringSync();
+          // コメントは許容（ポリシー説明で語を使うため）。実呼び出しのみを検出する。
+          final bool hasAddLicenseCall =
+              src.contains('LicenseRegistry.addLicense(') ||
+              src.contains('LicenseEntryWithLineBreaks(') ||
+              RegExp(r'\bLicenseEntry\s*\(').hasMatch(src);
+          if (!hasAddLicenseCall) {
+            continue;
+          }
+          // アセット本文を rootBundle 経由で読み出している場合のみ許容。
+          if (src.contains('rootBundle.loadString(')) {
+            continue;
+          }
           offenders.add(file.path);
         }
-      }
-      expect(
-        offenders,
-        isEmpty,
-        reason:
-            'lib/ 配下で LicenseRegistry への手動登録やハードコードが検出されました。'
-            'pubspec.yaml と表示の乖離を防ぐため、ライセンス情報は '
-            'pubspec.yaml の依存に一本化してください: $offenders',
-      );
-    });
+        expect(
+          offenders,
+          isEmpty,
+          reason:
+              'lib/ 配下で `LicenseRegistry.addLicense` / `LicenseEntry` の '
+              'ハードコードが検出されました。pubspec.yaml と表示の乖離を防ぐため、'
+              'pub 依存由来のライセンスは Flutter の自動登録に任せ、'
+              '同梱アセット由来のライセンスのみ `rootBundle.loadString` 経由で '
+              '登録してください: $offenders',
+        );
+      },
+    );
 
     // Issue #727 PR2 (UX flatten): per-broadcaster NG management is now a
     // top-level Settings tile. The screen pushes [BroadcasterNgListScreen]

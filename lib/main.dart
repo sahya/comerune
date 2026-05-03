@@ -3,7 +3,10 @@ import 'dart:developer';
 import 'dart:io';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart'
+    show LicenseEntryWithLineBreaks, LicenseRegistry;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -71,8 +74,33 @@ import 'presentation/theme/app_theme.dart';
 /// と関連 widget テストもそのタイミングで除去対象になる。
 const bool kTimeshiftFetchEnabled = false;
 
+/// 同梱アセット由来のサードパーティライセンスを Flutter 標準の
+/// [LicenseRegistry] に登録する。
+///
+/// pubspec.yaml の依存パッケージ由来ライセンスは [LicenseRegistry] が
+/// 起動時に自動収集する。一方で `flutter:.assets` として同梱した
+/// 第三者アセットは pub の解決経路に乗らないため、明示的に登録しないと
+/// `showLicensePage` のパッケージ一覧に出ない。
+///
+/// コールバックは `showLicensePage` が初めて開かれた時に評価される
+/// （`addLicense` 自身は同期的）。`rootBundle` を使うため
+/// [WidgetsFlutterBinding.ensureInitialized] 後に呼ぶ必要がある。
+void _registerBundledAssetLicenses() {
+  LicenseRegistry.addLicense(() async* {
+    // VOICEVOX 音声ライブラリの利用規約（pubspec.yaml の
+    // `flutter:.assets` で同梱されている TERMS.txt の本文）。
+    // 規約原文をそのまま LicenseEntry のテキストとして渡す。
+    final String terms = await rootBundle.loadString(
+      'android/app/src/main/assets/voicevox_models/TERMS.txt',
+    );
+    yield LicenseEntryWithLineBreaks(const <String>['VOICEVOX'], terms);
+  });
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  _registerBundledAssetLicenses();
 
   // Route Flutter framework errors (assertions, build errors) to Logcat
   // using debugPrint so they appear under the `flutter` tag consistently.

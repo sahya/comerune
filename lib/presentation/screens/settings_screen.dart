@@ -633,11 +633,15 @@ class _SettingsScreenState extends State<SettingsScreen>
     // [showLicensePage] は [LicenseRegistry.licenses] を参照して描画するため、
     // 依存の追加・削除・バージョン更新は本画面で手動同期する必要はない。
     //
-    // ポリシー: このアプリでは [LicenseRegistry.addLicense] を呼び出さない。
-    // - パッケージ名・ライセンス本文のハードコードを禁じ、真実の源を
-    //   `pubspec.yaml` に一本化するため。
-    // - もし将来 third-party asset（同梱フォント等）を追加する場合のみ、
-    //   そのアセットに限って [LicenseRegistry.addLicense] で登録する。
+    // ポリシー: このアプリで [LicenseRegistry.addLicense] を呼び出すのは、
+    // pub の解決経路に乗らない「同梱アセット由来のサードパーティライセンス」
+    // に限る。具体的な登録は `lib/main.dart` の
+    // `_registerBundledAssetLicenses` で行っており、現時点では VOICEVOX
+    // 音声ライブラリの TERMS.txt のみが対象。
+    // - パッケージ名・ライセンス本文を画面側でハードコードしないこと。
+    //   真実の源は `pubspec.yaml` の依存と `flutter:.assets` に一本化する。
+    // - 新しい同梱アセット（同梱フォント等）を追加した場合のみ、
+    //   `_registerBundledAssetLicenses` に登録を追加する。
     String? applicationVersion;
     try {
       final PackageInfo packageInfo = await PackageInfo.fromPlatform();
