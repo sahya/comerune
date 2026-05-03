@@ -24,6 +24,14 @@ void main() {
       expect(store.loadName('unknown'), isNull);
     });
 
+    test('loadName with empty broadcasterId returns null (does not throw)', () {
+      final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+      final SharedPreferencesBroadcasterNameStore store =
+          SharedPreferencesBroadcasterNameStore(prefs: prefs);
+
+      expect(store.loadName(''), isNull);
+    });
+
     test('loadAll returns a snapshot of all entries', () async {
       final InMemorySharedPreferences prefs = InMemorySharedPreferences();
       final SharedPreferencesBroadcasterNameStore store =

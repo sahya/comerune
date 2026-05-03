@@ -12,12 +12,14 @@ Widget _buildScreen(
   FakeBroadcasterNgStore store, {
   ValueNotifier<String?>? activeNotifier,
   String? Function(String broadcasterId)? nameResolver,
+  Map<String, String> Function()? namesSnapshot,
 }) {
   return MaterialApp(
     home: BroadcasterNgListScreen(
       broadcasterNgStore: store,
       broadcasterIdNotifier: activeNotifier,
       broadcasterNameResolver: nameResolver,
+      broadcasterNamesSnapshot: namesSnapshot,
     ),
   );
 }
@@ -286,6 +288,57 @@ void main() {
         find.byKey(const Key('broadcaster-ng-list-empty')),
         findsOneWidget,
       );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('prefers the snapshot over the per-id resolver', (
+      WidgetTester tester,
+    ) async {
+      // If the snapshot path is taken, the throwing resolver must never
+      // be invoked — and names should still render from the snapshot.
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster('caster-a')
+        ..seedBroadcaster('caster-b');
+
+      await tester.pumpWidget(
+        _buildScreen(
+          store,
+          nameResolver: (String id) =>
+              throw StateError('resolver should not be called'),
+          namesSnapshot: () => <String, String>{
+            'caster-a': 'Alice',
+            'caster-b': 'Bob',
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Alice(caster-a)'), findsOneWidget);
+      expect(find.text('Bob(caster-b)'), findsOneWidget);
+    });
+
+    testWidgets('long 名前(ID) renders without overflow on a narrow viewport', (
+      WidgetTester tester,
+    ) async {
+      tester.view.physicalSize = const Size(240, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      const String longName = 'とても長い放送者名前ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      const String longId = 'broadcaster-id-0123456789-0123456789-0123456789';
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster(longId);
+
+      await tester.pumpWidget(
+        _buildScreen(
+          store,
+          nameResolver: (String id) => id == longId ? longName : null,
+        ),
+      );
+      await tester.pumpAndSettle();
+
       expect(tester.takeException(), isNull);
     });
 

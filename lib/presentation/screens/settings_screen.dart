@@ -567,6 +567,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                         broadcasterNameResolver: nameStore == null
                             ? null
                             : (String id) => nameStore.loadName(id),
+                        // Prefer a single O(N) snapshot read per build over
+                        // N per-tile resolver calls; each resolver call would
+                        // re-parse SharedPreferences once.
+                        broadcasterNamesSnapshot: nameStore == null
+                            ? null
+                            : () => nameStore.loadAll(),
                       );
                     },
                   ),

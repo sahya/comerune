@@ -38,6 +38,10 @@ abstract class BroadcasterNameStore {
 /// Concurrent [setName] calls go through a serial write chain, mirroring
 /// the pattern used by `SharedPreferencesBroadcasterNgStore`, so two
 /// concurrent callers cannot interleave a partial read-modify-write.
+// TODO(#727 follow-up): consider an in-memory snapshot cache invalidated
+// on setName() so loadName() does not re-parse on every call. Picker
+// currently mitigates by using loadAll() once per build via the
+// BroadcasterNgListScreen.broadcasterNamesSnapshot parameter.
 class SharedPreferencesBroadcasterNameStore implements BroadcasterNameStore {
   SharedPreferencesBroadcasterNameStore({required SharedPreferencesLike prefs})
     : _prefs = prefs;
