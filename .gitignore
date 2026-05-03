@@ -4,8 +4,9 @@
 .dart_tool/
 .packages
 build/
-# pubspec.lock はリポジトリにコミットする (sha256 content-hash による依存改ざん検知のため)。
-# 公開アプリでサプライチェーン攻撃に備える観点で committed が望ましい。詳細は CLAUDE.md を参照。
+# pubspec.lock is intentionally committed (NOT ignored).
+# サプライチェーン攻撃対策として lock の sha256 content-hash で依存改ざんを検知するため。
+# 詳細な運用ルールは CLAUDE.md / CONTRIBUTING.md を参照。
 
 # Directory created by dartdoc
 # If you don't generate documentation locally you can remove this line.

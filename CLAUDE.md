@@ -135,7 +135,10 @@ PR を作成する際、対応する Issue 番号がある場合は必ず PR の
 - キャレット（`^`）やチルダ（`~`）を使わず、exact version で指定する（例: `http: 1.6.0`）
 - 新しいパッケージを追加する際も、`flutter pub add` 後に `pubspec.yaml` のバージョン指定をピン留めに修正する
 - バージョンアップは `flutter pub upgrade --major-versions` で調査し、破壊的変更の影響とセキュリティ監査（パブリッシャー検証・既知CVE確認）を実施した上で明示的に行う
-- `pubspec.lock` はリポジトリにコミットする — exact version pin に加え、lock の sha256 content-hash で依存パッケージの改ざんを検知するため（公開リポジトリのサプライチェーン対策）。`flutter pub get` 後に `pubspec.lock` の差分が出た場合は、依存解決結果が変わったことを意味するので必ずレビューで確認すること
+- `pubspec.lock` はリポジトリにコミットする
+  - exact version pin に加えて、lock の `sha256` content-hash で依存パッケージそのものの改ざんを検知するため（公開リポジトリのサプライチェーン対策）
+  - `flutter pub get` 後に `pubspec.lock` の差分が出た場合は、依存解決結果が変わったことを意味するので、意図した変更かを必ずレビューで確認すること
+  - 同じ運用ルールは人間 contributor 向けに `CONTRIBUTING.md` にも記載している
 
 ## オプション参照先の 2 段フォールバック必須
 
