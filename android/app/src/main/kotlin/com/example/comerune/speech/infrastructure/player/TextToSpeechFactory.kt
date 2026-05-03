@@ -2,6 +2,7 @@ package com.example.comerune.speech.infrastructure.player
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
@@ -36,13 +37,8 @@ interface TextToSpeechAdapter {
 
     fun setPitch(pitch: Float): Int
 
-    /**
-     * Apply [AudioAttributes] to the underlying TTS engine so the system
-     * routes the speech with the correct usage / content-type. Without
-     * this, Android may treat the engine as USAGE_MEDIA and silence it
-     * during DND or battery-saver focus restrictions.
-     */
-    fun setAudioAttributes(attributes: AudioAttributes): Int
+    /** Applies the shared speech audio-attributes profile to the engine. */
+    fun setSpeechAudioAttributes(): Int
 
     fun speak(
         text: String,
@@ -67,9 +63,9 @@ class DefaultTextToSpeechFactory(private val context: Context) : TextToSpeechFac
 }
 
 /**
- * Production adapter that forwards every call to the wrapped
- * [TextToSpeech] instance. Intentionally kept free of conditional logic
- * so it stays obviously correct by inspection.
+ * Production adapter that forwards calls to the wrapped [TextToSpeech]
+ * instance and lazily builds the shared speech audio profile only on
+ * Android runtimes that can provide a concrete [AudioAttributes].
  */
 private class RealTextToSpeechAdapter(
     private val tts: TextToSpeech,
@@ -80,8 +76,21 @@ private class RealTextToSpeechAdapter(
 
     override fun setPitch(pitch: Float): Int = tts.setPitch(pitch)
 
-    override fun setAudioAttributes(attributes: AudioAttributes): Int =
-        tts.setAudioAttributes(attributes)
+    override fun setSpeechAudioAttributes(): Int {
+        val attributes = try {
+            AudioAttributes.Builder().apply {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    setUsage(AudioAttributes.USAGE_ASSISTANT)
+                } else {
+                    setUsage(AudioAttributes.USAGE_MEDIA)
+                }
+                setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+            }.build()
+        } catch (_: RuntimeException) {
+            return TextToSpeech.ERROR
+        }
+        return tts.setAudioAttributes(attributes)
+    }
 
     override fun speak(
         text: String,
