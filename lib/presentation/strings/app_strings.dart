@@ -86,10 +86,9 @@ final class SettingsStrings {
   // 合わせて更新する。
   String get userManagementTileSubtitle => 'お気に入りユーザー';
 
-  // タイル: 放送者別 NG 設定 (Issue #727 follow-up)
-  // 兄弟タイル「コメント表示設定」「読み上げ設定」 と命名統一しつつ、
-  // 編集画面 AppBar 「NG 設定 - <放送者名>」 と語彙連続させる。
-  String get ngFilterTileTitle => '放送者別 NG 設定';
+  // タイル: NG設定 (Issue #727 follow-up)
+  // 一覧画面や編集画面の語彙に合わせ、設定一覧でも短い名称で統一する。
+  String get ngFilterTileTitle => 'NG設定';
   // タイルが enabled の時は subtitle 自体を表示しない設計のため、
   // disabled 時に出す「未対応」 ラベルのみ AppStrings に保持する。
   String get ngFilterTileSubtitleDisabled => '未対応';

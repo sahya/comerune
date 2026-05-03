@@ -128,6 +128,16 @@ void main() {
       expect(find.text('caster-b'), findsOneWidget);
     });
 
+    testWidgets('shows NG設定 as the AppBar title', (WidgetTester tester) async {
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster('caster-a');
+
+      await tester.pumpWidget(_buildScreen(store));
+      await tester.pumpAndSettle();
+
+      expect(find.text('NG設定'), findsOneWidget);
+    });
+
     testWidgets('tile title shows 名前(ID) when the resolver returns a name', (
       WidgetTester tester,
     ) async {
