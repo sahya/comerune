@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../application/settings/settings_save_helper.dart';
 import '../../application/settings/settings_store.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/user_name_resolution.dart';
@@ -101,7 +102,7 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
 
     final AppSettings current = await widget.settingsStore.load();
     final AppSettings updated = current.addFavoriteUserId(userId);
-    await widget.settingsStore.save(updated);
+    await saveSettings(widget.settingsStore, updated);
 
     if (!mounted) {
       return;
@@ -136,7 +137,7 @@ class _FavoriteUserListScreenState extends State<FavoriteUserListScreen> {
 
     final AppSettings current = await widget.settingsStore.load();
     final AppSettings updated = current.removeFavoriteUserId(userId);
-    await widget.settingsStore.save(updated);
+    await saveSettings(widget.settingsStore, updated);
 
     if (!mounted) {
       return;

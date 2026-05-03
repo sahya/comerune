@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../app_logging.dart';
 import '../../application/comment_post/comment_post_controller.dart';
 import '../../application/timeshift_fetch/timeshift_fetch_controller.dart';
+import '../../application/settings/settings_save_helper.dart';
 import '../../application/settings/settings_store.dart';
 import '../../application/speech/speech_availability_notifier.dart';
 import '../../application/statistics/statistics_store.dart';
@@ -1465,7 +1466,7 @@ class _SelectScreenState extends State<SelectScreen>
     _settingsNotifier.value = updated;
     final SettingsStore? settingsStore = widget.settingsStore;
     if (settingsStore != null) {
-      unawaited(settingsStore.save(updated));
+      saveSettingsUnawaited(settingsStore, updated);
     }
   }
 
@@ -1482,7 +1483,7 @@ class _SelectScreenState extends State<SelectScreen>
     _settingsNotifier.value = updated;
     final SettingsStore? settingsStore = widget.settingsStore;
     if (settingsStore != null) {
-      unawaited(settingsStore.save(updated));
+      saveSettingsUnawaited(settingsStore, updated);
     }
   }
 
