@@ -80,7 +80,8 @@ class FakeTextToSpeechAdapter(
     private val setLanguageCalls: MutableList<Locale> = CopyOnWriteArrayList()
     private val setSpeechRateCalls: MutableList<Float> = CopyOnWriteArrayList()
     private val setPitchCalls: MutableList<Float> = CopyOnWriteArrayList()
-    private val setAudioAttributesCalls: MutableList<Unit> = CopyOnWriteArrayList()
+    private val setAudioAttributesCalls: MutableList<SpeechAudioAttributesProfile> =
+        CopyOnWriteArrayList()
     private val speakCalls: MutableList<SpeakInvocation> = CopyOnWriteArrayList()
     private val progressListeners: MutableList<UtteranceProgressListener> = CopyOnWriteArrayList()
 
@@ -103,7 +104,7 @@ class FakeTextToSpeechAdapter(
 
     val pitches: List<Float> get() = setPitchCalls.toList()
 
-    val audioAttributesCalls: List<Unit>
+    val audioAttributesCalls: List<SpeechAudioAttributesProfile>
         get() = setAudioAttributesCalls.toList()
 
     val speakInvocations: List<SpeakInvocation>
@@ -136,8 +137,8 @@ class FakeTextToSpeechAdapter(
         return TextToSpeech.SUCCESS
     }
 
-    override fun setSpeechAudioAttributes(): Int {
-        setAudioAttributesCalls.add(Unit)
+    override fun setSpeechAudioAttributes(profile: SpeechAudioAttributesProfile): Int {
+        setAudioAttributesCalls.add(profile)
         return TextToSpeech.SUCCESS
     }
 

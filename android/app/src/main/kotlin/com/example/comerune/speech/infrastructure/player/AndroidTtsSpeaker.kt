@@ -51,6 +51,8 @@ class AndroidTtsSpeaker(
 
     private var tts: TextToSpeechAdapter? = null
 
+    private val speechAudioAttributesProfile = defaultSpeechAudioAttributesProfile()
+
     /**
      * Listener registered against [audioFocusGuard] (when present) so
      * losses on the shared session immediately silence the system TTS.
@@ -212,7 +214,8 @@ class AndroidTtsSpeaker(
                     // platform may treat system TTS output as
                     // USAGE_UNKNOWN and silence it during DND or
                     // battery-saver focus restrictions (#736).
-                    val attributesResult = currentEngine.setSpeechAudioAttributes()
+                    val attributesResult =
+                        currentEngine.setSpeechAudioAttributes(speechAudioAttributesProfile)
                     if (attributesResult != TextToSpeech.SUCCESS) {
                         Log.w(
                             TAG,

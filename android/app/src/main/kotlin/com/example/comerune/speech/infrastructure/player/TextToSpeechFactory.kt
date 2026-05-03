@@ -8,6 +8,24 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import java.util.Locale
 
+internal data class SpeechAudioAttributesProfile(
+    val usage: Int,
+    val contentType: Int,
+)
+
+internal fun defaultSpeechAudioAttributesProfile(
+    sdkInt: Int = Build.VERSION.SDK_INT,
+): SpeechAudioAttributesProfile =
+    SpeechAudioAttributesProfile(
+        usage =
+            if (sdkInt >= Build.VERSION_CODES.Q) {
+                AudioAttributes.USAGE_ASSISTANT
+            } else {
+                AudioAttributes.USAGE_MEDIA
+            },
+        contentType = AudioAttributes.CONTENT_TYPE_SPEECH,
+    )
+
 /**
  * Thin seam around [android.speech.tts.TextToSpeech] so the Android
  * framework dependency can be swapped with a fake in JVM unit tests.
@@ -38,7 +56,7 @@ interface TextToSpeechAdapter {
     fun setPitch(pitch: Float): Int
 
     /** Applies the shared speech audio-attributes profile to the engine. */
-    fun setSpeechAudioAttributes(): Int
+    fun setSpeechAudioAttributes(profile: SpeechAudioAttributesProfile): Int
 
     fun speak(
         text: String,
@@ -76,15 +94,11 @@ private class RealTextToSpeechAdapter(
 
     override fun setPitch(pitch: Float): Int = tts.setPitch(pitch)
 
-    override fun setSpeechAudioAttributes(): Int {
+    override fun setSpeechAudioAttributes(profile: SpeechAudioAttributesProfile): Int {
         val attributes = try {
             AudioAttributes.Builder().apply {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    setUsage(AudioAttributes.USAGE_ASSISTANT)
-                } else {
-                    setUsage(AudioAttributes.USAGE_MEDIA)
-                }
-                setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                setUsage(profile.usage)
+                setContentType(profile.contentType)
             }.build()
         } catch (_: RuntimeException) {
             return TextToSpeech.ERROR
