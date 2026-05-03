@@ -114,6 +114,19 @@ void main() {
       );
     });
 
+    test('SynthesisMode fromStorageValue stays defensive against empty / '
+        'literally bogus values', () {
+      // 永続化値が空文字や旧バージョン由来の未知文字列でも、
+      // 例外を投げず必ずデフォルトへフォールバックすること
+      // （`SettingsStore.load()` 全体が倒れて画面が無限スピナーに
+      // ならないための防御）。
+      expect(SynthesisMode.fromStorageValue(''), SynthesisMode.audioQuery);
+      expect(
+        SynthesisMode.fromStorageValue('__not_a_real_enum_value__'),
+        SynthesisMode.audioQuery,
+      );
+    });
+
     test('toMap includes all fields with defaults', () {
       const settings = SpeechSettings();
       final map = settings.toMap();

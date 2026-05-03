@@ -34,6 +34,8 @@ abstract final class AppStrings {
   const AppStrings._();
 
   static const SettingsStrings settings = SettingsStrings._();
+  static const BroadcasterNgListStrings broadcasterNgList =
+      BroadcasterNgListStrings._();
   static const TimeshiftStrings timeshift = TimeshiftStrings._();
   static const ConnectionStrings connection = ConnectionStrings._();
   static const CommentDisplaySettingsStrings commentDisplaySettings =
@@ -81,7 +83,26 @@ final class SettingsStrings {
 
   // タイル: ユーザー管理
   String get userManagementTileTitle => 'ユーザー管理';
-  String get userManagementTileSubtitle => 'お気に入り・コテハン';
+  // Issue #803 child-1: NG エントリは別タイルへ移行済み、コテハン管理 UI も
+  // 該当画面には存在しないため、サブタイトルを実態（お気に入りユーザー）に
+  // 合わせて更新する。
+  String get userManagementTileSubtitle => 'お気に入りユーザー';
+
+  // タイル: NG設定 (Issue #727 follow-up)
+  // 一覧画面や編集画面の語彙に合わせ、設定一覧でも短い名称で統一する。
+  String get ngFilterTileTitle => 'NG設定';
+  // タイルが enabled の時は subtitle 自体を表示しない設計のため、
+  // disabled 時に出す「未対応」 ラベルのみ AppStrings に保持する。
+  String get ngFilterTileSubtitleDisabled => '未対応';
+
+  /// NG設定編集画面（[BroadcasterNgEditScreen]）の AppBar タイトル。
+  ///
+  /// Issue #727 follow-up: `scopeLabel` には放送者名（解決できないときは
+  /// 放送者ID）が入る。区切りは半角ハイフン + 半角スペース 1 つずつで、
+  /// `name(id)` のような結合形ではなく純粋な放送者名を渡すことを想定する。
+  /// `[ngFilterTileTitle]`（タイル名・一覧画面 AppBar）と同じ「NG設定」
+  /// 表記で語彙連続を維持する。
+  String ngEditScreenTitle(String scopeLabel) => 'NG設定 - $scopeLabel';
 
   // セクション: データ管理
   String get dataManagementSectionTitle => 'データ管理';
@@ -110,6 +131,18 @@ final class SettingsStrings {
   // セクション: デバッグ
   String get debugSectionTitle => 'デバッグ';
   String get debugModeSwitchTitle => 'デバッグモード';
+}
+
+/// `BroadcasterNgListScreen`（放送者別 NG 設定一覧）で使用する文字列。
+final class BroadcasterNgListStrings {
+  const BroadcasterNgListStrings._();
+
+  String get emptyTitle => 'まだ放送者ごとの NG 設定はありません';
+  String get emptyDescription =>
+      'コメント画面で NGユーザーを追加するか、現在接続中の放送者の '
+      'NG設定を作成すると、その放送者の設定として記録されます';
+  String get createActiveTitle => '現在接続中の放送者の NG設定を作成';
+  String get activeBadge => '現在接続中';
 }
 
 /// 接続エラーのスナックバー等で使用する文字列の集約。

@@ -8,8 +8,12 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/domain/connection/connection_supervisor.dart';
 import 'package:comerune/data/comment_log/comment_log_writer.dart';
+import 'package:comerune/domain/matchers/ng_matcher.dart';
 import 'package:comerune/domain/models/app_message.dart';
 import 'package:comerune/domain/models/app_settings.dart';
+import 'package:comerune/domain/models/ng_display_subcategory.dart';
+import 'package:comerune/domain/models/ng_policy.dart';
+import 'package:comerune/domain/models/ng_preset_category.dart';
 import 'package:comerune/domain/models/user_name_resolution.dart';
 import 'package:comerune/presentation/screens/comment_screen.dart';
 import 'package:comerune/presentation/screens/comment_screen_config.dart';
@@ -1859,6 +1863,200 @@ void main() {
       // Callback emitted exactly the new (ascending) value.
       expect(received, <CommentSortOrder>[CommentSortOrder.ascending]);
     });
+
+    testWidgets('parent rebuild changing commentSortOrder ascending→descending '
+        're-seeds the local sort state and updates the toggle tooltip (#782)', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(supervisor: supervisor, messages: const <AppMessage>[]),
+      );
+
+      // Sanity: ascending → tooltip says "switch to newest-first".
+      IconButton button = tester.widget<IconButton>(
+        find.byKey(const Key('sort-toggle-button')),
+      );
+      expect(button.tooltip, '新しい順に切替');
+
+      // Simulate Settings Import: parent rebuilds CommentScreen with the
+      // imported sort order without going through the in-screen toggle.
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          commentSortOrder: CommentSortOrder.descending,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      button = tester.widget<IconButton>(
+        find.byKey(const Key('sort-toggle-button')),
+      );
+      expect(
+        button.tooltip,
+        '古い順に切替',
+        reason:
+            'didUpdateWidget should re-seed _sortOrder from the new prop '
+            'so the tooltip reflects the imported descending order.',
+      );
+    });
+
+    testWidgets('parent rebuild changing commentSortOrder descending→ascending '
+        're-seeds the local sort state and updates the toggle tooltip (#782)', (
+      WidgetTester tester,
+    ) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          commentSortOrder: CommentSortOrder.descending,
+        ),
+      );
+
+      IconButton button = tester.widget<IconButton>(
+        find.byKey(const Key('sort-toggle-button')),
+      );
+      expect(button.tooltip, '古い順に切替');
+
+      await tester.pumpWidget(
+        _buildScreen(supervisor: supervisor, messages: const <AppMessage>[]),
+      );
+      await tester.pumpAndSettle();
+
+      button = tester.widget<IconButton>(
+        find.byKey(const Key('sort-toggle-button')),
+      );
+      expect(
+        button.tooltip,
+        '新しい順に切替',
+        reason:
+            'didUpdateWidget should re-seed _sortOrder when the imported '
+            'sort order flips back to ascending.',
+      );
+    });
+
+    testWidgets('parent rebuild with the same commentSortOrder preserves the '
+        'user\'s manual toggle state (#782)', (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          commentSortOrder: CommentSortOrder.ascending,
+        ),
+      );
+
+      // User manually flips the order in the AppBar. The parent has not
+      // yet persisted/round-tripped the new value, so widget.commentSortOrder
+      // remains ascending.
+      await tester.tap(find.byKey(const Key('sort-toggle-button')));
+      await tester.pumpAndSettle();
+
+      IconButton button = tester.widget<IconButton>(
+        find.byKey(const Key('sort-toggle-button')),
+      );
+      expect(
+        button.tooltip,
+        '古い順に切替',
+        reason:
+            'After tapping the toggle, the local _sortOrder should now be '
+            'descending and the tooltip should reflect that.',
+      );
+
+      // Parent rebuilds with the same (ascending) prop — e.g. an unrelated
+      // setState in the parent. didUpdateWidget MUST NOT clobber the
+      // user\'s in-progress toggle state.
+      await tester.pumpWidget(
+        _buildScreen(
+          supervisor: supervisor,
+          messages: const <AppMessage>[],
+          commentSortOrder: CommentSortOrder.ascending,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      button = tester.widget<IconButton>(
+        find.byKey(const Key('sort-toggle-button')),
+      );
+      expect(
+        button.tooltip,
+        '古い順に切替',
+        reason:
+            'A same-value parent rebuild must not reset _sortOrder back to '
+            'the prop, otherwise the user\'s manual toggle would be lost.',
+      );
+    });
+
+    testWidgets(
+      'parent rebuild changing commentFontSize is reflected without a '
+      'didUpdateWidget bridge (Phase 0 verification, #782)',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          AppMessage(
+            id: 'first',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'u1',
+            content: 'hello world',
+            type: AppMessageType.chat,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            commentFontSize: 14,
+          ),
+        );
+
+        // The comment row uses Text.rich; the content TextSpan is the last
+        // child of the root span. We read its fontSize before and after the
+        // parent rebuild to confirm the value flows through widget.commentFontSize.
+        double readContentFontSize() {
+          final Text textWidget = tester.widget<Text>(
+            find.descendant(
+              of: find.byKey(const Key('comment-row-first')),
+              matching: find.byType(Text),
+            ),
+          );
+          final TextSpan root = textWidget.textSpan! as TextSpan;
+          final TextSpan contentSpan = root.children!.last as TextSpan;
+          final double? size = contentSpan.style?.fontSize;
+          expect(size, isNotNull);
+          return size!;
+        }
+
+        final double smallSize = readContentFontSize();
+
+        // Parent rebuild bumps commentFontSize. CommentScreen reads
+        // widget.commentFontSize directly per build, so no didUpdateWidget
+        // bridge is required for the new value to take effect.
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: messages,
+            commentFontSize: 28,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final double largeSize = readContentFontSize();
+        expect(
+          largeSize,
+          greaterThan(smallSize),
+          reason:
+              'commentFontSize is read via widget.commentFontSize each build, '
+              'so a parent rebuild with a new value must take effect '
+              'immediately without any didUpdateWidget plumbing.',
+        );
+      },
+    );
 
     testWidgets('displays resolved user name with user ID', (
       WidgetTester tester,
@@ -7963,6 +8161,312 @@ void main() {
       },
     );
   });
+
+  // Issue #628: presetCategories injection seam on ContentFilterConfig.
+  // These tests exercise the priority order
+  //   (1) presetCategories > (2) presetNgWords > (3) asset
+  // and verify that NgDisplayPreferences is honored by the matcher when
+  // the structured categories are injected directly (no asset load).
+  group('CommentScreen presetCategories seam (#628)', () {
+    const NgPresetCategory violenceCategory = NgPresetCategory(
+      id: 'violence_test',
+      description: 'test violence preset',
+      policy: NgPolicy.blockSpeechOnly,
+      displaySubcategory: NgDisplaySubcategory.violence,
+      words: <String>['殺す'],
+    );
+
+    testWidgets(
+      'NG protection skips badge/snackbar when allowViolence is true',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_PresetCategoriesHostState> hostKey =
+            GlobalKey<_PresetCategoriesHostState>();
+
+        await tester.pumpWidget(
+          _PresetCategoriesHost(
+            key: hostKey,
+            supervisor: supervisor,
+            presetCategories: const <NgPresetCategory>[violenceCategory],
+            ngDisplayPreferences: const NgDisplayPreferences(
+              allowViolence: true,
+            ),
+            notificationEnabled: true,
+          ),
+        );
+        await tester.pump();
+
+        hostKey.currentState!.addMessage(
+          AppMessage(
+            id: 'preset-violence-allowed',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'user-a',
+            content: 'これは殺すという言葉を含む',
+            type: AppMessageType.chat,
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        // Display is allowed → comment renders, no NG-hit announcement.
+        expect(find.byType(SnackBar), findsNothing);
+        expect(find.byKey(const Key('ng-protection-badge')), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'NG protection fires badge+snackbar when allowViolence is false',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_PresetCategoriesHostState> hostKey =
+            GlobalKey<_PresetCategoriesHostState>();
+
+        await tester.pumpWidget(
+          _PresetCategoriesHost(
+            key: hostKey,
+            supervisor: supervisor,
+            presetCategories: const <NgPresetCategory>[violenceCategory],
+            ngDisplayPreferences: NgDisplayPreferences.defaults,
+            notificationEnabled: true,
+          ),
+        );
+        await tester.pump();
+
+        hostKey.currentState!.addMessage(
+          AppMessage(
+            id: 'preset-violence-blocked',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'user-a',
+            content: 'これは殺すという言葉を含む',
+            type: AppMessageType.chat,
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        // Default preferences hide the comment and announce the NG hit.
+        expect(find.byType(SnackBar), findsOneWidget);
+        expect(find.byKey(const Key('ng-protection-badge')), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'action sheet shows read-skipped banner when matched preset is on screen',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_PresetCategoriesHostState> hostKey =
+            GlobalKey<_PresetCategoriesHostState>();
+
+        await tester.pumpWidget(
+          _PresetCategoriesHost(
+            key: hostKey,
+            supervisor: supervisor,
+            presetCategories: const <NgPresetCategory>[violenceCategory],
+            // allow display so the row stays visible and is long-press-able.
+            ngDisplayPreferences: const NgDisplayPreferences(
+              allowViolence: true,
+            ),
+            notificationEnabled: false,
+            initialMessages: <AppMessage>[
+              AppMessage(
+                id: 'preset-banner-match',
+                timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+                userId: 'user-a',
+                content: '殺すぞ',
+                type: AppMessageType.chat,
+              ),
+            ],
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.longPress(
+          find.byKey(const Key('comment-row-preset-banner-match')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('comment-actions-sheet')), findsOneWidget);
+        expect(
+          find.byKey(const Key('action-read-skipped-banner')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'didUpdateWidget honors a fresh presetCategories injection on rebuild',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_PresetCategoriesHostState> hostKey =
+            GlobalKey<_PresetCategoriesHostState>();
+
+        // Start with no preset injection so the matcher has no preset
+        // categories. allowViolence stays false so a later match would
+        // normally fire a badge/snackbar.
+        await tester.pumpWidget(
+          _PresetCategoriesHost(
+            key: hostKey,
+            supervisor: supervisor,
+            presetCategories: const <NgPresetCategory>[],
+            ngDisplayPreferences: NgDisplayPreferences.defaults,
+            notificationEnabled: true,
+          ),
+        );
+        await tester.pump();
+
+        // Now inject the structured violence category via a rebuild and
+        // flip allowViolence to true. The didUpdateWidget seam swap
+        // must take effect: a subsequent matching message must NOT
+        // raise the protection badge/snackbar because the per-subcategory
+        // display toggle says it is allowed.
+        hostKey.currentState!.updateConfig(
+          presetCategories: const <NgPresetCategory>[violenceCategory],
+          ngDisplayPreferences: const NgDisplayPreferences(allowViolence: true),
+        );
+        await tester.pump();
+
+        hostKey.currentState!.addMessage(
+          AppMessage(
+            id: 'preset-violence-after-update',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'user-a',
+            content: 'これは殺すという言葉を含む',
+            type: AppMessageType.chat,
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        expect(find.byType(SnackBar), findsNothing);
+        expect(find.byKey(const Key('ng-protection-badge')), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'action sheet hides read-skipped banner when comment does not match preset',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final GlobalKey<_PresetCategoriesHostState> hostKey =
+            GlobalKey<_PresetCategoriesHostState>();
+
+        await tester.pumpWidget(
+          _PresetCategoriesHost(
+            key: hostKey,
+            supervisor: supervisor,
+            presetCategories: const <NgPresetCategory>[violenceCategory],
+            ngDisplayPreferences: const NgDisplayPreferences(
+              allowViolence: true,
+            ),
+            notificationEnabled: false,
+            initialMessages: <AppMessage>[
+              AppMessage(
+                id: 'preset-banner-nomatch',
+                timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+                userId: 'user-a',
+                content: 'こんにちは',
+                type: AppMessageType.chat,
+              ),
+            ],
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.longPress(
+          find.byKey(const Key('comment-row-preset-banner-nomatch')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('comment-actions-sheet')), findsOneWidget);
+        expect(
+          find.byKey(const Key('action-read-skipped-banner')),
+          findsNothing,
+        );
+      },
+    );
+  });
+}
+
+/// Test host for the `presetCategories` injection seam (Issue #628).
+///
+/// Mirrors [_NgProtectionHost] but accepts the structured preset
+/// categories and an [NgDisplayPreferences] so the seam priority and the
+/// matcher's display-toggle interaction can be exercised together.
+class _PresetCategoriesHost extends StatefulWidget {
+  const _PresetCategoriesHost({
+    super.key,
+    required this.supervisor,
+    required this.presetCategories,
+    this.ngDisplayPreferences = NgDisplayPreferences.defaults,
+    this.notificationEnabled = false,
+    this.initialMessages = const <AppMessage>[],
+  });
+
+  final ConnectionSupervisor supervisor;
+  final List<NgPresetCategory> presetCategories;
+  final NgDisplayPreferences ngDisplayPreferences;
+  final bool notificationEnabled;
+  final List<AppMessage> initialMessages;
+
+  @override
+  State<_PresetCategoriesHost> createState() => _PresetCategoriesHostState();
+}
+
+class _PresetCategoriesHostState extends State<_PresetCategoriesHost> {
+  late List<AppMessage> _messages;
+  late List<NgPresetCategory> _presetCategories;
+  late NgDisplayPreferences _ngDisplayPreferences;
+
+  @override
+  void initState() {
+    super.initState();
+    _messages = List<AppMessage>.from(widget.initialMessages);
+    _presetCategories = widget.presetCategories;
+    _ngDisplayPreferences = widget.ngDisplayPreferences;
+  }
+
+  void addMessage(AppMessage message) {
+    setState(() {
+      _messages = List<AppMessage>.from(_messages)..add(message);
+    });
+  }
+
+  /// Updates the injected `presetCategories` and/or display preferences
+  /// to exercise the [CommentScreen.didUpdateWidget] seam-swap path.
+  void updateConfig({
+    List<NgPresetCategory>? presetCategories,
+    NgDisplayPreferences? ngDisplayPreferences,
+  }) {
+    setState(() {
+      if (presetCategories != null) {
+        _presetCategories = presetCategories;
+      }
+      if (ngDisplayPreferences != null) {
+        _ngDisplayPreferences = ngDisplayPreferences;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: CommentScreen(
+        programInfo: const CommentProgramInfo(lv: 'lv-preset-seam'),
+        connectionSupervisor: widget.supervisor,
+        messages: _messages,
+        callbacks: CommentCallbacks(
+          onStopAllConnections: () async {},
+          onReconnectSameLv: () async {},
+          onDifferentLvConnected: (_, _) async {},
+        ),
+        themeMode: AppThemeMode.light,
+        contentFilter: ContentFilterConfig(
+          presetCategories: _presetCategories,
+          ngDisplayPreferences: _ngDisplayPreferences,
+          ngProtectionNotificationEnabled: widget.notificationEnabled,
+        ),
+      ),
+    );
+  }
 }
 
 /// Reactive host that exposes every feature flag required by the
