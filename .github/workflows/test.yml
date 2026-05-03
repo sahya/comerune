@@ -1,60 +1,63 @@
-# TODO: リポジトリが public になったら、以下のコメントアウトを解除して CI を有効化すること。
-# 注意: この YAML は全行コメントアウトが前提。部分的にアンコメントすると構文が崩れるため、
-#       必ずファイル全体 (2 行目以降すべて) を一括でアンコメントすること。
-# name: CI
-#
-# on:
-#   pull_request:
-#     branches: [main]
-#   push:
-#     branches: [main]
-#
-# concurrency:
-#   group: ${{ github.workflow }}-${{ github.ref }}
-#   cancel-in-progress: true
-#
-# jobs:
-#   check:
-#     name: Analyze, Format, Test
-#     runs-on: ubuntu-latest
-#     # 15 から 25 に引き上げ: Flutter test + Kotlin JVM test + JDK セットアップの合計で、
-#     # 初回 (cache miss) ジョブは 10〜15 分に達しうる。安全率を確保するため 25 分に設定。
-#     timeout-minutes: 25
-#
-#     steps:
-#       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-#
-#       # JDK needed for Android unit tests (PresetNgWordsParser etc.).
-#       # Must be set up before the Flutter action so any Gradle invocation
-#       # that Flutter/pub triggers sees JAVA_HOME. `cache: gradle` handles
-#       # Gradle caches (~/.gradle/caches, ~/.gradle/wrapper) in one step —
-#       # no separate actions/cache invocation needed.
-#       - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
-#         with:
-#           distribution: temurin
-#           java-version: '17'
-#           cache: gradle
-#
-#       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
-#         with:
-#           channel: stable
-#           cache: true
-#
-#       - name: Install dependencies
-#         run: flutter pub get
-#
-#       - name: Verify formatting
-#         run: dart format --set-exit-if-changed .
-#
-#       - name: Run static analysis
-#         run: flutter analyze
-#
-#       - name: Run tests
-#         run: flutter test
-#
-#       # Kotlin JVM unit tests (android/app/src/test). `flutter pub get` above
-#       # populates .flutter-plugins-dependencies, which the Flutter Gradle
-#       # plugin reads during task configuration.
-#       # `--no-daemon` は使い捨て CI 環境で daemon 常駐によるメモリ保持を避けるため指定。
-#       - name: Run Kotlin unit tests
-#         run: cd android && ./gradlew :app:testDebugUnitTest --stacktrace --no-daemon
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Analyze, Format, Test
+    runs-on: ubuntu-latest
+    # 15 から 25 に引き上げ: Flutter test + Kotlin JVM test + JDK セットアップの合計で、
+    # 初回 (cache miss) ジョブは 10〜15 分に達しうる。安全率を確保するため 25 分に設定。
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # JDK needed for Android unit tests (PresetNgWordsParser etc.).
+      # Must be set up before the Flutter action so any Gradle invocation
+      # that Flutter/pub triggers sees JAVA_HOME. `cache: gradle` handles
+      # Gradle caches (~/.gradle/caches, ~/.gradle/wrapper) in one step —
+      # no separate actions/cache invocation needed.
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      # flutter-version は pubspec.lock を生成した SDK と一致させ、CI 上で
+      # `flutter pub get` の resolve 結果が振動しないよう明示固定する。
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: 3.41.9
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Verify formatting
+        run: dart format --set-exit-if-changed .
+
+      - name: Run static analysis
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+      # Kotlin JVM unit tests (android/app/src/test). `flutter pub get` above
+      # populates .flutter-plugins-dependencies, which the Flutter Gradle
+      # plugin reads during task configuration.
+      # `--no-daemon` は使い捨て CI 環境で daemon 常駐によるメモリ保持を避けるため指定。
+      - name: Run Kotlin unit tests
+        run: cd android && ./gradlew :app:testDebugUnitTest --stacktrace --no-daemon
