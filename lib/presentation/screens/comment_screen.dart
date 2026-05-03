@@ -740,7 +740,24 @@ class _CommentScreenState extends State<CommentScreen>
   /// In-flight guard for the AppBar overflow "配信を終了" entry. While
   /// `true` the menu item is rendered disabled and re-tapping after
   /// re-opening the menu cannot trigger a second `endBroadcast` API call.
+  ///
+  /// This covers the entire flow including the confirmation dialog window,
+  /// not only the API region (see [_isEndBroadcastApiInFlight] for that).
   bool _isEndingBroadcast = false;
+
+  /// Tighter sub-interval flag covering only the actual
+  /// `BroadcastControlRepository.endBroadcast` API call. Used to drive a
+  /// thin AppBar bottom progress indicator so the user gets visual
+  /// feedback during the 1–2 second window between confirming and the
+  /// connection-close → `_showStatsPanel` flow taking over (#785).
+  ///
+  /// Kept separate from [_isEndingBroadcast] on purpose: the indeterminate
+  /// `LinearProgressIndicator` animation never settles, so leaving it
+  /// running during the modal confirmation dialog would break
+  /// `pumpAndSettle()` in widget tests for that dialog. Restricting it to
+  /// the API region keeps the dialog phase test-friendly and matches the
+  /// product intent (only show progress while waiting on the network).
+  bool _isEndBroadcastApiInFlight = false;
 
   /// Timestamp at which the broadcast transitioned to ended/stopped.
   /// Used to freeze the status-bar elapsed timer display.
@@ -3160,6 +3177,32 @@ class _CommentScreenState extends State<CommentScreen>
                       // stays visible because it conveys state at a glance.
                       _buildOverflowMenuButton(),
                     ],
+              // Thin progress strip pinned to the AppBar's bottom edge.
+              // Visible only while the "配信を終了" API call is in
+              // flight so the user sees feedback during the otherwise
+              // silent 1–2s window before the connection-close →
+              // _showStatsPanel flow surfaces its own UI (#785). We
+              // always reserve the 2px slot via PreferredSize so the
+              // AppBar height does not jump when the indicator
+              // appears/disappears (avoids a layout shift in the
+              // body below).
+              bottom: PreferredSize(
+                preferredSize: const Size.fromHeight(2),
+                child: _isEndBroadcastApiInFlight
+                    ? Semantics(
+                        // Screen-reader feedback for the otherwise silent
+                        // 1–2s API window (#785). Without this label the
+                        // indicator is invisible to assistive tech.
+                        label: '配信終了処理中',
+                        liveRegion: true,
+                        container: true,
+                        child: const LinearProgressIndicator(
+                          key: Key('end-broadcast-progress-indicator'),
+                          minHeight: 2,
+                        ),
+                      )
+                    : const SizedBox(height: 2),
+              ),
             ),
             body: Column(
               children: <Widget>[
@@ -4370,10 +4413,29 @@ class _CommentScreenState extends State<CommentScreen>
       if (confirmed != true || !mounted) {
         return;
       }
-      final BroadcastControlResult result = await repo.endBroadcast(
-        programId: widget.programInfo.lv,
-        userSession: _commentPostUserSession,
-      );
+      // Flip the API-only sub-flag so the AppBar bottom progress
+      // indicator becomes visible for the network round-trip. We
+      // intentionally do this AFTER the confirmation dialog so the
+      // indeterminate animation does not run during the dialog phase
+      // (see field doc for why this matters in widget tests). The flag
+      // is cleared in a nested finally so it always falls back to false
+      // even when the API throws or the widget unmounts mid-flight.
+      setState(() {
+        _isEndBroadcastApiInFlight = true;
+      });
+      final BroadcastControlResult result;
+      try {
+        result = await repo.endBroadcast(
+          programId: widget.programInfo.lv,
+          userSession: _commentPostUserSession,
+        );
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isEndBroadcastApiInFlight = false;
+          });
+        }
+      }
       if (result.success || result.isAlreadyEnded) {
         // Flip the broadcaster-cache so any subsequent broadcaster check
         // does not return the stale "broadcaster" outcome cached during
