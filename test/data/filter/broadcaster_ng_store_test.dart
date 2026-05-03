@@ -15,7 +15,7 @@ void main() {
     });
 
     test(
-      'first load returns the template content and persists per-broadcaster',
+      'first load returns the template content without creating a broadcaster slot',
       () async {
         await store.saveTemplateNgUserIds(<String>{'u1', 'u2'});
         await store.saveTemplateNgWordRules(<NgWordRule>[
@@ -31,9 +31,7 @@ void main() {
         expect(rules[0].pattern, 'spam');
         expect(rules[1].pattern, 'bot');
         expect(rules[1].enabled, isFalse);
-
-        // Index reflects the seeded broadcaster.
-        expect(store.listBroadcasters(), contains('b1'));
+        expect(store.listBroadcasters(), isEmpty);
       },
     );
 
@@ -53,11 +51,12 @@ void main() {
     test('separate broadcasters are isolated', () async {
       await store.saveTemplateNgUserIds(<String>{'tpl'});
       await store.saveNgUserIds('b1', <String>['only-b1']);
-      // b2 first access should pick up the template, NOT b1's value.
+      // b2 read should pick up the template, NOT b1's value.
       final Set<String> b2Ids = await store.loadNgUserIds('b2');
       expect(b2Ids, equals(<String>{'tpl'}));
       // b1 retains its explicit value.
       expect(await store.loadNgUserIds('b1'), equals(<String>{'only-b1'}));
+      expect(store.listBroadcasters(), <String>['b1']);
     });
 
     test('addNgUserId is idempotent and creates an initialized slot', () async {
@@ -75,6 +74,30 @@ void main() {
       await store.removeNgUserId('b1', 'missing');
       final Set<String> ids = await store.loadNgUserIds('b1');
       expect(ids, equals(<String>{'u2'}));
+    });
+
+    test('addNgUserId for a value already in the template does NOT create a '
+        'broadcaster slot', () async {
+      await store.saveTemplateNgUserIds(<String>{'tpl-user'});
+
+      await store.addNgUserId('b1', 'tpl-user');
+
+      // No-op: nothing changed from the effective state, so no slot
+      // should be materialized.
+      expect(store.listBroadcasters(), isEmpty);
+      expect(await store.loadNgUserIds('b1'), equals(<String>{'tpl-user'}));
+    });
+
+    test('removeNgUserId for a value absent from the template does NOT '
+        'create a broadcaster slot', () async {
+      await store.saveTemplateNgUserIds(<String>{'tpl-user'});
+
+      await store.removeNgUserId('b1', 'absent-user');
+
+      // No-op: removing a value that is not currently in effect must
+      // not materialize a slot.
+      expect(store.listBroadcasters(), isEmpty);
+      expect(await store.loadNgUserIds('b1'), equals(<String>{'tpl-user'}));
     });
 
     test('template save/load round-trip', () async {
@@ -132,16 +155,14 @@ void main() {
       expect(await store.loadNgUserIds('b1'), equals(<String>{'u1', 'u2'}));
     });
 
-    test('loadBroadcasterNgAttributes seeds from template once and returns '
-        'both NG user IDs and rules in a single call', () async {
+    test('loadBroadcasterNgAttributes returns template fallback without '
+        'creating a slot', () async {
       await store.saveTemplateNgUserIds(<String>{'tu1', 'tu2'});
       await store.saveTemplateNgWordRules(<NgWordRule>[
         const NgWordRule(pattern: 'tw'),
         const NgWordRule(pattern: 'off', enabled: false),
       ]);
 
-      // First combined load on `b1` should template-seed and then return
-      // both halves of the snapshot consistently.
       final ({Set<String> ngUserIds, List<NgWordRule> rules}) first =
           await store.loadBroadcasterNgAttributes('b1');
       expect(first.ngUserIds, equals(<String>{'tu1', 'tu2'}));
@@ -149,14 +170,122 @@ void main() {
       expect(first.rules[0].pattern, 'tw');
       expect(first.rules[1].pattern, 'off');
       expect(first.rules[1].enabled, isFalse);
-      expect(store.listBroadcasters(), contains('b1'));
+      expect(store.listBroadcasters(), isEmpty);
 
-      // Second call must reflect the stored slot, not the template
-      // (mutating the template afterwards must not bleed back into `b1`).
+      // Without a dedicated slot, later loads continue to reflect the
+      // template fallback.
       await store.saveTemplateNgUserIds(<String>{'changed'});
       final ({Set<String> ngUserIds, List<NgWordRule> rules}) second =
           await store.loadBroadcasterNgAttributes('b1');
-      expect(second.ngUserIds, equals(<String>{'tu1', 'tu2'}));
+      expect(second.ngUserIds, equals(<String>{'changed'}));
+    });
+
+    test(
+      'addNgUserId seeds from template and then persists a broadcaster slot',
+      () async {
+        await store.saveTemplateNgUserIds(<String>{'tpl'});
+        await store.saveTemplateNgWordRules(<NgWordRule>[
+          const NgWordRule(pattern: 'seed-word'),
+        ]);
+
+        await store.addNgUserId('b1', 'u1');
+
+        expect(await store.loadNgUserIds('b1'), equals(<String>{'tpl', 'u1'}));
+        expect((await store.loadNgWordRules('b1')).single.pattern, 'seed-word');
+        expect(store.listBroadcasters(), <String>['b1']);
+      },
+    );
+
+    test(
+      'saveNgWordRules creates a broadcaster slot after template-backed edit',
+      () async {
+        await store.saveTemplateNgUserIds(<String>{'seed-user'});
+        await store.saveTemplateNgWordRules(<NgWordRule>[
+          const NgWordRule(pattern: 'seed-word'),
+        ]);
+
+        final List<NgWordRule> effective = await store.loadNgWordRules('b1');
+        await store.saveNgWordRules('b1', <NgWordRule>[
+          ...effective,
+          const NgWordRule(pattern: 'added-word'),
+        ]);
+
+        final List<NgWordRule> persisted = await store.loadNgWordRules('b1');
+        expect(
+          persisted.map((NgWordRule rule) => rule.pattern).toList(),
+          <String>['seed-word', 'added-word'],
+        );
+        expect(await store.loadNgUserIds('b1'), equals(<String>{'seed-user'}));
+        expect(store.listBroadcasters(), <String>['b1']);
+      },
+    );
+
+    test('saveNgUserIds creates a broadcaster slot after template-backed edit '
+        'while preserving template NG word rules', () async {
+      await store.saveTemplateNgWordRules(<NgWordRule>[
+        const NgWordRule(pattern: 'seed-word'),
+      ]);
+
+      await store.saveNgUserIds('b1', <String>['added-user']);
+
+      expect(await store.loadNgUserIds('b1'), equals(<String>{'added-user'}));
+      expect(
+        (await store.loadNgWordRules('b1')).map((NgWordRule r) => r.pattern),
+        <String>['seed-word'],
+      );
+      expect(store.listBroadcasters(), <String>['b1']);
+    });
+
+    test(
+      'saveNgWordRules removes the broadcaster slot when both rules and users '
+      'become empty',
+      () async {
+        await store.saveNgUserIds('b1', <String>['u1']);
+        await store.saveNgWordRules('b1', <NgWordRule>[
+          const NgWordRule(pattern: 'word1'),
+        ]);
+
+        await store.saveNgUserIds('b1', const <String>[]);
+        expect(store.listBroadcasters(), <String>['b1']);
+
+        await store.saveNgWordRules('b1', const <NgWordRule>[]);
+
+        expect(store.listBroadcasters(), isEmpty);
+      },
+    );
+
+    test('removing the last broadcaster-specific values falls back to template '
+        'content again', () async {
+      await store.saveTemplateNgUserIds(<String>{'template-user'});
+      await store.saveTemplateNgWordRules(<NgWordRule>[
+        const NgWordRule(pattern: 'template-word'),
+      ]);
+      await store.saveNgUserIds('b1', <String>['u1']);
+      await store.saveNgWordRules('b1', <NgWordRule>[
+        const NgWordRule(pattern: 'word1'),
+      ]);
+
+      await store.saveNgUserIds('b1', const <String>[]);
+      await store.saveNgWordRules('b1', const <NgWordRule>[]);
+
+      expect(store.listBroadcasters(), isEmpty);
+      expect(
+        await store.loadNgUserIds('b1'),
+        equals(<String>{'template-user'}),
+      );
+      expect(
+        (await store.loadNgWordRules('b1')).map((NgWordRule r) => r.pattern),
+        <String>['template-word'],
+      );
+    });
+
+    test('removeNgUserId removes the broadcaster slot when the last user is '
+        'deleted and no rules remain', () async {
+      await store.saveNgUserIds('b1', <String>['u1']);
+
+      await store.removeNgUserId('b1', 'u1');
+
+      expect(store.listBroadcasters(), isEmpty);
     });
 
     test('malformed stored JSON degrades to empty without throwing', () async {

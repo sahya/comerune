@@ -12,9 +12,8 @@ import 'broadcaster_ng_edit_screen.dart';
 ///
 /// Tapping a row pushes [BroadcasterNgEditScreen] for that scope.
 ///
-/// The template scope (seed for newly-encountered broadcasters) is an
-/// internal concept and is intentionally NOT exposed as a tile here — the
-/// migrator and `_ensureInitialized` paths use it implicitly.
+/// The template scope (seed for future broadcaster-specific customizations) is
+/// an internal concept and is intentionally NOT exposed as a tile here.
 class BroadcasterNgListScreen extends StatefulWidget {
   const BroadcasterNgListScreen({
     super.key,
@@ -183,13 +182,24 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
     return _resolvedName(broadcasterId) ?? broadcasterId;
   }
 
+  String? _activeCreateTargetId(String? activeId) {
+    if (activeId == null ||
+        activeId.isEmpty ||
+        _broadcasterIds.contains(activeId)) {
+      return null;
+    }
+    return activeId;
+  }
+
   @override
   Widget build(BuildContext context) {
     final ValueNotifier<String?>? notifier = widget.broadcasterIdNotifier;
     final ThemeData theme = Theme.of(context);
+    final BroadcasterNgListStrings strings = AppStrings.broadcasterNgList;
 
     Widget buildList(String? activeId) {
       final List<String> ids = _broadcasterIds;
+      final String? createTargetId = _activeCreateTargetId(activeId);
       return RefreshIndicator(
         key: const Key('broadcaster-ng-list-refresh'),
         onRefresh: _refresh,
@@ -197,6 +207,21 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
           key: const Key('broadcaster-ng-list-view'),
           padding: const EdgeInsets.symmetric(vertical: 8),
           children: <Widget>[
+            if (createTargetId != null)
+              Card(
+                margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: ListTile(
+                  key: const Key('broadcaster-ng-create-active-tile'),
+                  leading: const Icon(Icons.add_circle_outline),
+                  title: Text(strings.createActiveTitle),
+                  subtitle: Text(_displayTileTitle(createTargetId)),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _openEditor(
+                    createTargetId,
+                    _editorScopeLabel(createTargetId),
+                  ),
+                ),
+              ),
             if (ids.isEmpty)
               Padding(
                 key: const Key('broadcaster-ng-list-empty'),
@@ -204,13 +229,10 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    const Text(
-                      'まだ放送者ごとの NG 設定はありません',
-                      style: TextStyle(fontSize: 14),
-                    ),
+                    Text(strings.emptyTitle, style: TextStyle(fontSize: 14)),
                     const SizedBox(height: 8),
                     Text(
-                      'コメント画面で長押しして NG 登録すると、その放送者の設定として記録されます',
+                      strings.emptyDescription,
                       style: TextStyle(
                         fontSize: 12,
                         color: theme.colorScheme.onSurfaceVariant,
@@ -234,8 +256,8 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   subtitle: isActive
-                      ? const Text(
-                          '現在接続中',
+                      ? Text(
+                          strings.activeBadge,
                           key: Key('broadcaster-ng-active-badge'),
                         )
                       : null,

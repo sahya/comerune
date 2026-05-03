@@ -13,8 +13,8 @@ import 'legacy_ng_parser.dart';
 ///
 /// Behavior:
 /// - The combined NG user IDs / NG word rules are written as the
-///   "template" — the seed value that any future broadcaster's first-access
-///   init will copy.
+///   "template" — the seed value that any future broadcaster-specific
+///   customization starts from.
 /// - Each known broadcaster (passed via `knownBroadcasterIds`) is also
 ///   seeded with the same content so existing relationships immediately
 ///   inherit the user's pre-migration NG settings.

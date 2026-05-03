@@ -10,7 +10,7 @@ import 'ng_word_list_view.dart';
 /// intermediate "hub" screen.
 ///
 /// `broadcasterId == null` means the template scope: edits seed any
-/// future broadcaster's first-access state. A small banner is shown in
+/// future broadcaster's first customization. A small banner is shown in
 /// that case so the user knows they are editing the seed list.
 ///
 /// `scopeLabel` is the display name shown in the AppBar title (broadcaster
