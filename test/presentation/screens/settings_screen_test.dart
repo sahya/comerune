@@ -479,7 +479,7 @@ void main() {
     // when the store is wired, and renders disabled with 「未対応」 when
     // not.
     testWidgets(
-      'NG フィルタ tile is disabled with 「未対応」 when broadcasterNgStore is null',
+      '放送者別 NG 設定 tile is disabled with 「未対応」 when broadcasterNgStore is null',
       (WidgetTester tester) async {
         final SharedPreferencesSettingsStore settingsStore =
             SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
@@ -495,7 +495,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(find.text('NG フィルタ'), findsOneWidget);
+        expect(find.text('放送者別 NG 設定'), findsOneWidget);
         expect(find.text('未対応'), findsOneWidget);
 
         final ListTile tile = tester.widget(
@@ -507,7 +507,7 @@ void main() {
     );
 
     testWidgets(
-      'NG フィルタ tile pushes BroadcasterNgListScreen when store wired',
+      '放送者別 NG 設定 tile pushes BroadcasterNgListScreen when store wired',
       (WidgetTester tester) async {
         final SharedPreferencesSettingsStore settingsStore =
             SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
@@ -526,7 +526,11 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(find.text('NG ユーザー / NG ワードを放送者ごとに管理'), findsOneWidget);
+        // No subtitle is rendered when the tile is enabled (sage review:
+        // tile name 「放送者別 NG 設定」 is self-explanatory; subtitle removed
+        // for tile compactness and above-the-fold space).
+        expect(find.text('未対応'), findsNothing);
+        expect(find.text('放送者別 NG 設定'), findsOneWidget);
 
         await tester.tap(find.byKey(const Key('broadcaster-ng-filter-tile')));
         await tester.pumpAndSettle();

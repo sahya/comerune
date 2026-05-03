@@ -186,7 +186,7 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('NG フィルタ')),
+      appBar: AppBar(title: const Text('放送者別 NG 設定')),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[

@@ -535,10 +535,12 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Widget _buildBroadcasterNgTile(BuildContext context) {
-    // Issue #727: single Settings-level entry into the per-broadcaster NG
-    // editor. When no [BroadcasterNgStore] is wired the tile is shown as
-    // disabled with a 「未対応」 subtitle so legacy embedders / minimally
-    // wired tests still render without crashing.
+    // Issue #727 follow-up: single Settings-level entry into the
+    // per-broadcaster NG editor. Title chosen to match sibling tiles
+    // (「コメント表示設定」「読み上げ設定」) and the AppBar of the editor
+    // (「NG 設定 - <放送者名>」). Subtitle is shown ONLY when the store
+    // is unwired, so legacy embedders see a 「未対応」 hint instead of an
+    // unresponsive tile.
     final BroadcasterNgStore? store = widget.broadcasterNgStore;
     final bool enabled = store != null;
     return Card(
@@ -547,11 +549,9 @@ class _SettingsScreenState extends State<SettingsScreen>
         enabled: enabled,
         leading: const Icon(Icons.block),
         title: Text(AppStrings.settings.ngFilterTileTitle),
-        subtitle: Text(
-          enabled
-              ? AppStrings.settings.ngFilterTileSubtitleEnabled
-              : AppStrings.settings.ngFilterTileSubtitleDisabled,
-        ),
+        subtitle: enabled
+            ? null
+            : Text(AppStrings.settings.ngFilterTileSubtitleDisabled),
         trailing: const Icon(Icons.chevron_right),
         onTap: !enabled
             ? null
