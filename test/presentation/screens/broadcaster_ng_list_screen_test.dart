@@ -318,6 +318,31 @@ void main() {
       expect(find.text('Bob(caster-b)'), findsOneWidget);
     });
 
+    testWidgets('snapshot missing the broadcasterId falls back to ID-only '
+        '(does NOT consult per-id resolver)', (WidgetTester tester) async {
+      // Snapshot path is authoritative once chosen: when the snapshot is
+      // non-null but does not contain a key for `broadcasterId`, the tile
+      // renders as raw ID — the per-id resolver is intentionally not
+      // consulted as a secondary fallback. This locks in that contract.
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster('caster-a');
+
+      await tester.pumpWidget(
+        _buildScreen(
+          store,
+          nameResolver: (String id) =>
+              throw StateError('resolver should not be called'),
+          // Snapshot is supplied (non-null) but doesn't have caster-a.
+          namesSnapshot: () => const <String, String>{},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('caster-a'), findsOneWidget);
+      expect(find.textContaining('()'), findsNothing);
+    });
+
     testWidgets('long 名前(ID) renders without overflow on a narrow viewport', (
       WidgetTester tester,
     ) async {
