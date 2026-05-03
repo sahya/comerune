@@ -567,14 +567,14 @@ void main() {
     // tests 内部から `SharePlus.instance.share(...)` を呼び出す前に必ず
     // 1 度だけキャプチャされるため、`setUpAll` にて設定すれば十分。
     late FakeSharePlatform fakeShare;
-    late FakeFileSelectorPlatform fakeFilePicker;
+    late FakeFileSelectorPlatform fakeFileSelector;
     late Directory tempDir;
 
     setUpAll(() {
       fakeShare = FakeSharePlatform();
       SharePlatform.instance = fakeShare;
-      fakeFilePicker = FakeFileSelectorPlatform();
-      FileSelectorPlatform.instance = fakeFilePicker;
+      fakeFileSelector = FakeFileSelectorPlatform();
+      FileSelectorPlatform.instance = fakeFileSelector;
       // Force `SharePlus.instance` static-final to initialize now with our
       // fake platform so later tests cannot accidentally capture the real one.
       // ignore: unnecessary_statements
@@ -583,7 +583,7 @@ void main() {
 
     setUp(() {
       fakeShare.reset();
-      fakeFilePicker.reset();
+      fakeFileSelector.reset();
       tempDir = Directory.systemTemp.createTempSync(
         'settings_screen_export_test_',
       );
@@ -802,7 +802,7 @@ void main() {
       WidgetTester tester,
     ) async {
       final SettingsStore store = _StubSettingsStore();
-      fakeFilePicker.fileToReturn = null; // user cancel
+      fakeFileSelector.fileToReturn = null; // user cancel
 
       await tester.pumpWidget(_buildScreen(store));
       await tester.pumpAndSettle();
@@ -820,7 +820,7 @@ void main() {
 
       expect(find.text('設定をインポートしました'), findsNothing);
       expect(find.text('無効な設定ファイルです'), findsNothing);
-      expect(fakeFilePicker.pickCalls, hasLength(1));
+      expect(fakeFileSelector.pickCalls, hasLength(1));
 
       final OutlinedButton btnWidget = tester.widget<OutlinedButton>(importBtn);
       expect(btnWidget.onPressed, isNotNull, reason: 're-enabled after cancel');
@@ -832,7 +832,7 @@ void main() {
       final SettingsStore store = buildStore();
       final File bad = File('${tempDir.path}/bad.json')
         ..writeAsStringSync('not valid json');
-      fakeFilePicker.fileToReturn = buildSingleFileResult(path: bad.path);
+      fakeFileSelector.fileToReturn = buildSingleFileResult(path: bad.path);
 
       await tester.pumpWidget(_buildScreen(store));
       await tester.pumpAndSettle();
@@ -845,7 +845,7 @@ void main() {
       );
 
       await tester.tap(importBtn);
-      // FilePicker 完了 + File.readAsString (実 I/O) + showDialog まで進める。
+      // file picker 完了 + File.readAsString (実 I/O) + showDialog まで進める。
       // spinner のアニメーションが永続するため pumpAndSettle は使えない。
       // I/O 完了待ちに runAsync を噛ませ、その後 dialog アニメーションを
       // 進めるために有限 pump を繰り返す。
@@ -871,12 +871,12 @@ void main() {
       expect(find.text('無効な設定ファイルです'), findsOneWidget);
     });
 
-    testWidgets('import: double-tap guard calls FilePicker exactly once', (
+    testWidgets('import: double-tap guard calls file picker exactly once', (
       WidgetTester tester,
     ) async {
       final SettingsStore store = buildStore();
-      fakeFilePicker.responseDelay = const Duration(milliseconds: 200);
-      fakeFilePicker.fileToReturn = null; // user cancel on completion
+      fakeFileSelector.responseDelay = const Duration(milliseconds: 200);
+      fakeFileSelector.fileToReturn = null; // user cancel on completion
 
       await tester.pumpWidget(_buildScreen(store));
       await tester.pumpAndSettle();
@@ -895,7 +895,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump();
 
-      expect(fakeFilePicker.pickCalls, hasLength(1));
+      expect(fakeFileSelector.pickCalls, hasLength(1));
     });
 
     testWidgets('import: picker is invoked with both json and txt extensions '
@@ -907,7 +907,7 @@ void main() {
       // `['json']` 単独では text/plain な JSON が選べない。`['json', 'txt']`
       // を渡すことで `application/json` + `text/plain` の両方を許容する。
       final SettingsStore store = _StubSettingsStore();
-      fakeFilePicker.fileToReturn = null; // user cancel
+      fakeFileSelector.fileToReturn = null; // user cancel
 
       await tester.pumpWidget(_buildScreen(store));
       await tester.pumpAndSettle();
@@ -921,9 +921,9 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(fakeFilePicker.pickCalls, hasLength(1));
-      expect(fakeFilePicker.pickCalls[0]['op'], 'openFile');
-      expect(fakeFilePicker.pickCalls[0]['extensions'], <String>[
+      expect(fakeFileSelector.pickCalls, hasLength(1));
+      expect(fakeFileSelector.pickCalls[0]['op'], 'openFile');
+      expect(fakeFileSelector.pickCalls[0]['extensions'], <String>[
         'json',
         'txt',
       ]);
