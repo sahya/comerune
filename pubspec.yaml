@@ -43,21 +43,23 @@ dependencies:
   path_provider: 2.1.5
 
   # コメントログの共有（Google Drive等の外部ストレージへの保存）
-  share_plus: 12.0.2
+  share_plus: 13.1.0
 
-  # コメントログ自動保存先のディレクトリ選択
-  file_picker: 11.0.2
+  # コメントログ自動保存先のディレクトリ選択 / 設定 Import 時のファイル選択
+  # file_picker (monolithic, win32 5.x bundled) からの乗り換え。
+  # file_selector は flutter.dev publisher の federated 構造で、
+  # Windows 実装は別パッケージのため Android/iOS ビルドには混入しない。
+  file_selector: 1.1.0
 
   # Android Foreground Service（バックグラウンド接続維持・通知バー常駐表示）
   flutter_foreground_task: 9.2.2
-  wakelock_plus: 1.5.1
+  wakelock_plus: 1.6.0
 
   # コメント内URLを既定ブラウザで開く（WebView 経由ではなく OS ハンドラに委ねる）
   url_launcher: 6.3.2
 
   # アプリバージョン取得（ライセンスページの applicationVersion を pubspec.yaml と自動同期）
-  # wakelock_plus 1.5.1 が package_info_plus ^9.0.0 を要求するため 9.x 系の最新版にピン留め
-  package_info_plus: 9.0.1
+  package_info_plus: 10.1.0
 
   # 時計抽象化（テストで `withClock` により NG 保護通知の throttle を制御する）
   # Dart エコシステム標準・小規模・安定版 API のみ使用。
@@ -75,6 +77,15 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: 6.0.0
   fake_async: 1.3.3
+
+# flutter_secure_storage_windows 4.1.0 still constrains win32 to ^5.5.4 even
+# though the rest of the ecosystem (package_info_plus, share_plus, wakelock_plus)
+# has migrated to win32 6.x. The Windows implementation package is federated
+# and is never compiled into Android/iOS builds (no windows/ directory in this
+# repo). Remove this override once flutter_secure_storage_windows publishes a
+# release that accepts win32 ^6.0.0.
+dependency_overrides:
+  win32: 6.1.0
 
 flutter:
   uses-material-design: true
