@@ -40,6 +40,9 @@ abstract final class AppStrings {
   static const ConnectionStrings connection = ConnectionStrings._();
   static const CommentDisplaySettingsStrings commentDisplaySettings =
       CommentDisplaySettingsStrings._();
+  static const UserDetailSheetStrings userDetailSheet =
+      UserDetailSheetStrings._();
+  static const CommentScreenStrings commentScreen = CommentScreenStrings._();
 }
 
 /// `SettingsScreen` で使用する文字列の集約。
@@ -221,4 +224,79 @@ final class TimeshiftStrings {
 
   /// 未対応ダイアログの確認ボタン。
   String get unsupportedDialogConfirm => 'OK';
+}
+
+/// `UserDetailSheet`（ユーザー詳細シート）で使用する文字列の集約。
+///
+/// Issue #778 Phase 2 の対象。PR #775（カスタムカラー追加）で増えた
+/// 色選択 UI 文言と、それ以前から存在する固定ラベル（タイトル・空状態・
+/// NG 操作・コテハンセクション・コメント履歴件数）をまとめて集約する。
+/// 既定ロケール（日本語）の表示はバイト完全一致で現状維持とする。
+final class UserDetailSheetStrings {
+  const UserDetailSheetStrings._();
+
+  // ヘッダー
+  String get title => 'ユーザー詳細';
+
+  /// 「ID: {userId}」形式のヘッダー行。
+  String userIdLine(String userId) => 'ID: $userId';
+
+  /// 「コテハン: {nickname}」形式のヘッダー行。
+  /// コテハン未登録時はそもそも表示されないため、引数は非 null 前提。
+  String userNicknameLine(String nickname) => 'コテハン: $nickname';
+
+  /// 「名前: {resolvedUserName}」形式のヘッダー行。
+  String userNameLine(String resolvedUserName) => '名前: $resolvedUserName';
+
+  // NG ユーザートグル
+  String get ngButtonRegister => 'NG登録';
+  String get ngButtonUnregister => 'NG解除';
+
+  // コメント履歴
+  String get noCommentsInBroadcast => 'この放送でのコメントはありません';
+
+  /// 「コメント履歴（N件）」形式の見出し。
+  String commentHistoryCount(int count) => 'コメント履歴（$count件）';
+
+  // コメント色セクション
+  String get commentColorSectionTitle => 'コメント色';
+  String get commentColorReset => 'リセット';
+  String get commentColorResetSemanticsLabel => 'コメント色をリセット';
+
+  // カスタムカラー（PR #775 由来）
+  String get customColorSelectedSemanticsLabel => 'カスタムカラー 選択中';
+  String get customColorSelectSemanticsLabel => 'カスタムカラーを選択';
+  String get customColorDialogTitle => 'カスタムカラー';
+  String get customColorDialogCancel => 'キャンセル';
+  String get customColorDialogApply => '適用';
+
+  // コテハン（ニックネーム）セクション
+  String get nicknameSectionTitle => 'コテハン';
+  String get nicknameUnregistered => '未登録';
+  String get nicknameEditSemanticsLabel => 'コテハンを変更';
+  String get nicknameAddSemanticsLabel => 'コテハンを登録';
+  String get nicknameEditButton => '変更';
+  String get nicknameAddButton => '登録';
+  String get nicknameRemoveSemanticsLabel => 'コテハンを削除';
+  String get nicknameRemoveButton => '削除';
+  String get nicknameDialogTitle => 'コテハン登録';
+  String get nicknameDialogFieldLabel => 'コテハン';
+  String get nicknameDialogFieldHint => 'ニックネームを入力';
+  String get nicknameDialogCancel => 'キャンセル';
+  String get nicknameDialogSave => '保存';
+}
+
+/// `CommentScreen`（コメント画面）で使用する文字列の集約。
+///
+/// Issue #778 Phase 2 の対象。PR #776（コメントスクロール順永続化）で
+/// AppBar に追加されたソート切替ボタンの tooltip を集約する。本 PR では
+/// それ以外の `CommentScreen` 文言は触らない（Phase 3 以降で別 Issue 化）。
+final class CommentScreenStrings {
+  const CommentScreenStrings._();
+
+  /// 現在「昇順（古い順）」表示中に、降順（新しい順）へ切り替える誘導 tooltip。
+  String get sortToggleToDescending => '新しい順に切替';
+
+  /// 現在「降順（新しい順）」表示中に、昇順（古い順）へ切り替える誘導 tooltip。
+  String get sortToggleToAscending => '古い順に切替';
 }
