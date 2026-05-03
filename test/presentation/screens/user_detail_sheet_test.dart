@@ -467,6 +467,187 @@ void main() {
       },
     );
 
+    testWidgets('preset color buttons expose a 48x48 hit target (a11y)', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildSheet(
+          userId: '12345',
+          allMessages: const <AppMessage>[],
+          onColorChanged: (_) {},
+        ),
+      );
+      await openSheet(tester);
+
+      // The visible circle is 32dp but the wrapping hit target should be
+      // exactly 48dp on each side (Material / WCAG min target). Check
+      // both a preset circle and the custom-color button.
+      final Size presetSize = tester.getSize(
+        find.byKey(const Key('user-color-$_kFirstColorValue')),
+      );
+      expect(presetSize.width, 48);
+      expect(presetSize.height, 48);
+
+      final Size customSize = tester.getSize(
+        find.byKey(const Key('user-color-custom-button')),
+      );
+      expect(customSize.width, 48);
+      expect(customSize.height, 48);
+    });
+
+    testWidgets('custom color dialog shows a Hex input field (#779)', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildSheet(
+          userId: '12345',
+          allMessages: const <AppMessage>[],
+          onColorChanged: (_) {},
+        ),
+      );
+      await openSheet(tester);
+
+      await tester.tap(find.byKey(const Key('user-color-custom-button')));
+      await tester.pumpAndSettle();
+
+      // hexInputBar:true causes the package to render its
+      // ColorPickerInput row, which contains a TextField. We don't rely
+      // on the package's internal class name, only that an editable
+      // TextField is present inside the dialog.
+      expect(find.byType(ColorPicker), findsOneWidget);
+      expect(find.byType(TextField), findsWidgets);
+    });
+
+    testWidgets(
+      'typing a valid Hex into the dialog input is accepted by the picker and apply forwards it (#779 AC2/AC4)',
+      (WidgetTester tester) async {
+        int? selectedColor;
+
+        await tester.pumpWidget(
+          _buildSheet(
+            userId: '12345',
+            allMessages: const <AppMessage>[],
+            currentColorValue: _kFirstColorValue,
+            onColorChanged: (int value) {
+              selectedColor = value;
+            },
+          ),
+        );
+        await openSheet(tester);
+
+        await tester.tap(find.byKey(const Key('user-color-custom-button')));
+        await tester.pumpAndSettle();
+
+        // Type a valid hex (without #) into the package's hex bar text
+        // field. The package's internal hex input synchronously parses
+        // valid hex strings and forwards the resulting Color through the
+        // ColorPicker.onColorChanged callback, which our dialog stores in
+        // the closure-captured `picked` variable. Applying afterwards
+        // must forward that color to the host onColorChanged.
+        final Finder hexField = find.byType(TextField).last;
+        await tester.enterText(hexField, '112233');
+        await tester.pumpAndSettle();
+
+        await tester.tap(
+          find.byKey(const Key('user-color-custom-dialog-apply-button')),
+        );
+        await tester.pumpAndSettle();
+
+        // The host should have received the typed Hex (#112233) as ARGB32.
+        expect(selectedColor, 0xFF112233);
+      },
+    );
+
+    testWidgets('invalid Hex input does not crash the dialog (#779 AC3)', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildSheet(
+          userId: '12345',
+          allMessages: const <AppMessage>[],
+          onColorChanged: (_) {},
+        ),
+      );
+      await openSheet(tester);
+
+      await tester.tap(find.byKey(const Key('user-color-custom-button')));
+      await tester.pumpAndSettle();
+
+      // Type a clearly invalid hex into the field. The package validates
+      // input internally and ignores malformed strings, so no exception
+      // should escape and the dialog should remain open and usable.
+      final Finder hexField = find.byType(TextField).last;
+      await tester.enterText(hexField, 'ZZZZZZ');
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(ColorPicker), findsOneWidget);
+      // Apply / Cancel buttons should still be usable.
+      expect(
+        find.byKey(const Key('user-color-custom-dialog-cancel-button')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('user-color-custom-dialog-apply-button')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+      'small phone (360dp) is unaffected by the dialog max width (#780 AC3)',
+      (WidgetTester tester) async {
+        // 360dp wide phone — well below the 420dp cap, so the cap should
+        // never kick in and the picker simply uses the available width.
+        await tester.binding.setSurfaceSize(const Size(360, 800));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        await tester.pumpWidget(
+          _buildSheet(
+            userId: '12345',
+            allMessages: const <AppMessage>[],
+            onColorChanged: (_) {},
+          ),
+        );
+        await openSheet(tester);
+
+        await tester.tap(find.byKey(const Key('user-color-custom-button')));
+        await tester.pumpAndSettle();
+
+        // Picker must still be visible and not zero-sized.
+        final Size pickerSize = tester.getSize(find.byType(ColorPicker));
+        expect(pickerSize.width, greaterThan(0));
+        expect(pickerSize.width, lessThanOrEqualTo(360.0));
+      },
+    );
+
+    testWidgets(
+      'custom color dialog content is capped to the configured max width on large screens (#780)',
+      (WidgetTester tester) async {
+        // Simulate a tablet / landscape viewport that is wider than the
+        // configured cap (420dp).
+        await tester.binding.setSurfaceSize(const Size(1024, 800));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        await tester.pumpWidget(
+          _buildSheet(
+            userId: '12345',
+            allMessages: const <AppMessage>[],
+            onColorChanged: (_) {},
+          ),
+        );
+        await openSheet(tester);
+
+        await tester.tap(find.byKey(const Key('user-color-custom-button')));
+        await tester.pumpAndSettle();
+
+        // The ColorPicker is laid out inside our ConstrainedBox. Its
+        // rendered width must therefore not exceed the cap (420dp), even
+        // though the surrounding viewport is much wider.
+        final Size pickerSize = tester.getSize(find.byType(ColorPicker));
+        expect(pickerSize.width, lessThanOrEqualTo(420.0));
+      },
+    );
+
     testWidgets('tapping reset calls onColorRemoved', (
       WidgetTester tester,
     ) async {
