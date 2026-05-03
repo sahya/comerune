@@ -230,6 +230,31 @@ void main() {
       },
     );
 
+    test('removing the last broadcaster-specific values falls back to template '
+        'content again', () async {
+      await store.saveTemplateNgUserIds(<String>{'template-user'});
+      await store.saveTemplateNgWordRules(<NgWordRule>[
+        const NgWordRule(pattern: 'template-word'),
+      ]);
+      await store.saveNgUserIds('b1', <String>['u1']);
+      await store.saveNgWordRules('b1', <NgWordRule>[
+        const NgWordRule(pattern: 'word1'),
+      ]);
+
+      await store.saveNgUserIds('b1', const <String>[]);
+      await store.saveNgWordRules('b1', const <NgWordRule>[]);
+
+      expect(store.listBroadcasters(), isEmpty);
+      expect(
+        await store.loadNgUserIds('b1'),
+        equals(<String>{'template-user'}),
+      );
+      expect(
+        (await store.loadNgWordRules('b1')).map((NgWordRule r) => r.pattern),
+        <String>['template-word'],
+      );
+    });
+
     test('removeNgUserId removes the broadcaster slot when the last user is '
         'deleted and no rules remain', () async {
       await store.saveNgUserIds('b1', <String>['u1']);

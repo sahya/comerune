@@ -34,6 +34,8 @@ abstract final class AppStrings {
   const AppStrings._();
 
   static const SettingsStrings settings = SettingsStrings._();
+  static const BroadcasterNgListStrings broadcasterNgList =
+      BroadcasterNgListStrings._();
   static const TimeshiftStrings timeshift = TimeshiftStrings._();
   static const ConnectionStrings connection = ConnectionStrings._();
   static const CommentDisplaySettingsStrings commentDisplaySettings =
@@ -128,6 +130,18 @@ final class SettingsStrings {
   // セクション: デバッグ
   String get debugSectionTitle => 'デバッグ';
   String get debugModeSwitchTitle => 'デバッグモード';
+}
+
+/// `BroadcasterNgListScreen`（放送者別 NG 設定一覧）で使用する文字列。
+final class BroadcasterNgListStrings {
+  const BroadcasterNgListStrings._();
+
+  String get emptyTitle => 'まだ放送者ごとの NG 設定はありません';
+  String get emptyDescription =>
+      'コメント画面で NGユーザーを追加するか、現在接続中の放送者の '
+      'NG設定を作成すると、その放送者の設定として記録されます';
+  String get createActiveTitle => '現在接続中の放送者の NG設定を作成';
+  String get activeBadge => '現在接続中';
 }
 
 /// 接続エラーのスナックバー等で使用する文字列の集約。

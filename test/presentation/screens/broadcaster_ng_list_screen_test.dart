@@ -47,14 +47,14 @@ void main() {
       // Tutorial line.
       expect(
         find.text(
-          'コメント画面で NGユーザーを追加するか、現在接続中の放送者で NGワードを追加すると、その放送者の設定として記録されます',
+          'コメント画面で NGユーザーを追加するか、現在接続中の放送者の NG設定を作成すると、その放送者の設定として記録されます',
         ),
         findsOneWidget,
       );
     });
 
     testWidgets(
-      'shows the active broadcaster even before a stored slot exists',
+      'shows a create action for the active broadcaster before a stored slot exists',
       (WidgetTester tester) async {
         final FakeBroadcasterNgStore store = FakeBroadcasterNgStore();
         final ValueNotifier<String?> notifier = ValueNotifier<String?>(
@@ -65,60 +65,11 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(
-          find.byKey(const Key('broadcaster-ng-list-empty')),
-          findsNothing,
+          find.byKey(const Key('broadcaster-ng-create-active-tile')),
+          findsOneWidget,
         );
+        expect(find.text('現在接続中の放送者の NG設定を作成'), findsOneWidget);
         expect(find.text('caster-a'), findsOneWidget);
-        expect(find.text('現在接続中'), findsOneWidget);
-
-        notifier.dispose();
-      },
-    );
-
-    testWidgets(
-      'tapping the active broadcaster without a stored slot still opens the editor',
-      (WidgetTester tester) async {
-        final FakeBroadcasterNgStore store = FakeBroadcasterNgStore();
-        final ValueNotifier<String?> notifier = ValueNotifier<String?>(
-          'caster-a',
-        );
-
-        await tester.pumpWidget(_buildScreen(store, activeNotifier: notifier));
-        await tester.pumpAndSettle();
-
-        await tester.tap(
-          find.byKey(const Key('broadcaster-ng-list-broadcaster-tile-0')),
-        );
-        await tester.pumpAndSettle();
-
-        expect(find.byType(BroadcasterNgEditScreen), findsOneWidget);
-        expect(find.text('NG 設定 - caster-a'), findsOneWidget);
-
-        notifier.dispose();
-      },
-    );
-
-    testWidgets(
-      'active-only broadcaster row disappears again after disconnect',
-      (WidgetTester tester) async {
-        final FakeBroadcasterNgStore store = FakeBroadcasterNgStore();
-        final ValueNotifier<String?> notifier = ValueNotifier<String?>(
-          'caster-a',
-        );
-
-        await tester.pumpWidget(_buildScreen(store, activeNotifier: notifier));
-        await tester.pumpAndSettle();
-
-        expect(find.text('caster-a'), findsOneWidget);
-        expect(
-          find.byKey(const Key('broadcaster-ng-list-empty')),
-          findsNothing,
-        );
-
-        notifier.value = null;
-        await tester.pump();
-
-        expect(find.text('caster-a'), findsNothing);
         expect(
           find.byKey(const Key('broadcaster-ng-list-empty')),
           findsOneWidget,
@@ -179,6 +130,67 @@ void main() {
 
       notifier.dispose();
     });
+
+    testWidgets(
+      'hides the broadcaster again after its stored slot disappears',
+      (WidgetTester tester) async {
+        final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+          ..seedBroadcaster('caster-a');
+        final ValueNotifier<String?> notifier = ValueNotifier<String?>(
+          'caster-a',
+        );
+
+        await tester.pumpWidget(_buildScreen(store, activeNotifier: notifier));
+        await tester.pumpAndSettle();
+
+        expect(find.text('caster-a'), findsOneWidget);
+        expect(find.text('現在接続中'), findsOneWidget);
+
+        store.clearBroadcaster('caster-a');
+        await tester.fling(
+          find.byKey(const Key('broadcaster-ng-list-view')),
+          const Offset(0, 400),
+          1500,
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('broadcaster-ng-create-active-tile')),
+          findsOneWidget,
+        );
+        expect(find.text('caster-a'), findsOneWidget);
+        expect(find.text('現在接続中'), findsNothing);
+        expect(
+          find.byKey(const Key('broadcaster-ng-list-empty')),
+          findsOneWidget,
+        );
+
+        notifier.dispose();
+      },
+    );
+
+    testWidgets(
+      'tapping the create action for an active broadcaster opens the editor',
+      (WidgetTester tester) async {
+        final FakeBroadcasterNgStore store = FakeBroadcasterNgStore();
+        final ValueNotifier<String?> notifier = ValueNotifier<String?>(
+          'caster-a',
+        );
+
+        await tester.pumpWidget(_buildScreen(store, activeNotifier: notifier));
+        await tester.pumpAndSettle();
+
+        await tester.tap(
+          find.byKey(const Key('broadcaster-ng-create-active-tile')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byType(BroadcasterNgEditScreen), findsOneWidget);
+        expect(find.text('NG 設定 - caster-a'), findsOneWidget);
+
+        notifier.dispose();
+      },
+    );
 
     testWidgets('pull-to-refresh re-reads listBroadcasters()', (
       WidgetTester tester,
