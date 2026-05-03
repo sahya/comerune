@@ -362,21 +362,21 @@ class CommentSpeechConfig {
   /// Null in test harnesses that do not need to assert FGS coordination.
   final VoidCallback? onSpeechGraceEnded;
 
-  /// Issue #758: optional source for the background speech poll timer.
+  /// Issue #758 / #762: optional reactive source for the speech submit
+  /// pipeline.
   ///
-  /// In foreground, [CommentScreen.didUpdateWidget] propagates the latest
-  /// [TimelineStore] snapshot to `widget.messages` on every rebuild. In
-  /// background the Flutter engine suspends frame scheduling, so
-  /// `widget.messages` remains the snapshot captured at the last build
-  /// before backgrounding and the periodic poll timer would never see new
-  /// arrivals. The poll timer reads from this store directly so it always
-  /// observes the current snapshot, even when the widget tree is not
-  /// rebuilding. PR #721 made [TimelineStore.messages] return a cached
-  /// view that is replaced on every mutation, so direct reads are always
-  /// fresh and identity-stable between mutations.
+  /// When provided, [CommentScreen] subscribes to this store via
+  /// [ChangeNotifier.addListener] and submits new comments for speech the
+  /// instant a mutation fires `notifyListeners()` — both in foreground
+  /// (immediate, no waiting for the next widget rebuild) and in background
+  /// (no longer waiting up to 2 s for the previous periodic poll).
   ///
-  /// Null in test harnesses that do not need background simulation; in
-  /// that case the timer falls back to `widget.messages` (which is
-  /// foreground-only correct).
+  /// PR #721 made [TimelineStore.messages] return a cached snapshot that
+  /// is re-published just before `notifyListeners()`, so the listener sees
+  /// the new entry on the very first read inside the callback.
+  ///
+  /// Null in test harnesses that do not exercise the reactive submit path;
+  /// in that case the screen falls back to the foreground-only submit
+  /// triggered from [State.didUpdateWidget] when `widget.messages` changes.
   final TimelineStore? timelineStore;
 }
