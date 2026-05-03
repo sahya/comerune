@@ -48,6 +48,17 @@ import 'user_detail_sheet.dart';
 
 const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
 
+// Comment-content prefix markers used by the speech pipeline.
+//
+// '☆' marks comments hidden from display by the star-prefix filter.
+// '/' marks comments skipped from TTS by the slash-prefix filter
+// (also covers owner commands such as `/teach`).
+const String _kStarPrefix = '☆';
+const String _kSlashPrefix = '/';
+
+bool _hasStarPrefix(String content) => content.startsWith(_kStarPrefix);
+bool _hasSlashPrefix(String content) => content.startsWith(_kSlashPrefix);
+
 /// Feature flag: コメント投稿 UI（FAB + 入力バー）の有効化。
 ///
 /// Issue #580 / #581 暫定対応。`user_session` cookie 認証ではツール API
@@ -2349,7 +2360,7 @@ class _CommentScreenState extends State<CommentScreen>
   /// [_submitNewCommentsForSpeech].
   bool _isStarPrefixSkippable(AppMessage message) {
     return widget.contentFilter.starPrefixHidingEnabled &&
-        message.content.startsWith('☆');
+        _hasStarPrefix(message.content);
   }
 
   /// True when [message] is a slash-prefix comment that must be skipped for
@@ -2357,7 +2368,7 @@ class _CommentScreenState extends State<CommentScreen>
   /// [_submitNewCommentsForSpeech].
   bool _isSlashPrefixSkippable(AppMessage message) {
     return widget.contentFilter.slashPrefixSkipEnabled &&
-        message.content.startsWith('/');
+        _hasSlashPrefix(message.content);
   }
 
   /// Submits a gift / ニコニ広告 message body to TTS.
@@ -6148,7 +6159,7 @@ class _CommentRowState extends State<_CommentRow> {
 
   bool get _isStarHidden =>
       widget.starPrefixHidingEnabled &&
-      widget.message.content.startsWith('☆') &&
+      _hasStarPrefix(widget.message.content) &&
       !_revealed;
 
   List<UrlMatch> _resolveUrlMatches() {

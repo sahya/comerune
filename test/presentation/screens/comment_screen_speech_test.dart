@@ -684,6 +684,60 @@ void main() {
       },
     );
 
+    testWidgets(
+      '/teach from a non-broadcaster user is gated: not spoken and dictionary unchanged',
+      (WidgetTester tester) async {
+        // Issue #455 #4 regression guard for the broadcaster-arm in
+        // _submitNewCommentsForSpeech: when a viewer (non-broadcaster)
+        // posts `/teach ...`, TeachCommandParser.isTeachCommand still
+        // matches, but the inner `userId == broadcasterUserId` check
+        // must prevent _handleTeachCommand from running. The outer
+        // `continue` still skips TTS, so the message is neither read
+        // aloud nor allowed to mutate the dictionary.
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final AppSettings initialSettings = await settingsStore.load();
+
+        final List<AppMessage> messages = <AppMessage>[
+          _chatMessage(id: 'msg-1', content: '最初'),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+            messages: messages,
+            slashPrefixSkipEnabled: false,
+            settingsStore: settingsStore,
+            broadcasterUserId: 'broadcaster-1',
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.addMessage(
+          _chatMessage(
+            id: 'msg-2',
+            content: '/teach パターン よみがな',
+            userId: 'viewer-7',
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Observable behavior: /teach from a non-broadcaster never
+        // reaches the TTS pipeline.
+        expect(fakePlatform.submittedComments, isEmpty);
+
+        // The teach handler must not have run for a non-broadcaster, so
+        // the persisted dictionary rules remain identical to the
+        // settings loaded before the message was posted.
+        final AppSettings reloaded = await settingsStore.load();
+        expect(reloaded.dictionaryRules, initialSettings.dictionaryRules);
+      },
+    );
+
     testWidgets('NG word messages are not submitted for speech', (
       WidgetTester tester,
     ) async {
@@ -4249,6 +4303,7 @@ class _SpeechTestHost extends StatefulWidget {
     this.onSpeechMuteToggled,
     this.androidTtsAvailability,
     this.settingsStore,
+    this.broadcasterUserId,
   });
 
   final List<AppMessage> initialMessages;
@@ -4269,6 +4324,7 @@ class _SpeechTestHost extends StatefulWidget {
   final VoidCallback? onSpeechMuteToggled;
   final SpeechAvailabilityNotifier? androidTtsAvailability;
   final SettingsStore? settingsStore;
+  final String? broadcasterUserId;
 
   @override
   State<_SpeechTestHost> createState() => _SpeechTestHostState();
@@ -4319,7 +4375,10 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
         : null;
 
     return CommentScreen(
-      programInfo: const CommentProgramInfo(lv: 'lv123456789'),
+      programInfo: CommentProgramInfo(
+        lv: 'lv123456789',
+        broadcasterUserId: widget.broadcasterUserId,
+      ),
       connectionSupervisor: _buildStreamingSupervisor(),
       messages: _messages,
       callbacks: CommentCallbacks(
@@ -4371,6 +4430,7 @@ Widget _buildScreen({
   VoidCallback? onSpeechMuteToggled,
   SpeechAvailabilityNotifier? androidTtsAvailability,
   SettingsStore? settingsStore,
+  String? broadcasterUserId,
 }) {
   return MaterialApp(
     home: _SpeechTestHost(
@@ -4392,6 +4452,7 @@ Widget _buildScreen({
       onSpeechMuteToggled: onSpeechMuteToggled,
       androidTtsAvailability: androidTtsAvailability,
       settingsStore: settingsStore,
+      broadcasterUserId: broadcasterUserId,
     ),
   );
 }
