@@ -89,6 +89,79 @@ Minimum expectation:
 - new logic should have tests when practical
 - bug fixes should include a regression test when practical
 
+## テストファイル肥大化防止ルール
+
+`flutter test` は 1 ファイル = 1 isolate 起動のため、ファイル数の増加は CI 実行時間と保守コストに直接跳ね返る。**テストカバレッジ（網羅性）は件数ではなく「コード網羅率と意図網羅性」で測る** ため、ファイルを増やさずに件数を増やす方針を取ること。
+
+### 新規テストファイル作成前の判断順
+
+テストを追加する前に、必ず次の順で判断する:
+
+1. **同じ対象に対するテストファイルの存在確認** — `find test -name "<target>_test.dart"` で検索
+2. **既存ファイルがあれば `group()` 追加で対応** — 別ファイル化は最後の手段
+3. **新規 `<target>_test.dart` 作成は「対象自体が新規」のときのみ**
+
+### 1 対象 = 1 ファイル原則
+
+- 同じ画面・クラス・関数に対するテストは 1 ファイルに集約する
+- ファイル名は対象と一致させる: `<target>_test.dart`
+- 物理分割は次の例外条件のみ許可:
+  - 1 ファイルが **2,000 行を超え**、かつテスト視点が明確に分離できる場合（観点を明示するサフィックスを付ける。例: `comment_screen_speech_test.dart`）
+- 単一補助テスト（純粋関数・データクラスのデフォルト値検証）は対象画面のテストに `group()` で同居させる。`<target>_config_test.dart` のような細切れファイルは作らない
+
+### 横断的観点のテスト
+
+- WCAG コントラスト・i18n キー網羅・全テーマ走査など、複数のクラスを横断する観点別テストは「**観点 = ファイル**」で集約する
+  - 良い例: `message_background_contrast_test.dart` で gift / nicoad / notification / operator を全て扱う
+  - 悪い例: `gift_contrast_test.dart` + `nicoad_contrast_test.dart` のような対象別分割
+
+### Fake / Mock の配置
+
+- 2 ファイル以上で同じ fake クラスを必要とする場合、必ず `test/helpers/` に抽出する
+- インラインで `class _FakeXxx` を再定義しない
+- ヘルパー名はクラス名と一致させる（`fake_<class>.dart`）
+
+## テスト実行時間短縮ルール
+
+網羅性を維持したまま実行時間を短縮するため、テストを書く際は次を遵守する:
+
+### `testWidgets` と `test` の使い分け
+
+- 純粋ロジック（フォーマッタ・正規化・パーサ・データクラス）は **必ず `test()` を使う**
+- `testWidgets()` は Flutter binding を起動するため `test()` より重い
+- 「画面の中で使う関数だから」という理由で `testWidgets` を使わない
+
+### `pumpAndSettle` の濫用禁止
+
+- `pumpAndSettle` は全アニメーションが完了するまで待機する（数十〜数百 ms のオーバーヘッド）
+- 次の場合は `pump()` または `pump(Duration(milliseconds: N))` を使う:
+  - アニメーション完了を確認する目的ではない
+  - 単に setState() の反映を待ちたいだけ
+  - フレーム更新を 1 回挟みたいだけ
+- `pumpAndSettle` は「アニメーション完了が assertion の前提」のときだけ使う
+
+### 重い setUp の共有
+
+- `rootBundle.loadString` などのアセットロードは `setUpAll` で 1 回だけ実行する（プライム後はキャッシュされる）
+- `setUp` で毎テスト走らせない
+
+### 実時間 sleep の禁止
+
+- `Future.delayed`（実時間待機）でタイマー処理をテストしない
+- 代わりに `fake_async` パッケージ または `WidgetTester.pump(Duration)` でフェイク時間を進める
+
+### レビュー観点
+
+PR レビュー時は次を必ず指摘する:
+- 既存 `<target>_test.dart` がある状態で新規 `<target>_xxx_test.dart` が追加されていないか
+- 1 件の追加要件のために新ファイルを作っていないか
+- 既存 fake と類似したインライン fake 定義が混入していないか
+- 1 group しかない超小型テストファイルが追加されていないか
+- 純粋ロジックのテストに不必要な `testWidgets` が使われていないか
+- `pumpAndSettle` が assertion の前提なく使われていないか
+
+肥大化や速度劣化が判明した場合は、別 PR で統合・最適化する（feature PR にリファクタリングを混ぜない）。
+
 ## Required Pre-Implementation Output
 Before writing code, output:
 1. Goal
