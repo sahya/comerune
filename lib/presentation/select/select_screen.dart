@@ -12,7 +12,9 @@ import '../../application/speech/speech_availability_notifier.dart';
 import '../../application/statistics/statistics_store.dart';
 import '../../application/timeline/timeline_store.dart';
 import '../../data/auth/user_session_store.dart';
+import '../../data/comment_log/broadcast_history_store.dart';
 import '../../data/comment_log/comment_log_writer.dart';
+import '../../domain/comment_log/broadcast_history_entry.dart';
 import '../../data/broadcast/broadcast_control_repository.dart';
 import '../../data/broadcaster/broadcaster_name_store.dart';
 import '../../data/filter/broadcaster_ng_store.dart';
@@ -136,6 +138,7 @@ class SelectScreen extends StatefulWidget {
     this.userAttributeStore,
     this.broadcasterNgStore,
     this.broadcasterNameStore,
+    this.broadcastHistoryStore,
     this.commentPostController,
     this.timeshiftFetchController,
     this.androidTtsAvailability,
@@ -181,6 +184,12 @@ class SelectScreen extends StatefulWidget {
   /// Forwarded to [SettingsScreen] so the NG picker can render friendly
   /// tile titles. Optional — when null, the picker falls back to raw IDs.
   final BroadcasterNameStore? broadcasterNameStore;
+
+  /// Issue #766: optional integration. Forwarded to [SettingsScreen] (so
+  /// the user can open the history view) and to [CommentScreen] (so each
+  /// ended broadcast's stats summary is recorded). Optional — when null,
+  /// the settings tile and the recording side-effect are both skipped.
+  final BroadcastHistoryStore? broadcastHistoryStore;
   final CommentPostController? commentPostController;
   final TimeshiftFetchController? timeshiftFetchController;
 
@@ -815,6 +824,9 @@ class _SelectScreenState extends State<SelectScreen>
                 ? _toggleSpeechMute
                 : null,
             onSortOrderChanged: _onSortOrderChanged,
+            onBroadcastEndedStats: widget.broadcastHistoryStore == null
+                ? null
+                : _onBroadcastEndedStats,
           ),
           debugMode: _settingsNotifier.value.debugMode,
           showUserName: _settingsNotifier.value.showUserName,
@@ -1487,6 +1499,51 @@ class _SelectScreenState extends State<SelectScreen>
     }
   }
 
+  /// Issue #766: receive a finalised broadcast's stats snapshot from
+  /// `CommentScreen` and persist it to the broadcast history store, but
+  /// only when the local user is the broadcaster (viewer-only sessions
+  /// must not be recorded). Wired only when [SelectScreen.broadcastHistoryStore]
+  /// is non-null.
+  void _onBroadcastEndedStats(BroadcastEndedStatsSnapshot snapshot) {
+    final BroadcastHistoryStore? store = widget.broadcastHistoryStore;
+    if (store == null) {
+      return;
+    }
+    if (!snapshot.isBroadcaster) {
+      // Issue #766 設計判断: 視聴のみの放送は履歴に残さない。
+      return;
+    }
+    if (snapshot.lv.isEmpty) {
+      return;
+    }
+    final BroadcastHistoryEntry entry = BroadcastHistoryEntry(
+      lv: snapshot.lv,
+      recordedAt: snapshot.endedAt,
+      programTitle: snapshot.programTitle,
+      broadcasterUserId: snapshot.broadcasterUserId,
+      broadcasterName: snapshot.broadcasterName,
+      beginAt: snapshot.beginAt,
+      endedAt: snapshot.endedAt,
+      totalComments: snapshot.totalComments,
+      uniqueUserCount: snapshot.uniqueUserCount,
+      durationSeconds: snapshot.durationSeconds,
+      peakMinuteOffset: snapshot.peakMinuteOffset,
+      peakMinuteCount: snapshot.peakMinuteCount,
+      peaks: snapshot.peaks
+          .map(
+            (BroadcastEndedStatsPeak p) => BroadcastHistoryPeak(
+              minuteOffset: p.minuteOffset,
+              label: p.label,
+              commentCount: p.commentCount,
+            ),
+          )
+          .toList(growable: false),
+    );
+    // Persistence is fire-and-forget; failures are already logged inside
+    // the store's serial write chain.
+    unawaited(store.add(entry));
+  }
+
   Future<void> _openSettings(
     BuildContext context,
     UserSessionStore? userSessionStore,
@@ -1505,6 +1562,7 @@ class _SelectScreenState extends State<SelectScreen>
           userAttributeStore: widget.userAttributeStore,
           broadcasterNgStore: widget.broadcasterNgStore,
           broadcasterNameStore: widget.broadcasterNameStore,
+          broadcastHistoryStore: widget.broadcastHistoryStore,
           broadcasterIdNotifier: widget.supplierUserIdNotifier,
           userNameResolution: widget.userNameResolution,
           speechPlatform: MethodChannelCommentSpeech(),

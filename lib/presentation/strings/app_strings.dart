@@ -43,6 +43,8 @@ abstract final class AppStrings {
   static const UserDetailSheetStrings userDetailSheet =
       UserDetailSheetStrings._();
   static const CommentScreenStrings commentScreen = CommentScreenStrings._();
+  static const BroadcastHistoryStrings broadcastHistory =
+      BroadcastHistoryStrings._();
 }
 
 /// `SettingsScreen` で使用する文字列の集約。
@@ -299,4 +301,69 @@ final class CommentScreenStrings {
 
   /// 現在「降順（新しい順）」表示中に、昇順（古い順）へ切り替える誘導 tooltip。
   String get sortToggleToAscending => '古い順に切替';
+}
+
+/// Issue #766: 過去放送のコメント統計を再アクセスできる履歴ビューで使用する文字列。
+final class BroadcastHistoryStrings {
+  const BroadcastHistoryStrings._();
+
+  // 設定画面のタイル
+  String get settingsTileTitle => '放送履歴';
+  String get settingsTileSubtitle => '過去放送のコメント統計を振り返る';
+
+  // 画面 AppBar
+  String get screenTitle => '放送履歴';
+  String get clearAllTooltip => '履歴を全て削除';
+
+  // 空状態
+  String get emptyTitle => 'まだ履歴はありません';
+  String get emptyDescription => '自分の放送が終了したタイミングで自動的に記録されます。';
+
+  // プライバシ説明（端末ローカル保存）
+  String get privacyNote => 'この履歴は端末内のみに保存され、外部に送信されません。';
+
+  // 削除ダイアログ（個別）
+  String get removeOneDialogTitle => 'この履歴を削除';
+  String get removeOneDialogMessage => 'この 1 件の放送履歴を削除します。よろしいですか？';
+  String get removeOneDialogCancel => 'キャンセル';
+  String get removeOneDialogConfirm => '削除';
+
+  // 削除ダイアログ（全件）
+  String get clearAllDialogTitle => '履歴を全て削除';
+  String get clearAllDialogMessage => '保存されている全ての放送履歴を削除します。よろしいですか？';
+  String get clearAllDialogCancel => 'キャンセル';
+  String get clearAllDialogConfirm => '削除';
+  String get clearAllSnackBar => '放送履歴を全て削除しました';
+
+  // 詳細シート
+  String get detailLvLabel => '番組ID';
+  String get detailTotalCommentsLabel => '総コメント数';
+  String get detailUniqueUsersLabel => 'ユニークユーザー数';
+  String get detailDurationLabel => '配信時間';
+  String get detailPeakLabel => 'ピーク時間帯';
+  String detailPeakValue({required String label, required int count}) =>
+      '$label (${count}コメント)';
+  String get detailHighlightTitle => '放送の盛り上がり';
+  String detailHighlightLine({
+    required int index,
+    required String label,
+    required int count,
+  }) => 'ピーク$index: $label (${count}コメント/分)';
+  String get openProgramPageButton => '公式番組ページを開く';
+  String get launchFailedSnackBar => 'リンクを開けませんでした';
+
+  /// 一覧タイルのサブタイトル: 「lv | 記録日時 | 総コメ数 / ユニーク数」。
+  String tileSubtitle({
+    required String lv,
+    required DateTime recordedAt,
+    required int totalComments,
+    required int uniqueUserCount,
+  }) {
+    final DateTime local = recordedAt.toLocal();
+    String pad2(int n) => n.toString().padLeft(2, '0');
+    final String date = '${local.year}/${pad2(local.month)}/${pad2(local.day)}';
+    final String time = '${pad2(local.hour)}:${pad2(local.minute)}';
+    return '$lv  $date $time  '
+        'コメ:$totalComments / 人:$uniqueUserCount';
+  }
 }

@@ -107,6 +107,7 @@ class CommentCallbacks {
     this.onNicknameChanged,
     this.onNicknameRemoved,
     this.onSortOrderChanged,
+    this.onBroadcastEndedStats,
   });
 
   final Future<void> Function() onStopAllConnections;
@@ -141,6 +142,76 @@ class CommentCallbacks {
   /// toggle. The composition root is responsible for persisting this via
   /// [SettingsStore.save]. Issue #774.
   final void Function(CommentSortOrder)? onSortOrderChanged;
+
+  /// Issue #766: optional integration. Invoked once per broadcast at the
+  /// moment the comment screen finalises its end-of-broadcast stats panel
+  /// (i.e. when `_pendingStats` becomes non-null). The composition root is
+  /// expected to forward the snapshot to a persistent history store when
+  /// the user is the broadcaster. The comment screen itself does not own
+  /// the persistence concern — when null this is a no-op so legacy
+  /// embedders / tests that do not need history keep working.
+  final BroadcastEndedStatsCallback? onBroadcastEndedStats;
+}
+
+/// Issue #766: callback signature for [CommentCallbacks.onBroadcastEndedStats].
+typedef BroadcastEndedStatsCallback =
+    void Function(BroadcastEndedStatsSnapshot snapshot);
+
+/// Issue #766: snapshot of a finished broadcast's stats handed to the
+/// [CommentCallbacks.onBroadcastEndedStats] callback. Carries only the
+/// summary the history store needs — no raw message bodies.
+@immutable
+class BroadcastEndedStatsSnapshot {
+  const BroadcastEndedStatsSnapshot({
+    required this.lv,
+    required this.endedAt,
+    required this.totalComments,
+    required this.uniqueUserCount,
+    required this.durationSeconds,
+    this.programTitle,
+    this.broadcasterUserId,
+    this.broadcasterName,
+    this.beginAt,
+    this.peakMinuteOffset,
+    this.peakMinuteCount = 0,
+    this.peaks = const <BroadcastEndedStatsPeak>[],
+    this.isBroadcaster = false,
+  });
+
+  final String lv;
+  final DateTime endedAt;
+  final int totalComments;
+  final int uniqueUserCount;
+  final int durationSeconds;
+  final String? programTitle;
+  final String? broadcasterUserId;
+  final String? broadcasterName;
+  final DateTime? beginAt;
+  final int? peakMinuteOffset;
+  final int peakMinuteCount;
+  final List<BroadcastEndedStatsPeak> peaks;
+
+  /// True when the local user is the broadcaster of this program. Issue
+  /// #766 records only the user's own broadcasts; viewer-only sessions
+  /// must be skipped by the callback receiver.
+  final bool isBroadcaster;
+}
+
+/// One representative peak inside a [BroadcastEndedStatsSnapshot]. Mirrors
+/// `HighlightPeak` from the comment_log domain but drops the raw
+/// representative messages so the history layer never persists comment
+/// bodies.
+@immutable
+class BroadcastEndedStatsPeak {
+  const BroadcastEndedStatsPeak({
+    required this.minuteOffset,
+    required this.label,
+    required this.commentCount,
+  });
+
+  final int minuteOffset;
+  final String label;
+  final int commentCount;
 }
 
 /// Content-based filtering and per-user rendering attributes for
