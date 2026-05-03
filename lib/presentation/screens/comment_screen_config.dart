@@ -8,6 +8,7 @@ import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/matchers/ng_matcher.dart';
 import '../../domain/models/app_settings.dart';
+import '../../domain/models/ng_preset_category.dart';
 
 /// Program-level metadata for the comment screen.
 @immutable
@@ -159,6 +160,7 @@ class ContentFilterConfig {
     this.ngUserIds = const <String>{},
     this.ngWords = const <String>[],
     this.presetNgWords = const <String>[],
+    this.presetCategories = const <NgPresetCategory>[],
     this.starPrefixHidingEnabled = false,
     this.slashPrefixSkipEnabled = true,
     this.emphasizeGiftNicoadComment = true,
@@ -178,6 +180,17 @@ class ContentFilterConfig {
   ///
   /// When empty, the widget attempts to load `preset_ng_words.json` from assets.
   final List<String> presetNgWords;
+
+  /// Structured preset NG categories injection seam (Issue #628).
+  ///
+  /// When non-empty, the widget uses these categories directly and derives
+  /// the flat preset NG word list via [NgPresetCategory.flattenWords]. This
+  /// takes precedence over [presetNgWords] and skips the asset-load
+  /// fallback. Empty (the default) preserves the pre-#628 behavior:
+  /// callers that only inject [presetNgWords] continue to work as before,
+  /// and callers that inject neither still fall back to the bundled
+  /// `preset_ng_words.json` asset.
+  final List<NgPresetCategory> presetCategories;
 
   /// When true, comments starting with `☆` have their body hidden
   /// and can be revealed by tapping.
@@ -282,7 +295,7 @@ class CommentSpeechConfig {
     this.isSpeechMuted = false,
     this.androidTtsAvailability,
     this.playRemainingAfterEnded = true,
-    this.onSpeechQueueDrained,
+    this.onSpeechGraceEnded,
     this.timelineStore,
   });
 
@@ -340,29 +353,30 @@ class CommentSpeechConfig {
   final bool playRemainingAfterEnded;
 
   /// Issue #739: optional callback fired when the comment screen's grace
-  /// window ends (timeout, queue drained, manual stop, etc.). Wired by the
-  /// app composition root to [ForegroundServiceController.notifyQueueDrained]
-  /// so the FGS notification can drop early when speech actually finishes,
-  /// instead of waiting out the controller's own 30 s timer.
+  /// window ends (timeout, queue drained, or speech disabled mid-grace).
+  /// Wired by the app composition root to
+  /// [ForegroundServiceController.notifyQueueDrained] so the FGS notification
+  /// can drop early when speech actually finishes or is cancelled, instead of
+  /// waiting out the controller's own 30 s timer.
   ///
   /// Null in test harnesses that do not need to assert FGS coordination.
-  final VoidCallback? onSpeechQueueDrained;
+  final VoidCallback? onSpeechGraceEnded;
 
-  /// Issue #758: optional source for the background speech poll timer.
+  /// Issue #758 / #762: optional reactive source for the speech submit
+  /// pipeline.
   ///
-  /// In foreground, [CommentScreen.didUpdateWidget] propagates the latest
-  /// [TimelineStore] snapshot to `widget.messages` on every rebuild. In
-  /// background the Flutter engine suspends frame scheduling, so
-  /// `widget.messages` remains the snapshot captured at the last build
-  /// before backgrounding and the periodic poll timer would never see new
-  /// arrivals. The poll timer reads from this store directly so it always
-  /// observes the current snapshot, even when the widget tree is not
-  /// rebuilding. PR #721 made [TimelineStore.messages] return a cached
-  /// view that is replaced on every mutation, so direct reads are always
-  /// fresh and identity-stable between mutations.
+  /// When provided, [CommentScreen] subscribes to this store via
+  /// [ChangeNotifier.addListener] and submits new comments for speech the
+  /// instant a mutation fires `notifyListeners()` — both in foreground
+  /// (immediate, no waiting for the next widget rebuild) and in background
+  /// (no longer waiting up to 2 s for the previous periodic poll).
   ///
-  /// Null in test harnesses that do not need background simulation; in
-  /// that case the timer falls back to `widget.messages` (which is
-  /// foreground-only correct).
+  /// PR #721 made [TimelineStore.messages] return a cached snapshot that
+  /// is re-published just before `notifyListeners()`, so the listener sees
+  /// the new entry on the very first read inside the callback.
+  ///
+  /// Null in test harnesses that do not exercise the reactive submit path;
+  /// in that case the screen falls back to the foreground-only submit
+  /// triggered from [State.didUpdateWidget] when `widget.messages` changes.
   final TimelineStore? timelineStore;
 }

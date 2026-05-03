@@ -186,7 +186,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byType(BroadcasterNgEditScreen), findsOneWidget);
-        expect(find.text('NG 設定 - caster-a'), findsOneWidget);
+        expect(find.text('NG設定 - caster-a'), findsOneWidget);
 
         notifier.dispose();
       },
