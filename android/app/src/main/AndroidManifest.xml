@@ -52,6 +52,12 @@
             android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
+        <!-- Notification icon resource reference for the foreground service notification.
+             Provides a complete notification on all Android versions and stabilizes
+             foreground service startup. -->
+        <meta-data
+            android:name="com.example.comerune.service.NOTIFICATION_ICON"
+            android:resource="@mipmap/ic_launcher" />
     </application>
     <queries>
         <intent>

@@ -28,10 +28,11 @@ typedef BroadcasterNgSnapshot = ({
 
 /// Persists per-broadcaster NG user IDs and NG word rules.
 ///
-/// On first access for a broadcaster, the per-broadcaster slot is initialized
-/// from the global "template" so that newly-encountered broadcasters inherit
-/// the user's general NG preferences while retaining the ability to diverge
-/// over time.
+/// Broadcasters inherit the global "template" until the user performs a
+/// broadcaster-specific write. Reads return the effective values (slot when it
+/// exists, template otherwise) without creating a new per-broadcaster slot.
+/// The slot is created only when the user actually customizes that
+/// broadcaster's settings.
 ///
 /// Implementation notes:
 /// - Modeled after `UserAttributeStore`: writes go through a serial chain so
@@ -47,20 +48,17 @@ typedef BroadcasterNgSnapshot = ({
 abstract class BroadcasterNgStore {
   /// Returns NG user IDs for [broadcasterId].
   ///
-  /// On first access for a broadcaster, the per-broadcaster slot is
-  /// initialized from the template and persisted, then returned.
+  /// Returns the effective NG user IDs for [broadcasterId]: the
+  /// per-broadcaster slot when initialized, otherwise the template.
   Future<Set<String>> loadNgUserIds(String broadcasterId);
 
-  /// Returns NG word rules for [broadcasterId]. Same template-on-first-access
-  /// semantics as [loadNgUserIds].
+  /// Returns the effective NG word rules for [broadcasterId]: the
+  /// per-broadcaster slot when initialized, otherwise the template.
   Future<List<NgWordRule>> loadNgWordRules(String broadcasterId);
 
-  /// Combined load that minimizes I/O round-trips. Returns the per-broadcaster
-  /// snapshot, after first-access template seeding if needed.
-  ///
-  /// Prefer this over calling [loadNgUserIds] and [loadNgWordRules] back to
-  /// back: the underlying initialize-from-template check runs only once.
-  /// The two field-by-field methods are retained for backward compatibility.
+  /// Combined load that minimizes I/O round-trips. Returns the effective
+  /// per-broadcaster snapshot: the broadcaster slot when initialized,
+  /// otherwise the template fallback without persisting a new slot.
   Future<BroadcasterNgPayload> loadBroadcasterNgAttributes(
     String broadcasterId,
   );
@@ -77,7 +75,7 @@ abstract class BroadcasterNgStore {
   /// Remove a single NG user. Idempotent.
   Future<void> removeNgUserId(String broadcasterId, String userId);
 
-  /// Template = seed for any future broadcaster's first-access init.
+  /// Template = seed for any future broadcaster's first customization.
   Future<Set<String>> loadTemplateNgUserIds();
 
   Future<List<NgWordRule>> loadTemplateNgWordRules();
@@ -137,15 +135,13 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
   @override
   Future<Set<String>> loadNgUserIds(String broadcasterId) async {
     _validateBroadcasterId(broadcasterId);
-    await _ensureInitialized(broadcasterId);
-    return _readNgUserIds(_ngUserIdsKey(broadcasterId));
+    return _readNgUserIds(_effectiveNgUserIdsKey(broadcasterId));
   }
 
   @override
   Future<List<NgWordRule>> loadNgWordRules(String broadcasterId) async {
     _validateBroadcasterId(broadcasterId);
-    await _ensureInitialized(broadcasterId);
-    return _readNgWordRules(_ngWordRulesKey(broadcasterId));
+    return _readNgWordRules(_effectiveNgWordRulesKey(broadcasterId));
   }
 
   @override
@@ -153,12 +149,11 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
     String broadcasterId,
   ) async {
     _validateBroadcasterId(broadcasterId);
-    // Single template-seeding round-trip, then both reads against the
-    // already-initialized slot.
-    await _ensureInitialized(broadcasterId);
-    final Set<String> ids = _readNgUserIds(_ngUserIdsKey(broadcasterId));
+    final Set<String> ids = _readNgUserIds(
+      _effectiveNgUserIdsKey(broadcasterId),
+    );
     final List<NgWordRule> rules = _readNgWordRules(
-      _ngWordRulesKey(broadcasterId),
+      _effectiveNgWordRulesKey(broadcasterId),
     );
     return (ngUserIds: ids, rules: rules);
   }
@@ -167,12 +162,12 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
   Future<void> saveNgUserIds(String broadcasterId, Iterable<String> ids) async {
     _validateBroadcasterId(broadcasterId);
     await _enqueueWrite(() async {
-      await _prefs.setString(
-        _ngUserIdsKey(broadcasterId),
-        json.encode(_normalizeIds(ids)),
+      await _ensureInitializedInline(broadcasterId);
+      await _persistInitializedSlotState(
+        broadcasterId: broadcasterId,
+        ids: _normalizeIds(ids),
+        rules: _readNgWordRules(_ngWordRulesKey(broadcasterId)),
       );
-      await _prefs.setString(_initializedKey(broadcasterId), 'true');
-      await _addToIndex(broadcasterId);
     });
   }
 
@@ -183,12 +178,12 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
   ) async {
     _validateBroadcasterId(broadcasterId);
     await _enqueueWrite(() async {
-      await _prefs.setString(
-        _ngWordRulesKey(broadcasterId),
-        json.encode(rules.map((NgWordRule r) => r.toMap()).toList()),
+      await _ensureInitializedInline(broadcasterId);
+      await _persistInitializedSlotState(
+        broadcasterId: broadcasterId,
+        ids: _readNgUserIds(_ngUserIdsKey(broadcasterId)).toList(),
+        rules: rules,
       );
-      await _prefs.setString(_initializedKey(broadcasterId), 'true');
-      await _addToIndex(broadcasterId);
     });
   }
 
@@ -199,18 +194,21 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
       return;
     }
     await _enqueueWrite(() async {
-      await _ensureInitializedInline(broadcasterId);
-      final Set<String> current = _readNgUserIds(_ngUserIdsKey(broadcasterId));
-      if (current.contains(userId)) {
+      // Read effective state first (slot when initialized, otherwise
+      // template). No-op when the user is already present, so that
+      // calling add(...) for a value already in the template fallback
+      // does NOT materialize a per-broadcaster slot.
+      final Set<String> effective = _readNgUserIds(
+        _effectiveNgUserIdsKey(broadcasterId),
+      );
+      if (effective.contains(userId)) {
         return;
       }
-      final List<String> updated = <String>[...current, userId];
-      await _prefs.setString(
-        _ngUserIdsKey(broadcasterId),
-        json.encode(updated),
+      await _persistInitializedSlotState(
+        broadcasterId: broadcasterId,
+        ids: <String>[...effective, userId],
+        rules: _readNgWordRules(_effectiveNgWordRulesKey(broadcasterId)),
       );
-      await _prefs.setString(_initializedKey(broadcasterId), 'true');
-      await _addToIndex(broadcasterId);
     });
   }
 
@@ -221,20 +219,23 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
       return;
     }
     await _enqueueWrite(() async {
-      await _ensureInitializedInline(broadcasterId);
-      final Set<String> current = _readNgUserIds(_ngUserIdsKey(broadcasterId));
-      if (!current.contains(userId)) {
+      // Read effective state first. No-op when the user is not currently
+      // visible to the filter, so trying to remove an absent value does
+      // NOT materialize a per-broadcaster slot.
+      final Set<String> effective = _readNgUserIds(
+        _effectiveNgUserIdsKey(broadcasterId),
+      );
+      if (!effective.contains(userId)) {
         return;
       }
-      final List<String> updated = current
+      final List<String> updated = effective
           .where((String id) => id != userId)
           .toList();
-      await _prefs.setString(
-        _ngUserIdsKey(broadcasterId),
-        json.encode(updated),
+      await _persistInitializedSlotState(
+        broadcasterId: broadcasterId,
+        ids: updated,
+        rules: _readNgWordRules(_effectiveNgWordRulesKey(broadcasterId)),
       );
-      await _prefs.setString(_initializedKey(broadcasterId), 'true');
-      await _addToIndex(broadcasterId);
     });
   }
 
@@ -274,26 +275,31 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
   @override
   Future<void> flushPendingWrites() => _pendingWriteChain;
 
+  bool _isInitialized(String broadcasterId) =>
+      _prefs.getString(_initializedKey(broadcasterId)) == 'true';
+
+  String _effectiveNgUserIdsKey(String broadcasterId) {
+    return _isInitialized(broadcasterId)
+        ? _ngUserIdsKey(broadcasterId)
+        : _templateNgUserIdsKey;
+  }
+
+  String _effectiveNgWordRulesKey(String broadcasterId) {
+    return _isInitialized(broadcasterId)
+        ? _ngWordRulesKey(broadcasterId)
+        : _templateNgWordRulesKey;
+  }
+
   // ---------------------------------------------------------------------------
   // Internal helpers
   // ---------------------------------------------------------------------------
 
-  /// Ensures the per-broadcaster slot is seeded from the template before the
-  /// caller reads it. Goes through the write chain so concurrent first-access
-  /// callers cannot race on the seed write.
-  Future<void> _ensureInitialized(String broadcasterId) async {
-    if (_prefs.getString(_initializedKey(broadcasterId)) == 'true') {
-      return;
-    }
-    await _enqueueWrite(() async {
-      await _ensureInitializedInline(broadcasterId);
-    });
-  }
-
-  /// Same as [_ensureInitialized] but for callers that are already inside the
-  /// write chain. Must NOT be called from outside `_enqueueWrite`.
+  /// Seeds a broadcaster slot from the template inside the write chain.
+  ///
+  /// Called only by broadcaster-specific write operations so simply reading a
+  /// connected broadcaster never creates a persistent slot.
   Future<void> _ensureInitializedInline(String broadcasterId) async {
-    if (_prefs.getString(_initializedKey(broadcasterId)) == 'true') {
+    if (_isInitialized(broadcasterId)) {
       return;
     }
     final Set<String> templateIds = _readNgUserIds(_templateNgUserIdsKey);
@@ -310,6 +316,31 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
     );
     await _prefs.setString(_initializedKey(broadcasterId), 'true');
     await _addToIndex(broadcasterId);
+  }
+
+  Future<void> _persistInitializedSlotState({
+    required String broadcasterId,
+    required List<String> ids,
+    required List<NgWordRule> rules,
+  }) async {
+    if (ids.isEmpty && rules.isEmpty) {
+      await _removeBroadcasterSlot(broadcasterId);
+      return;
+    }
+    await _prefs.setString(_ngUserIdsKey(broadcasterId), json.encode(ids));
+    await _prefs.setString(
+      _ngWordRulesKey(broadcasterId),
+      json.encode(rules.map((NgWordRule r) => r.toMap()).toList()),
+    );
+    await _prefs.setString(_initializedKey(broadcasterId), 'true');
+    await _addToIndex(broadcasterId);
+  }
+
+  Future<void> _removeBroadcasterSlot(String broadcasterId) async {
+    await _prefs.remove(_ngUserIdsKey(broadcasterId));
+    await _prefs.remove(_ngWordRulesKey(broadcasterId));
+    await _prefs.remove(_initializedKey(broadcasterId));
+    await _removeFromIndex(broadcasterId);
   }
 
   Set<String> _readNgUserIds(String key) {
@@ -403,6 +434,17 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
     }
     index.add(broadcasterId);
     await _prefs.setString(_indexKey, json.encode(index));
+  }
+
+  Future<void> _removeFromIndex(String broadcasterId) async {
+    final List<String> remaining = _readIndex()
+        .where((String id) => id != broadcasterId)
+        .toList();
+    if (remaining.isEmpty) {
+      await _prefs.remove(_indexKey);
+      return;
+    }
+    await _prefs.setString(_indexKey, json.encode(remaining));
   }
 
   Future<T> _enqueueWrite<T>(Future<T> Function() operation) {
