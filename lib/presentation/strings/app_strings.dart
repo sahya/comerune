@@ -86,11 +86,20 @@ final class SettingsStrings {
   // 合わせて更新する。
   String get userManagementTileSubtitle => 'お気に入りユーザー';
 
-  // タイル: NG フィルタ (Issue #727 follow-up: ハードコードされていた文字列を
-  // AppStrings に集約)
-  String get ngFilterTileTitle => 'NG フィルタ';
-  String get ngFilterTileSubtitleEnabled => 'NG ユーザー / NG ワードを放送者ごとに管理';
+  // タイル: 放送者別 NG 設定 (Issue #727 follow-up)
+  // 兄弟タイル「コメント表示設定」「読み上げ設定」 と命名統一しつつ、
+  // 編集画面 AppBar 「NG 設定 - <放送者名>」 と語彙連続させる。
+  String get ngFilterTileTitle => '放送者別 NG 設定';
+  // タイルが enabled の時は subtitle 自体を表示しない設計のため、
+  // disabled 時に出す「未対応」 ラベルのみ AppStrings に保持する。
   String get ngFilterTileSubtitleDisabled => '未対応';
+
+  /// NG 設定編集画面（[BroadcasterNgEditScreen]）の AppBar タイトル。
+  ///
+  /// Issue #727 follow-up: `scopeLabel` には放送者名（解決できないときは
+  /// 放送者ID）が入る。区切りは半角ハイフン + 半角スペース 1 つずつで、
+  /// `name(id)` のような結合形ではなく純粋な放送者名を渡すことを想定する。
+  String ngEditScreenTitle(String scopeLabel) => 'NG 設定 - $scopeLabel';
 
   // セクション: データ管理
   String get dataManagementSectionTitle => 'データ管理';

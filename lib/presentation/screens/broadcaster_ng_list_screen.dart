@@ -7,21 +7,20 @@ import '../widgets/ng_local_notice.dart';
 import 'broadcaster_ng_edit_screen.dart';
 
 /// Issue #727: picker screen that lists every broadcaster the user has a
-/// per-broadcaster NG slot for, plus a fixed "template" entry that seeds
-/// any future broadcaster's first-access state.
+/// per-broadcaster NG slot for.
 ///
 /// Tapping a row pushes [BroadcasterNgEditScreen] for that scope.
 ///
-/// TODO(#727): broadcaster name resolution is out of scope for the initial
-/// PR — tiles currently show the raw broadcaster ID. A follow-up issue
-/// will plumb a resolver (e.g. `UserNameResolution`) so the picker can
-/// display friendly names.
+/// The template scope (seed for newly-encountered broadcasters) is an
+/// internal concept and is intentionally NOT exposed as a tile here — the
+/// migrator and `_ensureInitialized` paths use it implicitly.
 class BroadcasterNgListScreen extends StatefulWidget {
   const BroadcasterNgListScreen({
     super.key,
     required this.broadcasterNgStore,
     this.broadcasterIdNotifier,
     this.broadcasterNameResolver,
+    this.broadcasterNamesSnapshot,
   });
 
   final BroadcasterNgStore broadcasterNgStore;
@@ -32,8 +31,23 @@ class BroadcasterNgListScreen extends StatefulWidget {
   final ValueNotifier<String?>? broadcasterIdNotifier;
 
   /// Optional name resolver. Returns a display name for the given
-  /// broadcaster ID. When null or returns null, the raw ID is shown.
+  /// broadcaster ID. When null or returns null/empty, only the raw ID is
+  /// shown; otherwise the tile title is rendered as `名前(ID)`.
+  ///
+  /// Prefer wiring [broadcasterNamesSnapshot] when the underlying store can
+  /// produce the full mapping cheaply: per-tile resolver calls re-parse
+  /// SharedPreferences on every invocation, while a snapshot is read once
+  /// per build and looked up in O(1).
   final String? Function(String broadcasterId)? broadcasterNameResolver;
+
+  /// Optional thunk that returns a `broadcasterId → name` snapshot. Called
+  /// once per build (and once per pull-to-refresh) so the picker can render
+  /// names for every tile via O(1) map lookups instead of N resolver calls.
+  ///
+  /// When BOTH this and [broadcasterNameResolver] are provided, the snapshot
+  /// wins. Embedders that only have a per-id resolver can keep passing
+  /// [broadcasterNameResolver] for backward compatibility.
+  final Map<String, String> Function()? broadcasterNamesSnapshot;
 
   @override
   State<BroadcasterNgListScreen> createState() =>
@@ -42,11 +56,37 @@ class BroadcasterNgListScreen extends StatefulWidget {
 
 class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
   late List<String> _broadcasterIds;
+  Map<String, String>? _namesSnapshot;
 
   @override
   void initState() {
     super.initState();
     _broadcasterIds = widget.broadcasterNgStore.listBroadcasters();
+    _namesSnapshot = _readSnapshot();
+  }
+
+  /// Reads a fresh snapshot of `broadcasterId → name` mappings if the
+  /// embedder supplied one. Failures are swallowed (with a log entry) so
+  /// the picker can still render IDs even when the optional name source
+  /// is unavailable.
+  Map<String, String>? _readSnapshot() {
+    final Map<String, String> Function()? thunk =
+        widget.broadcasterNamesSnapshot;
+    if (thunk == null) {
+      return null;
+    }
+    try {
+      return thunk();
+    } on Object catch (e, st) {
+      developer.log(
+        'BroadcasterNgListScreen: names snapshot read failed; '
+        'falling back to per-id resolver (if any).',
+        name: 'broadcaster_ng_list_screen',
+        error: e,
+        stackTrace: st,
+      );
+      return null;
+    }
   }
 
   Future<void> _refresh() async {
@@ -72,8 +112,10 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
       }
       return;
     }
+    final Map<String, String>? snapshot = _readSnapshot();
     setState(() {
       _broadcasterIds = ids;
+      _namesSnapshot = snapshot;
     });
   }
 
@@ -95,14 +137,49 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
         });
   }
 
-  String _displayName(String broadcasterId) {
+  /// Returns the resolved broadcaster name for [broadcasterId], or `null`
+  /// when no source resolves it to a non-empty value.
+  ///
+  /// Resolution order:
+  /// 1. The cached snapshot from [BroadcasterNgListScreen.broadcasterNamesSnapshot]
+  ///    (O(1) map lookup; preferred when available).
+  /// 2. The per-id resolver from [BroadcasterNgListScreen.broadcasterNameResolver]
+  ///    (kept for backward compatibility with embedders that don't supply a
+  ///    snapshot thunk).
+  String? _resolvedName(String broadcasterId) {
+    final Map<String, String>? snap = _namesSnapshot;
+    if (snap != null) {
+      final String? cached = snap[broadcasterId];
+      if (cached == null || cached.isEmpty) {
+        return null;
+      }
+      return cached;
+    }
     final String? resolved = widget.broadcasterNameResolver?.call(
       broadcasterId,
     );
-    if (resolved != null && resolved.isNotEmpty) {
-      return resolved;
+    if (resolved == null || resolved.isEmpty) {
+      return null;
     }
-    return broadcasterId;
+    return resolved;
+  }
+
+  /// Tile title format: `名前(ID)` when the name is resolvable, raw `ID`
+  /// otherwise. Avoids ever rendering `()` for empty / unknown names.
+  String _displayTileTitle(String broadcasterId) {
+    final String? name = _resolvedName(broadcasterId);
+    if (name == null) {
+      return broadcasterId;
+    }
+    return '$name($broadcasterId)';
+  }
+
+  /// Edit-screen scope label: just the **name** when known, the **ID**
+  /// when not. The combined `name(id)` form is intentionally NOT used
+  /// here — the AppBar shows just the broadcaster name to keep the title
+  /// short and human-readable.
+  String _editorScopeLabel(String broadcasterId) {
+    return _resolvedName(broadcasterId) ?? broadcasterId;
   }
 
   @override
@@ -119,15 +196,6 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
           key: const Key('broadcaster-ng-list-view'),
           padding: const EdgeInsets.symmetric(vertical: 8),
           children: <Widget>[
-            ListTile(
-              key: const Key('broadcaster-ng-template-tile'),
-              leading: const Icon(Icons.tune),
-              title: const Text('テンプレート（新規放送者の初期値）'),
-              subtitle: const Text('新しく見る放送者の初期値として使われます'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => _openEditor(null, 'テンプレート'),
-            ),
-            const Divider(height: 1),
             if (ids.isEmpty)
               Padding(
                 key: const Key('broadcaster-ng-list-empty'),
@@ -154,11 +222,16 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
               ...List<Widget>.generate(ids.length, (int index) {
                 final String id = ids[index];
                 final bool isActive = activeId != null && activeId == id;
-                final String name = _displayName(id);
+                final String title = _displayTileTitle(id);
+                final String scopeLabel = _editorScopeLabel(id);
                 return ListTile(
                   key: Key('broadcaster-ng-list-broadcaster-tile-$index'),
                   leading: const Icon(Icons.person),
-                  title: Text(name),
+                  title: Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   subtitle: isActive
                       ? const Text(
                           '現在接続中',
@@ -166,7 +239,7 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
                         )
                       : null,
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openEditor(id, name),
+                  onTap: () => _openEditor(id, scopeLabel),
                 );
               }),
           ],
@@ -175,7 +248,7 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('NG フィルタ')),
+      appBar: AppBar(title: const Text('放送者別 NG 設定')),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[

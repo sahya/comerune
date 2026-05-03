@@ -174,7 +174,7 @@ void main() {
 
     // Issue #727 PR2 (UX flatten): the NG word management tile moved out
     // of the TTS settings screen and is now reachable from the top-level
-    // Settings 「NG フィルタ」 tile. The corresponding assertions live in
+    // Settings 「放送者別 NG 設定」 tile. The corresponding assertions live in
     // `settings_screen_test.dart`.
 
     testWidgets('auto-read toggle persists value', (WidgetTester tester) async {

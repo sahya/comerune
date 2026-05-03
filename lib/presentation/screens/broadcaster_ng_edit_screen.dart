@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/filter/broadcaster_ng_store.dart';
+import '../strings/app_strings.dart';
 import 'ng_user_list_view.dart';
 import 'ng_word_list_view.dart';
 
@@ -49,7 +50,11 @@ class BroadcasterNgEditScreen extends StatelessWidget {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: Text('NG設定 — ${_truncateForTitle(scopeLabel)}'),
+          title: Text(
+            AppStrings.settings.ngEditScreenTitle(
+              _truncateForTitle(scopeLabel),
+            ),
+          ),
           bottom: const TabBar(
             key: Key('broadcaster-ng-edit-tab-bar'),
             tabs: <Tab>[
