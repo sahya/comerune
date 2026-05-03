@@ -5,7 +5,7 @@ Output: android/fastlane/metadata/android/ja-JP/images/featureGraphic.png
 
 優先フォント:
 - Zen Maru Gothic Medium / Bold (柔らかい丸ゴシック、SIL OFL)
-  - `bash scripts/fetch-play-store-fonts.sh` で scripts/fonts/ に取得
+  - `bash scripts/google_play/fetch-fonts.sh` で scripts/google_play/fonts/ に取得
   - 取得できない環境では IPAGothic にフォールバック
 """
 from __future__ import annotations
@@ -16,7 +16,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-ROOT = Path(__file__).resolve().parent.parent
+SCRIPT_DIR = Path(__file__).resolve().parent
+ROOT = SCRIPT_DIR.parent.parent
 ICON_PATH = ROOT / "icon_source.png"
 OUT_PATH = ROOT / "android/fastlane/metadata/android/ja-JP/images/featureGraphic.png"
 
@@ -25,7 +26,7 @@ W, H = 1024, 500
 COLOR_TOP_LEFT = (139, 107, 247)
 COLOR_BOTTOM_RIGHT = (217, 117, 210)
 
-LOCAL_FONT_DIR = ROOT / "scripts" / "fonts"
+LOCAL_FONT_DIR = SCRIPT_DIR / "fonts"
 
 SOFT_FONT_REGULAR_CANDIDATES = [
     LOCAL_FONT_DIR / "ZenMaruGothic-Medium.ttf",
@@ -193,7 +194,8 @@ def main() -> int:
 
     sub_top = block_top + title_visual_h + gap_title_sub
     sy = sub_top - sub_visual_top
-    draw.text((tx + 2, sy + 2), subtitle, font=sub_font, fill=(60, 30, 90, 120))
+    for ox, oy, alpha in ((3, 4, 170), (2, 3, 130)):
+        draw.text((tx + ox, sy + oy), subtitle, font=sub_font, fill=(50, 20, 80, alpha))
     draw.text((tx, sy), subtitle, font=sub_font, fill=(255, 255, 255, 255))
 
     tag_plate_top = sub_top + sub_visual_h + gap_sub_tag
@@ -203,8 +205,8 @@ def main() -> int:
         tx + tag_w + tag_pad_x * 2,
         tag_plate_top + tag_plate_h,
     )
-    draw_plate(bg, tag_plate_box, radius=tag_plate_h // 2, fill=(255, 255, 255, 70))
-    draw.text((tx + tag_pad_x, tag_plate_top + tag_pad_y - gbbox[1]), tag, font=tag_font, fill=(255, 255, 255, 255))
+    draw_plate(bg, tag_plate_box, radius=tag_plate_h // 2, fill=(255, 255, 255, 200))
+    draw.text((tx + tag_pad_x, tag_plate_top + tag_pad_y - gbbox[1]), tag, font=tag_font, fill=(70, 35, 110, 255))
 
     final = bg.convert("RGB")
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)

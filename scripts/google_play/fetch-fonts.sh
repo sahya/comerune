@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Fetch fonts used by scripts/generate-play-store-feature-graphic.py.
-# Fonts are stored under scripts/fonts/ and intentionally git-ignored
-# to avoid redistributing third-party font binaries via this repository.
+# Fetch fonts used by scripts/google_play/generate-feature-graphic.py.
+# Fonts are stored alongside this script under fonts/ and intentionally
+# git-ignored to avoid redistributing third-party font binaries via this
+# repository.
 #
 # Source: Zen Maru Gothic (Google Fonts, SIL Open Font License 1.1)
 # https://github.com/googlefonts/zen-marugothic
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DEST="$ROOT/scripts/fonts"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DEST="$SCRIPT_DIR/fonts"
 mkdir -p "$DEST"
 
 base="https://raw.githubusercontent.com/googlefonts/zen-marugothic/main/fonts/ttf"
