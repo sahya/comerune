@@ -46,45 +46,51 @@ void main() {
         expect(find.text('再試行'), findsOneWidget);
       });
 
-      testWidgets(
-        'catches Error subclasses (TypeError / RangeError / ArgumentError)',
-        (WidgetTester tester) async {
-          // `on Object catch` の契約が `Error` 階層全般に対して成り立つか
-          // を担保する回帰テスト。`on Exception catch` のままだと
-          // `Error` 系（`TypeError` / `RangeError` / `ArgumentError` 等）
-          // を素通りしてしまい、`settings`/`settingsError` が共に null の
-          // ままになり画面が CircularProgressIndicator で固まる。
-          for (final Object thrownError in <Object>[
-            TypeError(),
-            RangeError('out of range'),
-            ArgumentError('bad arg'),
-          ]) {
-            final _ThrowingSettingsStore store = _ThrowingSettingsStore(
-              errorToThrow: thrownError,
-            );
-            await tester.pumpWidget(
-              MaterialApp(home: _ErrorTestScreen(settingsStore: store)),
-            );
-            await tester.pumpAndSettle();
+      group('catches Error subclasses', () {
+        // `on Object catch` の契約が `Error` 階層全般に対して成り立つかを
+        // 担保する回帰テスト群。`on Exception catch` のままだと `Error` 系
+        // （`TypeError` / `RangeError` / `ArgumentError` / `AssertionError`
+        // 等）を素通りしてしまい、`settings`/`settingsError` が共に null
+        // のままになり画面が CircularProgressIndicator で固まる。
+        // 各 variant を個別 testWidgets として宣言することで、CI の失敗報告
+        // でどの Error 種別が落ちたか即座に判別できる。
+        Future<void> runErrorVariant(
+          WidgetTester tester,
+          Object thrownError,
+        ) async {
+          final _ThrowingSettingsStore store = _ThrowingSettingsStore(
+            errorToThrow: thrownError,
+          );
+          await tester.pumpWidget(
+            MaterialApp(home: _ErrorTestScreen(settingsStore: store)),
+          );
+          await tester.pumpAndSettle();
+          expect(find.byType(CircularProgressIndicator), findsNothing);
+          expect(find.text('設定の読み込みに失敗しました'), findsOneWidget);
+        }
 
-            expect(
-              find.byType(CircularProgressIndicator),
-              findsNothing,
-              reason:
-                  'spinner must clear for thrownError=${thrownError.runtimeType}',
-            );
-            expect(
-              find.text('設定の読み込みに失敗しました'),
-              findsOneWidget,
-              reason:
-                  'error UI must render for thrownError=${thrownError.runtimeType}',
-            );
-
-            // tear down before next iteration
-            await tester.pumpWidget(const SizedBox.shrink());
-          }
-        },
-      );
+        testWidgets(
+          'TypeError',
+          (WidgetTester tester) => runErrorVariant(tester, TypeError()),
+        );
+        testWidgets(
+          'RangeError',
+          (WidgetTester tester) =>
+              runErrorVariant(tester, RangeError('out of range')),
+        );
+        testWidgets(
+          'ArgumentError',
+          (WidgetTester tester) =>
+              runErrorVariant(tester, ArgumentError('bad arg')),
+        );
+        testWidgets(
+          'AssertionError',
+          (WidgetTester tester) => runErrorVariant(
+            tester,
+            AssertionError('simulated assertion violation'),
+          ),
+        );
+      });
 
       testWidgets('tapping retry clears error and retries load', (
         WidgetTester tester,

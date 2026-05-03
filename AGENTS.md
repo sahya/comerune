@@ -188,6 +188,8 @@ UI に新たに日本語文字列を追加する際は、原則として `lib/pr
 
 ## Error handling
 
+詳細な error handling 方針は `.ai/flutter_rules.md` の Error Handling Rules を参照。本セクションは特に「`Exception` だけ catch して `Error` を素通りさせる」落とし穴の回避を強調する。
+
 ### 永続化値のパースを含む load 経路
 
 永続化値のパースを含む load 経路（例: `SettingsStore.load()`）では `on Exception catch` ではなく `on Object catch (e, st)` を使うこと。Dart では `Exception` と `Error` が独立階層で、`TypeError` / `StateError` / `ArgumentError` / `RangeError` 等の `Error` 系は `on Exception catch` を素通りする。旧バージョンが保存した値を新バージョンが読めないアップデート時に `Error` が伝播すると、`settings`/`settingsError` が共に null のまま画面が `CircularProgressIndicator` で永久に固まる事故が発生する。
@@ -195,7 +197,7 @@ UI に新たに日本語文字列を追加する際は、原則として `lib/pr
 レビュー観点:
 - 永続化値・外部入力をパースする `try`/`catch` で `on Exception catch` のみになっていないか
 - 旧形式データを再現するテスト（`Error` 系を投げるスタブ）で永続スピナーが出ないことを確認しているか
-- `catch (e)` で握りつぶす場合も、ログ・テレメトリで再現可能にしているか
+- `catch (e)` で握りつぶす場合も、`developer.log(name: '<source>', error: e, stackTrace: st)` で stackTrace と error を残し、再現可能にしているか
 
 ## Forbidden Behavior
 Agents must not:
