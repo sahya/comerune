@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 
@@ -43,7 +44,18 @@ mixin SettingsScreenMixin<T extends StatefulWidget> on State<T> {
         settingsError = null;
         settings = loaded;
       });
-    } on Exception catch (e) {
+    } on Object catch (e, st) {
+      // `Exception` だけでなく `Error`（`StateError` / `TypeError` /
+      // `ArgumentError` / `RangeError` / `AssertionError` 等）も捕捉する。
+      // これらが伝播すると `settings` も `settingsError` も null のままになり、
+      // 画面が CircularProgressIndicator のまま固まる（旧バージョンが
+      // 保存した値を新バージョンで読めないアップデート時に発生し得る）。
+      developer.log(
+        'Failed to load settings',
+        name: 'SettingsScreenMixin',
+        error: e,
+        stackTrace: st,
+      );
       if (!mounted) {
         return;
       }

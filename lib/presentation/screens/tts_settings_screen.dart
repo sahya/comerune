@@ -172,7 +172,17 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         settingsError = null;
         settings = loaded;
       });
-    } on Exception catch (e) {
+    } on Object catch (e, stackTrace) {
+      // `SettingsScreenMixin.loadSettings()` と同じ理由で `Exception` だけでなく
+      // `Error` 系（`StateError` / `TypeError` 等、破損した永続化値のパースで
+      // 投げられ得る）も捕捉する。ここで `settingsError` を設定しないと
+      // `settings` が null のままになり、画面が CircularProgressIndicator で
+      // 固まってしまう（更新インストール時に再現）。
+      _errorLog(
+        'Failed to load TTS settings',
+        error: e,
+        stackTrace: stackTrace,
+      );
       if (!mounted) {
         return;
       }

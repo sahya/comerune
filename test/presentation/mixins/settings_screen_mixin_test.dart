@@ -25,6 +25,27 @@ void main() {
         expect(find.text('再試行'), findsOneWidget);
       });
 
+      testWidgets('shows error UI when settingsStore.load() throws an Error '
+          '(legacy persisted parse failure)', (WidgetTester tester) async {
+        // 旧バージョンが保存した SharedPreferences の値を新バージョンが
+        // パースできず `StateError` 等を投げるシナリオを再現する。
+        // `Error` 系を捕捉できないと `settings`/`settingsError` ともに null
+        // のままになり、画面が CircularProgressIndicator で固まる。
+        final _ThrowingSettingsStore store = _ThrowingSettingsStore(
+          errorToThrow: StateError('simulated legacy parse failure'),
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(home: _ErrorTestScreen(settingsStore: store)),
+        );
+        await tester.pumpAndSettle();
+
+        // The error UI must render — NOT the spinner.
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        expect(find.text('設定の読み込みに失敗しました'), findsOneWidget);
+        expect(find.text('再試行'), findsOneWidget);
+      });
+
       testWidgets('tapping retry clears error and retries load', (
         WidgetTester tester,
       ) async {
@@ -222,7 +243,14 @@ void main() {
 
 /// A settings store that throws on [load] when [shouldThrow] is true.
 class _ThrowingSettingsStore implements SettingsStore {
+  _ThrowingSettingsStore({this.errorToThrow});
+
   bool shouldThrow = true;
+
+  /// Optional alternative thing to throw — allows tests to simulate `Error`
+  /// subclasses (StateError / TypeError 等) escaping `SettingsStore.load()`
+  /// from legacy persisted data parsing, not just `Exception`.
+  final Object? errorToThrow;
 
   final SharedPreferencesSettingsStore _delegate =
       SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
@@ -230,7 +258,8 @@ class _ThrowingSettingsStore implements SettingsStore {
   @override
   Future<AppSettings> load() async {
     if (shouldThrow) {
-      throw Exception('simulated load failure');
+      // ignore: only_throw_errors
+      throw errorToThrow ?? Exception('simulated load failure');
     }
     return _delegate.load();
   }

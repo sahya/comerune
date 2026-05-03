@@ -534,6 +534,28 @@ void main() {
         expect(find.byType(BroadcasterNgListScreen), findsOneWidget);
       },
     );
+
+    testWidgets(
+      'shows error UI (not perma-spinner) when settingsStore.load() throws '
+      'a StateError from legacy persisted data',
+      (WidgetTester tester) async {
+        // 「更新インストール後に NG 設定項目が一覧に出ない」報告の根本原因
+        // 再現テスト。`SettingsStore.load()` が `Error` 系を投げると、
+        // SettingsScreenMixin が `Exception` 限定で catch していた頃は
+        // `settings`/`settingsError` ともに null のままで CircularProgress
+        // Indicator が消えず、ユーザーには「設定一覧が出てない」ように
+        // 見えていた。修正後はエラー UI と再試行ボタンが表示されること。
+        final _LegacyParseFailureSettingsStore store =
+            _LegacyParseFailureSettingsStore();
+
+        await tester.pumpWidget(_buildScreen(store));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        expect(find.text('設定の読み込みに失敗しました'), findsOneWidget);
+        expect(find.text('再試行'), findsOneWidget);
+      },
+    );
   });
 
   group('SettingsScreen export/import', () {
@@ -906,6 +928,50 @@ void main() {
       ]);
     });
   });
+}
+
+/// SettingsStore whose [load] always throws a [StateError] — used to reproduce
+/// the "更新インストールで設定一覧が表示されない" 報告。`SettingsStore.load()`
+/// が `Error` 系（旧バージョン由来の壊れた永続化値のパースで発生し得る）を
+/// 投げると、SettingsScreenMixin が `Exception` だけを捕捉していた頃は
+/// `settings`/`settingsError` ともに null のままになり、画面が
+/// CircularProgressIndicator で固まっていた。
+class _LegacyParseFailureSettingsStore implements SettingsStore {
+  final SharedPreferencesSettingsStore _delegate =
+      SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+  @override
+  Future<AppSettings> load() async {
+    throw StateError('simulated legacy parse failure');
+  }
+
+  @override
+  Future<void> save(AppSettings settings) => _delegate.save(settings);
+
+  @override
+  double? loadPreMuteVolume() => _delegate.loadPreMuteVolume();
+
+  @override
+  Future<void> savePreMuteVolume(double? volume) =>
+      _delegate.savePreMuteVolume(volume);
+
+  @override
+  double? loadPreMuteAndroidTtsVolume() =>
+      _delegate.loadPreMuteAndroidTtsVolume();
+
+  @override
+  Future<void> savePreMuteAndroidTtsVolume(double? volume) =>
+      _delegate.savePreMuteAndroidTtsVolume(volume);
+
+  @override
+  Future<String> exportAsJson() => _delegate.exportAsJson();
+
+  @override
+  Future<String> writeExportToTempFile() => _delegate.writeExportToTempFile();
+
+  @override
+  Future<AppSettings> importFromJson(String jsonString) =>
+      _delegate.importFromJson(jsonString);
 }
 
 /// In-memory stub SettingsStore that avoids real filesystem I/O.
