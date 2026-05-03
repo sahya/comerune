@@ -15,6 +15,7 @@ import '../../application/comment_post/comment_post_controller.dart';
 import '../../application/timeshift_fetch/timeshift_fetch_controller.dart';
 import '../../application/settings/settings_store.dart';
 import '../../application/speech/speech_availability_notifier.dart';
+import '../../application/timeline/timeline_store.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../data/broadcast/broadcast_control_repository.dart';
 import '../../data/comment_log/comment_log_tag.dart';
@@ -47,6 +48,17 @@ import '../widgets/timeshift_fetch_panel.dart';
 import 'user_detail_sheet.dart';
 
 const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
+
+// Comment-content prefix markers used by the speech pipeline.
+//
+// '☆' marks comments hidden from display by the star-prefix filter.
+// '/' marks comments skipped from TTS by the slash-prefix filter
+// (also covers owner commands such as `/teach`).
+const String _kStarPrefix = '☆';
+const String _kSlashPrefix = '/';
+
+bool _hasStarPrefix(String content) => content.startsWith(_kStarPrefix);
+bool _hasSlashPrefix(String content) => content.startsWith(_kSlashPrefix);
 
 /// Feature flag: コメント投稿 UI（FAB + 入力バー）の有効化。
 ///
@@ -395,6 +407,7 @@ class CommentRowHarness extends StatelessWidget {
     this.onOpenUrl,
     this.beginAt,
     this.ngMatcher,
+    this.normalizedSearchQuery,
   });
 
   final AppMessage message;
@@ -415,6 +428,10 @@ class CommentRowHarness extends StatelessWidget {
   final ValueChanged<AppMessage>? onOpenUrl;
   final DateTime? beginAt;
   final NgMatcher? ngMatcher;
+
+  /// Forwarded to [_CommentRow.normalizedSearchQuery]. Tests pass this in
+  /// to verify search highlighting without spinning up the full screen.
+  final String? normalizedSearchQuery;
 
   @override
   Widget build(BuildContext context) {
@@ -437,6 +454,7 @@ class CommentRowHarness extends StatelessWidget {
       onOpenUrl: onOpenUrl,
       beginAt: beginAt,
       ngMatcher: ngMatcher,
+      normalizedSearchQuery: normalizedSearchQuery,
     );
   }
 }
@@ -460,6 +478,7 @@ class PinnedCommentRowHarness extends StatelessWidget {
     this.beginAt,
     this.textScaler = TextScaler.noScaling,
     this.ngMatcher,
+    this.normalizedSearchQuery,
   });
 
   final AppMessage message;
@@ -475,6 +494,11 @@ class PinnedCommentRowHarness extends StatelessWidget {
   final DateTime? beginAt;
   final TextScaler textScaler;
   final NgMatcher? ngMatcher;
+
+  /// Forwarded to [_PinnedCommentRow.normalizedSearchQuery]. Tests pass
+  /// this in to verify search highlighting on pinned rows without
+  /// spinning up the full screen.
+  final String? normalizedSearchQuery;
 
   @override
   Widget build(BuildContext context) {
@@ -492,6 +516,7 @@ class PinnedCommentRowHarness extends StatelessWidget {
       beginAt: beginAt,
       textScaler: textScaler,
       ngMatcher: ngMatcher,
+      normalizedSearchQuery: normalizedSearchQuery,
     );
   }
 }
@@ -800,10 +825,6 @@ class _CommentScreenState extends State<CommentScreen>
 
   Timer? _wakelockReleaseTimer;
 
-  /// Periodic timer that ensures new comments are submitted for speech
-  /// even when the widget tree is not rebuilt (e.g. while the app is
-  /// backgrounded and [didUpdateWidget] is not called).
-  Timer? _speechPollTimer;
   StreamSubscription<SpeechEvent>? _speechEventSub;
 
   /// Issue #739: countdown that delays the broadcast-end speech-stop so the
@@ -1021,7 +1042,18 @@ class _CommentScreenState extends State<CommentScreen>
     _syncWakelockForStatus(_lastStatus);
 
     _requestUserNameResolution(widget.messages);
-    _effectivePresetNgWords = widget.contentFilter.presetNgWords;
+    // Issue #628: structured `presetCategories` injection seam takes
+    // precedence over the flat `presetNgWords` list. When provided, the
+    // matcher is seeded with the categories directly and the asset-load
+    // fallback is skipped.
+    if (widget.contentFilter.presetCategories.isNotEmpty) {
+      _effectivePresetCategories = widget.contentFilter.presetCategories;
+      _effectivePresetNgWords = NgPresetCategory.flattenWords(
+        widget.contentFilter.presetCategories,
+      );
+    } else {
+      _effectivePresetNgWords = widget.contentFilter.presetNgWords;
+    }
     _rebuildNgMatcher();
 
     // Seed the NG-protection cursor with the current tail so that messages
@@ -1047,7 +1079,10 @@ class _CommentScreenState extends State<CommentScreen>
     if (widget.messages.isNotEmpty) {
       _lastProcessedTailMessageId = widget.messages.last.id;
     }
-    if (widget.contentFilter.presetNgWords.isEmpty) {
+    // Issue #628: only fall back to asset load when neither the structured
+    // `presetCategories` nor the flat `presetNgWords` were provided.
+    if (widget.contentFilter.presetCategories.isEmpty &&
+        widget.contentFilter.presetNgWords.isEmpty) {
       unawaited(_loadPresetNgWordsFromAsset());
     }
 
@@ -1077,6 +1112,16 @@ class _CommentScreenState extends State<CommentScreen>
     widget.speechConfig.androidTtsAvailability?.addListener(
       _onAndroidTtsAvailabilityChanged,
     );
+
+    // Issue #762: subscribe to TimelineStore mutations so that new comments
+    // are submitted for speech the moment they arrive — both in foreground
+    // (immediate) and in background (no longer waiting up to 2 s for the
+    // previous Timer.periodic poll). The foreground submit path in
+    // [didUpdateWidget] is intentionally retained: callers may pass
+    // `widget.messages` from a source other than [timelineStore], and the
+    // `_lastSpeechMessageId` cursor in [_submitNewCommentsForSpeech]
+    // de-duplicates between the two entry points.
+    widget.speechConfig.timelineStore?.addListener(_onTimelineStoreChanged);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToEdge(animated: false);
@@ -1135,6 +1180,21 @@ class _CommentScreenState extends State<CommentScreen>
       newNotifier?.addListener(_onAndroidTtsAvailabilityChanged);
     }
 
+    // Issue #762: re-attach the TimelineStore listener if the parent swapped
+    // in a different store instance. Without this swap the listener would
+    // silently keep firing on the previous store and miss mutations on the
+    // new one — symmetric with the [SpeechAvailabilityNotifier] swap above.
+    final TimelineStore? oldStore = oldWidget.speechConfig.timelineStore;
+    final TimelineStore? newStore = widget.speechConfig.timelineStore;
+    if (!identical(oldStore, newStore)) {
+      oldStore?.removeListener(_onTimelineStoreChanged);
+      newStore?.addListener(_onTimelineStoreChanged);
+    }
+
+    final bool presetCategoriesChanged = !identical(
+      oldWidget.contentFilter.presetCategories,
+      widget.contentFilter.presetCategories,
+    );
     if (!_listEqualsShallow(
           oldWidget.contentFilter.ngWords,
           widget.contentFilter.ngWords,
@@ -1142,8 +1202,18 @@ class _CommentScreenState extends State<CommentScreen>
         !_listEqualsShallow(
           oldWidget.contentFilter.presetNgWords,
           widget.contentFilter.presetNgWords,
-        )) {
-      if (widget.contentFilter.presetNgWords.isNotEmpty) {
+        ) ||
+        presetCategoriesChanged) {
+      // Issue #628: structured `presetCategories` injection seam wins over
+      // the flat `presetNgWords` fallback and over asset loading. Mirrors
+      // the priority order in [initState].
+      if (widget.contentFilter.presetCategories.isNotEmpty) {
+        _effectivePresetCategories = widget.contentFilter.presetCategories;
+        _effectivePresetNgWords = NgPresetCategory.flattenWords(
+          widget.contentFilter.presetCategories,
+        );
+        _rebuildNgMatcher();
+      } else if (widget.contentFilter.presetNgWords.isNotEmpty) {
         _effectivePresetNgWords = widget.contentFilter.presetNgWords;
         // Flat list provided by the caller loses category info; drop any
         // previously loaded structured categories so the matcher does not
@@ -1153,8 +1223,16 @@ class _CommentScreenState extends State<CommentScreen>
         // returns null for flat-fallback entries.
         _effectivePresetCategories = const <NgPresetCategory>[];
         _rebuildNgMatcher();
-      } else if (oldWidget.contentFilter.presetNgWords.isNotEmpty &&
-          widget.contentFilter.presetNgWords.isEmpty) {
+      } else if ((oldWidget.contentFilter.presetNgWords.isNotEmpty ||
+              oldWidget.contentFilter.presetCategories.isNotEmpty) &&
+          widget.contentFilter.presetNgWords.isEmpty &&
+          widget.contentFilter.presetCategories.isEmpty) {
+        // Issue #628: caller cleared *both* injection seams (the
+        // structured `presetCategories` and the flat `presetNgWords`).
+        // Drop our cached state and fall back to the bundled
+        // `preset_ng_words.json` asset, mirroring the cold-start path
+        // in [initState] so the matcher never observes a stale
+        // category list after a clear.
         _effectivePresetNgWords = const <String>[];
         _effectivePresetCategories = const <NgPresetCategory>[];
         _rebuildNgMatcher();
@@ -1353,7 +1431,10 @@ class _CommentScreenState extends State<CommentScreen>
     _debugLogLazy(
       () => '[CommentScreen] dispose: speechStarted=$_speechStarted',
     );
-    _stopSpeechPollTimer();
+    // Issue #762: detach the reactive submit listener before tearing down
+    // any other speech state so a late mutation racing with dispose cannot
+    // call back into a half-disposed widget.
+    widget.speechConfig.timelineStore?.removeListener(_onTimelineStoreChanged);
     // Issue #739: cancel any in-flight broadcast-end grace timer so it
     // cannot fire after dispose and call into a torn-down widget.
     _speechGraceTimer?.cancel();
@@ -1786,7 +1867,6 @@ class _CommentScreenState extends State<CommentScreen>
         });
         _setSpeechEngineState(SpeechEngineState.ready);
       }
-      _startSpeechPollTimer();
       _debugLogLazy(
         () =>
             '[CommentScreen] Speech started. baseline=$_lastSpeechMessageId, '
@@ -1867,7 +1947,6 @@ class _CommentScreenState extends State<CommentScreen>
 
   Future<void> _stopSpeech() async {
     _debugLogLazy(() => '[CommentScreen] stopSpeech: started=$_speechStarted');
-    _stopSpeechPollTimer();
     if (_speechStarted) {
       try {
         await widget.speechConfig.speechPlatform?.stop(clearQueue: true);
@@ -1919,6 +1998,16 @@ class _CommentScreenState extends State<CommentScreen>
   /// Cancels the grace timer without firing the deferred stop. Used when
   /// the connection transitions to a non-ended status (reconnect / manual
   /// stop) — those branches drive their own teardown.
+  ///
+  /// [onSpeechGraceEnded] callback behaviour by [reason]:
+  /// - `'speech_disabled_by_user'`: fires the callback so the FGS
+  ///   controller's parallel grace timer ends immediately instead of
+  ///   waiting out the full 30 s (Issue #764 Phase 2).
+  /// - `'user_stop_for_exit'`, `'status=<code>'` (reconnect/manual-stop):
+  ///   does NOT fire the callback — these paths handle their own FGS
+  ///   teardown independently.
+  ///
+  /// For the path that fires the callback unconditionally, see [_endSpeechGrace].
   void _cancelSpeechGrace({required String reason}) {
     if (!_isInSpeechGrace && _speechGraceTimer == null) {
       return;
@@ -1927,6 +2016,9 @@ class _CommentScreenState extends State<CommentScreen>
     _speechGraceTimer?.cancel();
     _speechGraceTimer = null;
     _isInSpeechGrace = false;
+    if (reason == 'speech_disabled_by_user') {
+      widget.speechConfig.onSpeechGraceEnded?.call();
+    }
   }
 
   /// Completes the grace window, firing the deferred `_stopSpeech` exactly
@@ -1942,7 +2034,7 @@ class _CommentScreenState extends State<CommentScreen>
     // Notify the FGS controller so its parallel grace timer can end early
     // too. The callback is no-op when not in FGS-grace, so calling on every
     // reason (timeout / queue_drained / cancel) is safe.
-    widget.speechConfig.onSpeechQueueDrained?.call();
+    widget.speechConfig.onSpeechGraceEnded?.call();
     if (!mounted) {
       // Widget already torn down — dispose() will (or did) call stop().
       return;
@@ -2129,36 +2221,42 @@ class _CommentScreenState extends State<CommentScreen>
     }
   }
 
-  void _startSpeechPollTimer() {
-    _stopSpeechPollTimer();
-    _speechPollTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+  /// Issue #762: reactive replacement for the previous bg poll timer.
+  ///
+  /// Fires synchronously from [TimelineStore.notifyListeners], which the
+  /// store dispatches AFTER `_publishSnapshot()` so `messages` already
+  /// reflects the new entry by the time we read it here. Runs in BOTH
+  /// foreground and background — the foreground path was previously the
+  /// `didUpdateWidget` submit, which is retained for callers that pass
+  /// `widget.messages` from a non-store source. The `_lastSpeechMessageId`
+  /// cursor in [_submitNewCommentsForSpeech] de-duplicates between the two
+  /// entry points so a comment is never spoken twice.
+  ///
+  /// Note: [TimelineStore.setCapacity] also calls [notifyListeners] even
+  /// when no messages are evicted (capacity-only change). In that case
+  /// `messages.last.id == _lastSpeechMessageId` and
+  /// [_submitNewCommentsForSpeech] exits early — no spurious submit.
+  ///
+  /// Wrapped in try/catch so a single buggy invocation cannot tear down
+  /// the [TimelineStore]'s listener list (which would silently disable
+  /// reactive submit for the rest of the screen's lifetime). Mirrors the
+  /// defensive wrapper around [_onAndroidTtsAvailabilityChanged].
+  void _onTimelineStoreChanged() {
+    try {
       if (!mounted) return;
-      // Only poll when the app is not in a resumed (foreground) state.
-      // When resumed, didUpdateWidget already submits new comments.
-      final AppLifecycleState? lifecycleState =
-          WidgetsBinding.instance.lifecycleState;
-      if (lifecycleState == AppLifecycleState.resumed) return;
-
-      if (_speechStarted && widget.speechConfig.speechSettings.enabled) {
-        // Issue #758: in foreground, didUpdateWidget propagates the latest
-        // TimelineStore snapshot to widget.messages. In background the
-        // widget tree rebuild is paused (Flutter engine suspends frame
-        // scheduling), so widget.messages remains the snapshot captured
-        // at the last build before backgrounding. Read directly from the
-        // store here so the poll timer always sees the current snapshot.
-        // PR #721 made the messages getter return a cached view that is
-        // replaced on every mutation, so direct reads are always fresh.
-        // Falls back to widget.messages when no store is wired (tests).
-        final List<AppMessage> latest =
-            widget.speechConfig.timelineStore?.messages ?? widget.messages;
-        _submitNewCommentsForSpeech(latest);
-      }
-    });
-  }
-
-  void _stopSpeechPollTimer() {
-    _speechPollTimer?.cancel();
-    _speechPollTimer = null;
+      if (!_speechStarted) return;
+      if (!widget.speechConfig.speechSettings.enabled) return;
+      final List<AppMessage>? latest =
+          widget.speechConfig.timelineStore?.messages;
+      if (latest == null) return;
+      _submitNewCommentsForSpeech(latest);
+    } catch (e, stackTrace) {
+      _errorLog(
+        '[CommentScreen] _onTimelineStoreChanged: handler threw',
+        error: e,
+        stackTrace: stackTrace,
+      );
+    }
   }
 
   void _submitNewCommentsForSpeech(List<AppMessage> messages) {
@@ -2193,8 +2291,7 @@ class _CommentScreenState extends State<CommentScreen>
     for (int i = start; i < messages.length; i++) {
       final AppMessage message = messages[i];
       // Skip messages that arrived before speech was initialized.
-      if (_speechBaselineTimestamp != null &&
-          message.timestamp.isBefore(_speechBaselineTimestamp!)) {
+      if (_isBeforeSpeechBaseline(message)) {
         continue;
       }
       // Decide whether this message type should ever be spoken.
@@ -2242,15 +2339,14 @@ class _CommentScreenState extends State<CommentScreen>
       }
       // Skip NG users.
       final String? userId = message.userId;
-      if (userId != null && widget.contentFilter.ngUserIds.contains(userId)) {
+      if (_isNgUserSkippable(message)) {
         _debugLogLazy(
           () => '[CommentScreen] submitComment: SKIP NG user=$userId',
         );
         continue;
       }
       // Skip star-prefix hidden comments.
-      if (widget.contentFilter.starPrefixHidingEnabled &&
-          message.content.startsWith('☆')) {
+      if (_isStarPrefixSkippable(message)) {
         _debugLog('[CommentScreen] submitComment: SKIP star-prefix');
         continue;
       }
@@ -2265,8 +2361,7 @@ class _CommentScreenState extends State<CommentScreen>
         continue;
       }
       // Skip slash-prefix comments (shown in the list, but not read aloud).
-      if (widget.contentFilter.slashPrefixSkipEnabled &&
-          message.content.startsWith('/')) {
+      if (_isSlashPrefixSkippable(message)) {
         _debugLog('[CommentScreen] submitComment: SKIP slash-prefix');
         continue;
       }
@@ -2300,6 +2395,38 @@ class _CommentScreenState extends State<CommentScreen>
         }),
       );
     }
+  }
+
+  /// True when [message] arrived before speech was initialized and therefore
+  /// must not be spoken. Pure predicate extracted from
+  /// [_submitNewCommentsForSpeech].
+  bool _isBeforeSpeechBaseline(AppMessage message) {
+    return _speechBaselineTimestamp != null &&
+        message.timestamp.isBefore(_speechBaselineTimestamp!);
+  }
+
+  /// True when [message] is authored by an NG user and therefore must be
+  /// skipped for speech. Pure predicate extracted from
+  /// [_submitNewCommentsForSpeech].
+  bool _isNgUserSkippable(AppMessage message) {
+    final String? userId = message.userId;
+    return userId != null && widget.contentFilter.ngUserIds.contains(userId);
+  }
+
+  /// True when [message] is a star-prefix hidden comment that must be
+  /// skipped for speech. Pure predicate extracted from
+  /// [_submitNewCommentsForSpeech].
+  bool _isStarPrefixSkippable(AppMessage message) {
+    return widget.contentFilter.starPrefixHidingEnabled &&
+        _hasStarPrefix(message.content);
+  }
+
+  /// True when [message] is a slash-prefix comment that must be skipped for
+  /// speech (still shown in the list). Pure predicate extracted from
+  /// [_submitNewCommentsForSpeech].
+  bool _isSlashPrefixSkippable(AppMessage message) {
+    return widget.contentFilter.slashPrefixSkipEnabled &&
+        _hasSlashPrefix(message.content);
   }
 
   /// Submits a gift / ニコニ広告 message body to TTS.
@@ -3092,6 +3219,9 @@ class _CommentScreenState extends State<CommentScreen>
                     showCommentNo: widget.showCommentNo,
                     textScaler: textScaler,
                     ngMatcher: _ngMatcher,
+                    normalizedSearchQuery: _normalizedSearchQuery.isEmpty
+                        ? null
+                        : _normalizedSearchQuery,
                   ),
                 if (widget.speechConfig.speechSettings.enabled &&
                     widget.speechConfig.isSpeechMuted)
@@ -3188,6 +3318,10 @@ class _CommentScreenState extends State<CommentScreen>
                                 onOpenUrl: _showUrlConfirmDialog,
                                 beginAt: widget.programInfo.beginAt,
                                 ngMatcher: _ngMatcher,
+                                normalizedSearchQuery:
+                                    _normalizedSearchQuery.isEmpty
+                                    ? null
+                                    : _normalizedSearchQuery,
                               );
                             },
                           ),
@@ -4403,6 +4537,13 @@ class _CommentScreenState extends State<CommentScreen>
   }
 
   Future<void> _loadPresetNgWordsFromAsset() async {
+    // Issue #628 defense-in-depth: when the structured `presetCategories`
+    // injection seam is populated, the asset load is irrelevant. Bail out
+    // early so a stray scheduled call cannot clobber the injected
+    // categories.
+    if (widget.contentFilter.presetCategories.isNotEmpty) {
+      return;
+    }
     try {
       final String jsonText = await rootBundle.loadString(
         'android/app/src/main/assets/preset_ng_words.json',
@@ -4412,7 +4553,9 @@ class _CommentScreenState extends State<CommentScreen>
         decoded,
       );
       final List<String> words = NgPresetCategory.flattenWords(categories);
-      if (!mounted || widget.contentFilter.presetNgWords.isNotEmpty) {
+      if (!mounted ||
+          widget.contentFilter.presetNgWords.isNotEmpty ||
+          widget.contentFilter.presetCategories.isNotEmpty) {
         return;
       }
       _effectivePresetNgWords = words;
@@ -5354,6 +5497,152 @@ class _BroadcasterIcon extends StatelessWidget {
   }
 }
 
+/// Builds inline spans for [content], highlighting every occurrence of
+/// [query] with [matchStyle] and rendering the rest with [baseStyle].
+///
+/// Behavior (Issue #471):
+/// - Empty / null query short-circuits to a single [baseStyle] span so
+///   the non-search render path stays allocation-cheap.
+/// - Matching is case- and width-insensitive: both [content] and [query]
+///   are folded via [normalizeForSearch] (the same normalizer used by
+///   the filter) so the visual highlight stays in lock-step with which
+///   rows the search filter actually selects.
+/// - Match offsets are snapped to grapheme-cluster boundaries (via the
+///   [Characters] API) so emoji, ZWJ sequences, and combined characters
+///   are never split mid-codepoint. If a match overlaps a grapheme only
+///   partially, the highlight widens to cover the whole grapheme.
+///
+/// Hoisted to file scope so both [_CommentRow] and [_PinnedCommentRow] can
+/// share the exact same highlighter (Issue #471 acceptance criteria — the
+/// pinned panel must use the same decoration as the inline list).
+List<TextSpan> _buildHighlightedContent(
+  String content,
+  String? query,
+  TextStyle baseStyle,
+  TextStyle matchStyle,
+) {
+  if (query == null || query.isEmpty || content.isEmpty) {
+    return <TextSpan>[TextSpan(text: content, style: baseStyle)];
+  }
+
+  // Walk grapheme clusters of [content] and build a parallel normalized
+  // string. We record the cumulative original / normalized end-offsets
+  // *at every grapheme boundary* so a match found in normalized space
+  // can be widened back to the nearest enclosing graphemes — preventing
+  // an emoji or ZWJ sequence from being split.
+  final Characters chars = Characters(content);
+  final List<int> origBoundaries = <int>[0];
+  final List<int> normBoundaries = <int>[0];
+  final StringBuffer normBuf = StringBuffer();
+  int origCursor = 0;
+  int normCursor = 0;
+  for (final String grapheme in chars) {
+    origCursor += grapheme.length;
+    final String normGrapheme = normalizeForSearch(grapheme);
+    normBuf.write(normGrapheme);
+    normCursor += normGrapheme.length;
+    origBoundaries.add(origCursor);
+    normBoundaries.add(normCursor);
+  }
+  final String normContent = normBuf.toString();
+  if (normContent.isEmpty) {
+    return <TextSpan>[TextSpan(text: content, style: baseStyle)];
+  }
+
+  // Cheap pre-check: if the normalized body does not contain the query at
+  // all, skip the match-collection / boundary-mapping work entirely. This
+  // keeps the steady-state cost of "user typed a query that filters most
+  // rows out" down to a single grapheme walk per row.
+  if (!normContent.contains(query)) {
+    return <TextSpan>[TextSpan(text: content, style: baseStyle)];
+  }
+
+  // Find all match ranges in normalized space.
+  final List<List<int>> matches = <List<int>>[];
+  int searchFrom = 0;
+  while (true) {
+    final int hit = normContent.indexOf(query, searchFrom);
+    if (hit < 0) break;
+    final int end = hit + query.length;
+    matches.add(<int>[hit, end]);
+    // Advance by at least one to avoid infinite loops on a degenerate
+    // empty-query case (already guarded above) and to skip past the
+    // current match so highlights do not overlap.
+    searchFrom = end > hit ? end : hit + 1;
+  }
+  if (matches.isEmpty) {
+    return <TextSpan>[TextSpan(text: content, style: baseStyle)];
+  }
+
+  // Map normalized ranges back to original-content ranges, snapping to
+  // grapheme boundaries so we never split a grapheme.
+  int origStartFor(int normIndex) {
+    // Largest boundary i with normBoundaries[i] <= normIndex.
+    int lo = 0;
+    int hi = normBoundaries.length - 1;
+    while (lo < hi) {
+      final int mid = (lo + hi + 1) >> 1;
+      if (normBoundaries[mid] <= normIndex) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return origBoundaries[lo];
+  }
+
+  int origEndFor(int normIndex) {
+    // Smallest boundary i with normBoundaries[i] >= normIndex.
+    int lo = 0;
+    int hi = normBoundaries.length - 1;
+    while (lo < hi) {
+      final int mid = (lo + hi) >> 1;
+      if (normBoundaries[mid] >= normIndex) {
+        hi = mid;
+      } else {
+        lo = mid + 1;
+      }
+    }
+    return origBoundaries[lo];
+  }
+
+  final List<TextSpan> spans = <TextSpan>[];
+  int cursor = 0;
+  for (final List<int> range in matches) {
+    final int origStart = origStartFor(range[0]);
+    final int origEnd = origEndFor(range[1]);
+    // Skip overlapping / non-progressing matches that resolve to the
+    // same widened span as the previous match.
+    if (origEnd <= cursor) continue;
+    final int safeStart = origStart < cursor ? cursor : origStart;
+    if (safeStart > cursor) {
+      spans.add(
+        TextSpan(text: content.substring(cursor, safeStart), style: baseStyle),
+      );
+    }
+    spans.add(
+      TextSpan(text: content.substring(safeStart, origEnd), style: matchStyle),
+    );
+    cursor = origEnd;
+  }
+  if (cursor < content.length) {
+    spans.add(TextSpan(text: content.substring(cursor), style: baseStyle));
+  }
+  return spans;
+}
+
+/// Resolves the highlight [TextStyle] used for matched substrings inside
+/// comment bodies. Centralized so `_CommentRow` and `_PinnedCommentRow`
+/// always pick up the same Material-3 (`secondaryContainer` /
+/// `onSecondaryContainer`) color pair.
+TextStyle _searchMatchStyle(BuildContext context) {
+  final ColorScheme cs = Theme.of(context).colorScheme;
+  return TextStyle(
+    backgroundColor: cs.secondaryContainer,
+    color: cs.onSecondaryContainer,
+  );
+}
+
 class _PinnedCommentsSection extends StatelessWidget {
   const _PinnedCommentsSection({
     super.key,
@@ -5370,6 +5659,7 @@ class _PinnedCommentsSection extends StatelessWidget {
     this.showCommentNo = false,
     this.textScaler = TextScaler.noScaling,
     this.ngMatcher,
+    this.normalizedSearchQuery,
   });
 
   final List<AppMessage> pinnedMessages;
@@ -5387,6 +5677,12 @@ class _PinnedCommentsSection extends StatelessWidget {
   final bool showCommentNo;
   final TextScaler textScaler;
   final NgMatcher? ngMatcher;
+
+  /// Issue #471. When non-null and non-empty, matched substrings inside
+  /// each pinned comment body are highlighted with the same decoration as
+  /// the inline list. Already normalized via [normalizeForSearch] on the
+  /// parent side.
+  final String? normalizedSearchQuery;
 
   @override
   Widget build(BuildContext context) {
@@ -5449,6 +5745,7 @@ class _PinnedCommentsSection extends StatelessWidget {
               beginAt: beginAt,
               textScaler: textScaler,
               ngMatcher: ngMatcher,
+              normalizedSearchQuery: normalizedSearchQuery,
             ),
         ],
       ),
@@ -5472,6 +5769,7 @@ class _PinnedCommentRow extends StatelessWidget {
     this.beginAt,
     this.textScaler = TextScaler.noScaling,
     this.ngMatcher,
+    this.normalizedSearchQuery,
   });
 
   final AppMessage message;
@@ -5500,6 +5798,14 @@ class _PinnedCommentRow extends StatelessWidget {
   /// pinned-specific semantics label so screen-reader users can tell a
   /// read-skipped pinned comment apart from a read-skipped inline comment.
   final NgMatcher? ngMatcher;
+
+  /// Issue #471. Already-normalized search query forwarded from the
+  /// parent. When non-null and non-empty, matched substrings in the pinned
+  /// body are highlighted with the same decoration as the inline list.
+  /// Read-skipped pinned bodies (NG match) intentionally skip highlighting
+  /// because the body is dimmed to ~30% opacity and we do not want to fight
+  /// the dimming with a high-contrast background swatch.
+  final String? normalizedSearchQuery;
 
   @override
   Widget build(BuildContext context) {
@@ -5570,15 +5876,48 @@ class _PinnedCommentRow extends StatelessWidget {
       fontSize: fontSize,
       color: effectiveUserColor,
     );
+    final bool hasQuery =
+        normalizedSearchQuery != null && normalizedSearchQuery!.isNotEmpty;
     if (matchedSubcategory == null) {
-      final String lineText = _commentLineText(
+      if (!hasQuery) {
+        final String lineText = _commentLineText(
+          message: message,
+          showUserName: showUserName,
+          resolvedUserName: resolvedUserName,
+          beginAt: beginAt,
+          showCommentNo: showCommentNo,
+        );
+        return Text(lineText, style: bodyStyle);
+      }
+      // Issue #471. Search active → split meta-prefix from body so the
+      // matched substring inside the body can be highlighted. We reuse
+      // [_commentLineText] with [contentOverride] = '' for the meta
+      // formatting so the prefix stays in lock-step with the no-query
+      // path (operator handling, anonymous, comment-no, etc.).
+      final String metaPrefix = _commentLineText(
         message: message,
         showUserName: showUserName,
         resolvedUserName: resolvedUserName,
+        contentOverride: '',
         beginAt: beginAt,
         showCommentNo: showCommentNo,
       );
-      return Text(lineText, style: bodyStyle);
+      final TextStyle matchStyle = _searchMatchStyle(
+        context,
+      ).copyWith(fontSize: fontSize);
+      return Text.rich(
+        TextSpan(
+          children: <InlineSpan>[
+            TextSpan(text: metaPrefix, style: bodyStyle),
+            ..._buildHighlightedContent(
+              message.content,
+              normalizedSearchQuery,
+              bodyStyle,
+              matchStyle,
+            ),
+          ],
+        ),
+      );
     }
     // Only the body content is dimmed; timestamp + display name stay at
     // full contrast so the row still reads as a legitimate pinned message.
@@ -5586,6 +5925,12 @@ class _PinnedCommentRow extends StatelessWidget {
     // stays in lock-step with the unmatched path — any future change to
     // [_commentLineText] (operator handling, anonymous, etc.) propagates
     // here automatically instead of drifting.
+    //
+    // Read-skipped (NG-matched) bodies intentionally skip search-match
+    // highlighting: the body is rendered at ~30% opacity and a high-
+    // contrast highlight swatch would visually fight that dimming. The
+    // user can still locate the row because the row remains visible
+    // (filter passed it) and the meta line is unaffected.
     final String metaPrefix = _commentLineText(
       message: message,
       showUserName: showUserName,
@@ -5677,10 +6022,34 @@ class _PinnedCommentRow extends StatelessWidget {
       ),
     );
 
-    Widget bodyText = Text(
-      message.content,
-      style: TextStyle(fontSize: fontSize, color: effectiveUserColor),
+    final TextStyle bodyStyle = TextStyle(
+      fontSize: fontSize,
+      color: effectiveUserColor,
     );
+    final bool hasQuery =
+        normalizedSearchQuery != null && normalizedSearchQuery!.isNotEmpty;
+    // Issue #471: when search is active and the row is not read-skipped,
+    // highlight matches inside the body. Read-skipped bodies skip the
+    // highlight for the same reason as in [_buildSingleLinePinned] —
+    // the dimming would fight a high-contrast highlight swatch.
+    Widget bodyText;
+    if (hasQuery && matchedSubcategory == null) {
+      final TextStyle matchStyle = _searchMatchStyle(
+        context,
+      ).copyWith(fontSize: fontSize);
+      bodyText = Text.rich(
+        TextSpan(
+          children: _buildHighlightedContent(
+            message.content,
+            normalizedSearchQuery,
+            bodyStyle,
+            matchStyle,
+          ),
+        ),
+      );
+    } else {
+      bodyText = Text(message.content, style: bodyStyle);
+    }
     if (matchedSubcategory != null) {
       bodyText = Opacity(opacity: _readSkippedBodyOpacity, child: bodyText);
     }
@@ -5771,6 +6140,7 @@ class _CommentRow extends StatefulWidget {
     this.onOpenUrl,
     this.beginAt,
     this.ngMatcher,
+    this.normalizedSearchQuery,
   });
 
   final AppMessage message;
@@ -5812,6 +6182,14 @@ class _CommentRow extends StatefulWidget {
   /// or no match) render the row unchanged.
   final NgMatcher? ngMatcher;
 
+  /// Active normalized search query forwarded from the parent screen.
+  ///
+  /// When non-null and non-empty, matched substrings inside the body are
+  /// highlighted with the theme's secondary container colors. Issue #471.
+  /// Already normalized via [normalizeForSearch] on the parent side so the
+  /// row does not pay the fold cost again.
+  final String? normalizedSearchQuery;
+
   @override
   State<_CommentRow> createState() => _CommentRowState();
 }
@@ -5839,7 +6217,7 @@ class _CommentRowState extends State<_CommentRow> {
 
   bool get _isStarHidden =>
       widget.starPrefixHidingEnabled &&
-      widget.message.content.startsWith('☆') &&
+      _hasStarPrefix(widget.message.content) &&
       !_revealed;
 
   List<UrlMatch> _resolveUrlMatches() {
@@ -6054,6 +6432,10 @@ class _CommentRowState extends State<_CommentRow> {
       content: content,
       urlMatches: urlMatches,
       baseStyle: contentStyle,
+      // Issue #471: highlight matched substrings inside the body when a
+      // search query is active. Hidden bodies (ネタバレ防止) are placeholder
+      // text, not the actual content, so skip highlighting for them.
+      searchQuery: hidden ? null : widget.normalizedSearchQuery,
     );
     if (matchedSubcategory != null) {
       // Wrap the body in an inline Opacity so timestamp/username stay at
@@ -6217,6 +6599,10 @@ class _CommentRowState extends State<_CommentRow> {
           content: content,
           urlMatches: urlMatches,
           baseStyle: contentStyle,
+          // Issue #471: highlight matched substrings inside the body when a
+          // search query is active. Hidden bodies (ネタバレ防止) are placeholder
+          // text, not the actual content, so skip highlighting for them.
+          searchQuery: hidden ? null : widget.normalizedSearchQuery,
         ),
       ),
     );
@@ -6240,42 +6626,87 @@ class _CommentRowState extends State<_CommentRow> {
   /// When [urlMatches] is empty the result is a single [TextSpan] with the
   /// full content, preserving the previous rendering behavior for non-URL
   /// comments.
+  ///
+  /// When [searchQuery] is non-null and non-empty (Issue #471), each text
+  /// segment is further split via [_buildHighlightedContent] so the matched
+  /// substring is rendered with the theme's secondary container colors.
+  /// Highlighting layers on top of URL coloring: a query that lands inside
+  /// a URL span paints over the URL's link style, which is the expected
+  /// behavior since the user is currently filtering by that query.
   List<InlineSpan> _buildContentSpans({
     required BuildContext context,
     required String content,
     required List<UrlMatch> urlMatches,
     required TextStyle baseStyle,
+    String? searchQuery,
   }) {
+    final ThemeData theme = Theme.of(context);
+    final TextStyle matchStyle = _searchMatchStyle(context);
+    final bool hasQuery = searchQuery != null && searchQuery.isNotEmpty;
+
     if (urlMatches.isEmpty) {
-      return <InlineSpan>[TextSpan(text: content, style: baseStyle)];
+      if (!hasQuery) {
+        return <InlineSpan>[TextSpan(text: content, style: baseStyle)];
+      }
+      return _buildHighlightedContent(
+        content,
+        searchQuery,
+        baseStyle,
+        matchStyle,
+      );
     }
-    final Color linkColor = Theme.of(context).colorScheme.primary;
+
+    final Color linkColor = theme.colorScheme.primary;
     final TextStyle linkStyle = baseStyle.copyWith(
       color: linkColor,
       decoration: TextDecoration.underline,
       decorationColor: linkColor,
     );
+    // For URL spans we keep the link decoration but layer the highlight
+    // background/foreground on top so the URL still reads as a link while
+    // the matched fragment is visible.
+    final TextStyle linkMatchStyle = linkStyle.copyWith(
+      backgroundColor: matchStyle.backgroundColor,
+      color: matchStyle.color,
+    );
+
+    void appendSegment(
+      List<InlineSpan> sink,
+      String text,
+      TextStyle style,
+      TextStyle highlightStyle,
+    ) {
+      if (text.isEmpty) return;
+      if (!hasQuery) {
+        sink.add(TextSpan(text: text, style: style));
+      } else {
+        sink.addAll(
+          _buildHighlightedContent(text, searchQuery, style, highlightStyle),
+        );
+      }
+    }
+
     final List<InlineSpan> spans = <InlineSpan>[];
     int cursor = 0;
     for (final UrlMatch match in urlMatches) {
       if (match.start > cursor) {
-        spans.add(
-          TextSpan(
-            text: content.substring(cursor, match.start),
-            style: baseStyle,
-          ),
+        appendSegment(
+          spans,
+          content.substring(cursor, match.start),
+          baseStyle,
+          matchStyle,
         );
       }
-      spans.add(
-        TextSpan(
-          text: content.substring(match.start, match.end),
-          style: linkStyle,
-        ),
+      appendSegment(
+        spans,
+        content.substring(match.start, match.end),
+        linkStyle,
+        linkMatchStyle,
       );
       cursor = match.end;
     }
     if (cursor < content.length) {
-      spans.add(TextSpan(text: content.substring(cursor), style: baseStyle));
+      appendSegment(spans, content.substring(cursor), baseStyle, matchStyle);
     }
     return spans;
   }

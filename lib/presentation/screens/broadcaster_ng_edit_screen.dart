@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/filter/broadcaster_ng_store.dart';
+import '../strings/app_strings.dart';
 import 'ng_user_list_view.dart';
 import 'ng_word_list_view.dart';
 
@@ -9,7 +10,7 @@ import 'ng_word_list_view.dart';
 /// intermediate "hub" screen.
 ///
 /// `broadcasterId == null` means the template scope: edits seed any
-/// future broadcaster's first-access state. A small banner is shown in
+/// future broadcaster's first customization. A small banner is shown in
 /// that case so the user knows they are editing the seed list.
 ///
 /// `scopeLabel` is the display name shown in the AppBar title (broadcaster
@@ -49,7 +50,11 @@ class BroadcasterNgEditScreen extends StatelessWidget {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: Text('NG設定 — ${_truncateForTitle(scopeLabel)}'),
+          title: Text(
+            AppStrings.settings.ngEditScreenTitle(
+              _truncateForTitle(scopeLabel),
+            ),
+          ),
           bottom: const TabBar(
             key: Key('broadcaster-ng-edit-tab-bar'),
             tabs: <Tab>[
