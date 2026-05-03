@@ -1,63 +1,63 @@
-# TODO: リポジトリが public になったら、以下のコメントアウトを解除してセキュリティスキャンを有効化すること。
-# name: Dart Security Scan
-#
-# on:
-#   push:
-#     branches: [main, develop]
-#   pull_request:
-#     branches: [main, develop]
-#   workflow_dispatch:
-#
-# permissions:
-#   contents: read
-#   security-events: write
-#
-# jobs:
-#   trivy-scan:
-#     name: Trivy vulnerability scan
-#     runs-on: ubuntu-latest
-#     steps:
-#       - name: Checkout code
-#         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-#
-#       - name: Setup Flutter
-#         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
-#         with:
-#           channel: stable
-#           cache: true
-#
-#       # pubspec.lock は .gitignore で除外されているため、CI上で生成する。
-#       # Trivy は pubspec.lock を解析して依存パッケージの脆弱性を検出する。
-#       - name: Install dependencies
-#         run: flutter pub get
-#
-#       # 1回目: CRITICAL/HIGH が見つかれば CI を失敗させる (exit-code: 1)
-#       - name: Run Trivy vulnerability scanner
-#         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
-#         with:
-#           scan-type: fs
-#           scan-ref: .
-#           format: table
-#           vuln-type: library
-#           severity: CRITICAL,HIGH
-#           exit-code: 1
-#
-#       # 2回目: SARIF 形式で結果を出力し GitHub Security tab にアップロードする。
-#       # MEDIUM も含めて可視化するが、CI の成否には影響しない。
-#       # success() || failure() により、前ステップの失敗時も実行するが cancelled 時は除外する。
-#       - name: Run Trivy (SARIF output)
-#         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
-#         if: success() || failure()
-#         with:
-#           scan-type: fs
-#           scan-ref: .
-#           format: sarif
-#           output: trivy-results.sarif
-#           vuln-type: library
-#           severity: CRITICAL,HIGH,MEDIUM
-#
-#       - name: Upload Trivy scan results to GitHub Security
-#         uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
-#         if: success() || failure()
-#         with:
-#           sarif_file: trivy-results.sarif
+name: Dart Security Scan
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  trivy-scan:
+    name: Trivy vulnerability scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          cache: true
+
+      # pubspec.lock はリポジトリにコミットされるが、Flutter SDK バージョン差で
+      # 不整合が出ないよう CI 上でも一度解決し直す。Trivy は pubspec.lock を
+      # 解析して依存パッケージの脆弱性を検出する。
+      - name: Install dependencies
+        run: flutter pub get
+
+      # 1回目: CRITICAL/HIGH が見つかれば CI を失敗させる (exit-code: 1)
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          vuln-type: library
+          severity: CRITICAL,HIGH
+          exit-code: 1
+
+      # 2回目: SARIF 形式で結果を出力し GitHub Security tab にアップロードする。
+      # MEDIUM も含めて可視化するが、CI の成否には影響しない。
+      # success() || failure() により、前ステップの失敗時も実行するが cancelled 時は除外する。
+      - name: Run Trivy (SARIF output)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        if: success() || failure()
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-results.sarif
+          vuln-type: library
+          severity: CRITICAL,HIGH,MEDIUM
+
+      - name: Upload Trivy scan results to GitHub Security
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
+        if: success() || failure()
+        with:
+          sarif_file: trivy-results.sarif
