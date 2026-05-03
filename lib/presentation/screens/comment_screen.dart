@@ -1959,6 +1959,16 @@ class _CommentScreenState extends State<CommentScreen>
   /// Cancels the grace timer without firing the deferred stop. Used when
   /// the connection transitions to a non-ended status (reconnect / manual
   /// stop) — those branches drive their own teardown.
+  ///
+  /// [onSpeechGraceEnded] callback behaviour by [reason]:
+  /// - `'speech_disabled_by_user'`: fires the callback so the FGS
+  ///   controller's parallel grace timer ends immediately instead of
+  ///   waiting out the full 30 s (Issue #764 Phase 2).
+  /// - `'user_stop_for_exit'`, `'status=<code>'` (reconnect/manual-stop):
+  ///   does NOT fire the callback — these paths handle their own FGS
+  ///   teardown independently.
+  ///
+  /// For the path that fires the callback unconditionally, see [_endSpeechGrace].
   void _cancelSpeechGrace({required String reason}) {
     if (!_isInSpeechGrace && _speechGraceTimer == null) {
       return;
@@ -1967,6 +1977,9 @@ class _CommentScreenState extends State<CommentScreen>
     _speechGraceTimer?.cancel();
     _speechGraceTimer = null;
     _isInSpeechGrace = false;
+    if (reason == 'speech_disabled_by_user') {
+      widget.speechConfig.onSpeechGraceEnded?.call();
+    }
   }
 
   /// Completes the grace window, firing the deferred `_stopSpeech` exactly
@@ -1982,7 +1995,7 @@ class _CommentScreenState extends State<CommentScreen>
     // Notify the FGS controller so its parallel grace timer can end early
     // too. The callback is no-op when not in FGS-grace, so calling on every
     // reason (timeout / queue_drained / cancel) is safe.
-    widget.speechConfig.onSpeechQueueDrained?.call();
+    widget.speechConfig.onSpeechGraceEnded?.call();
     if (!mounted) {
       // Widget already torn down — dispose() will (or did) call stop().
       return;
