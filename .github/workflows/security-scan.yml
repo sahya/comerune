@@ -19,9 +19,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      # flutter-version は pubspec.yaml の sdk constraint と整合する範囲で
+      # 明示固定する。stable channel の更新で `flutter pub get` の resolve
+      # 結果が振動し、Trivy の検知対象が静かに変わるのを防ぐため。
       - name: Setup Flutter
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
+          flutter-version: 3.41.9
           channel: stable
           cache: true
 
