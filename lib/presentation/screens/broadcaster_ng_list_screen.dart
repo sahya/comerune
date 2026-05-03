@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 
 import '../../data/filter/broadcaster_ng_store.dart';
+import '../strings/app_strings.dart';
 import '../widgets/ng_local_notice.dart';
 import 'broadcaster_ng_edit_screen.dart';
 
@@ -248,7 +249,9 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('放送者別 NG 設定')),
+      // Settings タイル名と同じ文字列を AppStrings 経由で参照し、将来の
+      // リネームを 1 ファイル修正で済ませられる状態を維持する。
+      appBar: AppBar(title: Text(AppStrings.settings.ngFilterTileTitle)),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[

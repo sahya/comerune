@@ -479,7 +479,7 @@ void main() {
     // when the store is wired, and renders disabled with 「未対応」 when
     // not.
     testWidgets(
-      '放送者別 NG 設定 tile is disabled with 「未対応」 when broadcasterNgStore is null',
+      'NG設定 tile is disabled with 「未対応」 when broadcasterNgStore is null',
       (WidgetTester tester) async {
         final SharedPreferencesSettingsStore settingsStore =
             SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
@@ -495,7 +495,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(find.text('放送者別 NG 設定'), findsOneWidget);
+        expect(find.text('NG設定'), findsOneWidget);
         expect(find.text('未対応'), findsOneWidget);
 
         final ListTile tile = tester.widget(
@@ -506,38 +506,37 @@ void main() {
       },
     );
 
-    testWidgets(
-      '放送者別 NG 設定 tile pushes BroadcasterNgListScreen when store wired',
-      (WidgetTester tester) async {
-        final SharedPreferencesSettingsStore settingsStore =
-            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-        final FakeBroadcasterNgStore ngStore = FakeBroadcasterNgStore();
+    testWidgets('NG設定 tile pushes BroadcasterNgListScreen when store wired', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeBroadcasterNgStore ngStore = FakeBroadcasterNgStore();
 
-        await tester.pumpWidget(
-          _buildScreen(settingsStore, broadcasterNgStore: ngStore),
-        );
-        await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        _buildScreen(settingsStore, broadcasterNgStore: ngStore),
+      );
+      await tester.pumpAndSettle();
 
-        final Finder scrollable = find.byType(Scrollable).first;
-        await tester.scrollUntilVisible(
-          find.byKey(const Key('broadcaster-ng-filter-tile')),
-          200,
-          scrollable: scrollable,
-        );
-        await tester.pumpAndSettle();
+      final Finder scrollable = find.byType(Scrollable).first;
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('broadcaster-ng-filter-tile')),
+        200,
+        scrollable: scrollable,
+      );
+      await tester.pumpAndSettle();
 
-        // No subtitle is rendered when the tile is enabled (sage review:
-        // tile name 「放送者別 NG 設定」 is self-explanatory; subtitle removed
-        // for tile compactness and above-the-fold space).
-        expect(find.text('未対応'), findsNothing);
-        expect(find.text('放送者別 NG 設定'), findsOneWidget);
+      // No subtitle is rendered when the tile is enabled (sage review:
+      // tile name 「NG設定」 is self-explanatory; subtitle removed
+      // for tile compactness and above-the-fold space).
+      expect(find.text('未対応'), findsNothing);
+      expect(find.text('NG設定'), findsOneWidget);
 
-        await tester.tap(find.byKey(const Key('broadcaster-ng-filter-tile')));
-        await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('broadcaster-ng-filter-tile')));
+      await tester.pumpAndSettle();
 
-        expect(find.byType(BroadcasterNgListScreen), findsOneWidget);
-      },
-    );
+      expect(find.byType(BroadcasterNgListScreen), findsOneWidget);
+    });
 
     testWidgets(
       'shows error UI (not perma-spinner) when settingsStore.load() throws '
