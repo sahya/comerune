@@ -93,12 +93,14 @@ final class SettingsStrings {
   // disabled 時に出す「未対応」 ラベルのみ AppStrings に保持する。
   String get ngFilterTileSubtitleDisabled => '未対応';
 
-  /// NG 設定編集画面（[BroadcasterNgEditScreen]）の AppBar タイトル。
+  /// NG設定編集画面（[BroadcasterNgEditScreen]）の AppBar タイトル。
   ///
   /// Issue #727 follow-up: `scopeLabel` には放送者名（解決できないときは
   /// 放送者ID）が入る。区切りは半角ハイフン + 半角スペース 1 つずつで、
   /// `name(id)` のような結合形ではなく純粋な放送者名を渡すことを想定する。
-  String ngEditScreenTitle(String scopeLabel) => 'NG 設定 - $scopeLabel';
+  /// `[ngFilterTileTitle]`（タイル名・一覧画面 AppBar）と同じ「NG設定」
+  /// 表記で語彙連続を維持する。
+  String ngEditScreenTitle(String scopeLabel) => 'NG設定 - $scopeLabel';
 
   // セクション: データ管理
   String get dataManagementSectionTitle => 'データ管理';

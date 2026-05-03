@@ -207,8 +207,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(BroadcasterNgEditScreen), findsOneWidget);
-      // AppBar title is "NG 設定 - <name>" (just the name, no parenthesised ID).
-      expect(find.text('NG 設定 - Alice'), findsOneWidget);
+      // AppBar title is "NG設定 - <name>" (just the name, no parenthesised ID).
+      expect(find.text('NG設定 - Alice'), findsOneWidget);
     });
 
     testWidgets('tapping a tile pushes the edit screen with scopeLabel == ID '
@@ -225,7 +225,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(BroadcasterNgEditScreen), findsOneWidget);
-      expect(find.text('NG 設定 - caster-a'), findsOneWidget);
+      expect(find.text('NG設定 - caster-a'), findsOneWidget);
     });
 
     testWidgets(
