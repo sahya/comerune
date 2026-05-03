@@ -539,8 +539,12 @@ class _SettingsScreenState extends State<SettingsScreen>
         key: const Key('broadcaster-ng-filter-tile'),
         enabled: enabled,
         leading: const Icon(Icons.block),
-        title: const Text('NG フィルタ'),
-        subtitle: Text(enabled ? 'NG ユーザー / NG ワードを放送者ごとに管理' : '未対応'),
+        title: Text(AppStrings.settings.ngFilterTileTitle),
+        subtitle: Text(
+          enabled
+              ? AppStrings.settings.ngFilterTileSubtitleEnabled
+              : AppStrings.settings.ngFilterTileSubtitleDisabled,
+        ),
         trailing: const Icon(Icons.chevron_right),
         onTap: !enabled
             ? null
