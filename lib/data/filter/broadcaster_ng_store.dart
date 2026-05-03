@@ -194,15 +194,20 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
       return;
     }
     await _enqueueWrite(() async {
-      await _ensureInitializedInline(broadcasterId);
-      final Set<String> current = _readNgUserIds(_ngUserIdsKey(broadcasterId));
-      if (current.contains(userId)) {
+      // Read effective state first (slot when initialized, otherwise
+      // template). No-op when the user is already present, so that
+      // calling add(...) for a value already in the template fallback
+      // does NOT materialize a per-broadcaster slot.
+      final Set<String> effective = _readNgUserIds(
+        _effectiveNgUserIdsKey(broadcasterId),
+      );
+      if (effective.contains(userId)) {
         return;
       }
       await _persistInitializedSlotState(
         broadcasterId: broadcasterId,
-        ids: <String>[...current, userId],
-        rules: _readNgWordRules(_ngWordRulesKey(broadcasterId)),
+        ids: <String>[...effective, userId],
+        rules: _readNgWordRules(_effectiveNgWordRulesKey(broadcasterId)),
       );
     });
   }
@@ -214,18 +219,22 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
       return;
     }
     await _enqueueWrite(() async {
-      await _ensureInitializedInline(broadcasterId);
-      final Set<String> current = _readNgUserIds(_ngUserIdsKey(broadcasterId));
-      if (!current.contains(userId)) {
+      // Read effective state first. No-op when the user is not currently
+      // visible to the filter, so trying to remove an absent value does
+      // NOT materialize a per-broadcaster slot.
+      final Set<String> effective = _readNgUserIds(
+        _effectiveNgUserIdsKey(broadcasterId),
+      );
+      if (!effective.contains(userId)) {
         return;
       }
-      final List<String> updated = current
+      final List<String> updated = effective
           .where((String id) => id != userId)
           .toList();
       await _persistInitializedSlotState(
         broadcasterId: broadcasterId,
         ids: updated,
-        rules: _readNgWordRules(_ngWordRulesKey(broadcasterId)),
+        rules: _readNgWordRules(_effectiveNgWordRulesKey(broadcasterId)),
       );
     });
   }

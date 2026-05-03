@@ -76,6 +76,30 @@ void main() {
       expect(ids, equals(<String>{'u2'}));
     });
 
+    test('addNgUserId for a value already in the template does NOT create a '
+        'broadcaster slot', () async {
+      await store.saveTemplateNgUserIds(<String>{'tpl-user'});
+
+      await store.addNgUserId('b1', 'tpl-user');
+
+      // No-op: nothing changed from the effective state, so no slot
+      // should be materialized.
+      expect(store.listBroadcasters(), isEmpty);
+      expect(await store.loadNgUserIds('b1'), equals(<String>{'tpl-user'}));
+    });
+
+    test('removeNgUserId for a value absent from the template does NOT '
+        'create a broadcaster slot', () async {
+      await store.saveTemplateNgUserIds(<String>{'tpl-user'});
+
+      await store.removeNgUserId('b1', 'absent-user');
+
+      // No-op: removing a value that is not currently in effect must
+      // not materialize a slot.
+      expect(store.listBroadcasters(), isEmpty);
+      expect(await store.loadNgUserIds('b1'), equals(<String>{'tpl-user'}));
+    });
+
     test('template save/load round-trip', () async {
       await store.saveTemplateNgUserIds(<String>{'a', 'b'});
       await store.saveTemplateNgWordRules(<NgWordRule>[
