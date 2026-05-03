@@ -16,10 +16,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('favorite-user-list-tile')), findsOneWidget);
-      expect(find.byKey(const Key('ng-user-list-tile')), findsOneWidget);
-      // Both favorite and NG user sections show '未登録' when empty.
-      expect(find.text('未登録'), findsNWidgets(2));
     });
+
+    // Issue #727 PR2 (UX flatten): the per-broadcaster NG management entry
+    // moved to a top-level Settings tile (`broadcaster-ng-filter-tile`), so
+    // this screen no longer renders an NG-related tile. The corresponding
+    // assertions live in `settings_screen_test.dart` now.
 
     testWidgets(
       'dispose does not throw when broadcasterIdNotifier is provided',
@@ -40,11 +42,9 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // Navigate away to trigger dispose
         await tester.pumpWidget(const MaterialApp(home: Scaffold()));
         await tester.pumpAndSettle();
 
-        // Changing the notifier after dispose should not throw
         notifier.value = 'broadcaster-2';
         await tester.pump();
 
@@ -65,7 +65,6 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Navigate away to trigger dispose – should not throw
       await tester.pumpWidget(const MaterialApp(home: Scaffold()));
       await tester.pumpAndSettle();
     });

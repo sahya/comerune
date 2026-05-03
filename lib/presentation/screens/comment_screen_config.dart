@@ -8,6 +8,7 @@ import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/matchers/ng_matcher.dart';
 import '../../domain/models/app_settings.dart';
+import '../../domain/models/ng_preset_category.dart';
 
 /// Program-level metadata for the comment screen.
 @immutable
@@ -159,6 +160,7 @@ class ContentFilterConfig {
     this.ngUserIds = const <String>{},
     this.ngWords = const <String>[],
     this.presetNgWords = const <String>[],
+    this.presetCategories = const <NgPresetCategory>[],
     this.starPrefixHidingEnabled = false,
     this.slashPrefixSkipEnabled = true,
     this.emphasizeGiftNicoadComment = true,
@@ -178,6 +180,17 @@ class ContentFilterConfig {
   ///
   /// When empty, the widget attempts to load `preset_ng_words.json` from assets.
   final List<String> presetNgWords;
+
+  /// Structured preset NG categories injection seam (Issue #628).
+  ///
+  /// When non-empty, the widget uses these categories directly and derives
+  /// the flat preset NG word list via [NgPresetCategory.flattenWords]. This
+  /// takes precedence over [presetNgWords] and skips the asset-load
+  /// fallback. Empty (the default) preserves the pre-#628 behavior:
+  /// callers that only inject [presetNgWords] continue to work as before,
+  /// and callers that inject neither still fall back to the bundled
+  /// `preset_ng_words.json` asset.
+  final List<NgPresetCategory> presetCategories;
 
   /// When true, comments starting with `☆` have their body hidden
   /// and can be revealed by tapping.

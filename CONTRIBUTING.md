@@ -17,6 +17,7 @@ comerune は MIT ライセンスのオープンソースプロジェクトです
 - 事前に Issue で相談してください
 - `dart format .` / `flutter analyze` / `flutter test` を通してください
 - コミットメッセージは `type(scope): description`（[Conventional Commits](https://www.conventionalcommits.org/)）形式で
+- `pubspec.lock` はリポジトリにコミットしています。`flutter pub get` 実行後に `pubspec.lock` の差分が出た場合は、依存パッケージの sha256 が変わったというサインなので、**意図した変更かを確認してから commit に含めてください**（サプライチェーン攻撃の検知ポイント）。
 
 個人プロジェクトのため、すべての PR をマージできるわけではありません。ご了承ください。
 

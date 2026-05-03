@@ -49,7 +49,12 @@ void main() {
       expect(AppStrings.settings.commentDisplayTileTitle, 'コメント表示設定');
       expect(AppStrings.settings.ttsTileTitle, '読み上げ設定');
       expect(AppStrings.settings.userManagementTileTitle, 'ユーザー管理');
-      expect(AppStrings.settings.userManagementTileSubtitle, 'お気に入り・コテハン');
+      expect(AppStrings.settings.userManagementTileSubtitle, 'お気に入りユーザー');
+    });
+
+    test('NG設定タイル文言が AppStrings に集約されている (Issue #727)', () {
+      expect(AppStrings.settings.ngFilterTileTitle, 'NG設定');
+      expect(AppStrings.settings.ngFilterTileSubtitleDisabled, '未対応');
     });
 
     test('commentFontSizeSubtitle は引数を埋め込んだ形で既存のフォーマットと一致する', () {
