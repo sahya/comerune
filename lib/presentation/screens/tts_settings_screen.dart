@@ -11,7 +11,6 @@ import '../../domain/models/voicevox_model_info.dart';
 import '../mixins/settings_screen_mixin.dart';
 import '../widgets/settings_widgets.dart';
 import 'dictionary_rules_screen.dart';
-import 'ng_word_list_screen.dart';
 import 'voice_library_screen.dart';
 
 enum _NemoStylePreset { standard, energetic, calm }
@@ -173,7 +172,17 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         settingsError = null;
         settings = loaded;
       });
-    } on Exception catch (e) {
+    } on Object catch (e, stackTrace) {
+      // `SettingsScreenMixin.loadSettings()` と同じ理由で `Exception` だけでなく
+      // `Error` 系（`StateError` / `TypeError` 等、破損した永続化値のパースで
+      // 投げられ得る）も捕捉する。ここで `settingsError` を設定しないと
+      // `settings` が null のままになり、画面が CircularProgressIndicator で
+      // 固まってしまう（更新インストール時に再現）。
+      _errorLog(
+        'Failed to load TTS settings',
+        error: e,
+        stackTrace: stackTrace,
+      );
       if (!mounted) {
         return;
       }
@@ -1555,31 +1564,6 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                           updateAndSave(
                             settings.copyWith(suppressDuplicate: value),
                           );
-                        },
-                      ),
-                      ListTile(
-                        key: const Key('ng-word-list-tile'),
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.block),
-                        title: const Text('NGワード管理'),
-                        subtitle: Text(
-                          settings.ngWordRules.isEmpty
-                              ? '未登録'
-                              : '${settings.ngWordRules.length}件登録中',
-                        ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () async {
-                          await Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => NgWordListScreen(
-                                settingsStore: widget.settingsStore,
-                              ),
-                            ),
-                          );
-                          await loadSettings();
-                          if (this.settings != null) {
-                            _pushSettingsToEngine(this.settings!);
-                          }
                         },
                       ),
                       ListTile(
