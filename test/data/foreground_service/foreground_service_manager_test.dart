@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -30,6 +32,20 @@ void main() {
         NotificationChannelImportance.LOW,
       );
       expect(fakeOps.lastForegroundTaskOptions?.autoRunOnBoot, isFalse);
+    });
+
+    test('start passes notificationIcon to operations', () async {
+      await manager.start(title: 'Test', text: 'body');
+
+      expect(fakeOps.lastNotificationIcon, isNotNull);
+      expect(
+        fakeOps.lastNotificationIcon?.metaDataName,
+        'com.example.comerune.service.NOTIFICATION_ICON',
+      );
+      expect(
+        fakeOps.lastNotificationIcon?.backgroundColor,
+        const Color(0xFF000000),
+      );
     });
 
     test('start sets isRunning to true and calls operations', () async {
@@ -136,6 +152,7 @@ class FakeForegroundTaskOperations extends ForegroundTaskOperations {
   int updateCallCount = 0;
   String? lastStartTitle;
   String? lastStartText;
+  NotificationIcon? lastNotificationIcon;
   String? lastUpdateTitle;
   String? lastUpdateText;
   bool canStartResult = true;
@@ -163,11 +180,13 @@ class FakeForegroundTaskOperations extends ForegroundTaskOperations {
   Future<void> start({
     required String notificationTitle,
     required String notificationText,
+    NotificationIcon? notificationIcon,
     required Function callback,
   }) async {
     startCallCount++;
     lastStartTitle = notificationTitle;
     lastStartText = notificationText;
+    lastNotificationIcon = notificationIcon;
     if (startException != null) {
       throw startException!;
     }
