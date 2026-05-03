@@ -1,4 +1,4 @@
-import 'package:file_picker/file_picker.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../../application/settings/settings_store.dart';
@@ -478,8 +478,7 @@ class _CommentDisplaySettingsScreenState
                         value: settings.autoSaveCommentLog,
                         onChanged: (bool value) async {
                           if (value) {
-                            final String? directory =
-                                await FilePicker.getDirectoryPath();
+                            final String? directory = await getDirectoryPath();
                             if (directory == null) {
                               return;
                             }

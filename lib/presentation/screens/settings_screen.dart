@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:share_plus/share_plus.dart';
@@ -233,21 +233,21 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
     setState(() => _isImporting = true);
     try {
-      final FilePickerResult? result = await FilePicker.pickFiles(
-        type: FileType.custom,
-        // `['json']` 単独だと Android の SAF は `application/json` MIME のみで
-        // 絞り込むため、Drive 等で `text/plain` として保存された JSON が
-        // ピッカーでグレーアウトする。`.txt` も許容して text/plain を通す。
-        // 中身が JSON でなければ既存の FormatException ハンドラで拒否される。
-        allowedExtensions: <String>['json', 'txt'],
+      // `['json']` 単独だと Android の SAF は `application/json` MIME のみで
+      // 絞り込むため、Drive 等で `text/plain` として保存された JSON が
+      // ピッカーでグレーアウトする。`.txt` も許容して text/plain を通す。
+      // 中身が JSON でなければ既存の FormatException ハンドラで拒否される。
+      const XTypeGroup typeGroup = XTypeGroup(
+        label: 'settings',
+        extensions: <String>['json', 'txt'],
       );
-      if (result == null || result.files.isEmpty) {
+      final XFile? file = await openFile(
+        acceptedTypeGroups: <XTypeGroup>[typeGroup],
+      );
+      if (file == null) {
         return;
       }
-      final String? path = result.files.single.path;
-      if (path == null) {
-        return;
-      }
+      final String path = file.path;
       final String jsonString = await File(path).readAsString();
 
       if (!mounted) {

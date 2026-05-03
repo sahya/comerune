@@ -1,8 +1,6 @@
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
-// ignore: implementation_imports
-import 'package:file_picker/src/platform/file_picker_platform_interface.dart';
+import 'package:file_selector_platform_interface/file_selector_platform_interface.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,7 +16,7 @@ import 'package:comerune/presentation/screens/broadcaster_ng_list_screen.dart';
 import 'package:comerune/presentation/screens/settings_screen.dart';
 
 import '../../helpers/fake_broadcaster_ng_store.dart';
-import '../../helpers/fake_file_picker_platform.dart';
+import '../../helpers/fake_file_selector_platform.dart';
 import '../../helpers/fake_share_platform.dart';
 import '../../helpers/in_memory_shared_preferences.dart';
 import '../../helpers/in_memory_user_session_store.dart';
@@ -569,14 +567,14 @@ void main() {
     // tests 内部から `SharePlus.instance.share(...)` を呼び出す前に必ず
     // 1 度だけキャプチャされるため、`setUpAll` にて設定すれば十分。
     late FakeSharePlatform fakeShare;
-    late FakeFilePickerPlatform fakeFilePicker;
+    late FakeFileSelectorPlatform fakeFilePicker;
     late Directory tempDir;
 
     setUpAll(() {
       fakeShare = FakeSharePlatform();
       SharePlatform.instance = fakeShare;
-      fakeFilePicker = FakeFilePickerPlatform();
-      FilePickerPlatform.instance = fakeFilePicker;
+      fakeFilePicker = FakeFileSelectorPlatform();
+      FileSelectorPlatform.instance = fakeFilePicker;
       // Force `SharePlus.instance` static-final to initialize now with our
       // fake platform so later tests cannot accidentally capture the real one.
       // ignore: unnecessary_statements
@@ -804,7 +802,7 @@ void main() {
       WidgetTester tester,
     ) async {
       final SettingsStore store = _StubSettingsStore();
-      fakeFilePicker.resultToReturn = null; // user cancel
+      fakeFilePicker.fileToReturn = null; // user cancel
 
       await tester.pumpWidget(_buildScreen(store));
       await tester.pumpAndSettle();
@@ -834,7 +832,7 @@ void main() {
       final SettingsStore store = buildStore();
       final File bad = File('${tempDir.path}/bad.json')
         ..writeAsStringSync('not valid json');
-      fakeFilePicker.resultToReturn = buildSingleFileResult(path: bad.path);
+      fakeFilePicker.fileToReturn = buildSingleFileResult(path: bad.path);
 
       await tester.pumpWidget(_buildScreen(store));
       await tester.pumpAndSettle();
@@ -878,7 +876,7 @@ void main() {
     ) async {
       final SettingsStore store = buildStore();
       fakeFilePicker.responseDelay = const Duration(milliseconds: 200);
-      fakeFilePicker.resultToReturn = null; // user cancel on completion
+      fakeFilePicker.fileToReturn = null; // user cancel on completion
 
       await tester.pumpWidget(_buildScreen(store));
       await tester.pumpAndSettle();
@@ -909,7 +907,7 @@ void main() {
       // `['json']` 単独では text/plain な JSON が選べない。`['json', 'txt']`
       // を渡すことで `application/json` + `text/plain` の両方を許容する。
       final SettingsStore store = _StubSettingsStore();
-      fakeFilePicker.resultToReturn = null; // user cancel
+      fakeFilePicker.fileToReturn = null; // user cancel
 
       await tester.pumpWidget(_buildScreen(store));
       await tester.pumpAndSettle();
@@ -924,8 +922,8 @@ void main() {
       await tester.pump();
 
       expect(fakeFilePicker.pickCalls, hasLength(1));
-      expect(fakeFilePicker.pickCalls[0]['type'], FileType.custom);
-      expect(fakeFilePicker.pickCalls[0]['allowedExtensions'], <String>[
+      expect(fakeFilePicker.pickCalls[0]['op'], 'openFile');
+      expect(fakeFilePicker.pickCalls[0]['extensions'], <String>[
         'json',
         'txt',
       ]);
