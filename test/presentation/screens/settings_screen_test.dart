@@ -930,19 +930,33 @@ void main() {
   });
 }
 
-/// SettingsStore whose [load] always throws a [StateError] — used to reproduce
-/// the "更新インストールで設定一覧が表示されない" 報告。`SettingsStore.load()`
+/// SettingsStore whose [load] always throws a configurable [Object]
+/// (defaults to `StateError`) — used to reproduce the
+/// "更新インストールで設定一覧が表示されない" 報告。`SettingsStore.load()`
 /// が `Error` 系（旧バージョン由来の壊れた永続化値のパースで発生し得る）を
 /// 投げると、SettingsScreenMixin が `Exception` だけを捕捉していた頃は
 /// `settings`/`settingsError` ともに null のままになり、画面が
 /// CircularProgressIndicator で固まっていた。
+///
+// TODO: extract to test/helpers/throwing_settings_store.dart so that
+// this stub and `_ThrowingSettingsStore` in
+// test/presentation/mixins/settings_screen_mixin_test.dart can share one
+// implementation.
 class _LegacyParseFailureSettingsStore implements SettingsStore {
+  _LegacyParseFailureSettingsStore({Object? errorToThrow})
+    : _errorToThrow =
+          errorToThrow ?? StateError('simulated legacy parse failure');
+
+  final Object _errorToThrow;
+
   final SharedPreferencesSettingsStore _delegate =
       SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
 
   @override
   Future<AppSettings> load() async {
-    throw StateError('simulated legacy parse failure');
+    // ignore: only_throw_errors, test stub intentionally throws Object
+    // subclasses (Exception or Error) for parameterized failure cases.
+    throw _errorToThrow;
   }
 
   @override
