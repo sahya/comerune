@@ -10,6 +10,7 @@ import '../../application/settings/settings_save_helper.dart';
 import '../../application/settings/settings_store.dart';
 import '../../application/speech/speech_availability_notifier.dart';
 import '../../application/statistics/statistics_store.dart';
+import '../../application/stats/recent_broadcast_stats_holder.dart';
 import '../../application/timeline/timeline_store.dart';
 import '../../data/auth/user_session_store.dart';
 import '../../data/comment_log/comment_log_writer.dart';
@@ -33,6 +34,7 @@ import '../../domain/utils/lv_parser.dart';
 import '../../domain/utils/nico_icon_url.dart';
 import '../../comment_speech/comment_speech.dart'
     show MethodChannelCommentSpeech, SpeechSettings;
+import '../../domain/comment_log/recent_broadcast_stats.dart';
 import '../screens/comment_screen.dart';
 import '../screens/comment_screen_config.dart';
 import '../screens/settings_screen.dart';
@@ -136,6 +138,7 @@ class SelectScreen extends StatefulWidget {
     this.userAttributeStore,
     this.broadcasterNgStore,
     this.broadcasterNameStore,
+    this.recentBroadcastStatsHolder,
     this.commentPostController,
     this.timeshiftFetchController,
     this.androidTtsAvailability,
@@ -181,6 +184,13 @@ class SelectScreen extends StatefulWidget {
   /// Forwarded to [SettingsScreen] so the NG picker can render friendly
   /// tile titles. Optional — when null, the picker falls back to raw IDs.
   final BroadcasterNameStore? broadcasterNameStore;
+
+  /// Issue #767: optional in-memory holder for the previous broadcast's
+  /// stats snapshot. When non-null, the comment screen surfaces a "直前
+  /// の統計を見る" entry inside its status detail view, and the comment
+  /// screen's broadcast-ended hook updates the holder. When null (legacy
+  /// embedders / minimal test harnesses), both code paths become no-ops.
+  final RecentBroadcastStatsHolder? recentBroadcastStatsHolder;
   final CommentPostController? commentPostController;
   final TimeshiftFetchController? timeshiftFetchController;
 
@@ -748,6 +758,8 @@ class _SelectScreenState extends State<SelectScreen>
       if (widget.supplierUserIdNotifier != null) widget.supplierUserIdNotifier!,
       if (widget.beginAtNotifier != null) widget.beginAtNotifier!,
       if (widget.vposBaseAtNotifier != null) widget.vposBaseAtNotifier!,
+      if (widget.recentBroadcastStatsHolder != null)
+        widget.recentBroadcastStatsHolder!,
     ];
 
     return ListenableBuilder(
@@ -815,6 +827,10 @@ class _SelectScreenState extends State<SelectScreen>
                 ? _toggleSpeechMute
                 : null,
             onSortOrderChanged: _onSortOrderChanged,
+            onRecentBroadcastStatsCaptured:
+                widget.recentBroadcastStatsHolder == null
+                ? null
+                : _onRecentBroadcastStatsCaptured,
           ),
           debugMode: _settingsNotifier.value.debugMode,
           showUserName: _settingsNotifier.value.showUserName,
@@ -903,6 +919,13 @@ class _SelectScreenState extends State<SelectScreen>
           // comment screen gates the menu entry on `_isBroadcaster`, so
           // viewers never see a wired-but-non-applicable repository.
           broadcastControlRepository: widget.broadcastControlRepository,
+          // Issue #767: hand the in-memory snapshot of the previous
+          // broadcast (if any) to the comment screen so its status
+          // detail view can surface a "直前の統計を見る" entry. The
+          // comment screen itself filters out the case where the
+          // snapshot's lv equals the current lv, so we forward
+          // unconditionally.
+          recentBroadcastStats: widget.recentBroadcastStatsHolder?.value,
         );
       },
     );
@@ -1485,6 +1508,39 @@ class _SelectScreenState extends State<SelectScreen>
     if (settingsStore != null) {
       saveSettingsUnawaited(settingsStore, updated);
     }
+  }
+
+  /// Issue #767: receive a finished broadcast's snapshot from
+  /// `CommentScreen` and update the in-memory holder so the next
+  /// broadcast's status detail view can surface a "直前の統計" entry.
+  /// Viewer-only sessions are dropped (snapshot.isBroadcaster == false).
+  void _onRecentBroadcastStatsCaptured(RecentBroadcastStatsSnapshot snapshot) {
+    final RecentBroadcastStatsHolder? holder =
+        widget.recentBroadcastStatsHolder;
+    if (holder == null) {
+      return;
+    }
+    if (!snapshot.isBroadcaster) {
+      // Issue #767 設計判断: 視聴のみの放送は「直前」として扱わない。
+      return;
+    }
+    if (snapshot.lv.isEmpty) {
+      return;
+    }
+    holder.update(
+      RecentBroadcastStats(
+        lv: snapshot.lv,
+        endedAt: snapshot.endedAt,
+        totalComments: snapshot.totalComments,
+        uniqueUserCount: snapshot.uniqueUserCount,
+        durationSeconds: snapshot.durationSeconds,
+        programTitle: snapshot.programTitle,
+        beginAt: snapshot.beginAt,
+        peakMinuteOffset: snapshot.peakMinuteOffset,
+        peakMinuteCount: snapshot.peakMinuteCount,
+        peakMinuteLabel: snapshot.peakMinuteLabel,
+      ),
+    );
   }
 
   Future<void> _openSettings(

@@ -21,6 +21,7 @@ import '../../data/broadcast/broadcast_control_repository.dart';
 import '../../data/comment_log/comment_log_tag.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/comment_log/comment_log_stats.dart';
+import '../../domain/comment_log/recent_broadcast_stats.dart';
 import '../../domain/models/teach_command.dart';
 import '../../domain/models/teach_command_handler.dart';
 import '../../domain/utils/elapsed_formatter.dart';
@@ -609,6 +610,7 @@ class CommentScreen extends StatefulWidget {
     this.timeshiftFetchController,
     this.broadcastControlRepository,
     this.clock,
+    this.recentBroadcastStats,
   });
 
   /// Program-level metadata (lv, title, broadcaster info, etc.).
@@ -716,6 +718,15 @@ class CommentScreen extends StatefulWidget {
   /// via `withClock`) to verify the 10-second throttle without sleeping on
   /// the wall clock.
   final Clock? clock;
+
+  /// Issue #767: optional snapshot of the **previous** broadcast's stats
+  /// (memory-only, fed by the composition root). When non-null and the
+  /// snapshot's lv differs from [programInfo.lv], the status detail view
+  /// surfaces a "直前の統計を見る" entry. The snapshot is intentionally
+  /// not built from this screen's own state — `_showStatsPanel` already
+  /// renders the *current* broadcast's stats; this prop is purely about
+  /// the **previous** broadcast.
+  final RecentBroadcastStats? recentBroadcastStats;
 
   @override
   State<CommentScreen> createState() => _CommentScreenState();
@@ -3230,6 +3241,17 @@ class _CommentScreenState extends State<CommentScreen>
                   viewerCount: widget.statistics.viewerCount,
                   totalCommentCount: widget.statistics.totalCommentCount,
                   activeUserCount: widget.statistics.activeUserCount,
+                  // Issue #767: surface a "直前の統計を見る" entry only when
+                  // a recent broadcast snapshot exists AND it does not refer
+                  // to the current lv (so we never show the in-progress
+                  // broadcast as its own "previous" link).
+                  recentBroadcastStats:
+                      (widget.recentBroadcastStats != null &&
+                          widget.recentBroadcastStats!.lv !=
+                              widget.programInfo.lv)
+                      ? widget.recentBroadcastStats
+                      : null,
+                  onShowRecentBroadcastStats: _showRecentBroadcastStats,
                 ),
                 if (widget.timeshiftFetchController != null)
                   TimeshiftFetchPanel(
@@ -4794,6 +4816,12 @@ class _CommentScreenState extends State<CommentScreen>
       _statsPanelExpanded = true;
     });
 
+    // Issue #767: hand the snapshot to the composition root so it can
+    // memorise it as "the previous broadcast" for the next session's
+    // status detail redirect. Failures in the receiver must not tear down
+    // the panel UI, so the call is wrapped in try/catch.
+    _notifyRecentBroadcastStatsCaptured(stats);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
@@ -4810,6 +4838,95 @@ class _CommentScreenState extends State<CommentScreen>
         ),
       );
     });
+  }
+
+  /// Issue #767: build a [RecentBroadcastStatsSnapshot] from the stats
+  /// just computed and the program metadata, then hand it off to the
+  /// `onRecentBroadcastStatsCaptured` callback. Opt-in: when the callback
+  /// is null this is a no-op.
+  void _notifyRecentBroadcastStatsCaptured(CommentLogStats stats) {
+    final RecentBroadcastStatsCallback? callback =
+        widget.callbacks.onRecentBroadcastStatsCaptured;
+    if (callback == null) {
+      return;
+    }
+    int? peakOffset;
+    if (stats.peakMinuteCount > 0 && stats.peakMinuteLabel != null) {
+      // Pick the smallest minute offset whose count matches the
+      // peakMinuteCount — `CommentLogStats.fromMessages` chooses the
+      // first such bucket via natural map iteration; we mirror that by
+      // picking the smallest key for determinism.
+      for (final MapEntry<int, int> entry in stats.commentsPerMinute.entries) {
+        if (entry.value == stats.peakMinuteCount) {
+          if (peakOffset == null || entry.key < peakOffset) {
+            peakOffset = entry.key;
+          }
+        }
+      }
+    }
+    final RecentBroadcastStatsSnapshot snapshot = RecentBroadcastStatsSnapshot(
+      lv: widget.programInfo.lv,
+      endedAt: _endedAt ?? DateTime.now(),
+      totalComments: stats.totalComments,
+      uniqueUserCount: stats.uniqueUserCount,
+      durationSeconds: stats.duration.inSeconds,
+      programTitle: widget.programInfo.programTitle,
+      beginAt: widget.programInfo.beginAt,
+      peakMinuteOffset: peakOffset,
+      peakMinuteCount: stats.peakMinuteCount,
+      peakMinuteLabel: stats.peakMinuteLabel,
+      isBroadcaster: _isBroadcaster,
+    );
+    try {
+      callback(snapshot);
+    } on Object catch (error, stackTrace) {
+      _debugLogLazy(
+        () =>
+            '[CommentScreen] onRecentBroadcastStatsCaptured threw '
+            '(suppressed): $error\n$stackTrace',
+      );
+    }
+  }
+
+  /// Issue #767: open a modal `CommentLogStatsSheet` for the **previous**
+  /// broadcast (the snapshot held in [CommentScreen.recentBroadcastStats]).
+  /// Reuses the existing modal sheet so visual + interactive parity with
+  /// the end-of-broadcast panel is automatic. The previous snapshot has
+  /// no raw messages, so peak-detection / representative comments are
+  /// intentionally suppressed.
+  void _showRecentBroadcastStats() {
+    final RecentBroadcastStats? snapshot = widget.recentBroadcastStats;
+    if (snapshot == null || snapshot.lv == widget.programInfo.lv) {
+      return;
+    }
+    final CommentLogStats stats = CommentLogStats(
+      totalComments: snapshot.totalComments,
+      uniqueUserCount: snapshot.uniqueUserCount,
+      duration: snapshot.duration,
+      peakMinuteLabel: snapshot.peakMinuteLabel,
+      peakMinuteCount: snapshot.peakMinuteCount,
+      // No per-minute distribution available without raw messages; pass
+      // an empty map so the frequency chart and peak detection sections
+      // are hidden naturally by the existing sheet rendering.
+      commentsPerMinute: const <int, int>{},
+    );
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext _) {
+        return CommentLogStatsSheet(
+          key: const Key('recent-broadcast-stats-sheet'),
+          stats: stats,
+          themeMode: widget.themeMode,
+          programTitle: snapshot.programTitle,
+          lv: snapshot.lv,
+          // Highlight pickup needs raw messages we no longer hold; force
+          // it off so the sheet does not silently render an empty
+          // "盛り上がり" section.
+          highlightPickupEnabled: false,
+        );
+      },
+    );
   }
 
   /// Re-opens or expands the stats panel. Safe to call when stats are
@@ -5305,6 +5422,8 @@ class _StatusBar extends StatefulWidget {
     this.viewerCount,
     this.totalCommentCount = 0,
     this.activeUserCount = 0,
+    this.recentBroadcastStats,
+    this.onShowRecentBroadcastStats,
   });
 
   final String lv;
@@ -5323,6 +5442,17 @@ class _StatusBar extends StatefulWidget {
   final int? viewerCount;
   final int totalCommentCount;
   final int activeUserCount;
+
+  /// Issue #767: optional snapshot of the previous broadcast's stats.
+  /// When non-null and the bar is expanded, a "直前の統計を見る" entry is
+  /// rendered. The caller is expected to pre-filter this to null when no
+  /// snapshot exists or when the snapshot's lv equals the current lv (so
+  /// we never link to "this broadcast" as its own previous entry).
+  final RecentBroadcastStats? recentBroadcastStats;
+
+  /// Issue #767: invoked when the user taps the "直前の統計を見る" entry.
+  /// Required when [recentBroadcastStats] is non-null; null otherwise.
+  final VoidCallback? onShowRecentBroadcastStats;
 
   @override
   State<_StatusBar> createState() => _StatusBarState();
@@ -5482,6 +5612,37 @@ class _StatusBarState extends State<_StatusBar> {
                       ],
                     ),
                   ],
+                  // Issue #767: 直前1件の統計への動線。スナップショット
+                  // が無い／初回放送時は当該行ごと描画しない（暫定 UI を
+                  // 残さない方針）。視聴セッションは callback 受け側で
+                  // フィルタされるためここに到達しない。
+                  if (widget.recentBroadcastStats != null &&
+                      widget.onShowRecentBroadcastStats != null) ...<Widget>[
+                    const SizedBox(height: 4),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        key: const Key('show-recent-broadcast-stats-button'),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 0,
+                          ),
+                          minimumSize: const Size(0, 32),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        icon: const Icon(Icons.bar_chart, size: 16),
+                        label: Text(
+                          _recentBroadcastStatsButtonLabel(
+                            widget.recentBroadcastStats!,
+                          ),
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        onPressed: widget.onShowRecentBroadcastStats,
+                      ),
+                    ),
+                  ],
                   if (widget.debugMode) ...<Widget>[
                     const SizedBox(height: 4),
                     // 放送者ID / 最終受信 / 再接続 are debug-only
@@ -5529,6 +5690,17 @@ class _StatusBarState extends State<_StatusBar> {
       ),
     );
   }
+}
+
+/// Issue #767: button label for the "直前1件の統計" entry. Compact form
+/// preferred so the status bar does not balloon vertically. Uses the
+/// previous broadcast's title when available, falling back to the lv.
+String _recentBroadcastStatsButtonLabel(RecentBroadcastStats snapshot) {
+  final String? title = snapshot.programTitle;
+  if (title != null && title.trim().isNotEmpty) {
+    return '直前の統計を見る: $title';
+  }
+  return '直前の統計を見る (${snapshot.lv})';
 }
 
 class _BroadcasterIcon extends StatelessWidget {

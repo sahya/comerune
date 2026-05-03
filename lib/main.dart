@@ -18,6 +18,7 @@ import 'application/onboarding/onboarding_store.dart';
 import 'application/settings/settings_store.dart';
 import 'application/settings/shared_preferences_adapter.dart';
 import 'application/speech/speech_availability_notifier.dart';
+import 'application/stats/recent_broadcast_stats_holder.dart';
 import 'application/upgrade/upgrade_initializer.dart';
 import 'application/statistics/statistics_store.dart';
 import 'application/timeline/timeline_store.dart';
@@ -273,6 +274,11 @@ class ComeruneApp extends StatefulWidget {
 }
 
 class _ComeruneAppState extends State<ComeruneApp> {
+  /// Issue #767: memory-only holder for the previous broadcast's stats
+  /// snapshot. Lives at the app level so it survives lv switches and is
+  /// recycled the next time the user broadcasts something else.
+  final RecentBroadcastStatsHolder _recentBroadcastStatsHolder =
+      RecentBroadcastStatsHolder();
   late final TimelineStore _timelineStore;
   late final StatisticsStore _statisticsStore;
   late final _SessionWsClientAdapter _sessionWsClient;
@@ -606,6 +612,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
       ..dispose();
     _playRemainingAfterEndedNotifier.dispose();
     _androidTtsAvailability.dispose();
+    _recentBroadcastStatsHolder.dispose();
     // Detach the App Links listener and close the OAuth BFF http.Client.
     // dispose() returns a Future but State.dispose() is sync — the
     // teardown is fire-and-forget at app shutdown, which is safe because
@@ -681,6 +688,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
             userAttributeStore: widget.userAttributeStore,
             broadcasterNgStore: widget.broadcasterNgStore,
             broadcasterNameStore: widget.broadcasterNameStore,
+            recentBroadcastStatsHolder: _recentBroadcastStatsHolder,
             commentPostController: _commentPostController,
             timeshiftFetchController: _timeshiftFetchController,
             androidTtsAvailability: _androidTtsAvailability,

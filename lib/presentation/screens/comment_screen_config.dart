@@ -107,6 +107,7 @@ class CommentCallbacks {
     this.onNicknameChanged,
     this.onNicknameRemoved,
     this.onSortOrderChanged,
+    this.onRecentBroadcastStatsCaptured,
   });
 
   final Future<void> Function() onStopAllConnections;
@@ -141,6 +142,58 @@ class CommentCallbacks {
   /// toggle. The composition root is responsible for persisting this via
   /// [SettingsStore.save]. Issue #774.
   final void Function(CommentSortOrder)? onSortOrderChanged;
+
+  /// Issue #767: optional integration. Invoked once per finalised
+  /// broadcast at the moment the comment screen builds its end-of-broadcast
+  /// stats panel. The composition root is expected to capture the snapshot
+  /// into a memory-only "previous broadcast" holder so the user can
+  /// re-open it from the next broadcast's status detail view. The comment
+  /// screen does not own the holding concern. When null this is a no-op
+  /// so legacy embedders / minimal test harnesses do not need to wire it.
+  final RecentBroadcastStatsCallback? onRecentBroadcastStatsCaptured;
+}
+
+/// Issue #767: callback signature for
+/// [CommentCallbacks.onRecentBroadcastStatsCaptured]. The receiver is
+/// expected to inspect [RecentBroadcastStatsSnapshot.isBroadcaster] and
+/// only persist (in memory) when the local user owns the broadcast.
+typedef RecentBroadcastStatsCallback =
+    void Function(RecentBroadcastStatsSnapshot snapshot);
+
+/// Issue #767: snapshot of a finished broadcast's stats summary, sized to
+/// what the "直前1件" redirect needs. Carries no raw message bodies so the
+/// composition root can keep the holder lightweight.
+@immutable
+class RecentBroadcastStatsSnapshot {
+  const RecentBroadcastStatsSnapshot({
+    required this.lv,
+    required this.endedAt,
+    required this.totalComments,
+    required this.uniqueUserCount,
+    required this.durationSeconds,
+    this.programTitle,
+    this.beginAt,
+    this.peakMinuteOffset,
+    this.peakMinuteCount = 0,
+    this.peakMinuteLabel,
+    this.isBroadcaster = false,
+  });
+
+  final String lv;
+  final DateTime endedAt;
+  final int totalComments;
+  final int uniqueUserCount;
+  final int durationSeconds;
+  final String? programTitle;
+  final DateTime? beginAt;
+  final int? peakMinuteOffset;
+  final int peakMinuteCount;
+  final String? peakMinuteLabel;
+
+  /// True when the local user is the broadcaster of this program. Issue
+  /// #767 design judgement: viewer-only sessions must not surface as the
+  /// next broadcast's "直前". The receiver must skip when this is false.
+  final bool isBroadcaster;
 }
 
 /// Content-based filtering and per-user rendering attributes for
