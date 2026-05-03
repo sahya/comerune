@@ -4,6 +4,7 @@ import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/utils/elapsed_formatter.dart';
+import '../strings/app_strings.dart';
 import '../theme/app_theme.dart';
 
 // --- Color picker layout constants ---
@@ -185,7 +186,7 @@ class UserDetailSheet extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'ユーザー詳細',
+                  AppStrings.userDetailSheet.title,
                   key: const Key('user-detail-title'),
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
@@ -200,13 +201,13 @@ class UserDetailSheet extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'ID: $userId',
+            AppStrings.userDetailSheet.userIdLine(userId),
             key: const Key('user-detail-id'),
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           if (nickname != null)
             Text(
-              'コテハン: $nickname',
+              AppStrings.userDetailSheet.userNicknameLine(nickname!),
               key: const Key('user-detail-nickname'),
               style: Theme.of(
                 context,
@@ -214,7 +215,7 @@ class UserDetailSheet extends StatelessWidget {
             ),
           if (resolvedUserName != null)
             Text(
-              '名前: $resolvedUserName',
+              AppStrings.userDetailSheet.userNameLine(resolvedUserName!),
               key: const Key('user-detail-name'),
               style: Theme.of(context).textTheme.bodyMedium,
             ),
@@ -230,21 +231,17 @@ class UserDetailSheet extends StatelessWidget {
     AppThemeColors themeColors,
   ) {
     if (userComments.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Text('この放送でのコメントはありません', key: Key('user-detail-no-comments')),
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            AppStrings.userDetailSheet.noCommentsInBroadcast,
+            key: const Key('user-detail-no-comments'),
+          ),
         ),
       );
     }
 
-    // The header (count) used to be a separate Padding above an
-    // Expanded(ListView). Wrapping the list in Expanded inside the
-    // DraggableScrollableSheet column became fragile after the color
-    // palette grew vertically (48dp hit targets), causing a small
-    // overflow at the bottom of the sheet. Folding the header into the
-    // list as item 0 lets the ListView own all vertical space and
-    // removes the overflow without changing visible layout.
     return ListView.builder(
       key: const Key('user-detail-comment-list'),
       controller: scrollController,
@@ -254,7 +251,9 @@ class UserDetailSheet extends StatelessWidget {
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Text(
-              'コメント履歴（${userComments.length}件）',
+              AppStrings.userDetailSheet.commentHistoryCount(
+                userComments.length,
+              ),
               key: const Key('user-detail-comment-count'),
               style: Theme.of(context).textTheme.titleSmall,
             ),
@@ -297,7 +296,9 @@ class _NgUserButton extends StatelessWidget {
             : themeColors.subtleTextColor,
       ),
       label: Text(
-        isNgUser ? 'NG解除' : 'NG登録',
+        isNgUser
+            ? AppStrings.userDetailSheet.ngButtonUnregister
+            : AppStrings.userDetailSheet.ngButtonRegister,
         style: TextStyle(
           fontSize: 12,
           color: isNgUser
@@ -335,12 +336,17 @@ class _ColorPaletteRow extends StatelessWidget {
         children: <Widget>[
           Row(
             children: <Widget>[
-              Text('コメント色', style: Theme.of(context).textTheme.titleSmall),
+              Text(
+                AppStrings.userDetailSheet.commentColorSectionTitle,
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
               const Spacer(),
               if (currentColorValue != null)
                 Semantics(
                   button: true,
-                  label: 'コメント色をリセット',
+                  label: AppStrings
+                      .userDetailSheet
+                      .commentColorResetSemanticsLabel,
                   child: InkWell(
                     key: const Key('user-color-reset-button'),
                     onTap: onColorRemoved,
@@ -351,7 +357,7 @@ class _ColorPaletteRow extends StatelessWidget {
                         vertical: 2,
                       ),
                       child: Text(
-                        'リセット',
+                        AppStrings.userDetailSheet.commentColorReset,
                         style: TextStyle(
                           fontSize: 12,
                           color: Theme.of(context).colorScheme.primary,
@@ -434,7 +440,9 @@ class _CustomColorButton extends StatelessWidget {
 
     return Semantics(
       button: true,
-      label: hasCustom ? 'カスタムカラー 選択中' : 'カスタムカラーを選択',
+      label: hasCustom
+          ? AppStrings.userDetailSheet.customColorSelectedSemanticsLabel
+          : AppStrings.userDetailSheet.customColorSelectSemanticsLabel,
       // 48×48 transparent hit target wraps the visible 32dp circle so
       // taps register reliably (Material/WCAG min target). HitTestBehavior
       // .opaque ensures the surrounding transparent area still counts as
@@ -488,7 +496,7 @@ class _CustomColorButton extends StatelessWidget {
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          title: const Text('カスタムカラー'),
+          title: Text(AppStrings.userDetailSheet.customColorDialogTitle),
           // Cap the dialog content so the hue wheel does not balloon on
           // tablets / landscape. ConstrainedBox is intentionally outside
           // the SingleChildScrollView so the scroll view inherits the cap
@@ -527,12 +535,12 @@ class _CustomColorButton extends StatelessWidget {
             TextButton(
               key: const Key('user-color-custom-dialog-cancel-button'),
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('キャンセル'),
+              child: Text(AppStrings.userDetailSheet.customColorDialogCancel),
             ),
             TextButton(
               key: const Key('user-color-custom-dialog-apply-button'),
               onPressed: () => Navigator.of(dialogContext).pop(picked),
-              child: const Text('適用'),
+              child: Text(AppStrings.userDetailSheet.customColorDialogApply),
             ),
           ],
         );
@@ -624,11 +632,14 @@ class _NicknameRow extends StatelessWidget {
         children: <Widget>[
           const Icon(Icons.badge, size: 18),
           const SizedBox(width: 8),
-          Text('コテハン', style: Theme.of(context).textTheme.titleSmall),
+          Text(
+            AppStrings.userDetailSheet.nicknameSectionTitle,
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              nickname ?? '未登録',
+              nickname ?? AppStrings.userDetailSheet.nicknameUnregistered,
               style: TextStyle(
                 fontSize: 13,
                 color: nickname != null
@@ -640,7 +651,9 @@ class _NicknameRow extends StatelessWidget {
           ),
           Semantics(
             button: true,
-            label: nickname != null ? 'コテハンを変更' : 'コテハンを登録',
+            label: nickname != null
+                ? AppStrings.userDetailSheet.nicknameEditSemanticsLabel
+                : AppStrings.userDetailSheet.nicknameAddSemanticsLabel,
             child: InkWell(
               key: const Key('user-nickname-edit-button'),
               onTap: () => _showEditDialog(context),
@@ -648,7 +661,9 @@ class _NicknameRow extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                 child: Text(
-                  nickname != null ? '変更' : '登録',
+                  nickname != null
+                      ? AppStrings.userDetailSheet.nicknameEditButton
+                      : AppStrings.userDetailSheet.nicknameAddButton,
                   style: TextStyle(
                     fontSize: 12,
                     color: Theme.of(context).colorScheme.primary,
@@ -661,7 +676,7 @@ class _NicknameRow extends StatelessWidget {
             const SizedBox(width: 4),
             Semantics(
               button: true,
-              label: 'コテハンを削除',
+              label: AppStrings.userDetailSheet.nicknameRemoveSemanticsLabel,
               child: InkWell(
                 key: const Key('user-nickname-remove-button'),
                 onTap: onNicknameRemoved,
@@ -672,7 +687,7 @@ class _NicknameRow extends StatelessWidget {
                     vertical: 2,
                   ),
                   child: Text(
-                    '削除',
+                    AppStrings.userDetailSheet.nicknameRemoveButton,
                     style: TextStyle(
                       fontSize: 12,
                       color: Theme.of(context).colorScheme.error,
@@ -696,27 +711,27 @@ class _NicknameRow extends StatelessWidget {
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          title: const Text('コテハン登録'),
+          title: Text(AppStrings.userDetailSheet.nicknameDialogTitle),
           content: TextField(
             key: const Key('user-nickname-dialog-field'),
             controller: controller,
             autofocus: true,
-            decoration: const InputDecoration(
-              labelText: 'コテハン',
-              hintText: 'ニックネームを入力',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: AppStrings.userDetailSheet.nicknameDialogFieldLabel,
+              hintText: AppStrings.userDetailSheet.nicknameDialogFieldHint,
+              border: const OutlineInputBorder(),
             ),
           ),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('キャンセル'),
+              child: Text(AppStrings.userDetailSheet.nicknameDialogCancel),
             ),
             TextButton(
               key: const Key('user-nickname-dialog-save-button'),
               onPressed: () =>
                   Navigator.of(dialogContext).pop(controller.text.trim()),
-              child: const Text('保存'),
+              child: Text(AppStrings.userDetailSheet.nicknameDialogSave),
             ),
           ],
         );

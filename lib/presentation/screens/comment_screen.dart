@@ -3143,8 +3143,8 @@ class _CommentScreenState extends State<CommentScreen>
                               : Icons.arrow_upward,
                         ),
                         tooltip: _sortOrder == CommentSortOrder.ascending
-                            ? '新しい順に切替'
-                            : '古い順に切替',
+                            ? AppStrings.commentScreen.sortToggleToDescending
+                            : AppStrings.commentScreen.sortToggleToAscending,
                         onPressed: _toggleSortOrder,
                       ),
                       if (widget
