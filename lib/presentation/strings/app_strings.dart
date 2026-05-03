@@ -81,7 +81,16 @@ final class SettingsStrings {
 
   // タイル: ユーザー管理
   String get userManagementTileTitle => 'ユーザー管理';
-  String get userManagementTileSubtitle => 'お気に入り・コテハン';
+  // Issue #803 child-1: NG エントリは別タイルへ移行済み、コテハン管理 UI も
+  // 該当画面には存在しないため、サブタイトルを実態（お気に入りユーザー）に
+  // 合わせて更新する。
+  String get userManagementTileSubtitle => 'お気に入りユーザー';
+
+  // タイル: NG フィルタ (Issue #727 follow-up: ハードコードされていた文字列を
+  // AppStrings に集約)
+  String get ngFilterTileTitle => 'NG フィルタ';
+  String get ngFilterTileSubtitleEnabled => 'NG ユーザー / NG ワードを放送者ごとに管理';
+  String get ngFilterTileSubtitleDisabled => '未対応';
 
   // セクション: データ管理
   String get dataManagementSectionTitle => 'データ管理';
