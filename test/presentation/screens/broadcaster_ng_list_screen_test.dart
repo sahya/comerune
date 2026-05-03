@@ -11,19 +11,23 @@ import '../../helpers/fake_broadcaster_ng_store.dart';
 Widget _buildScreen(
   FakeBroadcasterNgStore store, {
   ValueNotifier<String?>? activeNotifier,
+  String? Function(String broadcasterId)? nameResolver,
 }) {
   return MaterialApp(
     home: BroadcasterNgListScreen(
       broadcasterNgStore: store,
       broadcasterIdNotifier: activeNotifier,
+      broadcasterNameResolver: nameResolver,
     ),
   );
 }
 
 void main() {
   group('BroadcasterNgListScreen', () {
-    testWidgets('shows the template tile and the empty-list notice when no '
-        'broadcasters have per-broadcaster slots', (WidgetTester tester) async {
+    testWidgets('shows the empty-list notice when no broadcasters have '
+        'per-broadcaster slots, and does NOT show a template tile', (
+      WidgetTester tester,
+    ) async {
       final FakeBroadcasterNgStore store = FakeBroadcasterNgStore();
 
       await tester.pumpWidget(_buildScreen(store));
@@ -31,13 +35,18 @@ void main() {
 
       expect(
         find.byKey(const Key('broadcaster-ng-template-tile')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
         find.byKey(const Key('broadcaster-ng-list-empty')),
         findsOneWidget,
       );
       expect(find.text('まだ放送者ごとの NG 設定はありません'), findsOneWidget);
+      // Tutorial line.
+      expect(
+        find.text('コメント画面で長押しして NG 登録すると、その放送者の設定として記録されます'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('renders broadcasters in listBroadcasters() order', (
@@ -63,6 +72,7 @@ void main() {
         find.byKey(const Key('broadcaster-ng-list-broadcaster-tile-2')),
         findsOneWidget,
       );
+      // Without a name resolver, tile titles are raw broadcaster IDs.
       expect(find.text('caster-a'), findsOneWidget);
       expect(find.text('caster-b'), findsOneWidget);
       expect(find.text('caster-c'), findsOneWidget);
@@ -116,23 +126,81 @@ void main() {
       expect(find.text('caster-b'), findsOneWidget);
     });
 
-    testWidgets('tapping the template tile pushes the edit screen with '
-        'broadcasterId == null', (WidgetTester tester) async {
-      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore();
+    testWidgets('tile title shows 名前(ID) when the resolver returns a name', (
+      WidgetTester tester,
+    ) async {
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster('caster-a');
 
-      await tester.pumpWidget(_buildScreen(store));
+      await tester.pumpWidget(
+        _buildScreen(
+          store,
+          nameResolver: (String id) => id == 'caster-a' ? 'Alice' : null,
+        ),
+      );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('broadcaster-ng-template-tile')));
-      await tester.pumpAndSettle();
-
-      // Edit screen rendered.
-      expect(find.byType(BroadcasterNgEditScreen), findsOneWidget);
-      expect(find.text('NG設定 — テンプレート'), findsOneWidget);
+      expect(find.text('Alice(caster-a)'), findsOneWidget);
+      // Raw ID should not appear on its own as the tile title.
+      expect(find.text('caster-a'), findsNothing);
     });
 
-    testWidgets('tapping a broadcaster tile pushes the edit screen with '
-        'that scope', (WidgetTester tester) async {
+    testWidgets('tile title shows just ID when the resolver returns null', (
+      WidgetTester tester,
+    ) async {
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster('caster-a');
+
+      await tester.pumpWidget(
+        _buildScreen(store, nameResolver: (String id) => null),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('caster-a'), findsOneWidget);
+      // No "()" rendering for unknown names.
+      expect(find.textContaining('()'), findsNothing);
+    });
+
+    testWidgets('tile title shows just ID when the resolver returns empty', (
+      WidgetTester tester,
+    ) async {
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster('caster-a');
+
+      await tester.pumpWidget(
+        _buildScreen(store, nameResolver: (String id) => ''),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('caster-a'), findsOneWidget);
+      expect(find.textContaining('()'), findsNothing);
+    });
+
+    testWidgets('tapping a tile pushes the edit screen with scopeLabel == '
+        'name when name is known', (WidgetTester tester) async {
+      final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
+        ..seedBroadcaster('caster-a');
+
+      await tester.pumpWidget(
+        _buildScreen(
+          store,
+          nameResolver: (String id) => id == 'caster-a' ? 'Alice' : null,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const Key('broadcaster-ng-list-broadcaster-tile-0')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(BroadcasterNgEditScreen), findsOneWidget);
+      // AppBar title is "NG 設定 - <name>" (just the name, no parenthesised ID).
+      expect(find.text('NG 設定 - Alice'), findsOneWidget);
+    });
+
+    testWidgets('tapping a tile pushes the edit screen with scopeLabel == ID '
+        'when name is unknown', (WidgetTester tester) async {
       final FakeBroadcasterNgStore store = FakeBroadcasterNgStore()
         ..seedBroadcaster('caster-a');
 
@@ -145,7 +213,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(BroadcasterNgEditScreen), findsOneWidget);
-      expect(find.text('NG設定 — caster-a'), findsOneWidget);
+      expect(find.text('NG 設定 - caster-a'), findsOneWidget);
     });
 
     testWidgets(

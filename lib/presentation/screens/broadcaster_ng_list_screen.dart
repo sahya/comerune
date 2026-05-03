@@ -7,15 +7,13 @@ import '../widgets/ng_local_notice.dart';
 import 'broadcaster_ng_edit_screen.dart';
 
 /// Issue #727: picker screen that lists every broadcaster the user has a
-/// per-broadcaster NG slot for, plus a fixed "template" entry that seeds
-/// any future broadcaster's first-access state.
+/// per-broadcaster NG slot for.
 ///
 /// Tapping a row pushes [BroadcasterNgEditScreen] for that scope.
 ///
-/// TODO(#727): broadcaster name resolution is out of scope for the initial
-/// PR — tiles currently show the raw broadcaster ID. A follow-up issue
-/// will plumb a resolver (e.g. `UserNameResolution`) so the picker can
-/// display friendly names.
+/// The template scope (seed for newly-encountered broadcasters) is an
+/// internal concept and is intentionally NOT exposed as a tile here — the
+/// migrator and `_ensureInitialized` paths use it implicitly.
 class BroadcasterNgListScreen extends StatefulWidget {
   const BroadcasterNgListScreen({
     super.key,
@@ -32,7 +30,8 @@ class BroadcasterNgListScreen extends StatefulWidget {
   final ValueNotifier<String?>? broadcasterIdNotifier;
 
   /// Optional name resolver. Returns a display name for the given
-  /// broadcaster ID. When null or returns null, the raw ID is shown.
+  /// broadcaster ID. When null or returns null/empty, only the raw ID is
+  /// shown; otherwise the tile title is rendered as `名前(ID)`.
   final String? Function(String broadcasterId)? broadcasterNameResolver;
 
   @override
@@ -95,14 +94,34 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
         });
   }
 
-  String _displayName(String broadcasterId) {
+  /// Returns the resolved broadcaster name for [broadcasterId], or `null`
+  /// when the resolver is missing or yields an empty / null value.
+  String? _resolvedName(String broadcasterId) {
     final String? resolved = widget.broadcasterNameResolver?.call(
       broadcasterId,
     );
-    if (resolved != null && resolved.isNotEmpty) {
-      return resolved;
+    if (resolved == null || resolved.isEmpty) {
+      return null;
     }
-    return broadcasterId;
+    return resolved;
+  }
+
+  /// Tile title format: `名前(ID)` when the name is resolvable, raw `ID`
+  /// otherwise. Avoids ever rendering `()` for empty / unknown names.
+  String _displayTileTitle(String broadcasterId) {
+    final String? name = _resolvedName(broadcasterId);
+    if (name == null) {
+      return broadcasterId;
+    }
+    return '$name($broadcasterId)';
+  }
+
+  /// Edit-screen scope label: just the **name** when known, the **ID**
+  /// when not. The combined `name(id)` form is intentionally NOT used
+  /// here — the AppBar shows just the broadcaster name to keep the title
+  /// short and human-readable.
+  String _editorScopeLabel(String broadcasterId) {
+    return _resolvedName(broadcasterId) ?? broadcasterId;
   }
 
   @override
@@ -119,15 +138,6 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
           key: const Key('broadcaster-ng-list-view'),
           padding: const EdgeInsets.symmetric(vertical: 8),
           children: <Widget>[
-            ListTile(
-              key: const Key('broadcaster-ng-template-tile'),
-              leading: const Icon(Icons.tune),
-              title: const Text('テンプレート（新規放送者の初期値）'),
-              subtitle: const Text('新しく見る放送者の初期値として使われます'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => _openEditor(null, 'テンプレート'),
-            ),
-            const Divider(height: 1),
             if (ids.isEmpty)
               Padding(
                 key: const Key('broadcaster-ng-list-empty'),
@@ -154,11 +164,12 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
               ...List<Widget>.generate(ids.length, (int index) {
                 final String id = ids[index];
                 final bool isActive = activeId != null && activeId == id;
-                final String name = _displayName(id);
+                final String title = _displayTileTitle(id);
+                final String scopeLabel = _editorScopeLabel(id);
                 return ListTile(
                   key: Key('broadcaster-ng-list-broadcaster-tile-$index'),
                   leading: const Icon(Icons.person),
-                  title: Text(name),
+                  title: Text(title),
                   subtitle: isActive
                       ? const Text(
                           '現在接続中',
@@ -166,7 +177,7 @@ class _BroadcasterNgListScreenState extends State<BroadcasterNgListScreen> {
                         )
                       : null,
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openEditor(id, name),
+                  onTap: () => _openEditor(id, scopeLabel),
                 );
               }),
           ],

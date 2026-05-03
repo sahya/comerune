@@ -12,6 +12,7 @@ import '../../application/settings/settings_store.dart';
 import '../../application/speech/speech_availability_notifier.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../data/auth/user_session_store.dart';
+import '../../data/broadcaster/broadcaster_name_store.dart';
 import '../../data/filter/broadcaster_ng_store.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/user_name_resolution.dart';
@@ -33,6 +34,7 @@ class SettingsScreen extends StatefulWidget {
     this.themeModeNotifier,
     this.userAttributeStore,
     this.broadcasterNgStore,
+    this.broadcasterNameStore,
     this.broadcasterIdNotifier,
     this.userNameResolution,
     this.speechPlatform,
@@ -47,6 +49,11 @@ class SettingsScreen extends StatefulWidget {
   /// Issue #727: per-broadcaster NG management store. Forwarded to the
   /// child screens that expose NG editing UI.
   final BroadcasterNgStore? broadcasterNgStore;
+
+  /// Issue #727 follow-up: persistent cache of broadcaster display names.
+  /// When provided, the NG picker uses it to render `name(id)` tile titles
+  /// instead of raw IDs. Optional — null falls back to ID-only rendering.
+  final BroadcasterNameStore? broadcasterNameStore;
   final ValueNotifier<String?>? broadcasterIdNotifier;
   final UserNameResolution? userNameResolution;
   final CommentSpeechPlatform? speechPlatform;
@@ -551,10 +558,17 @@ class _SettingsScreenState extends State<SettingsScreen>
             : () async {
                 await Navigator.of(context).push(
                   MaterialPageRoute<void>(
-                    builder: (_) => BroadcasterNgListScreen(
-                      broadcasterNgStore: store,
-                      broadcasterIdNotifier: widget.broadcasterIdNotifier,
-                    ),
+                    builder: (_) {
+                      final BroadcasterNameStore? nameStore =
+                          widget.broadcasterNameStore;
+                      return BroadcasterNgListScreen(
+                        broadcasterNgStore: store,
+                        broadcasterIdNotifier: widget.broadcasterIdNotifier,
+                        broadcasterNameResolver: nameStore == null
+                            ? null
+                            : (String id) => nameStore.loadName(id),
+                      );
+                    },
                   ),
                 );
                 // Refresh settings on return so any side-effects in the NG

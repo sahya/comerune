@@ -92,6 +92,13 @@ final class SettingsStrings {
   String get ngFilterTileSubtitleEnabled => 'NG ユーザー / NG ワードを放送者ごとに管理';
   String get ngFilterTileSubtitleDisabled => '未対応';
 
+  /// NG 設定編集画面（[BroadcasterNgEditScreen]）の AppBar タイトル。
+  ///
+  /// Issue #727 follow-up: `scopeLabel` には放送者名（解決できないときは
+  /// 放送者ID）が入る。区切りは半角ハイフン + 半角スペース 1 つずつで、
+  /// `name(id)` のような結合形ではなく純粋な放送者名を渡すことを想定する。
+  String ngEditScreenTitle(String scopeLabel) => 'NG 設定 - $scopeLabel';
+
   // セクション: データ管理
   String get dataManagementSectionTitle => 'データ管理';
   String get exportSettingsButton => '設定をエクスポート';

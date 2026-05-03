@@ -13,6 +13,7 @@ import '../../application/timeline/timeline_store.dart';
 import '../../data/auth/user_session_store.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../data/broadcast/broadcast_control_repository.dart';
+import '../../data/broadcaster/broadcaster_name_store.dart';
 import '../../data/filter/broadcaster_ng_store.dart';
 import '../../data/follow/favorite_user_live_checker.dart';
 import '../../data/niconico/broadcaster_embed_resolver.dart';
@@ -133,6 +134,7 @@ class SelectScreen extends StatefulWidget {
     this.favoriteUserLiveChecker,
     this.userAttributeStore,
     this.broadcasterNgStore,
+    this.broadcasterNameStore,
     this.commentPostController,
     this.timeshiftFetchController,
     this.androidTtsAvailability,
@@ -173,6 +175,11 @@ class SelectScreen extends StatefulWidget {
   /// to the legacy global NG fields on [AppSettings] so existing tests and
   /// embedding scenarios that do not wire a store keep working.
   final BroadcasterNgStore? broadcasterNgStore;
+
+  /// Issue #727 follow-up: persistent cache of broadcaster display names.
+  /// Forwarded to [SettingsScreen] so the NG picker can render friendly
+  /// tile titles. Optional — when null, the picker falls back to raw IDs.
+  final BroadcasterNameStore? broadcasterNameStore;
   final CommentPostController? commentPostController;
   final TimeshiftFetchController? timeshiftFetchController;
 
@@ -1496,6 +1503,7 @@ class _SelectScreenState extends State<SelectScreen>
           themeModeNotifier: widget.themeModeNotifier,
           userAttributeStore: widget.userAttributeStore,
           broadcasterNgStore: widget.broadcasterNgStore,
+          broadcasterNameStore: widget.broadcasterNameStore,
           broadcasterIdNotifier: widget.supplierUserIdNotifier,
           userNameResolution: widget.userNameResolution,
           speechPlatform: MethodChannelCommentSpeech(),
