@@ -67,42 +67,65 @@ const Map<String, String> _kPerSlotOrder = <String, String>{
 /// Resolve the effective [ServiceOverridePolicy] for [contractName],
 /// applying compile-time --dart-define overrides when in debug mode.
 ///
-/// In release builds this always returns [fallback]; the dart-define
-/// values are tree-shaken out via the [kReleaseMode] short-circuit.
+/// In release builds this always returns [fallback]; the explicit
+/// `kReleaseMode` short-circuit guarantees the const lookup tables
+/// below are not even referenced from the executed code path, so
+/// the AOT compiler can tree-shake them out of release binaries.
 ServiceOverridePolicy resolveServicePolicy({
   required ServiceOverridePolicy fallback,
   required String contractName,
-}) => debugResolveServicePolicy(
-  fallback: fallback,
-  contractName: contractName,
-  isReleaseMode: kReleaseMode,
-  perContract: _kPerContractPolicy,
-  global: _kGlobalPolicy,
-);
+}) {
+  // Early-return BEFORE touching the const maps so AOT DCE can drop
+  // both the maps and the dart-define value strings from the
+  // release binary.
+  if (kReleaseMode) {
+    return fallback;
+  }
+  return debugResolveServicePolicy(
+    fallback: fallback,
+    contractName: contractName,
+    isReleaseMode: false,
+    perContract: _kPerContractPolicy,
+    global: _kGlobalPolicy,
+  );
+}
 
 /// Resolve the effective [SlotInsertOrder] for [slotId], applying
 /// compile-time --dart-define overrides when in debug mode.
+///
+/// See [resolveServicePolicy] for the same release short-circuit
+/// rationale.
 SlotInsertOrder resolveSlotOrder({
   required SlotInsertOrder fallback,
   required SlotId slotId,
-}) => debugResolveSlotOrder(
-  fallback: fallback,
-  slotId: slotId,
-  isReleaseMode: kReleaseMode,
-  perSlot: _kPerSlotOrder,
-  global: _kGlobalSlotOrder,
-);
+}) {
+  if (kReleaseMode) {
+    return fallback;
+  }
+  return debugResolveSlotOrder(
+    fallback: fallback,
+    slotId: slotId,
+    isReleaseMode: false,
+    perSlot: _kPerSlotOrder,
+    global: _kGlobalSlotOrder,
+  );
+}
 
 /// Whether the extension named [extensionName] should be skipped at
 /// load time.
 ///
-/// Always returns `false` in release builds.
-bool isExtensionDisabled({required String extensionName}) =>
-    debugIsExtensionDisabled(
-      extensionName: extensionName,
-      isReleaseMode: kReleaseMode,
-      disabledList: _kDisabledExtensions,
-    );
+/// Always returns `false` in release builds; the disabled list is
+/// not referenced from the executed code path in that case.
+bool isExtensionDisabled({required String extensionName}) {
+  if (kReleaseMode) {
+    return false;
+  }
+  return debugIsExtensionDisabled(
+    extensionName: extensionName,
+    isReleaseMode: false,
+    disabledList: _kDisabledExtensions,
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // Test-only entry points. Each accepts the same inputs the production

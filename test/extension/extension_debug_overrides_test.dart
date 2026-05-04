@@ -255,30 +255,43 @@ void main() {
   group(
     'production resolveServicePolicy / resolveSlotOrder / isExtensionDisabled (smoke)',
     () {
-      test(
-        'production wrappers return the fallback when no dart-define is set',
-        () {
-          // No --dart-define is provided when running tests, so
-          // every override key resolves to its empty default. The
-          // production wrappers should therefore return the fallback
-          // unchanged.
-          expect(
-            resolveServicePolicy(
-              fallback: ServiceOverridePolicy.extensionFirstFallback,
-              contractName: 'NotConfigured',
-            ),
-            ServiceOverridePolicy.extensionFirstFallback,
-          );
-          expect(
-            resolveSlotOrder(
-              fallback: SlotInsertOrder.hostFirst,
-              slotId: SlotIds.broadcasterScreenActions,
-            ),
-            SlotInsertOrder.hostFirst,
-          );
-          expect(isExtensionDisabled(extensionName: 'AnyExtension'), isFalse);
-        },
-      );
+      test('production wrappers return the fallback for an unknown contract / '
+          'slot key when no dart-define is set', () {
+        // Path 1: the contract / slot is not in the lookup table at
+        // all. The fallback comes from the empty global default.
+        expect(
+          resolveServicePolicy(
+            fallback: ServiceOverridePolicy.extensionFirstFallback,
+            contractName: 'NotConfigured',
+          ),
+          ServiceOverridePolicy.extensionFirstFallback,
+        );
+        expect(isExtensionDisabled(extensionName: 'AnyExtension'), isFalse);
+      });
+
+      test('production wrappers fall back when a registered key has an empty '
+          'dart-define value', () {
+        // Path 2: the contract / slot IS in the lookup table, but
+        // the corresponding dart-define key is unset at compile
+        // time so the value resolves to the empty string. This
+        // exercises the table-hit-then-empty fall-through in the
+        // production code path, which the unknown-key smoke test
+        // above does not cover.
+        expect(
+          resolveServicePolicy(
+            fallback: ServiceOverridePolicy.hostFirstFallback,
+            contractName: 'BroadcastControlExtension',
+          ),
+          ServiceOverridePolicy.hostFirstFallback,
+        );
+        expect(
+          resolveSlotOrder(
+            fallback: SlotInsertOrder.hostFirst,
+            slotId: SlotIds.broadcasterScreenActions,
+          ),
+          SlotInsertOrder.hostFirst,
+        );
+      });
     },
   );
 }
