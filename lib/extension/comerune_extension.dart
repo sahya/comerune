@@ -23,6 +23,17 @@ const int kComeruneExtensionContractVersion = 1;
 abstract class ComeruneExtension {
   const ComeruneExtension();
 
+  /// Stable identifier used by the host for diagnostics and for the
+  /// `COMERUNE_EXT_DISABLED` debug-time disable list (see
+  /// `extension_debug_overrides.dart`).
+  ///
+  /// Defaults to the runtime type's name. Integrations are encouraged
+  /// to override with the same string they use as their integration
+  /// directory / pubspec name (e.g. `'sample_integration'`) so users
+  /// can refer to extensions by a stable, recognisable identifier
+  /// regardless of internal class renames.
+  String get name => runtimeType.toString();
+
   /// Register services and / or slot widgets with the host.
   ///
   /// Throwing from this method does not crash the host; the loader
