@@ -34,6 +34,12 @@ void main() {
       expect(fakeOps.lastForegroundTaskOptions?.autoRunOnBoot, isFalse);
     });
 
+    test('init enables stopWithTask so app task removal stops the service', () {
+      manager.init();
+
+      expect(fakeOps.lastForegroundTaskOptions?.stopWithTask, isTrue);
+    });
+
     test('start passes notificationIcon to operations', () async {
       await manager.start(title: 'Test', text: 'body');
 
