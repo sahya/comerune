@@ -6,6 +6,7 @@ import '../../application/timeline/timeline_store.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/comment_log/comment_log_stats.dart';
+import '../../domain/comment_log/recent_broadcast_stats.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/matchers/ng_matcher.dart';
 import '../../domain/models/app_settings.dart';
@@ -108,6 +109,7 @@ class CommentCallbacks {
     this.onNicknameChanged,
     this.onNicknameRemoved,
     this.onSortOrderChanged,
+    this.onRecentBroadcastStatsCaptured,
     this.onBroadcastEndedStats,
   });
 
@@ -143,6 +145,15 @@ class CommentCallbacks {
   /// toggle. The composition root is responsible for persisting this via
   /// [SettingsStore.save]. Issue #774.
   final void Function(CommentSortOrder)? onSortOrderChanged;
+
+  /// Issue #767: optional integration. Invoked once per finalised
+  /// broadcast at the moment the comment screen builds its end-of-broadcast
+  /// stats panel. The composition root is expected to capture the snapshot
+  /// into a memory-only "previous broadcast" holder so the user can
+  /// re-open it from the next broadcast's status detail view. The comment
+  /// screen does not own the holding concern. When null this is a no-op
+  /// so legacy embedders / minimal test harnesses do not need to wire it.
+  final RecentBroadcastStatsCallback? onRecentBroadcastStatsCaptured;
 
   /// Issue #766: optional integration. Invoked once per broadcast at the
   /// moment the comment screen finalises its end-of-broadcast stats panel
@@ -266,6 +277,13 @@ class BroadcastEndedStatsPeak {
   final String label;
   final int commentCount;
 }
+
+/// Issue #767: callback signature for
+/// [CommentCallbacks.onRecentBroadcastStatsCaptured]. The receiver is
+/// expected to inspect [RecentBroadcastStats.isBroadcaster] and only
+/// persist (in memory) when the local user owns the broadcast.
+typedef RecentBroadcastStatsCallback =
+    void Function(RecentBroadcastStats snapshot);
 
 /// Content-based filtering and per-user rendering attributes for
 /// [CommentScreen].

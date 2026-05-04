@@ -10,6 +10,8 @@ import '../../application/timeshift_fetch/timeshift_fetch_controller.dart';
 import '../../application/settings/settings_save_helper.dart';
 import '../../application/settings/settings_store.dart';
 import '../../application/speech/speech_availability_notifier.dart';
+import '../../application/statistics/recent_broadcast_stats_holder.dart';
+import '../../application/statistics/recent_broadcast_stats_recorder.dart';
 import '../../application/statistics/statistics_store.dart';
 import '../../application/timeline/timeline_store.dart';
 import '../../data/auth/user_session_store.dart';
@@ -35,6 +37,7 @@ import '../../domain/utils/lv_parser.dart';
 import '../../domain/utils/nico_icon_url.dart';
 import '../../comment_speech/comment_speech.dart'
     show MethodChannelCommentSpeech, SpeechSettings;
+import '../../domain/comment_log/recent_broadcast_stats.dart';
 import '../screens/comment_screen.dart';
 import '../screens/comment_screen_config.dart';
 import '../screens/settings_screen.dart';
@@ -138,6 +141,7 @@ class SelectScreen extends StatefulWidget {
     this.userAttributeStore,
     this.broadcasterNgStore,
     this.broadcasterNameStore,
+    this.recentBroadcastStatsHolder,
     this.broadcastHistoryStore,
     this.commentPostController,
     this.timeshiftFetchController,
@@ -184,6 +188,13 @@ class SelectScreen extends StatefulWidget {
   /// Forwarded to [SettingsScreen] so the NG picker can render friendly
   /// tile titles. Optional — when null, the picker falls back to raw IDs.
   final BroadcasterNameStore? broadcasterNameStore;
+
+  /// Issue #767: optional in-memory holder for the previous broadcast's
+  /// stats snapshot. When non-null, the comment screen surfaces a "直前
+  /// の統計を見る" entry inside its status detail view, and the comment
+  /// screen's broadcast-ended hook updates the holder. When null (legacy
+  /// embedders / minimal test harnesses), both code paths become no-ops.
+  final RecentBroadcastStatsHolder? recentBroadcastStatsHolder;
 
   /// Issue #766: optional integration. Forwarded to [SettingsScreen] (so
   /// the user can open the history view) and to [CommentScreen] (so each
@@ -757,6 +768,8 @@ class _SelectScreenState extends State<SelectScreen>
       if (widget.supplierUserIdNotifier != null) widget.supplierUserIdNotifier!,
       if (widget.beginAtNotifier != null) widget.beginAtNotifier!,
       if (widget.vposBaseAtNotifier != null) widget.vposBaseAtNotifier!,
+      if (widget.recentBroadcastStatsHolder != null)
+        widget.recentBroadcastStatsHolder!,
     ];
 
     return ListenableBuilder(
@@ -824,6 +837,10 @@ class _SelectScreenState extends State<SelectScreen>
                 ? _toggleSpeechMute
                 : null,
             onSortOrderChanged: _onSortOrderChanged,
+            onRecentBroadcastStatsCaptured:
+                widget.recentBroadcastStatsHolder == null
+                ? null
+                : _onRecentBroadcastStatsCaptured,
             onBroadcastEndedStats: widget.broadcastHistoryStore == null
                 ? null
                 : _onBroadcastEndedStats,
@@ -915,6 +932,13 @@ class _SelectScreenState extends State<SelectScreen>
           // comment screen gates the menu entry on `_isBroadcaster`, so
           // viewers never see a wired-but-non-applicable repository.
           broadcastControlRepository: widget.broadcastControlRepository,
+          // Issue #767: hand the in-memory snapshot of the previous
+          // broadcast (if any) to the comment screen so its status
+          // detail view can surface a "直前の統計を見る" entry. The
+          // comment screen itself filters out the case where the
+          // snapshot's lv equals the current lv, so we forward
+          // unconditionally.
+          recentBroadcastStats: widget.recentBroadcastStatsHolder?.value,
         );
       },
     );
@@ -1497,6 +1521,21 @@ class _SelectScreenState extends State<SelectScreen>
     if (settingsStore != null) {
       saveSettingsUnawaited(settingsStore, updated);
     }
+  }
+
+  /// Issue #767: receive a finished broadcast's snapshot from
+  /// `CommentScreen` and update the in-memory holder so the next
+  /// broadcast's status detail view can surface a "直前の統計" entry.
+  ///
+  /// gating（isBroadcaster / lv 空）はアプリ層 helper に集約してテスト
+  /// 容易な形にしている。ここではホルダー解決のみを担当する。
+  void _onRecentBroadcastStatsCaptured(RecentBroadcastStats snapshot) {
+    final RecentBroadcastStatsHolder? holder =
+        widget.recentBroadcastStatsHolder;
+    if (holder == null) {
+      return;
+    }
+    recordRecentBroadcastStatsToHolder(snapshot: snapshot, holder: holder);
   }
 
   /// Issue #766: receive a finalised broadcast's stats snapshot from
