@@ -57,6 +57,7 @@ import 'presentation/screens/onboarding_screen.dart';
 import 'presentation/select/select_screen.dart';
 import 'presentation/strings/app_strings.dart';
 import 'presentation/theme/app_theme.dart';
+import 'extension/extension_loader.dart';
 
 /// Feature flag: タイムシフト（過去放送）コメント取得の有効化。
 ///
@@ -220,6 +221,10 @@ Future<void> main() async {
       bffClient: OAuthBffClient(tokenEndpoint: oauthConfig.bffTokenEndpoint),
     ),
   );
+
+  // Safe to call even with no integrations installed: the loader
+  // silently completes with an empty registry.
+  await ExtensionLoader().loadAll();
 
   runApp(
     ComeruneApp(

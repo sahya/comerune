@@ -19,7 +19,7 @@ ENV := $(MISE_ACTIVATE) && \
 OAUTH_BFF_ENV_FILE := android/oauth_bff.env
 DART_DEFINE_OAUTH_BFF := $(if $(wildcard $(OAUTH_BFF_ENV_FILE)),--dart-define-from-file=$(OAUTH_BFF_ENV_FILE),)
 
-.PHONY: help doctor clean build build-release build-release-aab build-adi-verification build-clean test pub-get analyze format format-all check setup-libs
+.PHONY: help doctor clean build build-release build-release-aab build-adi-verification build-clean test pub-get analyze format format-all check setup-libs ext-gen
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-38s\033[0m %s\n", $$1, $$2}'
@@ -64,3 +64,6 @@ format-all: ## Run code formatter for the whole repository (use in dedicated PRs
 	$(ENV) && dart format .
 
 check: analyze format test ## Run all checks (analyze → format → test)
+
+ext-gen: ## Regenerate optional integration overrides + registry from integrations/
+	$(ENV) && dart run scripts/gen_extension_overrides.dart && dart run scripts/gen_extension_registry.dart
