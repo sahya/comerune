@@ -1654,9 +1654,7 @@ void main() {
         }
 
         // Start with speech enabled — no grace window is running.
-        await tester.pumpWidget(
-          buildHost(const SpeechSettings(enabled: true)),
-        );
+        await tester.pumpWidget(buildHost(const SpeechSettings(enabled: true)));
         await tester.pumpAndSettle();
 
         // Disable speech while the broadcast is still live (no grace active).
@@ -1668,8 +1666,7 @@ void main() {
         expect(
           graceEndedCount,
           0,
-          reason:
-              'onSpeechGraceEnded must not fire when grace was never armed',
+          reason: 'onSpeechGraceEnded must not fire when grace was never armed',
         );
 
         await tester.pumpWidget(const SizedBox.shrink());
@@ -1703,9 +1700,7 @@ void main() {
           );
         }
 
-        await tester.pumpWidget(
-          buildHost(const SpeechSettings(enabled: true)),
-        );
+        await tester.pumpWidget(buildHost(const SpeechSettings(enabled: true)));
         await tester.pumpAndSettle();
 
         // Enter grace.
