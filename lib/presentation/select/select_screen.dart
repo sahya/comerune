@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../app_logging.dart';
+import '../../application/comment_log/broadcast_history_recorder.dart';
 import '../../application/comment_post/comment_post_controller.dart';
 import '../../application/timeshift_fetch/timeshift_fetch_controller.dart';
 import '../../application/settings/settings_save_helper.dart';
@@ -14,7 +15,6 @@ import '../../application/timeline/timeline_store.dart';
 import '../../data/auth/user_session_store.dart';
 import '../../data/comment_log/broadcast_history_store.dart';
 import '../../data/comment_log/comment_log_writer.dart';
-import '../../domain/comment_log/broadcast_history_entry.dart';
 import '../../data/broadcast/broadcast_control_repository.dart';
 import '../../data/broadcaster/broadcaster_name_store.dart';
 import '../../data/filter/broadcaster_ng_store.dart';
@@ -1509,39 +1509,16 @@ class _SelectScreenState extends State<SelectScreen>
     if (store == null) {
       return;
     }
-    if (!snapshot.isBroadcaster) {
-      // Issue #766 設計判断: 視聴のみの放送は履歴に残さない。
-      return;
-    }
-    if (snapshot.lv.isEmpty) {
-      return;
-    }
-    final BroadcastHistoryEntry entry = BroadcastHistoryEntry(
-      lv: snapshot.lv,
-      recordedAt: snapshot.endedAt,
-      programTitle: snapshot.programTitle,
-      broadcasterUserId: snapshot.broadcasterUserId,
-      broadcasterName: snapshot.broadcasterName,
-      beginAt: snapshot.beginAt,
-      endedAt: snapshot.endedAt,
-      totalComments: snapshot.totalComments,
-      uniqueUserCount: snapshot.uniqueUserCount,
-      durationSeconds: snapshot.durationSeconds,
-      peakMinuteOffset: snapshot.peakMinuteOffset,
-      peakMinuteCount: snapshot.peakMinuteCount,
-      peaks: snapshot.peaks
-          .map(
-            (BroadcastEndedStatsPeak p) => BroadcastHistoryPeak(
-              minuteOffset: p.minuteOffset,
-              label: p.label,
-              commentCount: p.commentCount,
-            ),
-          )
-          .toList(growable: false),
+    // Snapshot → entry の詰め替え + isBroadcaster / lv 空のフィルタは
+    // application 層 helper に集約 (テスト容易化と select_screen の責務縮小)。
+    // Persistence は fire-and-forget; 失敗はストア内で log される。
+    final Future<void>? scheduled = recordBroadcastHistoryFromSnapshot(
+      snapshot: snapshot,
+      store: store,
     );
-    // Persistence is fire-and-forget; failures are already logged inside
-    // the store's serial write chain.
-    unawaited(store.add(entry));
+    if (scheduled != null) {
+      unawaited(scheduled);
+    }
   }
 
   Future<void> _openSettings(

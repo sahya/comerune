@@ -28,6 +28,12 @@ abstract class BroadcastHistoryStore {
 
   /// 全件削除する。
   Future<void> clearAll();
+
+  /// In-flight な write をすべて待機する。`add` / `removeByLv` / `clearAll`
+  /// は内部で `unawaited` 経由で fire-and-forget される経路があるため、
+  /// アプリ終了直前やテストでの確実な flush に利用する。
+  /// （`broadcaster_ng_store` の同名 API と整合）
+  Future<void> flushPendingWrites();
 }
 
 /// SharedPreferences 永続化版。1 つのキーに JSON 配列で全件を持つ。
@@ -96,6 +102,9 @@ class SharedPreferencesBroadcastHistoryStore implements BroadcastHistoryStore {
       await _prefs.remove(storageKey);
     });
   }
+
+  @override
+  Future<void> flushPendingWrites() => _pendingWriteChain;
 
   List<BroadcastHistoryEntry> _readAll() {
     final String? raw = _prefs.getString(storageKey);

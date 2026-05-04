@@ -5,6 +5,7 @@ import '../../application/speech/speech_availability_notifier.dart';
 import '../../application/timeline/timeline_store.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../data/comment_log/comment_log_writer.dart';
+import '../../domain/comment_log/comment_log_stats.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/matchers/ng_matcher.dart';
 import '../../domain/models/app_settings.dart';
@@ -195,6 +196,58 @@ class BroadcastEndedStatsSnapshot {
   /// #766 records only the user's own broadcasts; viewer-only sessions
   /// must be skipped by the callback receiver.
   final bool isBroadcaster;
+
+  /// Issue #766: build a snapshot from the just-finalised stats and
+  /// program metadata. Centralises the DTO-construction logic so the
+  /// `comment_screen` build method does not need to know the field
+  /// layout. `peakOffset` is derived deterministically from
+  /// `commentsPerMinute` (smallest-key tiebreak) so restarts and tests
+  /// see the same value.
+  static BroadcastEndedStatsSnapshot buildFromStats({
+    required String lv,
+    required CommentLogStats stats,
+    required DateTime endedAt,
+    required bool isBroadcaster,
+    String? programTitle,
+    String? broadcasterUserId,
+    String? broadcasterName,
+    DateTime? beginAt,
+    List<HighlightPeak> highlightPeaks = const <HighlightPeak>[],
+  }) {
+    int? peakOffset;
+    if (stats.peakMinuteCount > 0 && stats.peakMinuteLabel != null) {
+      for (final MapEntry<int, int> entry in stats.commentsPerMinute.entries) {
+        if (entry.value == stats.peakMinuteCount) {
+          if (peakOffset == null || entry.key < peakOffset) {
+            peakOffset = entry.key;
+          }
+        }
+      }
+    }
+    return BroadcastEndedStatsSnapshot(
+      lv: lv,
+      endedAt: endedAt,
+      totalComments: stats.totalComments,
+      uniqueUserCount: stats.uniqueUserCount,
+      durationSeconds: stats.duration.inSeconds,
+      programTitle: programTitle,
+      broadcasterUserId: broadcasterUserId,
+      broadcasterName: broadcasterName,
+      beginAt: beginAt,
+      peakMinuteOffset: peakOffset,
+      peakMinuteCount: stats.peakMinuteCount,
+      peaks: highlightPeaks
+          .map(
+            (HighlightPeak p) => BroadcastEndedStatsPeak(
+              minuteOffset: p.minuteOffset,
+              label: p.label,
+              commentCount: p.commentCount,
+            ),
+          )
+          .toList(growable: false),
+      isBroadcaster: isBroadcaster,
+    );
+  }
 }
 
 /// One representative peak inside a [BroadcastEndedStatsSnapshot]. Mirrors

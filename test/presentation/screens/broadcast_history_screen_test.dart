@@ -33,6 +33,9 @@ class _FakeStore implements BroadcastHistoryStore {
     clearCount++;
     _entries.clear();
   }
+
+  @override
+  Future<void> flushPendingWrites() async {}
 }
 
 BroadcastHistoryEntry _entry(

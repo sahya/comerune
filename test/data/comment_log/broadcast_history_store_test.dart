@@ -176,9 +176,9 @@ void main() {
           SharedPreferencesBroadcastHistoryStore(prefs: prefs);
 
       await Future.wait<void>(<Future<void>>[
-        store.add(_entry('lvA', recordedAt: DateTime.utc(2026, 5, 1, 1))),
-        store.add(_entry('lvB', recordedAt: DateTime.utc(2026, 5, 1, 2))),
-        store.add(_entry('lvC', recordedAt: DateTime.utc(2026, 5, 1, 3))),
+        store.add(_entry('lv101', recordedAt: DateTime.utc(2026, 5, 1, 1))),
+        store.add(_entry('lv102', recordedAt: DateTime.utc(2026, 5, 1, 2))),
+        store.add(_entry('lv103', recordedAt: DateTime.utc(2026, 5, 1, 3))),
       ]);
 
       final List<String> lvs =
@@ -188,7 +188,41 @@ void main() {
               .toSet()
               .toList()
             ..sort();
-      expect(lvs, <String>['lvA', 'lvB', 'lvC']);
+      expect(lvs, <String>['lv101', 'lv102', 'lv103']);
+    });
+
+    test(
+      'concurrent add() preserves enqueue order at the head (newest first)',
+      () async {
+        final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+        final SharedPreferencesBroadcastHistoryStore store =
+            SharedPreferencesBroadcastHistoryStore(prefs: prefs);
+
+        // Enqueue order: 1 → 2 → 3. The serial chain guarantees the
+        // last-enqueued add runs last and lands at the head.
+        await Future.wait<void>(<Future<void>>[
+          store.add(_entry('lv1001', recordedAt: DateTime.utc(2026, 5, 1, 1))),
+          store.add(_entry('lv1002', recordedAt: DateTime.utc(2026, 5, 1, 2))),
+          store.add(_entry('lv1003', recordedAt: DateTime.utc(2026, 5, 1, 3))),
+        ]);
+        await store.flushPendingWrites();
+
+        expect(store.loadAll().first.lv, 'lv1003');
+      },
+    );
+
+    test('flushPendingWrites awaits in-flight serial writes', () async {
+      final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+      final SharedPreferencesBroadcastHistoryStore store =
+          SharedPreferencesBroadcastHistoryStore(prefs: prefs);
+
+      // Fire-and-forget add (mimicking the SelectScreen unawaited path).
+      // ignore: unawaited_futures
+      store.add(_entry('lv9001', recordedAt: DateTime.utc(2026, 5, 1)));
+      await store.flushPendingWrites();
+
+      expect(store.loadAll(), hasLength(1));
+      expect(store.loadAll().first.lv, 'lv9001');
     });
   });
 }

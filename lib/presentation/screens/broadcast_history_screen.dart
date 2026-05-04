@@ -65,7 +65,18 @@ class _BroadcastHistoryScreenState extends State<BroadcastHistoryScreen> {
     if (confirmed != true) {
       return;
     }
-    await widget.store.clearAll();
+    bool success = true;
+    try {
+      await widget.store.clearAll();
+    } on Object catch (error, stackTrace) {
+      success = false;
+      developer.log(
+        'Failed to clear broadcast history',
+        name: 'BroadcastHistoryScreen',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
     if (!mounted) {
       return;
     }
@@ -74,24 +85,82 @@ class _BroadcastHistoryScreenState extends State<BroadcastHistoryScreen> {
       ..clearSnackBars()
       ..showSnackBar(
         SnackBar(
-          key: const Key('broadcast-history-cleared-snackbar'),
-          content: Text(AppStrings.broadcastHistory.clearAllSnackBar),
+          key: success
+              ? const Key('broadcast-history-cleared-snackbar')
+              : const Key('broadcast-history-clear-failed-snackbar'),
+          content: Text(
+            success
+                ? AppStrings.broadcastHistory.clearAllSnackBar
+                : AppStrings.broadcastHistory.clearAllFailedSnackBar,
+          ),
         ),
       );
   }
 
+  /// Issue #766: 個別削除の確認ダイアログ。スワイプ・trailing アイコンの
+  /// 双方から呼び出されるため、共通化して挙動を 1 箇所に集約する。
+  Future<bool> _confirmRemoveOne() async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          key: const Key('broadcast-history-remove-one-dialog'),
+          title: Text(AppStrings.broadcastHistory.removeOneDialogTitle),
+          content: Text(AppStrings.broadcastHistory.removeOneDialogMessage),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(AppStrings.broadcastHistory.removeOneDialogCancel),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(AppStrings.broadcastHistory.removeOneDialogConfirm),
+            ),
+          ],
+        );
+      },
+    );
+    return confirmed == true;
+  }
+
   Future<void> _removeOne(BroadcastHistoryEntry entry) async {
-    await widget.store.removeByLv(entry.lv);
+    bool success = true;
+    try {
+      await widget.store.removeByLv(entry.lv);
+    } on Object catch (error, stackTrace) {
+      success = false;
+      developer.log(
+        'Failed to remove broadcast history entry',
+        name: 'BroadcastHistoryScreen',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
     if (!mounted) {
       return;
     }
     _reload();
+    if (!success) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(
+            key: const Key('broadcast-history-remove-failed-snackbar'),
+            content: Text(AppStrings.broadcastHistory.removeOneFailedSnackBar),
+          ),
+        );
+    }
   }
 
   Future<void> _openProgramPage(BroadcastHistoryEntry entry) async {
     final Uri? uri = Uri.tryParse(entry.programPageUrl);
     bool launched = false;
-    if (uri != null) {
+    if (uri == null) {
+      developer.log(
+        'Refusing to launch malformed program page URL',
+        name: 'BroadcastHistoryScreen',
+      );
+    } else {
       try {
         launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
       } on Object catch (error, stackTrace) {
@@ -119,6 +188,8 @@ class _BroadcastHistoryScreenState extends State<BroadcastHistoryScreen> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      // ドラッグハンドルを明示してドラッグ可能であることを発見しやすくする。
+      showDragHandle: true,
       builder: (BuildContext sheetContext) {
         return _BroadcastHistoryDetailSheet(
           entry: entry,
@@ -186,53 +257,24 @@ class _BroadcastHistoryScreenState extends State<BroadcastHistoryScreen> {
                             color: Colors.white,
                           ),
                         ),
-                        confirmDismiss: (_) async {
-                          final bool? confirmed = await showDialog<bool>(
-                            context: context,
-                            builder: (BuildContext dialogContext) {
-                              return AlertDialog(
-                                key: const Key(
-                                  'broadcast-history-remove-one-dialog',
-                                ),
-                                title: Text(
-                                  AppStrings
-                                      .broadcastHistory
-                                      .removeOneDialogTitle,
-                                ),
-                                content: Text(
-                                  AppStrings
-                                      .broadcastHistory
-                                      .removeOneDialogMessage,
-                                ),
-                                actions: <Widget>[
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.of(dialogContext).pop(false),
-                                    child: Text(
-                                      AppStrings
-                                          .broadcastHistory
-                                          .removeOneDialogCancel,
-                                    ),
-                                  ),
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.of(dialogContext).pop(true),
-                                    child: Text(
-                                      AppStrings
-                                          .broadcastHistory
-                                          .removeOneDialogConfirm,
-                                    ),
-                                  ),
-                                ],
-                              );
-                            },
-                          );
-                          return confirmed == true;
-                        },
+                        confirmDismiss: (_) => _confirmRemoveOne(),
                         onDismissed: (_) => unawaited(_removeOne(entry)),
-                        child: _BroadcastHistoryTile(
-                          entry: entry,
-                          onTap: () => _showEntryDetail(entry),
+                        // Issue #766 a11y: スワイプ操作以外の経路として
+                        // タイル trailing に削除アイコンも提供する。
+                        // Semantics で「削除可能」を明示。
+                        child: Semantics(
+                          label: AppStrings.broadcastHistory.tileSemanticsHint(
+                            entry.lv,
+                          ),
+                          child: _BroadcastHistoryTile(
+                            entry: entry,
+                            onTap: () => _showEntryDetail(entry),
+                            onDelete: () async {
+                              if (await _confirmRemoveOne()) {
+                                await _removeOne(entry);
+                              }
+                            },
+                          ),
                         ),
                       );
                     },
@@ -280,10 +322,19 @@ class _BroadcastHistoryScreenState extends State<BroadcastHistoryScreen> {
 }
 
 class _BroadcastHistoryTile extends StatelessWidget {
-  const _BroadcastHistoryTile({required this.entry, required this.onTap});
+  const _BroadcastHistoryTile({
+    required this.entry,
+    required this.onTap,
+    required this.onDelete,
+  });
 
   final BroadcastHistoryEntry entry;
   final VoidCallback onTap;
+
+  /// Issue #766 a11y: スワイプ操作以外の経路として trailing IconButton から
+  /// も同じ削除フローを実行できるようにする。スクリーンリーダ・キーボード
+  /// 操作・スワイプ困難なユーザー向けの代替手段。
+  final Future<void> Function() onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -299,8 +350,22 @@ class _BroadcastHistoryTile extends StatelessWidget {
     return ListTile(
       key: Key('broadcast-history-tile-${entry.lv}'),
       title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text(subtitle),
-      trailing: const Icon(Icons.chevron_right),
+      subtitle: Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+      // 並び: 削除アイコン → 詳細遷移シェブロン。タップ判定の優先順位は
+      // IconButton が先に取るため、tile 全体タップで誤って削除される事故を
+      // 避けつつアクセス可能にする。
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          IconButton(
+            key: Key('broadcast-history-tile-delete-${entry.lv}'),
+            icon: const Icon(Icons.delete_outline),
+            tooltip: AppStrings.broadcastHistory.removeOneTooltip,
+            onPressed: () => unawaited(onDelete()),
+          ),
+          const Icon(Icons.chevron_right),
+        ],
+      ),
       onTap: onTap,
     );
   }
@@ -409,11 +474,8 @@ class _BroadcastHistoryDetailSheet extends StatelessWidget {
                 onPressed: onOpenProgramPage,
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              AppStrings.broadcastHistory.privacyNote,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
+            // 注: プライバシ説明はリスト画面と空状態で既に提示されているため、
+            // 詳細シートでは重複表示しない（Issue #766 sages レビュー対応）。
           ],
         );
       },

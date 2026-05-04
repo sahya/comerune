@@ -26,6 +26,11 @@ class BroadcastHistoryEntry {
   });
 
   /// `lv348712105` のような番組ID。
+  ///
+  /// 永続化値由来であっても [programPageUrl] でクエリ汚染やパス Traversal を
+  /// 起こさないよう、生成元 [tryFromJson] 側で [_lvPattern] による形式検証を
+  /// 行う。直接生成する production パス（`SelectScreen`）では niconico 由来の
+  /// `lv` のみが渡される前提。
   final String lv;
 
   /// このエントリが履歴に記録された時刻。並び順とユニーク識別の補助に使う。
@@ -54,7 +59,17 @@ class BroadcastHistoryEntry {
   Duration get duration => Duration(seconds: durationSeconds);
 
   /// niconico 公式の番組ページ URL。
-  String get programPageUrl => 'https://live.nicovideo.jp/watch/$lv';
+  ///
+  /// 二重防御として `Uri` ビルダーを使い、`lv` に文字列補間で意図せぬクエリ
+  /// (`?...`) や fragment (`#...`) が混じった場合でもパスとして
+  /// percent-encode される（[Uri.pathSegments]）。生成元 [tryFromJson] 側でも
+  /// [_lvPattern] による事前検証を行うが、直接生成パス・将来の field 増加に
+  /// 備える。
+  String get programPageUrl => Uri(
+    scheme: 'https',
+    host: 'live.nicovideo.jp',
+    pathSegments: <String>['watch', lv],
+  ).toString();
 
   /// 表示用の盛り上がりピークラベル（`開始25分` 形式）。
   String? get peakMinuteLabel {
@@ -82,13 +97,21 @@ class BroadcastHistoryEntry {
       'peaks': peaks.map((BroadcastHistoryPeak p) => p.toJson()).toList(),
   };
 
+  /// niconico の `lv` 形式（`lv` + 数字）を検証する正規表現。永続化値が
+  /// 改ざんされていた場合に [programPageUrl] が想定外の URL を組み立てない
+  /// ようにする防御層。
+  static final RegExp _lvPattern = RegExp(r'^lv\d+$');
+
   /// JSON からの復元。型不一致や欠損は安全に無視する（旧バージョン互換）。
+  ///
+  /// `lv` は [_lvPattern] と一致しない値を弾く。整数系フィールドの負数も
+  /// 0 にクランプし、表示で負のコメント数のような不整合を出さない。
   static BroadcastHistoryEntry? tryFromJson(Object? raw) {
     if (raw is! Map<dynamic, dynamic>) {
       return null;
     }
     final Object? lvValue = raw['lv'];
-    if (lvValue is! String || lvValue.isEmpty) {
+    if (lvValue is! String || !_lvPattern.hasMatch(lvValue)) {
       return null;
     }
     final DateTime? recordedAt = _parseDateTime(raw['recordedAt']);
@@ -115,11 +138,13 @@ class BroadcastHistoryEntry {
       broadcasterName: _readString(raw['broadcasterName']),
       beginAt: _parseDateTime(raw['beginAt']),
       endedAt: _parseDateTime(raw['endedAt']),
-      totalComments: _readInt(raw['totalComments']) ?? 0,
-      uniqueUserCount: _readInt(raw['uniqueUserCount']) ?? 0,
-      durationSeconds: _readInt(raw['durationSeconds']) ?? 0,
-      peakMinuteOffset: _readInt(raw['peakMinuteOffset']),
-      peakMinuteCount: _readInt(raw['peakMinuteCount']) ?? 0,
+      // 整数系は負数を 0 にクランプ。永続化値が破損してもユーザーに
+      // 「-3 件」のような不整合表示が出ないようにする。
+      totalComments: _readNonNegativeInt(raw['totalComments']),
+      uniqueUserCount: _readNonNegativeInt(raw['uniqueUserCount']),
+      durationSeconds: _readNonNegativeInt(raw['durationSeconds']),
+      peakMinuteOffset: _readNonNegativeIntOrNull(raw['peakMinuteOffset']),
+      peakMinuteCount: _readNonNegativeInt(raw['peakMinuteCount']),
       peaks: peaks,
     );
   }
@@ -166,6 +191,19 @@ class BroadcastHistoryEntry {
     return null;
   }
 
+  static int _readNonNegativeInt(Object? raw) {
+    final int v = _readInt(raw) ?? 0;
+    return v < 0 ? 0 : v;
+  }
+
+  static int? _readNonNegativeIntOrNull(Object? raw) {
+    final int? v = _readInt(raw);
+    if (v == null) {
+      return null;
+    }
+    return v < 0 ? null : v;
+  }
+
   static DateTime? _parseDateTime(Object? raw) {
     if (raw is! String || raw.isEmpty) {
       return null;
@@ -203,10 +241,15 @@ class BroadcastHistoryPeak {
     if (minuteOffset is! num || label is! String || commentCount is! num) {
       return null;
     }
+    final int minute = minuteOffset.toInt();
+    final int count = commentCount.toInt();
+    if (minute < 0 || count < 0) {
+      return null;
+    }
     return BroadcastHistoryPeak(
-      minuteOffset: minuteOffset.toInt(),
+      minuteOffset: minute,
       label: label,
-      commentCount: commentCount.toInt(),
+      commentCount: count,
     );
   }
 }

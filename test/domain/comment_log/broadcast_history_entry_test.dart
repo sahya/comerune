@@ -74,6 +74,52 @@ void main() {
       expect(round!.lv, 'lv1');
     });
 
+    test('tryFromJson rejects malformed lv values (defensive)', () {
+      // lv must match `^lv\d+$`; anything with extras (e.g. query
+      // injection attempts, traversal, suffixes) is dropped.
+      const List<String> malformed = <String>[
+        '',
+        'foo',
+        'LV1',
+        'lv',
+        'lv 1',
+        'lv1?evil=1',
+        'lv1/x',
+        '../etc',
+        'lv1#hash',
+      ];
+      for (final String bad in malformed) {
+        final BroadcastHistoryEntry? round =
+            BroadcastHistoryEntry.tryFromJson(<String, Object?>{
+              'lv': bad,
+              'recordedAt': DateTime.utc(2026, 5, 1).toIso8601String(),
+              'totalComments': 0,
+              'uniqueUserCount': 0,
+              'durationSeconds': 0,
+            });
+        expect(round, isNull, reason: 'should reject lv="$bad"');
+      }
+    });
+
+    test('tryFromJson clamps negative integer fields to 0', () {
+      final BroadcastHistoryEntry? round =
+          BroadcastHistoryEntry.tryFromJson(<String, Object?>{
+            'lv': 'lv1',
+            'recordedAt': DateTime.utc(2026, 5, 1).toIso8601String(),
+            'totalComments': -3,
+            'uniqueUserCount': -2,
+            'durationSeconds': -100,
+            'peakMinuteCount': -5,
+            'peakMinuteOffset': -1,
+          });
+      expect(round, isNotNull);
+      expect(round!.totalComments, 0);
+      expect(round.uniqueUserCount, 0);
+      expect(round.durationSeconds, 0);
+      expect(round.peakMinuteCount, 0);
+      expect(round.peakMinuteOffset, isNull);
+    });
+
     test('encodeJson / tryDecodeJson round-trips through a String', () {
       final BroadcastHistoryEntry entry = BroadcastHistoryEntry(
         lv: 'lv2',

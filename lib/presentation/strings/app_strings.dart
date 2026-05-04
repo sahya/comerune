@@ -327,6 +327,8 @@ final class BroadcastHistoryStrings {
   String get removeOneDialogMessage => 'この 1 件の放送履歴を削除します。よろしいですか？';
   String get removeOneDialogCancel => 'キャンセル';
   String get removeOneDialogConfirm => '削除';
+  String get removeOneTooltip => 'この履歴を削除';
+  String tileSemanticsHint(String lv) => '$lv の放送履歴。スワイプまたは削除ボタンで削除できます。';
 
   // 削除ダイアログ（全件）
   String get clearAllDialogTitle => '履歴を全て削除';
@@ -334,6 +336,8 @@ final class BroadcastHistoryStrings {
   String get clearAllDialogCancel => 'キャンセル';
   String get clearAllDialogConfirm => '削除';
   String get clearAllSnackBar => '放送履歴を全て削除しました';
+  String get clearAllFailedSnackBar => '放送履歴の削除に失敗しました';
+  String get removeOneFailedSnackBar => '履歴の削除に失敗しました';
 
   // 詳細シート
   String get detailLvLabel => '番組ID';

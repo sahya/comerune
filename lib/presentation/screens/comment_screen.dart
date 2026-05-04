@@ -4822,6 +4822,12 @@ class _CommentScreenState extends State<CommentScreen>
   /// snapshot of the finalised broadcast's stats. The callback is opt-in
   /// (null in legacy embedders / tests); failures in the receiver are
   /// suppressed so they cannot tear down the panel UI.
+  ///
+  /// DTO construction is delegated to
+  /// [BroadcastEndedStatsSnapshot.buildFromStats] so the comment screen
+  /// stays focused on collecting the inputs (program info, broadcaster
+  /// flag, peak detection) and the snapshot's field layout lives next to
+  /// the type itself.
   void _notifyBroadcastEndedStats(
     CommentLogStats stats,
     List<AppMessage> messagesForStatsAndLogs,
@@ -4831,20 +4837,6 @@ class _CommentScreenState extends State<CommentScreen>
     if (callback == null) {
       return;
     }
-    int? peakOffset;
-    if (stats.peakMinuteCount > 0 && stats.peakMinuteLabel != null) {
-      // Pick the smallest minute offset whose count matches the
-      // peakMinuteCount — `CommentLogStats.fromMessages` chooses the
-      // first such bucket via natural map iteration; we mirror that by
-      // picking the smallest key for determinism in tests / restarts.
-      for (final MapEntry<int, int> entry in stats.commentsPerMinute.entries) {
-        if (entry.value == stats.peakMinuteCount) {
-          if (peakOffset == null || entry.key < peakOffset) {
-            peakOffset = entry.key;
-          }
-        }
-      }
-    }
     final List<HighlightPeak> highlightPeaks =
         widget.statistics.highlightPickupEnabled
         ? CommentLogStats.detectPeaks(
@@ -4853,30 +4845,18 @@ class _CommentScreenState extends State<CommentScreen>
             ngUserIds: widget.contentFilter.ngUserIds,
           )
         : const <HighlightPeak>[];
-    final List<BroadcastEndedStatsPeak> peaks = highlightPeaks
-        .map(
-          (HighlightPeak p) => BroadcastEndedStatsPeak(
-            minuteOffset: p.minuteOffset,
-            label: p.label,
-            commentCount: p.commentCount,
-          ),
-        )
-        .toList(growable: false);
-    final BroadcastEndedStatsSnapshot snapshot = BroadcastEndedStatsSnapshot(
-      lv: widget.programInfo.lv,
-      endedAt: _endedAt ?? DateTime.now(),
-      totalComments: stats.totalComments,
-      uniqueUserCount: stats.uniqueUserCount,
-      durationSeconds: stats.duration.inSeconds,
-      programTitle: widget.programInfo.programTitle,
-      broadcasterUserId: widget.programInfo.broadcasterUserId,
-      broadcasterName: widget.programInfo.broadcasterName,
-      beginAt: widget.programInfo.beginAt,
-      peakMinuteOffset: peakOffset,
-      peakMinuteCount: stats.peakMinuteCount,
-      peaks: peaks,
-      isBroadcaster: _isBroadcaster,
-    );
+    final BroadcastEndedStatsSnapshot snapshot =
+        BroadcastEndedStatsSnapshot.buildFromStats(
+          lv: widget.programInfo.lv,
+          stats: stats,
+          endedAt: _endedAt ?? DateTime.now(),
+          isBroadcaster: _isBroadcaster,
+          programTitle: widget.programInfo.programTitle,
+          broadcasterUserId: widget.programInfo.broadcasterUserId,
+          broadcasterName: widget.programInfo.broadcasterName,
+          beginAt: widget.programInfo.beginAt,
+          highlightPeaks: highlightPeaks,
+        );
     try {
       callback(snapshot);
     } on Object catch (error, stackTrace) {
