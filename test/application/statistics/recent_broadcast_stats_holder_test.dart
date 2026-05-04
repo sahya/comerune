@@ -1,4 +1,4 @@
-import 'package:comerune/application/stats/recent_broadcast_stats_holder.dart';
+import 'package:comerune/application/statistics/recent_broadcast_stats_holder.dart';
 import 'package:comerune/domain/comment_log/recent_broadcast_stats.dart';
 import 'package:flutter_test/flutter_test.dart';
 

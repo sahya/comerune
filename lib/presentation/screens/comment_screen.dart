@@ -4840,10 +4840,21 @@ class _CommentScreenState extends State<CommentScreen>
     });
   }
 
-  /// Issue #767: build a [RecentBroadcastStatsSnapshot] from the stats
+  /// Issue #767: build a [RecentBroadcastStats] snapshot from the stats
   /// just computed and the program metadata, then hand it off to the
   /// `onRecentBroadcastStatsCaptured` callback. Opt-in: when the callback
   /// is null this is a no-op.
+  ///
+  /// Race-condition note (`_isBroadcaster`): this flag is set
+  /// asynchronously after [CommentPostController.ensureBroadcasterStatus]
+  /// resolves. If the broadcast ends *before* the broadcaster check
+  /// completes (rare but possible on slow networks), `_isBroadcaster`
+  /// is still `false` and the receiver drops the snapshot. The fallout
+  /// is bounded — only the *first* broadcast in a session is at risk
+  /// because `ensureBroadcasterStatus` is re-resolved when the user
+  /// session changes; subsequent sessions inherit the resolved value.
+  /// We accept this trade-off rather than blocking the panel display
+  /// on a slow API call. Tracked as follow-up if reports emerge.
   void _notifyRecentBroadcastStatsCaptured(CommentLogStats stats) {
     final RecentBroadcastStatsCallback? callback =
         widget.callbacks.onRecentBroadcastStatsCaptured;
@@ -4864,7 +4875,7 @@ class _CommentScreenState extends State<CommentScreen>
         }
       }
     }
-    final RecentBroadcastStatsSnapshot snapshot = RecentBroadcastStatsSnapshot(
+    final RecentBroadcastStats snapshot = RecentBroadcastStats(
       lv: widget.programInfo.lv,
       endedAt: _endedAt ?? DateTime.now(),
       totalComments: stats.totalComments,
@@ -4895,6 +4906,9 @@ class _CommentScreenState extends State<CommentScreen>
   /// no raw messages, so peak-detection / representative comments are
   /// intentionally suppressed.
   void _showRecentBroadcastStats() {
+    if (!mounted) {
+      return;
+    }
     final RecentBroadcastStats? snapshot = widget.recentBroadcastStats;
     if (snapshot == null || snapshot.lv == widget.programInfo.lv) {
       return;
@@ -5616,30 +5630,47 @@ class _StatusBarState extends State<_StatusBar> {
                   // が無い／初回放送時は当該行ごと描画しない（暫定 UI を
                   // 残さない方針）。視聴セッションは callback 受け側で
                   // フィルタされるためここに到達しない。
+                  // 注: ステータスバーは初回表示後 1500ms で自動折りたたまれ
+                  // る（initState の _autoCollapseTimer）。本ボタンは展開
+                  // 時のみ表示され、ユーザーは status bar を再タップで再
+                  // 展開して操作する。
                   if (widget.recentBroadcastStats != null &&
                       widget.onShowRecentBroadcastStats != null) ...<Widget>[
                     const SizedBox(height: 4),
                     Align(
                       alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
-                        key: const Key('show-recent-broadcast-stats-button'),
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 0,
-                          ),
-                          minimumSize: const Size(0, 32),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          visualDensity: VisualDensity.compact,
+                      child: Semantics(
+                        button: true,
+                        label: _recentBroadcastStatsSemanticsLabel(
+                          widget.recentBroadcastStats!,
                         ),
-                        icon: const Icon(Icons.bar_chart, size: 16),
-                        label: Text(
-                          _recentBroadcastStatsButtonLabel(
-                            widget.recentBroadcastStats!,
+                        child: TextButton.icon(
+                          key: const Key('show-recent-broadcast-stats-button'),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 0,
+                            ),
+                            minimumSize: const Size(0, 32),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.compact,
                           ),
-                          style: const TextStyle(fontSize: 12),
+                          icon: const Icon(Icons.bar_chart, size: 16),
+                          // ConstrainedBox で max width を制限し、長尺タイトル
+                          // でステータスバー高さが膨らむのを防ぐ。
+                          label: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 240),
+                            child: Text(
+                              _recentBroadcastStatsButtonLabel(
+                                widget.recentBroadcastStats!,
+                              ),
+                              style: const TextStyle(fontSize: 12),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ),
+                          onPressed: widget.onShowRecentBroadcastStats,
                         ),
-                        onPressed: widget.onShowRecentBroadcastStats,
                       ),
                     ),
                   ],
@@ -5695,12 +5726,34 @@ class _StatusBarState extends State<_StatusBar> {
 /// Issue #767: button label for the "直前1件の統計" entry. Compact form
 /// preferred so the status bar does not balloon vertically. Uses the
 /// previous broadcast's title when available, falling back to the lv.
+///
+/// Title is hard-truncated at 40 chars in addition to the `Text` overflow
+/// ellipsis (defense-in-depth against pathological titles).
 String _recentBroadcastStatsButtonLabel(RecentBroadcastStats snapshot) {
   final String? title = snapshot.programTitle;
   if (title != null && title.trim().isNotEmpty) {
-    return '直前の統計を見る: $title';
+    final String safe = _truncateForUi(title.trim(), 40);
+    return '直前の統計を見る: $safe';
   }
   return '直前の統計を見る (${snapshot.lv})';
+}
+
+/// Screen-reader label that omits the visual ellipsis trick and keeps the
+/// statement form ("直前の放送の統計を表示します") so VoiceOver / TalkBack
+/// reads it as a button purpose, not a fragment.
+String _recentBroadcastStatsSemanticsLabel(RecentBroadcastStats snapshot) {
+  final String? title = snapshot.programTitle?.trim();
+  final String suffix = (title != null && title.isNotEmpty)
+      ? '：${_truncateForUi(title, 40)}'
+      : '（${snapshot.lv}）';
+  return '直前の放送の統計を表示する$suffix';
+}
+
+String _truncateForUi(String input, int maxChars) {
+  if (input.length <= maxChars) {
+    return input;
+  }
+  return '${input.substring(0, maxChars)}…';
 }
 
 class _BroadcasterIcon extends StatelessWidget {

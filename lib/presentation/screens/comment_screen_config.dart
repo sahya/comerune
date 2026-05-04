@@ -5,6 +5,7 @@ import '../../application/speech/speech_availability_notifier.dart';
 import '../../application/timeline/timeline_store.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../data/comment_log/comment_log_writer.dart';
+import '../../domain/comment_log/recent_broadcast_stats.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/matchers/ng_matcher.dart';
 import '../../domain/models/app_settings.dart';
@@ -155,46 +156,10 @@ class CommentCallbacks {
 
 /// Issue #767: callback signature for
 /// [CommentCallbacks.onRecentBroadcastStatsCaptured]. The receiver is
-/// expected to inspect [RecentBroadcastStatsSnapshot.isBroadcaster] and
-/// only persist (in memory) when the local user owns the broadcast.
+/// expected to inspect [RecentBroadcastStats.isBroadcaster] and only
+/// persist (in memory) when the local user owns the broadcast.
 typedef RecentBroadcastStatsCallback =
-    void Function(RecentBroadcastStatsSnapshot snapshot);
-
-/// Issue #767: snapshot of a finished broadcast's stats summary, sized to
-/// what the "直前1件" redirect needs. Carries no raw message bodies so the
-/// composition root can keep the holder lightweight.
-@immutable
-class RecentBroadcastStatsSnapshot {
-  const RecentBroadcastStatsSnapshot({
-    required this.lv,
-    required this.endedAt,
-    required this.totalComments,
-    required this.uniqueUserCount,
-    required this.durationSeconds,
-    this.programTitle,
-    this.beginAt,
-    this.peakMinuteOffset,
-    this.peakMinuteCount = 0,
-    this.peakMinuteLabel,
-    this.isBroadcaster = false,
-  });
-
-  final String lv;
-  final DateTime endedAt;
-  final int totalComments;
-  final int uniqueUserCount;
-  final int durationSeconds;
-  final String? programTitle;
-  final DateTime? beginAt;
-  final int? peakMinuteOffset;
-  final int peakMinuteCount;
-  final String? peakMinuteLabel;
-
-  /// True when the local user is the broadcaster of this program. Issue
-  /// #767 design judgement: viewer-only sessions must not surface as the
-  /// next broadcast's "直前". The receiver must skip when this is false.
-  final bool isBroadcaster;
-}
+    void Function(RecentBroadcastStats snapshot);
 
 /// Content-based filtering and per-user rendering attributes for
 /// [CommentScreen].

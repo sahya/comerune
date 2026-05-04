@@ -9,8 +9,9 @@ import '../../application/timeshift_fetch/timeshift_fetch_controller.dart';
 import '../../application/settings/settings_save_helper.dart';
 import '../../application/settings/settings_store.dart';
 import '../../application/speech/speech_availability_notifier.dart';
+import '../../application/statistics/recent_broadcast_stats_holder.dart';
+import '../../application/statistics/recent_broadcast_stats_recorder.dart';
 import '../../application/statistics/statistics_store.dart';
-import '../../application/stats/recent_broadcast_stats_holder.dart';
 import '../../application/timeline/timeline_store.dart';
 import '../../data/auth/user_session_store.dart';
 import '../../data/comment_log/comment_log_writer.dart';
@@ -1513,34 +1514,16 @@ class _SelectScreenState extends State<SelectScreen>
   /// Issue #767: receive a finished broadcast's snapshot from
   /// `CommentScreen` and update the in-memory holder so the next
   /// broadcast's status detail view can surface a "直前の統計" entry.
-  /// Viewer-only sessions are dropped (snapshot.isBroadcaster == false).
-  void _onRecentBroadcastStatsCaptured(RecentBroadcastStatsSnapshot snapshot) {
+  ///
+  /// gating（isBroadcaster / lv 空）はアプリ層 helper に集約してテスト
+  /// 容易な形にしている。ここではホルダー解決のみを担当する。
+  void _onRecentBroadcastStatsCaptured(RecentBroadcastStats snapshot) {
     final RecentBroadcastStatsHolder? holder =
         widget.recentBroadcastStatsHolder;
     if (holder == null) {
       return;
     }
-    if (!snapshot.isBroadcaster) {
-      // Issue #767 設計判断: 視聴のみの放送は「直前」として扱わない。
-      return;
-    }
-    if (snapshot.lv.isEmpty) {
-      return;
-    }
-    holder.update(
-      RecentBroadcastStats(
-        lv: snapshot.lv,
-        endedAt: snapshot.endedAt,
-        totalComments: snapshot.totalComments,
-        uniqueUserCount: snapshot.uniqueUserCount,
-        durationSeconds: snapshot.durationSeconds,
-        programTitle: snapshot.programTitle,
-        beginAt: snapshot.beginAt,
-        peakMinuteOffset: snapshot.peakMinuteOffset,
-        peakMinuteCount: snapshot.peakMinuteCount,
-        peakMinuteLabel: snapshot.peakMinuteLabel,
-      ),
-    );
+    recordRecentBroadcastStatsToHolder(snapshot: snapshot, holder: holder);
   }
 
   Future<void> _openSettings(
