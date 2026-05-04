@@ -46,11 +46,23 @@ final class ExtensionResultUnsupported<T> extends ExtensionResult<T> {
 
 /// The extension threw an exception while handling the call.
 ///
-/// [cause] is preserved for debug-mode logging only; release-build
-/// loggers strip it to its `runtimeType` to avoid leaking
-/// integration-specific surface area into platform logs. Call sites
-/// should treat this similarly to [ExtensionResultUnsupported] but may
-/// elect to surface a generic error to the user.
+/// [cause] is the original exception captured at the boundary and is
+/// always preserved in this object — the host's defensive logger
+/// (`logExtensionDiagnostic` in `_logging.dart`) sanitises it for
+/// log output (debug: full error; release: dropped), but the field
+/// itself is unconditionally readable.
+///
+/// **Callers must not log [cause] directly.** Doing so bypasses the
+/// release-mode sanitisation and could leak integration-specific
+/// exception class names or messages into platform logs (logcat /
+/// Console). If a caller needs to surface failure information, it
+/// should either:
+/// - emit its own generic message via `logExtensionDiagnostic`; or
+/// - pattern-match on `cause` to extract specific safe details
+///   (e.g. an `int` error code), without printing the object itself.
+///
+/// Call sites that simply want to fall back to a host UX should
+/// treat this similarly to [ExtensionResultUnsupported].
 final class ExtensionResultFailure<T> extends ExtensionResult<T> {
   const ExtensionResultFailure(this.cause);
 

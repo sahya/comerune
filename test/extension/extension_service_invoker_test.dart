@@ -236,6 +236,42 @@ void main() {
 
       expect(result, isA<ExtensionResultUnsupported<String>>());
     });
+
+    test('host throws is NOT caught (bugs surface)', () async {
+      final ExtensionRegistry registry = _registryWith(
+        const _OkExtension('ignored'),
+      );
+
+      await expectLater(
+        ExtensionServiceInvoker.invoke<_TestService, String>(
+          registry,
+          callExtension: _callExt,
+          hostFallback: () async => throw const _HostBoom(),
+          policy: ServiceOverridePolicy.hostFirstFallback,
+        ),
+        throwsA(isA<_HostBoom>()),
+      );
+    });
+
+    test(
+      'host Unsupported + extension throws: extension Failure surfaces',
+      () async {
+        final ExtensionRegistry registry = _registryWith(
+          const _ThrowingExtension(),
+        );
+
+        final ExtensionResult<String> result =
+            await ExtensionServiceInvoker.invoke<_TestService, String>(
+              registry,
+              callExtension: _callExt,
+              hostFallback: () async =>
+                  const ExtensionResultUnsupported<String>(),
+              policy: ServiceOverridePolicy.hostFirstFallback,
+            );
+
+        expect(result, isA<ExtensionResultFailure<String>>());
+      },
+    );
   });
 
   group('ExtensionServiceInvoker.invoke — extensionOnly', () {
