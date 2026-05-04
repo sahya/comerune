@@ -89,83 +89,29 @@ Minimum expectation:
 - new logic should have tests when practical
 - bug fixes should include a regression test when practical
 
-## テストファイル肥大化防止ルール
+## テストファイル肥大化・実行時間ルール
 
-`flutter test` は 1 ファイル = 1 isolate 起動のため、ファイル数の増加は CI 実行時間と保守コストに直接跳ね返る。**テストカバレッジ（網羅性）は件数ではなく「コード網羅率と意図網羅性」で測る** ため、ファイルを増やさずに件数を増やす方針を取ること。
+`flutter test` は 1 ファイル = 1 isolate のため、ファイル数増は CI 時間と保守コストに直結する。**カバレッジは件数ではなくコード網羅率と意図網羅性で測る**。本ルールは新規追加・新規変更テストに適用（forward-looking）、既存違反は別 Issue で段階対応する（feature PR に retrofit を混ぜない）。レビュー観点は `CLAUDE.md` を参照。
 
-### 新規テストファイル作成前の判断順
+### ファイル構成
 
-テストを追加する前に、必ず次の順で判断する:
-
-1. **同じ対象に対するテストファイルの存在確認** — `find test -name "<target>_test.dart"` で検索
-2. **既存ファイルがあれば `group()` 追加で対応** — 別ファイル化は最後の手段
-3. **新規 `<target>_test.dart` 作成は「対象自体が新規」のときのみ**
-
-### 1 対象 = 1 ファイル原則
-
-- 同じ画面・クラス・関数に対するテストは 1 ファイルに集約する
-- ファイル名は対象と一致させる: `<target>_test.dart`
-- 物理分割は次の例外条件のみ許可:
-  - 1 ファイルが **2,000 行を超え**、かつテスト視点が明確に分離できる場合（観点を明示するサフィックスを付ける。例: `comment_screen_speech_test.dart`）
-- 単一補助テスト（純粋関数・データクラスのデフォルト値検証）は対象画面のテストに `group()` で同居させる。`<target>_config_test.dart` のような細切れファイルは作らない
-- **小規模ファイル（1 group + 100 行未満）は単独では問題ない** — 別ターゲットの pure function テストなど、統合先となる関連ファイルが存在しない場合は単独維持してよい
-
-### ルール適用範囲（forward-looking）
-
-本ルール群は **新規追加・新規変更されるテスト** に対する規約。既存テストへの retrofit（過去の違反クリーンアップ）は別 Issue で段階対応する。本ルールを根拠に既存ファイルの修正を feature PR に混ぜないこと。
-
-### 横断的観点のテスト
-
-- WCAG コントラスト・i18n キー網羅・全テーマ走査など、複数のクラスを横断する観点別テストは「**観点 = ファイル**」で集約する
-  - 良い例: `message_background_contrast_test.dart` で gift / nicoad / notification / operator を全て扱う
-  - 悪い例: `gift_contrast_test.dart` + `nicoad_contrast_test.dart` のような対象別分割
+- **1 対象 = 1 ファイル**: 同じ画面・クラス・関数のテストは `<target>_test.dart` に集約
+- **新規ファイル作成前**: `find test -name "<target>_test.dart"` で既存検索 → あれば `group()` 追加で対応
+- **物理分割は 2,000 行超 + 視点分離可** のときのみ（例: `comment_screen_speech_test.dart`）
+- **横断的観点は「観点 = ファイル」**（例: `message_background_contrast_test.dart` に gift / nicoad / notification / operator を集約）
+- **小規模単独 OK**: 別 domain ターゲットの pure function テスト（例: `nico_icon_url_test.dart`）は 1 group + 100 行未満でも単独維持してよい
 
 ### Fake / Mock の配置
 
-- 2 ファイル以上で同じ fake クラスを必要とする場合、必ず `test/helpers/` に抽出する
-- インラインで `class _FakeXxx` を再定義しない
-- ヘルパー名はクラス名と一致させる（`fake_<class>.dart`）
+- 2 ファイル以上で同じ fake を使うなら `test/helpers/fake_<class>.dart` に抽出
+- インライン `class _FakeXxx` の再定義禁止
 
-## テスト実行時間短縮ルール
+### 実行時間
 
-網羅性を維持したまま実行時間を短縮するため、テストを書く際は次を遵守する:
-
-### `testWidgets` と `test` の使い分け
-
-- 純粋ロジック（フォーマッタ・正規化・パーサ・データクラス）は **必ず `test()` を使う**
-- `testWidgets()` は Flutter binding を起動するため `test()` より重い
-- 「画面の中で使う関数だから」という理由で `testWidgets` を使わない
-
-### `pumpAndSettle` の濫用禁止
-
-- `pumpAndSettle` は全アニメーションが完了するまで待機する（数十〜数百 ms のオーバーヘッド）
-- 次の場合は `pump()` または `pump(Duration(milliseconds: N))` を使う:
-  - アニメーション完了を確認する目的ではない
-  - 単に setState() の反映を待ちたいだけ
-  - フレーム更新を 1 回挟みたいだけ
-- `pumpAndSettle` は「アニメーション完了が assertion の前提」のときだけ使う
-
-### 重い setUp の共有
-
-- `rootBundle.loadString` などのアセットロードは `setUpAll` で 1 回だけ実行する（プライム後はキャッシュされる）
-- `setUp` で毎テスト走らせない
-
-### 実時間 sleep の禁止
-
-- `Future.delayed`（実時間待機）でタイマー処理をテストしない
-- 代わりに `fake_async` パッケージ または `WidgetTester.pump(Duration)` でフェイク時間を進める
-
-### レビュー観点
-
-PR レビュー時は次を必ず指摘する:
-- 既存 `<target>_test.dart` がある状態で新規 `<target>_xxx_test.dart` が追加されていないか
-- 1 件の追加要件のために新ファイルを作っていないか
-- 既存 fake と類似したインライン fake 定義が混入していないか
-- 1 group しかない超小型テストファイルが追加されていないか
-- 純粋ロジックのテストに不必要な `testWidgets` が使われていないか
-- `pumpAndSettle` が assertion の前提なく使われていないか
-
-肥大化や速度劣化が判明した場合は、別 PR で統合・最適化する（feature PR にリファクタリングを混ぜない）。
+- **`testWidgets` vs `test`**: 純粋ロジックは必ず `test()`（`testWidgets` は Flutter binding 起動分重い）
+- **`pumpAndSettle` の濫用禁止**: アニメーション完了が assertion の前提のときだけ使う。setState 反映待ち / 1 フレーム挿入は `pump()` または `pump(Duration)` で済ます
+- **重い setUp は `setUpAll` で共有**: `rootBundle.loadString` 等は 1 回だけ
+- **実時間 sleep 禁止**: `Future.delayed` 不可、`fake_async` または `pump(Duration)` でフェイク時間を進める
 
 ## Required Pre-Implementation Output
 Before writing code, output:
