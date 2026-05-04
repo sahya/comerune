@@ -107,6 +107,7 @@ void main() {
     testWidgets('returns host children when no ExtensionScope is mounted', (
       WidgetTester tester,
     ) async {
+      const List<Text> hostInput = <Text>[Text('host-only')];
       List<Text>? captured;
 
       // Intentionally NOT wrapping in ExtensionScope — this mirrors
@@ -119,7 +120,7 @@ void main() {
               captured = resolveSlotChildren<Text>(
                 context,
                 slotId: SlotIds.broadcasterScreenActions,
-                hostChildren: const <Text>[Text('host-only')],
+                hostChildren: hostInput,
               );
               return const SizedBox.shrink();
             },
@@ -128,6 +129,10 @@ void main() {
       );
 
       expect(captured!.map((Text t) => t.data).toList(), <String>['host-only']);
+      // Fast-path must not alias hostChildren — callers should be
+      // able to mutate the returned list without affecting the
+      // input. Matches the contract enforced for the normal path.
+      expect(identical(captured, hostInput), isFalse);
     });
 
     testWidgets('returns host children when no extension widget registered', (

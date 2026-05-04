@@ -36,7 +36,11 @@ List<T> resolveSlotChildren<T extends Widget>(
 }) {
   final ExtensionRegistry? registry = ExtensionScope.maybeOf(context);
   if (registry == null) {
-    return hostChildren;
+    // Allocate a fresh copy so the no-scope fast path matches the
+    // ownership contract of the normal path (`_composeInOrder` always
+    // returns a new list). Callers can therefore safely mutate the
+    // result regardless of which code path produced it.
+    return List<T>.of(hostChildren);
   }
   final List<T> extensionChildren = registry
       .widgetsFor(slotId)
