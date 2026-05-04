@@ -190,6 +190,110 @@ void main() {
       expect(capturedOutcome!.success, isFalse);
       expect(capturedOutcome!.minutes, 30);
     });
+
+    testWidgets(
+      'attaches a screen-reader label that includes the current selection',
+      (WidgetTester tester) async {
+        // Pin the accessibility annotation that Issue #872 spec calls
+        // for: "延長する時間、現在 N 分、ボタン". Without a regression
+        // guard a future build refactor could silently drop the
+        // Semantics wrapper or the dynamic minutes value.
+        //
+        // We verify the Semantics widget configuration directly rather
+        // than via the rendered tree because DropdownButtonFormField
+        // emits its own semantic nodes internally and the merging
+        // behaviour is sensitive to Flutter version. Inspecting the
+        // configured `label` keeps the test version-stable.
+        await _pumpDialog(tester, onConfirm: (int minutes) async => true);
+
+        Semantics findContentSemantics() {
+          return tester.widget<Semantics>(
+            find
+                .ancestor(
+                  of: find.byKey(
+                    const Key('extend-broadcast-minutes-dropdown'),
+                  ),
+                  matching: find.byType(Semantics),
+                )
+                .first,
+          );
+        }
+
+        // Initial label reflects the default 30-minute selection.
+        expect(findContentSemantics().properties.label, '延長する時間、現在 30 分、ボタン');
+
+        // Switching the dropdown to 90 minutes must update the label.
+        await tester.tap(
+          find.byKey(const Key('extend-broadcast-minutes-dropdown')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('90 分').last);
+        await tester.pumpAndSettle();
+
+        expect(findContentSemantics().properties.label, '延長する時間、現在 90 分、ボタン');
+      },
+    );
+
+    testWidgets(
+      'spinner inside the confirm button announces "延長中" to screen readers',
+      (WidgetTester tester) async {
+        // Verify the spinner widget's configured semanticsLabel rather
+        // than the rendered tree to keep the test version-stable
+        // against changes in how FilledButton merges its descendant
+        // semantics. The label is a static field on
+        // CircularProgressIndicator and is read by screen readers when
+        // the indicator surfaces in the merged semantic node.
+        final Completer<bool> pending = Completer<bool>();
+        await _pumpDialog(tester, onConfirm: (int minutes) => pending.future);
+
+        await tester.tap(
+          find.byKey(const Key('extend-broadcast-confirm-button')),
+        );
+        // Bounded pumps because the spinner animates indefinitely.
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+
+        final CircularProgressIndicator spinner = tester
+            .widget<CircularProgressIndicator>(
+              find.descendant(
+                of: find.byKey(const Key('extend-broadcast-confirm-button')),
+                matching: find.byType(CircularProgressIndicator),
+              ),
+            );
+        expect(spinner.semanticsLabel, '延長中');
+
+        pending.complete(true);
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      'onConfirm throwing is converted to a failure outcome (defense-in-depth)',
+      (WidgetTester tester) async {
+        // Repository normally maps everything to BroadcastControlResult,
+        // but the dialog's contract is `Future<bool>` which can in
+        // principle throw. The dialog must convert that into a clean
+        // failure outcome so callers always see a consistent 2-値 result
+        // and no unhandled future leaks to the framework.
+        ExtendBroadcastDialogResult? capturedOutcome;
+        await _pumpDialog(
+          tester,
+          onConfirm: (int minutes) async => throw StateError('boom'),
+          onClosed: (ExtendBroadcastDialogResult? outcome) {
+            capturedOutcome = outcome;
+          },
+        );
+
+        await tester.tap(
+          find.byKey(const Key('extend-broadcast-confirm-button')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(capturedOutcome, isNotNull);
+        expect(capturedOutcome!.success, isFalse);
+        expect(capturedOutcome!.minutes, 30);
+      },
+    );
   });
 }
 

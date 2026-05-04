@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../app_logging.dart';
 import '../strings/app_strings.dart';
 
 /// 「放送を延長」ダイアログで選べる固定肢（分）。
@@ -90,7 +91,21 @@ class _ExtendBroadcastDialogState extends State<ExtendBroadcastDialog> {
     });
     bool success = false;
     try {
+      // Defensive try-catch around the host callback: a stray exception
+      // thrown after the dialog has already been popped (in `finally`)
+      // would otherwise leave the screen with an unhandled future and
+      // misrepresent the API outcome. Convert any exception into a
+      // failure result so the screen-side handler always sees a
+      // consistent 2-値 outcome.
       success = await widget.onConfirm(_selectedMinutes);
+    } catch (e, st) {
+      // Preserve diagnostics: the Repository normally swallows its own
+      // exceptions into BroadcastControlResult, so anything reaching
+      // here is genuinely unexpected (programming error, host-side
+      // state mutation, etc). Log via the project-wide debug channel
+      // so field issues are reproducible.
+      appDebugLogLazy(() => '[ExtendBroadcastDialog] onConfirm threw: $e\n$st');
+      success = false;
     } finally {
       if (mounted) {
         Navigator.of(context).pop(
@@ -120,35 +135,33 @@ class _ExtendBroadcastDialogState extends State<ExtendBroadcastDialog> {
       child: AlertDialog(
         key: const Key('extend-broadcast-dialog'),
         title: Text(strings.dialogTitle),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            DropdownButtonFormField<int>(
-              key: const Key('extend-broadcast-minutes-dropdown'),
-              initialValue: _selectedMinutes,
-              decoration: InputDecoration(
-                labelText: strings.fieldLabel,
-                border: const OutlineInputBorder(),
-              ),
-              onChanged: _isInFlight
-                  ? null
-                  : (int? value) {
-                      if (value == null) return;
-                      setState(() {
-                        _selectedMinutes = value;
-                      });
-                    },
-              items: <DropdownMenuItem<int>>[
-                for (final int minutes in kExtendBroadcastOptionsMinutes)
-                  DropdownMenuItem<int>(
-                    key: Key('extend-broadcast-option-$minutes'),
-                    value: minutes,
-                    child: Text(strings.optionMinutes(minutes)),
-                  ),
-              ],
+        content: Semantics(
+          container: true,
+          label: '${strings.fieldLabel}、現在 $_selectedMinutes 分、ボタン',
+          child: DropdownButtonFormField<int>(
+            key: const Key('extend-broadcast-minutes-dropdown'),
+            initialValue: _selectedMinutes,
+            decoration: InputDecoration(
+              labelText: strings.fieldLabel,
+              border: const OutlineInputBorder(),
             ),
-          ],
+            onChanged: _isInFlight
+                ? null
+                : (int? value) {
+                    if (value == null) return;
+                    setState(() {
+                      _selectedMinutes = value;
+                    });
+                  },
+            items: <DropdownMenuItem<int>>[
+              for (final int minutes in kExtendBroadcastOptionsMinutes)
+                DropdownMenuItem<int>(
+                  key: Key('extend-broadcast-option-$minutes'),
+                  value: minutes,
+                  child: Text(strings.optionMinutes(minutes)),
+                ),
+            ],
+          ),
         ),
         actions: <Widget>[
           TextButton(
@@ -166,7 +179,10 @@ class _ExtendBroadcastDialogState extends State<ExtendBroadcastDialog> {
                       const SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          semanticsLabel: '延長中',
+                        ),
                       ),
                       const SizedBox(width: 8),
                       Text(strings.confirm),

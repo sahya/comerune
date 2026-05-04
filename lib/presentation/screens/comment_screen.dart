@@ -4572,6 +4572,13 @@ class _CommentScreenState extends State<CommentScreen>
           await showExtendBroadcastDialog(
             context,
             onConfirm: (int minutes) async {
+              // TODO(#872 follow-up): once `BroadcastControlPanel` is
+              // wired into production we should propagate
+              // `result.endTime` into a shared program state so
+              // `_RemainingTimeIndicator` reflects the new countdown
+              // immediately. The Repository already returns it;
+              // dropping it here is intentional until the panel
+              // consumes it.
               final BroadcastControlResult result = await repo.extendBroadcast(
                 programId: widget.programInfo.lv,
                 userSession: _commentPostUserSession,
@@ -4585,18 +4592,20 @@ class _CommentScreenState extends State<CommentScreen>
         return;
       }
       final ExtendBroadcastStrings strings = AppStrings.extendBroadcast;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          key: outcome.success
-              ? const Key('extend-broadcast-success-snackbar')
-              : const Key('extend-broadcast-failure-snackbar'),
-          content: Text(
-            outcome.success
-                ? strings.success(outcome.minutes)
-                : strings.failure,
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            key: outcome.success
+                ? const Key('extend-broadcast-success-snackbar')
+                : const Key('extend-broadcast-failure-snackbar'),
+            content: Text(
+              outcome.success
+                  ? strings.success(outcome.minutes)
+                  : strings.failure,
+            ),
           ),
-        ),
-      );
+        );
     } finally {
       if (mounted) {
         setState(() {
