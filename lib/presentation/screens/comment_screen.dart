@@ -529,6 +529,7 @@ class PinnedCommentRowHarness extends StatelessWidget {
 /// screen because the menu's wiring lives entirely inside [CommentScreen].
 enum _AppBarMenuAction {
   extendBroadcast,
+  toggleAutoExtendBroadcast,
   endBroadcast,
   search,
   saveLog,
@@ -601,6 +602,7 @@ class CommentScreen extends StatefulWidget {
     this.commentZebraStripingEnabled = false,
     this.commentSortOrder = CommentSortOrder.ascending,
     this.showCommentNo = false,
+    this.autoExtendBroadcastEnabled = false,
     this.userColorMap = const <String, int>{},
     this.onUserColorChanged,
     this.onUserColorRemoved,
@@ -659,6 +661,11 @@ class CommentScreen extends StatefulWidget {
   /// `true` のとき、コメント行のメタ情報先頭（時刻の前）に
   /// `AppMessage.commentNo` を表示する。Issue #784。
   final bool showCommentNo;
+
+  /// 配信中に「残り 5 分」を切ったら自動延長するかどうか（Issue #875）。
+  /// PR1 範囲では AppBar オーバーフローメニュー内の Switch 表示状態の
+  /// 初期値として使うのみ。Timer 動作の配線は #876 (PR2) で行う。
+  final bool autoExtendBroadcastEnabled;
 
   /// Per-user comment color map. Keys are user IDs, values are ARGB32 ints.
   final Map<String, int> userColorMap;
@@ -785,6 +792,15 @@ class _CommentScreenState extends State<CommentScreen>
   /// menu tap until the dialog and any in-flight API call resolve so a
   /// re-tap on the menu cannot stack a second dialog.
   bool _isExtendingBroadcast = false;
+
+  /// Issue #875: 自動延長 Switch の現在の ON/OFF 状態。
+  ///
+  /// `widget.autoExtendBroadcastEnabled` の初期値で起動し、ユーザーが
+  /// メニューでトグルすると即座に反転する。永続化はコールバック経由で
+  /// 上位レイヤー（select_screen / SettingsStore）に委ねるため、ここでは
+  /// 表示用キャッシュとしてのみ保持する。Timer 動作の有効化は #876 (PR2)
+  /// で controller を経由する形で配線する予定。
+  late bool _autoExtendBroadcastEnabled = widget.autoExtendBroadcastEnabled;
 
   /// Timestamp at which the broadcast transitioned to ended/stopped.
   /// Used to freeze the status-bar elapsed timer display.
@@ -1194,6 +1210,17 @@ class _CommentScreenState extends State<CommentScreen>
         if (!mounted) return;
         _scrollToEdge(animated: false);
       });
+    }
+
+    // Issue #875: re-seed the local Switch cache when the parent
+    // rebuilds CommentScreen with a different [autoExtendBroadcastEnabled]
+    // (e.g. Settings Import replacing AppSettings). The local copy lets
+    // the user's tap update the menu without round-tripping through
+    // SharedPreferences first; equality check leaves the user's last
+    // toggle intact on unrelated parent rebuilds.
+    if (oldWidget.autoExtendBroadcastEnabled !=
+        widget.autoExtendBroadcastEnabled) {
+      _autoExtendBroadcastEnabled = widget.autoExtendBroadcastEnabled;
     }
 
     if (oldWidget.connectionSupervisor != widget.connectionSupervisor) {
@@ -4331,6 +4358,15 @@ class _CommentScreenState extends State<CommentScreen>
           ),
         if (canEndBroadcast)
           PopupMenuItem<Object>(
+            key: const Key('auto-extend-broadcast-toggle'),
+            value: _AppBarMenuAction.toggleAutoExtendBroadcast,
+            child: _OverflowMenuToggleRow(
+              label: AppStrings.autoExtendBroadcast.menuItem,
+              checked: _autoExtendBroadcastEnabled,
+            ),
+          ),
+        if (canEndBroadcast)
+          PopupMenuItem<Object>(
             key: const Key('end-broadcast-button'),
             value: _AppBarMenuAction.endBroadcast,
             enabled: !_isEndingBroadcast,
@@ -4395,6 +4431,8 @@ class _CommentScreenState extends State<CommentScreen>
         if (!_isExtendingBroadcast) {
           unawaited(_extendBroadcastFromMenu());
         }
+      case _AppBarMenuAction.toggleAutoExtendBroadcast:
+        _toggleAutoExtendBroadcast();
       case _AppBarMenuAction.endBroadcast:
         // `_isEndingBroadcast` may have flipped to true between menu open
         // and selection (e.g. user re-opened during an in-flight call),
@@ -4540,6 +4578,22 @@ class _CommentScreenState extends State<CommentScreen>
         });
       }
     }
+  }
+
+  /// Issue #875: Flips the local "自動延長" Switch state and notifies the
+  /// composition root so the new value can be persisted via
+  /// [SettingsStore.save]. The local cache is updated immediately so the
+  /// menu reflects the new state on the next reopen without waiting for
+  /// the persistence round-trip.
+  ///
+  /// Behavior (Timer scheduling) is wired in #876 (PR2) — this handler
+  /// only owns the Switch state in PR1.
+  void _toggleAutoExtendBroadcast() {
+    final bool next = !_autoExtendBroadcastEnabled;
+    setState(() {
+      _autoExtendBroadcastEnabled = next;
+    });
+    widget.callbacks.onAutoExtendBroadcastChanged?.call(next);
   }
 
   /// Opens the "放送を延長" dialog and dispatches the extension API call
@@ -5543,6 +5597,62 @@ class _OverflowMenuRow extends StatelessWidget {
                 Icon(icon, color: effectiveColor),
                 const SizedBox(width: 12),
                 Text(label, style: TextStyle(color: effectiveColor)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Issue #875: AppBar オーバーフローメニュー用のトグル行。`_OverflowMenuRow`
+/// と同じ高さ・余白を維持しつつ、左端のアイコン枠を空白で揃えて
+/// 行末に [Switch] を配置する。タップは PopupMenuItem 全体に任せる
+/// 設計のため、Switch 自体は [IgnorePointer] で包んで二重発火を防ぎ、
+/// `onChanged: (_) {}` で disable 表示にしないダミーを与える。
+///
+/// Accessibility:
+/// - [MergeSemantics] / [Semantics(toggled:)] で「ON / OFF のトグル可能
+///   ボタン」と読み上げられるようにする。
+/// - [Tooltip] でタッチ長押し / ホバー時にラベルを表示する。
+/// - [ExcludeSemantics] で内部の [Text] / [Switch] の Semantics 重複を
+///   防ぐ（外側の `Semantics.label` を一次情報源とする）。
+class _OverflowMenuToggleRow extends StatelessWidget {
+  const _OverflowMenuToggleRow({required this.label, required this.checked});
+
+  final String label;
+  final bool checked;
+
+  @override
+  Widget build(BuildContext context) {
+    return MergeSemantics(
+      child: Semantics(
+        button: true,
+        toggled: checked,
+        label: label,
+        child: Tooltip(
+          message: label,
+          child: ExcludeSemantics(
+            child: Row(
+              children: <Widget>[
+                // 既存メニュー項目の左端 Icon (24×24) と縦位置を揃える
+                // ためのダミー領域。空欄で残しておき、Switch は行末に
+                // 寄せる構成にする。
+                const SizedBox(width: 24, height: 24),
+                const SizedBox(width: 12),
+                Expanded(child: Text(label)),
+                IgnorePointer(
+                  child: Switch(
+                    value: checked,
+                    // `onChanged: null` だと Switch が disabled 表示
+                    // (薄色) になるため、ダミーで通常表示を維持する。
+                    // タップは IgnorePointer で吸収され、上位の
+                    // PopupMenuItem に伝播する。
+                    onChanged: (_) {},
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
               ],
             ),
           ),

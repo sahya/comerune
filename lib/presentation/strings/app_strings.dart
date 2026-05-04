@@ -47,6 +47,8 @@ abstract final class AppStrings {
       BroadcastHistoryStrings._();
   static const ExtendBroadcastStrings extendBroadcast =
       ExtendBroadcastStrings._();
+  static const AutoExtendBroadcastStrings autoExtendBroadcast =
+      AutoExtendBroadcastStrings._();
 }
 
 /// `SettingsScreen` で使用する文字列の集約。
@@ -401,4 +403,16 @@ final class ExtendBroadcastStrings {
 
   /// 延長 API 失敗時の SnackBar 文言（成功 / 失敗の 2 値のみ表示）。
   String get failure => '放送を延長できませんでした';
+}
+
+/// Issue #875: 自動延長機能のメニュー項目で使う文字列。
+///
+/// PR1 範囲では Switch UI の表示ラベルのみを集約する。Timer 動作で
+/// コメ欄に流す成功/失敗のシステムメッセージ文言は #876 (PR2) で
+/// 追加する。
+final class AutoExtendBroadcastStrings {
+  const AutoExtendBroadcastStrings._();
+
+  /// AppBar オーバーフローメニューの項目ラベル。
+  String get menuItem => '自動延長';
 }
