@@ -149,18 +149,35 @@ flutter run \
 
 ## 7. トラブルシュート
 
-| 症状 | 主な原因 | 対処 |
-|---|---|---|
-| 拡張 widget が menu に出ない | 型が `PopupMenuEntry<Object>` でない | `PopupMenuItem<Object>` に修正（invariant generics） |
-| 〃 | 非 broadcaster | 該当 slot は broadcaster gate 必須 |
-| 〃 | dart-define で disable | `COMERUNE_EXT_DISABLED` / `COMERUNE_EXT_SLOT_ORDER_*=hostOnly` を確認 |
-| 〃 | `register()` 内で例外 | debug ログ `optional integration unavailable` |
-| service が常に Unsupported | `registerService` 未呼び出し / 拡張内で Unsupported を return | 拡張側ロジック確認 |
-| 〃 | `COMERUNE_EXT_POLICY=hostOnly` 等で固定 | 該当 dart-define を外す |
-| 〃 | `loadAll` 後の register（freeze 後） | register は `register()` メソッド内のみで行う |
-| service が常に Failure | 拡張内で例外を throw | debug ログ `optional integration call failed`。invoker が `ExtensionResultFailure` に正規化 |
-| `flutter pub get` がパッケージ解決失敗 | dir 名と pubspec name 不一致 | どちらかをそろえる + `make ext-gen` 再実行 |
-| `make ext-gen` 後 `pubspec.lock` 差分大 | 新 path 依存追加で解決結果が変わった | 差分確認後 commit。lock は通常 commit する |
+### 拡張 widget が menu に出ない
+
+| 主な原因 | 対処 |
+|---|---|
+| 型が `PopupMenuEntry<Object>` でない | `PopupMenuItem<Object>` に修正（invariant generics で他は silently drop） |
+| 非 broadcaster | 該当 slot は broadcaster gate 必須 |
+| dart-define で disable | `COMERUNE_EXT_DISABLED` / `COMERUNE_EXT_SLOT_ORDER_*=hostOnly` を確認 |
+| `register()` 内で例外 | debug ログ `optional integration unavailable` を確認 |
+
+### service 呼び出しが常に `ExtensionResultUnsupported` を返す
+
+| 主な原因 | 対処 |
+|---|---|
+| `registerService` 未呼び出し / 拡張内で Unsupported を明示 return | 拡張側ロジック確認 |
+| `COMERUNE_EXT_POLICY=hostOnly` 等で固定 | 該当 dart-define を外す |
+| `loadAll` 後の register（freeze 後） | register は `register()` メソッド内のみで行う |
+
+### service 呼び出しが常に `ExtensionResultFailure` を返す
+
+| 主な原因 | 対処 |
+|---|---|
+| 拡張内で例外を throw | debug ログ `optional integration call failed` を確認。invoker が `ExtensionResultFailure` に正規化、host は保護される |
+
+### ビルド / 依存解決が失敗する
+
+| 主な原因 | 対処 |
+|---|---|
+| `flutter pub get` がパッケージ解決失敗 | dir 名と pubspec name 不一致 → どちらかをそろえる + `make ext-gen` 再実行 |
+| `make ext-gen` 後 `pubspec.lock` の差分が大きい | 新 path 依存追加で解決結果が変わった。差分確認後に commit、lock は通常 commit する |
 
 ## 付録
 
