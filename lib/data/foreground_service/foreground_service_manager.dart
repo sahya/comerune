@@ -66,6 +66,7 @@ class ForegroundServiceManager {
         autoRunOnMyPackageReplaced: false,
         allowWakeLock: true,
         allowWifiLock: true,
+        stopWithTask: true,
       ),
     );
   }
