@@ -4861,20 +4861,6 @@ class _CommentScreenState extends State<CommentScreen>
     if (callback == null) {
       return;
     }
-    int? peakOffset;
-    if (stats.peakMinuteCount > 0 && stats.peakMinuteLabel != null) {
-      // Pick the smallest minute offset whose count matches the
-      // peakMinuteCount — `CommentLogStats.fromMessages` chooses the
-      // first such bucket via natural map iteration; we mirror that by
-      // picking the smallest key for determinism.
-      for (final MapEntry<int, int> entry in stats.commentsPerMinute.entries) {
-        if (entry.value == stats.peakMinuteCount) {
-          if (peakOffset == null || entry.key < peakOffset) {
-            peakOffset = entry.key;
-          }
-        }
-      }
-    }
     final RecentBroadcastStats snapshot = RecentBroadcastStats(
       lv: widget.programInfo.lv,
       endedAt: _endedAt ?? DateTime.now(),
@@ -4883,7 +4869,8 @@ class _CommentScreenState extends State<CommentScreen>
       durationSeconds: stats.duration.inSeconds,
       programTitle: widget.programInfo.programTitle,
       beginAt: widget.programInfo.beginAt,
-      peakMinuteOffset: peakOffset,
+      // peakOffset 算出は domain 層の純関数に委譲（テスト容易化）。
+      peakMinuteOffset: RecentBroadcastStats.resolvePeakMinuteOffset(stats),
       peakMinuteCount: stats.peakMinuteCount,
       peakMinuteLabel: stats.peakMinuteLabel,
       isBroadcaster: _isBroadcaster,
@@ -5492,13 +5479,19 @@ class _StatusBarState extends State<_StatusBar> {
   @override
   void initState() {
     super.initState();
-    _autoCollapseTimer = Timer(const Duration(milliseconds: 1500), () {
-      if (mounted) {
-        setState(() {
-          _collapsed = true;
-        });
-      }
-    });
+    // Issue #767: 直前の統計ボタンが表示される放送ではユーザーが導線に
+    // 気付くまでに時間がかかるため、自動折りたたみをスキップする。それ
+    // 以外は従来通り 1500ms で折りたたむ（縦方向の節約）。
+    if (widget.recentBroadcastStats == null ||
+        widget.onShowRecentBroadcastStats == null) {
+      _autoCollapseTimer = Timer(const Duration(milliseconds: 1500), () {
+        if (mounted) {
+          setState(() {
+            _collapsed = true;
+          });
+        }
+      });
+    }
     if (_shouldTickElapsed) {
       _startElapsedTimer();
     }
@@ -5630,10 +5623,10 @@ class _StatusBarState extends State<_StatusBar> {
                   // が無い／初回放送時は当該行ごと描画しない（暫定 UI を
                   // 残さない方針）。視聴セッションは callback 受け側で
                   // フィルタされるためここに到達しない。
-                  // 注: ステータスバーは初回表示後 1500ms で自動折りたたまれ
-                  // る（initState の _autoCollapseTimer）。本ボタンは展開
-                  // 時のみ表示され、ユーザーは status bar を再タップで再
-                  // 展開して操作する。
+                  // 注: 通常はステータスバーが 1500ms で自動折りたたまれる
+                  // が、本ボタンが表示される放送では initState 側で
+                  // _autoCollapseTimer をスキップしてユーザーが導線に
+                  // 気付ける時間を確保している。
                   if (widget.recentBroadcastStats != null &&
                       widget.onShowRecentBroadcastStats != null) ...<Widget>[
                     const SizedBox(height: 4),

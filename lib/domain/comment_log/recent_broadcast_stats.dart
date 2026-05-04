@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import 'comment_log_stats.dart';
+
 /// Issue #767: 配信中の放送詳細から「直前1件」の統計を再表示するための、
 /// メモリ上の最小スナップショット。
 ///
@@ -31,19 +33,58 @@ class RecentBroadcastStats {
     this.isBroadcaster = false,
   });
 
+  /// `CommentLogStats` から `peakMinuteOffset` を決定論的に導出する純関数。
+  ///
+  /// `commentsPerMinute` の中で `peakMinuteCount` と一致する分のうち
+  /// 最小キーを返す。`CommentLogStats.fromMessages` が natural map
+  /// iteration で「最初に到達した最大値」を採用しているのに合わせ、再起動
+  /// やテストでも同じ値を再現できるようにするための tiebreak 規則。
+  ///
+  /// `peakMinuteCount` が 0、または `peakMinuteLabel` が null の場合は
+  /// 「ピーク無し」とみなし null を返す。
+  ///
+  /// 元は `comment_screen.dart` 内に inline で書かれていたが、テスト容易
+  /// 化と再利用性のため domain 層の純関数として切り出した。
+  static int? resolvePeakMinuteOffset(CommentLogStats stats) {
+    if (stats.peakMinuteCount <= 0 || stats.peakMinuteLabel == null) {
+      return null;
+    }
+    int? smallest;
+    for (final MapEntry<int, int> entry in stats.commentsPerMinute.entries) {
+      if (entry.value == stats.peakMinuteCount) {
+        if (smallest == null || entry.key < smallest) {
+          smallest = entry.key;
+        }
+      }
+    }
+    return smallest;
+  }
+
   /// 直前放送の番組ID（`lv348712105` 等）。
   final String lv;
 
   /// この放送が ended/stopped に到達した時刻。
+  ///
+  /// 時刻ゾーン: 生成元（`comment_screen._notifyRecentBroadcastStatsCaptured`）
+  /// が `_endedAt ?? DateTime.now()` をそのまま渡すため、production では
+  /// **ローカル時刻**になる。テストで `DateTime.utc(...)` を渡すと
+  /// `==` が時刻ゾーン違いで一致しないので、テスト fixture もローカル時刻
+  /// に統一すること。
   final DateTime endedAt;
 
+  /// `CommentLogStats.totalComments` と同等。
   final int totalComments;
+
+  /// `CommentLogStats.uniqueUserCount` と同等。
   final int uniqueUserCount;
 
   /// `CommentLogStats.duration.inSeconds` と同等。
   final int durationSeconds;
 
   final String? programTitle;
+
+  /// 放送開始時刻。`endedAt` と同じく**ローカル時刻**で保持される
+  /// （生成元の `widget.programInfo.beginAt` がそのまま流れてくる）。
   final DateTime? beginAt;
 
   /// 最も盛り上がった分の開始からのオフセット（無しなら null）。
