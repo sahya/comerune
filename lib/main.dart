@@ -18,8 +18,9 @@ import 'application/onboarding/onboarding_store.dart';
 import 'application/settings/settings_store.dart';
 import 'application/settings/shared_preferences_adapter.dart';
 import 'application/speech/speech_availability_notifier.dart';
-import 'application/upgrade/upgrade_initializer.dart';
+import 'application/statistics/recent_broadcast_stats_holder.dart';
 import 'application/statistics/statistics_store.dart';
+import 'application/upgrade/upgrade_initializer.dart';
 import 'application/timeline/timeline_store.dart';
 import 'data/auth/oauth_bff/oauth_bff_auth_service.dart';
 import 'data/auth/oauth_bff/oauth_bff_client.dart';
@@ -29,6 +30,7 @@ import 'data/auth/oauth_bff/oauth_state_store.dart';
 import 'data/auth/oauth_bff/oauth_token_store.dart';
 import 'data/auth/user_session_store.dart';
 import 'data/comment/live_comment_repository.dart';
+import 'data/comment_log/broadcast_history_store.dart';
 import 'data/comment_log/comment_log_writer.dart';
 import 'data/connection/program_info_resolver.dart';
 import 'data/broadcaster/broadcaster_name_store.dart';
@@ -57,6 +59,9 @@ import 'presentation/screens/onboarding_screen.dart';
 import 'presentation/select/select_screen.dart';
 import 'presentation/strings/app_strings.dart';
 import 'presentation/theme/app_theme.dart';
+import 'extension/extension_loader.dart';
+import 'extension/extension_registry.dart';
+import 'extension/extension_scope.dart';
 
 /// Feature flag: タイムシフト（過去放送）コメント取得の有効化。
 ///
@@ -160,6 +165,10 @@ Future<void> main() async {
   // tile titles so the user can recognise broadcasters by name.
   final BroadcasterNameStore broadcasterNameStore =
       SharedPreferencesBroadcasterNameStore(prefs: prefsAdapter);
+  // Issue #766: 過去放送のコメント統計を再アクセスできる履歴ビュー。
+  // 端末ローカルにのみ保存し、設定 Export/Import からは意図的に除外する。
+  final BroadcastHistoryStore broadcastHistoryStore =
+      SharedPreferencesBroadcastHistoryStore(prefs: prefsAdapter);
   await BroadcasterNgMigrator.migrateIfNeeded(
     prefs: prefsAdapter,
     store: broadcasterNgStore,
@@ -221,6 +230,13 @@ Future<void> main() async {
     ),
   );
 
+  // Safe to call even with no integrations installed: the loader
+  // silently completes with an empty registry. The populated registry
+  // is then handed to ComeruneApp so an ExtensionScope can publish
+  // it to the rest of the widget tree.
+  final ExtensionLoader extensionLoader = ExtensionLoader();
+  await extensionLoader.loadAll();
+
   runApp(
     ComeruneApp(
       settingsStore: settingsStore,
@@ -230,9 +246,11 @@ Future<void> main() async {
       userAttributeStore: userAttributeStore,
       broadcasterNgStore: broadcasterNgStore,
       broadcasterNameStore: broadcasterNameStore,
+      broadcastHistoryStore: broadcastHistoryStore,
       foregroundServiceManager: foregroundServiceManager,
       onboardingStore: onboardingStore,
       oauthAuthController: oauthAuthController,
+      extensionRegistry: extensionLoader.registry,
     ),
   );
 }
@@ -247,9 +265,11 @@ class ComeruneApp extends StatefulWidget {
     this.userAttributeStore,
     this.broadcasterNgStore,
     this.broadcasterNameStore,
+    this.broadcastHistoryStore,
     this.foregroundServiceManager,
     required this.onboardingStore,
     required this.oauthAuthController,
+    this.extensionRegistry,
   });
 
   final SettingsStore settingsStore;
@@ -264,15 +284,33 @@ class ComeruneApp extends StatefulWidget {
   /// not wire the store keep working — the picker simply falls back to
   /// rendering raw IDs in that case.
   final BroadcasterNameStore? broadcasterNameStore;
+
+  /// Issue #766: optional integration. When provided, the comment screen
+  /// records each ended broadcast's stats summary into this store and the
+  /// settings screen exposes a "放送履歴" entry. When null (legacy
+  /// embedders / tests that do not need it), recording is skipped and the
+  /// settings tile is hidden.
+  final BroadcastHistoryStore? broadcastHistoryStore;
   final ForegroundServiceManager? foregroundServiceManager;
   final OnboardingStore onboardingStore;
   final OAuthAuthController oauthAuthController;
+
+  /// Optional integration registry populated by `ExtensionLoader`
+  /// before runApp. Tests may omit this; an empty registry is then
+  /// used so descendants that look it up via [ExtensionScope] still
+  /// see a valid (empty) registry rather than throwing.
+  final ExtensionRegistry? extensionRegistry;
 
   @override
   State<ComeruneApp> createState() => _ComeruneAppState();
 }
 
 class _ComeruneAppState extends State<ComeruneApp> {
+  /// Issue #767: memory-only holder for the previous broadcast's stats
+  /// snapshot. Lives at the app level so it survives lv switches and is
+  /// recycled the next time the user broadcasts something else.
+  final RecentBroadcastStatsHolder _recentBroadcastStatsHolder =
+      RecentBroadcastStatsHolder();
   late final TimelineStore _timelineStore;
   late final StatisticsStore _statisticsStore;
   late final _SessionWsClientAdapter _sessionWsClient;
@@ -332,6 +370,17 @@ class _ComeruneAppState extends State<ComeruneApp> {
   late final NdgrTimeshiftClient _timeshiftClient;
   late final TimeshiftFetchController _timeshiftFetchController;
   ForegroundServiceController? _foregroundServiceController;
+
+  // Captured on first access (Dart `late final` semantics) so a
+  // fresh empty registry is allocated on tests that omit
+  // `widget.extensionRegistry`, while production (which always passes
+  // a registry from main()) sees the real one. Stable for the
+  // State's lifetime — subsequent rebuilds with a different
+  // `widget.extensionRegistry` continue to expose the originally
+  // captured instance, which matches the post-`loadAll` freeze
+  // contract from X1.
+  late final ExtensionRegistry _extensionRegistry =
+      widget.extensionRegistry ?? ExtensionRegistry();
 
   @override
   void initState() {
@@ -606,6 +655,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
       ..dispose();
     _playRemainingAfterEndedNotifier.dispose();
     _androidTtsAvailability.dispose();
+    _recentBroadcastStatsHolder.dispose();
     // Detach the App Links listener and close the OAuth BFF http.Client.
     // dispose() returns a Future but State.dispose() is sync — the
     // teardown is fire-and-forget at app shutdown, which is safe because
@@ -642,56 +692,61 @@ class _ComeruneAppState extends State<ComeruneApp> {
   Widget build(BuildContext context) {
     final AppThemeMode currentMode = _themeModeNotifier.value;
     return WithForegroundTask(
-      child: OAuthAuthScope(
-        controller: widget.oauthAuthController,
-        child: MaterialApp(
-          title: 'comerune',
-          theme: AppTheme.themeDataFor(currentMode),
-          darkTheme: currentMode == AppThemeMode.system
-              ? AppTheme.themeDataFor(AppThemeMode.dark)
-              : null,
-          themeMode: currentMode == AppThemeMode.system
-              ? ThemeMode.system
-              : ThemeMode.light,
-          navigatorKey: _navigatorKey,
-          home: SelectScreen(
-            connectionSupervisor: _connectionSupervisor,
-            timelineStore: _timelineStore,
-            statisticsStore: _statisticsStore,
-            settingsStore: widget.settingsStore,
-            initialSettings: widget.initialSettings,
-            onPrepareConnection: _prepareConnection,
-            userSessionStore: widget.userSessionStore,
-            programTitleNotifier: _programTitleNotifier,
-            userNameResolution: UserNameResolution(
-              resolve: _userNameResolver.getCachedName,
-              requestResolve: _userNameResolver.requestResolve,
-              seedCache: _userNameResolver.seedCache,
-              listenable: _userNameResolver,
+      child: ExtensionScope(
+        registry: _extensionRegistry,
+        child: OAuthAuthScope(
+          controller: widget.oauthAuthController,
+          child: MaterialApp(
+            title: 'comerune',
+            theme: AppTheme.themeDataFor(currentMode),
+            darkTheme: currentMode == AppThemeMode.system
+                ? AppTheme.themeDataFor(AppThemeMode.dark)
+                : null,
+            themeMode: currentMode == AppThemeMode.system
+                ? ThemeMode.system
+                : ThemeMode.light,
+            navigatorKey: _navigatorKey,
+            home: SelectScreen(
+              connectionSupervisor: _connectionSupervisor,
+              timelineStore: _timelineStore,
+              statisticsStore: _statisticsStore,
+              settingsStore: widget.settingsStore,
+              initialSettings: widget.initialSettings,
+              onPrepareConnection: _prepareConnection,
+              userSessionStore: widget.userSessionStore,
+              programTitleNotifier: _programTitleNotifier,
+              userNameResolution: UserNameResolution(
+                resolve: _userNameResolver.getCachedName,
+                requestResolve: _userNameResolver.requestResolve,
+                seedCache: _userNameResolver.seedCache,
+                listenable: _userNameResolver,
+              ),
+              broadcasterNameNotifier: _broadcasterNameNotifier,
+              supplierUserIdNotifier: _supplierUserIdNotifier,
+              beginAtNotifier: _beginAtNotifier,
+              vposBaseAtNotifier: _vposBaseAtNotifier,
+              commentLogWriter: widget.commentLogWriter,
+              themeModeNotifier: _themeModeNotifier,
+              followProgramRepository: _followProgramRepository,
+              myProgramRepository: _myProgramRepository,
+              broadcastControlRepository: _broadcastControlRepository,
+              userAttributeStore: widget.userAttributeStore,
+              broadcasterNgStore: widget.broadcasterNgStore,
+              broadcasterNameStore: widget.broadcasterNameStore,
+              recentBroadcastStatsHolder: _recentBroadcastStatsHolder,
+              broadcastHistoryStore: widget.broadcastHistoryStore,
+              commentPostController: _commentPostController,
+              timeshiftFetchController: _timeshiftFetchController,
+              androidTtsAvailability: _androidTtsAvailability,
+              broadcasterEmbedResolver: _broadcasterEmbedResolver,
+              playRemainingAfterEndedSink: _playRemainingAfterEndedNotifier,
+              // Issue #739: when the comment screen finishes draining its speech
+              // queue inside the grace window, signal the FGS controller so its
+              // parallel grace timer can end early too instead of waiting out
+              // the full 30 s. No-op when the FGS controller is not configured.
+              onSpeechGraceEnded:
+                  _foregroundServiceController?.notifyQueueDrained,
             ),
-            broadcasterNameNotifier: _broadcasterNameNotifier,
-            supplierUserIdNotifier: _supplierUserIdNotifier,
-            beginAtNotifier: _beginAtNotifier,
-            vposBaseAtNotifier: _vposBaseAtNotifier,
-            commentLogWriter: widget.commentLogWriter,
-            themeModeNotifier: _themeModeNotifier,
-            followProgramRepository: _followProgramRepository,
-            myProgramRepository: _myProgramRepository,
-            broadcastControlRepository: _broadcastControlRepository,
-            userAttributeStore: widget.userAttributeStore,
-            broadcasterNgStore: widget.broadcasterNgStore,
-            broadcasterNameStore: widget.broadcasterNameStore,
-            commentPostController: _commentPostController,
-            timeshiftFetchController: _timeshiftFetchController,
-            androidTtsAvailability: _androidTtsAvailability,
-            broadcasterEmbedResolver: _broadcasterEmbedResolver,
-            playRemainingAfterEndedSink: _playRemainingAfterEndedNotifier,
-            // Issue #739: when the comment screen finishes draining its speech
-            // queue inside the grace window, signal the FGS controller so its
-            // parallel grace timer can end early too instead of waiting out
-            // the full 30 s. No-op when the FGS controller is not configured.
-            onSpeechGraceEnded:
-                _foregroundServiceController?.notifyQueueDrained,
           ),
         ),
       ),

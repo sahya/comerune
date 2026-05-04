@@ -29,7 +29,10 @@ A mobile comment viewer for Nico live streams with optional voice reading.
 
 ## スクリーンショット
 
-<!-- TODO: スクリーンショットを追加してください -->
+<p>
+  <img width="32%"alt="broadcast_list" src="https://github.com/user-attachments/assets/1019ea84-fa49-464a-8dbd-62be68b8e6c0" />
+  <img width="32%"alt="comment_list" src="https://github.com/user-attachments/assets/9f39d6d8-1e56-469d-bbb0-8f33bb788a9c" />
+</p>
 
 ---
 

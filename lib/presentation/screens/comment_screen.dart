@@ -21,6 +21,7 @@ import '../../data/broadcast/broadcast_control_repository.dart';
 import '../../data/comment_log/comment_log_tag.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../domain/comment_log/comment_log_stats.dart';
+import '../../domain/comment_log/recent_broadcast_stats.dart';
 import '../../domain/models/teach_command.dart';
 import '../../domain/models/teach_command_handler.dart';
 import '../../domain/utils/elapsed_formatter.dart';
@@ -36,6 +37,8 @@ import '../../domain/models/ng_display_subcategory.dart';
 import '../../domain/models/ng_policy.dart';
 import '../../domain/models/ng_preset_category.dart';
 import '../../domain/models/user_name_resolution.dart';
+import '../../extension/extension_slot.dart';
+import '../../extension/slot_ids.dart';
 import '../errors/user_facing_error_messages.dart';
 import '../strings/app_strings.dart';
 import '../theme/app_theme.dart';
@@ -609,6 +612,7 @@ class CommentScreen extends StatefulWidget {
     this.timeshiftFetchController,
     this.broadcastControlRepository,
     this.clock,
+    this.recentBroadcastStats,
   });
 
   /// Program-level metadata (lv, title, broadcaster info, etc.).
@@ -716,6 +720,15 @@ class CommentScreen extends StatefulWidget {
   /// via `withClock`) to verify the 10-second throttle without sleeping on
   /// the wall clock.
   final Clock? clock;
+
+  /// Issue #767: optional snapshot of the **previous** broadcast's stats
+  /// (memory-only, fed by the composition root). When non-null and the
+  /// snapshot's lv differs from [programInfo.lv], the status detail view
+  /// surfaces a "直前の統計を見る" entry. The snapshot is intentionally
+  /// not built from this screen's own state — `_showStatsPanel` already
+  /// renders the *current* broadcast's stats; this prop is purely about
+  /// the **previous** broadcast.
+  final RecentBroadcastStats? recentBroadcastStats;
 
   @override
   State<CommentScreen> createState() => _CommentScreenState();
@@ -3230,6 +3243,17 @@ class _CommentScreenState extends State<CommentScreen>
                   viewerCount: widget.statistics.viewerCount,
                   totalCommentCount: widget.statistics.totalCommentCount,
                   activeUserCount: widget.statistics.activeUserCount,
+                  // Issue #767: surface a "直前の統計を見る" entry only when
+                  // a recent broadcast snapshot exists AND it does not refer
+                  // to the current lv (so we never show the in-progress
+                  // broadcast as its own "previous" link).
+                  recentBroadcastStats:
+                      (widget.recentBroadcastStats != null &&
+                          widget.recentBroadcastStats!.lv !=
+                              widget.programInfo.lv)
+                      ? widget.recentBroadcastStats
+                      : null,
+                  onShowRecentBroadcastStats: _showRecentBroadcastStats,
                 ),
                 if (widget.timeshiftFetchController != null)
                   TimeshiftFetchPanel(
@@ -4272,12 +4296,18 @@ class _CommentScreenState extends State<CommentScreen>
     final bool showDividerBeforeSettings = hasSettings;
     final Color endBroadcastColor = Theme.of(context).colorScheme.error;
 
-    final _AppBarMenuAction? action = await showMenu<_AppBarMenuAction>(
+    // Items list type widened to `PopupMenuEntry<Object>` so that
+    // extension-provided menu entries (which cannot reference the
+    // private `_AppBarMenuAction` enum) can coexist with the host's
+    // own entries. The host's PopupMenuItem instances still carry
+    // `_AppBarMenuAction` values; we use a runtime type guard below
+    // to dispatch them.
+    final Object? action = await showMenu<Object>(
       context: context,
       position: position,
-      items: <PopupMenuEntry<_AppBarMenuAction>>[
+      items: <PopupMenuEntry<Object>>[
         if (canEndBroadcast)
-          PopupMenuItem<_AppBarMenuAction>(
+          PopupMenuItem<Object>(
             key: const Key('end-broadcast-button'),
             value: _AppBarMenuAction.endBroadcast,
             enabled: !_isEndingBroadcast,
@@ -4288,14 +4318,25 @@ class _CommentScreenState extends State<CommentScreen>
               labelColor: endBroadcastColor,
             ),
           ),
+        // Optional integration: extension-supplied broadcaster
+        // actions (e.g. "extend broadcast"). Gated on the same
+        // broadcaster check that hides the destructive end-broadcast
+        // affordance, per the SlotIds.broadcasterScreenActions
+        // contract.
+        if (canEndBroadcast)
+          ...resolveSlotChildren<PopupMenuEntry<Object>>(
+            context,
+            slotId: SlotIds.broadcasterScreenActions,
+            hostChildren: const <PopupMenuEntry<Object>>[],
+          ),
         if (showDividerAfterEndBroadcast) const PopupMenuDivider(),
-        const PopupMenuItem<_AppBarMenuAction>(
+        const PopupMenuItem<Object>(
           key: Key('comment-search-button'),
           value: _AppBarMenuAction.search,
           child: _OverflowMenuRow(icon: Icons.search, label: 'コメントを検索'),
         ),
         if (hasLogWriter)
-          PopupMenuItem<_AppBarMenuAction>(
+          PopupMenuItem<Object>(
             key: const Key('save-comment-log-button'),
             value: _AppBarMenuAction.saveLog,
             enabled: !_isSavingLog,
@@ -4307,7 +4348,7 @@ class _CommentScreenState extends State<CommentScreen>
           ),
         if (showDividerBeforeSettings) const PopupMenuDivider(),
         if (hasSettings)
-          const PopupMenuItem<_AppBarMenuAction>(
+          const PopupMenuItem<Object>(
             key: Key('settings-button'),
             value: _AppBarMenuAction.settings,
             child: _OverflowMenuRow(icon: Icons.settings, label: '設定'),
@@ -4316,6 +4357,11 @@ class _CommentScreenState extends State<CommentScreen>
     );
 
     if (!mounted || action == null) return;
+
+    // Extension-provided entries handle their own onTap and report
+    // values that are not `_AppBarMenuAction`; the type guard isolates
+    // host dispatch so unknown values silently no-op.
+    if (action is! _AppBarMenuAction) return;
 
     switch (action) {
       case _AppBarMenuAction.endBroadcast:
@@ -4794,6 +4840,18 @@ class _CommentScreenState extends State<CommentScreen>
       _statsPanelExpanded = true;
     });
 
+    // Issue #767: hand the snapshot to the composition root so it can
+    // memorise it as "the previous broadcast" for the next session's
+    // status detail redirect. Failures in the receiver must not tear down
+    // the panel UI, so the call is wrapped in try/catch.
+    _notifyRecentBroadcastStatsCaptured(stats);
+
+    // Issue #766: notify the composition root once per finalised broadcast
+    // so it can record a persistent history entry (when the user is the
+    // broadcaster). The callback is intentionally fire-and-forget; failures
+    // in the receiver must not block the panel from being shown.
+    _notifyBroadcastEndedStats(stats, messagesForStatsAndLogs);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
@@ -4810,6 +4868,146 @@ class _CommentScreenState extends State<CommentScreen>
         ),
       );
     });
+  }
+
+  /// Issue #767: build a [RecentBroadcastStats] snapshot from the stats
+  /// just computed and the program metadata, then hand it off to the
+  /// `onRecentBroadcastStatsCaptured` callback. Opt-in: when the callback
+  /// is null this is a no-op.
+  ///
+  /// Race-condition note (`_isBroadcaster`): this flag is set
+  /// asynchronously after [CommentPostController.ensureBroadcasterStatus]
+  /// resolves. If the broadcast ends *before* the broadcaster check
+  /// completes (rare but possible on slow networks), `_isBroadcaster`
+  /// is still `false` and the receiver drops the snapshot. The fallout
+  /// is bounded — only the *first* broadcast in a session is at risk
+  /// because `ensureBroadcasterStatus` is re-resolved when the user
+  /// session changes; subsequent sessions inherit the resolved value.
+  /// We accept this trade-off rather than blocking the panel display
+  /// on a slow API call. Tracked as follow-up if reports emerge.
+  void _notifyRecentBroadcastStatsCaptured(CommentLogStats stats) {
+    final RecentBroadcastStatsCallback? callback =
+        widget.callbacks.onRecentBroadcastStatsCaptured;
+    if (callback == null) {
+      return;
+    }
+    final RecentBroadcastStats snapshot = RecentBroadcastStats(
+      lv: widget.programInfo.lv,
+      endedAt: _endedAt ?? DateTime.now(),
+      totalComments: stats.totalComments,
+      uniqueUserCount: stats.uniqueUserCount,
+      durationSeconds: stats.duration.inSeconds,
+      programTitle: widget.programInfo.programTitle,
+      beginAt: widget.programInfo.beginAt,
+      // peakOffset 算出は domain 層の純関数に委譲（テスト容易化）。
+      peakMinuteOffset: RecentBroadcastStats.resolvePeakMinuteOffset(stats),
+      peakMinuteCount: stats.peakMinuteCount,
+      peakMinuteLabel: stats.peakMinuteLabel,
+      isBroadcaster: _isBroadcaster,
+    );
+    try {
+      callback(snapshot);
+    } on Object catch (error, stackTrace) {
+      _debugLogLazy(
+        () =>
+            '[CommentScreen] onRecentBroadcastStatsCaptured threw '
+            '(suppressed): $error\n$stackTrace',
+      );
+    }
+  }
+
+  /// Issue #766: notify the composition root with a non-message-bearing
+  /// snapshot of the finalised broadcast's stats. The callback is opt-in
+  /// (null in legacy embedders / tests); failures in the receiver are
+  /// suppressed so they cannot tear down the panel UI.
+  ///
+  /// DTO construction is delegated to
+  /// [BroadcastEndedStatsSnapshot.buildFromStats] so the comment screen
+  /// stays focused on collecting the inputs (program info, broadcaster
+  /// flag, peak detection) and the snapshot's field layout lives next to
+  /// the type itself.
+  void _notifyBroadcastEndedStats(
+    CommentLogStats stats,
+    List<AppMessage> messagesForStatsAndLogs,
+  ) {
+    final BroadcastEndedStatsCallback? callback =
+        widget.callbacks.onBroadcastEndedStats;
+    if (callback == null) {
+      return;
+    }
+    final List<HighlightPeak> highlightPeaks =
+        widget.statistics.highlightPickupEnabled
+        ? CommentLogStats.detectPeaks(
+            messagesForStatsAndLogs,
+            commentsPerMinute: stats.commentsPerMinute,
+            ngUserIds: widget.contentFilter.ngUserIds,
+          )
+        : const <HighlightPeak>[];
+    final BroadcastEndedStatsSnapshot snapshot =
+        BroadcastEndedStatsSnapshot.buildFromStats(
+          lv: widget.programInfo.lv,
+          stats: stats,
+          endedAt: _endedAt ?? DateTime.now(),
+          isBroadcaster: _isBroadcaster,
+          programTitle: widget.programInfo.programTitle,
+          broadcasterUserId: widget.programInfo.broadcasterUserId,
+          broadcasterName: widget.programInfo.broadcasterName,
+          beginAt: widget.programInfo.beginAt,
+          highlightPeaks: highlightPeaks,
+        );
+    try {
+      callback(snapshot);
+    } on Object catch (error, stackTrace) {
+      _debugLogLazy(
+        () =>
+            '[CommentScreen] onBroadcastEndedStats threw (suppressed): '
+            '$error\n$stackTrace',
+      );
+    }
+  }
+
+  /// Issue #767: open a modal `CommentLogStatsSheet` for the **previous**
+  /// broadcast (the snapshot held in [CommentScreen.recentBroadcastStats]).
+  /// Reuses the existing modal sheet so visual + interactive parity with
+  /// the end-of-broadcast panel is automatic. The previous snapshot has
+  /// no raw messages, so peak-detection / representative comments are
+  /// intentionally suppressed.
+  void _showRecentBroadcastStats() {
+    if (!mounted) {
+      return;
+    }
+    final RecentBroadcastStats? snapshot = widget.recentBroadcastStats;
+    if (snapshot == null || snapshot.lv == widget.programInfo.lv) {
+      return;
+    }
+    final CommentLogStats stats = CommentLogStats(
+      totalComments: snapshot.totalComments,
+      uniqueUserCount: snapshot.uniqueUserCount,
+      duration: snapshot.duration,
+      peakMinuteLabel: snapshot.peakMinuteLabel,
+      peakMinuteCount: snapshot.peakMinuteCount,
+      // No per-minute distribution available without raw messages; pass
+      // an empty map so the frequency chart and peak detection sections
+      // are hidden naturally by the existing sheet rendering.
+      commentsPerMinute: const <int, int>{},
+    );
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext _) {
+        return CommentLogStatsSheet(
+          key: const Key('recent-broadcast-stats-sheet'),
+          stats: stats,
+          themeMode: widget.themeMode,
+          programTitle: snapshot.programTitle,
+          lv: snapshot.lv,
+          // Highlight pickup needs raw messages we no longer hold; force
+          // it off so the sheet does not silently render an empty
+          // "盛り上がり" section.
+          highlightPickupEnabled: false,
+        );
+      },
+    );
   }
 
   /// Re-opens or expands the stats panel. Safe to call when stats are
@@ -5305,6 +5503,8 @@ class _StatusBar extends StatefulWidget {
     this.viewerCount,
     this.totalCommentCount = 0,
     this.activeUserCount = 0,
+    this.recentBroadcastStats,
+    this.onShowRecentBroadcastStats,
   });
 
   final String lv;
@@ -5323,6 +5523,17 @@ class _StatusBar extends StatefulWidget {
   final int? viewerCount;
   final int totalCommentCount;
   final int activeUserCount;
+
+  /// Issue #767: optional snapshot of the previous broadcast's stats.
+  /// When non-null and the bar is expanded, a "直前の統計を見る" entry is
+  /// rendered. The caller is expected to pre-filter this to null when no
+  /// snapshot exists or when the snapshot's lv equals the current lv (so
+  /// we never link to "this broadcast" as its own previous entry).
+  final RecentBroadcastStats? recentBroadcastStats;
+
+  /// Issue #767: invoked when the user taps the "直前の統計を見る" entry.
+  /// Required when [recentBroadcastStats] is non-null; null otherwise.
+  final VoidCallback? onShowRecentBroadcastStats;
 
   @override
   State<_StatusBar> createState() => _StatusBarState();
@@ -5348,13 +5559,19 @@ class _StatusBarState extends State<_StatusBar> {
   @override
   void initState() {
     super.initState();
-    _autoCollapseTimer = Timer(const Duration(milliseconds: 1500), () {
-      if (mounted) {
-        setState(() {
-          _collapsed = true;
-        });
-      }
-    });
+    // Issue #767: 直前の統計ボタンが表示される放送ではユーザーが導線に
+    // 気付くまでに時間がかかるため、自動折りたたみをスキップする。それ
+    // 以外は従来通り 1500ms で折りたたむ（縦方向の節約）。
+    if (widget.recentBroadcastStats == null ||
+        widget.onShowRecentBroadcastStats == null) {
+      _autoCollapseTimer = Timer(const Duration(milliseconds: 1500), () {
+        if (mounted) {
+          setState(() {
+            _collapsed = true;
+          });
+        }
+      });
+    }
     if (_shouldTickElapsed) {
       _startElapsedTimer();
     }
@@ -5482,6 +5699,54 @@ class _StatusBarState extends State<_StatusBar> {
                       ],
                     ),
                   ],
+                  // Issue #767: 直前1件の統計への動線。スナップショット
+                  // が無い／初回放送時は当該行ごと描画しない（暫定 UI を
+                  // 残さない方針）。視聴セッションは callback 受け側で
+                  // フィルタされるためここに到達しない。
+                  // 注: 通常はステータスバーが 1500ms で自動折りたたまれる
+                  // が、本ボタンが表示される放送では initState 側で
+                  // _autoCollapseTimer をスキップしてユーザーが導線に
+                  // 気付ける時間を確保している。
+                  if (widget.recentBroadcastStats != null &&
+                      widget.onShowRecentBroadcastStats != null) ...<Widget>[
+                    const SizedBox(height: 4),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Semantics(
+                        button: true,
+                        label: _recentBroadcastStatsSemanticsLabel(
+                          widget.recentBroadcastStats!,
+                        ),
+                        child: TextButton.icon(
+                          key: const Key('show-recent-broadcast-stats-button'),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 0,
+                            ),
+                            minimumSize: const Size(0, 32),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          icon: const Icon(Icons.bar_chart, size: 16),
+                          // ConstrainedBox で max width を制限し、長尺タイトル
+                          // でステータスバー高さが膨らむのを防ぐ。
+                          label: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 240),
+                            child: Text(
+                              _recentBroadcastStatsButtonLabel(
+                                widget.recentBroadcastStats!,
+                              ),
+                              style: const TextStyle(fontSize: 12),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ),
+                          onPressed: widget.onShowRecentBroadcastStats,
+                        ),
+                      ),
+                    ),
+                  ],
                   if (widget.debugMode) ...<Widget>[
                     const SizedBox(height: 4),
                     // 放送者ID / 最終受信 / 再接続 are debug-only
@@ -5529,6 +5794,39 @@ class _StatusBarState extends State<_StatusBar> {
       ),
     );
   }
+}
+
+/// Issue #767: button label for the "直前1件の統計" entry. Compact form
+/// preferred so the status bar does not balloon vertically. Uses the
+/// previous broadcast's title when available, falling back to the lv.
+///
+/// Title is hard-truncated at 40 chars in addition to the `Text` overflow
+/// ellipsis (defense-in-depth against pathological titles).
+String _recentBroadcastStatsButtonLabel(RecentBroadcastStats snapshot) {
+  final String? title = snapshot.programTitle;
+  if (title != null && title.trim().isNotEmpty) {
+    final String safe = _truncateForUi(title.trim(), 40);
+    return '直前の統計を見る: $safe';
+  }
+  return '直前の統計を見る (${snapshot.lv})';
+}
+
+/// Screen-reader label that omits the visual ellipsis trick and keeps the
+/// statement form ("直前の放送の統計を表示します") so VoiceOver / TalkBack
+/// reads it as a button purpose, not a fragment.
+String _recentBroadcastStatsSemanticsLabel(RecentBroadcastStats snapshot) {
+  final String? title = snapshot.programTitle?.trim();
+  final String suffix = (title != null && title.isNotEmpty)
+      ? '：${_truncateForUi(title, 40)}'
+      : '（${snapshot.lv}）';
+  return '直前の放送の統計を表示する$suffix';
+}
+
+String _truncateForUi(String input, int maxChars) {
+  if (input.length <= maxChars) {
+    return input;
+  }
+  return '${input.substring(0, maxChars)}…';
 }
 
 class _BroadcasterIcon extends StatelessWidget {
