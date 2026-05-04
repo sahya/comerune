@@ -62,5 +62,20 @@ void main() {
         );
       },
     );
+
+    test('keeps android:exported="false" so external apps cannot bind to the '
+        'foreground service', () {
+      // An exported foreground service can be bound by other apps via
+      // bindService(), opening up lifecycle hijacking and IPC-based
+      // information leakage. The current value is correct; this assertion
+      // exists purely as a regression guard for future manifest edits.
+      expect(
+        serviceTagSource,
+        contains('android:exported="false"'),
+        reason:
+            'android:exported="false" is required so external apps cannot '
+            'bind to or hijack the comment streaming foreground service.',
+      );
+    });
   });
 }
