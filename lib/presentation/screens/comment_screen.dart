@@ -4818,6 +4818,12 @@ class _CommentScreenState extends State<CommentScreen>
       _statsPanelExpanded = true;
     });
 
+    // Issue #766: notify the composition root once per finalised broadcast
+    // so it can record a persistent history entry (when the user is the
+    // broadcaster). The callback is intentionally fire-and-forget; failures
+    // in the receiver must not block the panel from being shown.
+    _notifyBroadcastEndedStats(stats, messagesForStatsAndLogs);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
@@ -4834,6 +4840,56 @@ class _CommentScreenState extends State<CommentScreen>
         ),
       );
     });
+  }
+
+  /// Issue #766: notify the composition root with a non-message-bearing
+  /// snapshot of the finalised broadcast's stats. The callback is opt-in
+  /// (null in legacy embedders / tests); failures in the receiver are
+  /// suppressed so they cannot tear down the panel UI.
+  ///
+  /// DTO construction is delegated to
+  /// [BroadcastEndedStatsSnapshot.buildFromStats] so the comment screen
+  /// stays focused on collecting the inputs (program info, broadcaster
+  /// flag, peak detection) and the snapshot's field layout lives next to
+  /// the type itself.
+  void _notifyBroadcastEndedStats(
+    CommentLogStats stats,
+    List<AppMessage> messagesForStatsAndLogs,
+  ) {
+    final BroadcastEndedStatsCallback? callback =
+        widget.callbacks.onBroadcastEndedStats;
+    if (callback == null) {
+      return;
+    }
+    final List<HighlightPeak> highlightPeaks =
+        widget.statistics.highlightPickupEnabled
+        ? CommentLogStats.detectPeaks(
+            messagesForStatsAndLogs,
+            commentsPerMinute: stats.commentsPerMinute,
+            ngUserIds: widget.contentFilter.ngUserIds,
+          )
+        : const <HighlightPeak>[];
+    final BroadcastEndedStatsSnapshot snapshot =
+        BroadcastEndedStatsSnapshot.buildFromStats(
+          lv: widget.programInfo.lv,
+          stats: stats,
+          endedAt: _endedAt ?? DateTime.now(),
+          isBroadcaster: _isBroadcaster,
+          programTitle: widget.programInfo.programTitle,
+          broadcasterUserId: widget.programInfo.broadcasterUserId,
+          broadcasterName: widget.programInfo.broadcasterName,
+          beginAt: widget.programInfo.beginAt,
+          highlightPeaks: highlightPeaks,
+        );
+    try {
+      callback(snapshot);
+    } on Object catch (error, stackTrace) {
+      _debugLogLazy(
+        () =>
+            '[CommentScreen] onBroadcastEndedStats threw (suppressed): '
+            '$error\n$stackTrace',
+      );
+    }
   }
 
   /// Re-opens or expands the stats panel. Safe to call when stats are

@@ -585,6 +585,15 @@ class SharedPreferencesSettingsStore implements SettingsStore {
 
   @override
   Future<String> exportAsJson() async {
+    // 意図的に除外されている永続化キー（追加時はここにメモを残す）:
+    //
+    // - `stats.broadcastHistory.v1` (Issue #766): 端末ローカルの放送履歴。
+    //   設計判断として Export には含めない (CLAUDE.md「設定項目の変更時の
+    //   注意」: 古い Export ファイルに当該キーが無くても安全に動作する形を
+    //   維持するための除外。`SharedPreferencesBroadcastHistoryStore` も参照)。
+    //
+    // - `settings.voicevox.preMuteVolume` / `settings.androidTts.preMuteVolume`:
+    //   ミュート前ボリューム退避値 (Issue #697)。
     final AppSettings settings = await load();
     final Map<String, dynamic> json = settings.toJson();
     final BroadcasterNgStore? ngStore = _broadcasterNgStore;

@@ -29,6 +29,7 @@ import 'data/auth/oauth_bff/oauth_state_store.dart';
 import 'data/auth/oauth_bff/oauth_token_store.dart';
 import 'data/auth/user_session_store.dart';
 import 'data/comment/live_comment_repository.dart';
+import 'data/comment_log/broadcast_history_store.dart';
 import 'data/comment_log/comment_log_writer.dart';
 import 'data/connection/program_info_resolver.dart';
 import 'data/broadcaster/broadcaster_name_store.dart';
@@ -163,6 +164,10 @@ Future<void> main() async {
   // tile titles so the user can recognise broadcasters by name.
   final BroadcasterNameStore broadcasterNameStore =
       SharedPreferencesBroadcasterNameStore(prefs: prefsAdapter);
+  // Issue #766: 過去放送のコメント統計を再アクセスできる履歴ビュー。
+  // 端末ローカルにのみ保存し、設定 Export/Import からは意図的に除外する。
+  final BroadcastHistoryStore broadcastHistoryStore =
+      SharedPreferencesBroadcastHistoryStore(prefs: prefsAdapter);
   await BroadcasterNgMigrator.migrateIfNeeded(
     prefs: prefsAdapter,
     store: broadcasterNgStore,
@@ -240,6 +245,7 @@ Future<void> main() async {
       userAttributeStore: userAttributeStore,
       broadcasterNgStore: broadcasterNgStore,
       broadcasterNameStore: broadcasterNameStore,
+      broadcastHistoryStore: broadcastHistoryStore,
       foregroundServiceManager: foregroundServiceManager,
       onboardingStore: onboardingStore,
       oauthAuthController: oauthAuthController,
@@ -258,6 +264,7 @@ class ComeruneApp extends StatefulWidget {
     this.userAttributeStore,
     this.broadcasterNgStore,
     this.broadcasterNameStore,
+    this.broadcastHistoryStore,
     this.foregroundServiceManager,
     required this.onboardingStore,
     required this.oauthAuthController,
@@ -276,6 +283,13 @@ class ComeruneApp extends StatefulWidget {
   /// not wire the store keep working — the picker simply falls back to
   /// rendering raw IDs in that case.
   final BroadcasterNameStore? broadcasterNameStore;
+
+  /// Issue #766: optional integration. When provided, the comment screen
+  /// records each ended broadcast's stats summary into this store and the
+  /// settings screen exposes a "放送履歴" entry. When null (legacy
+  /// embedders / tests that do not need it), recording is skipped and the
+  /// settings tile is hidden.
+  final BroadcastHistoryStore? broadcastHistoryStore;
   final ForegroundServiceManager? foregroundServiceManager;
   final OnboardingStore onboardingStore;
   final OAuthAuthController oauthAuthController;
@@ -712,6 +726,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
               userAttributeStore: widget.userAttributeStore,
               broadcasterNgStore: widget.broadcasterNgStore,
               broadcasterNameStore: widget.broadcasterNameStore,
+              broadcastHistoryStore: widget.broadcastHistoryStore,
               commentPostController: _commentPostController,
               timeshiftFetchController: _timeshiftFetchController,
               androidTtsAvailability: _androidTtsAvailability,
