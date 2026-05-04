@@ -27,15 +27,16 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:wakelock_plus_platform_interface/wakelock_plus_platform_interface.dart';
 
 import '../../_support/rich_text_finders.dart';
+import '../../helpers/fake_wakelock_plus_platform.dart';
 
 void main() {
   group('CommentScreen', () {
     late WakelockPlusPlatformInterface previousWakelockPlatform;
-    late _FakeWakelockPlusPlatform fakeWakelock;
+    late FakeWakelockPlusPlatform fakeWakelock;
 
     setUp(() {
       previousWakelockPlatform = wakelockPlusPlatformInstance;
-      fakeWakelock = _FakeWakelockPlusPlatform();
+      fakeWakelock = FakeWakelockPlusPlatform();
       wakelockPlusPlatformInstance = fakeWakelock;
     });
 
@@ -6965,11 +6966,11 @@ void main() {
 
   group('CommentScreen keyword search (Issue #114)', () {
     late WakelockPlusPlatformInterface previousWakelockPlatform;
-    late _FakeWakelockPlusPlatform fakeWakelock;
+    late FakeWakelockPlusPlatform fakeWakelock;
 
     setUp(() {
       previousWakelockPlatform = wakelockPlusPlatformInstance;
-      fakeWakelock = _FakeWakelockPlusPlatform();
+      fakeWakelock = FakeWakelockPlusPlatform();
       wakelockPlusPlatformInstance = fakeWakelock;
     });
 
@@ -7609,11 +7610,11 @@ void main() {
   // See Issue #492 (M2).
   group('Five-feature integration', () {
     late WakelockPlusPlatformInterface previousWakelockPlatform;
-    late _FakeWakelockPlusPlatform fakeWakelock;
+    late FakeWakelockPlusPlatform fakeWakelock;
 
     setUp(() {
       previousWakelockPlatform = wakelockPlusPlatformInstance;
-      fakeWakelock = _FakeWakelockPlusPlatform();
+      fakeWakelock = FakeWakelockPlusPlatform();
       wakelockPlusPlatformInstance = fakeWakelock;
     });
 
@@ -8992,20 +8993,6 @@ class _FakeCommentLogWriter implements CommentLogWriter {
     writeToTempFileCallCount++;
     lastTempMessages = List<AppMessage>.from(messages);
     return '/tmp/$lv.tmp.txt';
-  }
-}
-
-class _FakeWakelockPlusPlatform extends WakelockPlusPlatformInterface {
-  final List<bool> toggles = <bool>[];
-  bool _enabled = false;
-
-  @override
-  Future<bool> get enabled async => _enabled;
-
-  @override
-  Future<void> toggle({required bool enable}) async {
-    toggles.add(enable);
-    _enabled = enable;
   }
 }
 

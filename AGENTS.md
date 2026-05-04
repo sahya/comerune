@@ -89,6 +89,30 @@ Minimum expectation:
 - new logic should have tests when practical
 - bug fixes should include a regression test when practical
 
+## テストファイル肥大化・実行時間ルール
+
+`flutter test` は 1 ファイル = 1 isolate のため、ファイル数増は CI 時間と保守コストに直結する。**カバレッジは件数ではなくコード網羅率と意図網羅性で測る**。本ルールは新規追加・新規変更テストに適用（forward-looking）、既存違反は別 Issue で段階対応する（feature PR に retrofit を混ぜない）。レビュー観点は `CLAUDE.md` を参照。
+
+### ファイル構成
+
+- **1 対象 = 1 ファイル**: 同じ画面・クラス・関数のテストは `<target>_test.dart` に集約
+- **新規ファイル作成前**: `find test -name "<target>_test.dart"` で既存検索 → あれば `group()` 追加で対応
+- **物理分割は 2,000 行超 + 視点分離可** のときのみ（例: `comment_screen_speech_test.dart`）
+- **横断的観点は「観点 = ファイル」**（例: `message_background_contrast_test.dart` に gift / nicoad / notification / operator を集約）
+- **小規模単独 OK**: 別 domain ターゲットの pure function テスト（例: `nico_icon_url_test.dart`）は 1 group + 100 行未満でも単独維持してよい
+
+### Fake / Mock の配置
+
+- 2 ファイル以上で同じ fake を使うなら `test/helpers/fake_<class>.dart` に抽出
+- インライン `class _FakeXxx` の再定義禁止
+
+### 実行時間
+
+- **`testWidgets` vs `test`**: 純粋ロジックは必ず `test()`（`testWidgets` は Flutter binding 起動分重い）
+- **`pumpAndSettle` の濫用禁止**: アニメーション完了が assertion の前提のときだけ使う。setState 反映待ち / 1 フレーム挿入は `pump()` または `pump(Duration)` で済ます
+- **重い setUp は `setUpAll` で共有**: `rootBundle.loadString` 等は 1 回だけ
+- **実時間 sleep 禁止**: `Future.delayed` 不可、`fake_async` または `pump(Duration)` でフェイク時間を進める
+
 ## Required Pre-Implementation Output
 Before writing code, output:
 1. Goal

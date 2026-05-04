@@ -12,6 +12,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 // ignore: depend_on_referenced_packages
 import 'package:wakelock_plus_platform_interface/wakelock_plus_platform_interface.dart';
 
+import '../../helpers/fake_wakelock_plus_platform.dart';
+
 /// Widget integration tests for `_messagesForLog()` on [CommentScreen].
 ///
 /// Accesses the private helper via the [CommentScreenTestAccess] interface
@@ -34,7 +36,7 @@ void main() {
 
     setUp(() {
       previousWakelockPlatform = wakelockPlusPlatformInstance;
-      wakelockPlusPlatformInstance = _FakeWakelockPlusPlatform();
+      wakelockPlusPlatformInstance = FakeWakelockPlusPlatform();
     });
 
     tearDown(() {
@@ -585,16 +587,4 @@ ConnectionSupervisor _buildStreamingSupervisor() {
   expect(supervisor.onSessionWsConnected(), isTrue);
   expect(supervisor.onNdgrEndpointResolved(), isTrue);
   return supervisor;
-}
-
-class _FakeWakelockPlusPlatform extends WakelockPlusPlatformInterface {
-  bool _enabled = false;
-
-  @override
-  Future<bool> get enabled async => _enabled;
-
-  @override
-  Future<void> toggle({required bool enable}) async {
-    _enabled = enable;
-  }
 }
