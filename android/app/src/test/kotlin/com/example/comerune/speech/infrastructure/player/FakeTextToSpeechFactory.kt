@@ -1,6 +1,5 @@
 package com.example.comerune.speech.infrastructure.player
 
-import android.media.AudioAttributes
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
@@ -19,7 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * actions between `factory.create(...)` and the init completion — matching
  * how the real `TextToSpeech` constructor defers its callback.
  */
-class FakeTextToSpeechFactory(
+internal class FakeTextToSpeechFactory(
     private val defaultLanguageResult: Int = TextToSpeech.LANG_AVAILABLE,
 ) : TextToSpeechFactory {
 
@@ -72,7 +71,7 @@ class FakeTextToSpeechFactory(
  * tests can assert the exact sequence (setLanguage → setSpeechRate →
  * setPitch → setOnUtteranceProgressListener → …) as well as shutdown().
  */
-class FakeTextToSpeechAdapter(
+internal class FakeTextToSpeechAdapter(
     private val defaultLanguageResult: Int = TextToSpeech.LANG_AVAILABLE,
 ) : TextToSpeechAdapter {
 
@@ -81,7 +80,8 @@ class FakeTextToSpeechAdapter(
     private val setLanguageCalls: MutableList<Locale> = CopyOnWriteArrayList()
     private val setSpeechRateCalls: MutableList<Float> = CopyOnWriteArrayList()
     private val setPitchCalls: MutableList<Float> = CopyOnWriteArrayList()
-    private val setAudioAttributesCalls: MutableList<AudioAttributes> = CopyOnWriteArrayList()
+    private val setAudioAttributesCalls: MutableList<SpeechAudioAttributesProfile> =
+        CopyOnWriteArrayList()
     private val speakCalls: MutableList<SpeakInvocation> = CopyOnWriteArrayList()
     private val progressListeners: MutableList<UtteranceProgressListener> = CopyOnWriteArrayList()
 
@@ -94,6 +94,10 @@ class FakeTextToSpeechAdapter(
     @Volatile
     private var pendingLanguageResult: Int = defaultLanguageResult
 
+    /** Override to simulate a failing [setSpeechAudioAttributes] call. */
+    @Volatile
+    var audioAttributesResult: Int = TextToSpeech.SUCCESS
+
     val shutdownCount: Int get() = shutdownCounter.get()
 
     val stopCount: Int get() = stopCounter.get()
@@ -104,7 +108,7 @@ class FakeTextToSpeechAdapter(
 
     val pitches: List<Float> get() = setPitchCalls.toList()
 
-    val audioAttributesCalls: List<AudioAttributes>
+    val audioAttributesCalls: List<SpeechAudioAttributesProfile>
         get() = setAudioAttributesCalls.toList()
 
     val speakInvocations: List<SpeakInvocation>
@@ -137,9 +141,9 @@ class FakeTextToSpeechAdapter(
         return TextToSpeech.SUCCESS
     }
 
-    override fun setAudioAttributes(attributes: AudioAttributes): Int {
-        setAudioAttributesCalls.add(attributes)
-        return TextToSpeech.SUCCESS
+    override fun setSpeechAudioAttributes(profile: SpeechAudioAttributesProfile): Int {
+        setAudioAttributesCalls.add(profile)
+        return audioAttributesResult
     }
 
     override fun speak(
