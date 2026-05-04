@@ -201,8 +201,9 @@ abstract class BroadcastControlExtension {
 }
 ```
 
-- ホストは built-in 実装を持ちません（`extensionOnly` 系のユースケース）
-- 拡張未登録時は呼び出し側で `ExtensionResultUnsupported` が返り、関連 UI（ボタン等）は描画されません
+- ホストは built-in 実装を持ちません
+- 呼出側のデフォルト policy は `extensionFirstFallback` で、`hostFallback` は `null` で呼ばれます。**拡張未登録時はそのまま `ExtensionResultUnsupported` が返り**、関連 UI（ボタン等）は描画されません
+- ホストが将来同名のメソッドに対する built-in 実装を持つ場合、呼出側で `hostFallback` を渡せば `extensionFirstFallback` の本来の挙動（拡張優先・失敗時 host にフォールバック）が活きます
 
 ### 4-2. `ExtensionResult<T>` (sealed)
 
@@ -339,7 +340,11 @@ flutter run --dart-define=COMERUNE_EXT_SLOT_ORDER=hostOnly
 | dart-define で disable されている | `COMERUNE_EXT_DISABLED` または `COMERUNE_EXT_SLOT_ORDER_*=hostOnly` を確認 |
 | `register()` 内で例外を投げている | debug ログで `optional integration unavailable` を確認 |
 
-### 8-4. service 呼び出しが常に Unsupported を返す
+### 8-4. service 呼び出しが期待通り動かない
+
+期待される結果ごとに切り分けてください。
+
+#### 常に `ExtensionResultUnsupported` が返る
 
 | 原因 | 対処 |
 |---|---|
@@ -347,6 +352,13 @@ flutter run --dart-define=COMERUNE_EXT_SLOT_ORDER=hostOnly
 | dart-define で `COMERUNE_EXT_POLICY=hostOnly` などに固定 | 該当 dart-define を外す |
 | 拡張内で `ExtensionResultUnsupported` を return している | 拡張側のロジックを確認 |
 | registry が freeze 後に register を試みた | `loadAll` 後の register は silently ignored。register は `register()` メソッド内のみで行う |
+
+#### 常に `ExtensionResultFailure` が返る（呼び出すと内部で例外）
+
+| 原因 | 対処 |
+|---|---|
+| 拡張内で例外を throw している | debug ログで `optional integration call failed` を確認。invoker が拡張例外を `ExtensionResultFailure` に正規化してホストを保護しています |
+| 拡張側 service が長時間 future を返す → タイムアウト | 自前で timeout / retry をかけるか、host 側の呼出箇所に timeout を仕込む |
 
 ### 8-5. テストが落ちる
 
