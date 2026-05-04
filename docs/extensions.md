@@ -125,26 +125,26 @@ class _MyIntegration extends ComeruneExtension {
 
   @override
   void register(ExtensionRegistry registry) {
-    // サービスの登録例
-    registry.registerService<BroadcastControlExtension>(
-      _MyBroadcastControl(),
-    );
+    // 1) service の登録（host の呼出箇所は ExtensionServiceInvoker
+    //    経由で呼び出します）
+    final _MyBroadcastControl control = _MyBroadcastControl();
+    registry.registerService<BroadcastControlExtension>(control);
 
-    // スロットへの widget 追加例（PopupMenuEntry<Object> 必須）
+    // 2) slot への widget 追加（PopupMenuEntry<Object> 必須）。
+    //    onTap は extension 側で完結し、登録した service を直接呼ぶ
+    //    パターンが最も簡潔です。
     registry.registerSlotWidgets(
       SlotIds.broadcasterScreenActions,
       <Widget>[
         PopupMenuItem<Object>(
           value: const Object(),
-          onTap: _onExtendTap,
+          onTap: () => control.extendBroadcast(
+            by: const Duration(minutes: 30),
+          ),
           child: const Text('放送を延長'),
         ),
       ],
     );
-  }
-
-  void _onExtendTap() {
-    // 拡張側で実行したいアクション
   }
 }
 
@@ -153,7 +153,7 @@ class _MyBroadcastControl extends BroadcastControlExtension {
   Future<ExtensionResult<void>> extendBroadcast({
     required Duration by,
   }) async {
-    // 実装
+    // 実装（HTTP 呼び出し / 内部状態の更新など）
     return const ExtensionResultOk<void>(null);
   }
 }
@@ -259,15 +259,23 @@ policy デフォルトは `extensionFirstFallback`。host fallback がない場�
 ### 例
 
 ```bash
-# 拡張をすべて無効化して baseline を確認
-flutter run --dart-define=COMERUNE_EXT_POLICY=hostOnly
+# 拡張をまとめて無効化して baseline を確認（register 自体を skip）
+flutter run --dart-define=COMERUNE_EXT_DISABLED=my_integration,other_integration
 
-# 特定の拡張だけ無効化
-flutter run --dart-define=COMERUNE_EXT_DISABLED=my_integration
+# service 呼び出しだけ host fallback に固定
+# （拡張 widget は描画される。完全に消したい時は次の例と組み合わせる）
+flutter run --dart-define=COMERUNE_EXT_POLICY=hostOnly
 
 # slot を hostOnly に強制（拡張 widget を全 slot で隠す）
 flutter run --dart-define=COMERUNE_EXT_SLOT_ORDER=hostOnly
+
+# 完全 baseline を再現（service + slot 両方を host のみに）
+flutter run \
+  --dart-define=COMERUNE_EXT_POLICY=hostOnly \
+  --dart-define=COMERUNE_EXT_SLOT_ORDER=hostOnly
 ```
+
+**注意**: `COMERUNE_EXT_POLICY` は **service 呼び出しのみ** に作用し、slot widgets には影響しません。slot widgets を抑制するには `COMERUNE_EXT_SLOT_ORDER` を使うか、`COMERUNE_EXT_DISABLED` で対象 extension の register 自体を skip してください。
 
 ### release ビルドでの挙動
 
