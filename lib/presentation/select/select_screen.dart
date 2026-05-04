@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../app_logging.dart';
+import '../../application/comment_log/broadcast_history_recorder.dart';
 import '../../application/comment_post/comment_post_controller.dart';
 import '../../application/timeshift_fetch/timeshift_fetch_controller.dart';
 import '../../application/settings/settings_save_helper.dart';
@@ -14,6 +15,7 @@ import '../../application/statistics/recent_broadcast_stats_recorder.dart';
 import '../../application/statistics/statistics_store.dart';
 import '../../application/timeline/timeline_store.dart';
 import '../../data/auth/user_session_store.dart';
+import '../../data/comment_log/broadcast_history_store.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../data/broadcast/broadcast_control_repository.dart';
 import '../../data/broadcaster/broadcaster_name_store.dart';
@@ -140,6 +142,7 @@ class SelectScreen extends StatefulWidget {
     this.broadcasterNgStore,
     this.broadcasterNameStore,
     this.recentBroadcastStatsHolder,
+    this.broadcastHistoryStore,
     this.commentPostController,
     this.timeshiftFetchController,
     this.androidTtsAvailability,
@@ -192,6 +195,12 @@ class SelectScreen extends StatefulWidget {
   /// screen's broadcast-ended hook updates the holder. When null (legacy
   /// embedders / minimal test harnesses), both code paths become no-ops.
   final RecentBroadcastStatsHolder? recentBroadcastStatsHolder;
+
+  /// Issue #766: optional integration. Forwarded to [SettingsScreen] (so
+  /// the user can open the history view) and to [CommentScreen] (so each
+  /// ended broadcast's stats summary is recorded). Optional — when null,
+  /// the settings tile and the recording side-effect are both skipped.
+  final BroadcastHistoryStore? broadcastHistoryStore;
   final CommentPostController? commentPostController;
   final TimeshiftFetchController? timeshiftFetchController;
 
@@ -832,6 +841,9 @@ class _SelectScreenState extends State<SelectScreen>
                 widget.recentBroadcastStatsHolder == null
                 ? null
                 : _onRecentBroadcastStatsCaptured,
+            onBroadcastEndedStats: widget.broadcastHistoryStore == null
+                ? null
+                : _onBroadcastEndedStats,
           ),
           debugMode: _settingsNotifier.value.debugMode,
           showUserName: _settingsNotifier.value.showUserName,
@@ -1526,6 +1538,28 @@ class _SelectScreenState extends State<SelectScreen>
     recordRecentBroadcastStatsToHolder(snapshot: snapshot, holder: holder);
   }
 
+  /// Issue #766: receive a finalised broadcast's stats snapshot from
+  /// `CommentScreen` and persist it to the broadcast history store, but
+  /// only when the local user is the broadcaster (viewer-only sessions
+  /// must not be recorded). Wired only when [SelectScreen.broadcastHistoryStore]
+  /// is non-null.
+  void _onBroadcastEndedStats(BroadcastEndedStatsSnapshot snapshot) {
+    final BroadcastHistoryStore? store = widget.broadcastHistoryStore;
+    if (store == null) {
+      return;
+    }
+    // Snapshot → entry の詰め替え + isBroadcaster / lv 空のフィルタは
+    // application 層 helper に集約 (テスト容易化と select_screen の責務縮小)。
+    // Persistence は fire-and-forget; 失敗はストア内で log される。
+    final Future<void>? scheduled = recordBroadcastHistoryFromSnapshot(
+      snapshot: snapshot,
+      store: store,
+    );
+    if (scheduled != null) {
+      unawaited(scheduled);
+    }
+  }
+
   Future<void> _openSettings(
     BuildContext context,
     UserSessionStore? userSessionStore,
@@ -1544,6 +1578,7 @@ class _SelectScreenState extends State<SelectScreen>
           userAttributeStore: widget.userAttributeStore,
           broadcasterNgStore: widget.broadcasterNgStore,
           broadcasterNameStore: widget.broadcasterNameStore,
+          broadcastHistoryStore: widget.broadcastHistoryStore,
           broadcasterIdNotifier: widget.supplierUserIdNotifier,
           userNameResolution: widget.userNameResolution,
           speechPlatform: MethodChannelCommentSpeech(),
