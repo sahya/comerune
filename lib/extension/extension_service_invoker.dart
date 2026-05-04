@@ -1,4 +1,5 @@
 import '_logging.dart';
+import 'extension_debug_overrides.dart';
 import 'extension_registry.dart';
 import 'extension_result.dart';
 import 'service_override_policy.dart';
@@ -54,7 +55,15 @@ class ExtensionServiceInvoker {
   }) async {
     final S? extension = registry.service<S>();
 
-    switch (policy) {
+    // Apply debug-only --dart-define overrides. In release builds
+    // `resolveServicePolicy` short-circuits to its `fallback` argument
+    // so this call has no effect on shipped binaries.
+    final ServiceOverridePolicy effectivePolicy = resolveServicePolicy(
+      fallback: policy,
+      contractName: S.toString(),
+    );
+
+    switch (effectivePolicy) {
       case ServiceOverridePolicy.hostOnly:
         return _runHost<R>(hostFallback);
 

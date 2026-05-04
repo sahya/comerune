@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '_logging.dart';
 import 'comerune_extension.dart';
+import 'extension_debug_overrides.dart';
 import 'extension_registry.dart';
 import 'generated/registry.g.dart';
 
@@ -60,6 +61,18 @@ class ExtensionLoader {
         extension = factory();
       } catch (error, stackTrace) {
         _logUnavailable('factory', error, stackTrace);
+        continue;
+      }
+      // Honour the debug-only `COMERUNE_EXT_DISABLED` override after
+      // construction (we need the instance to know its `name`). The
+      // disable check is a no-op in release builds.
+      if (isExtensionDisabled(extensionName: extension.name)) {
+        assert(() {
+          debugPrint(
+            '[extension-loader] disabled by dart-define: ${extension.name}',
+          );
+          return true;
+        }());
         continue;
       }
       try {
