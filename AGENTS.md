@@ -53,6 +53,16 @@ For every issue, follow this order:
 - Prefer small and well-maintained dependencies.
 - Avoid adding multiple packages for a single small feature.
 
+### Plugins with Native-Side Behavioural Coupling
+Some plugins encode behavioural contracts in native code or `AndroidManifest.xml`
+that are NOT visible from Dart APIs alone. When upgrading any of these to a new
+**major** version, re-verify the behaviour against the native source and update
+the linked tests / comments before merging the upgrade PR.
+
+| Plugin | Coupled native artefact | Why |
+|---|---|---|
+| `flutter_foreground_task` | `AndroidManifest.xml` `<service android:stopWithTask="true">` and the comment in `lib/data/foreground_service/foreground_service_manager.dart` | The Dart-level `ForegroundTaskOptions.stopWithTask` and the manifest attribute have *different* runtime effects in 9.x (the Dart option wires `TrackVisibilityUtils` and stops the service on every Activity pause). The fix for issue #869 relies on this distinction. See `test/android/android_manifest_foreground_service_test.dart`. |
+
 ## Optional Reference Two-Stage Fallback
 
 Public repo — referenced code/resources/config may be **absent** in some clones. Dependent code MUST be two-stage:
