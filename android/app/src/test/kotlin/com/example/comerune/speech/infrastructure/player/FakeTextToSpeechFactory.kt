@@ -94,6 +94,10 @@ class FakeTextToSpeechAdapter(
     @Volatile
     private var pendingLanguageResult: Int = defaultLanguageResult
 
+    /** Override to simulate a failing [setSpeechAudioAttributes] call. */
+    @Volatile
+    var audioAttributesResult: Int = TextToSpeech.SUCCESS
+
     val shutdownCount: Int get() = shutdownCounter.get()
 
     val stopCount: Int get() = stopCounter.get()
@@ -139,7 +143,7 @@ class FakeTextToSpeechAdapter(
 
     override fun setSpeechAudioAttributes(profile: SpeechAudioAttributesProfile): Int {
         setAudioAttributesCalls.add(profile)
-        return TextToSpeech.SUCCESS
+        return audioAttributesResult
     }
 
     override fun speak(

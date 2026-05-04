@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.util.Log
 import java.util.Locale
 
 internal data class SpeechAudioAttributesProfile(
@@ -55,7 +56,12 @@ interface TextToSpeechAdapter {
 
     fun setPitch(pitch: Float): Int
 
-    /** Applies the shared speech audio-attributes profile to the engine. */
+    /**
+     * Applies the shared speech audio-attributes profile to the engine so
+     * the system routes speech with the correct usage / content-type.
+     * Without this, Android may treat system TTS output as USAGE_UNKNOWN
+     * and silence it during DND or battery-saver focus restrictions (#736).
+     */
     fun setSpeechAudioAttributes(profile: SpeechAudioAttributesProfile): Int
 
     fun speak(
@@ -88,6 +94,10 @@ class DefaultTextToSpeechFactory(private val context: Context) : TextToSpeechFac
 private class RealTextToSpeechAdapter(
     private val tts: TextToSpeech,
 ) : TextToSpeechAdapter {
+    companion object {
+        private const val TAG = "RealTtsAdapter"
+    }
+
     override fun setLanguage(locale: Locale): Int = tts.setLanguage(locale)
 
     override fun setSpeechRate(rate: Float): Int = tts.setSpeechRate(rate)
@@ -100,7 +110,8 @@ private class RealTextToSpeechAdapter(
                 setUsage(profile.usage)
                 setContentType(profile.contentType)
             }.build()
-        } catch (_: RuntimeException) {
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "Failed to build AudioAttributes from profile; audio routing may be incorrect", e)
             return TextToSpeech.ERROR
         }
         return tts.setAudioAttributes(attributes)
