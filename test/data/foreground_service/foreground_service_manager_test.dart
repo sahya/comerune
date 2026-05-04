@@ -34,10 +34,19 @@ void main() {
       expect(fakeOps.lastForegroundTaskOptions?.autoRunOnBoot, isFalse);
     });
 
-    test('init enables stopWithTask so app task removal stops the service', () {
+    test('init does not set Dart-level stopWithTask so background pause does '
+        'not stop the service', () {
+      // The "stop on app task removal" behaviour is owned by the
+      // android:stopWithTask="true" attribute on the service element in
+      // AndroidManifest.xml (see android_manifest_foreground_service_test.dart).
+      // The Dart-level option is intentionally left null because in
+      // flutter_foreground_task 9.x setting it true installs a
+      // TrackVisibilityUtils ActivityLifecycleCallback that stops the
+      // service on EVERY activity pause, breaking legitimate background
+      // comment streaming.
       manager.init();
 
-      expect(fakeOps.lastForegroundTaskOptions?.stopWithTask, isTrue);
+      expect(fakeOps.lastForegroundTaskOptions?.stopWithTask, isNull);
     });
 
     test('start passes notificationIcon to operations', () async {

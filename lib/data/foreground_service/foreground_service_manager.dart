@@ -60,13 +60,21 @@ class ForegroundServiceManager {
         priority: NotificationPriority.LOW,
       ),
       iosNotificationOptions: const IOSNotificationOptions(),
+      // The "stop on app task removal" behaviour is configured via
+      // android:stopWithTask="true" on the service declaration in
+      // AndroidManifest.xml — that lets Android stop the service natively
+      // when the task is swiped away. The Dart-level
+      // ForegroundTaskOptions.stopWithTask is intentionally omitted: in
+      // flutter_foreground_task 9.x it installs a TrackVisibilityUtils
+      // ActivityLifecycleCallback that stops the service on EVERY activity
+      // pause (e.g. pressing home), which would break legitimate background
+      // comment streaming.
       foregroundTaskOptions: ForegroundTaskOptions(
         eventAction: ForegroundTaskEventAction.nothing(),
         autoRunOnBoot: false,
         autoRunOnMyPackageReplaced: false,
         allowWakeLock: true,
         allowWifiLock: true,
-        stopWithTask: true,
       ),
     );
   }
