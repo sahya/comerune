@@ -140,16 +140,23 @@ class _BroadcastHistoryScreenState extends State<BroadcastHistoryScreen> {
       return;
     }
     _reload();
-    if (!success) {
-      ScaffoldMessenger.of(context)
-        ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(
-            key: const Key('broadcast-history-remove-failed-snackbar'),
-            content: Text(AppStrings.broadcastHistory.removeOneFailedSnackBar),
+    // 個別削除も全件削除と同じく成功 / 失敗の両方で SnackBar を出して
+    // フィードバックの一貫性を保つ。trailing IconButton 経由の削除は
+    // ダイアログを閉じた瞬間にタイルが消えるだけで完了感が乏しいため。
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          key: success
+              ? const Key('broadcast-history-removed-snackbar')
+              : const Key('broadcast-history-remove-failed-snackbar'),
+          content: Text(
+            success
+                ? AppStrings.broadcastHistory.removeOneSnackBar
+                : AppStrings.broadcastHistory.removeOneFailedSnackBar,
           ),
-        );
-    }
+        ),
+      );
   }
 
   Future<void> _openProgramPage(BroadcastHistoryEntry entry) async {
@@ -260,21 +267,19 @@ class _BroadcastHistoryScreenState extends State<BroadcastHistoryScreen> {
                         confirmDismiss: (_) => _confirmRemoveOne(),
                         onDismissed: (_) => unawaited(_removeOne(entry)),
                         // Issue #766 a11y: スワイプ操作以外の経路として
-                        // タイル trailing に削除アイコンも提供する。
-                        // Semantics で「削除可能」を明示。
-                        child: Semantics(
-                          label: AppStrings.broadcastHistory.tileSemanticsHint(
-                            entry.lv,
-                          ),
-                          child: _BroadcastHistoryTile(
-                            entry: entry,
-                            onTap: () => _showEntryDetail(entry),
-                            onDelete: () async {
-                              if (await _confirmRemoveOne()) {
-                                await _removeOne(entry);
-                              }
-                            },
-                          ),
+                        // タイル trailing に削除アイコン (tooltip 付き) を
+                        // 提供する。スクリーンリーダー利用者は trailing
+                        // IconButton 経由で削除可能。`Semantics` の二重
+                        // ノード生成を避けるため外側ラッパーは置かず、
+                        // ListTile / IconButton 自身の Semantics に委ねる。
+                        child: _BroadcastHistoryTile(
+                          entry: entry,
+                          onTap: () => _showEntryDetail(entry),
+                          onDelete: () async {
+                            if (await _confirmRemoveOne()) {
+                              await _removeOne(entry);
+                            }
+                          },
                         ),
                       );
                     },
