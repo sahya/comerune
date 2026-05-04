@@ -44,6 +44,7 @@ import '../strings/app_strings.dart';
 import '../theme/app_theme.dart';
 import '../widgets/comment_input_bar.dart';
 import '../widgets/display_subcategory_warning_dialog.dart';
+import '../widgets/extend_broadcast_dialog.dart';
 import 'comment_log_stats_sheet.dart';
 import 'comment_screen_config.dart';
 import 'tts_settings_screen.dart';
@@ -526,7 +527,13 @@ class PinnedCommentRowHarness extends StatelessWidget {
 
 /// Actions reachable through the AppBar overflow menu. Kept private to the
 /// screen because the menu's wiring lives entirely inside [CommentScreen].
-enum _AppBarMenuAction { endBroadcast, search, saveLog, settings }
+enum _AppBarMenuAction {
+  extendBroadcast,
+  endBroadcast,
+  search,
+  saveLog,
+  settings,
+}
 
 /// Single source of truth for the "emphasize gift / nicoad" decision so
 /// that background color and leading icon stay in sync.
@@ -771,6 +778,13 @@ class _CommentScreenState extends State<CommentScreen>
   /// the API region keeps the dialog phase test-friendly and matches the
   /// product intent (only show progress while waiting on the network).
   bool _isEndBroadcastApiInFlight = false;
+
+  /// Re-entrancy guard for the manual extend dialog flow (Issue #872).
+  ///
+  /// Mirrors [_isEndingBroadcast] in spirit: covers the entire window from
+  /// menu tap until the dialog and any in-flight API call resolve so a
+  /// re-tap on the menu cannot stack a second dialog.
+  bool _isExtendingBroadcast = false;
 
   /// Timestamp at which the broadcast transitioned to ended/stopped.
   /// Used to freeze the status-bar elapsed timer display.
@@ -4308,6 +4322,15 @@ class _CommentScreenState extends State<CommentScreen>
       items: <PopupMenuEntry<Object>>[
         if (canEndBroadcast)
           PopupMenuItem<Object>(
+            key: const Key('extend-broadcast-button'),
+            value: _AppBarMenuAction.extendBroadcast,
+            child: _OverflowMenuRow(
+              icon: Icons.update,
+              label: AppStrings.extendBroadcast.menuItem,
+            ),
+          ),
+        if (canEndBroadcast)
+          PopupMenuItem<Object>(
             key: const Key('end-broadcast-button'),
             value: _AppBarMenuAction.endBroadcast,
             enabled: !_isEndingBroadcast,
@@ -4364,6 +4387,14 @@ class _CommentScreenState extends State<CommentScreen>
     if (action is! _AppBarMenuAction) return;
 
     switch (action) {
+      case _AppBarMenuAction.extendBroadcast:
+        // Re-check the in-flight flag here too: the menu auto-closes on
+        // tap, but it can be re-opened during an in-flight extend call,
+        // and `enabled:` on the item is intentionally always-true (the
+        // 2-値 SnackBar UX does not need to grey the menu out).
+        if (!_isExtendingBroadcast) {
+          unawaited(_extendBroadcastFromMenu());
+        }
       case _AppBarMenuAction.endBroadcast:
         // `_isEndingBroadcast` may have flipped to true between menu open
         // and selection (e.g. user re-opened during an in-flight call),
@@ -4506,6 +4537,70 @@ class _CommentScreenState extends State<CommentScreen>
       if (mounted) {
         setState(() {
           _isEndingBroadcast = false;
+        });
+      }
+    }
+  }
+
+  /// Opens the "放送を延長" dialog and dispatches the extension API call
+  /// for the currently viewed program (Issue #872). Surfaces success /
+  /// failure as a 2-値 SnackBar; intentionally does not differentiate
+  /// error codes (kept as a follow-up scope).
+  Future<void> _extendBroadcastFromMenu() async {
+    if (_isExtendingBroadcast) {
+      return;
+    }
+    final BroadcastControlRepository? repo = widget.broadcastControlRepository;
+    if (repo == null) {
+      return;
+    }
+    if (_commentPostUserSession.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          key: Key('extend-broadcast-session-required-snackbar'),
+          content: Text('ログインが必要です'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isExtendingBroadcast = true;
+    });
+    try {
+      final ExtendBroadcastDialogResult? outcome =
+          await showExtendBroadcastDialog(
+            context,
+            onConfirm: (int minutes) async {
+              final BroadcastControlResult result = await repo.extendBroadcast(
+                programId: widget.programInfo.lv,
+                userSession: _commentPostUserSession,
+                minutes: minutes,
+              );
+              return result.success;
+            },
+          );
+      if (!mounted || outcome == null) {
+        // null = ユーザーがキャンセル。SnackBar は出さない。
+        return;
+      }
+      final ExtendBroadcastStrings strings = AppStrings.extendBroadcast;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          key: outcome.success
+              ? const Key('extend-broadcast-success-snackbar')
+              : const Key('extend-broadcast-failure-snackbar'),
+          content: Text(
+            outcome.success
+                ? strings.success(outcome.minutes)
+                : strings.failure,
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isExtendingBroadcast = false;
         });
       }
     }

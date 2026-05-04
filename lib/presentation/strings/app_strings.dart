@@ -45,6 +45,8 @@ abstract final class AppStrings {
   static const CommentScreenStrings commentScreen = CommentScreenStrings._();
   static const BroadcastHistoryStrings broadcastHistory =
       BroadcastHistoryStrings._();
+  static const ExtendBroadcastStrings extendBroadcast =
+      ExtendBroadcastStrings._();
 }
 
 /// `SettingsScreen` で使用する文字列の集約。
@@ -370,4 +372,33 @@ final class BroadcastHistoryStrings {
     return '$lv  $date $time  '
         'コメ:$totalComments / 人:$uniqueUserCount';
   }
+}
+
+/// Issue #872: 配信中に放送を任意分数で延長するメニュー / ダイアログで使う文字列。
+final class ExtendBroadcastStrings {
+  const ExtendBroadcastStrings._();
+
+  /// AppBar オーバーフローメニューの項目ラベル。
+  String get menuItem => '放送を延長';
+
+  /// ダイアログ AppBar タイトル。
+  String get dialogTitle => '放送を延長';
+
+  /// プルダウンの上に置くフィールドラベル。
+  String get fieldLabel => '延長する時間';
+
+  /// 各選択肢の表示文字列（30 分 / 60 分 等）。
+  String optionMinutes(int minutes) => '$minutes 分';
+
+  /// ダイアログ確定ボタン。
+  String get confirm => '延長する';
+
+  /// ダイアログキャンセルボタン。
+  String get cancel => 'キャンセル';
+
+  /// 延長 API 成功時の SnackBar 文言。
+  String success(int minutes) => '放送を $minutes 分延長しました';
+
+  /// 延長 API 失敗時の SnackBar 文言（成功 / 失敗の 2 値のみ表示）。
+  String get failure => '放送を延長できませんでした';
 }
