@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * actions between `factory.create(...)` and the init completion — matching
  * how the real `TextToSpeech` constructor defers its callback.
  */
-class FakeTextToSpeechFactory(
+internal class FakeTextToSpeechFactory(
     private val defaultLanguageResult: Int = TextToSpeech.LANG_AVAILABLE,
 ) : TextToSpeechFactory {
 
@@ -71,7 +71,7 @@ class FakeTextToSpeechFactory(
  * tests can assert the exact sequence (setLanguage → setSpeechRate →
  * setPitch → setOnUtteranceProgressListener → …) as well as shutdown().
  */
-class FakeTextToSpeechAdapter(
+internal class FakeTextToSpeechAdapter(
     private val defaultLanguageResult: Int = TextToSpeech.LANG_AVAILABLE,
 ) : TextToSpeechAdapter {
 

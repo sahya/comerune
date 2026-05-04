@@ -38,7 +38,7 @@ import kotlin.coroutines.resume
  *   Defaults to [Dispatchers.IO]; override in tests with a deterministic
  *   dispatcher when needed.
  */
-class AndroidTtsSpeaker(
+internal class AndroidTtsSpeaker(
     private val factory: TextToSpeechFactory,
     private val audioFocusGuard: AudioFocusGuard? = null,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,

@@ -95,7 +95,7 @@ private class RealTextToSpeechAdapter(
     private val tts: TextToSpeech,
 ) : TextToSpeechAdapter {
     companion object {
-        private const val TAG = "RealTtsAdapter"
+        private const val TAG = "RealTextToSpeechAdapter"
     }
 
     override fun setLanguage(locale: Locale): Int = tts.setLanguage(locale)
