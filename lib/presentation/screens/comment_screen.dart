@@ -4363,10 +4363,17 @@ class _CommentScreenState extends State<CommentScreen>
           // (gesture arena で内側が優先)、メニューを開いたまま画面 state
           // と StatefulBuilder の両方を更新する。
           //
-          // value を持たず dispatch にも回さないので、`_AppBarMenuAction`
-          // enum にも対応する値は持たせていない。
+          // value を持たず dispatch にも回さないので `_AppBarMenuAction`
+          // enum に対応する値は持たせていない。型パラメータ `<Object>`
+          // は他のメニュー項目（value 経由 dispatch を行うもの）と並ぶ
+          // showMenu のリスト型に揃えるためのもので、本項目自体は value
+          // を返さない。
           PopupMenuItem<Object>(
             padding: EdgeInsets.zero,
+            // StatefulBuilder はローカル state を持たず、再ビルドの
+            // トリガーとしてのみ使う（`_autoExtendBroadcastEnabled` の
+            // 真のオーナーは画面 state）。`innerSetState(() {})` は
+            // menu route 内の builder を再評価させるための空 setState。
             child: StatefulBuilder(
               builder: (BuildContext innerContext, StateSetter innerSetState) {
                 return InkWell(
@@ -4618,6 +4625,11 @@ class _CommentScreenState extends State<CommentScreen>
   /// only owns the Switch state in PR1.
   void _toggleAutoExtendBroadcast() {
     final bool next = !_autoExtendBroadcastEnabled;
+    // Light haptic feedback so a broadcaster who is operating with the
+    // device away from their gaze (typical mid-stream multitasking) gets
+    // a tactile confirmation that the toggle registered. Matches the
+    // existing haptic pattern used for other in-stream interactions.
+    HapticFeedback.selectionClick();
     setState(() {
       _autoExtendBroadcastEnabled = next;
     });
