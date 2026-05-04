@@ -68,11 +68,21 @@ class ExtensionLoader {
         _logUnavailable('register', error, stackTrace);
       }
     }
+    // Lock the registry so any late `register*` call (e.g. from a
+    // misbehaving extension that schedules a Timer) is observed and
+    // ignored rather than silently mutating the runtime configuration.
+    _registry.freeze();
   }
+
+  // Logger name in debug includes the subsystem for greppability;
+  // release builds emit only the generic 'comerune' name so that
+  // platform logs (logcat / Console) do not advertise the existence
+  // of an optional-integration subsystem.
+  static const String _logName = kDebugMode ? 'comerune.extension' : 'comerune';
 
   void _logUnavailable(String stage, Object error, StackTrace stackTrace) {
     appErrorLog(
-      name: 'comerune.extension',
+      name: _logName,
       message: 'optional integration unavailable',
       error: kDebugMode ? error : null,
       stackTrace: kDebugMode ? stackTrace : null,

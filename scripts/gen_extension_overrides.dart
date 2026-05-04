@@ -52,7 +52,7 @@ Future<void> main(List<String> args) async {
   for (final DiscoveredIntegration integration in result.integrations) {
     buf
       ..writeln('  ${integration.name}:')
-      ..writeln('    path: ${integration.relativePath}');
+      ..writeln('    path: ${integration.path}');
   }
 
   File(_outputFile).writeAsStringSync(buf.toString());

@@ -65,7 +65,7 @@ void main() {
       );
       expect(result.integrations, hasLength(1));
       expect(result.integrations.first.name, 'foo');
-      expect(result.integrations.first.relativePath, '${tempRoot.path}/foo');
+      expect(result.integrations.first.path, '${tempRoot.path}/foo');
       expect(result.warnings, isEmpty);
     });
 
@@ -240,8 +240,8 @@ void main() {
 
     test('emits one import + factory entry per integration', () {
       final String body = renderRegistry(<DiscoveredIntegration>[
-        DiscoveredIntegration(name: 'foo', relativePath: 'integrations/foo'),
-        DiscoveredIntegration(name: 'bar', relativePath: 'integrations/bar'),
+        DiscoveredIntegration(name: 'foo', path: 'integrations/foo'),
+        DiscoveredIntegration(name: 'bar', path: 'integrations/bar'),
       ]);
       expect(body, contains("import 'package:foo/foo.dart' as foo;"));
       expect(body, contains("import 'package:bar/bar.dart' as bar;"));

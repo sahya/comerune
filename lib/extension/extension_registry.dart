@@ -18,6 +18,23 @@ import 'slot_ids.dart';
 class ExtensionRegistry {
   final Map<Type, Object> _services = <Type, Object>{};
   final Map<SlotId, List<Widget>> _slotWidgets = <SlotId, List<Widget>>{};
+  bool _frozen = false;
+
+  /// Whether the registry has been frozen (no further registrations
+  /// will take effect). Set by [freeze]; intended for diagnostics.
+  bool get isFrozen => _frozen;
+
+  /// Lock the registry so that subsequent `register*` calls are
+  /// ignored. Called by `ExtensionLoader.loadAll` after every factory
+  /// has run; tests that construct a registry directly do not need to
+  /// call this.
+  ///
+  /// The freeze is one-way: there is no `unfreeze()`. This guarantees
+  /// the runtime configuration is stable for the lifetime of the app
+  /// once startup completes.
+  void freeze() {
+    _frozen = true;
+  }
 
   /// Register a service of compile-time type [T].
   ///
@@ -27,7 +44,15 @@ class ExtensionRegistry {
   /// "last register wins" at the registry layer, but call sites apply
   /// `ServiceOverridePolicy` on top to choose between host and
   /// extension implementations.
+  ///
+  /// Calls made after [freeze] are silently ignored — they would
+  /// otherwise let a late-running extension mutate runtime state in
+  /// ways the host did not anticipate.
   void registerService<T extends Object>(T service) {
+    if (_frozen) {
+      _logRejectedAfterFreeze('registerService<$T>');
+      return;
+    }
     _services[T] = service;
   }
 
@@ -36,11 +61,27 @@ class ExtensionRegistry {
   /// Multiple extensions may register widgets for the same slot; their
   /// widgets are concatenated in registration order. The host decides
   /// final rendering order via `SlotInsertOrder` at the call site.
+  ///
+  /// Calls made after [freeze] are silently ignored.
   void registerSlotWidgets(SlotId slotId, List<Widget> widgets) {
+    if (_frozen) {
+      _logRejectedAfterFreeze('registerSlotWidgets($slotId)');
+      return;
+    }
     if (widgets.isEmpty) {
       return;
     }
     _slotWidgets.putIfAbsent(slotId, () => <Widget>[]).addAll(widgets);
+  }
+
+  static void _logRejectedAfterFreeze(String call) {
+    // Debug-only diagnostic; release builds stay silent so that a
+    // misbehaving extension cannot use this path to surface noise in
+    // platform logs.
+    assert(() {
+      debugPrint('[extension-registry] ignored after freeze: $call');
+      return true;
+    }());
   }
 
   /// Look up the registered service of type [T], or `null`.

@@ -118,21 +118,23 @@ void main() {
     });
 
     test(
-      'loadAll is idempotent enough to be invoked twice without crashing',
+      'loadAll freezes the registry; second invocation is a no-op',
       () async {
         final ExtensionLoader loader = ExtensionLoader(
           factories: <ExtensionFactory>[() => const _GoodExtension('once')],
         );
 
         await loader.loadAll();
+        expect(loader.registry.isFrozen, isTrue);
+
+        // Second loadAll() must not crash and must not double-register —
+        // the freeze ensures runtime configuration is stable after the
+        // initial discovery completes.
         await loader.loadAll();
 
-        // Calling twice means two registrations: the slot list contains
-        // two widgets and the service was overridden by the second call
-        // (still pointing at a "once"-labelled marker).
         expect(
           loader.registry.widgetsFor(SlotIds.broadcasterScreenActions),
-          hasLength(2),
+          hasLength(1),
         );
         final _MarkerService? marker = loader.registry
             .service<_MarkerService>();
@@ -140,5 +142,31 @@ void main() {
         expect(marker!.label, 'once');
       },
     );
+
+    test('late register* calls after loadAll are silently ignored', () async {
+      final ExtensionLoader loader = ExtensionLoader(
+        factories: <ExtensionFactory>[() => const _GoodExtension('first')],
+      );
+
+      await loader.loadAll();
+
+      // Simulate a misbehaving extension that calls back into the
+      // registry after loadAll has completed (e.g. from a Timer it
+      // scheduled inside register()).
+      loader.registry.registerService<_MarkerService>(
+        const _MarkerService('late'),
+      );
+      loader.registry.registerSlotWidgets(
+        SlotIds.broadcasterScreenActions,
+        const <Widget>[SizedBox.shrink(key: ValueKey<String>('late'))],
+      );
+
+      // Neither late call mutated the registry.
+      expect(loader.registry.service<_MarkerService>()?.label, 'first');
+      expect(
+        loader.registry.widgetsFor(SlotIds.broadcasterScreenActions),
+        hasLength(1),
+      );
+    });
   });
 }

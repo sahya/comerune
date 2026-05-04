@@ -22,15 +22,21 @@ import 'dart:io';
 
 /// A validated integration discovered under the integrations directory.
 class DiscoveredIntegration {
-  DiscoveredIntegration({required this.name, required this.relativePath});
+  DiscoveredIntegration({required this.name, required this.path});
 
   /// The validated package name. Safe to interpolate into YAML/Dart
   /// without escaping (matches the strict identifier pattern).
   final String name;
 
-  /// Relative path from the repository root, e.g. `integrations/foo`.
-  /// The trailing path segment is guaranteed to equal [name].
-  final String relativePath;
+  /// Path to the integration directory, formed as `<rootPath>/<name>`.
+  ///
+  /// Whether this is a relative or absolute path mirrors the
+  /// `rootPath` argument passed to [discoverIntegrations]: production
+  /// callers pass `'integrations'` (relative to the repository root)
+  /// and therefore see relative paths; tests may pass an absolute
+  /// temp-directory path. The trailing segment is guaranteed to equal
+  /// [name] because directory and pubspec names are required to match.
+  final String path;
 }
 
 /// Result of scanning the integrations directory.
@@ -79,11 +85,11 @@ IntegrationDiscoveryResult discoverIntegrations({
       continue;
     }
     final String dirName = _lastPathSegment(child.path);
-    final String relativePath = '$rootPath/$dirName';
+    final String childPath = '$rootPath/$dirName';
 
     if (!_isValidIdentifier(dirName)) {
       warnings.add(
-        'skipped $relativePath: directory name is not a valid Dart '
+        'skipped $childPath: directory name is not a valid Dart '
         'identifier (must match ^[a-z_][a-z0-9_]*\$).',
       );
       continue;
@@ -98,34 +104,32 @@ IntegrationDiscoveryResult discoverIntegrations({
 
     final String? declaredName = _readPackageName(pubspec);
     if (declaredName == null) {
-      warnings.add('skipped $relativePath: pubspec.yaml has no `name:` field.');
+      warnings.add('skipped $childPath: pubspec.yaml has no `name:` field.');
       continue;
     }
     if (!_isValidIdentifier(declaredName)) {
       warnings.add(
-        'skipped $relativePath: package name "$declaredName" is not '
+        'skipped $childPath: package name "$declaredName" is not '
         'a valid Dart identifier.',
       );
       continue;
     }
     if (_isReservedOrReservedPrefix(declaredName)) {
       warnings.add(
-        'skipped $relativePath: package name "$declaredName" collides '
+        'skipped $childPath: package name "$declaredName" collides '
         'with a Dart reserved word or built-in package prefix.',
       );
       continue;
     }
     if (declaredName != dirName) {
       warnings.add(
-        'skipped $relativePath: directory name "$dirName" does not '
+        'skipped $childPath: directory name "$dirName" does not '
         'match pubspec name "$declaredName"; rename one to match.',
       );
       continue;
     }
 
-    found.add(
-      DiscoveredIntegration(name: declaredName, relativePath: relativePath),
-    );
+    found.add(DiscoveredIntegration(name: declaredName, path: childPath));
   }
 
   found.sort(
