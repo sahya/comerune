@@ -56,7 +56,7 @@ void main() {
       );
     });
 
-    test('hostFirst with empty extension returns host (identity is OK)', () {
+    test('hostFirst with empty extension returns equivalent host list', () {
       const List<String> empty = <String>[];
       final List<String> result = composeSlotChildrenInOrder(
         order: SlotInsertOrder.hostFirst,
@@ -66,14 +66,34 @@ void main() {
       expect(result, host);
     });
 
-    test('extensionFirst with empty extension returns host', () {
-      const List<String> empty = <String>[];
-      final List<String> result = composeSlotChildrenInOrder(
-        order: SlotInsertOrder.extensionFirst,
-        hostChildren: host,
-        extensionChildren: empty,
-      );
-      expect(result, host);
+    test(
+      'extensionFirst with empty extension returns equivalent host list',
+      () {
+        const List<String> empty = <String>[];
+        final List<String> result = composeSlotChildrenInOrder(
+          order: SlotInsertOrder.extensionFirst,
+          hostChildren: host,
+          extensionChildren: empty,
+        );
+        expect(result, host);
+      },
+    );
+
+    test('returned list is always a fresh allocation (no aliasing)', () {
+      // Mutating the result must not affect [hostChildren] /
+      // [extensionChildren]. Tests every order to lock in the
+      // contract uniformly.
+      for (final SlotInsertOrder order in SlotInsertOrder.values) {
+        final List<String> hostCopy = <String>[...host];
+        final List<String> extCopy = <String>[...ext];
+        final List<String> result = composeSlotChildrenInOrder(
+          order: order,
+          hostChildren: hostCopy,
+          extensionChildren: extCopy,
+        );
+        expect(identical(result, hostCopy), isFalse, reason: 'order=$order');
+        expect(identical(result, extCopy), isFalse, reason: 'order=$order');
+      }
     });
   });
 

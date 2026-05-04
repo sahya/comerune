@@ -33,7 +33,18 @@ abstract final class SlotIds {
   /// Contract:
   /// - Renders inside the AppBar `PopupMenuButton` shown while the
   ///   logged-in user is the broadcaster of the program.
-  /// - Registered widgets must be `PopupMenuEntry` instances.
+  /// - **Registered widgets must be `PopupMenuEntry<Object>`**
+  ///   (typically `PopupMenuItem<Object>`). Dart's invariant
+  ///   generics mean `PopupMenuItem<int>`, `PopupMenuItem<MyEnum>`,
+  ///   `PopupMenuItem<void>` etc. compile fine on the extension
+  ///   side but will be silently dropped at slot-composition time
+  ///   because they are not subtypes of `PopupMenuEntry<Object>`.
+  ///   Use `Object` as the type parameter and any value type for
+  ///   the `value:` field; the host's runtime type guard isolates
+  ///   its own dispatch from extension values.
+  /// - Each entry's `onTap` (or other interaction handling) is the
+  ///   extension's responsibility — the host does not invoke any
+  ///   callback for non-host menu values.
   /// - The host hides this slot entirely when the user is not the
   ///   broadcaster, regardless of registered widgets.
   static const SlotId broadcasterScreenActions = SlotId._(

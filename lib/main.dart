@@ -351,9 +351,14 @@ class _ComeruneAppState extends State<ComeruneApp> {
   late final TimeshiftFetchController _timeshiftFetchController;
   ForegroundServiceController? _foregroundServiceController;
 
-  // Captured once in initState so a fresh empty registry is allocated
-  // on tests that omit `widget.extensionRegistry`, while production
-  // (which always passes a registry from main()) sees the real one.
+  // Captured on first access (Dart `late final` semantics) so a
+  // fresh empty registry is allocated on tests that omit
+  // `widget.extensionRegistry`, while production (which always passes
+  // a registry from main()) sees the real one. Stable for the
+  // State's lifetime — subsequent rebuilds with a different
+  // `widget.extensionRegistry` continue to expose the originally
+  // captured instance, which matches the post-`loadAll` freeze
+  // contract from X1.
   late final ExtensionRegistry _extensionRegistry =
       widget.extensionRegistry ?? ExtensionRegistry();
 

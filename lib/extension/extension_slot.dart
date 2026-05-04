@@ -64,6 +64,11 @@ List<T> composeSlotChildrenInOrder<T>({
   extensionChildren: extensionChildren,
 );
 
+// Always returns a freshly-allocated list so callers can safely
+// mutate the result without aliasing back into [hostChildren] or
+// the extension-supplied list. The empty-extension fast path used
+// to return [hostChildren] verbatim, but that surprised callers
+// that assumed ownership of the result.
 List<T> _composeInOrder<T>({
   required SlotInsertOrder order,
   required List<T> hostChildren,
@@ -71,18 +76,12 @@ List<T> _composeInOrder<T>({
 }) {
   switch (order) {
     case SlotInsertOrder.hostFirst:
-      if (extensionChildren.isEmpty) {
-        return hostChildren;
-      }
       return <T>[...hostChildren, ...extensionChildren];
     case SlotInsertOrder.extensionFirst:
-      if (extensionChildren.isEmpty) {
-        return hostChildren;
-      }
       return <T>[...extensionChildren, ...hostChildren];
     case SlotInsertOrder.hostOnly:
-      return hostChildren;
+      return List<T>.of(hostChildren);
     case SlotInsertOrder.extensionOnly:
-      return extensionChildren;
+      return List<T>.of(extensionChildren);
   }
 }
