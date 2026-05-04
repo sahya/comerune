@@ -58,6 +58,8 @@ import 'presentation/select/select_screen.dart';
 import 'presentation/strings/app_strings.dart';
 import 'presentation/theme/app_theme.dart';
 import 'extension/extension_loader.dart';
+import 'extension/extension_registry.dart';
+import 'extension/extension_scope.dart';
 
 /// Feature flag: タイムシフト（過去放送）コメント取得の有効化。
 ///
@@ -223,8 +225,11 @@ Future<void> main() async {
   );
 
   // Safe to call even with no integrations installed: the loader
-  // silently completes with an empty registry.
-  await ExtensionLoader().loadAll();
+  // silently completes with an empty registry. The populated registry
+  // is then handed to ComeruneApp so an ExtensionScope can publish
+  // it to the rest of the widget tree.
+  final ExtensionLoader extensionLoader = ExtensionLoader();
+  await extensionLoader.loadAll();
 
   runApp(
     ComeruneApp(
@@ -238,6 +243,7 @@ Future<void> main() async {
       foregroundServiceManager: foregroundServiceManager,
       onboardingStore: onboardingStore,
       oauthAuthController: oauthAuthController,
+      extensionRegistry: extensionLoader.registry,
     ),
   );
 }
@@ -255,6 +261,7 @@ class ComeruneApp extends StatefulWidget {
     this.foregroundServiceManager,
     required this.onboardingStore,
     required this.oauthAuthController,
+    this.extensionRegistry,
   });
 
   final SettingsStore settingsStore;
@@ -272,6 +279,12 @@ class ComeruneApp extends StatefulWidget {
   final ForegroundServiceManager? foregroundServiceManager;
   final OnboardingStore onboardingStore;
   final OAuthAuthController oauthAuthController;
+
+  /// Optional integration registry populated by `ExtensionLoader`
+  /// before runApp. Tests may omit this; an empty registry is then
+  /// used so descendants that look it up via [ExtensionScope] still
+  /// see a valid (empty) registry rather than throwing.
+  final ExtensionRegistry? extensionRegistry;
 
   @override
   State<ComeruneApp> createState() => _ComeruneAppState();
@@ -337,6 +350,12 @@ class _ComeruneAppState extends State<ComeruneApp> {
   late final NdgrTimeshiftClient _timeshiftClient;
   late final TimeshiftFetchController _timeshiftFetchController;
   ForegroundServiceController? _foregroundServiceController;
+
+  // Captured once in initState so a fresh empty registry is allocated
+  // on tests that omit `widget.extensionRegistry`, while production
+  // (which always passes a registry from main()) sees the real one.
+  late final ExtensionRegistry _extensionRegistry =
+      widget.extensionRegistry ?? ExtensionRegistry();
 
   @override
   void initState() {
@@ -647,56 +666,59 @@ class _ComeruneAppState extends State<ComeruneApp> {
   Widget build(BuildContext context) {
     final AppThemeMode currentMode = _themeModeNotifier.value;
     return WithForegroundTask(
-      child: OAuthAuthScope(
-        controller: widget.oauthAuthController,
-        child: MaterialApp(
-          title: 'comerune',
-          theme: AppTheme.themeDataFor(currentMode),
-          darkTheme: currentMode == AppThemeMode.system
-              ? AppTheme.themeDataFor(AppThemeMode.dark)
-              : null,
-          themeMode: currentMode == AppThemeMode.system
-              ? ThemeMode.system
-              : ThemeMode.light,
-          navigatorKey: _navigatorKey,
-          home: SelectScreen(
-            connectionSupervisor: _connectionSupervisor,
-            timelineStore: _timelineStore,
-            statisticsStore: _statisticsStore,
-            settingsStore: widget.settingsStore,
-            initialSettings: widget.initialSettings,
-            onPrepareConnection: _prepareConnection,
-            userSessionStore: widget.userSessionStore,
-            programTitleNotifier: _programTitleNotifier,
-            userNameResolution: UserNameResolution(
-              resolve: _userNameResolver.getCachedName,
-              requestResolve: _userNameResolver.requestResolve,
-              seedCache: _userNameResolver.seedCache,
-              listenable: _userNameResolver,
+      child: ExtensionScope(
+        registry: _extensionRegistry,
+        child: OAuthAuthScope(
+          controller: widget.oauthAuthController,
+          child: MaterialApp(
+            title: 'comerune',
+            theme: AppTheme.themeDataFor(currentMode),
+            darkTheme: currentMode == AppThemeMode.system
+                ? AppTheme.themeDataFor(AppThemeMode.dark)
+                : null,
+            themeMode: currentMode == AppThemeMode.system
+                ? ThemeMode.system
+                : ThemeMode.light,
+            navigatorKey: _navigatorKey,
+            home: SelectScreen(
+              connectionSupervisor: _connectionSupervisor,
+              timelineStore: _timelineStore,
+              statisticsStore: _statisticsStore,
+              settingsStore: widget.settingsStore,
+              initialSettings: widget.initialSettings,
+              onPrepareConnection: _prepareConnection,
+              userSessionStore: widget.userSessionStore,
+              programTitleNotifier: _programTitleNotifier,
+              userNameResolution: UserNameResolution(
+                resolve: _userNameResolver.getCachedName,
+                requestResolve: _userNameResolver.requestResolve,
+                seedCache: _userNameResolver.seedCache,
+                listenable: _userNameResolver,
+              ),
+              broadcasterNameNotifier: _broadcasterNameNotifier,
+              supplierUserIdNotifier: _supplierUserIdNotifier,
+              beginAtNotifier: _beginAtNotifier,
+              vposBaseAtNotifier: _vposBaseAtNotifier,
+              commentLogWriter: widget.commentLogWriter,
+              themeModeNotifier: _themeModeNotifier,
+              followProgramRepository: _followProgramRepository,
+              myProgramRepository: _myProgramRepository,
+              broadcastControlRepository: _broadcastControlRepository,
+              userAttributeStore: widget.userAttributeStore,
+              broadcasterNgStore: widget.broadcasterNgStore,
+              broadcasterNameStore: widget.broadcasterNameStore,
+              commentPostController: _commentPostController,
+              timeshiftFetchController: _timeshiftFetchController,
+              androidTtsAvailability: _androidTtsAvailability,
+              broadcasterEmbedResolver: _broadcasterEmbedResolver,
+              playRemainingAfterEndedSink: _playRemainingAfterEndedNotifier,
+              // Issue #739: when the comment screen finishes draining its speech
+              // queue inside the grace window, signal the FGS controller so its
+              // parallel grace timer can end early too instead of waiting out
+              // the full 30 s. No-op when the FGS controller is not configured.
+              onSpeechGraceEnded:
+                  _foregroundServiceController?.notifyQueueDrained,
             ),
-            broadcasterNameNotifier: _broadcasterNameNotifier,
-            supplierUserIdNotifier: _supplierUserIdNotifier,
-            beginAtNotifier: _beginAtNotifier,
-            vposBaseAtNotifier: _vposBaseAtNotifier,
-            commentLogWriter: widget.commentLogWriter,
-            themeModeNotifier: _themeModeNotifier,
-            followProgramRepository: _followProgramRepository,
-            myProgramRepository: _myProgramRepository,
-            broadcastControlRepository: _broadcastControlRepository,
-            userAttributeStore: widget.userAttributeStore,
-            broadcasterNgStore: widget.broadcasterNgStore,
-            broadcasterNameStore: widget.broadcasterNameStore,
-            commentPostController: _commentPostController,
-            timeshiftFetchController: _timeshiftFetchController,
-            androidTtsAvailability: _androidTtsAvailability,
-            broadcasterEmbedResolver: _broadcasterEmbedResolver,
-            playRemainingAfterEndedSink: _playRemainingAfterEndedNotifier,
-            // Issue #739: when the comment screen finishes draining its speech
-            // queue inside the grace window, signal the FGS controller so its
-            // parallel grace timer can end early too instead of waiting out
-            // the full 30 s. No-op when the FGS controller is not configured.
-            onSpeechGraceEnded:
-                _foregroundServiceController?.notifyQueueDrained,
           ),
         ),
       ),
