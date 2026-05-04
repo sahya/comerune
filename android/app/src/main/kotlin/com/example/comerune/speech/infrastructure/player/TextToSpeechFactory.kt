@@ -35,7 +35,7 @@ internal fun defaultSpeechAudioAttributesProfile(
  * [AndroidTtsSpeaker] is exposed. Adding methods here should remain a
  * trivial 1:1 delegation in the real adapter.
  */
-interface TextToSpeechFactory {
+internal interface TextToSpeechFactory {
     /**
      * Creates a new [TextToSpeechAdapter].  [onInit] is invoked with the
      * status code reported by the underlying engine
@@ -49,7 +49,7 @@ interface TextToSpeechFactory {
  * used by [AndroidTtsSpeaker]. Mirrors the real API 1:1 so the production
  * implementation stays a trivial delegation.
  */
-interface TextToSpeechAdapter {
+internal interface TextToSpeechAdapter {
     fun setLanguage(locale: Locale): Int
 
     fun setSpeechRate(rate: Float): Int
@@ -79,7 +79,7 @@ interface TextToSpeechAdapter {
 }
 
 /** Default factory that delegates to the real Android [TextToSpeech]. */
-class DefaultTextToSpeechFactory(private val context: Context) : TextToSpeechFactory {
+internal class DefaultTextToSpeechFactory(private val context: Context) : TextToSpeechFactory {
     override fun create(onInit: (Int) -> Unit): TextToSpeechAdapter {
         val tts = TextToSpeech(context) { status -> onInit(status) }
         return RealTextToSpeechAdapter(tts)
