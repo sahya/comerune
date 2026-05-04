@@ -588,5 +588,71 @@ void main() {
         expect(restored.showCommentNo, AppSettings.defaults.showCommentNo);
       });
     });
+
+    // Issue #875: autoExtendBroadcastEnabled persistence and backward
+    // compatibility. PR1 only persists the toggle state — Timer behavior
+    // is gated to PR2 (#876), but the import/export contract must be
+    // stable across both PRs so the codec tests live with PR1.
+    group('autoExtendBroadcastEnabled (Issue #875)', () {
+      test('default is false (opt-in / no surprise auto extension)', () {
+        expect(AppSettings.defaults.autoExtendBroadcastEnabled, isFalse);
+      });
+
+      test(
+        'fromJson without autoExtendBroadcastEnabled key falls back to default (false)',
+        () {
+          final AppSettings restored = AppSettings.fromJson(
+            <String, dynamic>{},
+          );
+          expect(
+            restored.autoExtendBroadcastEnabled,
+            AppSettings.defaults.autoExtendBroadcastEnabled,
+          );
+          expect(restored.autoExtendBroadcastEnabled, isFalse);
+        },
+      );
+
+      test('toJson → fromJson round-trip preserves true', () {
+        final AppSettings original = AppSettings.defaults.copyWith(
+          autoExtendBroadcastEnabled: true,
+        );
+        final Map<String, dynamic> json = original.toJson();
+        expect(json['autoExtendBroadcastEnabled'], isTrue);
+        final AppSettings restored = AppSettings.fromJson(json);
+        expect(restored.autoExtendBroadcastEnabled, isTrue);
+      });
+
+      test('toJson → fromJson round-trip preserves false', () {
+        final AppSettings original = AppSettings.defaults.copyWith(
+          autoExtendBroadcastEnabled: false,
+        );
+        final Map<String, dynamic> json = original.toJson();
+        expect(json['autoExtendBroadcastEnabled'], isFalse);
+        final AppSettings restored = AppSettings.fromJson(json);
+        expect(restored.autoExtendBroadcastEnabled, isFalse);
+      });
+
+      test(
+        'fromJson with non-bool autoExtendBroadcastEnabled falls back to default',
+        () {
+          final AppSettings result = AppSettings.fromJson(<String, dynamic>{
+            'autoExtendBroadcastEnabled': 'yes',
+          });
+          expect(
+            result.autoExtendBroadcastEnabled,
+            AppSettings.defaults.autoExtendBroadcastEnabled,
+          );
+        },
+      );
+
+      test('fromJsonString with legacy JSON (no key) does not throw', () {
+        const String legacyJson = '{"themeMode":"light"}';
+        final AppSettings restored = AppSettings.fromJsonString(legacyJson);
+        expect(
+          restored.autoExtendBroadcastEnabled,
+          AppSettings.defaults.autoExtendBroadcastEnabled,
+        );
+      });
+    });
   });
 }

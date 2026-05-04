@@ -109,6 +109,7 @@ class CommentCallbacks {
     this.onNicknameChanged,
     this.onNicknameRemoved,
     this.onSortOrderChanged,
+    this.onAutoExtendBroadcastChanged,
     this.onRecentBroadcastStatsCaptured,
     this.onBroadcastEndedStats,
   });
@@ -145,6 +146,16 @@ class CommentCallbacks {
   /// toggle. The composition root is responsible for persisting this via
   /// [SettingsStore.save]. Issue #774.
   final void Function(CommentSortOrder)? onSortOrderChanged;
+
+  /// Called when the broadcaster toggles the "自動延長" Switch in the
+  /// AppBar overflow menu. The argument is the **new** ON/OFF state
+  /// after the toggle. The composition root is responsible for
+  /// persisting this via [SettingsStore.save].
+  ///
+  /// PR1 範囲では Switch 状態の永続化のみ。Timer 動作は Issue #876
+  /// で配線される（このコールバックを subscribe する controller を
+  /// 経由する形になる予定）。
+  final void Function(bool enabled)? onAutoExtendBroadcastChanged;
 
   /// Issue #767: optional integration. Invoked once per finalised
   /// broadcast at the moment the comment screen builds its end-of-broadcast

@@ -837,6 +837,9 @@ class _SelectScreenState extends State<SelectScreen>
                 ? _toggleSpeechMute
                 : null,
             onSortOrderChanged: _onSortOrderChanged,
+            onAutoExtendBroadcastChanged: widget.settingsStore == null
+                ? null
+                : _onAutoExtendBroadcastChanged,
             onRecentBroadcastStatsCaptured:
                 widget.recentBroadcastStatsHolder == null
                 ? null
@@ -858,6 +861,8 @@ class _SelectScreenState extends State<SelectScreen>
               _settingsNotifier.value.commentZebraStripingEnabled,
           commentSortOrder: _settingsNotifier.value.commentSortOrder,
           showCommentNo: _settingsNotifier.value.showCommentNo,
+          autoExtendBroadcastEnabled:
+              _settingsNotifier.value.autoExtendBroadcastEnabled,
           userColorMap: _userAttrNotifier.value.colors,
           onUserColorChanged: widget.userAttributeStore != null
               ? _onUserColorChanged
@@ -1516,6 +1521,28 @@ class _SelectScreenState extends State<SelectScreen>
       return;
     }
     final AppSettings updated = current.copyWith(commentSortOrder: next);
+    _settingsNotifier.value = updated;
+    final SettingsStore? settingsStore = widget.settingsStore;
+    if (settingsStore != null) {
+      saveSettingsUnawaited(settingsStore, updated);
+    }
+  }
+
+  /// Issue #875: 配信者が AppBar オーバーフローメニュー内の「自動延長」
+  /// Switch を切り替えたときに呼ばれる。`_settingsNotifier` を更新して
+  /// 再ビルド時に同じ値が再注入されるようにし、`SettingsStore.save` で
+  /// 次回起動でも復元できるようにする（`_onSortOrderChanged` と同じ流儀）。
+  ///
+  /// Timer 動作の有効化は #876 (PR2) で行う。本 PR では Switch の
+  /// ON/OFF 状態を永続化するだけで、API 呼出は走らない。
+  void _onAutoExtendBroadcastChanged(bool enabled) {
+    final AppSettings current = _settingsNotifier.value;
+    if (current.autoExtendBroadcastEnabled == enabled) {
+      return;
+    }
+    final AppSettings updated = current.copyWith(
+      autoExtendBroadcastEnabled: enabled,
+    );
     _settingsNotifier.value = updated;
     final SettingsStore? settingsStore = widget.settingsStore;
     if (settingsStore != null) {
