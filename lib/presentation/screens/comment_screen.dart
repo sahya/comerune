@@ -529,7 +529,6 @@ class PinnedCommentRowHarness extends StatelessWidget {
 /// screen because the menu's wiring lives entirely inside [CommentScreen].
 enum _AppBarMenuAction {
   extendBroadcast,
-  toggleAutoExtendBroadcast,
   endBroadcast,
   search,
   saveLog,
@@ -4357,12 +4356,43 @@ class _CommentScreenState extends State<CommentScreen>
             ),
           ),
         if (canEndBroadcast)
+          // Issue #875: 「自動延長」トグル行はメニューを閉じずに状態を
+          // 切り替える特別な振る舞いを持つ。配信主がトグル後に新しい状態
+          // をその場で視覚的に確認できるようにするため、PopupMenuItem の
+          // 標準的な「タップで Navigator.pop」を内側の InkWell で奪い
+          // (gesture arena で内側が優先)、メニューを開いたまま画面 state
+          // と StatefulBuilder の両方を更新する。
+          //
+          // value を持たず dispatch にも回さないので、`_AppBarMenuAction`
+          // enum にも対応する値は持たせていない。
           PopupMenuItem<Object>(
-            key: const Key('auto-extend-broadcast-toggle'),
-            value: _AppBarMenuAction.toggleAutoExtendBroadcast,
-            child: _OverflowMenuToggleRow(
-              label: AppStrings.autoExtendBroadcast.menuItem,
-              checked: _autoExtendBroadcastEnabled,
+            padding: EdgeInsets.zero,
+            child: StatefulBuilder(
+              builder: (BuildContext innerContext, StateSetter innerSetState) {
+                return InkWell(
+                  key: const Key('auto-extend-broadcast-toggle'),
+                  onTap: () {
+                    _toggleAutoExtendBroadcast();
+                    // メニュー route 側の StatefulBuilder を再ビルド
+                    // して Switch のサム位置を即座に更新する。
+                    // 画面 state は既に `_toggleAutoExtendBroadcast`
+                    // 内で setState 済みだが、メニュー route は別
+                    // Navigator route なので画面 setState では
+                    // 再ビルドされない。
+                    innerSetState(() {});
+                  },
+                  child: Container(
+                    constraints: const BoxConstraints(
+                      minHeight: kMinInteractiveDimension,
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: _OverflowMenuToggleRow(
+                      label: AppStrings.autoExtendBroadcast.menuItem,
+                      checked: _autoExtendBroadcastEnabled,
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         if (canEndBroadcast)
@@ -4431,8 +4461,6 @@ class _CommentScreenState extends State<CommentScreen>
         if (!_isExtendingBroadcast) {
           unawaited(_extendBroadcastFromMenu());
         }
-      case _AppBarMenuAction.toggleAutoExtendBroadcast:
-        _toggleAutoExtendBroadcast();
       case _AppBarMenuAction.endBroadcast:
         // `_isEndingBroadcast` may have flipped to true between menu open
         // and selection (e.g. user re-opened during an in-flight call),

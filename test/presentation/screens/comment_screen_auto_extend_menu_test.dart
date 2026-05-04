@@ -137,8 +137,15 @@ void main() {
     );
 
     testWidgets(
-      'tapping the row invokes onAutoExtendBroadcastChanged with the toggled value',
+      'tapping the row invokes onAutoExtendBroadcastChanged with the toggled value '
+      'AND keeps the menu open so the broadcaster can verify the new state',
       (WidgetTester tester) async {
+        // Issue #875 follow-up (UX): the auto-extend toggle row must
+        // NOT close the overflow menu on tap. Other broadcaster
+        // controls close the menu (their tap navigates away to a
+        // dialog or destructive flow), but a persistent toggle should
+        // stay visible so the user sees the new ON/OFF state without
+        // having to reopen the menu.
         final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
         final List<bool> reportedValues = <bool>[];
 
@@ -162,15 +169,19 @@ void main() {
         await tester.tap(find.byKey(const Key('auto-extend-broadcast-toggle')));
         await tester.pumpAndSettle();
 
-        // Off → On
+        // Off → On: callback fires.
         expect(reportedValues, <bool>[true]);
 
-        // Re-open the menu — Switch must reflect the new local value
-        // even before the host has persisted anything (UI uses an
-        // optimistic local cache; the host echoes the value back via
-        // didUpdateWidget on subsequent rebuilds).
-        await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
-        await tester.pumpAndSettle();
+        // The menu must STILL be open (other rows are visible).
+        // Without the inner-InkWell tap-absorption the PopupMenuItem
+        // would have popped here.
+        expect(
+          find.byKey(const Key('extend-broadcast-button')),
+          findsOneWidget,
+          reason: 'menu must remain open after toggling auto-extend',
+        );
+        expect(find.byKey(const Key('end-broadcast-button')), findsOneWidget);
+        // Switch reflects the new ON state IN-PLACE.
         Switch switchWidget = tester.widget<Switch>(
           find.descendant(
             of: find.byKey(const Key('auto-extend-broadcast-toggle')),
@@ -179,13 +190,15 @@ void main() {
         );
         expect(switchWidget.value, isTrue);
 
-        // Tap again — On → Off
+        // Second tap: On → Off, menu still open, Switch flips back.
         await tester.tap(find.byKey(const Key('auto-extend-broadcast-toggle')));
         await tester.pumpAndSettle();
         expect(reportedValues, <bool>[true, false]);
-
-        await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
-        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('extend-broadcast-button')),
+          findsOneWidget,
+          reason: 'menu must remain open after a second toggle',
+        );
         switchWidget = tester.widget<Switch>(
           find.descendant(
             of: find.byKey(const Key('auto-extend-broadcast-toggle')),
@@ -225,10 +238,9 @@ void main() {
         await tester.tap(find.byKey(const Key('auto-extend-broadcast-toggle')));
         await tester.pumpAndSettle();
 
-        // Re-open the menu — Switch must reflect the local cache (true)
-        // even though no callback was wired to persist anything upstream.
-        await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
-        await tester.pumpAndSettle();
+        // Menu stays open and the Switch must reflect the local cache
+        // (true) even though no callback was wired to persist anything
+        // upstream.
         final Switch switchWidget = tester.widget<Switch>(
           find.descendant(
             of: find.byKey(const Key('auto-extend-broadcast-toggle')),
@@ -275,6 +287,13 @@ void main() {
         await tester.tap(find.byKey(const Key('auto-extend-broadcast-toggle')));
         await tester.pumpAndSettle();
         expect(reportedValues, <bool>[true]);
+
+        // Dismiss the still-open menu so the parent rebuild below
+        // mounts cleanly (the toggle row no longer auto-closes the
+        // menu — see the dedicated "stay open" test). Tapping the
+        // barrier outside the menu rect closes the popup route.
+        await tester.tapAt(const Offset(10, 10));
+        await tester.pumpAndSettle();
 
         // Parent rebuilds with the SAME prop value (e.g. unrelated
         // setState) — local cache must remain ON.
