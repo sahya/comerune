@@ -197,6 +197,173 @@ void main() {
     );
 
     testWidgets(
+      'tap with no callback wired flips local UI state without throwing',
+      (WidgetTester tester) async {
+        // Defensive: hosts that wire CommentScreen without a callback
+        // (legacy / minimal harnesses) must still see the Switch toggle
+        // visually so the user is not stuck on stale UI. The handler is
+        // null-safe via `?.call`, so we pin that contract here.
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            broadcastControlRepository: _NoOpBroadcastControlRepository(),
+            autoExtendBroadcastEnabled: false,
+            // intentionally omit onAutoExtendBroadcastChanged
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        (tester.state<State<CommentScreen>>(find.byType(CommentScreen))
+                as CommentScreenTestAccess)
+            .setBroadcasterForTesting(isBroadcaster: true);
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('auto-extend-broadcast-toggle')));
+        await tester.pumpAndSettle();
+
+        // Re-open the menu — Switch must reflect the local cache (true)
+        // even though no callback was wired to persist anything upstream.
+        await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+        await tester.pumpAndSettle();
+        final Switch switchWidget = tester.widget<Switch>(
+          find.descendant(
+            of: find.byKey(const Key('auto-extend-broadcast-toggle')),
+            matching: find.byType(Switch),
+          ),
+        );
+        expect(switchWidget.value, isTrue);
+      },
+    );
+
+    testWidgets(
+      'parent rebuild with unchanged autoExtendBroadcastEnabled keeps the user-toggled local cache',
+      (WidgetTester tester) async {
+        // Issue #875: the optimistic local cache must NOT be reset by
+        // unrelated parent rebuilds (those that pass the same prop value
+        // again). Without this guard a parent setState that happens
+        // between user tap and SharedPreferences round-trip would snap
+        // the Switch back to the persisted value.
+        //
+        // Mirrors the equality-check rationale documented for
+        // `_sortOrder` re-seed (Issue #774): same-value rebuild = no-op,
+        // genuine prop change = re-seed.
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<bool> reportedValues = <bool>[];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            broadcastControlRepository: _NoOpBroadcastControlRepository(),
+            autoExtendBroadcastEnabled: false,
+            onAutoExtendBroadcastChanged: reportedValues.add,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        (tester.state<State<CommentScreen>>(find.byType(CommentScreen))
+                as CommentScreenTestAccess)
+            .setBroadcasterForTesting(isBroadcaster: true);
+        await tester.pumpAndSettle();
+
+        // User toggles Switch ON.
+        await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('auto-extend-broadcast-toggle')));
+        await tester.pumpAndSettle();
+        expect(reportedValues, <bool>[true]);
+
+        // Parent rebuilds with the SAME prop value (e.g. unrelated
+        // setState) — local cache must remain ON.
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            broadcastControlRepository: _NoOpBroadcastControlRepository(),
+            autoExtendBroadcastEnabled: false,
+            onAutoExtendBroadcastChanged: reportedValues.add,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        (tester.state<State<CommentScreen>>(find.byType(CommentScreen))
+                as CommentScreenTestAccess)
+            .setBroadcasterForTesting(isBroadcaster: true);
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+        await tester.pumpAndSettle();
+        final Switch switchWidget = tester.widget<Switch>(
+          find.descendant(
+            of: find.byKey(const Key('auto-extend-broadcast-toggle')),
+            matching: find.byType(Switch),
+          ),
+        );
+        expect(switchWidget.value, isTrue);
+      },
+    );
+
+    testWidgets(
+      'menu row exposes a toggleable Semantics node (button + toggled state)',
+      (WidgetTester tester) async {
+        // Pin the screen-reader contract: the row must announce as a
+        // toggleable button with the current ON/OFF state. Without this
+        // a future build refactor could silently drop the
+        // `Semantics(toggled:)` annotation and we would only notice via
+        // an accessibility audit.
+        //
+        // We verify the Semantics widget configuration directly rather
+        // than via the rendered tree because Switch / PopupMenuItem
+        // emit their own semantic nodes internally; inspecting the
+        // configured properties keeps the test version-stable.
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            broadcastControlRepository: _NoOpBroadcastControlRepository(),
+            autoExtendBroadcastEnabled: true,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        (tester.state<State<CommentScreen>>(find.byType(CommentScreen))
+                as CommentScreenTestAccess)
+            .setBroadcasterForTesting(isBroadcaster: true);
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+        await tester.pumpAndSettle();
+
+        // Find the explicit Semantics widget inside the row — this is
+        // the one we author in `_OverflowMenuToggleRow`. `firstWhere`
+        // over `widgetList<Semantics>` keeps the test resilient to the
+        // additional implicit Semantics nodes Material wraps around its
+        // menu items (e.g. for InkWell).
+        final Semantics? rowSemantics = tester
+            .widgetList<Semantics>(
+              find.descendant(
+                of: find.byKey(const Key('auto-extend-broadcast-toggle')),
+                matching: find.byType(Semantics),
+              ),
+            )
+            .where(
+              (Semantics s) =>
+                  s.properties.label == '自動延長' && s.properties.button == true,
+            )
+            .firstOrNull;
+        expect(
+          rowSemantics,
+          isNotNull,
+          reason: 'expected a Semantics(button:true, label:"自動延長") node',
+        );
+        expect(rowSemantics!.properties.toggled, isTrue);
+      },
+    );
+
+    testWidgets(
       'parent re-passing a different autoExtendBroadcastEnabled re-seeds the local cache',
       (WidgetTester tester) async {
         // Issue #875: Settings Import / restore-defaults path. The
