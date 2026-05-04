@@ -36,6 +36,8 @@ import '../../domain/models/ng_display_subcategory.dart';
 import '../../domain/models/ng_policy.dart';
 import '../../domain/models/ng_preset_category.dart';
 import '../../domain/models/user_name_resolution.dart';
+import '../../extension/extension_slot.dart';
+import '../../extension/slot_ids.dart';
 import '../errors/user_facing_error_messages.dart';
 import '../strings/app_strings.dart';
 import '../theme/app_theme.dart';
@@ -4272,12 +4274,18 @@ class _CommentScreenState extends State<CommentScreen>
     final bool showDividerBeforeSettings = hasSettings;
     final Color endBroadcastColor = Theme.of(context).colorScheme.error;
 
-    final _AppBarMenuAction? action = await showMenu<_AppBarMenuAction>(
+    // Items list type widened to `PopupMenuEntry<Object>` so that
+    // extension-provided menu entries (which cannot reference the
+    // private `_AppBarMenuAction` enum) can coexist with the host's
+    // own entries. The host's PopupMenuItem instances still carry
+    // `_AppBarMenuAction` values; we use a runtime type guard below
+    // to dispatch them.
+    final Object? action = await showMenu<Object>(
       context: context,
       position: position,
-      items: <PopupMenuEntry<_AppBarMenuAction>>[
+      items: <PopupMenuEntry<Object>>[
         if (canEndBroadcast)
-          PopupMenuItem<_AppBarMenuAction>(
+          PopupMenuItem<Object>(
             key: const Key('end-broadcast-button'),
             value: _AppBarMenuAction.endBroadcast,
             enabled: !_isEndingBroadcast,
@@ -4288,14 +4296,25 @@ class _CommentScreenState extends State<CommentScreen>
               labelColor: endBroadcastColor,
             ),
           ),
+        // Optional integration: extension-supplied broadcaster
+        // actions (e.g. "extend broadcast"). Gated on the same
+        // broadcaster check that hides the destructive end-broadcast
+        // affordance, per the SlotIds.broadcasterScreenActions
+        // contract.
+        if (canEndBroadcast)
+          ...resolveSlotChildren<PopupMenuEntry<Object>>(
+            context,
+            slotId: SlotIds.broadcasterScreenActions,
+            hostChildren: const <PopupMenuEntry<Object>>[],
+          ),
         if (showDividerAfterEndBroadcast) const PopupMenuDivider(),
-        const PopupMenuItem<_AppBarMenuAction>(
+        const PopupMenuItem<Object>(
           key: Key('comment-search-button'),
           value: _AppBarMenuAction.search,
           child: _OverflowMenuRow(icon: Icons.search, label: 'コメントを検索'),
         ),
         if (hasLogWriter)
-          PopupMenuItem<_AppBarMenuAction>(
+          PopupMenuItem<Object>(
             key: const Key('save-comment-log-button'),
             value: _AppBarMenuAction.saveLog,
             enabled: !_isSavingLog,
@@ -4307,7 +4326,7 @@ class _CommentScreenState extends State<CommentScreen>
           ),
         if (showDividerBeforeSettings) const PopupMenuDivider(),
         if (hasSettings)
-          const PopupMenuItem<_AppBarMenuAction>(
+          const PopupMenuItem<Object>(
             key: Key('settings-button'),
             value: _AppBarMenuAction.settings,
             child: _OverflowMenuRow(icon: Icons.settings, label: '設定'),
@@ -4316,6 +4335,11 @@ class _CommentScreenState extends State<CommentScreen>
     );
 
     if (!mounted || action == null) return;
+
+    // Extension-provided entries handle their own onTap and report
+    // values that are not `_AppBarMenuAction`; the type guard isolates
+    // host dispatch so unknown values silently no-op.
+    if (action is! _AppBarMenuAction) return;
 
     switch (action) {
       case _AppBarMenuAction.endBroadcast:
