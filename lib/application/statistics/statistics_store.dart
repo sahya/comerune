@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
@@ -23,7 +22,6 @@ class StatisticsStore extends ChangeNotifier {
 
   int _totalCommentCount = 0;
   int? _viewerCount;
-  final Queue<_UserActivity> _recentActivities = Queue<_UserActivity>();
   final Map<String, DateTime> _latestActivityByUser = <String, DateTime>{};
 
   int get totalCommentCount => _totalCommentCount;
@@ -39,9 +37,11 @@ class StatisticsStore extends ChangeNotifier {
 
     final String? userId = message.userId;
     if (userId != null && userId.isNotEmpty) {
-      final DateTime timestamp = _now();
-      _recentActivities.addLast(_UserActivity(userId, timestamp));
-      _latestActivityByUser[userId] = timestamp;
+      final DateTime timestamp = message.timestamp;
+      final DateTime? latestTimestamp = _latestActivityByUser[userId];
+      if (latestTimestamp == null || timestamp.isAfter(latestTimestamp)) {
+        _latestActivityByUser[userId] = timestamp;
+      }
       _ensurePurgeTimer();
     }
 
@@ -59,7 +59,6 @@ class StatisticsStore extends ChangeNotifier {
   void reset() {
     _totalCommentCount = 0;
     _viewerCount = null;
-    _recentActivities.clear();
     _latestActivityByUser.clear();
     _cancelPurgeTimer();
     notifyListeners();
@@ -105,21 +104,8 @@ class StatisticsStore extends ChangeNotifier {
 
   void _purgeExpired() {
     final DateTime cutoff = _now().subtract(_activeWindow);
-
-    while (_recentActivities.isNotEmpty &&
-        _recentActivities.first.timestamp.isBefore(cutoff)) {
-      final _UserActivity removed = _recentActivities.removeFirst();
-      final DateTime? latest = _latestActivityByUser[removed.userId];
-      if (latest != null && !latest.isAfter(cutoff)) {
-        _latestActivityByUser.remove(removed.userId);
-      }
-    }
+    _latestActivityByUser.removeWhere(
+      (_, timestamp) => timestamp.isBefore(cutoff),
+    );
   }
-}
-
-class _UserActivity {
-  const _UserActivity(this.userId, this.timestamp);
-
-  final String userId;
-  final DateTime timestamp;
 }
