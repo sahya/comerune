@@ -1,6 +1,4 @@
-import 'package:flutter/foundation.dart';
-
-import '../app_logging.dart';
+import '_logging.dart';
 import 'extension_registry.dart';
 import 'extension_result.dart';
 import 'service_override_policy.dart';
@@ -71,17 +69,28 @@ class ExtensionServiceInvoker {
         return _runExtension<S, R>(extension, callExtension);
 
       case ServiceOverridePolicy.extensionFirstFallback:
-        if (extension != null) {
-          final ExtensionResult<R> extResult = await _runExtension<S, R>(
-            extension,
-            callExtension,
-          );
-          if (extResult is ExtensionResultOk<R>) {
-            return extResult;
-          }
-          // Unsupported / failure — fall through to host.
+        if (extension == null) {
+          return _runHost<R>(hostFallback);
         }
-        return _runHost<R>(hostFallback);
+        final ExtensionResult<R> extResult = await _runExtension<S, R>(
+          extension,
+          callExtension,
+        );
+        if (extResult is ExtensionResultOk<R>) {
+          return extResult;
+        }
+        // Extension failed (Unsupported or Failure) — try host. If
+        // host returns Ok, the recovery hides the extension's
+        // diagnostic from the caller (host took over). If host also
+        // cannot help, surface the original `extResult` so the caller
+        // sees the most actionable signal — preserving Failure rather
+        // than silently flattening it to Unsupported when no host
+        // exists.
+        final ExtensionResult<R> hostResult = await _runHost<R>(hostFallback);
+        if (hostResult is ExtensionResultOk<R>) {
+          return hostResult;
+        }
+        return extResult;
 
       case ServiceOverridePolicy.extensionOnly:
         if (extension == null) {
@@ -110,23 +119,12 @@ class ExtensionServiceInvoker {
     try {
       return await callExtension(extension);
     } catch (error, stackTrace) {
-      _logFailure(error, stackTrace);
+      logExtensionDiagnostic(
+        message: 'optional integration call failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
       return ExtensionResultFailure<R>(error);
     }
-  }
-
-  // Logger name in debug includes the subsystem for greppability;
-  // release builds emit only the generic 'comerune' name so that
-  // platform logs (logcat / Console) do not advertise the existence
-  // of an optional-integration subsystem.
-  static const String _logName = kDebugMode ? 'comerune.extension' : 'comerune';
-
-  static void _logFailure(Object error, StackTrace stackTrace) {
-    appErrorLog(
-      name: _logName,
-      message: 'optional integration call failed',
-      error: kDebugMode ? error : null,
-      stackTrace: kDebugMode ? stackTrace : null,
-    );
   }
 }

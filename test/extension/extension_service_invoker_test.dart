@@ -295,24 +295,66 @@ void main() {
   });
 
   group('ExtensionServiceInvoker — exception boundary', () {
-    test('extension call throwing is normalised to Failure', () async {
-      final ExtensionRegistry registry = _registryWith(
-        const _ThrowingExtension(),
-      );
+    test(
+      'extension throws + no host: original Failure is preserved (not flattened to Unsupported)',
+      () async {
+        final ExtensionRegistry registry = _registryWith(
+          const _ThrowingExtension(),
+        );
 
-      final ExtensionResult<String> result =
-          await ExtensionServiceInvoker.invoke<_TestService, String>(
-            registry,
-            callExtension: _callExt,
-          );
+        final ExtensionResult<String> result =
+            await ExtensionServiceInvoker.invoke<_TestService, String>(
+              registry,
+              callExtension: _callExt,
+            );
 
-      // extensionFirstFallback default + extension throws + no host =>
-      // result is Unsupported (host fallback path returns Unsupported
-      // when null). The Failure was logged but the call site sees the
-      // host-side Unsupported because that path runs after the
-      // extension fails. This documents the actual fall-through.
-      expect(result, isA<ExtensionResultUnsupported<String>>());
-    });
+        expect(result, isA<ExtensionResultFailure<String>>());
+        expect(
+          (result as ExtensionResultFailure<String>).cause,
+          isA<_ExtensionBoom>(),
+        );
+      },
+    );
+
+    test(
+      'extension throws + host returns Unsupported: extension Failure preserved',
+      () async {
+        final ExtensionRegistry registry = _registryWith(
+          const _ThrowingExtension(),
+        );
+
+        final ExtensionResult<String> result =
+            await ExtensionServiceInvoker.invoke<_TestService, String>(
+              registry,
+              callExtension: _callExt,
+              hostFallback: () async =>
+                  const ExtensionResultUnsupported<String>(),
+            );
+
+        // Both sides could not produce Ok; surface the Failure since
+        // it carries the most actionable diagnostic for the caller.
+        expect(result, isA<ExtensionResultFailure<String>>());
+      },
+    );
+
+    test(
+      'extension Unsupported + host Unsupported: surfaces Unsupported',
+      () async {
+        final ExtensionRegistry registry = _registryWith(
+          const _UnsupportedExtension(),
+        );
+
+        final ExtensionResult<String> result =
+            await ExtensionServiceInvoker.invoke<_TestService, String>(
+              registry,
+              callExtension: _callExt,
+              hostFallback: () async =>
+                  const ExtensionResultUnsupported<String>(),
+            );
+
+        expect(result, isA<ExtensionResultUnsupported<String>>());
+      },
+    );
 
     test('host fallback throwing is NOT caught (bugs surface)', () async {
       final ExtensionRegistry registry = _registryWith(null);
@@ -326,6 +368,42 @@ void main() {
         throwsA(isA<_HostBoom>()),
       );
     });
+
+    test(
+      'host fallback throwing under hostOnly policy is NOT caught',
+      () async {
+        final ExtensionRegistry registry = _registryWith(null);
+
+        await expectLater(
+          ExtensionServiceInvoker.invoke<_TestService, String>(
+            registry,
+            callExtension: _callExt,
+            hostFallback: () async => throw const _HostBoom(),
+            policy: ServiceOverridePolicy.hostOnly,
+          ),
+          throwsA(isA<_HostBoom>()),
+        );
+      },
+    );
+
+    test(
+      'host fallback throwing on extensionFirstFallback fallback path is NOT caught',
+      () async {
+        // Extension is Unsupported -> falls through to host -> host throws.
+        final ExtensionRegistry registry = _registryWith(
+          const _UnsupportedExtension(),
+        );
+
+        await expectLater(
+          ExtensionServiceInvoker.invoke<_TestService, String>(
+            registry,
+            callExtension: _callExt,
+            hostFallback: () async => throw const _HostBoom(),
+          ),
+          throwsA(isA<_HostBoom>()),
+        );
+      },
+    );
 
     test('extensionOnly + extension throws: Failure preserved', () async {
       final ExtensionRegistry registry = _registryWith(
@@ -342,6 +420,38 @@ void main() {
       expect(result, isA<ExtensionResultFailure<String>>());
     });
   });
+
+  group('ExtensionServiceInvoker — ExtensionResult<void> smoke test', () {
+    test(
+      'extension returning ExtensionResultOk<void> produces an Ok wrapper',
+      () async {
+        final ExtensionRegistry registry = ExtensionRegistry();
+        registry.registerService<_VoidExtension>(_OkVoidExtension());
+
+        final ExtensionResult<void> result =
+            await ExtensionServiceInvoker.invoke<_VoidExtension, void>(
+              registry,
+              callExtension: (_VoidExtension s) => s.run(),
+            );
+
+        expect(result, isA<ExtensionResultOk<void>>());
+      },
+    );
+
+    test('extension throwing produces a Failure wrapper for void', () async {
+      final ExtensionRegistry registry = ExtensionRegistry();
+      registry.registerService<_VoidExtension>(_ThrowingVoidExtension());
+
+      final ExtensionResult<void> result =
+          await ExtensionServiceInvoker.invoke<_VoidExtension, void>(
+            registry,
+            callExtension: (_VoidExtension s) => s.run(),
+            policy: ServiceOverridePolicy.extensionOnly,
+          );
+
+      expect(result, isA<ExtensionResultFailure<void>>());
+    });
+  });
 }
 
 class _CountingExtension implements _TestService {
@@ -353,4 +463,19 @@ class _CountingExtension implements _TestService {
     _onCall();
     return const ExtensionResultOk<String>('ext:counted');
   }
+}
+
+abstract class _VoidExtension {
+  Future<ExtensionResult<void>> run();
+}
+
+class _OkVoidExtension implements _VoidExtension {
+  @override
+  Future<ExtensionResult<void>> run() async =>
+      const ExtensionResultOk<void>(null);
+}
+
+class _ThrowingVoidExtension implements _VoidExtension {
+  @override
+  Future<ExtensionResult<void>> run() async => throw const _ExtensionBoom();
 }

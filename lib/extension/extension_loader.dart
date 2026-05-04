@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import '../app_logging.dart';
+import '_logging.dart';
 import 'comerune_extension.dart';
 import 'extension_registry.dart';
 import 'generated/registry.g.dart';
@@ -74,18 +74,11 @@ class ExtensionLoader {
     _registry.freeze();
   }
 
-  // Logger name in debug includes the subsystem for greppability;
-  // release builds emit only the generic 'comerune' name so that
-  // platform logs (logcat / Console) do not advertise the existence
-  // of an optional-integration subsystem.
-  static const String _logName = kDebugMode ? 'comerune.extension' : 'comerune';
-
   void _logUnavailable(String stage, Object error, StackTrace stackTrace) {
-    appErrorLog(
-      name: _logName,
+    logExtensionDiagnostic(
       message: 'optional integration unavailable',
-      error: kDebugMode ? error : null,
-      stackTrace: kDebugMode ? stackTrace : null,
+      error: error,
+      stackTrace: stackTrace,
     );
     // Stage is intentionally only logged in debug to keep release logs
     // free of integration-specific surface area. `assert` is stripped
