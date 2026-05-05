@@ -9,6 +9,12 @@
 #   push:
 #     branches: [main]
 #
+# # 最小権限の原則: read-only ジョブのため contents: read のみ付与する。
+# # GITHUB_TOKEN のデフォルト権限がリポジトリ設定により write を含む可能性があるため、
+# # ここで明示的に最小権限を宣言する (Issue #250)。
+# permissions:
+#   contents: read
+#
 # concurrency:
 #   group: ${{ github.workflow }}-${{ github.ref }}
 #   cancel-in-progress: true
