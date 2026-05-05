@@ -1,5 +1,9 @@
 import 'package:comerune/presentation/screens/login_screen.dart'
-    show isAllowedLoginDomain, isAllowedLoginScheme, parseNicoUserSessionCookie;
+    show
+        isAllowedLoginDomain,
+        isAllowedLoginNavigation,
+        isAllowedLoginScheme,
+        parseNicoUserSessionCookie;
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -140,19 +144,12 @@ void main() {
     });
   });
 
-  group('login navigation gate (scheme + host combined)', () {
-    // These cases describe the effective decision made by
-    // `_onNavigationRequest` for the URLs the WebView may receive,
-    // exercised through the two pure predicates that compose it.
-    bool wouldNavigate(String url) {
-      final Uri? uri = Uri.tryParse(url);
-      if (uri == null) return false;
-      if (!isAllowedLoginScheme(uri.scheme)) return false;
-      // `about:` URIs (e.g. about:blank) bypass the host allowlist;
-      // they are issued by the WebView and have no host.
-      if (uri.scheme == 'about') return true;
-      return isAllowedLoginDomain(uri.host);
-    }
+  group('isAllowedLoginNavigation', () {
+    // These cases describe the effective decision made by the login
+    // WebView's navigation gate, validated directly through the public
+    // predicate that `_onNavigationRequest` delegates to.
+    bool wouldNavigate(String url) =>
+        isAllowedLoginNavigation(Uri.tryParse(url));
 
     test('https + niconico login URL navigates', () {
       expect(wouldNavigate('https://account.nicovideo.jp/login'), isTrue);
@@ -188,6 +185,10 @@ void main() {
 
     test('empty string is prevented', () {
       expect(wouldNavigate(''), isFalse);
+    });
+
+    test('null Uri is prevented', () {
+      expect(isAllowedLoginNavigation(null), isFalse);
     });
   });
 

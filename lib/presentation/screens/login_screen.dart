@@ -148,23 +148,9 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   NavigationDecision _onNavigationRequest(NavigationRequest request) {
-    final Uri? uri = Uri.tryParse(request.url);
-    if (uri == null) {
-      return NavigationDecision.prevent;
-    }
-    if (!isAllowedLoginScheme(uri.scheme)) {
-      return NavigationDecision.prevent;
-    }
-    // `about:` URIs (e.g. `about:blank`) are issued by the WebView itself
-    // during initialization and have no meaningful host. They are safe by
-    // construction (no network) so we allow them past the host allowlist.
-    if (uri.scheme == 'about') {
-      return NavigationDecision.navigate;
-    }
-    if (isAllowedLoginDomain(uri.host)) {
-      return NavigationDecision.navigate;
-    }
-    return NavigationDecision.prevent;
+    return isAllowedLoginNavigation(Uri.tryParse(request.url))
+        ? NavigationDecision.navigate
+        : NavigationDecision.prevent;
   }
 
   bool _isPostLoginUrl(String url) {
@@ -437,6 +423,27 @@ bool isAllowedLoginDomain(String host) {
 /// schemes, etc.) are rejected.
 bool isAllowedLoginScheme(String scheme) {
   return scheme == 'https' || scheme == 'about';
+}
+
+/// Returns whether the WebView should navigate to [uri] during the niconico
+/// login flow. This is the single source of truth for the navigation gate
+/// applied by the login WebView.
+///
+/// Returns `false` for `null` (unparseable URLs), disallowed schemes
+/// (anything other than `https` / `about`), and disallowed hosts.
+/// `about:` URIs bypass the host allowlist because they are issued by the
+/// WebView itself during initialization and have no meaningful host.
+bool isAllowedLoginNavigation(Uri? uri) {
+  if (uri == null) {
+    return false;
+  }
+  if (!isAllowedLoginScheme(uri.scheme)) {
+    return false;
+  }
+  if (uri.scheme == 'about') {
+    return true;
+  }
+  return isAllowedLoginDomain(uri.host);
 }
 
 /// Parses the user_session cookie value from a cookie string.
