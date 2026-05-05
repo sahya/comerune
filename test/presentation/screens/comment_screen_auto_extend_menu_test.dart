@@ -1,3 +1,9 @@
+@Skip(
+  '自動延長 UI は Timer 動作（Issue #876）が未配線のため一時非表示中。'
+  'CommentScreen._autoExtendUiVisible を true に戻したらこの @Skip も外す。',
+)
+library;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
