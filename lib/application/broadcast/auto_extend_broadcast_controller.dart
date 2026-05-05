@@ -3,7 +3,6 @@ import 'dart:async';
 import '../../app_logging.dart';
 import '../../data/broadcast/broadcast_control_repository.dart';
 import '../../domain/models/app_message.dart';
-import '../../presentation/strings/app_strings.dart';
 
 /// Issue #876: a clock abstraction so the controller can be tested with
 /// `fake_async` without bringing in a third-party clock package. The
@@ -58,6 +57,8 @@ class AutoExtendBroadcastController {
     required this.repository,
     required this.emitMessage,
     required this.onEndTimeUpdated,
+    required this.successMessageBuilder,
+    required this.failureMessage,
     AutoExtendBroadcastConfig config = const AutoExtendBroadcastConfig(),
     AutoExtendClock? clock,
   }) : _config = config,
@@ -74,6 +75,16 @@ class AutoExtendBroadcastController {
   /// バック。上位が `FollowProgram.endAt` を更新し、その値が
   /// [update] 経由で controller に戻ってくるまでが 1 サイクル。
   final void Function(DateTime newEndAt) onEndTimeUpdated;
+
+  /// 成功時にコメ欄へ流すシステムメッセージの文字列ビルダー。引数は
+  /// 実際に伸びた分数（[AutoExtendBroadcastConfig.extendMinutes]）。
+  /// 文字列の所有・i18n 責務は host (presentation 層) に残し、本
+  /// application 層は文字列リテラルを持たない設計。
+  final String Function(int minutes) successMessageBuilder;
+
+  /// 失敗時にコメ欄へ流すシステムメッセージ。i18n 済の表示文字列を
+  /// host から渡す（理由は [successMessageBuilder] と同じ）。
+  final String failureMessage;
 
   static const String _logName = 'AutoExtendBroadcastController';
 
@@ -313,9 +324,7 @@ class AutoExtendBroadcastController {
         sequence: _nextSequence(),
       ),
       timestamp: now,
-      content: AppStrings.autoExtendBroadcast.successMessage(
-        _config.extendMinutes,
-      ),
+      content: successMessageBuilder(_config.extendMinutes),
       type: AppMessageType.notification,
     );
   }
@@ -328,7 +337,7 @@ class AutoExtendBroadcastController {
         sequence: _nextSequence(),
       ),
       timestamp: now,
-      content: AppStrings.autoExtendBroadcast.failureMessage,
+      content: failureMessage,
       type: AppMessageType.notification,
     );
   }

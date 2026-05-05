@@ -1113,6 +1113,9 @@ class _CommentScreenState extends State<CommentScreen>
     // is hidden in that case anyway (`canEndBroadcast` ガード).
     final BroadcastControlRepository? repo = widget.broadcastControlRepository;
     if (repo != null) {
+      // i18n 済の表示文字列は presentation 層 (AppStrings) から取り、
+      // controller 自体は presentation 層に依存しない設計にする
+      // （application → presentation の逆方向 import を避ける）。
       _autoExtendController = AutoExtendBroadcastController(
         repository: repo,
         emitMessage: (AppMessage message) {
@@ -1121,6 +1124,8 @@ class _CommentScreenState extends State<CommentScreen>
         onEndTimeUpdated: (DateTime newEndAt) {
           widget.callbacks.onBroadcastEndTimeExtended?.call(newEndAt);
         },
+        successMessageBuilder: AppStrings.autoExtendBroadcast.successMessage,
+        failureMessage: AppStrings.autoExtendBroadcast.failureMessage,
       );
       _evaluateAutoExtendController();
     }
@@ -4123,6 +4128,16 @@ class _CommentScreenState extends State<CommentScreen>
     }
 
     _lastStatus = currentStatus;
+
+    // Issue #876: re-evaluate the auto-extend Timer on every connection
+    // status change so the `isOnAir` gate inside
+    // [_evaluateAutoExtendController] correctly cancels the Timer for
+    // `ended` / `failed` / `stopped` transitions. Calling this on every
+    // status change is safe — the controller's internal diff-check
+    // turns redundant updates into no-ops, and we explicitly want the
+    // network-failure path to disable the Timer too (a Timer fired on
+    // a failed connection would burn 3 retries against a dead session).
+    _evaluateAutoExtendController();
   }
 
   String _buildFailedSnackbarMessage() {
@@ -4686,16 +4701,29 @@ class _CommentScreenState extends State<CommentScreen>
 
   /// Issue #876: forwards the current screen state to the auto-extend
   /// controller. Called from initState (seed), didUpdateWidget (prop
-  /// changes that affect scheduling), the toggle handler, and the
-  /// session resolution path. The controller is a no-op when the
+  /// changes that affect scheduling), the toggle handler, the session
+  /// resolution path, and `_handleConnectionChanged` so broadcast-ended
+  /// transitions also propagate. The controller is a no-op when the
   /// repository is unwired (`_autoExtendController == null`).
+  ///
+  /// `enabled` is gated on:
+  /// - the user being the broadcaster of the active program
+  /// - the user-facing Switch being ON (Issue #875)
+  /// - the connection currently being on-air (gates against ended /
+  ///   failed / stopped states so a Timer armed for `endAt - 5min`
+  ///   does not fire after the broadcast is already over).
   void _evaluateAutoExtendController() {
     final AutoExtendBroadcastController? controller = _autoExtendController;
     if (controller == null) {
       return;
     }
+    final ConnectionStatus status = widget.connectionSupervisor.status;
+    final bool isOnAir =
+        status != ConnectionStatus.ended &&
+        status != ConnectionStatus.failed &&
+        status != ConnectionStatus.stopped;
     controller.update(
-      enabled: _isBroadcaster && _autoExtendBroadcastEnabled,
+      enabled: _isBroadcaster && _autoExtendBroadcastEnabled && isOnAir,
       programId: widget.programInfo.lv,
       userSession: _commentPostUserSession,
       endAt: widget.programInfo.endAt,

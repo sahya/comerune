@@ -17,6 +17,8 @@ void main() {
               repository: repo,
               emitMessage: emitted.add,
               onEndTimeUpdated: updatedEnds.add,
+              successMessageBuilder: (int m) => '自動延長が成功しました（+$m 分）',
+              failureMessage: '自動延長に失敗しました',
               clock: () => async.getClock(DateTime.utc(2026, 1, 1, 12)).now(),
             );
         addTearDown(controller.dispose);
@@ -49,6 +51,8 @@ void main() {
               repository: repo,
               emitMessage: emitted.add,
               onEndTimeUpdated: updatedEnds.add,
+              successMessageBuilder: (int m) => '自動延長が成功しました（+$m 分）',
+              failureMessage: '自動延長に失敗しました',
               clock: () => async.getClock(now).now(),
             );
         addTearDown(controller.dispose);
@@ -93,6 +97,8 @@ void main() {
               repository: repo,
               emitMessage: emitted.add,
               onEndTimeUpdated: updatedEnds.add,
+              successMessageBuilder: (int m) => '自動延長が成功しました（+$m 分）',
+              failureMessage: '自動延長に失敗しました',
               clock: () => async.getClock(now).now(),
             );
         addTearDown(controller.dispose);
@@ -134,6 +140,8 @@ void main() {
               repository: repo,
               emitMessage: emitted.add,
               onEndTimeUpdated: (_) {},
+              successMessageBuilder: (int m) => '自動延長が成功しました（+$m 分）',
+              failureMessage: '自動延長に失敗しました',
               clock: () => async.getClock(now).now(),
             );
         addTearDown(controller.dispose);
@@ -190,6 +198,8 @@ void main() {
                 repository: repo,
                 emitMessage: emitted.add,
                 onEndTimeUpdated: (_) {},
+                successMessageBuilder: (int m) => '自動延長が成功しました（+$m 分）',
+                failureMessage: '自動延長に失敗しました',
                 clock: () => async.getClock(now).now(),
               );
           addTearDown(controller.dispose);
@@ -224,6 +234,8 @@ void main() {
               repository: repo,
               emitMessage: (_) {},
               onEndTimeUpdated: (_) {},
+              successMessageBuilder: (int m) => '自動延長が成功しました（+$m 分）',
+              failureMessage: '自動延長に失敗しました',
               clock: () => async.getClock(now).now(),
             );
         addTearDown(controller.dispose);
@@ -262,6 +274,8 @@ void main() {
               repository: repo,
               emitMessage: (_) {},
               onEndTimeUpdated: (_) {},
+              successMessageBuilder: (int m) => '自動延長が成功しました（+$m 分）',
+              failureMessage: '自動延長に失敗しました',
               clock: () => async.getClock(now).now(),
             );
         addTearDown(controller.dispose);
@@ -305,6 +319,8 @@ void main() {
               repository: repo,
               emitMessage: (_) {},
               onEndTimeUpdated: (_) {},
+              successMessageBuilder: (int m) => '自動延長が成功しました（+$m 分）',
+              failureMessage: '自動延長に失敗しました',
               clock: () => async.getClock(now).now(),
             );
         addTearDown(controller.dispose);
@@ -333,6 +349,8 @@ void main() {
               repository: repo,
               emitMessage: (_) {},
               onEndTimeUpdated: (_) {},
+              successMessageBuilder: (int m) => '自動延長が成功しました（+$m 分）',
+              failureMessage: '自動延長に失敗しました',
               clock: () => async.getClock(now).now(),
             );
         addTearDown(controller.dispose);
@@ -370,6 +388,8 @@ void main() {
               repository: repo,
               emitMessage: (_) {},
               onEndTimeUpdated: (_) {},
+              successMessageBuilder: (int m) => '自動延長が成功しました（+$m 分）',
+              failureMessage: '自動延長に失敗しました',
               clock: () => async.getClock(now).now(),
             );
 
@@ -407,6 +427,8 @@ void main() {
               repository: repo,
               emitMessage: (_) {},
               onEndTimeUpdated: (_) {},
+              successMessageBuilder: (int m) => '自動延長が成功しました（+$m 分）',
+              failureMessage: '自動延長に失敗しました',
               clock: () => async.getClock(now).now(),
             );
         addTearDown(controller.dispose);
@@ -463,6 +485,8 @@ void main() {
               repository: repo,
               emitMessage: emitted.add,
               onEndTimeUpdated: (_) {},
+              successMessageBuilder: (int m) => '自動延長が成功しました（+$m 分）',
+              failureMessage: '自動延長に失敗しました',
               clock: () => async.getClock(now).now(),
             );
         addTearDown(controller.dispose);

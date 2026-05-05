@@ -119,6 +119,55 @@ void main() {
     }
   });
 
+  group('auto-extend background WCAG AA contrast (Issue #876)', () {
+    // Auto-extend success / failure messages render the body text with
+    // the chat default foreground (no dedicated *TextColor) on
+    // dedicated theme backgrounds. Same WCAG AA story as the
+    // notification background group above — body font is "normal text"
+    // by WCAG, so the 4.5:1 floor applies.
+    for (final AppThemeMode mode in concreteModes) {
+      test(
+        '${mode.name}: chat default foreground on autoExtendSuccessBackground '
+        'meets WCAG AA (>= 4.5:1)',
+        () {
+          final ThemeData theme = AppTheme.themeDataFor(mode);
+          final Color chatTextColor = theme.colorScheme.onSurface;
+          final Color bg = AppTheme.colorsFor(mode).autoExtendSuccessBackground;
+          final double ratio = wcagContrastRatio(chatTextColor, bg);
+          expect(
+            ratio,
+            greaterThanOrEqualTo(kWcagAaNormalText),
+            reason:
+                'theme ${mode.name}: chat default foreground $chatTextColor '
+                'vs autoExtendSuccessBackground $bg contrast is '
+                '${ratio.toStringAsFixed(3)}:1 (must be >= 4.5:1 for WCAG AA '
+                'normal text). Pick a slightly darker / lighter background.',
+          );
+        },
+      );
+
+      test(
+        '${mode.name}: chat default foreground on autoExtendFailureBackground '
+        'meets WCAG AA (>= 4.5:1)',
+        () {
+          final ThemeData theme = AppTheme.themeDataFor(mode);
+          final Color chatTextColor = theme.colorScheme.onSurface;
+          final Color bg = AppTheme.colorsFor(mode).autoExtendFailureBackground;
+          final double ratio = wcagContrastRatio(chatTextColor, bg);
+          expect(
+            ratio,
+            greaterThanOrEqualTo(kWcagAaNormalText),
+            reason:
+                'theme ${mode.name}: chat default foreground $chatTextColor '
+                'vs autoExtendFailureBackground $bg contrast is '
+                '${ratio.toStringAsFixed(3)}:1 (must be >= 4.5:1 for WCAG AA '
+                'normal text). Pick a slightly darker / lighter background.',
+          );
+        },
+      );
+    }
+  });
+
   group('operator message WCAG AA contrast', () {
     // Operator (運営) messages render the body and displayName label using
     // `operatorTextColor` on top of `operatorMessageBackground`. Body font
