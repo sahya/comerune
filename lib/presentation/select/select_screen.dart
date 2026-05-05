@@ -808,6 +808,12 @@ class _SelectScreenState extends State<SelectScreen>
             // follow-list equivalent), so unlike beginAt it does not need
             // a dual-source _resolveCommentBeginAt-style helper.
             vposBaseAt: widget.vposBaseAtNotifier?.value,
+            // Issue #876: broadcast end time. Sourced from `_myProgram`
+            // (broadcaster's own program) when its lv matches the active
+            // viewing lv; otherwise null. Used by the auto-extend
+            // controller — currently only meaningful in broadcaster mode
+            // (the Switch is hidden for non-broadcasters anyway).
+            endAt: _resolveCommentEndAt(lv),
             connectionMethod: _connectionMethod,
           ),
           connectionSupervisor: widget.connectionSupervisor,
@@ -840,6 +846,18 @@ class _SelectScreenState extends State<SelectScreen>
             onAutoExtendBroadcastChanged: widget.settingsStore == null
                 ? null
                 : _onAutoExtendBroadcastChanged,
+            // Issue #876: feedback path for manual / auto extend
+            // success — refresh _myProgram.endAt so the next
+            // CommentScreen rebuild carries the updated value back into
+            // the AutoExtendBroadcastController's `update()` cycle.
+            onBroadcastEndTimeExtended: _onBroadcastEndTimeExtended,
+            // Issue #876: forward client-side notifications synthesised
+            // by the auto-extend controller into the timeline. When
+            // there is no TimelineStore wired (rare) the message is
+            // silently dropped and the renderer never sees it.
+            onAutoExtendSystemMessage: widget.timelineStore == null
+                ? null
+                : _onAutoExtendSystemMessage,
             onRecentBroadcastStatsCaptured:
                 widget.recentBroadcastStatsHolder == null
                 ? null
@@ -1548,6 +1566,49 @@ class _SelectScreenState extends State<SelectScreen>
     if (settingsStore != null) {
       saveSettingsUnawaited(settingsStore, updated);
     }
+  }
+
+  /// Issue #876: Resolves the broadcast end time to pass into
+  /// CommentScreen for the active program lv. Currently only sourced
+  /// from `_myProgram` — auto-extend is broadcaster-only and the Switch
+  /// is hidden for non-broadcasters, so non-broadcaster end times are
+  /// not consumed.
+  DateTime? _resolveCommentEndAt(String lv) {
+    final FollowProgram? myProgram = _myProgram;
+    if (myProgram != null && myProgram.programId == lv) {
+      return myProgram.endAt;
+    }
+    return null;
+  }
+
+  /// Issue #876: invoked by [CommentScreen] when a manual or auto extend
+  /// API call returned a new authoritative end time. We refresh
+  /// `_myProgram.endAt` so the next rebuild flows the new value back
+  /// into the auto-extend controller via `CommentProgramInfo.endAt`.
+  ///
+  /// Equality check ensures unrelated parent rebuilds don't churn.
+  void _onBroadcastEndTimeExtended(DateTime newEndAt) {
+    final FollowProgram? myProgram = _myProgram;
+    if (myProgram == null) {
+      return;
+    }
+    if (myProgram.endAt == newEndAt) {
+      return;
+    }
+    setState(() {
+      _myProgram = myProgram.copyWith(endAt: newEndAt);
+    });
+  }
+
+  /// Issue #876: forwards a client-side notification (auto-extend
+  /// success / failure) into the timeline so the comment renderer
+  /// can apply the auto-extend theme color to the row.
+  void _onAutoExtendSystemMessage(AppMessage message) {
+    final TimelineStore? store = widget.timelineStore;
+    if (store == null) {
+      return;
+    }
+    store.add(message);
   }
 
   /// Issue #767: receive a finished broadcast's snapshot from

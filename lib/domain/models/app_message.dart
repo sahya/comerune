@@ -11,6 +11,38 @@ String buildBroadcastEndedNotificationId({
   return '$kSystemBroadcastEndedMessageIdPrefix$epochMilliseconds:$sequence';
 }
 
+/// Issue #876: prefix for client-side notifications synthesised by the
+/// auto-extend controller when the broadcast is successfully extended.
+///
+/// Detected by [`_isAutoExtendSuccessMessage`] in the comment screen
+/// renderer to apply the success theme colour. The prefix-based dispatch
+/// follows the same pattern as [kSystemBroadcastEndedMessageIdPrefix].
+const String kSystemAutoExtendSuccessMessageIdPrefix =
+    'system:auto_extend_success:';
+
+/// Issue #876: prefix for the failure counterpart of
+/// [kSystemAutoExtendSuccessMessageIdPrefix]. Surfaced when all retries
+/// fail; the failure theme colour is applied in the renderer via the
+/// id prefix check.
+const String kSystemAutoExtendFailureMessageIdPrefix =
+    'system:auto_extend_failure:';
+
+/// Builds a unique system notification ID for auto-extend success events.
+String buildAutoExtendSuccessNotificationId({
+  required int epochMilliseconds,
+  required int sequence,
+}) {
+  return '$kSystemAutoExtendSuccessMessageIdPrefix$epochMilliseconds:$sequence';
+}
+
+/// Builds a unique system notification ID for auto-extend failure events.
+String buildAutoExtendFailureNotificationId({
+  required int epochMilliseconds,
+  required int sequence,
+}) {
+  return '$kSystemAutoExtendFailureMessageIdPrefix$epochMilliseconds:$sequence';
+}
+
 /// Semantic category of a message flowing into [CommentScreen].
 ///
 /// The enum also carries implicit expectations that downstream UI relies on

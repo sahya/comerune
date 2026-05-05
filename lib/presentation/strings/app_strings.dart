@@ -406,13 +406,20 @@ final class ExtendBroadcastStrings {
 }
 
 /// Issue #875: 自動延長機能のメニュー項目で使う文字列。
-///
-/// PR1 範囲では Switch UI の表示ラベルのみを集約する。Timer 動作で
-/// コメ欄に流す成功/失敗のシステムメッセージ文言は #876 (PR2) で
-/// 追加する。
+/// Issue #876: 自動延長 Timer 動作のコメ欄システムメッセージ文言を追加。
 final class AutoExtendBroadcastStrings {
   const AutoExtendBroadcastStrings._();
 
   /// AppBar オーバーフローメニューの項目ラベル。
   String get menuItem => '自動延長';
+
+  /// 自動延長 API 成功時にコメ欄へ流すシステムメッセージ文言。
+  /// `{minutes}` は実際に伸びた分数。
+  String successMessage(int minutes) => '自動延長が成功しました（+$minutes 分）';
+
+  /// 自動延長 API がリトライ全失敗した時にコメ欄へ流すメッセージ。
+  /// 個別の理由（上限到達 / ネットワーク等）は付記せず簡潔に通知する
+  /// ことで、ユーザーが「自分で対処すべきこと」（手動延長／放送終了）
+  /// に集中できるようにする。
+  String get failureMessage => '自動延長に失敗しました';
 }
