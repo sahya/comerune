@@ -1,5 +1,5 @@
 import 'package:comerune/presentation/screens/login_screen.dart'
-    show isAllowedLoginDomain, parseNicoUserSessionCookie;
+    show isAllowedLoginDomain, isAllowedLoginScheme, parseNicoUserSessionCookie;
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -96,6 +96,98 @@ void main() {
       test('blocks empty string', () {
         expect(isAllowedLoginDomain(''), isFalse);
       });
+    });
+  });
+
+  group('isAllowedLoginScheme', () {
+    test('allows https', () {
+      expect(isAllowedLoginScheme('https'), isTrue);
+    });
+
+    test('allows about (used by WebView for blank/initial pages)', () {
+      expect(isAllowedLoginScheme('about'), isTrue);
+    });
+
+    test('blocks plaintext http', () {
+      expect(isAllowedLoginScheme('http'), isFalse);
+    });
+
+    test('blocks javascript scheme', () {
+      expect(isAllowedLoginScheme('javascript'), isFalse);
+    });
+
+    test('blocks data scheme', () {
+      expect(isAllowedLoginScheme('data'), isFalse);
+    });
+
+    test('blocks file scheme', () {
+      expect(isAllowedLoginScheme('file'), isFalse);
+    });
+
+    test('blocks empty scheme', () {
+      expect(isAllowedLoginScheme(''), isFalse);
+    });
+
+    test('blocks custom app schemes', () {
+      expect(isAllowedLoginScheme('intent'), isFalse);
+      expect(isAllowedLoginScheme('comerune'), isFalse);
+    });
+
+    test('does not normalize case (Uri.scheme is already lower-case)', () {
+      // Uri.tryParse() lower-cases the scheme on parse, so the function
+      // does not need to handle 'HTTPS' input. Document this assumption.
+      expect(isAllowedLoginScheme('HTTPS'), isFalse);
+    });
+  });
+
+  group('login navigation gate (scheme + host combined)', () {
+    // These cases describe the effective decision made by
+    // `_onNavigationRequest` for the URLs the WebView may receive,
+    // exercised through the two pure predicates that compose it.
+    bool wouldNavigate(String url) {
+      final Uri? uri = Uri.tryParse(url);
+      if (uri == null) return false;
+      if (!isAllowedLoginScheme(uri.scheme)) return false;
+      // `about:` URIs (e.g. about:blank) bypass the host allowlist;
+      // they are issued by the WebView and have no host.
+      if (uri.scheme == 'about') return true;
+      return isAllowedLoginDomain(uri.host);
+    }
+
+    test('https + niconico login URL navigates', () {
+      expect(wouldNavigate('https://account.nicovideo.jp/login'), isTrue);
+    });
+
+    test('https + nicovideo top page navigates', () {
+      expect(wouldNavigate('https://www.nicovideo.jp/'), isTrue);
+    });
+
+    test('https + Google OAuth navigates', () {
+      expect(wouldNavigate('https://accounts.google.com/oauth'), isTrue);
+    });
+
+    test('about:blank navigates (WebView internal)', () {
+      expect(wouldNavigate('about:blank'), isTrue);
+    });
+
+    test('http + Google OAuth is prevented (regression for #883)', () {
+      expect(wouldNavigate('http://accounts.google.com/oauth'), isFalse);
+    });
+
+    test('http + niconico login is prevented (regression for #883)', () {
+      expect(wouldNavigate('http://account.nicovideo.jp/login'), isFalse);
+    });
+
+    test('javascript: pseudo-URL is prevented', () {
+      expect(wouldNavigate('javascript:alert(1)'), isFalse);
+    });
+
+    test('https + non-allowlisted host is prevented', () {
+      expect(wouldNavigate('https://attacker.example.com/'), isFalse);
+    });
+
+    test('empty string is prevented', () {
+      expect(wouldNavigate(''), isFalse);
     });
   });
 
