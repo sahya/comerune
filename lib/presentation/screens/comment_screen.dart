@@ -801,6 +801,15 @@ class _CommentScreenState extends State<CommentScreen>
   /// で controller を経由する形で配線する予定。
   late bool _autoExtendBroadcastEnabled = widget.autoExtendBroadcastEnabled;
 
+  /// 自動延長 UI 一時非表示フラグ（Issue #876）。
+  ///
+  /// PR #877 で Switch UI と設定永続化を入れたが、Timer 動作（残り 5 分で
+  /// 自動延長 API 呼出）が未配線のため、ON にしても何も起こらない。
+  /// 配信主が誤解しないよう Timer 配線が完了するまで UI 自体を隠す。
+  /// 設定の永続化・Export/Import 互換は維持しているので、ここを `true` に
+  /// 戻すだけで再表示できる（Switch の最終状態も保持される）。
+  static const bool _autoExtendUiVisible = false;
+
   /// Timestamp at which the broadcast transitioned to ended/stopped.
   /// Used to freeze the status-bar elapsed timer display.
   DateTime? _endedAt;
@@ -4355,7 +4364,8 @@ class _CommentScreenState extends State<CommentScreen>
               label: AppStrings.extendBroadcast.menuItem,
             ),
           ),
-        if (canEndBroadcast)
+        // ignore: dead_code
+        if (_autoExtendUiVisible && canEndBroadcast)
           // Issue #875: 「自動延長」トグル行はメニューを閉じずに状態を
           // 切り替える特別な振る舞いを持つ。配信主がトグル後に新しい状態
           // をその場で視覚的に確認できるようにするため、PopupMenuItem の
