@@ -52,7 +52,14 @@ class OAuthBffClient {
           )
           .timeout(_timeout);
     } catch (e) {
-      log('BFF token endpoint unreachable: $e', name: 'OAuthBffClient');
+      // Avoid interpolating `$e`: some network exceptions stringify the
+      // request body, which contains the authorization code or refresh
+      // token. Surface the error type only — matches the convention used
+      // for the malformed-JSON branch below.
+      log(
+        'BFF token endpoint unreachable (error type: ${e.runtimeType})',
+        name: 'OAuthBffClient',
+      );
       throw const OAuthFailure(
         reason: OAuthFailureReason.networkFailure,
         message: 'Failed to reach BFF token endpoint',
