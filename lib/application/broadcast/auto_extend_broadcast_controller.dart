@@ -16,7 +16,7 @@ class AutoExtendBroadcastConfig {
   const AutoExtendBroadcastConfig({
     this.thresholdBeforeEnd = const Duration(minutes: 5),
     this.extendMinutes = 30,
-    this.maxRetries = 3,
+    this.maxRetries = 6,
     this.retryBackoff = const Duration(seconds: 30),
   });
 
@@ -271,7 +271,8 @@ class AutoExtendBroadcastController {
 
       // 既存上限到達は再試行しても成功しないが、本実装はエラーコード
       // 別の早期 abort をしない（仕様上は単純なリトライ N 回で OK）。
-      // PR2 の AC「失敗時に最大 3 回までリトライされる」を素直に満たす。
+      // 既定値 6 回 × 30 秒間隔で「残り 5 分前」発火から最大 2 分半
+      // 以内に確定。配信終了より十分早く失敗が確定する。
       await _waitForRetryOrAbort(attempt);
     }
     _onAllRetriesFailed();

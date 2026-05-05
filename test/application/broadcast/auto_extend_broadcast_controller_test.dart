@@ -158,17 +158,32 @@ void main() {
         expect(repo.calls, hasLength(1));
         expect(emitted, isEmpty);
 
-        // After 30s backoff, second attempt runs.
+        // After 30s backoff, second attempt runs. Default config retries
+        // up to 6 times with 30 s spacing — verify the cadence of the
+        // first few intervals to pin the schedule, then jump to the
+        // final retry to assert the failure message arrives at attempt
+        // 6 (and not earlier or later).
         async.elapse(const Duration(seconds: 30));
         async.flushMicrotasks();
         expect(repo.calls, hasLength(2));
         expect(emitted, isEmpty);
 
-        // After another 30s, third (final) attempt runs and the failure
-        // message is emitted.
         async.elapse(const Duration(seconds: 30));
         async.flushMicrotasks();
         expect(repo.calls, hasLength(3));
+        expect(emitted, isEmpty);
+
+        // Skip ahead through retries 4 and 5 — still no failure message.
+        async.elapse(const Duration(seconds: 60));
+        async.flushMicrotasks();
+        expect(repo.calls, hasLength(5));
+        expect(emitted, isEmpty);
+
+        // Sixth (final) attempt fires after another 30 s; failure
+        // message is emitted only once attempt 6 returns.
+        async.elapse(const Duration(seconds: 30));
+        async.flushMicrotasks();
+        expect(repo.calls, hasLength(6));
         expect(emitted, hasLength(1));
         expect(
           emitted.single.id.startsWith(kSystemAutoExtendFailureMessageIdPrefix),
@@ -210,17 +225,19 @@ void main() {
             userSession: 'sess',
             endAt: now.add(const Duration(minutes: 30)),
           );
+          // Cross the threshold + drain all 6 retries (5 backoff
+          // windows of 30 s each = 150 s after the first attempt).
           async.elapse(const Duration(minutes: 30));
           async.flushMicrotasks();
-          // After all 3 retries:
-          expect(repo.calls, hasLength(3));
+          // After all 6 retries:
+          expect(repo.calls, hasLength(6));
           expect(emitted, hasLength(1));
 
           // Wait another hour — no further attempts. The controller is
           // idle until the host pushes a new endAt or toggles off/on.
           async.elapse(const Duration(hours: 1));
           async.flushMicrotasks();
-          expect(repo.calls, hasLength(3));
+          expect(repo.calls, hasLength(6));
         });
       },
     );
@@ -500,8 +517,8 @@ void main() {
         async.elapse(const Duration(minutes: 30));
         async.flushMicrotasks();
 
-        // All 3 attempts ran; failure message emitted.
-        expect(repo.calls, hasLength(3));
+        // All 6 attempts ran; failure message emitted.
+        expect(repo.calls, hasLength(6));
         expect(emitted, hasLength(1));
         expect(
           emitted.single.id.startsWith(kSystemAutoExtendFailureMessageIdPrefix),

@@ -2770,6 +2770,14 @@ class _CommentScreenState extends State<CommentScreen>
           _commentInputExpanded = false;
         }
       });
+      // Issue #876: session resolution is async, so the auto-extend
+      // controller seeded in initState ran with `_commentPostUserSession`
+      // empty. Re-evaluate now that the session has flipped to its
+      // resolved value — without this the Timer never gets armed for
+      // a broadcaster who opens the screen with a stale empty session
+      // (e.g. cold start on a broadcast that already crossed the 5-min
+      // threshold).
+      _evaluateAutoExtendController();
     }
     if (trimmed.isEmpty) {
       return;
@@ -2788,6 +2796,11 @@ class _CommentScreenState extends State<CommentScreen>
       setState(() {
         _isBroadcaster = isBroadcaster;
       });
+      // Issue #876: broadcaster status is resolved asynchronously, so
+      // the controller's `enabled` gate (`_isBroadcaster && ...`) flipped
+      // while the controller was idle. Re-evaluate so the Timer arms
+      // immediately for late-arrival broadcaster confirmations.
+      _evaluateAutoExtendController();
     }
   }
 
@@ -5536,6 +5549,12 @@ class _CommentScreenState extends State<CommentScreen>
       _isBroadcaster = isBroadcaster;
       _commentPostUserSession = userSession;
     });
+    // Issue #876: keep the test-only seam aligned with the production
+    // `_resolveCommentPostContext` path. Both flip _isBroadcaster /
+    // _commentPostUserSession and must re-evaluate the auto-extend
+    // controller so tests that simulate broadcaster resolution after
+    // mount also exercise the Timer arming.
+    _evaluateAutoExtendController();
   }
 
   List<AppMessage> _messagesForLog() {

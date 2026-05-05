@@ -307,6 +307,64 @@ void main() {
     );
 
     testWidgets(
+      'broadcaster status flipping after mount fires auto-extend even past the 5-min threshold',
+      (WidgetTester tester) async {
+        // Issue #876 follow-up: opening the comment screen on a
+        // broadcast that already crossed the 5-min "残り" threshold
+        // must still trigger the auto-extend Timer once the async
+        // broadcaster check resolves. Before this fix, the controller
+        // was seeded in initState while `_isBroadcaster` was still
+        // false (broadcaster status is checked async); when it flipped
+        // to true later there was no path that re-evaluated the
+        // controller, so the broadcast lost its first auto-extend
+        // opportunity.
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final _RecordingBroadcastControlRepository repo =
+            _RecordingBroadcastControlRepository();
+
+        // endAt 1 minute in the future means we are already past the
+        // 5-min threshold (endAt - 5min < now). The controller should
+        // fire immediately once both `_isBroadcaster=true` and a
+        // non-empty session arrive.
+        final DateTime endAt = DateTime.now().add(const Duration(minutes: 1));
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            broadcastControlRepository: repo,
+            endAt: endAt,
+            autoExtendBroadcastEnabled: true,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // No call yet — initState evaluated the controller while
+        // `_isBroadcaster=false`, so it stayed disabled.
+        expect(repo.extendCalls, isEmpty);
+
+        // Simulate the production async resolution flipping
+        // `_isBroadcaster=true` + non-empty session. The screen state
+        // setter must re-evaluate the controller; the controller's
+        // already-past-threshold path arms a zero-delay Timer.
+        (tester.state<State<CommentScreen>>(find.byType(CommentScreen))
+                as CommentScreenTestAccess)
+            .setBroadcasterForTesting(
+              isBroadcaster: true,
+              userSession: 'session-late-arrival',
+            );
+        await tester.pumpAndSettle();
+
+        // The auto-extend API has been called exactly once. Without
+        // the `_evaluateAutoExtendController()` hook on the broadcaster
+        // / session flip, this would stay 0.
+        expect(repo.extendCalls, hasLength(1));
+        expect(repo.extendCalls.single.programId, 'lv345678901');
+        expect(repo.extendCalls.single.userSession, 'session-late-arrival');
+        expect(repo.extendCalls.single.minutes, 30);
+      },
+    );
+
+    testWidgets(
       'extend dialog failure does NOT propagate an endAt update upstream',
       (WidgetTester tester) async {
         // Defensive: server-side failure (4xx / network) must not push
@@ -362,10 +420,12 @@ Widget _buildScreen({
   List<AppMessage> messages = const <AppMessage>[],
   void Function(DateTime newEndAt)? onBroadcastEndTimeExtended,
   void Function(AppMessage message)? onAutoExtendSystemMessage,
+  DateTime? endAt,
+  bool autoExtendBroadcastEnabled = false,
 }) {
   return MaterialApp(
     home: CommentScreen(
-      programInfo: CommentProgramInfo(lv: lv),
+      programInfo: CommentProgramInfo(lv: lv, endAt: endAt),
       connectionSupervisor: supervisor,
       messages: messages,
       callbacks: CommentCallbacks(
@@ -377,6 +437,7 @@ Widget _buildScreen({
       ),
       themeMode: AppThemeMode.light,
       broadcastControlRepository: broadcastControlRepository,
+      autoExtendBroadcastEnabled: autoExtendBroadcastEnabled,
     ),
   );
 }
