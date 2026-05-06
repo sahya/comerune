@@ -18,18 +18,33 @@
 //
 // - Per-URL routing tables / retry-after maps used by
 //   `favorite_user_live_checker_test.dart` and
-//   `broadcaster_embed_resolver_test.dart` — those need a different
-//   shape (multi-endpoint dispatch) and stay bespoke until a separate
-//   migration phase ports them.
+//   `broadcaster_embed_resolver_test.dart`. Those tests dispatch on a
+//   URL substring with per-prefix status / retry-after / hit-count
+//   state. Folding that into this helper would (a) push a parallel
+//   "routing" data model into every simple variant, and (b) entangle
+//   retry-after / hit-counter state with the single-response fields
+//   below. The simple variants outnumber the routing variants 7-to-2,
+//   so the bespoke routing fakes stay in those two files until — and
+//   only if — a third routing variant emerges.
 // - Response header lookup beyond the simple value(name) read used by
 //   the simple variants — Retry-After / chunked transfer / cookies
 //   are not modelled here.
+// - Per-method failure injection. `shouldThrowOnRequest` is a global
+//   switch; tests that need GET-success / POST-fail (e.g. niconico
+//   wrapping client coverage) should keep their bespoke fakes until
+//   this helper grows a method-keyed override map. The single-flag
+//   shape was chosen to keep the simple variants migrating now.
 
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 /// Snapshot of one outgoing request observed by [FakeHttpClient].
+///
+/// Named without a `Fake` prefix because this is a **read-only record**
+/// of what the system-under-test sent — not a substitute for any real
+/// `dart:io` class. Tests that grep for `FakeHttp*` will not find this
+/// type; that mismatch is intentional, not an oversight.
 ///
 /// `method` defaults to `'GET'` because the simplest variants only
 /// exercised `getUrl`; tests that drive POST/PUT can read it back
@@ -76,12 +91,19 @@ class FakeHttpClient implements HttpClient {
   /// When non-null, [HttpClientRequest.close] awaits this future before
   /// returning a response. Use a [Completer] to drive precise timing
   /// in tests (e.g. firing it after pumping a timer past a timeout).
+  ///
+  /// When both [responseDelay] and [pendingCompleter] are set, they
+  /// are awaited **serially** in the order `responseDelay` →
+  /// `pendingCompleter`. Most tests need only one of the two; both
+  /// were preserved during migration so existing call sites for each
+  /// shape kept working without rewriting.
   Future<void>? responseDelay;
 
   /// When set, [HttpClientRequest.close] awaits this completer before
   /// returning a response. Equivalent to [responseDelay] but lets the
   /// test control completion explicitly via [Completer.complete] rather
-  /// than awaiting a fixed-duration future.
+  /// than awaiting a fixed-duration future. See [responseDelay] for
+  /// the ordering when both are configured.
   Completer<void>? pendingCompleter;
 
   /// When set, the response body stream awaits this completer before
@@ -115,6 +137,11 @@ class FakeHttpClient implements HttpClient {
   @override
   void close({bool force = false}) {}
 
+  /// Falls through to the default `noSuchMethod`, which throws
+  /// [NoSuchMethodError]. This is intentional: any `HttpClient` member
+  /// not covered above signals an unmodelled code path on the
+  /// system-under-test side, and the resulting failure is the desired
+  /// loud signal to extend this helper deliberately.
   @override
   dynamic noSuchMethod(Invocation invocation) {
     return super.noSuchMethod(invocation);
