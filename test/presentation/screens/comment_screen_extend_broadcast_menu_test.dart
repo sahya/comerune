@@ -395,6 +395,19 @@ void main() {
       },
     );
   });
+
+  // Issue #876 / #879 follow-up: 自動延長 UI の表示制御は
+  // `_autoExtendUiVisible` フラグ + `_autoExtendDebugUiOverride`
+  // (dart-define) + `kDebugMode` の 3 段で決まる。release ビルド時は
+  // フラグだけが効くため一般ユーザーには非表示、debug build / dart-define
+  // opt-in 環境ではテストや実機検証のために表示される。
+  //
+  // widget test は `kDebugMode == true` で実行されるので、Switch の
+  // 描画・挙動 pin は `comment_screen_auto_extend_menu_test.dart` 側で
+  // 行う（PR #879 で `@Skip` を一時付与していたが PR #878 で解除）。
+  // 本ファイル側で「hidden」を pin する group は新設計と矛盾するため
+  // 削除した。フラグの const 値そのものの regression 検知は
+  // `_autoExtendUiVisible` を直接読む別観点のテストで行う余地あり。
 }
 
 Widget _buildScreen({

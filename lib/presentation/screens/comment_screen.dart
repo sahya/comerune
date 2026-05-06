@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:clock/clock.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -807,6 +808,40 @@ class _CommentScreenState extends State<CommentScreen>
   /// が wired な場合のみ生成される（未配線環境＝テスト/最小ホストでは
   /// `null`）。State から所有して initState で生成、dispose で解放。
   AutoExtendBroadcastController? _autoExtendController;
+
+  /// 自動延長 UI 一時非表示フラグ（Issue #876）。
+  ///
+  /// PR #879 で Timer 動作（PR #878）が完成するまでの間、配信主が
+  /// 「Switch ON にしたのに延長されない」と誤解しないように UI 自体を
+  /// 隠していた。PR #878 で Timer 配線が完了したが、niconico API 側の
+  /// endAt 取得経路に既知のフォールバックリスク
+  /// （`docs/analysis/auto-extend-coldstart-audit-2026-05-05.md` 参照）
+  /// があるため、まずは debug / dart-define オプトインだけで露出し、
+  /// 実機検証を継続できるようにする運用にしている。
+  ///
+  /// release ビルドで一般ユーザーへ露出する準備が整ったらこのフラグを
+  /// `true` に戻す。設定の永続化・Export/Import 互換は維持しているので、
+  /// フラグを戻すだけで Switch の最終状態も保持されたまま再表示できる。
+  static const bool _autoExtendUiVisible = false;
+
+  /// Issue #876: release ビルドでも opt-in で Switch を露出するための
+  /// dart-define オーバーライド。QA / 配信主に検証ビルドを配布する
+  /// ときに `--dart-define=COMERUNE_AUTO_EXTEND_DEBUG_UI=true` で
+  /// 有効化する。`lib/extension/extension_debug_overrides.dart` の
+  /// 既存 dart-define パターンと同じ流儀。
+  static const bool _autoExtendDebugUiOverride = bool.fromEnvironment(
+    'COMERUNE_AUTO_EXTEND_DEBUG_UI',
+    defaultValue: false,
+  );
+
+  /// 自動延長 Switch を AppBar オーバーフローメニューに表示してよいか。
+  ///
+  /// 優先順位:
+  /// 1. `_autoExtendUiVisible == true` → 一般リリース（最終形）
+  /// 2. `_autoExtendDebugUiOverride == true` → release でも opt-in 可
+  /// 3. `kDebugMode == true` → 開発時は常に表示（debug build / widget test）
+  bool get _showAutoExtendUi =>
+      _autoExtendUiVisible || _autoExtendDebugUiOverride || kDebugMode;
 
   /// Timestamp at which the broadcast transitioned to ended/stopped.
   /// Used to freeze the status-bar elapsed timer display.
@@ -4429,7 +4464,7 @@ class _CommentScreenState extends State<CommentScreen>
               label: AppStrings.extendBroadcast.menuItem,
             ),
           ),
-        if (canEndBroadcast)
+        if (_showAutoExtendUi && canEndBroadcast)
           // Issue #875: 「自動延長」トグル行はメニューを閉じずに状態を
           // 切り替える特別な振る舞いを持つ。配信主がトグル後に新しい状態
           // をその場で視覚的に確認できるようにするため、PopupMenuItem の
