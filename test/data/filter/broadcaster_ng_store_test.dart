@@ -288,6 +288,61 @@ void main() {
       expect(store.listBroadcasters(), isEmpty);
     });
 
+    test('mutating template after broadcaster slot is committed must not bleed '
+        'into the slot NG user IDs', () async {
+      await store.saveTemplateNgUserIds(<String>{'tpl-before'});
+      await store.saveNgUserIds('b1', <String>['only-b1']);
+
+      // Slot is now committed for b1. Subsequent template edits must not
+      // leak into the committed slot, since the slot was created from the
+      // template snapshot at write time (PR #825).
+      await store.saveTemplateNgUserIds(<String>{'tpl-after'});
+
+      expect(
+        await store.loadNgUserIds('b1'),
+        equals(<String>{'only-b1'}),
+        reason:
+            'Committed broadcaster slot must keep its own NG user IDs '
+            'independent of later template edits.',
+      );
+      expect(
+        await store.loadTemplateNgUserIds(),
+        equals(<String>{'tpl-after'}),
+        reason: 'Template itself should still reflect the latest edit.',
+      );
+    });
+
+    test('mutating template after broadcaster slot is committed must not bleed '
+        'into the slot NG word rules', () async {
+      await store.saveTemplateNgWordRules(<NgWordRule>[
+        const NgWordRule(pattern: 'tpl-before'),
+      ]);
+      await store.saveNgWordRules('b1', <NgWordRule>[
+        const NgWordRule(pattern: 'only-b1'),
+      ]);
+
+      await store.saveTemplateNgWordRules(<NgWordRule>[
+        const NgWordRule(pattern: 'tpl-after'),
+      ]);
+
+      expect(
+        (await store.loadNgWordRules(
+          'b1',
+        )).map((NgWordRule rule) => rule.pattern).toList(),
+        <String>['only-b1'],
+        reason:
+            'Committed broadcaster slot must keep its own NG word rules '
+            'independent of later template edits.',
+      );
+      expect(
+        (await store.loadTemplateNgWordRules())
+            .map((NgWordRule rule) => rule.pattern)
+            .toList(),
+        <String>['tpl-after'],
+        reason: 'Template itself should still reflect the latest edit.',
+      );
+    });
+
     test('malformed stored JSON degrades to empty without throwing', () async {
       // Pollute the slot directly so we exercise the catch branch.
       await prefs.setString(
