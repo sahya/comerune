@@ -279,6 +279,24 @@ void main() {
       );
     });
 
+    test('動的引数を含む文言の境界値が byte-for-byte で固定される', () {
+      // ARB 化で `{userId}` プレースホルダに置き換えた際にも
+      // 同じ前後余白・記号の埋め込みになるよう、空文字 / 半角スペース /
+      // 鉤括弧ネスト / 制御記号を含む文字列で固定する。
+      // unregisterDialogContent: 鉤括弧で値を挟む形
+      expect(
+        AppStrings.ngUserList.unregisterDialogContent(''),
+        'ユーザーID「」のNG登録を解除しますか？',
+      );
+      expect(
+        AppStrings.ngUserList.unregisterDialogContent('「abc」'),
+        'ユーザーID「「abc」」のNG登録を解除しますか？',
+      );
+      // unregisteredSnackBar: 引数の直後に半角スペース 1 個を入れる形
+      expect(AppStrings.ngUserList.unregisteredSnackBar(''), ' のNGを解除しました');
+      expect(AppStrings.ngUserList.unregisteredSnackBar(' '), '  のNGを解除しました');
+    });
+
     test('読み込み失敗 / 空状態 / tooltip の文言が既存と一致する', () {
       expect(AppStrings.ngUserList.loadFailedTitle, 'NG リストの読込みに失敗しました');
       expect(AppStrings.ngUserList.retryButton, '再試行');
@@ -297,6 +315,25 @@ void main() {
 
     test('削除完了 SnackBar の文言が既存と一致する（引数を含む）', () {
       expect(AppStrings.ngWordList.deletedSnackBar('スパム'), '「スパム」を削除しました');
+    });
+
+    test('動的引数を含む文言の境界値が byte-for-byte で固定される', () {
+      // ARB 化で `{pattern}` プレースホルダに置き換えた際にも
+      // 同じ鉤括弧で挟む形に保つこと。空文字 / regex メタ文字 /
+      // 鉤括弧ネスト / `$` を含むパターンで固定する。
+      // deleteDialogContent: 鉤括弧で値を挟む形
+      expect(AppStrings.ngWordList.deleteDialogContent(''), '「」を削除しますか？');
+      expect(
+        AppStrings.ngWordList.deleteDialogContent(r'$abc'),
+        r'「$abc」を削除しますか？',
+      );
+      expect(
+        AppStrings.ngWordList.deleteDialogContent('「nested」'),
+        '「「nested」」を削除しますか？',
+      );
+      // deletedSnackBar
+      expect(AppStrings.ngWordList.deletedSnackBar(''), '「」を削除しました');
+      expect(AppStrings.ngWordList.deletedSnackBar(r'.*'), '「.*」を削除しました');
     });
 
     test('追加 UI（ボタン / ダイアログ）の文言が既存と一致する', () {

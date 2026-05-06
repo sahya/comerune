@@ -29,13 +29,41 @@
 /// Issue #476 Phase 1 では **`SettingsScreen`（設定画面ルート）** の
 /// 文字列を、Issue #836 Phase 2 では NG 設定編集画面 / NG ユーザー /
 /// NG ワード画面の **固定 UI ラベル** を集約済み。
-/// 他画面の文字列は継続課題として段階的に追加予定（下位画面: コメント
-/// 表示設定・読み上げ設定・ユーザー管理設定 等）。
 ///
-/// 集約対象は「画面タイトル・タブラベル・ボタンラベル・固定説明文」
-/// のみとし、API 応答由来の動的エラーや domain 概念（NG カテゴリ説明
-/// 等）は別 namespace / 別 Issue へ切り出す方針（Issue #836 コメント
-/// 参照）。
+/// 継続課題として段階的に追加予定（Phase 3 候補）:
+/// - コメント表示設定 / 読み上げ設定 / ユーザー管理設定 / お気に入りユーザー
+/// - コメント画面の AppBar 周辺・SnackBar・ダイアログ
+/// - ログイン / 放送一覧 / ライセンスページの固定文言
+///
+/// ## 集約判定基準（Phase 2 で確立）
+/// 集約**する**:
+/// - 画面タイトル・タブラベル・ボタンラベル・tooltip
+/// - ダイアログタイトル / 本文 / 確認・キャンセルボタン
+/// - 空状態メッセージ / 読み込み失敗時の本文
+/// - **クライアント側ローカル検証エラー**（regex 不正 / 重複検出など、
+///   API 応答に依存せず固定文で確定的に出るもの）
+/// - 固定文言の SnackBar（操作完了通知など、引数のみが動的で本文は
+///   テンプレート化できるもの）
+///
+/// 集約**しない**:
+/// - API 応答に対する固定 SnackBar（例:「○○の更新に失敗しました」）。
+///   これは Service 層のキー化として別 Issue に切り出す方針。一見
+///   固定文だが「API 応答を契機に出る UI」は Service / Repository の
+///   error mapping と一緒に扱うほうが翻訳カバレッジが揃う。
+/// - domain 概念（NG カテゴリ説明、正規表現の意味論 等）。
+///   `FilterCategoryStrings` のような domain 寄り namespace に分離。
+/// - 既存 spec list / config と二重管理になるパターン
+///   （`_ngDisplayToggleSpecs` 等の data-driven UI 構造体内の文言）。
+///
+/// ## 同一文言の複数 namespace 重複について
+/// `'再試行'` `'キャンセル'` `'削除'` `'NG リストの読込みに失敗しました'`
+/// 等は複数 sub-class に重複保持されるケースがある。これは
+/// **意図的**で、i18n 段階で画面ごとに翻訳を分岐できる柔軟性を
+/// 確保するため（英語ロケールでは「ダイアログ確認」と「リストアイテム
+/// tooltip」で同一原文でも異なる訳語を選びたいケースが頻出）。
+/// ある時点で「全画面で同じ訳でよい」と確定したラベルだけを共通
+/// namespace（将来の `CommonStrings` 等）に集約する方針。本 PR では
+/// その共通化判断は時期尚早と判定し、各 namespace に保持している。
 abstract final class AppStrings {
   const AppStrings._();
 
@@ -208,6 +236,9 @@ final class NgUserListStrings {
   String unregisteredSnackBar(String userId) => '$userId のNGを解除しました';
 
   // 読み込み失敗時の本文
+  // NOTE: `loadFailedTitle` / `retryButton` は `NgWordListStrings` にも
+  // 同一文言で存在する。i18n 時に画面ごとに別訳を選べる柔軟性のため
+  // 意図的に重複保持している（クラスドキュメント参照）。
   String get loadFailedTitle => 'NG リストの読込みに失敗しました';
   String get retryButton => '再試行';
 
@@ -215,6 +246,9 @@ final class NgUserListStrings {
   String get emptyMessage => 'NGユーザーIDは登録されていません';
 
   // リストアイテムの削除ボタン tooltip
+  // NOTE: `unregisterDialogTitle` と同一文言だが、ダイアログタイトル
+  // （動詞文）と tooltip（短縮ラベル）は i18n 時に別訳になる言語が
+  // 想定されるため別 getter に分離して保持する。
   String get removeTooltip => 'NG解除';
 }
 
@@ -231,6 +265,9 @@ final class NgWordListStrings {
   String get deleteDialogTitle => 'NGワード削除';
   String deleteDialogContent(String pattern) => '「$pattern」を削除しますか？';
   String get deleteDialogCancel => 'キャンセル';
+  // NOTE: `deleteDialogConfirm` と `deleteTooltip` は同一文言だが、
+  // ダイアログ確定ボタンと IconButton tooltip は i18n 時に別訳になる
+  // 言語が想定されるため別 getter として保持する。
   String get deleteDialogConfirm => '削除';
 
   /// 削除成功時の SnackBar 文言。動的引数 `pattern` を含むため
@@ -245,12 +282,16 @@ final class NgWordListStrings {
   String get addDialogConfirm => '追加';
 
   /// 入力検証エラー（regex として無効）の SnackBar 文言。
+  /// クライアント側のローカル検証結果のため AppStrings に集約する
+  /// （クラスドキュメントの集約判定基準を参照）。
   String get invalidPatternSnackBar => '無効なパターンです';
 
-  /// 入力検証エラー（重複）の SnackBar 文言。
+  /// 入力検証エラー（重複）の SnackBar 文言。同上。
   String get duplicatePatternSnackBar => '同じパターンが既に登録されています';
 
   // 読み込み失敗時の本文
+  // NOTE: `NgUserListStrings` にも同一文言で存在する。i18n 時に画面
+  // ごとに別訳を選べる柔軟性のため意図的に重複保持している。
   String get loadFailedTitle => 'NG リストの読込みに失敗しました';
   String get retryButton => '再試行';
 
