@@ -973,5 +973,62 @@ void main() {
 
       expect(loaded.showCommentNo, isTrue);
     });
+
+    // Issue #875: auto-extend broadcast Switch persistence.
+    // PR1 only stores the toggle state — Timer behaviour is wired in
+    // PR2 (#876), but the persistence contract must be stable so the
+    // store-level tests live with PR1.
+    group('autoExtendBroadcastEnabled (Issue #875)', () {
+      test('defaults to false when not stored', () async {
+        final SharedPreferencesSettingsStore store =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        final AppSettings loaded = await store.load();
+
+        expect(loaded.autoExtendBroadcastEnabled, isFalse);
+      });
+
+      test('round-trips autoExtendBroadcastEnabled true', () async {
+        final SharedPreferencesSettingsStore store =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        await store.save(
+          AppSettings.defaults.copyWith(autoExtendBroadcastEnabled: true),
+        );
+        final AppSettings loaded = await store.load();
+
+        expect(loaded.autoExtendBroadcastEnabled, isTrue);
+      });
+
+      test('round-trips autoExtendBroadcastEnabled false', () async {
+        final SharedPreferencesSettingsStore store =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        await store.save(
+          AppSettings.defaults.copyWith(autoExtendBroadcastEnabled: false),
+        );
+        final AppSettings loaded = await store.load();
+
+        expect(loaded.autoExtendBroadcastEnabled, isFalse);
+      });
+
+      test(
+        'autoExtendBroadcastEnabled persists across SettingsStore instances',
+        () async {
+          final InMemorySharedPreferences shared = InMemorySharedPreferences();
+          final SharedPreferencesSettingsStore writer =
+              SharedPreferencesSettingsStore(prefs: shared);
+          await writer.save(
+            AppSettings.defaults.copyWith(autoExtendBroadcastEnabled: true),
+          );
+
+          final SharedPreferencesSettingsStore reader =
+              SharedPreferencesSettingsStore(prefs: shared);
+          final AppSettings loaded = await reader.load();
+
+          expect(loaded.autoExtendBroadcastEnabled, isTrue);
+        },
+      );
+    });
   });
 }

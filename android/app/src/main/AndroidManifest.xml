@@ -47,11 +47,26 @@
             android:value="2" />
         <!-- Foreground service for keeping the comment WebSocket connection alive
              while the app is backgrounded. dataSync matches actual usage; mediaPlayback
-             would risk Android 14+ revocation since no media is continuously played. -->
+             would risk Android 14+ revocation since no media is continuously played.
+
+             stopWithTask=true: when the user swipes the app away from the recents
+             list, Android stops this service automatically so the foreground
+             service notification disappears with the task. The Dart-level
+             ForegroundTaskOptions.stopWithTask is intentionally NOT used because
+             it triggers TrackVisibilityUtils — which stops the service on every
+             activity pause (e.g. pressing home), breaking legitimate background
+             streaming. -->
         <service
             android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
             android:foregroundServiceType="dataSync"
+            android:stopWithTask="true"
             android:exported="false" />
+        <!-- Notification icon resource reference for the foreground service notification.
+             Provides a complete notification on all Android versions and stabilizes
+             foreground service startup. -->
+        <meta-data
+            android:name="com.example.comerune.service.NOTIFICATION_ICON"
+            android:resource="@mipmap/ic_launcher" />
     </application>
     <queries>
         <intent>

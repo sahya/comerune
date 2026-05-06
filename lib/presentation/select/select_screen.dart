@@ -4,21 +4,29 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../app_logging.dart';
+import '../../application/comment_log/broadcast_history_recorder.dart';
 import '../../application/comment_post/comment_post_controller.dart';
 import '../../application/timeshift_fetch/timeshift_fetch_controller.dart';
+import '../../application/settings/settings_save_helper.dart';
 import '../../application/settings/settings_store.dart';
 import '../../application/speech/speech_availability_notifier.dart';
+import '../../application/statistics/recent_broadcast_stats_holder.dart';
+import '../../application/statistics/recent_broadcast_stats_recorder.dart';
 import '../../application/statistics/statistics_store.dart';
 import '../../application/timeline/timeline_store.dart';
 import '../../data/auth/user_session_store.dart';
+import '../../data/comment_log/broadcast_history_store.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../data/broadcast/broadcast_control_repository.dart';
+import '../../data/broadcaster/broadcaster_name_store.dart';
+import '../../data/filter/broadcaster_ng_store.dart';
 import '../../data/follow/favorite_user_live_checker.dart';
 import '../../data/niconico/broadcaster_embed_resolver.dart';
 import '../../domain/models/follow_program.dart';
 import '../../data/follow/follow_program_repository.dart';
 import '../../data/follow/my_program_repository.dart';
 import '../../data/user/user_attribute_store.dart';
+import '../../domain/models/ng_word_rule.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/connection/connection_supervisor.dart';
 import '../../domain/matchers/ng_matcher.dart';
@@ -29,6 +37,7 @@ import '../../domain/utils/lv_parser.dart';
 import '../../domain/utils/nico_icon_url.dart';
 import '../../comment_speech/comment_speech.dart'
     show MethodChannelCommentSpeech, SpeechSettings;
+import '../../domain/comment_log/recent_broadcast_stats.dart';
 import '../screens/comment_screen.dart';
 import '../screens/comment_screen_config.dart';
 import '../screens/settings_screen.dart';
@@ -38,8 +47,74 @@ void _debugLogLazy(String Function() messageBuilder) {
   appDebugLogLazy(messageBuilder);
 }
 
-void _errorLog(String message, {Object? error}) {
-  appErrorLog(name: 'SelectScreen', message: message, error: error);
+void _errorLog(String message, {Object? error, StackTrace? stackTrace}) {
+  appErrorLog(
+    name: 'SelectScreen',
+    message: message,
+    error: error,
+    stackTrace: stackTrace,
+  );
+}
+
+// Issue #727: [BroadcasterNgSnapshot] is the in-memory tagged variant of
+// the per-broadcaster NG payload. The shape is now defined in the data
+// layer ([BroadcasterNgPayload] / [BroadcasterNgSnapshot] in
+// `broadcaster_ng_store.dart`) so the testable helper
+// [computeContentFilterInputs] below — and its tests — can reference the
+// same record shape without depending on this widget file.
+
+/// Convenience getter to avoid spelling out the empty record at every
+/// call-site. Returns a fresh value each time; the constituent fields
+/// themselves are still const collections so the cost is negligible.
+//
+// const-record-with-collections compat: the analyzer (Dart 3.x) does not
+// accept a top-level `const BroadcasterNgSnapshot empty = (...)` even
+// though every constituent field is itself const, so we keep the getter
+// form. Revisit if the const-record story improves in a future SDK.
+BroadcasterNgSnapshot get _emptyBroadcasterNgSnapshot => (
+  broadcasterId: null,
+  ngUserIds: const <String>{},
+  rules: const <NgWordRule>[],
+);
+
+/// Pure logic for [_SelectScreenState._resolveContentFilter], extracted as
+/// a top-level function so it can be unit-tested without spinning up a
+/// full widget tree.
+///
+/// Resolution rules (Issue #727 PR2):
+///   1. **Per-broadcaster path** — when the store is wired AND we are
+///      connected AND the in-memory snapshot is tagged for the same
+///      broadcaster, return the snapshot values verbatim. The NG list
+///      screens now write directly through [BroadcasterNgStore], so the
+///      snapshot is the single source of truth and no union with the
+///      legacy `AppSettings.ngUserIds` / `ngWordRules` is needed.
+///   2. **Legacy fallback** — used only for unconnected sessions (no
+///      broadcaster yet) and for minimally-wired tests / hosts that do
+///      not pass a [BroadcasterNgStore]. Returns the legacy
+///      [AppSettings] fields so unconnected users still see their
+///      saved NG filter.
+@visibleForTesting
+({Set<String> ngUserIds, List<String> ngWords}) computeContentFilterInputs({
+  required AppSettings settings,
+  required String? currentBroadcasterId,
+  required BroadcasterNgSnapshot snapshot,
+  required bool hasStore,
+}) {
+  final bool perBroadcasterActive =
+      hasStore &&
+      currentBroadcasterId != null &&
+      snapshot.broadcasterId == currentBroadcasterId;
+  if (perBroadcasterActive) {
+    return (
+      ngUserIds: snapshot.ngUserIds,
+      ngWords: enabledNgWordPatterns(snapshot.rules),
+    );
+  }
+  // Legacy fallback: serves unconnected sessions and minimally-wired
+  // tests / hosts. The NG list screens write through the per-broadcaster
+  // store, but `AppSettings.ngUserIds` / `ngWordRules` may still hold
+  // values from before the migration.
+  return (ngUserIds: settings.ngUserIdSet, ngWords: settings.ngWordList);
 }
 
 class SelectScreen extends StatefulWidget {
@@ -64,12 +139,16 @@ class SelectScreen extends StatefulWidget {
     this.broadcastControlRepository,
     this.favoriteUserLiveChecker,
     this.userAttributeStore,
+    this.broadcasterNgStore,
+    this.broadcasterNameStore,
+    this.recentBroadcastStatsHolder,
+    this.broadcastHistoryStore,
     this.commentPostController,
     this.timeshiftFetchController,
     this.androidTtsAvailability,
     this.broadcasterEmbedResolver,
     this.playRemainingAfterEndedSink,
-    this.onSpeechQueueDrained,
+    this.onSpeechGraceEnded,
     super.key,
   });
 
@@ -99,6 +178,29 @@ class SelectScreen extends StatefulWidget {
   final BroadcastControlRepository? broadcastControlRepository;
   final FavoriteUserLiveChecker? favoriteUserLiveChecker;
   final UserAttributeStore? userAttributeStore;
+
+  /// Issue #727: per-broadcaster NG store. When null, the screen falls back
+  /// to the legacy global NG fields on [AppSettings] so existing tests and
+  /// embedding scenarios that do not wire a store keep working.
+  final BroadcasterNgStore? broadcasterNgStore;
+
+  /// Issue #727 follow-up: persistent cache of broadcaster display names.
+  /// Forwarded to [SettingsScreen] so the NG picker can render friendly
+  /// tile titles. Optional — when null, the picker falls back to raw IDs.
+  final BroadcasterNameStore? broadcasterNameStore;
+
+  /// Issue #767: optional in-memory holder for the previous broadcast's
+  /// stats snapshot. When non-null, the comment screen surfaces a "直前
+  /// の統計を見る" entry inside its status detail view, and the comment
+  /// screen's broadcast-ended hook updates the holder. When null (legacy
+  /// embedders / minimal test harnesses), both code paths become no-ops.
+  final RecentBroadcastStatsHolder? recentBroadcastStatsHolder;
+
+  /// Issue #766: optional integration. Forwarded to [SettingsScreen] (so
+  /// the user can open the history view) and to [CommentScreen] (so each
+  /// ended broadcast's stats summary is recorded). Optional — when null,
+  /// the settings tile and the recording side-effect are both skipped.
+  final BroadcastHistoryStore? broadcastHistoryStore;
   final CommentPostController? commentPostController;
   final TimeshiftFetchController? timeshiftFetchController;
 
@@ -125,10 +227,11 @@ class SelectScreen extends StatefulWidget {
   /// the notifier.
   final ValueNotifier<bool>? playRemainingAfterEndedSink;
 
-  /// Issue #739: forwarded to [CommentSpeechConfig.onSpeechQueueDrained].
-  /// Called when the comment screen's speech grace ends so the parallel FGS
-  /// grace can terminate early. Optional — null in test harnesses.
-  final VoidCallback? onSpeechQueueDrained;
+  /// Issue #739: forwarded to [CommentSpeechConfig.onSpeechGraceEnded].
+  /// Called when the comment screen's speech grace ends (timeout, queue
+  /// drained, or speech disabled mid-grace) so the parallel FGS grace can
+  /// terminate early. Optional — null in test harnesses.
+  final VoidCallback? onSpeechGraceEnded;
 
   @override
   State<SelectScreen> createState() => _SelectScreenState();
@@ -161,6 +264,35 @@ class _SelectScreenState extends State<SelectScreen>
         (colors: const <String, int>{}, nicknames: const <String, String>{}),
       );
   String? _currentBroadcasterId;
+
+  /// Issue #727: per-broadcaster NG snapshot used to build
+  /// [ContentFilterConfig]. Mirrors the [_userAttrNotifier] pattern so the
+  /// existing ListenableBuilder rebuild flow drives filter updates.
+  ///
+  /// The `broadcasterId` tag travels with the snapshot itself so a stale
+  /// async load that completes after the user has reconnected to a
+  /// different broadcaster can be detected by comparing the tag against
+  /// [_currentBroadcasterId] — there is no longer a separate "loaded for"
+  /// field that could drift out of sync with the snapshot value.
+  ///
+  /// Initial value is empty (broadcasterId == null); a real snapshot is
+  /// populated by `_loadBroadcasterNgState`. When
+  /// [SelectScreen.broadcasterNgStore] is null the notifier stays empty
+  /// and the legacy global fields on `AppSettings` provide the filter
+  /// input via [_resolveContentFilter].
+  final ValueNotifier<BroadcasterNgSnapshot> _broadcasterNgNotifier =
+      ValueNotifier<BroadcasterNgSnapshot>(_emptyBroadcasterNgSnapshot);
+
+  /// Issue #727 SHOULD FIX 2: monotonic generation counter for the
+  /// optimistic NG-toggle rollback guard. Each call to [_toggleNgUser]
+  /// increments this counter and captures the new value; the deferred
+  /// rollback only fires if the counter has not advanced in the meantime
+  /// (i.e. no later toggle has superseded this optimistic update).
+  ///
+  /// Replaces the previous `identical(_broadcasterNgNotifier.value, next)`
+  /// check, which relied on Dart record identity stability — not a
+  /// guaranteed property of records.
+  int _toggleNgGeneration = 0;
   final MethodChannelCommentSpeech _speechPlatform =
       MethodChannelCommentSpeech();
   int _broadcastEndedNotificationSequence = 0;
@@ -269,6 +401,7 @@ class _SelectScreenState extends State<SelectScreen>
     unawaited(_flushPendingUserAttributeWrites());
     _loginStateNotifier.dispose();
     _userAttrNotifier.dispose();
+    _broadcasterNgNotifier.dispose();
     _settingsNotifier.removeListener(_syncPlayRemainingAfterEndedSink);
     _settingsNotifier.dispose();
     _controller.dispose();
@@ -317,6 +450,12 @@ class _SelectScreenState extends State<SelectScreen>
 
   void _clearInMemoryUserAttributes() {
     _userAttrNotifier.value = _emptyUserAttributes;
+    // Issue #727: reset the per-broadcaster NG snapshot too so that
+    // disconnecting / switching broadcasters does not leak the previous
+    // broadcaster's filtered IDs into the next session's filter config.
+    // Setting broadcasterId back to null also marks the snapshot as
+    // "not yet loaded" for any in-flight `_resolveContentFilter` reader.
+    _broadcasterNgNotifier.value = _emptyBroadcasterNgSnapshot;
   }
 
   Future<void> _flushPendingUserAttributeWrites() async {
@@ -618,6 +757,7 @@ class _SelectScreenState extends State<SelectScreen>
       widget.connectionSupervisor,
       _settingsNotifier,
       _userAttrNotifier,
+      _broadcasterNgNotifier,
       if (widget.timelineStore != null) widget.timelineStore!,
       if (widget.statisticsStore != null) widget.statisticsStore!,
       if (widget.programTitleNotifier != null) widget.programTitleNotifier!,
@@ -628,6 +768,8 @@ class _SelectScreenState extends State<SelectScreen>
       if (widget.supplierUserIdNotifier != null) widget.supplierUserIdNotifier!,
       if (widget.beginAtNotifier != null) widget.beginAtNotifier!,
       if (widget.vposBaseAtNotifier != null) widget.vposBaseAtNotifier!,
+      if (widget.recentBroadcastStatsHolder != null)
+        widget.recentBroadcastStatsHolder!,
     ];
 
     return ListenableBuilder(
@@ -666,6 +808,12 @@ class _SelectScreenState extends State<SelectScreen>
             // follow-list equivalent), so unlike beginAt it does not need
             // a dual-source _resolveCommentBeginAt-style helper.
             vposBaseAt: widget.vposBaseAtNotifier?.value,
+            // Issue #876: broadcast end time. Sourced from `_myProgram`
+            // (broadcaster's own program) when its lv matches the active
+            // viewing lv; otherwise null. Used by the auto-extend
+            // controller — currently only meaningful in broadcaster mode
+            // (the Switch is hidden for non-broadcasters anyway).
+            endAt: _resolveCommentEndAt(lv),
             connectionMethod: _connectionMethod,
           ),
           connectionSupervisor: widget.connectionSupervisor,
@@ -695,6 +843,28 @@ class _SelectScreenState extends State<SelectScreen>
                 ? _toggleSpeechMute
                 : null,
             onSortOrderChanged: _onSortOrderChanged,
+            onAutoExtendBroadcastChanged: widget.settingsStore == null
+                ? null
+                : _onAutoExtendBroadcastChanged,
+            // Issue #876: feedback path for manual / auto extend
+            // success — refresh _myProgram.endAt so the next
+            // CommentScreen rebuild carries the updated value back into
+            // the AutoExtendBroadcastController's `update()` cycle.
+            onBroadcastEndTimeExtended: _onBroadcastEndTimeExtended,
+            // Issue #876: forward client-side notifications synthesised
+            // by the auto-extend controller into the timeline. When
+            // there is no TimelineStore wired (rare) the message is
+            // silently dropped and the renderer never sees it.
+            onAutoExtendSystemMessage: widget.timelineStore == null
+                ? null
+                : _onAutoExtendSystemMessage,
+            onRecentBroadcastStatsCaptured:
+                widget.recentBroadcastStatsHolder == null
+                ? null
+                : _onRecentBroadcastStatsCaptured,
+            onBroadcastEndedStats: widget.broadcastHistoryStore == null
+                ? null
+                : _onBroadcastEndedStats,
           ),
           debugMode: _settingsNotifier.value.debugMode,
           showUserName: _settingsNotifier.value.showUserName,
@@ -709,6 +879,8 @@ class _SelectScreenState extends State<SelectScreen>
               _settingsNotifier.value.commentZebraStripingEnabled,
           commentSortOrder: _settingsNotifier.value.commentSortOrder,
           showCommentNo: _settingsNotifier.value.showCommentNo,
+          autoExtendBroadcastEnabled:
+              _settingsNotifier.value.autoExtendBroadcastEnabled,
           userColorMap: _userAttrNotifier.value.colors,
           onUserColorChanged: widget.userAttributeStore != null
               ? _onUserColorChanged
@@ -738,23 +910,12 @@ class _SelectScreenState extends State<SelectScreen>
             totalCommentCount: widget.statisticsStore?.totalCommentCount ?? 0,
             activeUserCount: widget.statisticsStore?.activeUserCount ?? 0,
           ),
-          contentFilter: ContentFilterConfig(
-            ngUserIds: _settingsNotifier.value.ngUserIdSet,
-            ngWords: _settingsNotifier.value.ngWordList,
-            starPrefixHidingEnabled:
-                _settingsNotifier.value.starPrefixHidingEnabled,
-            slashPrefixSkipEnabled:
-                _settingsNotifier.value.slashPrefixSkipEnabled,
-            emphasizeGiftNicoadComment:
-                _settingsNotifier.value.emphasizeGiftNicoadComment,
-            userColorMap: _userAttrNotifier.value.colors,
-            userNicknameMap: _userAttrNotifier.value.nicknames,
-            ngProtectionNotificationEnabled:
-                _settingsNotifier.value.ngProtectionNotificationEnabled,
-            ngDisplayPreferences: NgDisplayPreferences.fromAppSettings(
-              _settingsNotifier.value,
-            ),
-          ),
+          // Issue #727: route NG filter input through the per-broadcaster
+          // store when one is wired and a snapshot is loaded for the
+          // active broadcaster. Falls back to the legacy global fields
+          // otherwise so unconnected users / minimally-wired hosts still
+          // get the user's pre-migration NG configuration.
+          contentFilter: _buildContentFilterConfig(),
           messageTypeVisibility: MessageTypeVisibilityConfig(
             showOperatorComment: _settingsNotifier.value.showOperatorComment,
             showSystemMessage: _settingsNotifier.value.showSystemMessage,
@@ -779,7 +940,7 @@ class _SelectScreenState extends State<SelectScreen>
             androidTtsAvailability: widget.androidTtsAvailability,
             playRemainingAfterEnded:
                 _settingsNotifier.value.playRemainingAfterEnded,
-            onSpeechQueueDrained: widget.onSpeechQueueDrained,
+            onSpeechGraceEnded: widget.onSpeechGraceEnded,
             // Issue #758: bg poll timer reads the latest snapshot directly
             // from the store (widget.messages stops updating in bg because
             // frame scheduling is paused).
@@ -794,6 +955,13 @@ class _SelectScreenState extends State<SelectScreen>
           // comment screen gates the menu entry on `_isBroadcaster`, so
           // viewers never see a wired-but-non-applicable repository.
           broadcastControlRepository: widget.broadcastControlRepository,
+          // Issue #767: hand the in-memory snapshot of the previous
+          // broadcast (if any) to the comment screen so its status
+          // detail view can surface a "直前の統計を見る" entry. The
+          // comment screen itself filters out the case where the
+          // snapshot's lv equals the current lv, so we forward
+          // unconditionally.
+          recentBroadcastStats: widget.recentBroadcastStatsHolder?.value,
         );
       },
     );
@@ -956,6 +1124,10 @@ class _SelectScreenState extends State<SelectScreen>
           '(broadcasterId=$broadcasterId)',
     );
     _currentBroadcasterId = broadcasterId;
+    // Issue #727: kick off the per-broadcaster NG load alongside user
+    // attributes. Independent future so a slow NG load cannot stall the
+    // color/nickname display, and vice versa.
+    unawaited(_loadBroadcasterNgState(broadcasterId));
     final UserAttributesSnapshot loaded = await widget.userAttributeStore!
         .loadAttributes(broadcasterId);
     final Map<String, int> diskColors = loaded.colors;
@@ -1027,6 +1199,92 @@ class _SelectScreenState extends State<SelectScreen>
         );
       }
     }
+  }
+
+  /// Issue #727: load the per-broadcaster NG snapshot for [broadcasterId]
+  /// from [SelectScreen.broadcasterNgStore] and update
+  /// [_broadcasterNgNotifier]. No-op when the store is not wired.
+  ///
+  /// Discards stale results when the user has switched to a different
+  /// broadcaster mid-load; this matches the user-attribute load pattern
+  /// just above.
+  Future<void> _loadBroadcasterNgState(String broadcasterId) async {
+    final BroadcasterNgStore? store = widget.broadcasterNgStore;
+    if (store == null) {
+      return;
+    }
+    try {
+      // Issue #727 review fix: single combined load keeps the NG snapshot
+      // consistent across user IDs and word rules with one store read.
+      final ({Set<String> ngUserIds, List<NgWordRule> rules}) snapshot =
+          await store.loadBroadcasterNgAttributes(broadcasterId);
+      if (!mounted || _currentBroadcasterId != broadcasterId) {
+        return;
+      }
+      _broadcasterNgNotifier.value = (
+        broadcasterId: broadcasterId,
+        ngUserIds: snapshot.ngUserIds,
+        rules: snapshot.rules,
+      );
+    } on Object catch (error, stackTrace) {
+      _errorLog(
+        '_loadBroadcasterNgState: failed for $broadcasterId',
+        error: error,
+      );
+      // Defensive fallback: leave the previous snapshot in place rather
+      // than wiping it on a transient read failure. The legacy global
+      // settings still flow through `_resolveContentFilter` while this
+      // runs because the notifier value never goes stale into the build.
+      appDebugLogLazy(
+        () => '[SelectScreen] _loadBroadcasterNgState stack: $stackTrace',
+      );
+    }
+  }
+
+  /// Issue #727: composes a [ContentFilterConfig] sourced from the
+  /// per-broadcaster store when available, or the legacy global settings
+  /// otherwise. The non-NG fields always come from [_settingsNotifier]
+  /// since they remain global in PR1.
+  ContentFilterConfig _buildContentFilterConfig() {
+    final ({Set<String> ngUserIds, List<String> ngWords}) ng =
+        _resolveContentFilter();
+    return ContentFilterConfig(
+      ngUserIds: ng.ngUserIds,
+      ngWords: ng.ngWords,
+      starPrefixHidingEnabled: _settingsNotifier.value.starPrefixHidingEnabled,
+      slashPrefixSkipEnabled: _settingsNotifier.value.slashPrefixSkipEnabled,
+      emphasizeGiftNicoadComment:
+          _settingsNotifier.value.emphasizeGiftNicoadComment,
+      userColorMap: _userAttrNotifier.value.colors,
+      userNicknameMap: _userAttrNotifier.value.nicknames,
+      ngProtectionNotificationEnabled:
+          _settingsNotifier.value.ngProtectionNotificationEnabled,
+      ngDisplayPreferences: NgDisplayPreferences.fromAppSettings(
+        _settingsNotifier.value,
+      ),
+    );
+  }
+
+  /// Issue #727: returns the (ngUserIds, ngWords) pair to feed into the
+  /// active [ContentFilterConfig].
+  ///
+  /// Resolution order:
+  ///   1. When a broadcaster is connected and the per-broadcaster store
+  ///      has produced a snapshot tagged with that same broadcaster, use
+  ///      the snapshot values verbatim. Since PR2 retargeted the NG
+  ///      management screens to write through [BroadcasterNgStore], the
+  ///      snapshot is the single source of truth and no legacy union is
+  ///      necessary.
+  ///   2. Otherwise fall back to the legacy global fields on
+  ///      [AppSettings] so unconnected users (and hosts that do not pass
+  ///      a [BroadcasterNgStore]) still see their existing NG filter.
+  ({Set<String> ngUserIds, List<String> ngWords}) _resolveContentFilter() {
+    return computeContentFilterInputs(
+      settings: _settingsNotifier.value,
+      currentBroadcasterId: _currentBroadcasterId,
+      snapshot: _broadcasterNgNotifier.value,
+      hasStore: widget.broadcasterNgStore != null,
+    );
   }
 
   void _onUserColorChanged(String userId, int colorValue) {
@@ -1166,7 +1424,100 @@ class _SelectScreenState extends State<SelectScreen>
     );
   }
 
+  /// Issue #727: long-press NG toggle writes through the per-broadcaster
+  /// NG store when available, scoping the block to the active broadcaster.
+  /// Falls back to the legacy global field on [AppSettings] when either
+  /// the store or the broadcaster ID is missing — this preserves behavior
+  /// for tests and minimally-wired embedders.
+  ///
+  /// In the per-broadcaster path the [_settingsNotifier] is intentionally
+  /// NOT mutated; the legacy global fields are managed by the dedicated
+  /// list screens (PR2 will retarget them to the new store).
   void _toggleNgUser(String userId) {
+    if (userId.isEmpty) {
+      return;
+    }
+    final BroadcasterNgStore? ngStore = widget.broadcasterNgStore;
+    final String? broadcasterId = _currentBroadcasterId;
+    if (ngStore != null && broadcasterId != null) {
+      final BroadcasterNgSnapshot snapshot = _broadcasterNgNotifier.value;
+      final bool isCurrentlyNg = snapshot.ngUserIds.contains(userId);
+      final Set<String> nextIds = <String>{...snapshot.ngUserIds};
+      if (isCurrentlyNg) {
+        nextIds.remove(userId);
+      } else {
+        nextIds.add(userId);
+      }
+      // Optimistic in-memory update tagged with the current broadcaster.
+      // The optimistic value is captured up front so we can revert it if
+      // the store write fails below.
+      final BroadcasterNgSnapshot previous = snapshot;
+      final BroadcasterNgSnapshot next = (
+        broadcasterId: broadcasterId,
+        ngUserIds: nextIds,
+        rules: snapshot.rules,
+      );
+      // Issue #727 SHOULD FIX 2: capture the per-toggle generation so the
+      // deferred rollback below can detect a later toggle and bail out
+      // without clobbering newer state.
+      final int gen = ++_toggleNgGeneration;
+      _broadcasterNgNotifier.value = next;
+      final Future<void> write = isCurrentlyNg
+          ? ngStore.removeNgUserId(broadcasterId, userId)
+          : ngStore.addNgUserId(broadcasterId, userId);
+      // Issue #727 review fix: roll back the optimistic in-memory state
+      // on persistence failure so the UI does not drift from the stored
+      // truth. Only reverts when the broadcaster is still active and the
+      // generation counter has not advanced — otherwise a later edit
+      // (toggle, switch broadcaster, disconnect) has superseded this
+      // one and rolling back would clobber the newer state.
+      unawaited(
+        write.onError<Object>((Object error, StackTrace stackTrace) {
+          _errorLog(
+            '_toggleNgUser: persistence failed; rolling back '
+            '(userId=$userId, isCurrentlyNg=$isCurrentlyNg)',
+            error: error,
+            stackTrace: stackTrace,
+          );
+          if (!mounted) {
+            return;
+          }
+          if (_currentBroadcasterId != broadcasterId) {
+            return;
+          }
+          // Issue #727 SHOULD FIX 2: replaces the previous
+          // `identical(_broadcasterNgNotifier.value, next)` check; Dart
+          // records do not guarantee stable identity so the generation
+          // counter is the robust signal that no later toggle has
+          // superseded this one.
+          if (_toggleNgGeneration != gen) {
+            return;
+          }
+          _broadcasterNgNotifier.value = previous;
+          // Issue #727 SHOULD FIX 1: surface the failure to the user so
+          // they know the toggle did not stick. Reuses the existing
+          // `ScaffoldMessenger.of(context)` flow for styling/lifecycle
+          // consistency with other snackbars in this file (no GlobalKey
+          // is wired). The string is inlined for now; it will move to
+          // `AppStrings` once a `SelectScreenStrings` group is added.
+          // TODO(#476): centralise this string under AppStrings.
+          final ScaffoldMessengerState? messenger = ScaffoldMessenger.maybeOf(
+            context,
+          );
+          messenger
+            ?..hideCurrentSnackBar()
+            ..showSnackBar(
+              const SnackBar(content: Text('NG ユーザー設定の保存に失敗しました')),
+            );
+        }),
+      );
+      return;
+    }
+    // Fallback: legacy global path for unconnected sessions and
+    // minimally-wired tests. The NG management screens now write through
+    // BroadcasterNgStore in the per-broadcaster path, but this branch
+    // remains so unconnected toggles (no broadcasterId, no store) still
+    // produce a working filter against the legacy AppSettings fields.
     final AppSettings current = _settingsNotifier.value;
     final AppSettings updated = current.isNgUser(userId)
         ? current.removeNgUserId(userId)
@@ -1174,7 +1525,7 @@ class _SelectScreenState extends State<SelectScreen>
     _settingsNotifier.value = updated;
     final SettingsStore? settingsStore = widget.settingsStore;
     if (settingsStore != null) {
-      unawaited(settingsStore.save(updated));
+      saveSettingsUnawaited(settingsStore, updated);
     }
   }
 
@@ -1191,7 +1542,109 @@ class _SelectScreenState extends State<SelectScreen>
     _settingsNotifier.value = updated;
     final SettingsStore? settingsStore = widget.settingsStore;
     if (settingsStore != null) {
-      unawaited(settingsStore.save(updated));
+      saveSettingsUnawaited(settingsStore, updated);
+    }
+  }
+
+  /// Issue #875: 配信者が AppBar オーバーフローメニュー内の「自動延長」
+  /// Switch を切り替えたときに呼ばれる。`_settingsNotifier` を更新して
+  /// 再ビルド時に同じ値が再注入されるようにし、`SettingsStore.save` で
+  /// 次回起動でも復元できるようにする（`_onSortOrderChanged` と同じ流儀）。
+  ///
+  /// Timer 動作の有効化は #876 (PR2) で行う。本 PR では Switch の
+  /// ON/OFF 状態を永続化するだけで、API 呼出は走らない。
+  void _onAutoExtendBroadcastChanged(bool enabled) {
+    final AppSettings current = _settingsNotifier.value;
+    if (current.autoExtendBroadcastEnabled == enabled) {
+      return;
+    }
+    final AppSettings updated = current.copyWith(
+      autoExtendBroadcastEnabled: enabled,
+    );
+    _settingsNotifier.value = updated;
+    final SettingsStore? settingsStore = widget.settingsStore;
+    if (settingsStore != null) {
+      saveSettingsUnawaited(settingsStore, updated);
+    }
+  }
+
+  /// Issue #876: Resolves the broadcast end time to pass into
+  /// CommentScreen for the active program lv. Currently only sourced
+  /// from `_myProgram` — auto-extend is broadcaster-only and the Switch
+  /// is hidden for non-broadcasters, so non-broadcaster end times are
+  /// not consumed.
+  DateTime? _resolveCommentEndAt(String lv) {
+    final FollowProgram? myProgram = _myProgram;
+    if (myProgram != null && myProgram.programId == lv) {
+      return myProgram.endAt;
+    }
+    return null;
+  }
+
+  /// Issue #876: invoked by [CommentScreen] when a manual or auto extend
+  /// API call returned a new authoritative end time. We refresh
+  /// `_myProgram.endAt` so the next rebuild flows the new value back
+  /// into the auto-extend controller via `CommentProgramInfo.endAt`.
+  ///
+  /// Equality check ensures unrelated parent rebuilds don't churn.
+  void _onBroadcastEndTimeExtended(DateTime newEndAt) {
+    final FollowProgram? myProgram = _myProgram;
+    if (myProgram == null) {
+      return;
+    }
+    if (myProgram.endAt == newEndAt) {
+      return;
+    }
+    setState(() {
+      _myProgram = myProgram.copyWith(endAt: newEndAt);
+    });
+  }
+
+  /// Issue #876: forwards a client-side notification (auto-extend
+  /// success / failure) into the timeline so the comment renderer
+  /// can apply the auto-extend theme color to the row.
+  void _onAutoExtendSystemMessage(AppMessage message) {
+    final TimelineStore? store = widget.timelineStore;
+    if (store == null) {
+      return;
+    }
+    store.add(message);
+  }
+
+  /// Issue #767: receive a finished broadcast's snapshot from
+  /// `CommentScreen` and update the in-memory holder so the next
+  /// broadcast's status detail view can surface a "直前の統計" entry.
+  ///
+  /// gating（isBroadcaster / lv 空）はアプリ層 helper に集約してテスト
+  /// 容易な形にしている。ここではホルダー解決のみを担当する。
+  void _onRecentBroadcastStatsCaptured(RecentBroadcastStats snapshot) {
+    final RecentBroadcastStatsHolder? holder =
+        widget.recentBroadcastStatsHolder;
+    if (holder == null) {
+      return;
+    }
+    recordRecentBroadcastStatsToHolder(snapshot: snapshot, holder: holder);
+  }
+
+  /// Issue #766: receive a finalised broadcast's stats snapshot from
+  /// `CommentScreen` and persist it to the broadcast history store, but
+  /// only when the local user is the broadcaster (viewer-only sessions
+  /// must not be recorded). Wired only when [SelectScreen.broadcastHistoryStore]
+  /// is non-null.
+  void _onBroadcastEndedStats(BroadcastEndedStatsSnapshot snapshot) {
+    final BroadcastHistoryStore? store = widget.broadcastHistoryStore;
+    if (store == null) {
+      return;
+    }
+    // Snapshot → entry の詰め替え + isBroadcaster / lv 空のフィルタは
+    // application 層 helper に集約 (テスト容易化と select_screen の責務縮小)。
+    // Persistence は fire-and-forget; 失敗はストア内で log される。
+    final Future<void>? scheduled = recordBroadcastHistoryFromSnapshot(
+      snapshot: snapshot,
+      store: store,
+    );
+    if (scheduled != null) {
+      unawaited(scheduled);
     }
   }
 
@@ -1211,6 +1664,9 @@ class _SelectScreenState extends State<SelectScreen>
           userSessionStore: userSessionStore,
           themeModeNotifier: widget.themeModeNotifier,
           userAttributeStore: widget.userAttributeStore,
+          broadcasterNgStore: widget.broadcasterNgStore,
+          broadcasterNameStore: widget.broadcasterNameStore,
+          broadcastHistoryStore: widget.broadcastHistoryStore,
           broadcasterIdNotifier: widget.supplierUserIdNotifier,
           userNameResolution: widget.userNameResolution,
           speechPlatform: MethodChannelCommentSpeech(),

@@ -53,6 +53,16 @@ For every issue, follow this order:
 - Prefer small and well-maintained dependencies.
 - Avoid adding multiple packages for a single small feature.
 
+### Plugins with Native-Side Behavioural Coupling
+Some plugins encode behavioural contracts in native code or `AndroidManifest.xml`
+that are NOT visible from Dart APIs alone. When upgrading any of these to a new
+**major** version, re-verify the behaviour against the native source and update
+the linked tests / comments before merging the upgrade PR.
+
+| Plugin | Coupled native artefact | Why |
+|---|---|---|
+| `flutter_foreground_task` | `AndroidManifest.xml` `<service android:stopWithTask="true">` and the comment in `lib/data/foreground_service/foreground_service_manager.dart` | The Dart-level `ForegroundTaskOptions.stopWithTask` and the manifest attribute have *different* runtime effects in 9.x (the Dart option wires `TrackVisibilityUtils` and stops the service on every Activity pause). The fix for issue #869 relies on this distinction. See `test/android/android_manifest_foreground_service_test.dart`. |
+
 ## Optional Reference Two-Stage Fallback
 
 Public repo — referenced code/resources/config may be **absent** in some clones. Dependent code MUST be two-stage:
@@ -88,6 +98,30 @@ For each implementation, agents must consider:
 Minimum expectation:
 - new logic should have tests when practical
 - bug fixes should include a regression test when practical
+
+## テストファイル肥大化・実行時間ルール
+
+`flutter test` は 1 ファイル = 1 isolate のため、ファイル数増は CI 時間と保守コストに直結する。**カバレッジは件数ではなくコード網羅率と意図網羅性で測る**。本ルールは新規追加・新規変更テストに適用（forward-looking）、既存違反は別 Issue で段階対応する（feature PR に retrofit を混ぜない）。レビュー観点は `CLAUDE.md` を参照。
+
+### ファイル構成
+
+- **1 対象 = 1 ファイル**: 同じ画面・クラス・関数のテストは `<target>_test.dart` に集約
+- **新規ファイル作成前**: `find test -name "<target>_test.dart"` で既存検索 → あれば `group()` 追加で対応
+- **物理分割は 2,000 行超 + 視点分離可** のときのみ（例: `comment_screen_speech_test.dart`）
+- **横断的観点は「観点 = ファイル」**（例: `message_background_contrast_test.dart` に gift / nicoad / notification / operator を集約）
+- **小規模単独 OK**: 別 domain ターゲットの pure function テスト（例: `nico_icon_url_test.dart`）は 1 group + 100 行未満でも単独維持してよい
+
+### Fake / Mock の配置
+
+- 2 ファイル以上で同じ fake を使うなら `test/helpers/fake_<class>.dart` に抽出
+- インライン `class _FakeXxx` の再定義禁止
+
+### 実行時間
+
+- **`testWidgets` vs `test`**: 純粋ロジックは必ず `test()`（`testWidgets` は Flutter binding 起動分重い）
+- **`pumpAndSettle` の濫用禁止**: アニメーション完了が assertion の前提のときだけ使う。setState 反映待ち / 1 フレーム挿入は `pump()` または `pump(Duration)` で済ます
+- **重い setUp は `setUpAll` で共有**: `rootBundle.loadString` 等は 1 回だけ
+- **実時間 sleep 禁止**: `Future.delayed` 不可、`fake_async` または `pump(Duration)` でフェイク時間を進める
 
 ## Required Pre-Implementation Output
 Before writing code, output:
@@ -185,6 +219,19 @@ UI に新たに日本語文字列を追加する際は、原則として `lib/pr
 4. 既定ロケール（日本語）の表示がバイト単位で変わらないよう、既存 widget テストと `test/presentation/strings/app_strings_test.dart` を併せて確認する
 
 スコープ（Issue #476 Phase 1 時点）: `SettingsScreen`（設定画面ルート）のみ集約済み。下位画面（コメント表示設定・読み上げ設定・ユーザー管理設定）、コメント画面系、ダイアログ・SnackBar は継続課題として段階的に追加する。
+
+## Error handling
+
+詳細な error handling 方針は `.ai/flutter_rules.md` の Error Handling Rules を参照。本セクションは特に「`Exception` だけ catch して `Error` を素通りさせる」落とし穴の回避を強調する。
+
+### 永続化値のパースを含む load 経路
+
+永続化値のパースを含む load 経路（例: `SettingsStore.load()`）では `on Exception catch` ではなく `on Object catch (e, st)` を使うこと。Dart では `Exception` と `Error` が独立階層で、`TypeError` / `StateError` / `ArgumentError` / `RangeError` 等の `Error` 系は `on Exception catch` を素通りする。旧バージョンが保存した値を新バージョンが読めないアップデート時に `Error` が伝播すると、`settings`/`settingsError` が共に null のまま画面が `CircularProgressIndicator` で永久に固まる事故が発生する。
+
+レビュー観点:
+- 永続化値・外部入力をパースする `try`/`catch` で `on Exception catch` のみになっていないか
+- 旧形式データを再現するテスト（`Error` 系を投げるスタブ）で永続スピナーが出ないことを確認しているか
+- `catch (e)` で握りつぶす場合も、`developer.log(name: '<source>', error: e, stackTrace: st)` で stackTrace と error を残し、再現可能にしているか
 
 ## Forbidden Behavior
 Agents must not:

@@ -684,6 +684,60 @@ void main() {
       },
     );
 
+    testWidgets(
+      '/teach from a non-broadcaster user is gated: not spoken and dictionary unchanged',
+      (WidgetTester tester) async {
+        // Issue #455 #4 regression guard for the broadcaster-arm in
+        // _submitNewCommentsForSpeech: when a viewer (non-broadcaster)
+        // posts `/teach ...`, TeachCommandParser.isTeachCommand still
+        // matches, but the inner `userId == broadcasterUserId` check
+        // must prevent _handleTeachCommand from running. The outer
+        // `continue` still skips TTS, so the message is neither read
+        // aloud nor allowed to mutate the dictionary.
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final AppSettings initialSettings = await settingsStore.load();
+
+        final List<AppMessage> messages = <AppMessage>[
+          _chatMessage(id: 'msg-1', content: '最初'),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+            messages: messages,
+            slashPrefixSkipEnabled: false,
+            settingsStore: settingsStore,
+            broadcasterUserId: 'broadcaster-1',
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.addMessage(
+          _chatMessage(
+            id: 'msg-2',
+            content: '/teach パターン よみがな',
+            userId: 'viewer-7',
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Observable behavior: /teach from a non-broadcaster never
+        // reaches the TTS pipeline.
+        expect(fakePlatform.submittedComments, isEmpty);
+
+        // The teach handler must not have run for a non-broadcaster, so
+        // the persisted dictionary rules remain identical to the
+        // settings loaded before the message was posted.
+        final AppSettings reloaded = await settingsStore.load();
+        expect(reloaded.dictionaryRules, initialSettings.dictionaryRules);
+      },
+    );
+
     testWidgets('NG word messages are not submitted for speech', (
       WidgetTester tester,
     ) async {
@@ -1351,7 +1405,7 @@ void main() {
     });
 
     testWidgets(
-      'broadcast end grace fires the onSpeechQueueDrained callback when ending',
+      'broadcast end grace fires the onSpeechGraceEnded callback when ending',
       (WidgetTester tester) async {
         final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
         int callbackInvocations = 0;
@@ -1371,7 +1425,7 @@ void main() {
               speechConfig: CommentSpeechConfig(
                 speechPlatform: fakePlatform,
                 speechSettings: const SpeechSettings(enabled: true),
-                onSpeechQueueDrained: () => callbackInvocations++,
+                onSpeechGraceEnded: () => callbackInvocations++,
               ),
             ),
           ),
@@ -1391,7 +1445,7 @@ void main() {
         expect(
           callbackInvocations,
           1,
-          reason: 'onSpeechQueueDrained must fire exactly once on early end',
+          reason: 'onSpeechGraceEnded must fire exactly once on early end',
         );
 
         await tester.pumpWidget(const SizedBox.shrink());
@@ -1497,6 +1551,171 @@ void main() {
 
       await tester.pumpWidget(const SizedBox.shrink());
     });
+
+    testWidgets(
+      'speech disabled mid-grace fires onSpeechGraceEnded immediately',
+      (WidgetTester tester) async {
+        // Verifies Phase 2 of Issue #764: when the user disables speech while
+        // a grace timer is running, _cancelSpeechGrace fires onSpeechGraceEnded
+        // so the FGS controller's "読み上げ完了待ち..." notification clears
+        // immediately instead of persisting for the full 30 s.
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        int graceEndedCount = 0;
+
+        Widget buildHost(SpeechSettings settings) {
+          return MaterialApp(
+            home: CommentScreen(
+              programInfo: const CommentProgramInfo(lv: 'lv123456789'),
+              connectionSupervisor: supervisor,
+              messages: const <AppMessage>[],
+              callbacks: CommentCallbacks(
+                onStopAllConnections: () async {},
+                onReconnectSameLv: () async {},
+                onDifferentLvConnected: (_, _) async {},
+              ),
+              themeMode: AppThemeMode.light,
+              speechConfig: CommentSpeechConfig(
+                speechPlatform: fakePlatform,
+                speechSettings: settings,
+                onSpeechGraceEnded: () => graceEndedCount++,
+              ),
+            ),
+          );
+        }
+
+        await tester.pumpWidget(buildHost(const SpeechSettings(enabled: true)));
+        await tester.pumpAndSettle();
+        expect(fakePlatform.startCalled, isTrue);
+
+        // Broadcast ends → grace timer arms.
+        expect(supervisor.endBroadcast(), isTrue);
+        await tester.pump(const Duration(seconds: 1));
+        expect(graceEndedCount, 0, reason: 'grace not yet ended');
+
+        // User disables speech mid-grace (e.g. via settings UI).
+        fakePlatform.stopCalled = false;
+        await tester.pumpWidget(
+          buildHost(const SpeechSettings(enabled: false)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          graceEndedCount,
+          1,
+          reason:
+              'onSpeechGraceEnded must fire when speech is disabled mid-grace',
+        );
+        expect(
+          fakePlatform.stopCalled,
+          isTrue,
+          reason: 'speech must also stop immediately on mid-grace disable',
+        );
+
+        // Grace timer must also be cancelled — no second fire after 30 s.
+        await tester.pump(const Duration(seconds: 31));
+        expect(
+          graceEndedCount,
+          1,
+          reason: 'onSpeechGraceEnded must fire at most once',
+        );
+
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+
+    testWidgets(
+      'disabling speech while NOT in grace does not fire onSpeechGraceEnded',
+      (WidgetTester tester) async {
+        // Regression guard: _cancelSpeechGrace has an early-return when grace
+        // is not active, so onSpeechGraceEnded must NOT fire when speech is
+        // disabled outside of a grace window.
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        int graceEndedCount = 0;
+
+        Widget buildHost(SpeechSettings settings) {
+          return MaterialApp(
+            home: CommentScreen(
+              programInfo: const CommentProgramInfo(lv: 'lv123456789'),
+              connectionSupervisor: supervisor,
+              messages: const <AppMessage>[],
+              callbacks: CommentCallbacks(
+                onStopAllConnections: () async {},
+                onReconnectSameLv: () async {},
+                onDifferentLvConnected: (_, _) async {},
+              ),
+              themeMode: AppThemeMode.light,
+              speechConfig: CommentSpeechConfig(
+                speechPlatform: fakePlatform,
+                speechSettings: settings,
+                onSpeechGraceEnded: () => graceEndedCount++,
+              ),
+            ),
+          );
+        }
+
+        // Start with speech enabled — no grace window is running.
+        await tester.pumpWidget(buildHost(const SpeechSettings(enabled: true)));
+        await tester.pumpAndSettle();
+
+        // Disable speech while the broadcast is still live (no grace active).
+        await tester.pumpWidget(
+          buildHost(const SpeechSettings(enabled: false)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          graceEndedCount,
+          0,
+          reason: 'onSpeechGraceEnded must not fire when grace was never armed',
+        );
+
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+
+    testWidgets(
+      'speech disabled mid-grace with null onSpeechGraceEnded does not crash',
+      (WidgetTester tester) async {
+        // Regression guard: null callback must be tolerated (?.call() pattern).
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+        Widget buildHost(SpeechSettings settings) {
+          return MaterialApp(
+            home: CommentScreen(
+              programInfo: const CommentProgramInfo(lv: 'lv123456789'),
+              connectionSupervisor: supervisor,
+              messages: const <AppMessage>[],
+              callbacks: CommentCallbacks(
+                onStopAllConnections: () async {},
+                onReconnectSameLv: () async {},
+                onDifferentLvConnected: (_, _) async {},
+              ),
+              themeMode: AppThemeMode.light,
+              speechConfig: CommentSpeechConfig(
+                speechPlatform: fakePlatform,
+                speechSettings: settings,
+                // onSpeechGraceEnded intentionally omitted (null).
+              ),
+            ),
+          );
+        }
+
+        await tester.pumpWidget(buildHost(const SpeechSettings(enabled: true)));
+        await tester.pumpAndSettle();
+
+        // Enter grace.
+        expect(supervisor.endBroadcast(), isTrue);
+        await tester.pump(const Duration(seconds: 1));
+
+        // Disable speech mid-grace — must not throw.
+        await tester.pumpWidget(
+          buildHost(const SpeechSettings(enabled: false)),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
 
     testWidgets(
       'speech startup aborts if the broadcast ends while start is pending',
@@ -3893,17 +4112,24 @@ void main() {
   });
 
   // -------------------------------------------------------------------------
-  // Issue #758: background poll timer reads latest TimelineStore snapshot.
+  // Issue #762 (was Issue #758): TimelineStore reactive listener replaces
+  // the previous Timer.periodic(2s) bg poll. The screen now subscribes to
+  // [TimelineStore.notifyListeners] and submits new comments synchronously
+  // — both in foreground (no waiting for the next rebuild) and in
+  // background (no waiting up to 2 s for the next poll tick).
   //
-  // In foreground the widget tree rebuild cycle pushes the latest
-  // `messages` snapshot into `widget.messages` via didUpdateWidget, and the
-  // existing tests cover that path. When the activity is backgrounded the
-  // Flutter engine pauses frame scheduling, so didUpdateWidget never fires
-  // and `widget.messages` becomes stale. The poll timer is the only safety
-  // net, and it must read the latest snapshot directly from the
-  // TimelineStore to detect new arrivals while in bg.
+  // The test group is preserved with the original bg-lifecycle intent so
+  // that the regression of "bg arrival → submit" stays covered. The
+  // 2-second waits were replaced by a single `pumpAndSettle()` since the
+  // listener is synchronous.
+  //
+  // This group also absorbs Issue #763 Case 3 (cursor evict): when
+  // [TimelineStore.trim] removes the message currently held in
+  // `_lastSpeechMessageId`, [_submitNewCommentsForSpeech] falls back to
+  // start=0 and lets the native dedup (or, in this fake, simple
+  // accumulation) absorb the duplicate without crashing.
   // -------------------------------------------------------------------------
-  group('CommentScreen background poll timer (Issue #758)', () {
+  group('CommentScreen TimelineStore reactive listener (Issue #762)', () {
     late FakeCommentSpeechPlatform fakePlatform;
 
     setUp(() {
@@ -3917,7 +4143,7 @@ void main() {
       );
     });
 
-    testWidgets('bg lifecycle: TimelineStore mutation submits via poll timer', (
+    testWidgets('bg lifecycle: TimelineStore mutation submits immediately', (
       WidgetTester tester,
     ) async {
       final TimelineStore store = TimelineStore(capacity: 100);
@@ -3934,33 +4160,31 @@ void main() {
       expect(fakePlatform.startCalled, isTrue);
 
       // Simulate going to background. didUpdateWidget will not fire on the
-      // CommentScreen anymore for any TimelineStore mutation we make.
+      // CommentScreen anymore for any TimelineStore mutation we make —
+      // only the reactive listener can pick it up.
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       await tester.pump();
 
-      // New comment arrives while in bg. widget.messages is the empty
-      // snapshot captured at the last build, so without the fix the
-      // poll timer would never detect this.
+      // New comment arrives while in bg. The listener must fire
+      // synchronously and submit on the same microtask.
       store.add(_chatMessage(id: 'bg-1', content: 'バックグラウンド'));
-
-      // Poll timer is Timer.periodic(2 seconds). Advancing the test
-      // clock by slightly more than 2s lets it fire once.
-      await tester.pump(const Duration(seconds: 2, milliseconds: 100));
+      await tester.pumpAndSettle();
 
       expect(fakePlatform.submittedComments, hasLength(1));
       expect(fakePlatform.submittedComments.first.text, 'バックグラウンド');
 
-      // Drain pending timers before the test ends.
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pumpAndSettle();
     });
 
-    testWidgets('dispose cancels bg poll timer (no submit after teardown)', (
+    testWidgets('dispose detaches listener (no submit after teardown)', (
       WidgetTester tester,
     ) async {
-      // Verifies the timer is cancelled in dispose. Regardless of fg/bg,
-      // a disposed CommentScreen must not submit any further comments.
-      final TimelineStore store = TimelineStore(capacity: 100);
+      // Verifies the listener is removed in dispose. Regardless of
+      // fg/bg, a disposed CommentScreen must not submit any further
+      // comments.
+      final _ListenerCountingTimelineStore store =
+          _ListenerCountingTimelineStore(capacity: 100);
       addTearDown(store.dispose);
 
       await tester.pumpWidget(
@@ -3972,39 +4196,52 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // Sanity: store has the listener attached.
+      expect(
+        store.exposedHasListeners,
+        isTrue,
+        reason: 'CommentScreen must subscribe to TimelineStore while mounted.',
+      );
+
       // Dispose the screen by replacing it with an empty widget tree.
       // Stay in resumed state so pumpWidget actually unmounts (paused
       // state pauses frame scheduling and would queue the dispose).
       await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
       await tester.pumpAndSettle();
 
+      // Listener must be detached after dispose.
+      expect(
+        store.exposedHasListeners,
+        isFalse,
+        reason:
+            'CommentScreen.dispose() must remove its TimelineStore '
+            'listener so a late mutation cannot call into the torn-down '
+            'widget.',
+      );
+
       final int submitsBeforeMutation = fakePlatform.submittedComments.length;
 
-      // Move to background and mutate the store. If the timer was leaked
-      // the submit path would still fire.
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-      await tester.pump();
+      // Mutate the store after dispose. With the listener gone the
+      // submit path must stay silent.
       store.add(_chatMessage(id: 'after-dispose-1', content: 'もう死んでる'));
-      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
 
       expect(
         fakePlatform.submittedComments.length,
         submitsBeforeMutation,
         reason:
             'No new submit must occur after CommentScreen.dispose(); '
-            'the bg poll timer must be cancelled.',
+            'the TimelineStore listener must be detached.',
       );
-
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-      await tester.pump();
     });
 
     testWidgets(
-      'fg→disable→bg: poll does not submit after speech is disabled',
+      'fg→disable→bg: listener does not submit after speech is disabled',
       (WidgetTester tester) async {
         // Real-world flow: settings UI is touched in fg, so the disable
         // path runs while resumed (didUpdateWidget fires). Then we bg and
-        // verify the poll path stays silent.
+        // verify the listener stays silent because the
+        // `speechSettings.enabled` gate inside the callback is false.
         final TimelineStore store = TimelineStore(capacity: 100);
         addTearDown(store.dispose);
 
@@ -4024,13 +4261,13 @@ void main() {
         await tester.pumpAndSettle();
         expect(fakePlatform.stopCalled, isTrue);
 
-        // Now go to bg and add a comment — the poll path must NOT submit
-        // because speech is disabled and the timer is cancelled.
+        // Now go to bg and add a comment — the listener must NOT submit
+        // because speech is disabled.
         tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
         await tester.pump();
 
         store.add(_chatMessage(id: 'disabled-1', content: '無音'));
-        await tester.pump(const Duration(seconds: 3));
+        await tester.pumpAndSettle();
 
         expect(fakePlatform.submittedComments, isEmpty);
 
@@ -4056,11 +4293,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Phase 1: bg, add a comment, poll fires and submits.
+      // Phase 1: bg, add a comment, listener fires and submits.
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       await tester.pump();
       store.add(_chatMessage(id: 'cycle-bg-1', content: 'one'));
-      await tester.pump(const Duration(seconds: 2, milliseconds: 100));
+      await tester.pumpAndSettle();
       expect(fakePlatform.submittedComments, hasLength(1));
 
       // Phase 2: resume → fg path (didUpdateWidget) on next host setState.
@@ -4068,17 +4305,17 @@ void main() {
       await tester.pumpAndSettle();
       // Push the latest snapshot into widget.messages explicitly via the
       // host (mirrors how SelectScreen rebuilds on store notification).
+      // The cursor de-dup must absorb this so no extra submit fires.
       final _BgPollHostState host = tester.state(find.byType(_BgPollHost));
       host.syncFromStore();
       await tester.pumpAndSettle();
-      // No new comment in fg, no extra submit.
       expect(fakePlatform.submittedComments, hasLength(1));
 
       // Phase 3: bg again, add another comment.
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       await tester.pump();
       store.add(_chatMessage(id: 'cycle-bg-2', content: 'two'));
-      await tester.pump(const Duration(seconds: 2, milliseconds: 100));
+      await tester.pumpAndSettle();
 
       // Only the new comment is submitted; the cursor prevented re-submit
       // of cycle-bg-1.
@@ -4089,7 +4326,7 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets('multiple bg mutations all submit on next poll', (
+    testWidgets('multiple bg mutations all submit synchronously', (
       WidgetTester tester,
     ) async {
       final TimelineStore store = TimelineStore(capacity: 100);
@@ -4111,9 +4348,7 @@ void main() {
       store.add(_chatMessage(id: 'multi-1', content: 'A'));
       store.add(_chatMessage(id: 'multi-2', content: 'B'));
       store.add(_chatMessage(id: 'multi-3', content: 'C'));
-
-      // One poll cycle should drain all three (they are after the cursor).
-      await tester.pump(const Duration(seconds: 2, milliseconds: 100));
+      await tester.pumpAndSettle();
 
       expect(fakePlatform.submittedComments, hasLength(3));
       expect(
@@ -4124,7 +4359,448 @@ void main() {
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pumpAndSettle();
     });
+
+    testWidgets('listener gated when speech not started (no submit before init '
+        'completes)', (WidgetTester tester) async {
+      // _speechStarted flips to true inside _initializeAndStartSpeech,
+      // which is scheduled via addPostFrameCallback. If the listener
+      // fires before that callback runs (e.g. an early store mutation)
+      // it must NOT submit, otherwise comments could be sent to a
+      // platform that has not finished start().
+      final TimelineStore store = TimelineStore(capacity: 100);
+      addTearDown(store.dispose);
+
+      // Hold start() open with a completer so we can observe the
+      // pre-`_speechStarted=true` window deterministically.
+      final Completer<void> startGate = Completer<void>();
+      fakePlatform.startCompleter = startGate;
+
+      await tester.pumpWidget(
+        _buildBgPollScreen(
+          timelineStore: store,
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+        ),
+      );
+      // pump() once to run the post-frame callback and reach the awaited
+      // start(); start() is held open so _speechStarted is still false.
+      await tester.pump();
+      expect(fakePlatform.startCalled, isTrue);
+
+      // Listener IS attached at this point (initState has already run)
+      // but `_speechStarted` is still false because start() has not
+      // completed. A mutation now must be silently ignored.
+      store.add(_chatMessage(id: 'pre-start-1', content: 'まだ'));
+      await tester.pump();
+
+      expect(
+        fakePlatform.submittedComments,
+        isEmpty,
+        reason: 'Listener must not submit while _speechStarted is still false.',
+      );
+
+      // Release start(); the screen flips _speechStarted=true. The
+      // pre-start-1 message that was queued in the store while gated
+      // is now part of the snapshot — it will be submitted on the next
+      // mutation via the start=0 fallback (cursor is still null).
+      startGate.complete();
+      await tester.pumpAndSettle();
+      // No mutation has happened since start() returned, so the
+      // listener has not been re-invoked.
+      expect(fakePlatform.submittedComments, isEmpty);
+
+      store.add(_chatMessage(id: 'post-start-1', content: '届いた'));
+      await tester.pumpAndSettle();
+      // Both messages are now submitted: pre-start-1 carried over and
+      // post-start-1 just arrived. The cursor was null at the time of
+      // the listener call, so the start=0 path covered both.
+      final List<String> ids = fakePlatform.submittedComments
+          .map((RawComment c) => c.id)
+          .toList();
+      expect(ids, containsAll(<String>['pre-start-1', 'post-start-1']));
+    });
+
+    // -----------------------------------------------------------------------
+    // Issue #763 Case 3 absorbed into Issue #762:
+    // When TimelineStore.trim evicts the message currently referenced by
+    // `_lastSpeechMessageId`, the cursor lookup in
+    // _submitNewCommentsForSpeech does not find a match, falls back to
+    // start=0 and submits the entire surviving tail. Native dedup (or, in
+    // this fake, the test's tolerance for the duplicate count) absorbs the
+    // overlap. The critical invariant is: no crash, the new message is
+    // among the submitted comments.
+    // -----------------------------------------------------------------------
+    testWidgets(
+      'cursor evict (Issue #763 Case 3): trim removes _lastSpeechMessageId, '
+      'next mutation falls back to start=0 without crash',
+      (WidgetTester tester) async {
+        // Cap = 1 forces every new add to evict the previous tail —
+        // including the message currently held in `_lastSpeechMessageId`
+        // — in a single mutation, so the listener that fires next sees a
+        // store whose contents no longer include the cursor.
+        final TimelineStore store = TimelineStore(capacity: 1);
+        addTearDown(store.dispose);
+
+        await tester.pumpWidget(
+          _buildBgPollScreen(
+            timelineStore: store,
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(fakePlatform.startCalled, isTrue);
+
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        await tester.pump();
+
+        // Seed the cursor: after the listener processes this mutation
+        // _lastSpeechMessageId == 'cursor-msg'.
+        store.add(_chatMessage(id: 'cursor-msg', content: 'cursor'));
+        await tester.pumpAndSettle();
+        expect(fakePlatform.submittedComments.map((RawComment c) => c.id), [
+          'cursor-msg',
+        ]);
+
+        // Adding a second message evicts cursor-msg (cap=1). The
+        // subsequent listener invocation runs against a store whose
+        // snapshot is `[evict-trigger]` — `cursor-msg` is no longer
+        // present. The cursor lookup in _submitNewCommentsForSpeech does
+        // not find a match and falls back to start=0, so evict-trigger
+        // is submitted exactly once. Native dedup is the safety net for
+        // any duplicate id submission on the real platform side; the
+        // test asserts the user-visible invariant: no crash AND the new
+        // message does reach the platform.
+        store.add(_chatMessage(id: 'evict-trigger', content: 'newest'));
+        await tester.pumpAndSettle();
+
+        // Sanity: cursor-msg is gone from the store snapshot.
+        expect(
+          store.messages.any((AppMessage m) => m.id == 'cursor-msg'),
+          isFalse,
+          reason: 'TimelineStore cap should have evicted cursor-msg.',
+        );
+        final List<String> submittedIdsAfter = fakePlatform.submittedComments
+            .map((RawComment c) => c.id)
+            .toList();
+        expect(
+          submittedIdsAfter,
+          contains('evict-trigger'),
+          reason:
+              'Even after the cursor was evicted, the newest message must '
+              'reach the platform via the start=0 fallback.',
+        );
+
+        // Subsequent mutations after the fallback must continue to work:
+        // _lastSpeechMessageId now points at evict-trigger, and a fresh
+        // add advances the cursor cleanly (no lingering effect from the
+        // earlier evict).
+        store.add(_chatMessage(id: 'after-evict', content: 'next'));
+        await tester.pumpAndSettle();
+        expect(
+          fakePlatform.submittedComments
+              .map((RawComment c) => c.id)
+              .where((String id) => id == 'after-evict')
+              .length,
+          1,
+          reason: 'Listener must continue to submit after a cursor evict.',
+        );
+
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets('didUpdateWidget store swap: listener re-attaches to new store, '
+        'old store no longer triggers submit', (WidgetTester tester) async {
+      // Verify that when the parent rebuilds CommentScreen with a
+      // different TimelineStore, the screen:
+      // (a) removes its listener from the old store, and
+      // (b) adds a listener to the new store.
+      // Without the didUpdateWidget swap in comment_screen.dart, the
+      // screen would keep listening on the old store and miss mutations
+      // on the new one.
+      final _ListenerCountingTimelineStore storeA =
+          _ListenerCountingTimelineStore(capacity: 100);
+      addTearDown(storeA.dispose);
+      final _ListenerCountingTimelineStore storeB =
+          _ListenerCountingTimelineStore(capacity: 100);
+      addTearDown(storeB.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: _StoreSwapHost(store: storeA, speechPlatform: fakePlatform),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(fakePlatform.startCalled, isTrue);
+
+      // storeA has listener; storeB does not yet.
+      expect(
+        storeA.exposedHasListeners,
+        isTrue,
+        reason: 'CommentScreen must subscribe to the initial store.',
+      );
+      expect(
+        storeB.exposedHasListeners,
+        isFalse,
+        reason: 'CommentScreen must not listen to storeB before swap.',
+      );
+
+      // Swap the store from storeA to storeB via the host state.
+      final _StoreSwapHostState hostState = tester.state(
+        find.byType(_StoreSwapHost),
+      );
+      hostState.swapStore(storeB);
+      await tester.pumpAndSettle();
+
+      expect(
+        storeA.exposedHasListeners,
+        isFalse,
+        reason:
+            'CommentScreen.didUpdateWidget must remove listener from old store.',
+      );
+      expect(
+        storeB.exposedHasListeners,
+        isTrue,
+        reason: 'CommentScreen.didUpdateWidget must add listener to new store.',
+      );
+
+      // Mutations on storeB now trigger submit; storeA does not.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+
+      storeA.add(_chatMessage(id: 'old-store-msg', content: '古い'));
+      await tester.pumpAndSettle();
+      expect(
+        fakePlatform.submittedComments.map((RawComment c) => c.id),
+        isNot(contains('old-store-msg')),
+        reason: 'Old store must no longer trigger submit after swap.',
+      );
+
+      storeB.add(_chatMessage(id: 'new-store-msg', content: '新しい'));
+      await tester.pumpAndSettle();
+      expect(
+        fakePlatform.submittedComments.map((RawComment c) => c.id),
+        contains('new-store-msg'),
+        reason: 'New store must trigger submit after swap.',
+      );
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+    });
   });
+
+  // ---------------------------------------------------------------------------
+  // Issue #753: backward-compat — unknown Kotlin event types are silently
+  // ignored by the Flutter side.
+  //
+  // The Kotlin side may emit new event types before the Flutter code is
+  // updated (e.g. `engine_not_ready`). The event subscription must survive
+  // unknown types without throwing, without altering `_speechEngineState`,
+  // and without mutating `_consecutiveAndroidTtsFailures`.
+  // ---------------------------------------------------------------------------
+  group(
+    'CommentScreen backward-compat: unknown SpeechEvent types (Issue #753)',
+    () {
+      late FakeCommentSpeechPlatform fakePlatform;
+
+      setUp(() {
+        fakePlatform = FakeCommentSpeechPlatform();
+        // Start with engine READY so the AppBar speech-status icon is visible
+        // and we can observe any unintended state change.
+        fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+          enabled: true,
+          engineState: 'READY',
+          playerState: 'IDLE',
+          queueSize: 0,
+          currentSpeakerId: 0,
+        );
+      });
+
+      tearDown(() {
+        fakePlatform.dispose();
+      });
+
+      testWidgets('unknown event type (engine_not_ready) is silently ignored', (
+        WidgetTester tester,
+      ) async {
+        // Emit an unknown event type that Kotlin may introduce before Flutter
+        // has added handling for it. The screen must not throw, must not flip
+        // the AppBar icon to error_outline, and must not call
+        // _setSpeechEngineState(error).
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Confirm the icon is visible and NOT in error state before emitting.
+        expect(
+          find.byKey(const Key('speech-status-icon')),
+          findsOneWidget,
+          reason:
+              'Speech-status icon must be present before the unknown event.',
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsNothing,
+          reason: 'Icon must not be in error state before the unknown event.',
+        );
+
+        // Emit the unknown event — `engine_not_ready` is not listed in
+        // SpeechEventType and therefore falls through _onSpeechEventInner
+        // without touching any state.
+        fakePlatform.emitEvent(
+          const SpeechEvent(
+            type: 'engine_not_ready',
+            payload: <String, dynamic>{
+              'engineType': 'VOICEVOX',
+              'engineState': 'UNINITIALIZED',
+            },
+          ),
+        );
+        // Drain the broadcast stream listener and let any rebuild settle.
+        await tester.pump();
+        await tester.pump();
+
+        // _speechEngineState must remain unchanged — no error icon.
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsNothing,
+          reason:
+              'An unknown event type must not flip the AppBar icon to '
+              'error_outline. _speechEngineState must remain unchanged '
+              '(Issue #753).',
+        );
+        // The icon widget itself must still be present — confirming the widget
+        // tree was not disrupted. Note: icon presence alone does not prove
+        // subscription liveness; the companion test below proves that by
+        // verifying a subsequent known event is still delivered.
+        expect(
+          find.byKey(const Key('speech-status-icon')),
+          findsOneWidget,
+          reason:
+              'Speech-status icon must still be present after the unknown '
+              'event — the widget tree must not have been disrupted.',
+        );
+      });
+
+      testWidgets(
+        'subscription stays live: valid engine_state_changed after engine_not_ready is processed',
+        (WidgetTester tester) async {
+          // After an unknown event is silently dropped the subscription must
+          // remain active. This test proves liveness by:
+          //   1. Driving the engine into ERROR via engineStateChanged: ERROR
+          //      (establishes a visible "before" state).
+          //   2. Emitting the unknown engine_not_ready — must NOT clear ERROR.
+          //   3. Emitting engineStateChanged: READY — must clear ERROR,
+          //      proving the subscription was still alive and the event was
+          //      processed (not silently dropped because the sub was torn down).
+          await tester.pumpWidget(
+            _buildScreen(
+              speechPlatform: fakePlatform,
+              speechSettings: const SpeechSettings(enabled: true),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          // Step 1: drive the engine into ERROR via the known event type.
+          fakePlatform.emitEvent(
+            const SpeechEvent(
+              type: SpeechEventType.engineStateChanged,
+              payload: <String, dynamic>{'state': 'ERROR'},
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+
+          // Sanity: ERROR icon must be present.
+          expect(
+            find.descendant(
+              of: find.byKey(const Key('speech-status-icon')),
+              matching: find.byIcon(Icons.error_outline),
+            ),
+            findsOneWidget,
+            reason:
+                'Sanity: engineStateChanged:ERROR must flip the icon to '
+                'error_outline before the unknown-event step.',
+          );
+
+          // Step 2: emit the unknown type — must NOT clear the ERROR state.
+          fakePlatform.emitEvent(
+            const SpeechEvent(
+              type: 'engine_not_ready',
+              payload: <String, dynamic>{
+                'engineType': 'VOICEVOX',
+                'engineState': 'UNINITIALIZED',
+              },
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+
+          // ERROR must still be present — the unknown event must not have
+          // called _setSpeechEngineState with any value.
+          expect(
+            find.descendant(
+              of: find.byKey(const Key('speech-status-icon')),
+              matching: find.byIcon(Icons.error_outline),
+            ),
+            findsOneWidget,
+            reason:
+                'engine_not_ready must leave _speechEngineState=ERROR '
+                'unchanged (Issue #753).',
+          );
+
+          // Step 3: emit a valid engine_state_changed: READY. If the
+          // subscription were torn down this event would be silently dropped
+          // and the ERROR icon would persist. A successful recovery here
+          // proves the subscription is still alive.
+          fakePlatform.emitEvent(
+            const SpeechEvent(
+              type: SpeechEventType.engineStateChanged,
+              payload: <String, dynamic>{'state': 'READY'},
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+
+          expect(
+            find.descendant(
+              of: find.byKey(const Key('speech-status-icon')),
+              matching: find.byIcon(Icons.error_outline),
+            ),
+            findsNothing,
+            reason:
+                'engineStateChanged:READY after engine_not_ready (ignored) '
+                'must clear the ERROR icon, proving the subscription was '
+                'still live (Issue #753).',
+          );
+          // The icon widget itself must still be present. Combined with the
+          // error_outline assertion above (READY cleared it), this confirms the
+          // full event sequence was processed — proving subscription liveness.
+          expect(
+            find.byKey(const Key('speech-status-icon')),
+            findsOneWidget,
+            reason:
+                'Speech-status icon must still be present after all events — '
+                'the widget tree must remain intact.',
+          );
+        },
+      );
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -4132,12 +4808,13 @@ void main() {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Helpers for Issue #758 background poll tests
+// Helpers for Issue #762 reactive listener tests
 // ---------------------------------------------------------------------------
 
-/// Hosts a [CommentScreen] wired to a real [TimelineStore] so the bg poll
-/// timer can pick up store mutations. Distinct from [_SpeechTestHost] to
-/// keep the bg-specific scaffolding isolated and easy to read.
+/// Hosts a [CommentScreen] wired to a real [TimelineStore] so the reactive
+/// [TimelineStore] listener can pick up store mutations. Distinct from
+/// [_SpeechTestHost] to keep the reactive-submit scaffolding isolated and
+/// easy to read.
 class _BgPollHost extends StatefulWidget {
   const _BgPollHost({
     required this.timelineStore,
@@ -4210,6 +4887,65 @@ class _BgPollHostState extends State<_BgPollHost> {
   }
 }
 
+/// Hosts a [CommentScreen] whose [TimelineStore] can be swapped at runtime
+/// via [_StoreSwapHostState.swapStore]. Used to verify that
+/// [CommentScreen.didUpdateWidget] correctly removes the listener from the
+/// old store and attaches it to the new one when the store identity changes.
+class _StoreSwapHost extends StatefulWidget {
+  const _StoreSwapHost({required this.store, required this.speechPlatform});
+
+  final TimelineStore store;
+  final FakeCommentSpeechPlatform? speechPlatform;
+
+  @override
+  State<_StoreSwapHost> createState() => _StoreSwapHostState();
+}
+
+class _StoreSwapHostState extends State<_StoreSwapHost> {
+  late TimelineStore _currentStore;
+  late final ConnectionSupervisor _supervisor = _buildStreamingSupervisor();
+
+  @override
+  void initState() {
+    super.initState();
+    _currentStore = widget.store;
+  }
+
+  @override
+  void dispose() {
+    _supervisor.dispose();
+    super.dispose();
+  }
+
+  /// Replace the active [TimelineStore]. Triggers a rebuild, causing
+  /// [CommentScreen.didUpdateWidget] to swap its listener.
+  void swapStore(TimelineStore newStore) {
+    setState(() {
+      _currentStore = newStore;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CommentScreen(
+      programInfo: const CommentProgramInfo(lv: 'lv123456789'),
+      connectionSupervisor: _supervisor,
+      messages: _currentStore.messages.toList(growable: false),
+      callbacks: CommentCallbacks(
+        onStopAllConnections: () async {},
+        onReconnectSameLv: () async {},
+        onDifferentLvConnected: (_, _) async {},
+      ),
+      themeMode: AppThemeMode.light,
+      speechConfig: CommentSpeechConfig(
+        speechPlatform: widget.speechPlatform,
+        speechSettings: const SpeechSettings(enabled: true),
+        timelineStore: _currentStore,
+      ),
+    );
+  }
+}
+
 Widget _buildBgPollScreen({
   required TimelineStore timelineStore,
   FakeCommentSpeechPlatform? speechPlatform,
@@ -4249,6 +4985,7 @@ class _SpeechTestHost extends StatefulWidget {
     this.onSpeechMuteToggled,
     this.androidTtsAvailability,
     this.settingsStore,
+    this.broadcasterUserId,
   });
 
   final List<AppMessage> initialMessages;
@@ -4269,6 +5006,7 @@ class _SpeechTestHost extends StatefulWidget {
   final VoidCallback? onSpeechMuteToggled;
   final SpeechAvailabilityNotifier? androidTtsAvailability;
   final SettingsStore? settingsStore;
+  final String? broadcasterUserId;
 
   @override
   State<_SpeechTestHost> createState() => _SpeechTestHostState();
@@ -4319,7 +5057,10 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
         : null;
 
     return CommentScreen(
-      programInfo: const CommentProgramInfo(lv: 'lv123456789'),
+      programInfo: CommentProgramInfo(
+        lv: 'lv123456789',
+        broadcasterUserId: widget.broadcasterUserId,
+      ),
       connectionSupervisor: _buildStreamingSupervisor(),
       messages: _messages,
       callbacks: CommentCallbacks(
@@ -4371,6 +5112,7 @@ Widget _buildScreen({
   VoidCallback? onSpeechMuteToggled,
   SpeechAvailabilityNotifier? androidTtsAvailability,
   SettingsStore? settingsStore,
+  String? broadcasterUserId,
 }) {
   return MaterialApp(
     home: _SpeechTestHost(
@@ -4392,6 +5134,7 @@ Widget _buildScreen({
       onSpeechMuteToggled: onSpeechMuteToggled,
       androidTtsAvailability: androidTtsAvailability,
       settingsStore: settingsStore,
+      broadcasterUserId: broadcasterUserId,
     ),
   );
 }
@@ -4414,6 +5157,18 @@ class _NoopListenable implements Listenable {
 
   @override
   void removeListener(VoidCallback listener) {}
+}
+
+/// Test-only [TimelineStore] subclass that exposes the
+/// [ChangeNotifier.hasListeners] flag so the dispose-detach test can
+/// assert it directly. `hasListeners` is `@protected` on the base class
+/// (only callable from instance members of [ChangeNotifier] subclasses);
+/// re-exposing it here keeps the assertion expressive without leaking the
+/// protected member into production code.
+class _ListenerCountingTimelineStore extends TimelineStore {
+  _ListenerCountingTimelineStore({super.capacity = 100});
+
+  bool get exposedHasListeners => hasListeners;
 }
 
 AppMessage _chatMessage({

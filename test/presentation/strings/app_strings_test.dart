@@ -49,7 +49,12 @@ void main() {
       expect(AppStrings.settings.commentDisplayTileTitle, 'コメント表示設定');
       expect(AppStrings.settings.ttsTileTitle, '読み上げ設定');
       expect(AppStrings.settings.userManagementTileTitle, 'ユーザー管理');
-      expect(AppStrings.settings.userManagementTileSubtitle, 'お気に入り・コテハン');
+      expect(AppStrings.settings.userManagementTileSubtitle, 'お気に入りユーザー');
+    });
+
+    test('NG設定タイル文言が AppStrings に集約されている (Issue #727)', () {
+      expect(AppStrings.settings.ngFilterTileTitle, 'NG設定');
+      expect(AppStrings.settings.ngFilterTileSubtitleDisabled, '未対応');
     });
 
     test('commentFontSizeSubtitle は引数を埋め込んだ形で既存のフォーマットと一致する', () {
@@ -116,10 +121,7 @@ void main() {
       // 暫定実装の文言が振動しないようバイト完全一致を維持する。
       // viewUri 取得経路（Issue #654）が確立して `kTimeshiftFetchEnabled` を
       // true へ戻す PR では、本テストごと削除して問題ない。
-      expect(
-        AppStrings.timeshift.unsupportedDialogTitle,
-        'タイムシフトは現在未対応です',
-      );
+      expect(AppStrings.timeshift.unsupportedDialogTitle, 'タイムシフトは現在未対応です');
       expect(
         AppStrings.timeshift.unsupportedDialogBody,
         'タイムシフト（過去放送）のコメント取得は現在対応していません。\n'
@@ -151,6 +153,91 @@ void main() {
           .pastCommentFetchCountDescription(liveCommentBufferSize: 3000);
       expect(desc, contains('約 3000 件'));
       expect(desc, isNot(contains('約 5000 件')));
+    });
+  });
+
+  group('AppStrings.userDetailSheet (Issue #778 Phase 2 byte-for-byte 維持)', () {
+    // Phase 2 では `UserDetailSheet` の固定 UI 文言（タイトル / NG ボタン /
+    // 空状態 / コメント履歴件数 / コメント色セクション / カスタムカラー /
+    // コテハンセクション）を AppStrings に集約する。表示はバイト完全一致で
+    // 変えないため、各 getter / メソッドが既存ハードコード文言と同一である
+    // ことを固定する。
+    test('ヘッダー（タイトル / ID / コテハン / 名前）が既存と一致する', () {
+      expect(AppStrings.userDetailSheet.title, 'ユーザー詳細');
+      expect(AppStrings.userDetailSheet.userIdLine('user-1'), 'ID: user-1');
+      expect(
+        AppStrings.userDetailSheet.userNicknameLine('テスト太郎'),
+        'コテハン: テスト太郎',
+      );
+      expect(AppStrings.userDetailSheet.userNameLine('表示名'), '名前: 表示名');
+    });
+
+    test('NG ユーザートグルのボタン文言が既存と一致する', () {
+      expect(AppStrings.userDetailSheet.ngButtonRegister, 'NG登録');
+      expect(AppStrings.userDetailSheet.ngButtonUnregister, 'NG解除');
+    });
+
+    test('コメント履歴の空状態と件数見出しが既存と一致する', () {
+      expect(
+        AppStrings.userDetailSheet.noCommentsInBroadcast,
+        'この放送でのコメントはありません',
+      );
+      expect(AppStrings.userDetailSheet.commentHistoryCount(0), 'コメント履歴（0件）');
+      expect(
+        AppStrings.userDetailSheet.commentHistoryCount(123),
+        'コメント履歴（123件）',
+      );
+    });
+
+    test('コメント色セクション（リセット含む）の文言が既存と一致する', () {
+      expect(AppStrings.userDetailSheet.commentColorSectionTitle, 'コメント色');
+      expect(AppStrings.userDetailSheet.commentColorReset, 'リセット');
+      expect(
+        AppStrings.userDetailSheet.commentColorResetSemanticsLabel,
+        'コメント色をリセット',
+      );
+    });
+
+    test('カスタムカラー（PR #775 由来）の文言が既存と一致する', () {
+      expect(
+        AppStrings.userDetailSheet.customColorSelectedSemanticsLabel,
+        'カスタムカラー 選択中',
+      );
+      expect(
+        AppStrings.userDetailSheet.customColorSelectSemanticsLabel,
+        'カスタムカラーを選択',
+      );
+      expect(AppStrings.userDetailSheet.customColorDialogTitle, 'カスタムカラー');
+      expect(AppStrings.userDetailSheet.customColorDialogCancel, 'キャンセル');
+      expect(AppStrings.userDetailSheet.customColorDialogApply, '適用');
+    });
+
+    test('コテハン（ニックネーム）セクションの文言が既存と一致する', () {
+      expect(AppStrings.userDetailSheet.nicknameSectionTitle, 'コテハン');
+      expect(AppStrings.userDetailSheet.nicknameUnregistered, '未登録');
+      expect(AppStrings.userDetailSheet.nicknameEditSemanticsLabel, 'コテハンを変更');
+      expect(AppStrings.userDetailSheet.nicknameAddSemanticsLabel, 'コテハンを登録');
+      expect(AppStrings.userDetailSheet.nicknameEditButton, '変更');
+      expect(AppStrings.userDetailSheet.nicknameAddButton, '登録');
+      expect(
+        AppStrings.userDetailSheet.nicknameRemoveSemanticsLabel,
+        'コテハンを削除',
+      );
+      expect(AppStrings.userDetailSheet.nicknameRemoveButton, '削除');
+      expect(AppStrings.userDetailSheet.nicknameDialogTitle, 'コテハン登録');
+      expect(AppStrings.userDetailSheet.nicknameDialogFieldLabel, 'コテハン');
+      expect(AppStrings.userDetailSheet.nicknameDialogFieldHint, 'ニックネームを入力');
+      expect(AppStrings.userDetailSheet.nicknameDialogCancel, 'キャンセル');
+      expect(AppStrings.userDetailSheet.nicknameDialogSave, '保存');
+    });
+  });
+
+  group('AppStrings.commentScreen (Issue #778 Phase 2 byte-for-byte 維持)', () {
+    test('ソート切替トグルの tooltip が既存と一致する（PR #776 由来）', () {
+      // 「現在の並び順 → 切替先」を案内する tooltip。
+      // 昇順表示中は「新しい順に切替」、降順表示中は「古い順に切替」を出す。
+      expect(AppStrings.commentScreen.sortToggleToDescending, '新しい順に切替');
+      expect(AppStrings.commentScreen.sortToggleToAscending, '古い順に切替');
     });
   });
 }

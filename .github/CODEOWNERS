@@ -1,0 +1,4 @@
+# Default owner for everything in the repo.
+# Required so that all PRs receive a default reviewer once branch
+# protection enforces "review required".
+* @sahya

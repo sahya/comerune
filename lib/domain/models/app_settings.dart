@@ -394,6 +394,7 @@ class AppSettings {
     required this.playRemainingAfterEnded,
     required this.commentSortOrder,
     required this.showCommentNo,
+    required this.autoExtendBroadcastEnabled,
   }) : assert(
          commentFontSize >= commentFontSizeMin &&
              commentFontSize <= commentFontSizeMax,
@@ -468,6 +469,9 @@ class AppSettings {
     // Issue #784. Default OFF so existing users see no change; opt-in via
     // CommentDisplaySettingsScreen.
     showCommentNo: false,
+    // Issue #875. Default OFF so the auto-extend timer never engages
+    // unless the broadcaster opts in via the AppBar overflow menu.
+    autoExtendBroadcastEnabled: false,
   );
 
   final AppThemeMode themeMode;
@@ -487,6 +491,9 @@ class AppSettings {
   final String ngWords;
 
   /// Newline-separated user IDs to filter out from display.
+  // TODO(#727 follow-up): now vestigial after PR2 removed the read path
+  // and PR3 keeps them only for legacy export/import compatibility.
+  // Plan a deprecation issue once a few releases ship the new schema.
   final String ngUserIds;
 
   /// Newline-separated user IDs to monitor in the connection list.
@@ -533,6 +540,9 @@ class AppSettings {
   ///
   /// 空リストの場合は旧形式の [ngWords] 文字列にフォールバックする。
   /// マイグレーション後は常にこちらが使用される。
+  // TODO(#727 follow-up): now vestigial after PR2 removed the read path
+  // and PR3 keeps them only for legacy export/import compatibility.
+  // Plan a deprecation issue once a few releases ship the new schema.
   final List<NgWordRule> ngWordRules;
 
   /// 横幅が狭い端末向けにコメントを二段表示するかどうか。
@@ -655,17 +665,24 @@ class AppSettings {
   /// 重複排除キーとしての利用は禁止。
   final bool showCommentNo;
 
+  /// Issue #875: 配信中に「残り 5 分」を切ったら自動的に放送を 30 分
+  /// 延長するかどうか。
+  ///
+  /// 既定 `false`（オプトイン）。配信者向け AppBar オーバーフロー
+  /// メニュー内の Switch から切り替える。Timer 動作の実装は
+  /// 続編 Issue #876 で行うため、PR1 範囲ではこのフラグは「Switch の
+  /// 表示状態」を保持するだけで behavior には反映されない。
+  final bool autoExtendBroadcastEnabled;
+
   /// Returns a list of lower-cased NG word pattern strings for filtering.
   ///
   /// When [ngWordRules] is populated (post-migration), only **enabled** rules
   /// are returned. Otherwise falls back to the legacy [ngWords] string.
   List<String> get ngWordList {
     if (ngWordRules.isNotEmpty) {
-      return ngWordRules
-          .where((NgWordRule r) => r.enabled)
-          .map((NgWordRule r) => r.pattern.trim().toLowerCase())
-          .where((String s) => s.isNotEmpty)
-          .toList();
+      // Issue #727: shared helper so the legacy and per-broadcaster paths
+      // normalize patterns identically.
+      return enabledNgWordPatterns(ngWordRules);
     }
     return parseNewlineSeparatedLowerList(ngWords);
   }
@@ -805,6 +822,7 @@ class AppSettings {
     bool? playRemainingAfterEnded,
     CommentSortOrder? commentSortOrder,
     bool? showCommentNo,
+    bool? autoExtendBroadcastEnabled,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -883,6 +901,8 @@ class AppSettings {
           playRemainingAfterEnded ?? this.playRemainingAfterEnded,
       commentSortOrder: commentSortOrder ?? this.commentSortOrder,
       showCommentNo: showCommentNo ?? this.showCommentNo,
+      autoExtendBroadcastEnabled:
+          autoExtendBroadcastEnabled ?? this.autoExtendBroadcastEnabled,
     );
   }
 
@@ -980,6 +1000,7 @@ class AppSettings {
       'playRemainingAfterEnded': playRemainingAfterEnded,
       'commentSortOrder': commentSortOrder.storageValue,
       'showCommentNo': showCommentNo,
+      'autoExtendBroadcastEnabled': autoExtendBroadcastEnabled,
     };
   }
 
@@ -1188,6 +1209,12 @@ class AppSettings {
       showCommentNo: switch (json['showCommentNo']) {
         bool b => b,
         _ => d.showCommentNo,
+      },
+      // Issue #875: 旧 Export ファイル（このキーが存在しない）はデフォルト
+      // (false = OFF) にフォールバック。型が違う値も defensive に落とす。
+      autoExtendBroadcastEnabled: switch (json['autoExtendBroadcastEnabled']) {
+        bool b => b,
+        _ => d.autoExtendBroadcastEnabled,
       },
     );
   }

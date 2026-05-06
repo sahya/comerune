@@ -32,6 +32,52 @@ void main() {
       expect(resolution.preferredEndpoint, resolution.ndgrViewUri);
     });
 
+    test('rejects http:// NDGR view URL and only accepts https://', () {
+      // 認証 Cookie / X-Niconico-Session ヘッダ付きで NDGR HTTP fetch が
+      // 行われるため、http:// を抽出してしまうと認証情報が平文で流出する。
+      // legacy WebSocket URL 抽出 (wss:// 強制) との対称性も確保する。
+      final Map<String, Object?> payload = <String, Object?>{
+        'type': 'seat',
+        'data': <String, Object?>{
+          'uri':
+              'http://mpn.live.nicovideo.jp/api/view/v4/watch?audience_token=abc',
+          'messageServer':
+              'wss://msgd.live2.nicovideo.jp/websocket?thread=123&token=abc',
+        },
+      };
+
+      final SessionEndpointResolution resolution =
+          SessionWsMessageParser.extractEndpoints(payload);
+
+      expect(resolution.ndgrViewUri, isNull);
+      expect(
+        resolution.legacyWebSocketUrl,
+        'wss://msgd.live2.nicovideo.jp/websocket?thread=123&token=abc',
+      );
+      expect(resolution.preferredEndpoint, resolution.legacyWebSocketUrl);
+    });
+
+    test(
+      'rejects http:// even when https:// candidate is also present and prefers https',
+      () {
+        // 同一応答に http:// と https:// が混在する場合、https:// だけを採用する。
+        final Map<String, Object?> payload = <String, Object?>{
+          'plain':
+              'http://mpn.live.nicovideo.jp/api/view/v4/watch?audience_token=plain',
+          'secure':
+              'https://mpn.live.nicovideo.jp/api/view/v4/watch?audience_token=secure',
+        };
+
+        final SessionEndpointResolution resolution =
+            SessionWsMessageParser.extractEndpoints(payload);
+
+        expect(
+          resolution.ndgrViewUri,
+          'https://mpn.live.nicovideo.jp/api/view/v4/watch?audience_token=secure',
+        );
+      },
+    );
+
     test('falls back to legacy when ndgr endpoint is not found', () {
       final SessionEndpointResolution resolution =
           SessionWsMessageParser.extractEndpoints(<String, Object?>{

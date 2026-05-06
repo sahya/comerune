@@ -8,20 +8,33 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'application/auth/oauth_auth_controller.dart';
+import 'application/auth/oauth_auth_scope.dart';
 import 'application/comment_post/comment_post_controller.dart';
+import 'application/filter/broadcaster_ng_migrator.dart';
 import 'application/foreground_service/foreground_service_controller.dart';
 import 'application/migration/app_migration_runner.dart';
 import 'application/onboarding/onboarding_store.dart';
 import 'application/settings/settings_store.dart';
 import 'application/settings/shared_preferences_adapter.dart';
 import 'application/speech/speech_availability_notifier.dart';
-import 'application/upgrade/upgrade_initializer.dart';
+import 'application/statistics/recent_broadcast_stats_holder.dart';
 import 'application/statistics/statistics_store.dart';
+import 'application/upgrade/upgrade_initializer.dart';
 import 'application/timeline/timeline_store.dart';
+import 'data/auth/oauth_bff/oauth_bff_auth_service.dart';
+import 'data/auth/oauth_bff/oauth_bff_client.dart';
+import 'data/auth/oauth_bff/oauth_bff_config.dart';
+import 'data/auth/oauth_bff/oauth_state_generator.dart';
+import 'data/auth/oauth_bff/oauth_state_store.dart';
+import 'data/auth/oauth_bff/oauth_token_store.dart';
 import 'data/auth/user_session_store.dart';
 import 'data/comment/live_comment_repository.dart';
+import 'data/comment_log/broadcast_history_store.dart';
 import 'data/comment_log/comment_log_writer.dart';
 import 'data/connection/program_info_resolver.dart';
+import 'data/broadcaster/broadcaster_name_store.dart';
+import 'data/filter/broadcaster_ng_store.dart';
 import 'data/broadcast/broadcast_control_repository.dart';
 import 'data/follow/follow_program_repository.dart';
 import 'data/follow/my_program_repository.dart';
@@ -46,6 +59,9 @@ import 'presentation/screens/onboarding_screen.dart';
 import 'presentation/select/select_screen.dart';
 import 'presentation/strings/app_strings.dart';
 import 'presentation/theme/app_theme.dart';
+import 'extension/extension_loader.dart';
+import 'extension/extension_registry.dart';
+import 'extension/extension_scope.dart';
 
 /// Feature flag: タイムシフト（過去放送）コメント取得の有効化。
 ///
@@ -102,14 +118,12 @@ Future<void> main() async {
 
   final Directory appDocDir = await getApplicationDocumentsDirectory();
   final Directory tempDir = await getTemporaryDirectory();
-  final SettingsStore settingsStore = SharedPreferencesSettingsStore(
-    prefs: prefsAdapter,
-    tempDirectory: tempDir,
-  );
-  final AppSettings initialSettings = await settingsStore.load();
   final UserSessionStore userSessionStore = SecureUserSessionStore(
     prefs: prefs,
   );
+  // Settings store is constructed below, after the BroadcasterNgStore is
+  // available, so the export/import flow can include the per-broadcaster
+  // NG layout (Issue #727).
 
   final CommentLogWriter commentLogWriter = FileCommentLogWriter(
     directory: Directory('${appDocDir.path}/comment_logs'),
@@ -132,6 +146,48 @@ Future<void> main() async {
   ).run();
   final UserAttributeStore userAttributeStore = fileUserAttributeStore;
 
+  // Per-broadcaster NG store (Issue #727). Models the same template +
+  // per-broadcaster duplication pattern used for user attributes, so the
+  // user's existing global NG settings remain effective for newly-seen
+  // broadcasters while still allowing per-broadcaster divergence.
+  //
+  // The migrator seeds the new layout once per install. The seed list of
+  // broadcaster IDs is read from the legacy `usercolor._index` key in
+  // SharedPreferences — this is the most accurate "broadcasters the user
+  // has interacted with" signal available at startup without forcing the
+  // file-based user attribute store to expose its index publicly.
+  // Failures inside the migrator are logged and do not block startup.
+  final BroadcasterNgStore broadcasterNgStore =
+      SharedPreferencesBroadcasterNgStore(prefs: prefsAdapter);
+  // Issue #727 follow-up: persistent cache of `broadcasterId → display name`.
+  // Populated opportunistically when the app resolves broadcaster names
+  // (see `_onBroadcasterNameResolved` below) and read by the NG picker
+  // tile titles so the user can recognise broadcasters by name.
+  final BroadcasterNameStore broadcasterNameStore =
+      SharedPreferencesBroadcasterNameStore(prefs: prefsAdapter);
+  // Issue #766: 過去放送のコメント統計を再アクセスできる履歴ビュー。
+  // 端末ローカルにのみ保存し、設定 Export/Import からは意図的に除外する。
+  final BroadcastHistoryStore broadcastHistoryStore =
+      SharedPreferencesBroadcastHistoryStore(prefs: prefsAdapter);
+  await BroadcasterNgMigrator.migrateIfNeeded(
+    prefs: prefsAdapter,
+    store: broadcasterNgStore,
+    knownBroadcasterIds:
+        SharedPreferencesUserAttributeStore.readKnownBroadcasterIdsFromPrefs(
+          prefsAdapter,
+        ),
+  );
+
+  // Settings store is wired with the broadcaster NG store so the
+  // export/import flow understands the new per-broadcaster + template
+  // layout (Issue #727).
+  final SettingsStore settingsStore = SharedPreferencesSettingsStore(
+    prefs: prefsAdapter,
+    tempDirectory: tempDir,
+    broadcasterNgStore: broadcasterNgStore,
+  );
+  final AppSettings initialSettings = await settingsStore.load();
+
   // Run one-time migration tasks when the app version changes.
   // Awaited so that migrations complete before the app reads settings or
   // user data that a migration might alter.
@@ -153,6 +209,34 @@ Future<void> main() async {
     foregroundServiceManager.init();
   }
 
+  // OAuth + App Links + BFF login orchestrator. Constructed once at app
+  // startup so the App Links listener it attaches in initState lives for
+  // the app lifetime — callbacks delivered while the user is anywhere in
+  // the app must not get lost.
+  //
+  // The underlying config is read from --dart-define values
+  // (NICONICO_OAUTH_CLIENT_ID / OAUTH_BFF_HOST / OAUTH_AUTHORIZE_ENDPOINT).
+  // When any are missing, OAuthAuthController.isFullyConfigured returns
+  // false and UI screens hide the OAuth login entry point — the
+  // controller is still safe to construct in that state.
+  final OAuthBffConfig oauthConfig = OAuthBffConfig.production();
+  final OAuthAuthController oauthAuthController = OAuthAuthController(
+    service: OAuthBffAuthService(
+      config: oauthConfig,
+      stateGenerator: SecureOAuthStateGenerator(),
+      stateStore: SecureOAuthStateStore(),
+      tokenStore: SecureOAuthTokenStore(),
+      bffClient: OAuthBffClient(tokenEndpoint: oauthConfig.bffTokenEndpoint),
+    ),
+  );
+
+  // Safe to call even with no integrations installed: the loader
+  // silently completes with an empty registry. The populated registry
+  // is then handed to ComeruneApp so an ExtensionScope can publish
+  // it to the rest of the widget tree.
+  final ExtensionLoader extensionLoader = ExtensionLoader();
+  await extensionLoader.loadAll();
+
   runApp(
     ComeruneApp(
       settingsStore: settingsStore,
@@ -160,8 +244,13 @@ Future<void> main() async {
       userSessionStore: userSessionStore,
       commentLogWriter: commentLogWriter,
       userAttributeStore: userAttributeStore,
+      broadcasterNgStore: broadcasterNgStore,
+      broadcasterNameStore: broadcasterNameStore,
+      broadcastHistoryStore: broadcastHistoryStore,
       foregroundServiceManager: foregroundServiceManager,
       onboardingStore: onboardingStore,
+      oauthAuthController: oauthAuthController,
+      extensionRegistry: extensionLoader.registry,
     ),
   );
 }
@@ -174,8 +263,13 @@ class ComeruneApp extends StatefulWidget {
     required this.userSessionStore,
     this.commentLogWriter,
     this.userAttributeStore,
+    this.broadcasterNgStore,
+    this.broadcasterNameStore,
+    this.broadcastHistoryStore,
     this.foregroundServiceManager,
     required this.onboardingStore,
+    required this.oauthAuthController,
+    this.extensionRegistry,
   });
 
   final SettingsStore settingsStore;
@@ -183,14 +277,40 @@ class ComeruneApp extends StatefulWidget {
   final UserSessionStore userSessionStore;
   final CommentLogWriter? commentLogWriter;
   final UserAttributeStore? userAttributeStore;
+  final BroadcasterNgStore? broadcasterNgStore;
+
+  /// Issue #727 follow-up: persistent cache of broadcaster display names
+  /// keyed by broadcaster (user) ID. Optional so legacy embedders that do
+  /// not wire the store keep working — the picker simply falls back to
+  /// rendering raw IDs in that case.
+  final BroadcasterNameStore? broadcasterNameStore;
+
+  /// Issue #766: optional integration. When provided, the comment screen
+  /// records each ended broadcast's stats summary into this store and the
+  /// settings screen exposes a "放送履歴" entry. When null (legacy
+  /// embedders / tests that do not need it), recording is skipped and the
+  /// settings tile is hidden.
+  final BroadcastHistoryStore? broadcastHistoryStore;
   final ForegroundServiceManager? foregroundServiceManager;
   final OnboardingStore onboardingStore;
+  final OAuthAuthController oauthAuthController;
+
+  /// Optional integration registry populated by `ExtensionLoader`
+  /// before runApp. Tests may omit this; an empty registry is then
+  /// used so descendants that look it up via [ExtensionScope] still
+  /// see a valid (empty) registry rather than throwing.
+  final ExtensionRegistry? extensionRegistry;
 
   @override
   State<ComeruneApp> createState() => _ComeruneAppState();
 }
 
 class _ComeruneAppState extends State<ComeruneApp> {
+  /// Issue #767: memory-only holder for the previous broadcast's stats
+  /// snapshot. Lives at the app level so it survives lv switches and is
+  /// recycled the next time the user broadcasts something else.
+  final RecentBroadcastStatsHolder _recentBroadcastStatsHolder =
+      RecentBroadcastStatsHolder();
   late final TimelineStore _timelineStore;
   late final StatisticsStore _statisticsStore;
   late final _SessionWsClientAdapter _sessionWsClient;
@@ -251,6 +371,17 @@ class _ComeruneAppState extends State<ComeruneApp> {
   late final TimeshiftFetchController _timeshiftFetchController;
   ForegroundServiceController? _foregroundServiceController;
 
+  // Captured on first access (Dart `late final` semantics) so a
+  // fresh empty registry is allocated on tests that omit
+  // `widget.extensionRegistry`, while production (which always passes
+  // a registry from main()) sees the real one. Stable for the
+  // State's lifetime — subsequent rebuilds with a different
+  // `widget.extensionRegistry` continue to expose the originally
+  // captured instance, which matches the post-`loadAll` freeze
+  // contract from X1.
+  late final ExtensionRegistry _extensionRegistry =
+      widget.extensionRegistry ?? ExtensionRegistry();
+
   @override
   void initState() {
     super.initState();
@@ -304,6 +435,15 @@ class _ComeruneAppState extends State<ComeruneApp> {
         _broadcasterNameNotifier.value = name;
         if (userId != null) {
           _userNameResolver.seedCache(userId, name);
+        }
+        // Issue #727 follow-up: persist `broadcasterId → name` so the NG
+        // picker can render friendly tile titles for broadcasters the
+        // user has previously connected to. Fire-and-forget; we do not
+        // block UI on cache writes. The store's [setName] is itself a
+        // no-op when either argument is empty.
+        final BroadcasterNameStore? nameStore = widget.broadcasterNameStore;
+        if (nameStore != null && userId != null && userId.isNotEmpty) {
+          unawaited(nameStore.setName(userId, name));
         }
       },
       onBeginAtResolved: (DateTime beginAt) {
@@ -379,6 +519,13 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _ndgrViewerCountSubscription = _ndgrClient.viewerCounts.listen(
       _statisticsStore.updateViewerCount,
     );
+
+    // Subscribe to App Links so the OIDC callback delivered by Android
+    // after the user returns from the browser is routed into the
+    // OAuthBffAuthService. Idempotent inside the controller; safe even
+    // if the OAuth login entry point is hidden (the flow simply never
+    // gets triggered, and no callback arrives).
+    unawaited(widget.oauthAuthController.attach());
   }
 
   /// Called when [_SessionWsClientAdapter] detects a timeshift (ended)
@@ -508,6 +655,12 @@ class _ComeruneAppState extends State<ComeruneApp> {
       ..dispose();
     _playRemainingAfterEndedNotifier.dispose();
     _androidTtsAvailability.dispose();
+    _recentBroadcastStatsHolder.dispose();
+    // Detach the App Links listener and close the OAuth BFF http.Client.
+    // dispose() returns a Future but State.dispose() is sync — the
+    // teardown is fire-and-forget at app shutdown, which is safe because
+    // the process is about to be torn down by Android.
+    unawaited(widget.oauthAuthController.dispose());
     super.dispose();
   }
 
@@ -539,52 +692,62 @@ class _ComeruneAppState extends State<ComeruneApp> {
   Widget build(BuildContext context) {
     final AppThemeMode currentMode = _themeModeNotifier.value;
     return WithForegroundTask(
-      child: MaterialApp(
-        title: 'comerune',
-        theme: AppTheme.themeDataFor(currentMode),
-        darkTheme: currentMode == AppThemeMode.system
-            ? AppTheme.themeDataFor(AppThemeMode.dark)
-            : null,
-        themeMode: currentMode == AppThemeMode.system
-            ? ThemeMode.system
-            : ThemeMode.light,
-        navigatorKey: _navigatorKey,
-        home: SelectScreen(
-          connectionSupervisor: _connectionSupervisor,
-          timelineStore: _timelineStore,
-          statisticsStore: _statisticsStore,
-          settingsStore: widget.settingsStore,
-          initialSettings: widget.initialSettings,
-          onPrepareConnection: _prepareConnection,
-          userSessionStore: widget.userSessionStore,
-          programTitleNotifier: _programTitleNotifier,
-          userNameResolution: UserNameResolution(
-            resolve: _userNameResolver.getCachedName,
-            requestResolve: _userNameResolver.requestResolve,
-            seedCache: _userNameResolver.seedCache,
-            listenable: _userNameResolver,
+      child: ExtensionScope(
+        registry: _extensionRegistry,
+        child: OAuthAuthScope(
+          controller: widget.oauthAuthController,
+          child: MaterialApp(
+            title: 'comerune',
+            theme: AppTheme.themeDataFor(currentMode),
+            darkTheme: currentMode == AppThemeMode.system
+                ? AppTheme.themeDataFor(AppThemeMode.dark)
+                : null,
+            themeMode: currentMode == AppThemeMode.system
+                ? ThemeMode.system
+                : ThemeMode.light,
+            navigatorKey: _navigatorKey,
+            home: SelectScreen(
+              connectionSupervisor: _connectionSupervisor,
+              timelineStore: _timelineStore,
+              statisticsStore: _statisticsStore,
+              settingsStore: widget.settingsStore,
+              initialSettings: widget.initialSettings,
+              onPrepareConnection: _prepareConnection,
+              userSessionStore: widget.userSessionStore,
+              programTitleNotifier: _programTitleNotifier,
+              userNameResolution: UserNameResolution(
+                resolve: _userNameResolver.getCachedName,
+                requestResolve: _userNameResolver.requestResolve,
+                seedCache: _userNameResolver.seedCache,
+                listenable: _userNameResolver,
+              ),
+              broadcasterNameNotifier: _broadcasterNameNotifier,
+              supplierUserIdNotifier: _supplierUserIdNotifier,
+              beginAtNotifier: _beginAtNotifier,
+              vposBaseAtNotifier: _vposBaseAtNotifier,
+              commentLogWriter: widget.commentLogWriter,
+              themeModeNotifier: _themeModeNotifier,
+              followProgramRepository: _followProgramRepository,
+              myProgramRepository: _myProgramRepository,
+              broadcastControlRepository: _broadcastControlRepository,
+              userAttributeStore: widget.userAttributeStore,
+              broadcasterNgStore: widget.broadcasterNgStore,
+              broadcasterNameStore: widget.broadcasterNameStore,
+              recentBroadcastStatsHolder: _recentBroadcastStatsHolder,
+              broadcastHistoryStore: widget.broadcastHistoryStore,
+              commentPostController: _commentPostController,
+              timeshiftFetchController: _timeshiftFetchController,
+              androidTtsAvailability: _androidTtsAvailability,
+              broadcasterEmbedResolver: _broadcasterEmbedResolver,
+              playRemainingAfterEndedSink: _playRemainingAfterEndedNotifier,
+              // Issue #739: when the comment screen finishes draining its speech
+              // queue inside the grace window, signal the FGS controller so its
+              // parallel grace timer can end early too instead of waiting out
+              // the full 30 s. No-op when the FGS controller is not configured.
+              onSpeechGraceEnded:
+                  _foregroundServiceController?.notifyQueueDrained,
+            ),
           ),
-          broadcasterNameNotifier: _broadcasterNameNotifier,
-          supplierUserIdNotifier: _supplierUserIdNotifier,
-          beginAtNotifier: _beginAtNotifier,
-          vposBaseAtNotifier: _vposBaseAtNotifier,
-          commentLogWriter: widget.commentLogWriter,
-          themeModeNotifier: _themeModeNotifier,
-          followProgramRepository: _followProgramRepository,
-          myProgramRepository: _myProgramRepository,
-          broadcastControlRepository: _broadcastControlRepository,
-          userAttributeStore: widget.userAttributeStore,
-          commentPostController: _commentPostController,
-          timeshiftFetchController: _timeshiftFetchController,
-          androidTtsAvailability: _androidTtsAvailability,
-          broadcasterEmbedResolver: _broadcasterEmbedResolver,
-          playRemainingAfterEndedSink: _playRemainingAfterEndedNotifier,
-          // Issue #739: when the comment screen finishes draining its speech
-          // queue inside the grace window, signal the FGS controller so its
-          // parallel grace timer can end early too instead of waiting out
-          // the full 30 s. No-op when the FGS controller is not configured.
-          onSpeechQueueDrained:
-              _foregroundServiceController?.notifyQueueDrained,
         ),
       ),
     );
