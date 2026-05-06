@@ -822,6 +822,12 @@ class _CommentScreenState extends State<CommentScreen>
   /// release ビルドで一般ユーザーへ露出する準備が整ったらこのフラグを
   /// `true` に戻す。設定の永続化・Export/Import 互換は維持しているので、
   /// フラグを戻すだけで Switch の最終状態も保持されたまま再表示できる。
+  ///
+  /// 完全 release 時のクリーンアップ予告: 本フラグを `true` に戻すと
+  /// 同時に [_autoExtendDebugUiOverride] と [_showAutoExtendUi] の
+  /// 3 段ガードは不要になる。簡略化したい場合はそのタイミングで
+  /// `if (canEndBroadcast)` 直書きに戻し、本 const と dart-define
+  /// オーバーライド・合成 const ごと削除して良い。
   static const bool _autoExtendUiVisible = false;
 
   /// Issue #876: release ビルドでも opt-in で Switch を露出するための
@@ -840,7 +846,7 @@ class _CommentScreenState extends State<CommentScreen>
   /// 1. `_autoExtendUiVisible == true` → 一般リリース（最終形）
   /// 2. `_autoExtendDebugUiOverride == true` → release でも opt-in 可
   /// 3. `kDebugMode == true` → 開発時は常に表示（debug build / widget test）
-  bool get _showAutoExtendUi =>
+  static const bool _showAutoExtendUi =
       _autoExtendUiVisible || _autoExtendDebugUiOverride || kDebugMode;
 
   /// Timestamp at which the broadcast transitioned to ended/stopped.
