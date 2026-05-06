@@ -153,6 +153,21 @@ jobs:
           # Use printf with positional args rather than a heredoc so the
           # secret values bypass shell metacharacter interpretation
           # ($(), backticks, parameter expansion) entirely.
+          #
+          # Fail-fast on missing secrets: an unset/empty value would still
+          # produce a syntactically valid env file (KEY=) and the build
+          # would silently succeed with isFullyConfigured=false, shipping
+          # a release without a working OAuth entry point. Catch this at
+          # CI time so a misconfiguration cannot reach end users.
+          missing=()
+          [ -n "$NICONICO_OAUTH_CLIENT_ID" ] || missing+=("NICONICO_OAUTH_CLIENT_ID")
+          [ -n "$OAUTH_BFF_HOST" ] || missing+=("OAUTH_BFF_HOST")
+          [ -n "$OAUTH_AUTHORIZE_ENDPOINT" ] || missing+=("OAUTH_AUTHORIZE_ENDPOINT")
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required OAuth secrets: ${missing[*]}. Configure them in repository Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
           {
             printf 'NICONICO_OAUTH_CLIENT_ID=%s\n' "$NICONICO_OAUTH_CLIENT_ID"
             printf 'OAUTH_BFF_HOST=%s\n' "$OAUTH_BFF_HOST"
