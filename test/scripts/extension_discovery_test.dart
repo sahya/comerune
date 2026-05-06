@@ -100,6 +100,34 @@ void main() {
       expect(result.warnings.first, contains('not a valid Dart identifier'));
     });
 
+    test('PascalCase Dart core type forms are rejected as invalid identifiers '
+        '(before reaching the core-type blacklist)', () {
+      // `String`, `List`, `Map`, etc. are dart:core types but pub package
+      // names must match `^[a-z_][a-z0-9_]*$`, so they are rejected at the
+      // identifier check rather than the core-type collision check. This
+      // test fixes the contract so a future refactor of the validation
+      // order does not silently change the warning category.
+      for (final String name in <String>['String', 'List', 'Map', 'Future']) {
+        final Directory dir = Directory('${tempRoot.path}/$name')
+          ..createSync(recursive: true);
+        File('${dir.path}/pubspec.yaml').writeAsStringSync('name: $name\n');
+      }
+      final IntegrationDiscoveryResult result = discoverIntegrations(
+        rootPath: tempRoot.path,
+      );
+      expect(result.integrations, isEmpty);
+      expect(
+        result.warnings.where(
+          (String w) => w.contains('not a valid Dart identifier'),
+        ),
+        hasLength(4),
+      );
+      expect(
+        result.warnings.where((String w) => w.contains('Dart core type')),
+        isEmpty,
+      );
+    });
+
     test('rejects Dart reserved words as package names', () {
       for (final String reserved in <String>[
         'class',

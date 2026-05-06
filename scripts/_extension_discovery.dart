@@ -16,6 +16,9 @@
 //   Dart / Flutter built-in package prefix (`dart`, `package`,
 //   `flutter`, `flutter_test`, `meta`), or a `dart:core` type name
 //   (`int`, `string`, `list`, …) whose alias would shadow the type.
+//   PascalCase forms (`String`, `List`, …) need not be enumerated
+//   here because the identifier pattern requires a leading lowercase
+//   letter and rejects them one step earlier.
 // - This file NEVER imports or evaluates integration source code; it
 //   only reads `pubspec.yaml` line-by-line.
 
