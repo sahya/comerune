@@ -147,6 +147,80 @@ void main() {
       );
     });
 
+    test('rejects Dart core type names with a discriminating warning', () {
+      // Lowercase forms of `dart:core` types whose package alias would
+      // shadow the type for the rest of the file. Names already covered
+      // by the reserved-word category (`null`, `function`, `set`,
+      // `dynamic`) are intentionally NOT in this list.
+      const List<String> coreTypes = <String>[
+        'int',
+        'string',
+        'list',
+        'map',
+        'future',
+        'stream',
+        'object',
+        'bool',
+        'double',
+        'num',
+        'iterable',
+        'iterator',
+        'symbol',
+        'record',
+        'type',
+        'never',
+      ];
+      for (final String name in coreTypes) {
+        final Directory dir = Directory('${tempRoot.path}/$name')
+          ..createSync(recursive: true);
+        File('${dir.path}/pubspec.yaml').writeAsStringSync('name: $name\n');
+      }
+      final IntegrationDiscoveryResult result = discoverIntegrations(
+        rootPath: tempRoot.path,
+      );
+      expect(result.integrations, isEmpty);
+      expect(
+        result.warnings.where((String w) => w.contains('Dart core type name')),
+        hasLength(coreTypes.length),
+      );
+      // Spot-check that the package name appears verbatim in its
+      // warning so a fork developer can grep the build log.
+      for (final String name in coreTypes) {
+        expect(
+          result.warnings.any(
+            (String w) =>
+                w.contains('"$name"') && w.contains('Dart core type name'),
+          ),
+          isTrue,
+          reason: 'expected core-type warning for "$name"',
+        );
+      }
+    });
+
+    test('reserved-word category takes priority over core-type names', () {
+      // `null`, `function`, `set` are language reserved words AND are
+      // semantically dart:core members. Verify the warning labels them
+      // as reserved words, not core types, so the diagnostic stays
+      // consistent with the existing reserved-word tests.
+      for (final String name in <String>['null', 'function', 'set']) {
+        final Directory dir = Directory('${tempRoot.path}/$name')
+          ..createSync(recursive: true);
+        File('${dir.path}/pubspec.yaml').writeAsStringSync('name: $name\n');
+      }
+      final IntegrationDiscoveryResult result = discoverIntegrations(
+        rootPath: tempRoot.path,
+      );
+      expect(result.integrations, isEmpty);
+      expect(
+        result.warnings.where((String w) => w.contains('reserved word')),
+        hasLength(3),
+      );
+      expect(
+        result.warnings.where((String w) => w.contains('Dart core type name')),
+        isEmpty,
+      );
+    });
+
     test('warns and skips when directory name does not match pubspec name', () {
       makeIntegration('actual_dir', pubspecName: 'declared_name');
       final IntegrationDiscoveryResult result = discoverIntegrations(

@@ -12,9 +12,10 @@
 //   must equal the package name declared in `pubspec.yaml`. This blocks
 //   directory names containing newlines, quotes, path separators, or
 //   YAML-significant characters.
-// - The package name must additionally not be a Dart reserved word or a
+// - The package name must additionally not be a Dart reserved word, a
 //   Dart / Flutter built-in package prefix (`dart`, `package`,
-//   `flutter`, `flutter_test`).
+//   `flutter`, `flutter_test`, `meta`), or a `dart:core` type name
+//   (`int`, `string`, `list`, …) whose alias would shadow the type.
 // - This file NEVER imports or evaluates integration source code; it
 //   only reads `pubspec.yaml` line-by-line.
 
@@ -114,10 +115,11 @@ IntegrationDiscoveryResult discoverIntegrations({
       );
       continue;
     }
-    if (_isReservedOrReservedPrefix(declaredName)) {
+    final _CollisionCategory? collision = _classifyCollision(declaredName);
+    if (collision != null) {
       warnings.add(
         'skipped $childPath: package name "$declaredName" collides '
-        'with a Dart reserved word or built-in package prefix.',
+        'with ${collision.description}.',
       );
       continue;
     }
@@ -154,27 +156,150 @@ final RegExp _identifierPattern = RegExp(r'^[a-z_][a-z0-9_]*$');
 
 bool _isValidIdentifier(String name) => _identifierPattern.hasMatch(name);
 
-/// Dart reserved words and built-in identifiers that would cause the
-/// generated `import 'package:<name>/...'` or `as <alias>` to fail to
-/// compile. Also blocks names that shadow the SDK's own packages.
-const Set<String> _reservedOrBuiltinNames = <String>{
-  // Dart reserved words.
-  'abstract', 'as', 'assert', 'async', 'await', 'break', 'case', 'catch',
-  'class', 'const', 'continue', 'covariant', 'default', 'deferred', 'do',
-  'dynamic', 'else', 'enum', 'export', 'extends', 'extension', 'external',
-  'factory', 'false', 'final', 'finally', 'for', 'function', 'get', 'hide',
-  'if', 'implements', 'import', 'in', 'interface', 'is', 'late', 'library',
-  'mixin', 'new', 'null', 'of', 'on', 'operator', 'part', 'rethrow',
-  'return', 'sealed', 'set', 'show', 'static', 'super', 'switch', 'sync',
-  'this', 'throw', 'true', 'try', 'typedef', 'var', 'void', 'when',
-  'while', 'with', 'yield', 'base',
-  // SDK / framework package names — not reserved by language but
-  // shadowing them would break the generated imports.
-  'dart', 'package', 'flutter', 'flutter_test', 'meta',
+/// Category of name collision used to render a discriminating warning.
+///
+/// Discovery rejects three classes of package names: language reserved
+/// words, SDK/framework package prefixes, and `dart:core` type names
+/// whose lowercase form is a valid pub package name. Surfacing the
+/// category in the warning lets fork developers diagnose the cause
+/// without consulting pub's own (more generic) error.
+enum _CollisionCategory {
+  reservedWord('a Dart reserved word'),
+  builtinPackage('a Dart / Flutter built-in package prefix'),
+  coreType('a Dart core type name');
+
+  const _CollisionCategory(this.description);
+  final String description;
+}
+
+/// Dart reserved words. Using these as a package name makes the
+/// generated `import 'package:<name>/...' as <name>;` fail to parse.
+const Set<String> _reservedWords = <String>{
+  'abstract',
+  'as',
+  'assert',
+  'async',
+  'await',
+  'break',
+  'case',
+  'catch',
+  'class',
+  'const',
+  'continue',
+  'covariant',
+  'default',
+  'deferred',
+  'do',
+  'dynamic',
+  'else',
+  'enum',
+  'export',
+  'extends',
+  'extension',
+  'external',
+  'factory',
+  'false',
+  'final',
+  'finally',
+  'for',
+  'function',
+  'get',
+  'hide',
+  'if',
+  'implements',
+  'import',
+  'in',
+  'interface',
+  'is',
+  'late',
+  'library',
+  'mixin',
+  'new',
+  'null',
+  'of',
+  'on',
+  'operator',
+  'part',
+  'rethrow',
+  'return',
+  'sealed',
+  'set',
+  'show',
+  'static',
+  'super',
+  'switch',
+  'sync',
+  'this',
+  'throw',
+  'true',
+  'try',
+  'typedef',
+  'var',
+  'void',
+  'when',
+  'while',
+  'with',
+  'yield',
+  'base',
 };
 
-bool _isReservedOrReservedPrefix(String name) =>
-    _reservedOrBuiltinNames.contains(name);
+/// SDK / framework package names — not reserved by the language, but
+/// shadowing them would break the generated imports.
+const Set<String> _builtinPackageNames = <String>{
+  'dart',
+  'package',
+  'flutter',
+  'flutter_test',
+  'meta',
+};
+
+/// Lowercased forms of `dart:core` type names. Pub package names must
+/// match `^[a-z_][a-z0-9_]*$`, so the validator never sees the actual
+/// PascalCase form (`String`, `List`, …) — but a lowercase package
+/// `string` imported `as string;` still shadows what most readers would
+/// expect to be the core type, and a lowercase package `int` (which IS
+/// a core type identifier) makes the generated `as int;` literally
+/// shadow `int`. Reject either case at discovery for a clearer message
+/// than pub's downstream "package name reserved" error.
+///
+/// Names already covered by [_reservedWords] (`null`, `function`,
+/// `set`, `dynamic`) are intentionally NOT duplicated here — the
+/// reserved-word check runs first and produces the more accurate
+/// "reserved word" category.
+const Set<String> _coreTypeNames = <String>{
+  'int',
+  'string',
+  'list',
+  'map',
+  'future',
+  'stream',
+  'object',
+  'bool',
+  'double',
+  'num',
+  'iterable',
+  'iterator',
+  'symbol',
+  'record',
+  'type',
+  'never',
+};
+
+/// Classify [name] against the collision categories, in priority order:
+/// reserved word → built-in package → core type. Returns `null` if the
+/// name does not collide.
+_CollisionCategory? _classifyCollision(String name) {
+  if (_reservedWords.contains(name)) {
+    return _CollisionCategory.reservedWord;
+  }
+  if (_builtinPackageNames.contains(name)) {
+    return _CollisionCategory.builtinPackage;
+  }
+  if (_coreTypeNames.contains(name)) {
+    return _CollisionCategory.coreType;
+  }
+  return null;
+}
 
 /// Parse `name:` from a minimal pubspec.yaml.
 ///
