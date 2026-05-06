@@ -115,11 +115,11 @@ void main() {
 
     test('falls back to generated nico icon URL from supplier ID', () {
       final Map<String, dynamic> item = <String, dynamic>{
-        'supplier': <String, dynamic>{'programProviderId': 18897569},
+        'supplier': <String, dynamic>{'programProviderId': 99999999},
       };
       expect(
         extractProviderIconUrl(item),
-        'https://secure-dcdn.cdn.nimg.jp/nicoaccount/usericon/1889/18897569.jpg',
+        'https://secure-dcdn.cdn.nimg.jp/nicoaccount/usericon/9999/99999999.jpg',
       );
     });
 
@@ -155,30 +155,30 @@ void main() {
 
     test('falls back to supplier.programProviderId', () {
       final Map<String, dynamic> item = <String, dynamic>{
-        'supplier': <String, dynamic>{'programProviderId': 18897569},
+        'supplier': <String, dynamic>{'programProviderId': 99999999},
       };
-      expect(extractProviderUserId(item), '18897569');
+      expect(extractProviderUserId(item), '99999999');
     });
 
     test('falls back to supplier.id', () {
       final Map<String, dynamic> item = <String, dynamic>{
-        'supplier': <String, dynamic>{'id': 18897569},
+        'supplier': <String, dynamic>{'id': 99999999},
       };
-      expect(extractProviderUserId(item), '18897569');
+      expect(extractProviderUserId(item), '99999999');
     });
 
     test('falls back to top-level programProviderId', () {
       final Map<String, dynamic> item = <String, dynamic>{
-        'programProviderId': 18897569,
+        'programProviderId': 99999999,
       };
-      expect(extractProviderUserId(item), '18897569');
+      expect(extractProviderUserId(item), '99999999');
     });
 
     test('falls back to top-level supplierUserId', () {
       final Map<String, dynamic> item = <String, dynamic>{
-        'supplierUserId': 18897569,
+        'supplierUserId': 99999999,
       };
-      expect(extractProviderUserId(item), '18897569');
+      expect(extractProviderUserId(item), '99999999');
     });
 
     test('rejects channel IDs like "ch2648853"', () {

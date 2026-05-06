@@ -17,8 +17,8 @@ void main() {
 
     test('builds icon URL from numeric user id', () {
       expect(
-        buildNicoIconUrl('18897569'),
-        'https://secure-dcdn.cdn.nimg.jp/nicoaccount/usericon/1889/18897569.jpg',
+        buildNicoIconUrl('99999999'),
+        'https://secure-dcdn.cdn.nimg.jp/nicoaccount/usericon/9999/99999999.jpg',
       );
     });
   });
