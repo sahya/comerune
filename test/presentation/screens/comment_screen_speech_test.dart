@@ -4955,6 +4955,18 @@ void main() {
             )
             .length;
         expect(helperHits, 1);
+        // Zero outer-CommentScreen log lines for the save failure path.
+        // Pairing this `count == 0` assertion with `count == 1` above
+        // makes the "single source of truth" invariant explicit even if
+        // future code changes ever start wrapping the failure in
+        // additional error messages.
+        final int outerHits = printed
+            .where(
+              (String line) =>
+                  line.contains('[CommentScreen] _handleTeachCommand FAILED'),
+            )
+            .length;
+        expect(outerHits, 0);
 
         // The persisted dictionaryRules in the underlying store must be
         // unchanged — _ThrowingSaveSettingsStore intercepts before
