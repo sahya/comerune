@@ -15,6 +15,7 @@ import '../../app_logging.dart';
 import '../../application/broadcast/auto_extend_broadcast_controller.dart';
 import '../../application/comment_post/comment_post_controller.dart';
 import '../../application/timeshift_fetch/timeshift_fetch_controller.dart';
+import '../../application/settings/settings_save_helper.dart';
 import '../../application/settings/settings_store.dart';
 import '../../application/speech/speech_availability_notifier.dart';
 import '../../application/timeline/timeline_store.dart';
@@ -2675,7 +2676,17 @@ class _CommentScreenState extends State<CommentScreen>
         final AppSettings updated = settings.copyWith(
           dictionaryRules: result.updatedRules,
         );
-        await store.save(updated);
+        try {
+          await saveSettings(store, updated);
+        } on Object {
+          // saveSettings already routed the error through appErrorLog
+          // (settingsSaveHelperLoggerName); the outer catch would
+          // otherwise double-log the same failure under the
+          // CommentScreen logger name. Match the previous behaviour of
+          // failing silently for save errors and skip the success
+          // SnackBar / callback.
+          return;
+        }
         widget.callbacks.onDictionaryRulesChanged?.call(updated);
       }
 
