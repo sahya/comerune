@@ -295,7 +295,7 @@ void main() {
 
       // Slot is now committed for b1. Subsequent template edits must not
       // leak into the committed slot, since the slot was created from the
-      // template snapshot at write time (PR #825).
+      // template snapshot at write time (Issue #856 / PR #825).
       await store.saveTemplateNgUserIds(<String>{'tpl-after'});
 
       expect(
@@ -340,6 +340,33 @@ void main() {
             .toList(),
         <String>['tpl-after'],
         reason: 'Template itself should still reflect the latest edit.',
+      );
+    });
+
+    test('cross-axis: saveNgUserIds-committed slot freezes its seeded NG word '
+        'rules against later template edits', () async {
+      // saveNgUserIds is the only operation customizing the slot here, so
+      // the slot's NG word rules come from a template snapshot taken at
+      // commit time (Issue #856 / PR #825). Later template-rule edits
+      // must not retroactively change the slot's rules.
+      await store.saveTemplateNgWordRules(<NgWordRule>[
+        const NgWordRule(pattern: 'seeded-rule'),
+      ]);
+      await store.saveNgUserIds('b1', <String>['only-b1']);
+
+      await store.saveTemplateNgWordRules(<NgWordRule>[
+        const NgWordRule(pattern: 'tpl-after'),
+      ]);
+
+      expect(
+        (await store.loadNgWordRules(
+          'b1',
+        )).map((NgWordRule rule) => rule.pattern).toList(),
+        <String>['seeded-rule'],
+        reason:
+            'Slot committed by saveNgUserIds must retain the NG word '
+            'rules snapshot taken at commit time, independent of later '
+            'template edits.',
       );
     });
 
