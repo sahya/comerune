@@ -15,6 +15,12 @@ import 'in_memory_shared_preferences.dart';
 /// All non-`load` operations delegate to a real
 /// [SharedPreferencesSettingsStore] backed by [InMemorySharedPreferences],
 /// so save / export / import behave like a normal in-memory store.
+///
+/// Maintenance note: this is the single shared stub for `SettingsStore` —
+/// when the interface gains a new method, this class must override it
+/// (typically delegating to `_delegate`). `flutter analyze` will surface
+/// the missing override the next time the suite runs, but checking here
+/// first keeps the fix one-shot.
 class ThrowingSettingsStore implements SettingsStore {
   ThrowingSettingsStore({this.errorToThrow});
 
