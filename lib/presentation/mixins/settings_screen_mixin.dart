@@ -1,11 +1,10 @@
-import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 
+import '../../application/settings/settings_save_helper.dart';
 import '../../application/settings/settings_store.dart';
 import '../../domain/models/app_settings.dart';
-import '../widgets/settings_widgets.dart';
 
 /// Mixin that provides common settings load/save logic for settings screens.
 ///
@@ -119,15 +118,14 @@ mixin SettingsScreenMixin<T extends StatefulWidget> on State<T> {
   /// Updates [settings] in state and saves asynchronously.
   ///
   /// Also sets [hasChanges] to `true` so callers can detect modifications.
+  /// Persistence is fire-and-forget via [saveSettingsUnawaited]; failures
+  /// are routed through [appErrorLog] under [settingsSaveHelperLoggerName]
+  /// rather than escaping as an unhandled future error.
   void updateAndSave(AppSettings next) {
     markChanged();
     setState(() {
       settings = next;
     });
-    unawaited(saveSettings(next));
+    saveSettingsUnawaited(settingsStore, next);
   }
-
-  /// Persists [next] to [settingsStore].
-  Future<void> saveSettings(AppSettings next) =>
-      saveSettingsToStore(settingsStore, next);
 }

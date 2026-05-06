@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../app_logging.dart';
+import '../../application/settings/settings_save_helper.dart';
 import '../../application/settings/settings_store.dart';
 import '../../application/speech/speech_availability_notifier.dart';
 import '../../comment_speech/comment_speech.dart';
@@ -366,7 +367,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
       settings = next;
       _isLoadingModel = true;
     });
-    unawaited(saveSettings(next));
+    saveSettingsUnawaited(settingsStore, next);
 
     final bool success = await _loadModelForSpeaker(
       newSpeaker,
@@ -415,7 +416,7 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
         settings = reverted;
         _isLoadingModel = false;
       });
-      unawaited(saveSettings(reverted));
+      saveSettingsUnawaited(settingsStore, reverted);
       _debugLogLazy(
         () =>
             '[TtsSettings] speaker change reverted: '

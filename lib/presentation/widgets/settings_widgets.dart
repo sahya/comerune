@@ -1,31 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../application/settings/settings_save_helper.dart';
-import '../../application/settings/settings_store.dart';
-import '../../domain/models/app_settings.dart';
-
-/// Saves [settings] to [store] with standardized error reporting.
-///
-/// Thin wrapper around [saveSettings] that swallows the rethrown error so
-/// the legacy `unawaited(saveSettingsToStore(...))` call in
-/// [SettingsScreenMixin.updateAndSave] does not surface as an unhandled
-/// future error. New code should call [saveSettings] (await + rethrow) or
-/// [saveSettingsUnawaited] (fire-and-forget + log) directly so every
-/// settings persistence flow goes through one logging path
-/// ([appErrorLog]) per Issue #781.
-Future<void> saveSettingsToStore(
-  SettingsStore store,
-  AppSettings settings,
-) async {
-  try {
-    await saveSettings(store, settings);
-  } on Object catch (_) {
-    // saveSettings already routed the error through appErrorLog; the
-    // legacy mixin caller intentionally fire-and-forgets so it has no
-    // place to surface a thrown error here.
-  }
-}
-
 class SettingsSection extends StatelessWidget {
   const SettingsSection({
     super.key,
