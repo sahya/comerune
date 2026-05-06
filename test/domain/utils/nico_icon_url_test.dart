@@ -16,6 +16,8 @@ void main() {
     });
 
     test('builds icon URL from numeric user id', () {
+      // 99999999 is an intentional placeholder; never substitute a
+      // real-looking user ID in fixtures.
       expect(
         buildNicoIconUrl('99999999'),
         'https://secure-dcdn.cdn.nimg.jp/nicoaccount/usericon/9999/99999999.jpg',
