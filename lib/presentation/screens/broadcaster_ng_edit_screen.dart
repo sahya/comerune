@@ -45,6 +45,7 @@ class BroadcasterNgEditScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final bool isTemplate = broadcasterId == null;
+    final BroadcasterNgEditStrings strings = AppStrings.broadcasterNgEdit;
 
     return DefaultTabController(
       length: 2,
@@ -55,18 +56,18 @@ class BroadcasterNgEditScreen extends StatelessWidget {
               _truncateForTitle(scopeLabel),
             ),
           ),
-          bottom: const TabBar(
-            key: Key('broadcaster-ng-edit-tab-bar'),
+          bottom: TabBar(
+            key: const Key('broadcaster-ng-edit-tab-bar'),
             tabs: <Tab>[
               Tab(
-                key: Key('broadcaster-ng-edit-users-tab'),
-                icon: Icon(Icons.person_off),
-                text: 'NGユーザー',
+                key: const Key('broadcaster-ng-edit-users-tab'),
+                icon: const Icon(Icons.person_off),
+                text: strings.usersTabLabel,
               ),
               Tab(
-                key: Key('broadcaster-ng-edit-words-tab'),
-                icon: Icon(Icons.block),
-                text: 'NGワード',
+                key: const Key('broadcaster-ng-edit-words-tab'),
+                icon: const Icon(Icons.block),
+                text: strings.wordsTabLabel,
               ),
             ],
           ),
@@ -81,7 +82,7 @@ class BroadcasterNgEditScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(12),
                 color: theme.colorScheme.surfaceContainerHighest,
                 child: Text(
-                  'テンプレート: 新規放送者の初期値として使われます',
+                  strings.templateBanner,
                   style: theme.textTheme.bodySmall,
                 ),
               ),

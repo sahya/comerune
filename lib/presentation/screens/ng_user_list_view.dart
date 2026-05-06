@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 
 import '../../data/filter/broadcaster_ng_store.dart';
+import '../strings/app_strings.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/empty_state_message.dart';
 import '../widgets/ng_local_notice.dart';
@@ -92,11 +93,12 @@ class _NgUserListViewState extends State<NgUserListView> {
   }
 
   Future<void> _removeNgUserId(String userId) async {
+    final NgUserListStrings strings = AppStrings.ngUserList;
     final bool? confirmed = await showConfirmDialog(
       context: context,
-      title: 'NG解除',
-      content: 'ユーザーID「$userId」のNG登録を解除しますか？',
-      confirmLabel: '解除',
+      title: strings.unregisterDialogTitle,
+      content: strings.unregisterDialogContent(userId),
+      confirmLabel: strings.unregisterDialogConfirm,
       confirmButtonKey: const Key('ng-remove-confirm-button'),
     );
 
@@ -132,11 +134,14 @@ class _NgUserListViewState extends State<NgUserListView> {
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text('$userId のNGを解除しました')));
+      ..showSnackBar(
+        SnackBar(content: Text(strings.unregisteredSnackBar(userId))),
+      );
   }
 
   @override
   Widget build(BuildContext context) {
+    final NgUserListStrings strings = AppStrings.ngUserList;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -153,24 +158,24 @@ class _NgUserListViewState extends State<NgUserListView> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        const Text(
-                          'NG リストの読込みに失敗しました',
-                          style: TextStyle(fontSize: 14),
+                        Text(
+                          strings.loadFailedTitle,
+                          style: const TextStyle(fontSize: 14),
                         ),
                         const SizedBox(height: 12),
                         OutlinedButton(
                           key: const Key('ng-user-list-retry'),
                           onPressed: _loadNgUserIds,
-                          child: const Text('再試行'),
+                          child: Text(strings.retryButton),
                         ),
                       ],
                     ),
                   ),
                 )
               : _ngUserIds.isEmpty
-              ? const EmptyStateMessage(
-                  key: Key('ng-user-list-empty'),
-                  message: 'NGユーザーIDは登録されていません',
+              ? EmptyStateMessage(
+                  key: const Key('ng-user-list-empty'),
+                  message: strings.emptyMessage,
                 )
               : ListView.separated(
                   key: const Key('ng-user-id-list'),
@@ -186,7 +191,7 @@ class _NgUserListViewState extends State<NgUserListView> {
                       trailing: IconButton(
                         key: Key('ng-user-remove-$index'),
                         icon: const Icon(Icons.delete_outline),
-                        tooltip: 'NG解除',
+                        tooltip: strings.removeTooltip,
                         onPressed: () => _removeNgUserId(userId),
                       ),
                     );

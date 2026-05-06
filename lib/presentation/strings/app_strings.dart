@@ -26,16 +26,26 @@
 /// 5. 既定ロケールの見た目が変わらないことを widget テストで担保する
 ///
 /// ## スコープ
-/// 現時点（Issue #476 Phase 1）では **`SettingsScreen`（設定画面ルート）**
-/// の文字列のみを集約している。他画面の文字列は継続課題として段階的に
-/// 追加予定（下位画面: コメント表示設定・読み上げ設定・ユーザー管理設定、
-/// ならびに SnackBar・ダイアログ等）。
+/// Issue #476 Phase 1 では **`SettingsScreen`（設定画面ルート）** の
+/// 文字列を、Issue #836 Phase 2 では NG 設定編集画面 / NG ユーザー /
+/// NG ワード画面の **固定 UI ラベル** を集約済み。
+/// 他画面の文字列は継続課題として段階的に追加予定（下位画面: コメント
+/// 表示設定・読み上げ設定・ユーザー管理設定 等）。
+///
+/// 集約対象は「画面タイトル・タブラベル・ボタンラベル・固定説明文」
+/// のみとし、API 応答由来の動的エラーや domain 概念（NG カテゴリ説明
+/// 等）は別 namespace / 別 Issue へ切り出す方針（Issue #836 コメント
+/// 参照）。
 abstract final class AppStrings {
   const AppStrings._();
 
   static const SettingsStrings settings = SettingsStrings._();
   static const BroadcasterNgListStrings broadcasterNgList =
       BroadcasterNgListStrings._();
+  static const BroadcasterNgEditStrings broadcasterNgEdit =
+      BroadcasterNgEditStrings._();
+  static const NgUserListStrings ngUserList = NgUserListStrings._();
+  static const NgWordListStrings ngWordList = NgWordListStrings._();
   static const TimeshiftStrings timeshift = TimeshiftStrings._();
   static const ConnectionStrings connection = ConnectionStrings._();
   static const CommentDisplaySettingsStrings commentDisplaySettings =
@@ -152,6 +162,103 @@ final class BroadcasterNgListStrings {
       'NG設定を作成すると、その放送者の設定として記録されます';
   String get createActiveTitle => '現在接続中の放送者の NG設定を作成';
   String get activeBadge => '現在接続中';
+}
+
+/// Issue #836 Phase 2: `BroadcasterNgEditScreen`（NG設定編集画面）で
+/// 使用する固定 UI ラベルの集約。
+///
+/// 集約対象は「画面タイトル・タブラベル・固定説明文」のみで、動的な
+/// API エラーや domain 概念（NG カテゴリ等）はここでは扱わない（Issue
+/// #836 のスコープ方針に従う）。AppBar タイトルは `SettingsStrings`
+/// の `ngEditScreenTitle` 側に既に集約済みのため重複しない。
+final class BroadcasterNgEditStrings {
+  const BroadcasterNgEditStrings._();
+
+  /// 「NGユーザー」タブのラベル。
+  String get usersTabLabel => 'NGユーザー';
+
+  /// 「NGワード」タブのラベル。
+  String get wordsTabLabel => 'NGワード';
+
+  /// テンプレートスコープ編集時に画面上部へ表示する説明バナー。
+  ///
+  /// 動的引数なし（"テンプレート: 〜" の固定文）なので getter で提供する。
+  String get templateBanner => 'テンプレート: 新規放送者の初期値として使われます';
+}
+
+/// Issue #836 Phase 2: `NgUserListView`（放送者別 NG ユーザー一覧）で
+/// 使用する固定 UI ラベルの集約。
+///
+/// 集約対象は「画面の固定 UI ラベル（ダイアログタイトル / ボタンラベル /
+/// 空状態メッセージ / load 失敗時の本文）」のみ。動的な API エラーや
+/// domain 概念（NG カテゴリ等）はスコープ外。引数を含む確認/通知
+/// メッセージは戻り値 `String` のメソッドとして提供する（バイト一致を
+/// 担保するため文字列リテラルの前後改行・記号は原文通り保持）。
+final class NgUserListStrings {
+  const NgUserListStrings._();
+
+  // 削除確認ダイアログ
+  String get unregisterDialogTitle => 'NG解除';
+  String unregisterDialogContent(String userId) =>
+      'ユーザーID「$userId」のNG登録を解除しますか？';
+  String get unregisterDialogConfirm => '解除';
+
+  /// NG解除成功時の SnackBar 文言。動的引数 `userId` を含むため
+  /// メソッドとして提供する。
+  String unregisteredSnackBar(String userId) => '$userId のNGを解除しました';
+
+  // 読み込み失敗時の本文
+  String get loadFailedTitle => 'NG リストの読込みに失敗しました';
+  String get retryButton => '再試行';
+
+  // 空状態
+  String get emptyMessage => 'NGユーザーIDは登録されていません';
+
+  // リストアイテムの削除ボタン tooltip
+  String get removeTooltip => 'NG解除';
+}
+
+/// Issue #836 Phase 2: `NgWordListView`（放送者別 NG ワード一覧）で
+/// 使用する固定 UI ラベルの集約。
+///
+/// 集約対象は「画面の固定 UI ラベル」のみ。引数を含む確認/通知
+/// メッセージは戻り値 `String` のメソッドとして提供する（バイト一致を
+/// 担保するため文字列リテラルの前後改行・記号は原文通り保持）。
+final class NgWordListStrings {
+  const NgWordListStrings._();
+
+  // 削除確認ダイアログ
+  String get deleteDialogTitle => 'NGワード削除';
+  String deleteDialogContent(String pattern) => '「$pattern」を削除しますか？';
+  String get deleteDialogCancel => 'キャンセル';
+  String get deleteDialogConfirm => '削除';
+
+  /// 削除成功時の SnackBar 文言。動的引数 `pattern` を含むため
+  /// メソッドとして提供する。
+  String deletedSnackBar(String pattern) => '「$pattern」を削除しました';
+
+  // 追加 UI（ボタン + ダイアログ）
+  String get addButton => 'NGワード追加';
+  String get addDialogTitle => 'NGワード追加';
+  String get addDialogFieldLabel => 'パターン（部分一致）';
+  String get addDialogFieldHint => '例: スパム';
+  String get addDialogConfirm => '追加';
+
+  /// 入力検証エラー（regex として無効）の SnackBar 文言。
+  String get invalidPatternSnackBar => '無効なパターンです';
+
+  /// 入力検証エラー（重複）の SnackBar 文言。
+  String get duplicatePatternSnackBar => '同じパターンが既に登録されています';
+
+  // 読み込み失敗時の本文
+  String get loadFailedTitle => 'NG リストの読込みに失敗しました';
+  String get retryButton => '再試行';
+
+  // 空状態
+  String get emptyMessage => 'NGワードは登録されていません';
+
+  // リストアイテムの削除ボタン tooltip
+  String get deleteTooltip => '削除';
 }
 
 /// 接続エラーのスナックバー等で使用する文字列の集約。

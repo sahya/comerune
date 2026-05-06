@@ -240,4 +240,86 @@ void main() {
       expect(AppStrings.commentScreen.sortToggleToAscending, '古い順に切替');
     });
   });
+
+  group(
+    'AppStrings.broadcasterNgEdit (Issue #836 Phase 2 byte-for-byte 維持)',
+    () {
+      test('NG設定編集画面のタブラベルが既存と一致する', () {
+        expect(AppStrings.broadcasterNgEdit.usersTabLabel, 'NGユーザー');
+        expect(AppStrings.broadcasterNgEdit.wordsTabLabel, 'NGワード');
+      });
+
+      test('テンプレート編集時のバナー文言が既存と一致する', () {
+        // 動的引数なしの固定文。バナーが見える位置・色は別 widget テストの
+        // 担当で、ここでは文字列バイト一致のみ担保する。
+        expect(
+          AppStrings.broadcasterNgEdit.templateBanner,
+          'テンプレート: 新規放送者の初期値として使われます',
+        );
+      });
+    },
+  );
+
+  group('AppStrings.ngUserList (Issue #836 Phase 2 byte-for-byte 維持)', () {
+    test('NG解除ダイアログの文言が既存と一致する', () {
+      expect(AppStrings.ngUserList.unregisterDialogTitle, 'NG解除');
+      expect(
+        AppStrings.ngUserList.unregisterDialogContent('user-1'),
+        'ユーザーID「user-1」のNG登録を解除しますか？',
+      );
+      expect(AppStrings.ngUserList.unregisterDialogConfirm, '解除');
+    });
+
+    test('NG解除完了 SnackBar が既存と一致する（引数を含む）', () {
+      // 引数を `{userId} のNGを解除しました` の形で接続するため、
+      // 末尾の半角スペース 1 つを含むかを byte-for-byte で固定する。
+      expect(
+        AppStrings.ngUserList.unregisteredSnackBar('user-1'),
+        'user-1 のNGを解除しました',
+      );
+    });
+
+    test('読み込み失敗 / 空状態 / tooltip の文言が既存と一致する', () {
+      expect(AppStrings.ngUserList.loadFailedTitle, 'NG リストの読込みに失敗しました');
+      expect(AppStrings.ngUserList.retryButton, '再試行');
+      expect(AppStrings.ngUserList.emptyMessage, 'NGユーザーIDは登録されていません');
+      expect(AppStrings.ngUserList.removeTooltip, 'NG解除');
+    });
+  });
+
+  group('AppStrings.ngWordList (Issue #836 Phase 2 byte-for-byte 維持)', () {
+    test('NGワード削除ダイアログの文言が既存と一致する', () {
+      expect(AppStrings.ngWordList.deleteDialogTitle, 'NGワード削除');
+      expect(AppStrings.ngWordList.deleteDialogContent('スパム'), '「スパム」を削除しますか？');
+      expect(AppStrings.ngWordList.deleteDialogCancel, 'キャンセル');
+      expect(AppStrings.ngWordList.deleteDialogConfirm, '削除');
+    });
+
+    test('削除完了 SnackBar の文言が既存と一致する（引数を含む）', () {
+      expect(AppStrings.ngWordList.deletedSnackBar('スパム'), '「スパム」を削除しました');
+    });
+
+    test('追加 UI（ボタン / ダイアログ）の文言が既存と一致する', () {
+      expect(AppStrings.ngWordList.addButton, 'NGワード追加');
+      expect(AppStrings.ngWordList.addDialogTitle, 'NGワード追加');
+      expect(AppStrings.ngWordList.addDialogFieldLabel, 'パターン（部分一致）');
+      expect(AppStrings.ngWordList.addDialogFieldHint, '例: スパム');
+      expect(AppStrings.ngWordList.addDialogConfirm, '追加');
+    });
+
+    test('入力バリデーション SnackBar の文言が既存と一致する', () {
+      expect(AppStrings.ngWordList.invalidPatternSnackBar, '無効なパターンです');
+      expect(
+        AppStrings.ngWordList.duplicatePatternSnackBar,
+        '同じパターンが既に登録されています',
+      );
+    });
+
+    test('読み込み失敗 / 空状態 / tooltip の文言が既存と一致する', () {
+      expect(AppStrings.ngWordList.loadFailedTitle, 'NG リストの読込みに失敗しました');
+      expect(AppStrings.ngWordList.retryButton, '再試行');
+      expect(AppStrings.ngWordList.emptyMessage, 'NGワードは登録されていません');
+      expect(AppStrings.ngWordList.deleteTooltip, '削除');
+    });
+  });
 }

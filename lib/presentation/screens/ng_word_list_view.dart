@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/filter/broadcaster_ng_store.dart';
 import '../../domain/models/ng_word_rule.dart';
+import '../strings/app_strings.dart';
 import '../widgets/ng_local_notice.dart';
 import '../widgets/text_input_dialog.dart';
 
@@ -113,22 +114,23 @@ class _NgWordListViewState extends State<NgWordListView> {
   }
 
   Future<void> _deleteRule(int index) async {
+    final NgWordListStrings strings = AppStrings.ngWordList;
     final NgWordRule rule = _rules[index];
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          title: const Text('NGワード削除'),
-          content: Text('「${rule.pattern}」を削除しますか？'),
+          title: Text(strings.deleteDialogTitle),
+          content: Text(strings.deleteDialogContent(rule.pattern)),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('キャンセル'),
+              child: Text(strings.deleteDialogCancel),
             ),
             TextButton(
               key: const Key('ng-word-delete-confirm-button'),
               onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('削除'),
+              child: Text(strings.deleteDialogConfirm),
             ),
           ],
         );
@@ -149,18 +151,21 @@ class _NgWordListViewState extends State<NgWordListView> {
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text('「${rule.pattern}」を削除しました')));
+      ..showSnackBar(
+        SnackBar(content: Text(strings.deletedSnackBar(rule.pattern))),
+      );
   }
 
   Future<void> _addRule() async {
+    final NgWordListStrings strings = AppStrings.ngWordList;
     final String? input = await showTextInputDialog(
       context: context,
-      title: 'NGワード追加',
-      labelText: 'パターン（部分一致）',
-      hintText: '例: スパム',
+      title: strings.addDialogTitle,
+      labelText: strings.addDialogFieldLabel,
+      hintText: strings.addDialogFieldHint,
       textFieldKey: const Key('ng-word-add-input'),
       confirmButtonKey: const Key('ng-word-add-confirm-button'),
-      confirmLabel: '追加',
+      confirmLabel: strings.addDialogConfirm,
     );
 
     if (input == null || input.isEmpty || !mounted) {
@@ -178,7 +183,7 @@ class _NgWordListViewState extends State<NgWordListView> {
       }
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('無効なパターンです')));
+        ..showSnackBar(SnackBar(content: Text(strings.invalidPatternSnackBar)));
       return;
     }
 
@@ -190,7 +195,9 @@ class _NgWordListViewState extends State<NgWordListView> {
       }
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('同じパターンが既に登録されています')));
+        ..showSnackBar(
+          SnackBar(content: Text(strings.duplicatePatternSnackBar)),
+        );
       return;
     }
 
@@ -201,6 +208,7 @@ class _NgWordListViewState extends State<NgWordListView> {
 
   @override
   Widget build(BuildContext context) {
+    final NgWordListStrings strings = AppStrings.ngWordList;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -218,7 +226,7 @@ class _NgWordListViewState extends State<NgWordListView> {
               key: const Key('ng-word-add-button'),
               onPressed: _addRule,
               icon: const Icon(Icons.add),
-              label: const Text('NGワード追加'),
+              label: Text(strings.addButton),
             ),
           ),
         ),
@@ -234,28 +242,28 @@ class _NgWordListViewState extends State<NgWordListView> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        const Text(
-                          'NG リストの読込みに失敗しました',
-                          style: TextStyle(fontSize: 14),
+                        Text(
+                          strings.loadFailedTitle,
+                          style: const TextStyle(fontSize: 14),
                         ),
                         const SizedBox(height: 12),
                         OutlinedButton(
                           key: const Key('ng-word-list-retry'),
                           onPressed: _loadRules,
-                          child: const Text('再試行'),
+                          child: Text(strings.retryButton),
                         ),
                       ],
                     ),
                   ),
                 )
               : _rules.isEmpty
-              ? const Center(
+              ? Center(
                   child: Padding(
-                    padding: EdgeInsets.all(24),
+                    padding: const EdgeInsets.all(24),
                     child: Text(
-                      key: Key('ng-word-list-empty'),
-                      'NGワードは登録されていません',
-                      style: TextStyle(fontSize: 14),
+                      key: const Key('ng-word-list-empty'),
+                      strings.emptyMessage,
+                      style: const TextStyle(fontSize: 14),
                     ),
                   ),
                 )
@@ -283,7 +291,7 @@ class _NgWordListViewState extends State<NgWordListView> {
                       trailing: IconButton(
                         key: Key('ng-word-delete-$index'),
                         icon: const Icon(Icons.delete_outline),
-                        tooltip: '削除',
+                        tooltip: strings.deleteTooltip,
                         onPressed: () => _deleteRule(index),
                       ),
                     );
