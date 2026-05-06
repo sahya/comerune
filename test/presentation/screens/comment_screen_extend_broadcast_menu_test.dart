@@ -396,48 +396,18 @@ void main() {
     );
   });
 
-  group('CommentScreen AppBar overflow "自動延長" entry (UI hidden)', () {
-    // 自動延長 UI は Timer 動作（Issue #876）が未配線のため、
-    // `_CommentScreenState._autoExtendUiVisible = false` で一時非表示中。
-    // 本 group は「フラグが false の間は配信主+Repository があっても
-    // メニューに行が描画されないこと」だけを pin する最小 regression。
-    // フラグを誤って flip した瞬間ここで失敗するようにしておく。
-    // 詳細な振る舞い（Switch 状態・順序・Semantics 等）の pin は
-    // `comment_screen_auto_extend_menu_test.dart` 側に温存しており、
-    // フラグを true に戻すと同時に `@Skip` を外して復活させる。
-    testWidgets(
-      'auto-extend toggle is hidden even for broadcaster + repository while flag is off',
-      (WidgetTester tester) async {
-        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-        final _RecordingBroadcastControlRepository repo =
-            _RecordingBroadcastControlRepository();
-
-        await tester.pumpWidget(
-          _buildScreen(supervisor: supervisor, broadcastControlRepository: repo),
-        );
-        await tester.pumpAndSettle();
-
-        (tester.state<State<CommentScreen>>(find.byType(CommentScreen))
-                as CommentScreenTestAccess)
-            .setBroadcasterForTesting(isBroadcaster: true);
-        await tester.pumpAndSettle();
-
-        await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
-        await tester.pumpAndSettle();
-
-        expect(
-          find.byKey(const Key('auto-extend-broadcast-toggle')),
-          findsNothing,
-          reason:
-              '_autoExtendUiVisible=false の間は配信主+Repository でも行が出ない',
-        );
-        // 同条件で「放送を延長」と「配信を終了」は出ているはず（メニュー
-        // 自体が壊れていないことの sanity）。
-        expect(find.byKey(const Key('extend-broadcast-button')), findsOneWidget);
-        expect(find.byKey(const Key('end-broadcast-button')), findsOneWidget);
-      },
-    );
-  });
+  // Issue #876 / #879 follow-up: 自動延長 UI の表示制御は
+  // `_autoExtendUiVisible` フラグ + `_autoExtendDebugUiOverride`
+  // (dart-define) + `kDebugMode` の 3 段で決まる。release ビルド時は
+  // フラグだけが効くため一般ユーザーには非表示、debug build / dart-define
+  // opt-in 環境ではテストや実機検証のために表示される。
+  //
+  // widget test は `kDebugMode == true` で実行されるので、Switch の
+  // 描画・挙動 pin は `comment_screen_auto_extend_menu_test.dart` 側で
+  // 行う（PR #879 で `@Skip` を一時付与していたが PR #878 で解除）。
+  // 本ファイル側で「hidden」を pin する group は新設計と矛盾するため
+  // 削除した。フラグの const 値そのものの regression 検知は
+  // `_autoExtendUiVisible` を直接読む別観点のテストで行う余地あり。
 }
 
 Widget _buildScreen({

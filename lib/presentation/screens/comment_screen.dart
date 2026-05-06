@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:clock/clock.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -11,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../app_logging.dart';
+import '../../application/broadcast/auto_extend_broadcast_controller.dart';
 import '../../application/comment_post/comment_post_controller.dart';
 import '../../application/timeshift_fetch/timeshift_fetch_controller.dart';
 import '../../application/settings/settings_store.dart';
@@ -748,6 +750,7 @@ class CommentScreen extends StatefulWidget {
 }
 
 class _CommentScreenState extends State<CommentScreen>
+    with WidgetsBindingObserver
     implements CommentScreenTestAccess {
   static const double _autoScrollResumeThreshold = 50;
   static const Duration _wakelockReleaseDelay = Duration(seconds: 45);
@@ -797,18 +800,54 @@ class _CommentScreenState extends State<CommentScreen>
   /// `widget.autoExtendBroadcastEnabled` の初期値で起動し、ユーザーが
   /// メニューでトグルすると即座に反転する。永続化はコールバック経由で
   /// 上位レイヤー（select_screen / SettingsStore）に委ねるため、ここでは
-  /// 表示用キャッシュとしてのみ保持する。Timer 動作の有効化は #876 (PR2)
-  /// で controller を経由する形で配線する予定。
+  /// 表示用キャッシュとしてのみ保持する。Issue #876 で Timer 動作と
+  /// 配線され、`_autoExtendController` が真のオーナーになる。
   late bool _autoExtendBroadcastEnabled = widget.autoExtendBroadcastEnabled;
+
+  /// Issue #876: 自動延長 Timer 管理コントローラー。`broadcastControlRepository`
+  /// が wired な場合のみ生成される（未配線環境＝テスト/最小ホストでは
+  /// `null`）。State から所有して initState で生成、dispose で解放。
+  AutoExtendBroadcastController? _autoExtendController;
 
   /// 自動延長 UI 一時非表示フラグ（Issue #876）。
   ///
-  /// PR #877 で Switch UI と設定永続化を入れたが、Timer 動作（残り 5 分で
-  /// 自動延長 API 呼出）が未配線のため、ON にしても何も起こらない。
-  /// 配信主が誤解しないよう Timer 配線が完了するまで UI 自体を隠す。
-  /// 設定の永続化・Export/Import 互換は維持しているので、ここを `true` に
-  /// 戻すだけで再表示できる（Switch の最終状態も保持される）。
+  /// PR #879 で Timer 動作（PR #878）が完成するまでの間、配信主が
+  /// 「Switch ON にしたのに延長されない」と誤解しないように UI 自体を
+  /// 隠していた。PR #878 で Timer 配線が完了したが、niconico API 側の
+  /// endAt 取得経路に既知のフォールバックリスク
+  /// （`docs/analysis/auto-extend-coldstart-audit-2026-05-05.md` 参照）
+  /// があるため、まずは debug / dart-define オプトインだけで露出し、
+  /// 実機検証を継続できるようにする運用にしている。
+  ///
+  /// release ビルドで一般ユーザーへ露出する準備が整ったらこのフラグを
+  /// `true` に戻す。設定の永続化・Export/Import 互換は維持しているので、
+  /// フラグを戻すだけで Switch の最終状態も保持されたまま再表示できる。
+  ///
+  /// 完全 release 時のクリーンアップ予告: 本フラグを `true` に戻すと
+  /// 同時に [_autoExtendDebugUiOverride] と [_showAutoExtendUi] の
+  /// 3 段ガードは不要になる。簡略化したい場合はそのタイミングで
+  /// `if (canEndBroadcast)` 直書きに戻し、本 const と dart-define
+  /// オーバーライド・合成 const ごと削除して良い。
   static const bool _autoExtendUiVisible = false;
+
+  /// Issue #876: release ビルドでも opt-in で Switch を露出するための
+  /// dart-define オーバーライド。QA / 配信主に検証ビルドを配布する
+  /// ときに `--dart-define=COMERUNE_AUTO_EXTEND_DEBUG_UI=true` で
+  /// 有効化する。`lib/extension/extension_debug_overrides.dart` の
+  /// 既存 dart-define パターンと同じ流儀。
+  static const bool _autoExtendDebugUiOverride = bool.fromEnvironment(
+    'COMERUNE_AUTO_EXTEND_DEBUG_UI',
+    defaultValue: false,
+  );
+
+  /// 自動延長 Switch を AppBar オーバーフローメニューに表示してよいか。
+  ///
+  /// 優先順位:
+  /// 1. `_autoExtendUiVisible == true` → 一般リリース（最終形）
+  /// 2. `_autoExtendDebugUiOverride == true` → release でも opt-in 可
+  /// 3. `kDebugMode == true` → 開発時は常に表示（debug build / widget test）
+  static const bool _showAutoExtendUi =
+      _autoExtendUiVisible || _autoExtendDebugUiOverride || kDebugMode;
 
   /// Timestamp at which the broadcast transitioned to ended/stopped.
   /// Used to freeze the status-bar elapsed timer display.
@@ -1105,6 +1144,33 @@ class _CommentScreenState extends State<CommentScreen>
     widget.connectionSupervisor.addListener(_handleConnectionChanged);
     unawaited(_resolveCommentPostContext());
 
+    // Issue #876: register lifecycle observer so the auto-extend Timer
+    // can pause when the app goes to background and resume on return.
+    WidgetsBinding.instance.addObserver(this);
+
+    // Issue #876: instantiate the auto-extend controller only when a
+    // BroadcastControlRepository is wired. Test / minimal hosts that
+    // omit the repository skip the controller entirely; the Switch row
+    // is hidden in that case anyway (`canEndBroadcast` ガード).
+    final BroadcastControlRepository? repo = widget.broadcastControlRepository;
+    if (repo != null) {
+      // i18n 済の表示文字列は presentation 層 (AppStrings) から取り、
+      // controller 自体は presentation 層に依存しない設計にする
+      // （application → presentation の逆方向 import を避ける）。
+      _autoExtendController = AutoExtendBroadcastController(
+        repository: repo,
+        emitMessage: (AppMessage message) {
+          widget.callbacks.onAutoExtendSystemMessage?.call(message);
+        },
+        onEndTimeUpdated: (DateTime newEndAt) {
+          widget.callbacks.onBroadcastEndTimeExtended?.call(newEndAt);
+        },
+        successMessageBuilder: AppStrings.autoExtendBroadcast.successMessage,
+        failureMessage: AppStrings.autoExtendBroadcast.failureMessage,
+      );
+      _evaluateAutoExtendController();
+    }
+
     // Keep screen on while viewing comments.
     unawaited(WakelockPlus.enable());
     _syncWakelockForStatus(_lastStatus);
@@ -1229,6 +1295,17 @@ class _CommentScreenState extends State<CommentScreen>
     if (oldWidget.autoExtendBroadcastEnabled !=
         widget.autoExtendBroadcastEnabled) {
       _autoExtendBroadcastEnabled = widget.autoExtendBroadcastEnabled;
+    }
+
+    // Issue #876: forward state shifts that affect auto-extend scheduling
+    // to the controller. The controller diff-checks internally so calling
+    // it on every rebuild is safe; we still narrow to genuine prop
+    // changes to avoid unnecessary work on unrelated rebuilds.
+    if (oldWidget.programInfo.lv != widget.programInfo.lv ||
+        oldWidget.programInfo.endAt != widget.programInfo.endAt ||
+        oldWidget.autoExtendBroadcastEnabled !=
+            widget.autoExtendBroadcastEnabled) {
+      _evaluateAutoExtendController();
     }
 
     if (oldWidget.connectionSupervisor != widget.connectionSupervisor) {
@@ -1510,6 +1587,12 @@ class _CommentScreenState extends State<CommentScreen>
     _debugLogLazy(
       () => '[CommentScreen] dispose: speechStarted=$_speechStarted',
     );
+    // Issue #876: tear down the auto-extend Timer + lifecycle observer
+    // before the rest of the screen disposes so any in-flight retry
+    // chain settles against a still-valid State.
+    WidgetsBinding.instance.removeObserver(this);
+    _autoExtendController?.dispose();
+    _autoExtendController = null;
     // Issue #762: detach the reactive submit listener before tearing down
     // any other speech state so a late mutation racing with dispose cannot
     // call back into a half-disposed widget.
@@ -2728,6 +2811,14 @@ class _CommentScreenState extends State<CommentScreen>
           _commentInputExpanded = false;
         }
       });
+      // Issue #876: session resolution is async, so the auto-extend
+      // controller seeded in initState ran with `_commentPostUserSession`
+      // empty. Re-evaluate now that the session has flipped to its
+      // resolved value — without this the Timer never gets armed for
+      // a broadcaster who opens the screen with a stale empty session
+      // (e.g. cold start on a broadcast that already crossed the 5-min
+      // threshold).
+      _evaluateAutoExtendController();
     }
     if (trimmed.isEmpty) {
       return;
@@ -2746,6 +2837,11 @@ class _CommentScreenState extends State<CommentScreen>
       setState(() {
         _isBroadcaster = isBroadcaster;
       });
+      // Issue #876: broadcaster status is resolved asynchronously, so
+      // the controller's `enabled` gate (`_isBroadcaster && ...`) flipped
+      // while the controller was idle. Re-evaluate so the Timer arms
+      // immediately for late-arrival broadcaster confirmations.
+      _evaluateAutoExtendController();
     }
   }
 
@@ -4086,6 +4182,16 @@ class _CommentScreenState extends State<CommentScreen>
     }
 
     _lastStatus = currentStatus;
+
+    // Issue #876: re-evaluate the auto-extend Timer on every connection
+    // status change so the `isOnAir` gate inside
+    // [_evaluateAutoExtendController] correctly cancels the Timer for
+    // `ended` / `failed` / `stopped` transitions. Calling this on every
+    // status change is safe — the controller's internal diff-check
+    // turns redundant updates into no-ops, and we explicitly want the
+    // network-failure path to disable the Timer too (a Timer fired on
+    // a failed connection would burn 3 retries against a dead session).
+    _evaluateAutoExtendController();
   }
 
   String _buildFailedSnackbarMessage() {
@@ -4364,8 +4470,7 @@ class _CommentScreenState extends State<CommentScreen>
               label: AppStrings.extendBroadcast.menuItem,
             ),
           ),
-        // ignore: dead_code
-        if (_autoExtendUiVisible && canEndBroadcast)
+        if (_showAutoExtendUi && canEndBroadcast)
           // Issue #875: 「自動延長」トグル行はメニューを閉じずに状態を
           // 切り替える特別な振る舞いを持つ。配信主がトグル後に新しい状態
           // をその場で視覚的に確認できるようにするため、PopupMenuItem の
@@ -4631,8 +4736,9 @@ class _CommentScreenState extends State<CommentScreen>
   /// menu reflects the new state on the next reopen without waiting for
   /// the persistence round-trip.
   ///
-  /// Behavior (Timer scheduling) is wired in #876 (PR2) — this handler
-  /// only owns the Switch state in PR1.
+  /// Issue #876: also pushes the new state into the auto-extend
+  /// controller so the Timer is armed / cancelled in lockstep with the
+  /// Switch.
   void _toggleAutoExtendBroadcast() {
     final bool next = !_autoExtendBroadcastEnabled;
     // Light haptic feedback so a broadcaster who is operating with the
@@ -4644,6 +4750,60 @@ class _CommentScreenState extends State<CommentScreen>
       _autoExtendBroadcastEnabled = next;
     });
     widget.callbacks.onAutoExtendBroadcastChanged?.call(next);
+    _evaluateAutoExtendController();
+  }
+
+  /// Issue #876: forwards the current screen state to the auto-extend
+  /// controller. Called from initState (seed), didUpdateWidget (prop
+  /// changes that affect scheduling), the toggle handler, the session
+  /// resolution path, and `_handleConnectionChanged` so broadcast-ended
+  /// transitions also propagate. The controller is a no-op when the
+  /// repository is unwired (`_autoExtendController == null`).
+  ///
+  /// `enabled` is gated on:
+  /// - the user being the broadcaster of the active program
+  /// - the user-facing Switch being ON (Issue #875)
+  /// - the connection currently being on-air (gates against ended /
+  ///   failed / stopped states so a Timer armed for `endAt - 5min`
+  ///   does not fire after the broadcast is already over).
+  void _evaluateAutoExtendController() {
+    final AutoExtendBroadcastController? controller = _autoExtendController;
+    if (controller == null) {
+      return;
+    }
+    final ConnectionStatus status = widget.connectionSupervisor.status;
+    final bool isOnAir =
+        status != ConnectionStatus.ended &&
+        status != ConnectionStatus.failed &&
+        status != ConnectionStatus.stopped;
+    controller.update(
+      enabled: _isBroadcaster && _autoExtendBroadcastEnabled && isOnAir,
+      programId: widget.programInfo.lv,
+      userSession: _commentPostUserSession,
+      endAt: widget.programInfo.endAt,
+    );
+  }
+
+  /// Issue #876: pause the Timer when the app goes to background and
+  /// resume on return. Without this, the OS may freeze background
+  /// timers (Android) or fire them with delayed semantics that leak
+  /// into the next foreground session.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    final AutoExtendBroadcastController? controller = _autoExtendController;
+    if (controller == null) {
+      return;
+    }
+    switch (state) {
+      case AppLifecycleState.resumed:
+        controller.resume();
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.detached:
+        controller.pause();
+    }
   }
 
   /// Opens the "放送を延長" dialog and dispatches the extension API call
@@ -4676,18 +4836,22 @@ class _CommentScreenState extends State<CommentScreen>
           await showExtendBroadcastDialog(
             context,
             onConfirm: (int minutes) async {
-              // TODO(#872 follow-up): once `BroadcastControlPanel` is
-              // wired into production we should propagate
-              // `result.endTime` into a shared program state so
-              // `_RemainingTimeIndicator` reflects the new countdown
-              // immediately. The Repository already returns it;
-              // dropping it here is intentional until the panel
-              // consumes it.
               final BroadcastControlResult result = await repo.extendBroadcast(
                 programId: widget.programInfo.lv,
                 userSession: _commentPostUserSession,
                 minutes: minutes,
               );
+              // Issue #876: propagate the server-authoritative new
+              // end time upstream so `FollowProgram.endAt` updates and
+              // the auto-extend controller can re-schedule. Closes the
+              // #872 follow-up TODO.
+              final int? endTimeSec = result.endTime;
+              if (result.success && endTimeSec != null) {
+                final DateTime newEndAt = DateTime.fromMillisecondsSinceEpoch(
+                  endTimeSec * 1000,
+                );
+                widget.callbacks.onBroadcastEndTimeExtended?.call(newEndAt);
+              }
               return result.success;
             },
           );
@@ -5426,6 +5590,12 @@ class _CommentScreenState extends State<CommentScreen>
       _isBroadcaster = isBroadcaster;
       _commentPostUserSession = userSession;
     });
+    // Issue #876: keep the test-only seam aligned with the production
+    // `_resolveCommentPostContext` path. Both flip _isBroadcaster /
+    // _commentPostUserSession and must re-evaluate the auto-extend
+    // controller so tests that simulate broadcaster resolution after
+    // mount also exercise the Timer arming.
+    _evaluateAutoExtendController();
   }
 
   List<AppMessage> _messagesForLog() {
@@ -7344,6 +7514,18 @@ class _CommentRowState extends State<_CommentRow> {
       return widget.themeColors.broadcastEndedBackground;
     }
 
+    // Issue #876: client-side notifications synthesised by the
+    // auto-extend controller use dedicated theme colors so the
+    // success / failure rows are visually distinct from neutral
+    // notification rows. The dispatch is by message-id prefix
+    // (same pattern as `_isBroadcastEndedMessage`).
+    if (_isAutoExtendSuccessMessage(message)) {
+      return widget.themeColors.autoExtendSuccessBackground;
+    }
+    if (_isAutoExtendFailureMessage(message)) {
+      return widget.themeColors.autoExtendFailureBackground;
+    }
+
     switch (message.type) {
       case AppMessageType.operator:
         return widget.themeColors.operatorMessageBackground;
@@ -7417,6 +7599,14 @@ class _CommentRowState extends State<_CommentRow> {
 
   bool _isBroadcastEndedMessage(AppMessage message) {
     return message.id.startsWith(kSystemBroadcastEndedMessageIdPrefix);
+  }
+
+  bool _isAutoExtendSuccessMessage(AppMessage message) {
+    return message.id.startsWith(kSystemAutoExtendSuccessMessageIdPrefix);
+  }
+
+  bool _isAutoExtendFailureMessage(AppMessage message) {
+    return message.id.startsWith(kSystemAutoExtendFailureMessageIdPrefix);
   }
 }
 

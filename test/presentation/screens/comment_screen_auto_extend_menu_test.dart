@@ -1,9 +1,8 @@
-@Skip(
-  '自動延長 UI は Timer 動作（Issue #876）が未配線のため一時非表示中。'
-  'CommentScreen._autoExtendUiVisible を true に戻したらこの @Skip も外す。',
-)
-library;
-
+// Issue #876: Timer 動作（PR #878）が配線され、Switch UI は debug
+// build / dart-define オーバーライド (`COMERUNE_AUTO_EXTEND_DEBUG_UI=true`)
+// で表示される設計に戻った。widget test は `kDebugMode == true` で
+// 実行されるため、`_autoExtendUiVisible == false` のままでも menu UI を
+// 観測できるので @Skip を解除。
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

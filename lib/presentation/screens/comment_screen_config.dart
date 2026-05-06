@@ -9,6 +9,7 @@ import '../../domain/comment_log/comment_log_stats.dart';
 import '../../domain/comment_log/recent_broadcast_stats.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/matchers/ng_matcher.dart';
+import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/ng_preset_category.dart';
 
@@ -23,6 +24,7 @@ class CommentProgramInfo {
     this.broadcasterIconUrl,
     this.beginAt,
     this.vposBaseAt,
+    this.endAt,
     this.connectionMethod,
   });
 
@@ -53,6 +55,13 @@ class CommentProgramInfo {
   /// otherwise shows up as this client's comments being mis-ordered
   /// against other viewers server-side.
   final DateTime? vposBaseAt;
+
+  /// Issue #876: program scheduled end time. Sourced from
+  /// `FollowProgram.endAt` upstream and refreshed via the
+  /// [CommentCallbacks.onBroadcastEndTimeExtended] feedback path when a
+  /// manual or auto extension succeeds. Used by the auto-extend
+  /// controller to schedule the "残り 5 分前" timer.
+  final DateTime? endAt;
 
   /// The connection method used to connect to the program.
   final ConnectionMethod? connectionMethod;
@@ -110,6 +119,8 @@ class CommentCallbacks {
     this.onNicknameRemoved,
     this.onSortOrderChanged,
     this.onAutoExtendBroadcastChanged,
+    this.onBroadcastEndTimeExtended,
+    this.onAutoExtendSystemMessage,
     this.onRecentBroadcastStatsCaptured,
     this.onBroadcastEndedStats,
   });
@@ -156,6 +167,28 @@ class CommentCallbacks {
   /// で配線される（このコールバックを subscribe する controller を
   /// 経由する形になる予定）。
   final void Function(bool enabled)? onAutoExtendBroadcastChanged;
+
+  /// Issue #876: invoked when the broadcast's scheduled end time is
+  /// extended (manually via the dialog or automatically by the timer).
+  /// The composition root is responsible for refreshing the upstream
+  /// `FollowProgram.endAt` so the `endAt` prop flowing back into
+  /// [CommentScreen] reflects the new value. This in turn lets the
+  /// auto-extend controller re-schedule its next firing.
+  ///
+  /// The argument is the **new** end time (after extension). When null
+  /// the callback is a no-op so legacy embedders / minimally-wired
+  /// hosts continue to work without behavior regression.
+  final void Function(DateTime newEndAt)? onBroadcastEndTimeExtended;
+
+  /// Issue #876: invoked when the auto-extend controller wants to surface
+  /// a client-side notification on the comment timeline (success /
+  /// failure). The composition root is expected to forward the message
+  /// to its `TimelineStore` so the row is rendered with the auto-extend
+  /// theme color.
+  ///
+  /// When null the controller silently drops the message (host that
+  /// does not own a TimelineStore — typically tests).
+  final void Function(AppMessage message)? onAutoExtendSystemMessage;
 
   /// Issue #767: optional integration. Invoked once per finalised
   /// broadcast at the moment the comment screen builds its end-of-broadcast
