@@ -55,6 +55,16 @@ void main() {
         // same single logging path (Issue #781). The helper-emitted
         // message format is the observable contract here.
         expect(joined, contains('saveSettings: SettingsStore.save FAILED'));
+        // Exactly one helper-emitted message — guards against double
+        // logging if the wrapper ever stops swallowing and a future
+        // outer layer logs a second time.
+        final int messageHits = printed
+            .where(
+              (String line) =>
+                  line.contains('saveSettings: SettingsStore.save FAILED'),
+            )
+            .length;
+        expect(messageHits, 1);
         // PII protection regression guard: the AppSettings payload itself
         // must never appear in the captured log output.
         expect(joined, isNot(contains('AppSettings(')));
