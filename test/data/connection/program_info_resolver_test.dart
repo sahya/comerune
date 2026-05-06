@@ -1,15 +1,15 @@
-import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:comerune/data/connection/program_info_resolver.dart';
 import 'package:comerune/domain/models/follow_program.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/fake_http_client.dart';
+
 void main() {
   group('ProgramInfoResolver', () {
     test('resolves NDGR viewUri from programinfo API', () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
+      final FakeHttpClient httpClient = FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
         'data': <String, Object?>{
@@ -45,7 +45,7 @@ void main() {
       expect(result.isTimeshift, isFalse);
 
       expect(httpClient.requests, hasLength(1));
-      final _CapturedRequest request = httpClient.requests[0];
+      final CapturedHttpRequest request = httpClient.requests[0];
       expect(
         request.uri.toString(),
         'https://live2.nicovideo.jp/watch/lv350186414/programinfo',
@@ -59,7 +59,7 @@ void main() {
     test(
       'extracts programStatus=ended for timeshift programs (#639 cause 2)',
       () async {
-        final _FakeHttpClient httpClient = _FakeHttpClient();
+        final FakeHttpClient httpClient = FakeHttpClient();
         httpClient.responseBody = jsonEncode(<String, Object?>{
           'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
           'data': <String, Object?>{
@@ -95,7 +95,7 @@ void main() {
     test(
       'programStatus is null when status field is missing or unknown',
       () async {
-        final _FakeHttpClient httpClient = _FakeHttpClient();
+        final FakeHttpClient httpClient = FakeHttpClient();
         httpClient.responseBody = jsonEncode(<String, Object?>{
           'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
           'data': <String, Object?>{
@@ -130,7 +130,7 @@ void main() {
     );
 
     test('extracts broadcaster user ID from broadcaster array', () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
+      final FakeHttpClient httpClient = FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
         'data': <String, Object?>{
@@ -169,7 +169,7 @@ void main() {
       //   GET https://live2.nicovideo.jp/watch/<lv>/programinfo
       // for niconive user-live broadcasts. `data.broadcaster` is a
       // single object, not an array, and `id` is a string.
-      final _FakeHttpClient httpClient = _FakeHttpClient();
+      final FakeHttpClient httpClient = FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
         'data': <String, Object?>{
@@ -203,7 +203,7 @@ void main() {
         '(type tolerance)', () async {
       // Same shape as the user-live response, but `id` is an int rather
       // than a string. The extractor should normalise via toString().
-      final _FakeHttpClient httpClient = _FakeHttpClient();
+      final FakeHttpClient httpClient = FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
         'data': <String, Object?>{
@@ -235,7 +235,7 @@ void main() {
     test('falls back to supplier when broadcaster object is empty', () async {
       // broadcaster is an empty object — neither id nor name available.
       // supplier should be consulted as fallback.
-      final _FakeHttpClient httpClient = _FakeHttpClient();
+      final FakeHttpClient httpClient = FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
         'data': <String, Object?>{
@@ -271,7 +271,7 @@ void main() {
     test(
       'returns null broadcaster info when broadcaster is an empty array',
       () async {
-        final _FakeHttpClient httpClient = _FakeHttpClient();
+        final FakeHttpClient httpClient = FakeHttpClient();
         httpClient.responseBody = jsonEncode(<String, Object?>{
           'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
           'data': <String, Object?>{
@@ -306,7 +306,7 @@ void main() {
       () async {
         // When `broadcaster` is provided as an object with both id and
         // name, the supplier section must not override either.
-        final _FakeHttpClient httpClient = _FakeHttpClient();
+        final FakeHttpClient httpClient = FakeHttpClient();
         httpClient.responseBody = jsonEncode(<String, Object?>{
           'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
           'data': <String, Object?>{
@@ -344,7 +344,7 @@ void main() {
     test(
       'falls back to supplier name and ID when broadcaster is absent',
       () async {
-        final _FakeHttpClient httpClient = _FakeHttpClient();
+        final FakeHttpClient httpClient = FakeHttpClient();
         httpClient.responseBody = jsonEncode(<String, Object?>{
           'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
           'data': <String, Object?>{
@@ -380,7 +380,7 @@ void main() {
     );
 
     test('prefers broadcaster over supplier when both exist', () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
+      final FakeHttpClient httpClient = FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
         'data': <String, Object?>{
@@ -416,7 +416,7 @@ void main() {
     test(
       'returns null supplierUserId when neither broadcaster nor supplier has ID',
       () async {
-        final _FakeHttpClient httpClient = _FakeHttpClient();
+        final FakeHttpClient httpClient = FakeHttpClient();
         httpClient.responseBody = jsonEncode(<String, Object?>{
           'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
           'data': <String, Object?>{
@@ -454,7 +454,7 @@ void main() {
     test(
       'extracts broadcaster name when id is absent and no supplier exists',
       () async {
-        final _FakeHttpClient httpClient = _FakeHttpClient();
+        final FakeHttpClient httpClient = FakeHttpClient();
         httpClient.responseBody = jsonEncode(<String, Object?>{
           'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
           'data': <String, Object?>{
@@ -488,7 +488,7 @@ void main() {
     );
 
     test('uses supplier userId when broadcaster has name but no id', () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
+      final FakeHttpClient httpClient = FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
         'data': <String, Object?>{
@@ -525,7 +525,7 @@ void main() {
     });
 
     test('uses supplier name when broadcaster has id but no name', () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
+      final FakeHttpClient httpClient = FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
         'data': <String, Object?>{
@@ -559,7 +559,7 @@ void main() {
     });
 
     test('extracts beginAt from ISO 8601 string', () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
+      final FakeHttpClient httpClient = FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
         'data': <String, Object?>{
@@ -592,7 +592,7 @@ void main() {
     });
 
     test('returns null beginAt when field is absent', () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
+      final FakeHttpClient httpClient = FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
         'data': <String, Object?>{
@@ -620,7 +620,7 @@ void main() {
     });
 
     test('extracts beginAt from integer (seconds since epoch)', () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
+      final FakeHttpClient httpClient = FakeHttpClient();
       // 1719828000 == 2024-07-01T10:00:00Z
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
@@ -651,7 +651,7 @@ void main() {
     });
 
     test('returns null beginAt for empty string', () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
+      final FakeHttpClient httpClient = FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
         'data': <String, Object?>{
@@ -681,7 +681,7 @@ void main() {
     });
 
     test('returns null beginAt for invalid date string', () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
+      final FakeHttpClient httpClient = FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
         'data': <String, Object?>{
@@ -711,7 +711,7 @@ void main() {
     });
 
     test('returns null beginAt when value is explicit null', () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
+      final FakeHttpClient httpClient = FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
         'data': <String, Object?>{
@@ -741,7 +741,7 @@ void main() {
     });
 
     test('returns null beginAt for unexpected type (bool)', () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
+      final FakeHttpClient httpClient = FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
         'data': <String, Object?>{
@@ -771,7 +771,7 @@ void main() {
     });
 
     test('returns null beginAt for float value', () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
+      final FakeHttpClient httpClient = FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
         'data': <String, Object?>{
@@ -803,7 +803,7 @@ void main() {
     group('vposBaseAt (Issue #465)', () {
       test('extracts vposBaseAt from programSchedule.vposBaseTime '
           '(seconds epoch)', () async {
-        final _FakeHttpClient httpClient = _FakeHttpClient();
+        final FakeHttpClient httpClient = FakeHttpClient();
         httpClient.responseBody = jsonEncode(<String, Object?>{
           'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
           'data': <String, Object?>{
@@ -836,7 +836,7 @@ void main() {
 
       test('extracts vposBaseAt from programSchedule.vposBaseTime '
           '(ISO 8601 string)', () async {
-        final _FakeHttpClient httpClient = _FakeHttpClient();
+        final FakeHttpClient httpClient = FakeHttpClient();
         httpClient.responseBody = jsonEncode(<String, Object?>{
           'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
           'data': <String, Object?>{
@@ -868,7 +868,7 @@ void main() {
 
       test('extracts vposBaseAt from programSchedule.vposBaseTime '
           '(milliseconds epoch)', () async {
-        final _FakeHttpClient httpClient = _FakeHttpClient();
+        final FakeHttpClient httpClient = FakeHttpClient();
         // 1719828060000 == 2024-07-01T10:01:00Z (milliseconds since epoch).
         // Locks the 13+-digit branch of parseDateTimeFlexible against
         // regressions where the threshold is moved or removed.
@@ -901,7 +901,7 @@ void main() {
 
       test('falls back to top-level data.vposBaseAt when programSchedule '
           'is absent', () async {
-        final _FakeHttpClient httpClient = _FakeHttpClient();
+        final FakeHttpClient httpClient = FakeHttpClient();
         httpClient.responseBody = jsonEncode(<String, Object?>{
           'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
           'data': <String, Object?>{
@@ -931,7 +931,7 @@ void main() {
 
       test('vposBaseAt is null when neither programSchedule nor top-level '
           'field is present — beginAt fallback preserved', () async {
-        final _FakeHttpClient httpClient = _FakeHttpClient();
+        final FakeHttpClient httpClient = FakeHttpClient();
         httpClient.responseBody = jsonEncode(<String, Object?>{
           'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
           'data': <String, Object?>{
@@ -980,7 +980,7 @@ void main() {
         ];
 
         for (final Object? bad in badShapes) {
-          final _FakeHttpClient httpClient = _FakeHttpClient();
+          final FakeHttpClient httpClient = FakeHttpClient();
           httpClient.responseBody = jsonEncode(<String, Object?>{
             'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
             'data': <String, Object?>{
@@ -1017,7 +1017,7 @@ void main() {
 
       test('programSchedule.vposBaseTime takes precedence over the '
           'top-level vposBaseAt fallback when both are present', () async {
-        final _FakeHttpClient httpClient = _FakeHttpClient();
+        final FakeHttpClient httpClient = FakeHttpClient();
         httpClient.responseBody = jsonEncode(<String, Object?>{
           'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
           'data': <String, Object?>{
@@ -1052,7 +1052,7 @@ void main() {
     test(
       'sends request without auth headers when user_session is empty',
       () async {
-        final _FakeHttpClient httpClient = _FakeHttpClient();
+        final FakeHttpClient httpClient = FakeHttpClient();
         httpClient.responseBody = jsonEncode(<String, Object?>{
           'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
           'data': <String, Object?>{
@@ -1074,7 +1074,7 @@ void main() {
         expect(result.title, 'Public Program');
 
         expect(httpClient.requests, hasLength(1));
-        final _CapturedRequest request = httpClient.requests[0];
+        final CapturedHttpRequest request = httpClient.requests[0];
         // No auth headers should be set.
         expect(request.headers['Cookie'], isNull);
         expect(request.headers['X-Niconico-Session'], isNull);
@@ -1085,7 +1085,7 @@ void main() {
     );
 
     test('throws when API returns non-200', () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
+      final FakeHttpClient httpClient = FakeHttpClient();
       httpClient.responseStatusCode = 401;
       httpClient.responseBody = 'Unauthorized';
 
@@ -1102,7 +1102,7 @@ void main() {
     });
 
     test('throws when response has no rooms', () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
+      final FakeHttpClient httpClient = FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'meta': <String, Object?>{'status': 200},
         'data': <String, Object?>{'status': 'onAir', 'rooms': <Object?>[]},
@@ -1121,7 +1121,7 @@ void main() {
     });
 
     test('throws when room has no viewUri', () async {
-      final _FakeHttpClient httpClient = _FakeHttpClient();
+      final FakeHttpClient httpClient = FakeHttpClient();
       httpClient.responseBody = jsonEncode(<String, Object?>{
         'meta': <String, Object?>{'status': 200},
         'data': <String, Object?>{
@@ -1150,126 +1150,4 @@ void main() {
       expect(exception.toString(), 'ProgramInfoResolveException: test error');
     });
   });
-}
-
-class _CapturedRequest {
-  _CapturedRequest({required this.uri, required this.headers});
-
-  final Uri uri;
-  final Map<String, String> headers;
-}
-
-class _FakeHttpClient implements HttpClient {
-  String responseBody = '';
-  int responseStatusCode = 200;
-  final List<_CapturedRequest> requests = <_CapturedRequest>[];
-
-  @override
-  Future<HttpClientRequest> getUrl(Uri url) async {
-    return _FakeHttpClientRequest(uri: url, client: this);
-  }
-
-  @override
-  set connectionTimeout(Duration? timeout) {}
-
-  @override
-  void close({bool force = false}) {}
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) {
-    return super.noSuchMethod(invocation);
-  }
-}
-
-class _FakeHttpClientRequest implements HttpClientRequest {
-  _FakeHttpClientRequest({required this.uri, required this.client});
-
-  @override
-  final Uri uri;
-  final _FakeHttpClient client;
-  final _FakeHttpHeaders _headers = _FakeHttpHeaders();
-
-  @override
-  HttpHeaders get headers => _headers;
-
-  @override
-  Future<HttpClientResponse> close() async {
-    final Map<String, String> headerMap = <String, String>{};
-    _headers._values.forEach((String key, List<String> values) {
-      if (values.isNotEmpty) {
-        headerMap[key] = values.first;
-      }
-    });
-
-    client.requests.add(_CapturedRequest(uri: uri, headers: headerMap));
-
-    return _FakeHttpClientResponse(
-      statusCode: client.responseStatusCode,
-      body: client.responseBody,
-    );
-  }
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) {
-    return super.noSuchMethod(invocation);
-  }
-}
-
-class _FakeHttpHeaders implements HttpHeaders {
-  final Map<String, List<String>> _values = <String, List<String>>{};
-
-  @override
-  void set(String name, Object value, {bool preserveHeaderCase = false}) {
-    _values[name] = <String>[value.toString()];
-  }
-
-  @override
-  void add(String name, Object value, {bool preserveHeaderCase = false}) {
-    _values.putIfAbsent(name, () => <String>[]).add(value.toString());
-  }
-
-  @override
-  List<String>? operator [](String name) {
-    return _values[name];
-  }
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) {
-    return super.noSuchMethod(invocation);
-  }
-}
-
-class _FakeHttpClientResponse extends Stream<List<int>>
-    implements HttpClientResponse {
-  _FakeHttpClientResponse({required this.statusCode, required String body})
-    : _body = body;
-
-  @override
-  final int statusCode;
-  final String _body;
-
-  @override
-  StreamSubscription<List<int>> listen(
-    void Function(List<int> event)? onData, {
-    Function? onError,
-    void Function()? onDone,
-    bool? cancelOnError,
-  }) {
-    return Stream<List<int>>.value(utf8.encode(_body)).listen(
-      onData,
-      onError: onError,
-      onDone: onDone,
-      cancelOnError: cancelOnError,
-    );
-  }
-
-  @override
-  Future<Socket> detachSocket() {
-    throw UnimplementedError();
-  }
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) {
-    return super.noSuchMethod(invocation);
-  }
 }
