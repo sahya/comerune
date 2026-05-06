@@ -269,6 +269,12 @@ const Set<String> _builtinPackageNames = <String>{
 /// `set`, `dynamic`) are intentionally NOT duplicated here — the
 /// reserved-word check runs first and produces the more accurate
 /// "reserved word" category.
+///
+/// When a future Dart SDK adds a `dart:core` type whose lowercase form
+/// is a valid pub package identifier (`Record` was the most recent
+/// example), append the lowercase form here AND extend the matching
+/// case in the `rejects Dart core type names` test. Skip the addition
+/// if the lowercase form already exists in [_reservedWords].
 const Set<String> _coreTypeNames = <String>{
   'int',
   'string',

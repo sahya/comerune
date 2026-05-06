@@ -230,7 +230,12 @@ void main() {
       // semantically dart:core members. Verify the warning labels them
       // as reserved words, not core types, so the diagnostic stays
       // consistent with the existing reserved-word tests.
-      for (final String name in <String>['null', 'function', 'set']) {
+      for (final String name in <String>[
+        'null',
+        'function',
+        'set',
+        'dynamic',
+      ]) {
         final Directory dir = Directory('${tempRoot.path}/$name')
           ..createSync(recursive: true);
         File('${dir.path}/pubspec.yaml').writeAsStringSync('name: $name\n');
@@ -241,7 +246,7 @@ void main() {
       expect(result.integrations, isEmpty);
       expect(
         result.warnings.where((String w) => w.contains('reserved word')),
-        hasLength(3),
+        hasLength(4),
       );
       expect(
         result.warnings.where((String w) => w.contains('Dart core type name')),
