@@ -199,6 +199,12 @@ Future<void> main() async {
   // Remove user attribute entries not accessed for over 1 year.
   unawaited(userAttributeStore.cleanup());
 
+  // Issue #833: Remove broadcaster name cache entries not accessed for
+  // over 2 years. Retention is intentionally longer than user attribute
+  // cleanup so seasonal / annual broadcasters keep their cached display
+  // names.
+  unawaited(broadcasterNameStore.cleanup());
+
   final OnboardingStore onboardingStore = SharedPreferencesOnboardingStore(
     prefs: prefsAdapter,
   );

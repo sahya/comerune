@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/data/broadcaster/broadcaster_name_store.dart';
@@ -149,6 +151,226 @@ void main() {
       final SharedPreferencesBroadcasterNameStore reader =
           SharedPreferencesBroadcasterNameStore(prefs: prefs);
       expect(reader.loadName('123'), 'Alice');
+    });
+
+    // Issue #833: cleanup of long-unused entries.
+    group('cleanup', () {
+      test('removes entries older than maxAge', () async {
+        final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+        // Plant an old entry (lastUsedAt = 800 days ago) and a fresh one
+        // (lastUsedAt = 30 days ago) directly into storage so the test
+        // does not depend on time travel.
+        final int now = DateTime.now().millisecondsSinceEpoch;
+        final int oldTs = now - const Duration(days: 800).inMilliseconds;
+        final int recentTs = now - const Duration(days: 30).inMilliseconds;
+        prefs.setString(
+          'broadcaster.names',
+          json.encode(<String, Map<String, Object>>{
+            'old-id': <String, Object>{'name': 'Old', 'lastUsedAt': oldTs},
+            'fresh-id': <String, Object>{
+              'name': 'Fresh',
+              'lastUsedAt': recentTs,
+            },
+          }),
+        );
+        final SharedPreferencesBroadcasterNameStore store =
+            SharedPreferencesBroadcasterNameStore(prefs: prefs);
+
+        final int removed = await store.cleanup();
+
+        expect(removed, 1);
+        expect(store.loadAll(), <String, String>{'fresh-id': 'Fresh'});
+      });
+
+      test('keeps entries within maxAge', () async {
+        final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+        final int now = DateTime.now().millisecondsSinceEpoch;
+        final int recentTs = now - const Duration(days: 30).inMilliseconds;
+        prefs.setString(
+          'broadcaster.names',
+          json.encode(<String, Map<String, Object>>{
+            'a': <String, Object>{'name': 'AAA', 'lastUsedAt': recentTs},
+            'b': <String, Object>{'name': 'BBB', 'lastUsedAt': recentTs},
+          }),
+        );
+        final SharedPreferencesBroadcasterNameStore store =
+            SharedPreferencesBroadcasterNameStore(prefs: prefs);
+
+        final int removed = await store.cleanup();
+
+        expect(removed, 0);
+        expect(store.loadAll(), <String, String>{'a': 'AAA', 'b': 'BBB'});
+      });
+
+      test('on an empty store is a no-op', () async {
+        final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+        final SharedPreferencesBroadcasterNameStore store =
+            SharedPreferencesBroadcasterNameStore(prefs: prefs);
+
+        final int removed = await store.cleanup();
+
+        expect(removed, 0);
+        expect(store.loadAll(), isEmpty);
+        // Empty store must not have created the storage key.
+        expect(prefs.getString('broadcaster.names'), isNull);
+      });
+
+      test('uses 730-day default retention (entry just under cutoff is '
+          'kept, just over cutoff is removed)', () async {
+        final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+        final int now = DateTime.now().millisecondsSinceEpoch;
+        // 729 days ago — must survive the default 730-day cutoff.
+        final int justUnder = now - const Duration(days: 729).inMilliseconds;
+        // 731 days ago — must be removed.
+        final int justOver = now - const Duration(days: 731).inMilliseconds;
+        prefs.setString(
+          'broadcaster.names',
+          json.encode(<String, Map<String, Object>>{
+            'survivor': <String, Object>{
+              'name': 'Survivor',
+              'lastUsedAt': justUnder,
+            },
+            'expired': <String, Object>{
+              'name': 'Expired',
+              'lastUsedAt': justOver,
+            },
+          }),
+        );
+        final SharedPreferencesBroadcasterNameStore store =
+            SharedPreferencesBroadcasterNameStore(prefs: prefs);
+
+        final int removed = await store.cleanup();
+
+        expect(removed, 1);
+        expect(store.loadAll(), <String, String>{'survivor': 'Survivor'});
+      });
+
+      test('respects a caller-supplied maxAge', () async {
+        final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+        final int now = DateTime.now().millisecondsSinceEpoch;
+        final int tenDaysAgo = now - const Duration(days: 10).inMilliseconds;
+        prefs.setString(
+          'broadcaster.names',
+          json.encode(<String, Map<String, Object>>{
+            'a': <String, Object>{'name': 'A', 'lastUsedAt': tenDaysAgo},
+          }),
+        );
+        final SharedPreferencesBroadcasterNameStore store =
+            SharedPreferencesBroadcasterNameStore(prefs: prefs);
+
+        final int removed = await store.cleanup(
+          maxAge: const Duration(days: 5),
+        );
+
+        expect(removed, 1);
+        expect(store.loadAll(), isEmpty);
+      });
+    });
+
+    // Issue #833: lazy timestamp update on read.
+    group('lazy timestamp update on loadName', () {
+      test(
+        'a second loadName within the throttle window does not write',
+        () async {
+          final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+          final SharedPreferencesBroadcasterNameStore store =
+              SharedPreferencesBroadcasterNameStore(prefs: prefs);
+          await store.setName('123', 'Alice');
+
+          // Capture the on-disk payload after the seed write — subsequent
+          // reads inside the 24h throttle must not change it.
+          final String? before = prefs.getString('broadcaster.names');
+          expect(before, isNotNull);
+
+          // Repeatedly read the same id — within the throttle window no
+          // additional SharedPreferences write should happen.
+          for (int i = 0; i < 5; i++) {
+            expect(store.loadName('123'), 'Alice');
+          }
+          // Allow any spuriously-scheduled writes to drain.
+          await Future<void>.delayed(Duration.zero);
+
+          expect(
+            prefs.getString('broadcaster.names'),
+            before,
+            reason:
+                'loadName within throttle window must not rewrite '
+                'SharedPreferences',
+          );
+        },
+      );
+    });
+
+    // Issue #833: legacy schema migration.
+    group('legacy schema migration', () {
+      test('reads legacy {id: name} string-map and exposes names', () {
+        final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+        prefs.setString(
+          'broadcaster.names',
+          json.encode(<String, String>{'123': 'Alice', '456': 'Bob'}),
+        );
+        final SharedPreferencesBroadcasterNameStore store =
+            SharedPreferencesBroadcasterNameStore(prefs: prefs);
+
+        expect(store.loadName('123'), 'Alice');
+        expect(store.loadAll(), <String, String>{'123': 'Alice', '456': 'Bob'});
+      });
+
+      test(
+        'cleanup migrates legacy schema in place (idempotent rewrite)',
+        () async {
+          final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+          prefs.setString(
+            'broadcaster.names',
+            json.encode(<String, String>{'123': 'Alice'}),
+          );
+          final SharedPreferencesBroadcasterNameStore store =
+              SharedPreferencesBroadcasterNameStore(prefs: prefs);
+
+          // First cleanup migrates the on-disk format. Nothing is removed
+          // because legacy entries are stamped with `lastUsedAt = now`.
+          final int firstRemoved = await store.cleanup();
+          expect(firstRemoved, 0);
+
+          final String? migrated = prefs.getString('broadcaster.names');
+          expect(migrated, isNotNull);
+          final Object? decoded = json.decode(migrated!);
+          expect(decoded, isA<Map<dynamic, dynamic>>());
+          final Map<dynamic, dynamic> asMap = decoded! as Map<dynamic, dynamic>;
+          expect(
+            asMap['123'],
+            isA<Map<dynamic, dynamic>>(),
+            reason:
+                'Legacy string value must have been upgraded to an '
+                'object with name + lastUsedAt',
+          );
+          final Map<dynamic, dynamic> entry =
+              asMap['123'] as Map<dynamic, dynamic>;
+          expect(entry['name'], 'Alice');
+          expect(entry['lastUsedAt'], isA<int>());
+
+          // Second cleanup must not remove the freshly-migrated entry.
+          final int secondRemoved = await store.cleanup();
+          expect(secondRemoved, 0);
+          expect(store.loadName('123'), 'Alice');
+        },
+      );
+
+      test('legacy entry survives cleanup because lastUsedAt is stamped '
+          'with now', () async {
+        final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+        prefs.setString(
+          'broadcaster.names',
+          json.encode(<String, String>{'persist': 'Persist'}),
+        );
+        final SharedPreferencesBroadcasterNameStore store =
+            SharedPreferencesBroadcasterNameStore(prefs: prefs);
+
+        final int removed = await store.cleanup();
+
+        expect(removed, 0);
+        expect(store.loadName('persist'), 'Persist');
+      });
     });
   });
 }
