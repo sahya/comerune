@@ -39,6 +39,13 @@ import org.junit.Test
  */
 class MediaPlayerWavPlayerTest {
 
+    // TODO(post-#917): when Robolectric is introduced for any other
+    // unit test in this module, add a `release-then-play returns
+    // IllegalStateException` test here so the runtime assertion AC2 of
+    // Issue #917 originally asked for is recovered automatically. The
+    // one-line addition is `assertTrue(result.exceptionOrNull() is
+    // IllegalStateException)` once the SDK_INT guard can be bypassed.
+
     private fun stubContext(): android.content.Context = ContextWrapper(null)
 
     @Test
