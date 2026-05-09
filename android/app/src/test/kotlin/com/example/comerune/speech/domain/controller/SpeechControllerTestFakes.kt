@@ -122,27 +122,38 @@ open class FakePlayer : WavPlayer {
     var playLatch: CountDownLatch? = null
     private var state = PlayerState.IDLE
 
+    @Volatile
+    private var shouldBePlayingFlag: Boolean = false
+
     override suspend fun play(wavBytes: ByteArray): Result<Unit> {
         playLatch?.await(5, TimeUnit.SECONDS)
         return if (failOnPlay) {
             failOnPlay = false
+            shouldBePlayingFlag = false
             Result.failure(IOException("Playback interrupted"))
         } else {
+            shouldBePlayingFlag = true
             state = PlayerState.PLAYING
             delay(10)
             state = PlayerState.IDLE
+            shouldBePlayingFlag = false
             Result.success(Unit)
         }
     }
 
     override suspend fun stop(): Result<Unit> {
+        shouldBePlayingFlag = false
         state = PlayerState.STOPPED
         return Result.success(Unit)
     }
 
     override fun isPlaying(): Boolean = state == PlayerState.PLAYING
     override fun currentState(): PlayerState = state
-    override fun release() { state = PlayerState.IDLE }
+    override fun shouldBePlaying(): Boolean = shouldBePlayingFlag
+    override fun release() {
+        state = PlayerState.IDLE
+        shouldBePlayingFlag = false
+    }
 }
 
 open class FakeSettingsRepository : SettingsRepository {
