@@ -177,7 +177,18 @@ class _NgWordListViewState extends State<NgWordListView> {
     // to reject obviously malformed input and for forward-compatibility.
     try {
       RegExp(input);
-    } on FormatException {
+    } on FormatException catch (e, st) {
+      // The user-facing snackbar is intentionally vague ("無効なパターン
+      // です") to avoid leaking regex parser internals (see
+      // NgWordListStrings.invalidPatternSnackBar doc). Log the
+      // FormatException to dev logs so the failure is debuggable in
+      // local development without surfacing details to end users.
+      developer.log(
+        'NgWordListView: rejected invalid regex pattern',
+        name: 'ng_word_list_view',
+        error: e,
+        stackTrace: st,
+      );
       if (!mounted) {
         return;
       }
