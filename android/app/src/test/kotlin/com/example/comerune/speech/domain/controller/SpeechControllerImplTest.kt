@@ -455,11 +455,20 @@ class SpeechControllerImplTest {
         // Sanity: started=true while running.
         assertEquals(true, ctrl.getStatus().started)
         ctrl.release()
-        // After release, getStatus may still be invoked (it does not
-        // check the released flag) and must report started=false because
-        // release() flips the gate off. This matches the Flutter side's
-        // expectation that an out-of-band release is observable through
-        // a subsequent getStatus reconcile.
+        // Behavioural assertion: release() flips `started` off, and the
+        // Flutter side expects an out-of-band release to be observable
+        // through a subsequent getStatus reconcile.
+        //
+        // CAVEAT — incidental dependency: this test currently relies on
+        // getStatus() *not* checking the `released` flag (it returns a
+        // snapshot regardless). That behaviour is incidental rather than
+        // contractual: a future change that makes getStatus() throw or
+        // early-return after release() would break this test. If that
+        // happens, the right fix is *not* to relax this assertion — the
+        // Flutter mirror still needs a way to learn about
+        // out-of-band releases. The right fix is to update the Flutter
+        // reconcile path to handle the new contract (e.g. treat
+        // post-release getStatus failure as "started=false" too).
         assertEquals(false, ctrl.getStatus().started)
     }
 

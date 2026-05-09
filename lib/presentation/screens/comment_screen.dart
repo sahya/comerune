@@ -900,14 +900,39 @@ class _CommentScreenState extends State<CommentScreen>
   /// - **Successful true-set**: only after `platform.start()` returns and
   ///   the post-start abort guards have passed
   ///   ([_initializeAndStartSpeech]).
-  /// - **Intentional false-set**: written in the same synchronous block
-  ///   as the `platform.stop()` call, before awaiting its result, so that
-  ///   stop intent is reflected immediately to subsequent guards
-  ///   ([_stopSpeech] and the abort path of [_initializeAndStartSpeech]).
+  /// - **Intentional false-set (abort path of `_initializeAndStartSpeech`)**:
+  ///   written *before* awaiting `platform.stop(clearQueue: true)` so that
+  ///   any guards that fire while we await the stop see the new intent
+  ///   immediately. This is required because the abort path runs after
+  ///   `platform.start()` succeeded — without the pre-await flip, a guard
+  ///   could observe `_speechStarted == true` racing against the in-flight
+  ///   teardown.
+  /// - **Intentional false-set (`_stopSpeech` path)**: written *after*
+  ///   `await platform.stop(clearQueue: true)` returns. The native
+  ///   `SpeechControllerImpl.stop()` flips its own `started` flag
+  ///   synchronously at entry (before any suspension), so the native
+  ///   ground truth is already `false` while we await. The post-await
+  ///   `setState` is the matching mirror update and is intentionally
+  ///   scheduled in the same microtask as `_setSpeechEngineState` to keep
+  ///   the rebuild atomic. Any guard that races during the await would
+  ///   re-query native truth via reconcile, not the mirror, so the
+  ///   late mirror-flip is safe.
   /// - **Ground-truth correction**: re-read from `getStatus().started`
   ///   at the engine-switch boundary ([_handleSpeechSettingsChanged])
   ///   to absorb cases where native has flipped the flag without the
   ///   screen observing (e.g. `release()`).
+  ///
+  /// Forward-compat caveat (Issue #915): when a *new Flutter binary*
+  /// runs against an *old native binary* that does not yet emit the
+  /// `started` key in `SpeechRuntimeStatus`, `getStatus().started` will
+  /// always default to `false`. This is harmless at the only current
+  /// reconcile call site (engine-switch, where the mirror is either
+  /// already false or has just been stopped via `_stopSpeech`). New
+  /// reconcile call sites that may fire while the mirror is genuinely
+  /// `true` (e.g. lifecycle resume, post-process-recreation hooks) MUST
+  /// be added with this caveat in mind — do not blanket-reconcile from
+  /// arbitrary points until the native binary is guaranteed to emit
+  /// the field.
   bool _speechStarted = false;
 
   /// True when [_initializedEngineType] matches the engine type currently
