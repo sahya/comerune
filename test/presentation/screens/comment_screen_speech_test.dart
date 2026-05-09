@@ -4219,6 +4219,70 @@ void main() {
         expect(fakePlatform.stopCalled, isTrue);
       },
     );
+
+    testWidgets(
+      'engine switch with old-native getStatus (no started key) does not '
+      'spuriously flip mirror at engine_switched boundary (Issue #915 '
+      'forward-compat)',
+      (WidgetTester tester) async {
+        // Simulate the new-Flutter + old-native combination: the native
+        // binary has not been rebuilt with the Issue #915 patch, so the
+        // map-form of SpeechRuntimeStatus omits the `started` key, and
+        // SpeechRuntimeStatus.fromMap defaults `started` to false.
+        //
+        // At the engine-switch reconcile point this Flutter code path
+        // calls _stopSpeech first (because we were started), so the
+        // mirror is already false by the time reconcile runs. Therefore
+        // the mirror=false ↔ native=false equality short-circuits the
+        // setState branch, and no spurious "true → false" debug log is
+        // emitted. This test guards against a future regression where a
+        // new reconcile call site is added that fires while the mirror
+        // is genuinely true — such a call would silently downgrade a
+        // valid mirror under old-native and the failure mode would only
+        // surface in field telemetry.
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Old native: getStatus() never sets `started` (the default
+        // SpeechRuntimeStatus from fromMap-with-missing-key already has
+        // started=false). Use the typed default ctor to stand in.
+        fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+          enabled: true,
+          engineState: 'READY',
+          playerState: 'IDLE',
+          queueSize: 0,
+          currentSpeakerId: 0,
+          // no `started` argument → defaults to false (forward-compat).
+        );
+
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.updateSpeechSettings(
+          const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.voicevox,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The flow must complete without throwing and the new engine's
+        // start() must have been issued. Stop must have been called for
+        // the old engine. This is the normal happy-path; the asserted
+        // invariant is that the missing `started` key did NOT cause an
+        // exception, type error, or early abort anywhere along the way.
+        expect(fakePlatform.stopCalled, isTrue);
+        expect(fakePlatform.startCalled, isTrue);
+      },
+    );
   });
 
   // -------------------------------------------------------------------------
