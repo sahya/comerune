@@ -18,3 +18,7 @@ import 'package:comerune/presentation/screens/comment_screen_config.dart';
 import '../../comment_speech/fake_comment_speech_platform.dart';
 import '../../helpers/in_memory_shared_preferences.dart';
 import '../../helpers/recording_settings_store.dart';
+
+void main() {
+  // PLACEHOLDER - this push call MUST contain the full 200KB content
+}
