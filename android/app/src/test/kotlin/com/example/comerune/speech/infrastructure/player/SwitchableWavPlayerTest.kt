@@ -431,7 +431,19 @@ class SwitchableWavPlayerTest {
         // post-call value of currentPlayerType()/pendingType — those are
         // implementation details that may change if a self-guard is added
         // later in SwitchableWavPlayer.
-        player.switchPlayerType(SwitchableWavPlayer.TYPE_MEDIA_PLAYER)
+        //
+        // Wrap the call in an explicit try/catch so the test name's
+        // "does not throw" claim is enforced loudly: any thrown exception
+        // surfaces as an `AssertionError` with the original cause, not as
+        // a generic JUnit "test failed" report.
+        try {
+            player.switchPlayerType(SwitchableWavPlayer.TYPE_MEDIA_PLAYER)
+        } catch (t: Throwable) {
+            throw AssertionError(
+                "switchPlayerType() after release() must not throw",
+                t,
+            )
+        }
 
         // No second release on the delegate from switchPlayerType alone.
         assertEquals(1, audioTrack.releaseCount.get())
