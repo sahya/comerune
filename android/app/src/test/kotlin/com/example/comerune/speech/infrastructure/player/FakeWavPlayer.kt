@@ -3,6 +3,8 @@ package com.example.comerune.speech.infrastructure.player
 import com.example.comerune.speech.domain.model.PlayerState
 import com.example.comerune.speech.domain.player.WavPlayer
 import kotlinx.coroutines.delay
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -29,8 +31,29 @@ class FakeWavPlayer(
     val stopCount = AtomicInteger(0)
     val releaseCount = AtomicInteger(0)
 
+    /**
+     * Test-only entry latch. When non-null, [play] increments [playCount]
+     * and signals [playEnteredLatch], then blocks on this latch BEFORE
+     * flipping [shouldBePlayingFlag] to true. This lets a test observe
+     * the narrow "play() invoked but intent not yet set" window — used
+     * by the AC5(b) "swap done, new delegate not yet driven" assertion.
+     */
+    @Volatile
+    var playEntryLatch: CountDownLatch? = null
+
+    /**
+     * Test-only signal latch. Counted down once [play] has been entered
+     * (after [playCount] increment, before the [playEntryLatch] wait).
+     */
+    @Volatile
+    var playEnteredLatch: CountDownLatch? = null
+
     override suspend fun play(wavBytes: ByteArray): Result<Unit> {
         playCount.incrementAndGet()
+        playEnteredLatch?.countDown()
+        // Hold here BEFORE the intent flip so the test can observe the
+        // post-swap pre-intent window deterministically.
+        playEntryLatch?.await(5, TimeUnit.SECONDS)
         // Mirror real implementations: intent flips to true on play() and
         // back to false on natural completion / stop / release.
         shouldBePlayingFlag = true

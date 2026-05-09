@@ -24,6 +24,12 @@ interface WavPlayer {
      * Implementations must keep `shouldBePlaying()` consistent with the
      * intent set inside their own [play] / [stop] / completion / error
      * paths, and return `false` after [release].
+     *
+     * TODO(follow-up after #735 / #746 land): consume this predicate from
+     * `AudioFocusGuard` / `SpeechControllerImpl`'s focus-gain path so
+     * focus-resume decisions read intent through the contract instead of
+     * re-deriving it from the physical [PlayerState]. Tracked under Issue
+     * #916 AC2 (deferred to keep this PR scoped to the contract change).
      */
     fun shouldBePlaying(): Boolean
 }
