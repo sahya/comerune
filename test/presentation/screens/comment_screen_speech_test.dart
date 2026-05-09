@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,6 +17,7 @@ import 'package:comerune/presentation/screens/comment_screen_config.dart';
 
 import '../../comment_speech/fake_comment_speech_platform.dart';
 import '../../helpers/in_memory_shared_preferences.dart';
+import '../../helpers/recording_settings_store.dart';
 
 void main() {
   group('CommentScreen speech integration', () {
@@ -4827,7 +4827,7 @@ void main() {
         ];
 
         final List<String> printed = <String>[];
-        await _withCapturedDebugPrint(printed, () async {
+        await withCapturedDebugPrint(printed, () async {
           await tester.pumpWidget(
             _buildScreen(
               speechPlatform: fakePlatform,
@@ -4886,11 +4886,10 @@ void main() {
             SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
         final AppSettings initialSettings = await inner.load();
 
-        final _ThrowingSaveSettingsStore settingsStore =
-            _ThrowingSaveSettingsStore(
-              inner: inner,
-              error: StateError('persistence failure'),
-            );
+        final DelegatingSettingsStore settingsStore = DelegatingSettingsStore(
+          inner: inner,
+          saveError: StateError('persistence failure'),
+        );
 
         final List<AppSettings> changedRulesPayloads = <AppSettings>[];
 
@@ -4899,7 +4898,7 @@ void main() {
         ];
 
         final List<String> printed = <String>[];
-        await _withCapturedDebugPrint(printed, () async {
+        await withCapturedDebugPrint(printed, () async {
           await tester.pumpWidget(
             _buildScreen(
               speechPlatform: fakePlatform,
@@ -4984,8 +4983,9 @@ void main() {
         // Option C must NOT remove the outer try/catch — load() failures
         // still need to be logged via _errorLog. This regression guard
         // ensures the outer logger keeps working for non-save failures.
-        final _ThrowingLoadSettingsStore settingsStore =
-            _ThrowingLoadSettingsStore(error: StateError('load failure'));
+        final RecordingSettingsStore settingsStore = RecordingSettingsStore(
+          loadError: StateError('load failure'),
+        );
 
         final List<AppSettings> changedRulesPayloads = <AppSettings>[];
 
@@ -4994,7 +4994,7 @@ void main() {
         ];
 
         final List<String> printed = <String>[];
-        await _withCapturedDebugPrint(printed, () async {
+        await withCapturedDebugPrint(printed, () async {
           await tester.pumpWidget(
             _buildScreen(
               speechPlatform: fakePlatform,
@@ -5021,7 +5021,7 @@ void main() {
           await tester.pumpAndSettle();
         });
 
-        expect(settingsStore.loadAttempts, 1);
+        expect(settingsStore.loadCallCount, 1);
         expect(changedRulesPayloads, isEmpty);
 
         final String joined = printed.join('\n');
@@ -5032,112 +5032,6 @@ void main() {
       },
     );
   });
-}
-
-/// [SettingsStore] wrapper that delegates [load] to [inner] but throws on
-/// [save]. Used to drive the Issue #840 save-failure path while still
-/// returning a realistic [AppSettings] from [load].
-class _ThrowingSaveSettingsStore implements SettingsStore {
-  _ThrowingSaveSettingsStore({required this.inner, required this.error});
-
-  final SettingsStore inner;
-  final Object error;
-  int saveAttempts = 0;
-
-  @override
-  Future<AppSettings> load() => inner.load();
-
-  @override
-  Future<void> save(AppSettings settings) async {
-    saveAttempts += 1;
-    throw error;
-  }
-
-  @override
-  double? loadPreMuteVolume() => inner.loadPreMuteVolume();
-
-  @override
-  Future<void> savePreMuteVolume(double? volume) =>
-      inner.savePreMuteVolume(volume);
-
-  @override
-  double? loadPreMuteAndroidTtsVolume() => inner.loadPreMuteAndroidTtsVolume();
-
-  @override
-  Future<void> savePreMuteAndroidTtsVolume(double? volume) =>
-      inner.savePreMuteAndroidTtsVolume(volume);
-
-  @override
-  Future<String> exportAsJson() => inner.exportAsJson();
-
-  @override
-  Future<String> writeExportToTempFile() => inner.writeExportToTempFile();
-
-  @override
-  Future<AppSettings> importFromJson(String jsonString) =>
-      inner.importFromJson(jsonString);
-}
-
-/// [SettingsStore] fake whose [load] always throws — used as a regression
-/// guard to verify the outer try/catch in `_handleTeachCommand` still
-/// handles non-save failures after the Option C refactor.
-class _ThrowingLoadSettingsStore implements SettingsStore {
-  _ThrowingLoadSettingsStore({required this.error});
-
-  final Object error;
-  int loadAttempts = 0;
-
-  @override
-  Future<AppSettings> load() async {
-    loadAttempts += 1;
-    throw error;
-  }
-
-  @override
-  Future<void> save(AppSettings settings) async => throw UnimplementedError();
-
-  @override
-  double? loadPreMuteVolume() => throw UnimplementedError();
-
-  @override
-  Future<void> savePreMuteVolume(double? volume) async =>
-      throw UnimplementedError();
-
-  @override
-  double? loadPreMuteAndroidTtsVolume() => throw UnimplementedError();
-
-  @override
-  Future<void> savePreMuteAndroidTtsVolume(double? volume) async =>
-      throw UnimplementedError();
-
-  @override
-  Future<String> exportAsJson() async => throw UnimplementedError();
-
-  @override
-  Future<String> writeExportToTempFile() async => throw UnimplementedError();
-
-  @override
-  Future<AppSettings> importFromJson(String jsonString) async =>
-      throw UnimplementedError();
-}
-
-/// Captures `debugPrint` output during [body] so tests can assert on the
-/// log lines emitted by `appErrorLog`.
-Future<void> _withCapturedDebugPrint(
-  List<String> sink,
-  Future<void> Function() body,
-) async {
-  final DebugPrintCallback original = debugPrint;
-  debugPrint = (String? message, {int? wrapWidth}) {
-    if (message != null) {
-      sink.add(message);
-    }
-  };
-  try {
-    await body();
-  } finally {
-    debugPrint = original;
-  }
 }
 
 // ---------------------------------------------------------------------------
