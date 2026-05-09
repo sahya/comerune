@@ -68,15 +68,30 @@
 /// ## getter / メソッドの命名規約
 /// 役割サフィックスを揃えて、Phase 3 以降で同一画面内に追加するときの
 /// 揺れを抑える:
-/// - `xxxTitle`: 画面・ダイアログのタイトル（名詞句）
+/// - `xxxTitle`: 画面・ダイアログのタイトル（**名詞句**）
+/// - `xxxMessage`: 述語付き文の本文（読み込み失敗・エラー説明など）
 /// - `xxxContent`: ダイアログ本文（引数を含むなら `String` メソッド）
 /// - `xxxConfirm` / `xxxCancel`: ダイアログ確定 / キャンセルボタン
 /// - `xxxButton`: 一覧上部などの常設ボタンラベル
 /// - `xxxTooltip`: アイコンボタンの `tooltip:` プロパティ
 /// - `xxxSnackBar`: SnackBar に表示する文言（引数を含むなら `String` メソッド）
 /// - `xxxLabel` / `xxxHint`: 入力欄のラベル / ヒント
-/// - `emptyMessage` / `loadFailedTitle` / `retryButton`: 状態系の固定 UI
+/// - `xxxDescription`: 複数行の説明文（設定タイル下のサブテキスト等）
+/// - `emptyMessage` / `loadFailedMessage` / `retryButton`: 状態系の固定 UI
 ///
+/// ### 規約の適用範囲
+/// 本セクションは Issue #836 (Phase 2) で確立。**新規追加分にのみ適用**し、
+/// それ以前の Phase 1 由来 namespace（例: `BroadcasterNgListStrings.emptyTitle`
+/// が完全文で `Title` サフィックスのまま等）の retrofit は別 Issue 扱い
+/// （feature PR に retrofit を混ぜない CLAUDE.md 原則）。Phase 3 以降の
+/// 追加では本規約に従う。
+///
+/// ### 同一 namespace 内重複の扱い
+/// 同一 namespace 内に同一文言が異なる getter として存在する（例:
+/// `addButton == addDialogTitle == 'NGワード追加'`）のは i18n 化時に役割
+/// ごとに別訳になり得るため。複数 namespace 重複と同じ理由で意図的に
+/// 分離保持する。
+
 /// ## ARB 移行を見据えた引数規約
 /// 引数を含む文字列メソッドは将来 `flutter_localizations` + ARB に置き換え
 /// られる前提で:
@@ -180,8 +195,12 @@ final class SettingsStrings {
   /// **Phase 3 移管予定**: 本 getter は Settings 画面のタイル文言と
   /// セットで Phase 1 に作られた歴史的経緯から `SettingsStrings` に
   /// 残置している。Phase 3 で「画面別 namespace 集約」を一貫させる際に
-  /// `BroadcasterNgEditStrings.appBarTitle` 等へ移管する候補。本 PR
-  /// (#836) の段階では既存呼び出し箇所への影響を抑えるため移動しない。
+  /// `BroadcasterNgEditStrings.screenTitle` 等（命名規約セクションの
+  /// `xxxTitle` 規約に従う）へ移管する候補。**本 PR (#836) で移管しない理由**:
+  /// 本 PR は Phase 2 の literal 集約をスコープとし、Phase 3 で
+  /// `comment_screen` 等の他画面と一括して命名・移管方針を確定させた方が
+  /// 移管時の grep 範囲・widget テスト更新範囲を 1 PR で管理できる。
+  /// 単独で先行移管すると Phase 3 着手時に再度 doc 整合の議論が発生する。
   String ngEditScreenTitle(String scopeLabel) => 'NG設定 - $scopeLabel';
 
   // セクション: データ管理
@@ -274,10 +293,10 @@ final class NgUserListStrings {
   String unregisteredSnackBar(String userId) => '$userId のNGを解除しました';
 
   // 読み込み失敗時の本文
-  // NOTE: `loadFailedTitle` / `retryButton` は `NgWordListStrings` にも
+  // NOTE: `loadFailedMessage` / `retryButton` は `NgWordListStrings` にも
   // 同一文言で存在する。i18n 時に画面ごとに別訳を選べる柔軟性のため
   // 意図的に重複保持している（クラスドキュメント参照）。
-  String get loadFailedTitle => 'NG リストの読込みに失敗しました';
+  String get loadFailedMessage => 'NG リストの読込みに失敗しました';
   String get retryButton => '再試行';
 
   // 空状態
@@ -337,7 +356,7 @@ final class NgWordListStrings {
   // 読み込み失敗時の本文
   // NOTE: `NgUserListStrings` にも同一文言で存在する。i18n 時に画面
   // ごとに別訳を選べる柔軟性のため意図的に重複保持している。
-  String get loadFailedTitle => 'NG リストの読込みに失敗しました';
+  String get loadFailedMessage => 'NG リストの読込みに失敗しました';
   String get retryButton => '再試行';
 
   // 空状態

@@ -295,7 +295,7 @@ void main() {
     });
 
     test('読み込み失敗 / 空状態 / tooltip の文言が既存と一致する', () {
-      expect(AppStrings.ngUserList.loadFailedTitle, 'NG リストの読込みに失敗しました');
+      expect(AppStrings.ngUserList.loadFailedMessage, 'NG リストの読込みに失敗しました');
       expect(AppStrings.ngUserList.retryButton, '再試行');
       expect(AppStrings.ngUserList.emptyMessage, 'NGユーザーIDは登録されていません');
       expect(AppStrings.ngUserList.removeTooltip, 'NG解除');
@@ -350,7 +350,7 @@ void main() {
     });
 
     test('読み込み失敗 / 空状態 / tooltip の文言が既存と一致する', () {
-      expect(AppStrings.ngWordList.loadFailedTitle, 'NG リストの読込みに失敗しました');
+      expect(AppStrings.ngWordList.loadFailedMessage, 'NG リストの読込みに失敗しました');
       expect(AppStrings.ngWordList.retryButton, '再試行');
       expect(AppStrings.ngWordList.emptyMessage, 'NGワードは登録されていません');
       expect(AppStrings.ngWordList.deleteTooltip, '削除');
