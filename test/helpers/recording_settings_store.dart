@@ -105,7 +105,15 @@ class DelegatingSettingsStore implements SettingsStore {
   /// `null`, [load] is fully delegated.
   final Object? loadError;
 
+  /// Number of times [save] was invoked, including invocations that
+  /// threw via [saveError]. Counter is incremented BEFORE the throw
+  /// check so tests can assert "attempted to save N times" regardless
+  /// of whether persistence succeeded.
   int saveAttempts = 0;
+
+  /// Number of times [load] was invoked, including invocations that
+  /// threw via [loadError]. Counter is incremented BEFORE the throw
+  /// check (same semantics as [saveAttempts]).
   int loadAttempts = 0;
 
   @override
