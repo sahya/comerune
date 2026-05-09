@@ -132,6 +132,25 @@ class SwitchableWavPlayer internal constructor(
         }
     }
 
+    /**
+     * Release the underlying delegate and clear any pending switch.
+     *
+     * Post-release contract (Issue #917): once [release] has returned, any
+     * subsequent [play] call MUST resolve to a [Result.failure] — it must
+     * NOT throw, and it must NOT silently succeed. The current
+     * implementation routes the failed `play()` straight to the released
+     * delegate, which then returns a failure from its own released-guard;
+     * a future change may add an early-out guard here in
+     * [SwitchableWavPlayer]. Either path is contract-compliant. Tests
+     * assert the failure status only and intentionally do not pin the
+     * exception type or the guard's location, so the implementation can
+     * evolve without rewriting the contract test.
+     *
+     * Calling [release] more than once is safe (idempotent at the
+     * delegate level — see [MediaPlayerWavPlayer.release] /
+     * [AudioTrackWavPlayer.release], both of which set `released = true`
+     * before doing any teardown).
+     */
     override fun release() {
         synchronized(lock) {
             pendingType = null
