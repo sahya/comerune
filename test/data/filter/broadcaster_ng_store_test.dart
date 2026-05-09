@@ -370,6 +370,26 @@ void main() {
       );
     });
 
+    test('saveNgUserIds with empty ids on an uninitialized slot with empty '
+        'template does NOT materialize a slot', () async {
+      // Regression guard for the _ensureInitializedInline cleanup
+      // (Issue #855): the old code path seeded the slot from the
+      // empty template and then immediately removed it. The new
+      // code path skips the redundant seed and reaches the same
+      // empty-final-state directly. listBroadcasters must still
+      // return empty so observers do not see a transient slot.
+      await store.saveNgUserIds('b1', const <String>[]);
+
+      expect(store.listBroadcasters(), isEmpty);
+      expect(
+        prefs.getString('settings.filter.broadcaster.b1.initialized'),
+        isNull,
+        reason:
+            'No initialized marker should remain when the effective '
+            'state collapses to empty.',
+      );
+    });
+
     test('malformed stored JSON degrades to empty without throwing', () async {
       // Pollute the slot directly so we exercise the catch branch.
       await prefs.setString(
