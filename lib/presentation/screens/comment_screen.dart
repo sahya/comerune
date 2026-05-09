@@ -884,12 +884,30 @@ class _CommentScreenState extends State<CommentScreen>
   /// Writers set this to `widget.speechConfig.speechSettings.engineType`
   /// on success and to `null` on teardown / retry.
   ///
-  /// TODO(#741 follow-up — Problem 3): the Flutter-side `_speechStarted`
-  /// flag is still maintained independently of the native
-  /// `SpeechRuntimeStatus`. Once the native side exposes a `started`
-  /// field via getStatus(), this screen should reconcile both flags
-  /// instead of trusting only the local one.
   String? _initializedEngineType;
+
+  /// Mirror of the native worker-loop intent
+  /// ([SpeechRuntimeStatus.started]).
+  ///
+  /// Issue #915: the native side (`SpeechControllerImpl.started`) is the
+  /// **ground truth**; this Dart flag is a UI / guard mirror so frequent
+  /// reads do not require a method-channel round-trip. It represents
+  /// *worker-loop intent* only — it is independent of engine readiness
+  /// (e.g. `_speechStarted == true` does not imply
+  /// `_speechEngineState == ready`).
+  ///
+  /// Write-time invariants kept in sync with native (AC2):
+  /// - **Successful true-set**: only after `platform.start()` returns and
+  ///   the post-start abort guards have passed
+  ///   ([_initializeAndStartSpeech]).
+  /// - **Intentional false-set**: written in the same synchronous block
+  ///   as the `platform.stop()` call, before awaiting its result, so that
+  ///   stop intent is reflected immediately to subsequent guards
+  ///   ([_stopSpeech] and the abort path of [_initializeAndStartSpeech]).
+  /// - **Ground-truth correction**: re-read from `getStatus().started`
+  ///   at the engine-switch boundary ([_handleSpeechSettingsChanged])
+  ///   to absorb cases where native has flipped the flag without the
+  ///   screen observing (e.g. `release()`).
   bool _speechStarted = false;
 
   /// True when [_initializedEngineType] matches the engine type currently
@@ -2010,6 +2028,11 @@ class _CommentScreenState extends State<CommentScreen>
         _speechEventSub?.cancel();
         _speechEventSub = null;
         _speechBaselineTimestamp = null;
+        // Issue #915 AC2(b): record stop intent in the same synchronous
+        // block as the `platform.stop()` call below. The native side will
+        // also flip its `started` flag inside `stop()`, but we set the
+        // mirror first so any guards that fire while we await `stop()`
+        // see the new intent immediately.
         _speechStarted = false;
         _setSpeechEngineState(SpeechEngineState.unknown);
         // Issue #695: counter must also be reset on abort, not just on the
@@ -2025,6 +2048,10 @@ class _CommentScreenState extends State<CommentScreen>
       }
 
       if (mounted) {
+        // Issue #915 AC2(a): only flip the mirror to `true` AFTER
+        // `platform.start()` has returned and the abort guards above have
+        // passed. This keeps the screen-side mirror at most as optimistic
+        // as the native worker-loop intent.
         setState(() {
           _speechStarted = true;
         });
@@ -2080,6 +2107,12 @@ class _CommentScreenState extends State<CommentScreen>
       // re-runs the full setup path (status check → setup dialog if needed
       // → updateSettings → start) for the new engine.
       _initializedEngineType = null;
+      // Issue #915 AC2(c) / AC4: at this point we expect the native
+      // worker-loop to be off (we either already called stop() above, or
+      // it was off to begin with). Reconcile against the native ground
+      // truth so that any race / stale state from the previous engine
+      // does not leak into the new engine.
+      await _reconcileSpeechStartedFromNative(reason: 'engine_switched');
       if (newSettings.enabled) {
         await _initializeAndStartSpeech();
       }
@@ -2120,11 +2153,54 @@ class _CommentScreenState extends State<CommentScreen>
       _speechBaselineTimestamp = null;
       _consecutiveAndroidTtsFailures = 0;
       if (mounted) {
+        // Issue #915 AC2(b): the native `stop()` already flipped
+        // `started=false` (see SpeechControllerImpl.stop), so this
+        // setState is the matching mirror update. We do it after the
+        // await so the state-change frame is scheduled in the same
+        // microtask as the engine-state reset below.
         setState(() {
           _speechStarted = false;
         });
         _setSpeechEngineState(SpeechEngineState.unknown);
       }
+    }
+  }
+
+  /// Reconciles [_speechStarted] against the native ground truth
+  /// ([SpeechRuntimeStatus.started]).
+  ///
+  /// Issue #915: invoked at synchronisation boundaries (currently the
+  /// engine-switch path) where the native worker-loop intent may have
+  /// changed without the screen observing it through normal flow — for
+  /// example after a process recreation, after a `release()` triggered
+  /// outside this screen, or after an engine switch where stop() was
+  /// skipped because we already thought the worker was off.
+  ///
+  /// Failure mode: if the platform call throws (channel hiccup, plugin
+  /// not registered in a host-test environment, etc.) we leave the local
+  /// mirror untouched. The next genuine start/stop write will fix it.
+  Future<void> _reconcileSpeechStartedFromNative({
+    required String reason,
+  }) async {
+    final CommentSpeechPlatform? platform = widget.speechConfig.speechPlatform;
+    if (platform == null) return;
+    try {
+      final SpeechRuntimeStatus status = await platform.getStatus();
+      if (!mounted) return;
+      if (_speechStarted != status.started) {
+        _debugLog(
+          '[CommentScreen] reconcileSpeechStarted ($reason): '
+          'mirror=$_speechStarted → native=${status.started}',
+        );
+        setState(() {
+          _speechStarted = status.started;
+        });
+      }
+    } catch (e) {
+      _errorLog(
+        '[CommentScreen] reconcileSpeechStarted ($reason): getStatus FAILED',
+        error: e,
+      );
     }
   }
 

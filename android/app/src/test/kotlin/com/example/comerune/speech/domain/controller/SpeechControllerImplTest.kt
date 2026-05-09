@@ -402,6 +402,78 @@ class SpeechControllerImplTest {
         }
     }
 
+    // --- Issue #915: getStatus().started reflects worker-loop intent ---
+
+    @Test
+    fun `getStatus started is false before start`() = runBlocking {
+        controller.initialize()
+
+        val status = controller.getStatus()
+        assertEquals(false, status.started)
+    }
+
+    @Test
+    fun `getStatus started is true after start`() = runBlocking {
+        controller.initialize()
+        controller.start()
+
+        val status = controller.getStatus()
+        assertEquals(true, status.started)
+    }
+
+    @Test
+    fun `getStatus started is false after stop`() = runBlocking {
+        controller.initialize()
+        controller.start()
+        controller.stop(clearQueue = true)
+
+        val status = controller.getStatus()
+        assertEquals(false, status.started)
+    }
+
+    @Test
+    fun `getStatus started is false after release`() = runBlocking {
+        // release() makes the controller unusable, so we have to query
+        // getStatus on a fresh instance after release. Here we instead
+        // assert on the *internal* started flag indirectly: a freshly
+        // released controller cannot honour start() (it returns failure),
+        // so the only way to observe started=false through the public
+        // API is to instantiate a new controller. Use a dedicated
+        // controller for this test to avoid polluting the shared one.
+        val ctrl = SpeechControllerImpl(
+            normalizer = FakeNormalizer(),
+            queueManager = InMemorySpeechQueueManager(maxSize = 20),
+            engine = FakeEngine(),
+            player = FakePlayer(),
+            settingsRepository = FakeSettingsRepository(),
+            eventEmitter = FakeEventEmitter(),
+            dispatcher = Dispatchers.Default,
+            synthesisDispatcher = Dispatchers.Default
+        )
+        ctrl.initialize()
+        ctrl.start()
+        // Sanity: started=true while running.
+        assertEquals(true, ctrl.getStatus().started)
+        ctrl.release()
+        // After release, getStatus may still be invoked (it does not
+        // check the released flag) and must report started=false because
+        // release() flips the gate off. This matches the Flutter side's
+        // expectation that an out-of-band release is observable through
+        // a subsequent getStatus reconcile.
+        assertEquals(false, ctrl.getStatus().started)
+    }
+
+    @Test
+    fun `getStatus started survives start-stop-start cycle`() = runBlocking {
+        controller.initialize()
+        controller.start()
+        assertEquals(true, controller.getStatus().started)
+        controller.stop(clearQueue = true)
+        assertEquals(false, controller.getStatus().started)
+        controller.start()
+        assertEquals(true, controller.getStatus().started)
+    }
+
     @Test
     fun `updateSettings does not emit engine_not_ready when engineType is ANDROID_TTS`() = runBlocking {
         // Android TTS path should never trigger the VOICEVOX-specific diagnostic,
