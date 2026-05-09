@@ -4114,23 +4114,27 @@ void main() {
 
   // -------------------------------------------------------------------------
   // Issue #918 (Issue #741 Problem 6): icon-level observation of the
-  // _initializedEngineType transition. The sibling group above
-  // ('engine type switch (issue #734)') only asserts platform calls
-  // (start/stop/getStatus/lastUpdatedSettings). This group is the
-  // user-visible counterpart: while _initializedEngineType is null the
-  // AppBar must render Icons.hourglass_top, and once initialization
-  // completes the hourglass must give way to a non-hourglass icon
-  // (pause_circle_outline or volume_up). The bg→fg lifecycle path is
+  // engine init / re-init transition (the underlying state is the
+  // private _initializedEngineType field on _CommentScreenState, but
+  // the test asserts only the user-visible icon, not the field). The
+  // sibling group above ('engine type switch (issue #734)') only asserts
+  // platform calls (start/stop/getStatus/lastUpdatedSettings). This
+  // group is the user-visible counterpart: while the engine is being
+  // initialized the AppBar must render Icons.hourglass_top, and once
+  // initialization completes the hourglass must give way to
+  // Icons.volume_up (started, unmuted). The bg→fg lifecycle path is
   // intentionally out of scope (Non-scope of Issue #918).
   // -------------------------------------------------------------------------
-  group('CommentScreen _initializedEngineType icon transition '
+  group('CommentScreen engine init icon transition '
       '(Issue #918 / #741 Problem 6)', () {
     late FakeCommentSpeechPlatform fakePlatform;
 
     // Non-READY status used after the engine switch so the Android-TTS
     // branch in _initializeAndStartSpeech actually awaits
     // checkAndroidTtsAvailability (gated below) instead of short-circuiting
-    // through the "engine already READY" path at line 1857 of comment_screen.dart.
+    // through the "engine already READY" shortcut at the top of
+    // _initializeAndStartSpeech (the path that sets
+    // _initializedEngineType immediately when getStatus reports READY).
     const SpeechRuntimeStatus readyStatus = SpeechRuntimeStatus(
       enabled: true,
       engineState: 'READY',
@@ -4200,16 +4204,20 @@ void main() {
             '(b) hourglass must disappear once _initializedEngineType '
             'matches the current engine',
       );
-      // The post-init icon is either pause_circle_outline (start not yet
-      // observed) or volume_up (started, unmuted). Asserting "one of"
-      // keeps the test focused on the hourglass→non-hourglass transition.
-      final bool postInitIconVisible =
-          find.byIcon(Icons.volume_up).evaluate().isNotEmpty ||
-          find.byIcon(Icons.pause_circle_outline).evaluate().isNotEmpty;
+      // After the two pumps above, _initializeAndStartSpeech has reached
+      // setState({_speechStarted=true}) and engineState=READY. With the
+      // default isMuted=false this lands on Icons.volume_up
+      // (icon priority ladder: ERROR → !initialized → !started → muted →
+      // volume_up). Asserting the exact icon — instead of "one of" —
+      // locks the post-init UX state so a regression that leaves the
+      // engine stuck on Icons.pause_circle_outline (i.e. start() failed
+      // silently) would now fail this test.
       expect(
-        postInitIconVisible,
-        isTrue,
-        reason: '(b) post-init icon must be pause_circle_outline or volume_up',
+        find.byIcon(Icons.volume_up),
+        findsOneWidget,
+        reason:
+            '(b) post-init icon must be Icons.volume_up '
+            '(started, unmuted, ready)',
       );
     });
 
