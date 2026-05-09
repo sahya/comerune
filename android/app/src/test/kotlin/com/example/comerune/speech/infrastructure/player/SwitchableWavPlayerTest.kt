@@ -10,6 +10,7 @@ import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Issue #741 Problem 1: regression tests for the `SwitchableWavPlayer`
@@ -282,7 +283,12 @@ class SwitchableWavPlayerTest {
             // swap is fully applied (old delegate released, new delegate
             // installed) but the new delegate has not yet asserted intent.
             val playJob = async { player.play(ByteArray(0)) }
-            mediaPlayer.playEnteredSignal!!.await()
+            // Bounded wait so a regression cannot hang the suite. The
+            // fake's playProceedGate await is also bounded at 5s.
+            assertTrue(
+                "play() should reach the entered-signal within 5s",
+                mediaPlayer.playEnteredSignal!!.await(5, TimeUnit.SECONDS)
+            )
 
             // Swap is fully applied: old delegate was released, the new
             // delegate is the one running play(). Yet its intent flag is
