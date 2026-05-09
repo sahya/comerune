@@ -159,7 +159,7 @@ class _NgUserListViewState extends State<NgUserListView> {
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
                         Text(
-                          strings.loadFailedTitle,
+                          strings.loadFailedMessage,
                           style: const TextStyle(fontSize: 14),
                         ),
                         const SizedBox(height: 12),
