@@ -288,6 +288,108 @@ void main() {
       expect(store.listBroadcasters(), isEmpty);
     });
 
+    test('mutating template after broadcaster slot is committed must not bleed '
+        'into the slot NG user IDs', () async {
+      await store.saveTemplateNgUserIds(<String>{'tpl-before'});
+      await store.saveNgUserIds('b1', <String>['only-b1']);
+
+      // Slot is now committed for b1. Subsequent template edits must not
+      // leak into the committed slot, since the slot was created from the
+      // template snapshot at write time (Issue #856 / PR #825).
+      await store.saveTemplateNgUserIds(<String>{'tpl-after'});
+
+      expect(
+        await store.loadNgUserIds('b1'),
+        equals(<String>{'only-b1'}),
+        reason:
+            'Committed broadcaster slot must keep its own NG user IDs '
+            'independent of later template edits.',
+      );
+      expect(
+        await store.loadTemplateNgUserIds(),
+        equals(<String>{'tpl-after'}),
+        reason: 'Template itself should still reflect the latest edit.',
+      );
+    });
+
+    test('mutating template after broadcaster slot is committed must not bleed '
+        'into the slot NG word rules', () async {
+      await store.saveTemplateNgWordRules(<NgWordRule>[
+        const NgWordRule(pattern: 'tpl-before'),
+      ]);
+      await store.saveNgWordRules('b1', <NgWordRule>[
+        const NgWordRule(pattern: 'only-b1'),
+      ]);
+
+      await store.saveTemplateNgWordRules(<NgWordRule>[
+        const NgWordRule(pattern: 'tpl-after'),
+      ]);
+
+      expect(
+        (await store.loadNgWordRules(
+          'b1',
+        )).map((NgWordRule rule) => rule.pattern).toList(),
+        <String>['only-b1'],
+        reason:
+            'Committed broadcaster slot must keep its own NG word rules '
+            'independent of later template edits.',
+      );
+      expect(
+        (await store.loadTemplateNgWordRules())
+            .map((NgWordRule rule) => rule.pattern)
+            .toList(),
+        <String>['tpl-after'],
+        reason: 'Template itself should still reflect the latest edit.',
+      );
+    });
+
+    test('cross-axis: saveNgUserIds-committed slot freezes its seeded NG word '
+        'rules against later template edits', () async {
+      // saveNgUserIds is the only operation customizing the slot here, so
+      // the slot's NG word rules come from a template snapshot taken at
+      // commit time (Issue #856 / PR #825). Later template-rule edits
+      // must not retroactively change the slot's rules.
+      await store.saveTemplateNgWordRules(<NgWordRule>[
+        const NgWordRule(pattern: 'seeded-rule'),
+      ]);
+      await store.saveNgUserIds('b1', <String>['only-b1']);
+
+      await store.saveTemplateNgWordRules(<NgWordRule>[
+        const NgWordRule(pattern: 'tpl-after'),
+      ]);
+
+      expect(
+        (await store.loadNgWordRules(
+          'b1',
+        )).map((NgWordRule rule) => rule.pattern).toList(),
+        <String>['seeded-rule'],
+        reason:
+            'Slot committed by saveNgUserIds must retain the NG word '
+            'rules snapshot taken at commit time, independent of later '
+            'template edits.',
+      );
+    });
+
+    test('saveNgUserIds with empty ids on an uninitialized slot with empty '
+        'template does NOT materialize a slot', () async {
+      // Regression guard for the _ensureInitializedInline cleanup
+      // (Issue #855): the old code path seeded the slot from the
+      // empty template and then immediately removed it. The new
+      // code path skips the redundant seed and reaches the same
+      // empty-final-state directly. listBroadcasters must still
+      // return empty so observers do not see a transient slot.
+      await store.saveNgUserIds('b1', const <String>[]);
+
+      expect(store.listBroadcasters(), isEmpty);
+      expect(
+        prefs.getString('settings.filter.broadcaster.b1.initialized'),
+        isNull,
+        reason:
+            'No initialized marker should remain when the effective '
+            'state collapses to empty.',
+      );
+    });
+
     test('malformed stored JSON degrades to empty without throwing', () async {
       // Pollute the slot directly so we exercise the catch branch.
       await prefs.setString(

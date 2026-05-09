@@ -162,11 +162,14 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
   Future<void> saveNgUserIds(String broadcasterId, Iterable<String> ids) async {
     _validateBroadcasterId(broadcasterId);
     await _enqueueWrite(() async {
-      await _ensureInitializedInline(broadcasterId);
+      // Read the effective NG word rules (slot when initialized, template
+      // otherwise) so the write seeds template content into the slot when
+      // the user customizes user IDs first. The slot is committed by
+      // _persistInitializedSlotState below.
       await _persistInitializedSlotState(
         broadcasterId: broadcasterId,
         ids: _normalizeIds(ids),
-        rules: _readNgWordRules(_ngWordRulesKey(broadcasterId)),
+        rules: _readNgWordRules(_effectiveNgWordRulesKey(broadcasterId)),
       );
     });
   }
@@ -178,10 +181,13 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
   ) async {
     _validateBroadcasterId(broadcasterId);
     await _enqueueWrite(() async {
-      await _ensureInitializedInline(broadcasterId);
+      // Read the effective NG user IDs (slot when initialized, template
+      // otherwise) so seeding from template happens consistently when the
+      // user customizes word rules first. The slot is committed by
+      // _persistInitializedSlotState below.
       await _persistInitializedSlotState(
         broadcasterId: broadcasterId,
-        ids: _readNgUserIds(_ngUserIdsKey(broadcasterId)).toList(),
+        ids: _readNgUserIds(_effectiveNgUserIdsKey(broadcasterId)).toList(),
         rules: rules,
       );
     });
@@ -293,30 +299,6 @@ class SharedPreferencesBroadcasterNgStore implements BroadcasterNgStore {
   // ---------------------------------------------------------------------------
   // Internal helpers
   // ---------------------------------------------------------------------------
-
-  /// Seeds a broadcaster slot from the template inside the write chain.
-  ///
-  /// Called only by broadcaster-specific write operations so simply reading a
-  /// connected broadcaster never creates a persistent slot.
-  Future<void> _ensureInitializedInline(String broadcasterId) async {
-    if (_isInitialized(broadcasterId)) {
-      return;
-    }
-    final Set<String> templateIds = _readNgUserIds(_templateNgUserIdsKey);
-    final List<NgWordRule> templateRules = _readNgWordRules(
-      _templateNgWordRulesKey,
-    );
-    await _prefs.setString(
-      _ngUserIdsKey(broadcasterId),
-      json.encode(templateIds.toList()),
-    );
-    await _prefs.setString(
-      _ngWordRulesKey(broadcasterId),
-      json.encode(templateRules.map((NgWordRule r) => r.toMap()).toList()),
-    );
-    await _prefs.setString(_initializedKey(broadcasterId), 'true');
-    await _addToIndex(broadcasterId);
-  }
 
   Future<void> _persistInitializedSlotState({
     required String broadcasterId,
