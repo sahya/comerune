@@ -4190,11 +4190,14 @@ void main() {
             '_initializedEngineType is null',
       );
 
-      // (b) Drain the init microtasks. After getStatus() returns READY,
-      // _initializedEngineType is set to voicevox and start() resolves,
-      // setState({_speechStarted=true}) rebuilds, hourglass disappears.
-      // pump(Duration.zero) is enough — the fake awaits no real timers,
-      // so we deliberately avoid pumpAndSettle (AGENTS.md L121-122).
+      // (b) Drain the init microtasks. The success path awaits three
+      // futures (getStatus → updateSettings → start) before the
+      // setState({_speechStarted=true}) rebuild. A single pump() flushes
+      // all pending microtasks AND renders one frame, so one pump is
+      // sufficient in practice; the second pump is defensive in case a
+      // future refactor inserts an extra await between start() and the
+      // rebuild. pumpAndSettle is intentionally avoided (AGENTS.md
+      // L121-122) — the fake schedules no real timers.
       await tester.pump();
       await tester.pump();
       expect(
@@ -4236,10 +4239,11 @@ void main() {
             ),
           ),
         );
-        // Two pumps drain the init microtasks (getStatus → start →
-        // setState). pumpAndSettle is intentionally avoided because the
-        // fake exposes no pending timers and pumpAndSettle would only
-        // mask flaky waits (AGENTS.md L121-122).
+        // Drain the init microtasks (getStatus → updateSettings →
+        // start → setState). One pump() flushes all pending microtasks;
+        // the second pump is defensive against a future extra await.
+        // pumpAndSettle is intentionally avoided because the fake
+        // schedules no real timers (AGENTS.md L121-122).
         await tester.pump();
         await tester.pump();
         expect(find.byIcon(Icons.hourglass_top), findsNothing);
@@ -4256,6 +4260,15 @@ void main() {
         // _initializeAndStartSpeech which parks on the gated availability
         // check. The setState from _stopSpeech triggers the rebuild we
         // need to observe the hourglass.
+        //
+        // Refactor-resilience note: this scenario assumes the
+        // tear-down-then-init order ("stop the old engine BEFORE the new
+        // one's init parks"). That order is the intended UX contract —
+        // it prevents the previous engine from continuing to speak while
+        // the new engine is warming up. A refactor that reverses the
+        // order ("init the new engine first, then stop the old one")
+        // would silently change the user-visible icon transition and
+        // legitimately break this test, prompting a UX re-evaluation.
         final _SpeechTestHostState host = tester.state(
           find.byType(_SpeechTestHost),
         );
