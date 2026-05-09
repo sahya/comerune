@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:comerune/data/filter/broadcaster_ng_store.dart';
 import 'package:comerune/domain/models/ng_word_rule.dart';
 import 'package:comerune/presentation/screens/ng_user_list_view.dart';
+import 'package:comerune/presentation/strings/app_strings.dart';
 
 import '../../helpers/fake_broadcaster_ng_store.dart';
 
@@ -33,7 +34,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('ng-user-list-empty')), findsOneWidget);
-      expect(find.text('NGユーザーIDは登録されていません'), findsOneWidget);
+      // Iter 3 fix: assert via AppStrings to pin "screen → AppStrings"
+      // wiring (the literal would still pass on byte-equality alone).
+      expect(find.text(AppStrings.ngUserList.emptyMessage), findsOneWidget);
     });
 
     testWidgets('shows local-only settings notice after load', (
@@ -92,7 +95,10 @@ void main() {
       await tester.tap(find.byKey(const Key('ng-user-remove-0')));
       await tester.pumpAndSettle();
 
-      expect(find.text('NG解除'), findsOneWidget);
+      expect(
+        find.text(AppStrings.ngUserList.unregisterDialogTitle),
+        findsOneWidget,
+      );
 
       await tester.tap(find.byKey(const Key('ng-remove-confirm-button')));
       await tester.pumpAndSettle();
@@ -170,7 +176,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('ng-user-list-error')), findsOneWidget);
-      expect(find.text('NG リストの読込みに失敗しました'), findsOneWidget);
+      expect(
+        find.text(AppStrings.ngUserList.loadFailedMessage),
+        findsOneWidget,
+      );
       expect(find.byKey(const Key('ng-user-list-retry')), findsOneWidget);
 
       // Retry succeeds when the throw flag is cleared.

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:comerune/presentation/screens/broadcaster_ng_edit_screen.dart';
 import 'package:comerune/presentation/screens/ng_user_list_view.dart';
 import 'package:comerune/presentation/screens/ng_word_list_view.dart';
+import 'package:comerune/presentation/strings/app_strings.dart';
 
 import '../../helpers/fake_broadcaster_ng_store.dart';
 
@@ -38,8 +39,16 @@ void main() {
         find.byKey(const Key('broadcaster-ng-edit-words-tab')),
         findsOneWidget,
       );
-      expect(find.text('NGユーザー'), findsOneWidget);
-      expect(find.text('NGワード'), findsOneWidget);
+      // Iter 3 fix: assert via AppStrings to pin "screen → AppStrings"
+      // wiring (the literal would still pass on byte-equality alone).
+      expect(
+        find.text(AppStrings.broadcasterNgEdit.usersTabLabel),
+        findsOneWidget,
+      );
+      expect(
+        find.text(AppStrings.broadcasterNgEdit.wordsTabLabel),
+        findsOneWidget,
+      );
       expect(find.byIcon(Icons.person_off), findsWidgets);
       expect(find.byIcon(Icons.block), findsOneWidget);
     });
@@ -61,7 +70,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('NG設定 - caster-1'), findsOneWidget);
+      // Iter 5 fix: assert via AppStrings to keep wiring uniform with the
+      // tab-label / banner expectations. The AppBar getter currently lives
+      // in SettingsStrings (Phase 1 residue, see SettingsStrings doc) and
+      // will move to BroadcasterNgEditStrings.screenTitle in Phase 3.
+      expect(
+        find.text(AppStrings.settings.ngEditScreenTitle('caster-1')),
+        findsOneWidget,
+      );
     });
 
     testWidgets(
@@ -108,7 +124,10 @@ void main() {
         find.byKey(const Key('broadcaster-ng-edit-template-banner')),
         findsOneWidget,
       );
-      expect(find.text('テンプレート: 新規放送者の初期値として使われます'), findsOneWidget);
+      expect(
+        find.text(AppStrings.broadcasterNgEdit.templateBanner),
+        findsOneWidget,
+      );
     });
 
     testWidgets('initial tab is NGユーザー (NgUserListView visible)', (
@@ -176,7 +195,12 @@ void main() {
       await tester.pumpAndSettle();
 
       // Truncated to 20 chars + ellipsis.
-      expect(find.text('NG設定 - this-is-a-very-long-…'), findsOneWidget);
+      expect(
+        find.text(
+          AppStrings.settings.ngEditScreenTitle('this-is-a-very-long-…'),
+        ),
+        findsOneWidget,
+      );
     });
   });
 }
