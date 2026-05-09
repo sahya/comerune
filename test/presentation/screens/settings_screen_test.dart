@@ -23,6 +23,7 @@ import '../../helpers/fake_share_platform.dart';
 import '../../helpers/in_memory_shared_preferences.dart';
 import '../../helpers/in_memory_user_session_store.dart';
 import '../../helpers/settings_test_helpers.dart';
+import '../../helpers/throwing_settings_store.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -548,8 +549,9 @@ void main() {
         // `settings`/`settingsError` ともに null のままで CircularProgress
         // Indicator が消えず、ユーザーには「設定一覧が出てない」ように
         // 見えていた。修正後はエラー UI と再試行ボタンが表示されること。
-        final _LegacyParseFailureSettingsStore store =
-            _LegacyParseFailureSettingsStore();
+        final ThrowingSettingsStore store = ThrowingSettingsStore(
+          errorToThrow: StateError('simulated legacy parse failure'),
+        );
 
         await tester.pumpWidget(_buildScreen(store));
         await tester.pumpAndSettle();
@@ -931,64 +933,6 @@ void main() {
       ]);
     });
   });
-}
-
-/// SettingsStore whose [load] always throws a configurable [Object]
-/// (defaults to `StateError`) — used to reproduce the
-/// "更新インストールで設定一覧が表示されない" 報告。`SettingsStore.load()`
-/// が `Error` 系（旧バージョン由来の壊れた永続化値のパースで発生し得る）を
-/// 投げると、SettingsScreenMixin が `Exception` だけを捕捉していた頃は
-/// `settings`/`settingsError` ともに null のままになり、画面が
-/// CircularProgressIndicator で固まっていた。
-///
-// TODO: extract to test/helpers/throwing_settings_store.dart so that
-// this stub and `_ThrowingSettingsStore` in
-// test/presentation/mixins/settings_screen_mixin_test.dart can share one
-// implementation.
-class _LegacyParseFailureSettingsStore implements SettingsStore {
-  _LegacyParseFailureSettingsStore({Object? errorToThrow})
-    : _errorToThrow =
-          errorToThrow ?? StateError('simulated legacy parse failure');
-
-  final Object _errorToThrow;
-
-  final SharedPreferencesSettingsStore _delegate =
-      SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-
-  @override
-  Future<AppSettings> load() async {
-    // ignore: only_throw_errors, test stub intentionally throws Object
-    // subclasses (Exception or Error) for parameterized failure cases.
-    throw _errorToThrow;
-  }
-
-  @override
-  Future<void> save(AppSettings settings) => _delegate.save(settings);
-
-  @override
-  double? loadPreMuteVolume() => _delegate.loadPreMuteVolume();
-
-  @override
-  Future<void> savePreMuteVolume(double? volume) =>
-      _delegate.savePreMuteVolume(volume);
-
-  @override
-  double? loadPreMuteAndroidTtsVolume() =>
-      _delegate.loadPreMuteAndroidTtsVolume();
-
-  @override
-  Future<void> savePreMuteAndroidTtsVolume(double? volume) =>
-      _delegate.savePreMuteAndroidTtsVolume(volume);
-
-  @override
-  Future<String> exportAsJson() => _delegate.exportAsJson();
-
-  @override
-  Future<String> writeExportToTempFile() => _delegate.writeExportToTempFile();
-
-  @override
-  Future<AppSettings> importFromJson(String jsonString) =>
-      _delegate.importFromJson(jsonString);
 }
 
 /// In-memory stub SettingsStore that avoids real filesystem I/O.
