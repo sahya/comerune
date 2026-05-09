@@ -203,4 +203,61 @@ class SwitchableWavPlayerTest {
                 player.currentPlayerType()
             )
         }
+
+    // ---------------------------------------------------------------------
+    // Issue #917: post-release contract
+    //
+    // These tests pin the *external* contract only — "release() then play()
+    // resolves to a failure Result". They intentionally do NOT assert which
+    // layer (delegate or SwitchableWavPlayer itself) produced the failure,
+    // nor the exception type. A future refactor that adds an early-out
+    // released-guard inside SwitchableWavPlayer must keep these tests
+    // passing without modification.
+    //
+    // FakeWavPlayer mirrors the production released-guard contract (see
+    // FakeWavPlayer.play), so these tests observe realistic delegate
+    // behaviour without dragging in Robolectric or a real Android Context.
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `release then play returns failure`() = runBlocking {
+        val audioTrack = FakeWavPlayer(tag = "audio")
+        val mediaPlayer = FakeWavPlayer(tag = "media")
+        val player = newSwitchable(audioTrack, mediaPlayer)
+
+        player.release()
+        val result = player.play(ByteArray(0))
+
+        // Contract: play() after release() resolves to failure. The
+        // failure path (delegate-side guard vs. a hypothetical future
+        // SwitchableWavPlayer self-guard) is intentionally NOT asserted.
+        assertTrue(
+            "play() after release() must return Result.failure (got: $result)",
+            result.isFailure
+        )
+        // No play actually completed — neither delegate produced audio.
+        assertEquals(0, audioTrack.successfulPlayCount.get())
+        assertEquals(0, mediaPlayer.successfulPlayCount.get())
+    }
+
+    @Test
+    fun `release then switchPlayerType does not throw`() = runBlocking {
+        val audioTrack = FakeWavPlayer(tag = "audio")
+        val mediaPlayer = FakeWavPlayer(tag = "media")
+        val player = newSwitchable(audioTrack, mediaPlayer)
+
+        player.release()
+
+        // Contract: switchPlayerType() after release() must not throw.
+        // It only mutates pendingType; any subsequent play() is itself
+        // guarded to return failure. We deliberately do NOT assert the
+        // post-call value of currentPlayerType()/pendingType — those are
+        // implementation details that may change if a self-guard is added
+        // later in SwitchableWavPlayer.
+        player.switchPlayerType(SwitchableWavPlayer.TYPE_MEDIA_PLAYER)
+
+        // No second release on the delegate from switchPlayerType alone.
+        assertEquals(1, audioTrack.releaseCount.get())
+        assertEquals(0, mediaPlayer.releaseCount.get())
+    }
 }

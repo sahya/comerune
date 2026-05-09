@@ -22,17 +22,41 @@ class FakeWavPlayer(
 
     @Volatile
     private var state: PlayerState = PlayerState.IDLE
+
+    @Volatile
+    private var released: Boolean = false
     val playCount = AtomicInteger(0)
     val stopCount = AtomicInteger(0)
     val releaseCount = AtomicInteger(0)
 
+    /**
+     * Number of [play] calls that completed successfully (i.e. were NOT
+     * short-circuited by the released-guard). Useful for the Issue #917
+     * post-release contract test — `playCount` increments before the
+     * guard fires so it cannot distinguish "tried to play" from
+     * "actually played".
+     */
+    val successfulPlayCount = AtomicInteger(0)
+
     override suspend fun play(wavBytes: ByteArray): Result<Unit> {
         playCount.incrementAndGet()
+        // Mirror MediaPlayerWavPlayer L78-82 / AudioTrackWavPlayer L200-204:
+        // once release() has run, every subsequent play() must resolve to
+        // a failure Result. Locking this into the fake means the
+        // SwitchableWavPlayer post-release contract test (Issue #917)
+        // observes realistic delegate behaviour without dragging in
+        // Robolectric / a real Android Context.
+        if (released) {
+            return Result.failure(
+                IllegalStateException("Player has been released")
+            )
+        }
         state = PlayerState.PLAYING
         // Hold PLAYING for the full delay so other coroutines can observe
         // the in-flight state via [isPlaying]/[currentState].
         if (playDelayMs > 0) delay(playDelayMs)
         state = PlayerState.IDLE
+        successfulPlayCount.incrementAndGet()
         return Result.success(Unit)
     }
 
@@ -48,6 +72,10 @@ class FakeWavPlayer(
 
     override fun release() {
         releaseCount.incrementAndGet()
+        // Idempotent at the flag level: matches MediaPlayerWavPlayer L222 /
+        // AudioTrackWavPlayer L401, where calling release() repeatedly
+        // simply re-sets `released = true` and re-runs cleanup.
+        released = true
         state = PlayerState.IDLE
     }
 
