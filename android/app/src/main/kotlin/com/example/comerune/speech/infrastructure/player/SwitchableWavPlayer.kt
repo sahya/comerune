@@ -139,12 +139,28 @@ class SwitchableWavPlayer internal constructor(
      * subsequent [play] call MUST resolve to a [Result.failure] — it must
      * NOT throw, and it must NOT silently succeed. The current
      * implementation routes the failed `play()` straight to the released
-     * delegate, which then returns a failure from its own released-guard;
-     * a future change may add an early-out guard here in
-     * [SwitchableWavPlayer]. Either path is contract-compliant. Tests
-     * assert the failure status only and intentionally do not pin the
-     * exception type or the guard's location, so the implementation can
-     * evolve without rewriting the contract test.
+     * delegate, which then returns a failure from its own released-guard
+     * (search "Player has been released" in [MediaPlayerWavPlayer] /
+     * [AudioTrackWavPlayer]). A future change may add an early-out guard
+     * here in [SwitchableWavPlayer]. Either path is contract-compliant.
+     * Tests assert the failure status only and intentionally do not pin
+     * the exception type or the guard's location, so the implementation
+     * can evolve without rewriting the contract test.
+     *
+     * Note on AC2 of Issue #917: the issue body's AC2 example asserts the
+     * concrete `IllegalStateException` failure type for the delegate
+     * players. That assertion is verified at the production source level
+     * (see the `Result.failure(IllegalStateException(...))` in each
+     * delegate's `play()`) and is exercised through the
+     * [SwitchableWavPlayer] external contract above. A direct runtime
+     * assertion against the delegate would require Robolectric — without
+     * it, the SDK-level guard `Build.VERSION.SDK_INT < O` short-circuits
+     * with [UnsupportedOperationException] before the released-guard is
+     * reachable on a pure-JVM unit test. Adding Robolectric for this
+     * single assertion is out of scope; the implementation lock is
+     * provided by the external [SwitchableWavPlayer] contract test plus
+     * the [MediaPlayerWavPlayer] / [AudioTrackWavPlayer] release
+     * idempotency tests.
      *
      * Calling [release] more than once is safe (idempotent at the
      * delegate level — see [MediaPlayerWavPlayer.release] /
