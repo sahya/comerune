@@ -81,10 +81,16 @@
 ///
 /// ### 規約の適用範囲
 /// 本セクションは Issue #836 (Phase 2) で確立。**新規追加分にのみ適用**し、
-/// それ以前の Phase 1 由来 namespace（例: `BroadcasterNgListStrings.emptyTitle`
-/// が完全文で `Title` サフィックスのまま等）の retrofit は別 Issue 扱い
+/// それ以前の Phase 1 由来 namespace の retrofit は別 Issue 扱い
 /// （feature PR に retrofit を混ぜない CLAUDE.md 原則）。Phase 3 以降の
 /// 追加では本規約に従う。
+///
+/// **規約と整合しない既存例**（retrofit 候補。本 PR では触らない）:
+/// - `BroadcasterNgListStrings.emptyTitle = 'まだ放送者ごとの NG 設定は…'`
+///   は完全文だが `Title` サフィックスのまま。新規追加なら `emptyMessage`
+///   ／ `emptyDescription` を選ぶこと。
+/// - `SettingsStrings.themeDescription` / `dataManagementDescription`
+///   は本規約の `xxxDescription`（複数行説明）に該当する命名で問題なし。
 ///
 /// ### 同一 namespace 内重複の扱い
 /// 同一 namespace 内に同一文言が異なる getter として存在する（例:
@@ -97,6 +103,11 @@
 /// られる前提で:
 /// - **メソッド引数名は ARB プレースホルダ名と同一**になる扱い。
 ///   引数名のリネームは breaking change として扱う。
+/// - **言語仕様上の留意**: 現状の引数は positional のため、Dart の
+///   呼び出し側からは引数名が観測されず、引数名リネームは「呼び出し側
+///   書き換え不要・ARB 化スクリプトが手動で結びつける必要あり」という
+///   緩い契約として運用する。Phase 3 で named 引数化を検討する余地は
+///   ある（ARB プレースホルダとの自動マッピング容易性とのトレードオフ）。
 /// - **複数形が必要な文言**（例: 「N 件削除しました」）が出てきたら、
 ///   `int count` を引数として加え、`{count, plural, ...}` の ARB 形式に
 ///   素直に対応できるシグネチャを保つ。
@@ -201,6 +212,16 @@ final class SettingsStrings {
   /// `comment_screen` 等の他画面と一括して命名・移管方針を確定させた方が
   /// 移管時の grep 範囲・widget テスト更新範囲を 1 PR で管理できる。
   /// 単独で先行移管すると Phase 3 着手時に再度 doc 整合の議論が発生する。
+  ///
+  /// **Phase 3 移管手順**（着手時のチェックリスト）:
+  /// 1. `BroadcasterNgEditStrings` に `screenTitle(String scopeLabel)` を追加
+  /// 2. `grep -rn 'AppStrings.settings.ngEditScreenTitle' lib/ test/` で参照箇所を洗い出し
+  /// 3. 呼び出し側を `AppStrings.broadcasterNgEdit.screenTitle(...)` に置換
+  /// 4. `app_strings_test.dart` の byte-equality テストも新 getter 側に追加
+  /// 5. 既存 widget テスト (`broadcaster_ng_edit_screen_test.dart` の
+  ///    `find.text('NG設定 - ...')`) は AppStrings 経由表現に統一
+  /// 6. 本 getter (`SettingsStrings.ngEditScreenTitle`) は Phase 3 完了後の
+  ///    cleanup PR で削除
   String ngEditScreenTitle(String scopeLabel) => 'NG設定 - $scopeLabel';
 
   // セクション: データ管理
