@@ -97,7 +97,7 @@
 /// `addButton == addDialogTitle == 'NGワード追加'`）のは i18n 化時に役割
 /// ごとに別訳になり得るため。複数 namespace 重複と同じ理由で意図的に
 /// 分離保持する。
-
+///
 /// ## ARB 移行を見据えた引数規約
 /// 引数を含む文字列メソッドは将来 `flutter_localizations` + ARB に置き換え
 /// られる前提で:

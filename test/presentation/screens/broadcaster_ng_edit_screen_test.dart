@@ -70,7 +70,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('NG設定 - caster-1'), findsOneWidget);
+      // Iter 5 fix: assert via AppStrings to keep wiring uniform with the
+      // tab-label / banner expectations. The AppBar getter currently lives
+      // in SettingsStrings (Phase 1 residue, see SettingsStrings doc) and
+      // will move to BroadcasterNgEditStrings.screenTitle in Phase 3.
+      expect(
+        find.text(AppStrings.settings.ngEditScreenTitle('caster-1')),
+        findsOneWidget,
+      );
     });
 
     testWidgets(
@@ -188,7 +195,12 @@ void main() {
       await tester.pumpAndSettle();
 
       // Truncated to 20 chars + ellipsis.
-      expect(find.text('NG設定 - this-is-a-very-long-…'), findsOneWidget);
+      expect(
+        find.text(
+          AppStrings.settings.ngEditScreenTitle('this-is-a-very-long-…'),
+        ),
+        findsOneWidget,
+      );
     });
   });
 }
