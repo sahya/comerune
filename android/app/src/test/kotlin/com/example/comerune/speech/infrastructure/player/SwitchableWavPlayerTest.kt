@@ -9,6 +9,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
 
 /**
  * Issue #741 Problem 1: regression tests for the `SwitchableWavPlayer`
@@ -255,11 +256,20 @@ class SwitchableWavPlayerTest {
     // and creates a new one, the new delegate has not received play()
     // yet, so shouldBePlaying() is false. The old delegate's intent
     // value must NOT be carried across the swap.
+    //
+    // This case observes the post-swap pre-intent-flip window directly:
+    // the new delegate's [play] is suspended on a latch BEFORE it would
+    // set shouldBePlayingFlag = true, so a probe at that moment exercises
+    // the contract "old delegate's intent value is not carried over and
+    // the new delegate has not asserted its own intent yet".
     @Test
-    fun `shouldBePlaying is false right after swap completes and before next play`() =
+    fun `shouldBePlaying is false in the post-swap pre-intent window`() =
         runBlocking {
             val audioTrack = FakeWavPlayer(tag = "audio")
-            val mediaPlayer = FakeWavPlayer(tag = "media")
+            val mediaPlayer = FakeWavPlayer(tag = "media").apply {
+                playEntryLatch = CountDownLatch(1)
+                playEnteredLatch = CountDownLatch(1)
+            }
             val player = newSwitchable(audioTrack, mediaPlayer)
 
             // Mark intent on the old delegate so we can prove it does
@@ -267,16 +277,46 @@ class SwitchableWavPlayerTest {
             audioTrack.setShouldBePlayingForTest(true)
             player.switchPlayerType(SwitchableWavPlayer.TYPE_MEDIA_PLAYER)
 
-            // Drive applyPendingSwitch() via a play() that immediately
-            // completes (FakeWavPlayer with playDelayMs=0). The fake's
-            // play() leaves intent=false at the end, so this also covers
-            // "after first play completes".
+            // Drive applyPendingSwitch() via play(). The fake's play()
+            // suspends on the entry latch BEFORE flipping intent, so the
+            // swap is fully applied (old delegate released, new delegate
+            // installed) but the new delegate has not yet asserted intent.
+            val playJob = async { player.play(ByteArray(0)) }
+            mediaPlayer.playEnteredLatch!!.await()
+
+            // Swap is fully applied: old delegate was released, the new
+            // delegate is the one running play(). Yet its intent flag is
+            // still false (the latch holds the assignment back).
+            assertEquals(1, audioTrack.releaseCount.get())
+            assertEquals(1, mediaPlayer.playCount.get())
+            assertEquals(false, mediaPlayer.shouldBePlaying())
+            assertEquals(false, player.shouldBePlaying())
+
+            // Let play() proceed and run to completion so the test
+            // teardown leaves the player in a deterministic state.
+            mediaPlayer.playEntryLatch!!.countDown()
+            playJob.await()
+        }
+
+    // Companion to AC5 (b): once play() has completed naturally, the new
+    // delegate has cleared its own intent flag, so the Switchable view
+    // also reports false. This used to be folded into the AC5(b) case;
+    // splitting it keeps each assertion's failure mode unambiguous.
+    @Test
+    fun `shouldBePlaying is false after first play on new delegate completes`() =
+        runBlocking {
+            val audioTrack = FakeWavPlayer(tag = "audio")
+            val mediaPlayer = FakeWavPlayer(tag = "media")
+            val player = newSwitchable(audioTrack, mediaPlayer)
+
+            audioTrack.setShouldBePlayingForTest(true)
+            player.switchPlayerType(SwitchableWavPlayer.TYPE_MEDIA_PLAYER)
+
             player.play(ByteArray(0))
             assertEquals(1, audioTrack.releaseCount.get())
             assertEquals(1, mediaPlayer.playCount.get())
 
-            // New delegate has finished its (no-op) play() and cleared
-            // its intent. The Switchable view must agree.
+            // New delegate finished its (no-op) play() and cleared intent.
             assertEquals(false, player.shouldBePlaying())
         }
 
