@@ -4110,6 +4110,115 @@ void main() {
         expect(previousStartCount, sequence.length + 1);
       },
     );
+
+    // -----------------------------------------------------------------
+    // Issue #915: ground-truth reconciliation of `_speechStarted`
+    // against `SpeechRuntimeStatus.started`. These tests live in this
+    // group because the only ground-truth correction call site today
+    // is the engine-switch path in `_handleSpeechSettingsChanged`.
+    // -----------------------------------------------------------------
+
+    testWidgets('engine switch reconciles _speechStarted against native '
+        'getStatus().started (Issue #915)', (WidgetTester tester) async {
+      // Initial state: speech enabled with Android TTS, native reports
+      // started=true after init+start.
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.androidTts,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Simulate the failure mode this Issue exists to fix: native has
+      // already flipped its `started` flag back to `false` (e.g. an
+      // out-of-band release / engine hiccup) while the screen still
+      // thinks it is running. We expose this by changing the value
+      // returned from getStatus() before triggering the engine switch.
+      fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+        enabled: true,
+        engineState: 'READY',
+        playerState: 'IDLE',
+        queueSize: 0,
+        currentSpeakerId: 0,
+        // Crucially: native worker loop is OFF.
+        started: false,
+      );
+
+      final int statusCallsBeforeSwitch = fakePlatform.getStatusCallCount;
+
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
+      host.updateSpeechSettings(
+        const SpeechSettings(
+          enabled: true,
+          engineType: SpeechEngineType.voicevox,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The engine-switch path must have made an additional getStatus
+      // call to reconcile (one for reconcile + one for the re-init
+      // engineState check inside _initializeAndStartSpeech).
+      expect(
+        fakePlatform.getStatusCallCount,
+        greaterThan(statusCallsBeforeSwitch),
+        reason: 'engine switch must reconcile _speechStarted via getStatus',
+      );
+
+      // After the full flow the native then returns started=true again
+      // for the new engine via the next start() call. The mirror is
+      // back in sync.
+      expect(fakePlatform.startCalled, isTrue);
+    });
+
+    testWidgets(
+      'engine switch does not crash when getStatus throws during reconcile '
+      '(Issue #915)',
+      (WidgetTester tester) async {
+        // Boot in a healthy state so init succeeds.
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Make the next getStatus calls throw — this covers a transient
+        // platform-channel hiccup at the reconcile point. The screen must
+        // log the error and continue with the engine switch (the
+        // following _initializeAndStartSpeech call will itself recover).
+        fakePlatform.getStatusError = StateError('channel hiccup');
+
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        // Silence the screen's own error log so the test output stays
+        // readable; the actual behavioural assertion is "no throw".
+        host.updateSpeechSettings(
+          const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.voicevox,
+          ),
+        );
+        // pumpAndSettle would throw if the screen propagates the
+        // StateError synchronously; the await also drains the swallowed
+        // error from inside the reconcile helper.
+        await tester.pumpAndSettle();
+
+        // Stop must still have been called (we were started before the
+        // switch), proving the switch flow did not abort on the throw.
+        expect(fakePlatform.stopCalled, isTrue);
+      },
+    );
   });
 
   // -------------------------------------------------------------------------

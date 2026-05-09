@@ -246,6 +246,7 @@ void main() {
         'currentCommentId': 'c1',
         'currentText': 'hello',
         'currentSpeakerId': 2,
+        'started': true,
       });
       expect(status.enabled, true);
       expect(status.engineState, 'READY');
@@ -254,6 +255,7 @@ void main() {
       expect(status.currentCommentId, 'c1');
       expect(status.currentText, 'hello');
       expect(status.currentSpeakerId, 2);
+      expect(status.started, true);
     });
 
     test('fromMap uses defaults for missing fields', () {
@@ -265,6 +267,71 @@ void main() {
       expect(status.currentCommentId, isNull);
       expect(status.currentText, isNull);
       expect(status.currentSpeakerId, 0);
+      expect(status.started, false);
+    });
+
+    test('fromMap defaults started to false when key is missing '
+        '(Issue #915 backward compat with older native binaries)', () {
+      // Older native binaries that have not been rebuilt with the
+      // Issue #915 patch will not include `started` in their toMap
+      // output. The Dart side must default to `false` (the safe
+      // mirror initial value) instead of throwing or carrying the
+      // last seen value.
+      final status = SpeechRuntimeStatus.fromMap({
+        'enabled': true,
+        'engineState': 'READY',
+        'playerState': 'IDLE',
+        'queueSize': 0,
+        'currentSpeakerId': 0,
+      });
+      expect(status.started, false);
+    });
+
+    test('fromMap reads started=false explicitly', () {
+      final status = SpeechRuntimeStatus.fromMap({
+        'enabled': true,
+        'engineState': 'READY',
+        'playerState': 'IDLE',
+        'queueSize': 0,
+        'currentSpeakerId': 0,
+        'started': false,
+      });
+      expect(status.started, false);
+    });
+
+    test('equality and hashCode include started (Issue #915)', () {
+      const a = SpeechRuntimeStatus(
+        enabled: true,
+        engineState: 'READY',
+        playerState: 'IDLE',
+        queueSize: 0,
+        currentSpeakerId: 0,
+        started: true,
+      );
+      const b = SpeechRuntimeStatus(
+        enabled: true,
+        engineState: 'READY',
+        playerState: 'IDLE',
+        queueSize: 0,
+        currentSpeakerId: 0,
+        started: false,
+      );
+      expect(a, isNot(equals(b)));
+      // Hash differs is not contractually required, but it would be a
+      // bug if SpeechRuntimeStatus dropped `started` from its hash —
+      // that is exactly the kind of mistake this assertion catches.
+      expect(a.hashCode, isNot(equals(b.hashCode)));
+    });
+
+    test('default constructor leaves started=false', () {
+      const status = SpeechRuntimeStatus(
+        enabled: false,
+        engineState: 'UNKNOWN',
+        playerState: 'UNKNOWN',
+        queueSize: 0,
+        currentSpeakerId: 0,
+      );
+      expect(status.started, false);
     });
   });
 

@@ -76,6 +76,27 @@ class SpeechControllerImpl(
     @Volatile
     private var activePrefetchJob: Deferred<Result<WavSynthesisResult>?>? = null
 
+    /**
+     * Gate that controls whether the queue worker loop keeps polling.
+     *
+     * - Set to `true` by [start] and back to `false` by [stop] / [release].
+     * - Read by [submitComment] to decide whether to (re)start the worker
+     *   when a new item arrives, and by `processQueue` as the primary
+     *   loop condition.
+     *
+     * Semantically this is **worker-loop intent**: the user / caller has
+     * asked for the queue to be drained. It is independent of engine
+     * state ([TtsEngineState]) and of the TTS speaker lifecycle — for
+     * example `started` can stay `true` while the engine is
+     * `INITIALIZING` or while the audio player is briefly `PAUSED`.
+     *
+     * This field is the **ground truth** for the Flutter-side
+     * `_speechStarted` mirror flag and is exposed via
+     * [getStatus] -> [SpeechRuntimeStatus.started] so the Flutter layer
+     * can reconcile after process recreation, engine switch, or any
+     * lifecycle event that may have raced with its local mirror
+     * (Issue #915).
+     */
     @Volatile
     private var started = false
 
@@ -292,7 +313,13 @@ class SpeechControllerImpl(
             queueSize = queueManager.size(),
             currentCommentId = currentCommentId,
             currentText = currentText,
-            currentSpeakerId = settings.speakerId
+            currentSpeakerId = settings.speakerId,
+            // Issue #915: expose the worker-loop intent so the Flutter
+            // side can reconcile its `_speechStarted` mirror after engine
+            // switch or any lifecycle event that may have raced with it.
+            // This is the **ground truth** for that mirror — see the Kdoc
+            // on [started] for why this is independent of engine state.
+            started = started
         )
     }
 
