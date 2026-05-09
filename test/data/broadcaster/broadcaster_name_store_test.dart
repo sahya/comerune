@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:comerune/application/settings/settings_store.dart';
 import 'package:comerune/data/broadcaster/broadcaster_name_store.dart';
 
 import '../../helpers/in_memory_shared_preferences.dart';
@@ -374,6 +375,53 @@ void main() {
               'A future-dated lastUsedAt must be reset to ~now so the '
               'throttle window can elapse on subsequent reads',
         );
+        // Stronger pin: lastUsedAt should be roughly the test's `now`,
+        // not "any value lower than the future seed". Catches a
+        // regression where the throttle is reset but the lastUsedAt
+        // accidentally rolls back to an even older value.
+        expect(
+          entry['lastUsedAt'] as int,
+          greaterThanOrEqualTo(now),
+          reason:
+              'Reset lastUsedAt should land at-or-after the test start '
+              'time, not an arbitrary historical value',
+        );
+      });
+    });
+
+    // Issue #833: write-failure path through the lazy-touch / chain
+    // catchError sites. Pins the regression net for the explicit
+    // `developer.log` rule (AGENTS.md "no silent catch") so that a
+    // future refactor that re-introduces empty catchError is detected
+    // by widget-style behaviour rather than only by code review.
+    //
+    // Note: callers of [setName] / [cleanup] do see write errors via
+    // the returned Future (so they can decide policy at the call site).
+    // The internal `_pendingWriteChain.catchError` is what guarantees
+    // *subsequent* writes still drain even after one fails — that is
+    // the behaviour exercised here.
+    group('persistence-failure swallow-with-log path', () {
+      test('write chain stays alive after a setString failure', () async {
+        final _ThrowingSharedPreferences prefs = _ThrowingSharedPreferences();
+        final SharedPreferencesBroadcasterNameStore store =
+            SharedPreferencesBroadcasterNameStore(prefs: prefs);
+
+        // The first write surfaces the error to the caller, but the
+        // private `_pendingWriteChain` is rebuilt with `.catchError(...)`
+        // so subsequent enqueues still execute (rather than the chain
+        // staying permanently rejected).
+        await expectLater(store.setName('id-1', 'Alice'), throwsException);
+
+        // The second write should still be scheduled — i.e. the inner
+        // operation runs and surfaces its own (independent) failure
+        // rather than inheriting the previous future's rejection.
+        await expectLater(store.setName('id-2', 'Bob'), throwsException);
+
+        // Without the chain catchError, the second `_pendingWriteChain.then`
+        // would inherit the prior rejection and resolve with that *same*
+        // error before this operation ever ran. The fact that we observe
+        // a fresh exception per call is the regression net for the
+        // explicit `developer.log` catchError.
       });
     });
 
@@ -490,4 +538,52 @@ void main() {
       });
     });
   });
+}
+
+/// A SharedPreferencesLike whose [setString] / [remove] always throw, used
+/// to exercise the `developer.log`-based catchError paths in
+/// `SharedPreferencesBroadcasterNameStore`. Reads still work (off the
+/// [seedMap] map) so cleanup / loadName can reach the write path that
+/// must fail.
+class _ThrowingSharedPreferences implements SharedPreferencesLike {
+  final Map<String, Object> seedMap = <String, Object>{};
+
+  @override
+  bool? getBool(String key) => seedMap[key] as bool?;
+  @override
+  double? getDouble(String key) => seedMap[key] as double?;
+  @override
+  int? getInt(String key) => seedMap[key] as int?;
+  @override
+  String? getString(String key) => seedMap[key] as String?;
+
+  @override
+  Future<bool> setBool(String key, bool value) async {
+    throw _SimulatedDiskFull();
+  }
+
+  @override
+  Future<bool> setDouble(String key, double value) async {
+    throw _SimulatedDiskFull();
+  }
+
+  @override
+  Future<bool> setInt(String key, int value) async {
+    throw _SimulatedDiskFull();
+  }
+
+  @override
+  Future<bool> setString(String key, String value) async {
+    throw _SimulatedDiskFull();
+  }
+
+  @override
+  Future<bool> remove(String key) async {
+    throw _SimulatedDiskFull();
+  }
+}
+
+class _SimulatedDiskFull implements Exception {
+  @override
+  String toString() => 'Simulated disk-full failure';
 }

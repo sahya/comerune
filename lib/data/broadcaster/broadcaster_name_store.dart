@@ -280,6 +280,11 @@ class SharedPreferencesBroadcasterNameStore implements BroadcasterNameStore {
   /// whether [cleanup] should rewrite even when nothing is removed (so
   /// the schema migration sticks). Conservative: any parse failure or
   /// unexpected shape returns false so we never rewrite blindly.
+  // TODO(#833 follow-up): _readAll already inspects every value to upgrade
+  // legacy entries; folding the "is any value a string?" check into a
+  // shared decoder would remove this duplicate scan. Out of scope for
+  // the cleanup-only PR but worth revisiting before adding a third
+  // schema variant — both branches must update together to stay safe.
   bool _isLegacyOnDisk() {
     final String? raw = _prefs.getString(_storageKey);
     if (raw == null || raw.isEmpty) {
