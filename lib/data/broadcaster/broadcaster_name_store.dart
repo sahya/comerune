@@ -95,7 +95,13 @@ class SharedPreferencesBroadcasterNameStore implements BroadcasterNameStore {
         // throttle window has elapsed, so a noisy resolver does not
         // produce one write per second.
         final int last = _lastTouchAt[broadcasterId] ?? existing.lastUsedAt;
-        if (now - last < _touchThrottle.inMilliseconds) {
+        // Clock-skew defense: if the recorded `last` is in the future
+        // (e.g. user moved device clock forward, then back), the
+        // throttle window can never elapse with `now - last` because
+        // the value is negative. Treat such entries as "needs refresh"
+        // so the user does not get permanently stuck without lastUsedAt
+        // updates.
+        if (last <= now && now - last < _touchThrottle.inMilliseconds) {
           return;
         }
         current[broadcasterId] = _Entry(name: name, lastUsedAt: now);
@@ -123,7 +129,12 @@ class SharedPreferencesBroadcasterNameStore implements BroadcasterNameStore {
     // inside [loadName] because callers expect a synchronous read.
     final int now = DateTime.now().millisecondsSinceEpoch;
     final int last = _lastTouchAt[broadcasterId] ?? entry.lastUsedAt;
-    if (now - last >= _touchThrottle.inMilliseconds) {
+    // Clock-skew defense: refresh when `last > now` (user moved clock
+    // backward). Otherwise the difference is negative and the throttle
+    // would suppress writes indefinitely.
+    final bool needsRefresh =
+        last > now || now - last >= _touchThrottle.inMilliseconds;
+    if (needsRefresh) {
       _lastTouchAt[broadcasterId] = now;
       _enqueueWrite(() async {
         final Map<String, _Entry> current = _readAll();
@@ -134,7 +145,17 @@ class SharedPreferencesBroadcasterNameStore implements BroadcasterNameStore {
         }
         current[broadcasterId] = _Entry(name: again.name, lastUsedAt: now);
         await _prefs.setString(_storageKey, _encode(current));
-      }).catchError((Object _, StackTrace __) {});
+      }).catchError((Object error, StackTrace stackTrace) {
+        // Lazy refresh is best-effort; log so a sustained storage
+        // failure (disk full / encryption corruption) is not silently
+        // swallowed.
+        developer.log(
+          'Lazy lastUsedAt refresh failed for broadcasterId',
+          name: 'BroadcasterNameStore',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      });
     }
     return entry.name;
   }
@@ -182,14 +203,27 @@ class SharedPreferencesBroadcasterNameStore implements BroadcasterNameStore {
       for (final MapEntry<String, _Entry> e in removed) {
         _lastTouchAt.remove(e.key);
       }
-      final String summary = removed
-          .map((MapEntry<String, _Entry> e) => '${e.key}@${e.value.lastUsedAt}')
-          .join(', ');
+      // Privacy: keep the summary tight so device logs do not retain a
+      // user's per-broadcaster watch-time history. The count + cutoff
+      // is enough for support triage; full id/timestamp pairs are kept
+      // in `assert` only so they remain visible while debugging but do
+      // not ship to release builds.
       developer.log(
-        'Cleanup removed ${removed.length} entries (cutoff=$cutoff): '
-        '$summary',
+        'Cleanup removed ${removed.length} entries (cutoff=$cutoff)',
         name: 'BroadcasterNameStore',
       );
+      assert(() {
+        final String detail = removed
+            .map(
+              (MapEntry<String, _Entry> e) => '${e.key}@${e.value.lastUsedAt}',
+            )
+            .join(', ');
+        developer.log(
+          'Cleanup removed ids (debug only): $detail',
+          name: 'BroadcasterNameStore',
+        );
+        return true;
+      }());
       return removed.length;
     });
   }
@@ -281,9 +315,21 @@ class SharedPreferencesBroadcasterNameStore implements BroadcasterNameStore {
 
   Future<T> _enqueueWrite<T>(Future<T> Function() operation) {
     final Future<T> scheduled = _pendingWriteChain.then<T>((_) => operation());
-    _pendingWriteChain = scheduled
-        .then<void>((_) {})
-        .catchError((Object error, StackTrace stackTrace) {});
+    _pendingWriteChain = scheduled.then<void>((_) {}).catchError((
+      Object error,
+      StackTrace stackTrace,
+    ) {
+      // Swallow to keep the chain alive for subsequent writes — but
+      // log so a sustained failure (disk full / serialisation bug)
+      // is not invisible. This mirrors the AGENTS.md "no silent
+      // catch" rule while preserving the chain-recovery guarantee.
+      developer.log(
+        'Write chain step failed; continuing with subsequent writes',
+        name: 'BroadcasterNameStore',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    });
     return scheduled;
   }
 }

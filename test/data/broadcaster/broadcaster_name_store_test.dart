@@ -299,6 +299,123 @@ void main() {
           );
         },
       );
+
+      test(
+        'loadName outside the throttle window persists a fresh lastUsedAt',
+        () async {
+          // Seed an entry with lastUsedAt = 25h ago so the throttle window
+          // (24h) is already exceeded. The first loadName should schedule
+          // a write that bumps lastUsedAt to ~now.
+          final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+          final int now = DateTime.now().millisecondsSinceEpoch;
+          final int staleTs = now - const Duration(hours: 25).inMilliseconds;
+          prefs.setString(
+            'broadcaster.names',
+            json.encode(<String, Map<String, Object>>{
+              'aged-id': <String, Object>{
+                'name': 'Aged',
+                'lastUsedAt': staleTs,
+              },
+            }),
+          );
+          final SharedPreferencesBroadcasterNameStore store =
+              SharedPreferencesBroadcasterNameStore(prefs: prefs);
+
+          expect(store.loadName('aged-id'), 'Aged');
+          // Drain the scheduled lazy write.
+          await Future<void>.delayed(Duration.zero);
+
+          final Map<String, dynamic> persisted =
+              json.decode(prefs.getString('broadcaster.names')!)
+                  as Map<String, dynamic>;
+          final Map<String, dynamic> entry =
+              persisted['aged-id'] as Map<String, dynamic>;
+          expect(entry['name'], 'Aged');
+          expect(
+            entry['lastUsedAt'] as int,
+            greaterThanOrEqualTo(now),
+            reason:
+                'loadName outside throttle window must refresh lastUsedAt '
+                'to roughly the current time',
+          );
+        },
+      );
+
+      test('loadName recovers when on-disk lastUsedAt is in the future '
+          '(clock-skew defense)', () async {
+        // Plant lastUsedAt = +10h relative to now (e.g. user moved
+        // device clock forward, then back). Without clock-skew defense
+        // `now - last` is negative, the throttle window is never
+        // exceeded, and lastUsedAt would be stuck in the future.
+        final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+        final int now = DateTime.now().millisecondsSinceEpoch;
+        final int futureTs = now + const Duration(hours: 10).inMilliseconds;
+        prefs.setString(
+          'broadcaster.names',
+          json.encode(<String, Map<String, Object>>{
+            'skew-id': <String, Object>{'name': 'Skew', 'lastUsedAt': futureTs},
+          }),
+        );
+        final SharedPreferencesBroadcasterNameStore store =
+            SharedPreferencesBroadcasterNameStore(prefs: prefs);
+
+        expect(store.loadName('skew-id'), 'Skew');
+        await Future<void>.delayed(Duration.zero);
+
+        final Map<String, dynamic> persisted =
+            json.decode(prefs.getString('broadcaster.names')!)
+                as Map<String, dynamic>;
+        final Map<String, dynamic> entry =
+            persisted['skew-id'] as Map<String, dynamic>;
+        expect(
+          entry['lastUsedAt'] as int,
+          lessThan(futureTs),
+          reason:
+              'A future-dated lastUsedAt must be reset to ~now so the '
+              'throttle window can elapse on subsequent reads',
+        );
+      });
+    });
+
+    // Issue #833: cleanup vs concurrent setName resurrection.
+    group('cleanup serial-chain race', () {
+      test('cleanup and a concurrent setName for the same id serialise: '
+          'the slot resurrects with a fresh lastUsedAt', () async {
+        final InMemorySharedPreferences prefs = InMemorySharedPreferences();
+        final int now = DateTime.now().millisecondsSinceEpoch;
+        final int oldTs = now - const Duration(days: 800).inMilliseconds;
+        prefs.setString(
+          'broadcaster.names',
+          json.encode(<String, Map<String, Object>>{
+            'stale-id': <String, Object>{
+              'name': 'OldName',
+              'lastUsedAt': oldTs,
+            },
+          }),
+        );
+        final SharedPreferencesBroadcasterNameStore store =
+            SharedPreferencesBroadcasterNameStore(prefs: prefs);
+
+        // Fire cleanup and setName at the same scheduling boundary
+        // without awaiting individually. The serial write chain inside
+        // the store must order them so the final state is well-defined
+        // and consistent (no torn write, no half-applied JSON).
+        final Future<int> cleanup = store.cleanup();
+        final Future<void> seed = store.setName('stale-id', 'Resurrected');
+        final List<Object?> results = await Future.wait<Object?>(
+          <Future<Object?>>[cleanup, seed],
+        );
+        final int removed = results[0] as int;
+        // One of two well-defined orderings must hold:
+        // - cleanup ran first → stale-id was deleted; setName then
+        //   re-added it with fresh lastUsedAt → loadName returns
+        //   'Resurrected' and removed==1.
+        // - setName ran first → lastUsedAt is fresh; cleanup observes
+        //   it as in-window and keeps it → loadName returns
+        //   'Resurrected' and removed==0.
+        expect(removed, anyOf(0, 1));
+        expect(store.loadName('stale-id'), 'Resurrected');
+      });
     });
 
     // Issue #833: legacy schema migration.
