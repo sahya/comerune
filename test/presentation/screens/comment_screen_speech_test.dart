@@ -4113,6 +4113,190 @@ void main() {
   });
 
   // -------------------------------------------------------------------------
+  // Issue #918 (Issue #741 Problem 6): icon-level observation of the
+  // _initializedEngineType transition. The sibling group above
+  // ('engine type switch (issue #734)') only asserts platform calls
+  // (start/stop/getStatus/lastUpdatedSettings). This group is the
+  // user-visible counterpart: while _initializedEngineType is null the
+  // AppBar must render Icons.hourglass_top, and once initialization
+  // completes the hourglass must give way to a non-hourglass icon
+  // (pause_circle_outline or volume_up). The bg→fg lifecycle path is
+  // intentionally out of scope (Non-scope of Issue #918).
+  // -------------------------------------------------------------------------
+  group('CommentScreen _initializedEngineType icon transition '
+      '(Issue #918 / #741 Problem 6)', () {
+    late FakeCommentSpeechPlatform fakePlatform;
+
+    // Non-READY status used after the engine switch so the Android-TTS
+    // branch in _initializeAndStartSpeech actually awaits
+    // checkAndroidTtsAvailability (gated below) instead of short-circuiting
+    // through the "engine already READY" path at line 1857 of comment_screen.dart.
+    const SpeechRuntimeStatus readyStatus = SpeechRuntimeStatus(
+      enabled: true,
+      engineState: 'READY',
+      playerState: 'IDLE',
+      queueSize: 0,
+      currentSpeakerId: 0,
+    );
+    const SpeechRuntimeStatus unknownStatus = SpeechRuntimeStatus(
+      enabled: true,
+      engineState: 'UNKNOWN',
+      playerState: 'UNKNOWN',
+      queueSize: 0,
+      currentSpeakerId: 0,
+    );
+
+    setUp(() {
+      fakePlatform = FakeCommentSpeechPlatform();
+      // Voicevox (initial) sees READY → init completes via the
+      // status-shortcut path. Subsequent calls (after engine switch to
+      // Android TTS) see UNKNOWN so the flow falls through to the
+      // checkAndroidTtsAvailability branch we gate below.
+      fakePlatform.statusSequenceToReturn = const <SpeechRuntimeStatus>[
+        readyStatus,
+        unknownStatus,
+      ];
+    });
+
+    tearDown(() {
+      fakePlatform.dispose();
+    });
+
+    testWidgets('(a)/(b) hourglass shown until Voicevox init completes', (
+      WidgetTester tester,
+    ) async {
+      // (a) First frame: _initializedEngineType is still null because
+      // _initializeAndStartSpeech is scheduled via addPostFrameCallback
+      // and its first await (getStatus) has not resolved yet. The icon
+      // must be the "initializing" hourglass.
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.voicevox,
+          ),
+        ),
+      );
+      expect(
+        find.byIcon(Icons.hourglass_top),
+        findsOneWidget,
+        reason:
+            '(a) initial frame must render hourglass while '
+            '_initializedEngineType is null',
+      );
+
+      // (b) Drain the init microtasks. After getStatus() returns READY,
+      // _initializedEngineType is set to voicevox and start() resolves,
+      // setState({_speechStarted=true}) rebuilds, hourglass disappears.
+      // pump(Duration.zero) is enough — the fake awaits no real timers,
+      // so we deliberately avoid pumpAndSettle (AGENTS.md L121-122).
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.byIcon(Icons.hourglass_top),
+        findsNothing,
+        reason:
+            '(b) hourglass must disappear once _initializedEngineType '
+            'matches the current engine',
+      );
+      // The post-init icon is either pause_circle_outline (start not yet
+      // observed) or volume_up (started, unmuted). Asserting "one of"
+      // keeps the test focused on the hourglass→non-hourglass transition.
+      final bool postInitIconVisible =
+          find.byIcon(Icons.volume_up).evaluate().isNotEmpty ||
+          find.byIcon(Icons.pause_circle_outline).evaluate().isNotEmpty;
+      expect(
+        postInitIconVisible,
+        isTrue,
+        reason: '(b) post-init icon must be pause_circle_outline or volume_up',
+      );
+    });
+
+    testWidgets(
+      '(c)/(d) hourglass reappears during engine switch to Android TTS '
+      'until checkAndroidTtsAvailability completes',
+      (WidgetTester tester) async {
+        // Bring Voicevox to ready so we have a known "non-hourglass"
+        // baseline before the engine switch.
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.voicevox,
+            ),
+          ),
+        );
+        // Two pumps drain the init microtasks (getStatus → start →
+        // setState). pumpAndSettle is intentionally avoided because the
+        // fake exposes no pending timers and pumpAndSettle would only
+        // mask flaky waits (AGENTS.md L121-122).
+        await tester.pump();
+        await tester.pump();
+        expect(find.byIcon(Icons.hourglass_top), findsNothing);
+
+        // Gate the Android-TTS availability check so the await inside
+        // _initializeAndStartSpeech parks while _initializedEngineType
+        // is null, giving us a deterministic window to observe the
+        // hourglass.
+        fakePlatform.checkAndroidTtsAvailabilityGate = Completer<void>();
+
+        // Switch the engine. _handleSpeechSettingsChanged awaits
+        // _stopSpeech (which calls setState({_speechStarted=false})),
+        // then assigns _initializedEngineType = null, then awaits
+        // _initializeAndStartSpeech which parks on the gated availability
+        // check. The setState from _stopSpeech triggers the rebuild we
+        // need to observe the hourglass.
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.updateSpeechSettings(
+          const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.androidTts,
+          ),
+        );
+        // Pump enough times to flush _stopSpeech's awaits and reach the
+        // gated checkAndroidTtsAvailability call. Each pump processes
+        // pending microtasks.
+        await tester.pump();
+        await tester.pump();
+        await tester.pump();
+
+        expect(
+          fakePlatform.checkAndroidTtsAvailabilityCalled,
+          isTrue,
+          reason:
+              'sanity: the Android-TTS init branch must have reached the '
+              'gated availability check by now',
+        );
+        expect(
+          find.byIcon(Icons.hourglass_top),
+          findsOneWidget,
+          reason:
+              '(c) hourglass must reappear while _initializedEngineType '
+              'is null during the engine switch',
+        );
+
+        // (d) Release the gate → checkAndroidTtsAvailability resolves →
+        // _initializedEngineType = androidTts → start() resolves →
+        // setState({_speechStarted=true}) → hourglass gone.
+        fakePlatform.checkAndroidTtsAvailabilityGate!.complete();
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.byIcon(Icons.hourglass_top),
+          findsNothing,
+          reason:
+              '(d) hourglass must disappear once Android TTS init '
+              'completes and _initializedEngineType matches androidTts',
+        );
+      },
+    );
+  });
+
+  // -------------------------------------------------------------------------
   // Issue #762 (was Issue #758): TimelineStore reactive listener replaces
   // the previous Timer.periodic(2s) bg poll. The screen now subscribes to
   // [TimelineStore.notifyListeners] and submits new comments synchronously
