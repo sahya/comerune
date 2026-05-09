@@ -241,26 +241,23 @@ void main() {
     });
   });
 
-  group(
-    'AppStrings.broadcasterNgEdit (Issue #836 Phase 2 byte-for-byte 維持)',
-    () {
-      test('NG設定編集画面のタブラベルが既存と一致する', () {
-        expect(AppStrings.broadcasterNgEdit.usersTabLabel, 'NGユーザー');
-        expect(AppStrings.broadcasterNgEdit.wordsTabLabel, 'NGワード');
-      });
+  group('AppStrings.broadcasterNgEdit (NG 設定編集画面の byte-for-byte 維持)', () {
+    test('NG設定編集画面のタブラベルが既存と一致する', () {
+      expect(AppStrings.broadcasterNgEdit.usersTabLabel, 'NGユーザー');
+      expect(AppStrings.broadcasterNgEdit.wordsTabLabel, 'NGワード');
+    });
 
-      test('テンプレート編集時のバナー文言が既存と一致する', () {
-        // 動的引数なしの固定文。バナーが見える位置・色は別 widget テストの
-        // 担当で、ここでは文字列バイト一致のみ担保する。
-        expect(
-          AppStrings.broadcasterNgEdit.templateBanner,
-          'テンプレート: 新規放送者の初期値として使われます',
-        );
-      });
-    },
-  );
+    test('テンプレート編集時のバナー文言が既存と一致する', () {
+      // 動的引数なしの固定文。バナーが見える位置・色は別 widget テストの
+      // 担当で、ここでは文字列バイト一致のみ担保する。
+      expect(
+        AppStrings.broadcasterNgEdit.templateBanner,
+        'テンプレート: 新規放送者の初期値として使われます',
+      );
+    });
+  });
 
-  group('AppStrings.ngUserList (Issue #836 Phase 2 byte-for-byte 維持)', () {
+  group('AppStrings.ngUserList (NG ユーザー一覧画面の byte-for-byte 維持)', () {
     test('NG解除ダイアログの文言が既存と一致する', () {
       expect(AppStrings.ngUserList.unregisterDialogTitle, 'NG解除');
       expect(
@@ -305,7 +302,7 @@ void main() {
     });
   });
 
-  group('AppStrings.ngWordList (Issue #836 Phase 2 byte-for-byte 維持)', () {
+  group('AppStrings.ngWordList (NG ワード一覧画面の byte-for-byte 維持)', () {
     test('NGワード削除ダイアログの文言が既存と一致する', () {
       expect(AppStrings.ngWordList.deleteDialogTitle, 'NGワード削除');
       expect(AppStrings.ngWordList.deleteDialogContent('スパム'), '「スパム」を削除しますか？');

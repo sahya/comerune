@@ -64,6 +64,33 @@
 /// ある時点で「全画面で同じ訳でよい」と確定したラベルだけを共通
 /// namespace（将来の `CommonStrings` 等）に集約する方針。本 PR では
 /// その共通化判断は時期尚早と判定し、各 namespace に保持している。
+///
+/// ## getter / メソッドの命名規約
+/// 役割サフィックスを揃えて、Phase 3 以降で同一画面内に追加するときの
+/// 揺れを抑える:
+/// - `xxxTitle`: 画面・ダイアログのタイトル（名詞句）
+/// - `xxxContent`: ダイアログ本文（引数を含むなら `String` メソッド）
+/// - `xxxConfirm` / `xxxCancel`: ダイアログ確定 / キャンセルボタン
+/// - `xxxButton`: 一覧上部などの常設ボタンラベル
+/// - `xxxTooltip`: アイコンボタンの `tooltip:` プロパティ
+/// - `xxxSnackBar`: SnackBar に表示する文言（引数を含むなら `String` メソッド）
+/// - `xxxLabel` / `xxxHint`: 入力欄のラベル / ヒント
+/// - `emptyMessage` / `loadFailedTitle` / `retryButton`: 状態系の固定 UI
+///
+/// ## ARB 移行を見据えた引数規約
+/// 引数を含む文字列メソッドは将来 `flutter_localizations` + ARB に置き換え
+/// られる前提で:
+/// - **メソッド引数名は ARB プレースホルダ名と同一**になる扱い。
+///   引数名のリネームは breaking change として扱う。
+/// - **複数形が必要な文言**（例: 「N 件削除しました」）が出てきたら、
+///   `int count` を引数として加え、`{count, plural, ...}` の ARB 形式に
+///   素直に対応できるシグネチャを保つ。
+/// - **引数前置の文言**（例: `'$id のNGを解除しました'`）は日本語固定
+///   語順に依存しているため、ARB 化時には文全体を翻訳キー単位で再設計
+///   する想定。byte-for-byte 維持テストはあくまで現行ロケールの固定で
+///   あり、ARB 化で同じ文字列が出続けることは保証しない。
+/// - **引数を囲む記号**（例: `「$pattern」`）は CJK 表記なので、ロケール
+///   依存に翻訳キーごと差し替える想定。
 abstract final class AppStrings {
   const AppStrings._();
 
@@ -149,6 +176,12 @@ final class SettingsStrings {
   /// `name(id)` のような結合形ではなく純粋な放送者名を渡すことを想定する。
   /// `[ngFilterTileTitle]`（タイル名・一覧画面 AppBar）と同じ「NG設定」
   /// 表記で語彙連続を維持する。
+  ///
+  /// **Phase 3 移管予定**: 本 getter は Settings 画面のタイル文言と
+  /// セットで Phase 1 に作られた歴史的経緯から `SettingsStrings` に
+  /// 残置している。Phase 3 で「画面別 namespace 集約」を一貫させる際に
+  /// `BroadcasterNgEditStrings.appBarTitle` 等へ移管する候補。本 PR
+  /// (#836) の段階では既存呼び出し箇所への影響を抑えるため移動しない。
   String ngEditScreenTitle(String scopeLabel) => 'NG設定 - $scopeLabel';
 
   // セクション: データ管理
@@ -226,6 +259,11 @@ final class NgUserListStrings {
   const NgUserListStrings._();
 
   // 削除確認ダイアログ
+  // NOTE: cancel ラベルは `showConfirmDialog`（`presentation/widgets/
+  // confirm_dialog.dart`）が widget 側のデフォルト文言を持つため、本
+  // クラスでは保持しない。`NgWordListStrings.deleteDialogCancel` と
+  // 非対称に見えるが、widget 実装の差（`showConfirmDialog` vs 直接
+  // `AlertDialog`）に起因する意図的な差異。
   String get unregisterDialogTitle => 'NG解除';
   String unregisterDialogContent(String userId) =>
       'ユーザーID「$userId」のNG登録を解除しますか？';
@@ -246,9 +284,11 @@ final class NgUserListStrings {
   String get emptyMessage => 'NGユーザーIDは登録されていません';
 
   // リストアイテムの削除ボタン tooltip
-  // NOTE: `unregisterDialogTitle` と同一文言だが、ダイアログタイトル
-  // （動詞文）と tooltip（短縮ラベル）は i18n 時に別訳になる言語が
-  // 想定されるため別 getter に分離して保持する。
+  // NOTE: `unregisterDialogTitle` と同一文言だが、tooltip は短い動詞句
+  // （IconButton ラベル）として、ダイアログタイトルは「ユーザーIDを…
+  // 解除しますか？」の見出しとして機能する。日本語では同一語形でも、
+  // 英訳時には "Unregister"（命令形）と "Unregister NG user"（タイトル）
+  // のように分岐し得るため別 getter に分離して保持する。
   String get removeTooltip => 'NG解除';
 }
 
@@ -284,6 +324,11 @@ final class NgWordListStrings {
   /// 入力検証エラー（regex として無効）の SnackBar 文言。
   /// クライアント側のローカル検証結果のため AppStrings に集約する
   /// （クラスドキュメントの集約判定基準を参照）。
+  ///
+  /// **設計意図**: あえて `FormatException.message` の詳細を露出させない。
+  /// 「パターンのどこが無効か」は内部実装（regex パーサのエラー位置等）
+  /// に依存し、ユーザーが直接アクションを取れない情報なので、固定文の
+  /// 「無効なパターンです」だけ表示し、詳細はユーザーに見せない。
   String get invalidPatternSnackBar => '無効なパターンです';
 
   /// 入力検証エラー（重複）の SnackBar 文言。同上。
