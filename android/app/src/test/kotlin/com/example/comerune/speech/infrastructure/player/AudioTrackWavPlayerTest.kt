@@ -32,9 +32,9 @@ class AudioTrackWavPlayerTest {
         player.release()
         assertEquals(0, focusGuard.listenerCount)
 
-        // Second release must be a no-op (idempotent — see
-        // AudioTrackWavPlayer L401: `released = true` is set
-        // unconditionally and the timeoutScope is already cancelled).
+        // Second release must be a no-op (idempotent — search
+        // "released = true" in AudioTrackWavPlayer.release: the flag is
+        // set unconditionally and the timeoutScope is already cancelled).
         player.release()
         assertEquals(0, focusGuard.listenerCount)
     }

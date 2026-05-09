@@ -235,9 +235,21 @@ class SwitchableWavPlayerTest {
             "play() after release() must return Result.failure (got: $result)",
             result.isFailure
         )
-        // No play actually completed — neither delegate produced audio.
+        // Pin the failure transition more precisely:
+        //  - Today (delegate-side guard path): play() routes to the
+        //    released delegate, so playCount == 1 and successfulPlayCount
+        //    == 0 (guard short-circuits before audio is produced).
+        //  - Tomorrow (SwitchableWavPlayer self-guard path): play()
+        //    short-circuits before reaching the delegate, so playCount ==
+        //    0. successfulPlayCount stays 0 either way.
+        // We assert only the "no audio actually played" invariant
+        // (successfulPlayCount == 0 for both delegates) so a future
+        // self-guard refactor does not require rewriting this test.
         assertEquals(0, audioTrack.successfulPlayCount.get())
         assertEquals(0, mediaPlayer.successfulPlayCount.get())
+        // Sanity: the second delegate was never constructed-into-use
+        // because the active type at release() was AUDIO_TRACK.
+        assertEquals(0, mediaPlayer.playCount.get())
     }
 
     @Test
