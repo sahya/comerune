@@ -24,8 +24,9 @@ import org.junit.Test
  *   Robolectric or instrumented-test setup. Adding that here would be a
  *   structural change well outside the "test-additions only" scope of
  *   this issue, so the released-guard's exception type is verified by
- *   inspection (see MediaPlayerWavPlayer L78-82) and locked at the
- *   external contract level by [SwitchableWavPlayerTest] instead.
+ *   inspection (search "Player has been released" in
+ *   [MediaPlayerWavPlayer]) and locked at the external contract level by
+ *   [SwitchableWavPlayerTest] instead.
  *
  * Why a stub Context works:
  *   [MediaPlayerWavPlayer.release] never touches `context` — it only
@@ -50,10 +51,11 @@ class MediaPlayerWavPlayerTest {
         player.release()
         assertEquals(0, focusGuard.listenerCount)
 
-        // A second release must NOT throw (idempotent contract — see
-        // MediaPlayerWavPlayer L222: `released = true` is set unconditionally,
-        // and removeListener of an already-removed listener is a no-op on
-        // FakeAudioFocusGuard / CopyOnWriteArrayList).
+        // A second release must NOT throw (idempotent contract — search
+        // "released = true" in MediaPlayerWavPlayer.release: the flag is
+        // set unconditionally, and removeListener of an already-removed
+        // listener is a no-op on FakeAudioFocusGuard /
+        // CopyOnWriteArrayList).
         player.release()
         assertEquals(0, focusGuard.listenerCount)
     }

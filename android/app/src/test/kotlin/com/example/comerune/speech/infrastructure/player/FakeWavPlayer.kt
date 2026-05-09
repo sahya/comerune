@@ -40,10 +40,13 @@ class FakeWavPlayer(
 
     override suspend fun play(wavBytes: ByteArray): Result<Unit> {
         playCount.incrementAndGet()
-        // Mirror MediaPlayerWavPlayer L78-82 / AudioTrackWavPlayer L200-204:
-        // once release() has run, every subsequent play() must resolve to
-        // a failure Result. Locking this into the fake means the
-        // SwitchableWavPlayer post-release contract test (Issue #917)
+        // Mirror the released-guard in MediaPlayerWavPlayer.play() and
+        // AudioTrackWavPlayer.play() (search "Player has been released"
+        // in those files — using a stable token rather than line numbers
+        // so this comment does not drift when the production source is
+        // edited). Once release() has run, every subsequent play() must
+        // resolve to a failure Result. Locking this into the fake means
+        // the SwitchableWavPlayer post-release contract test (Issue #917)
         // observes realistic delegate behaviour without dragging in
         // Robolectric / a real Android Context.
         if (released) {
@@ -72,9 +75,11 @@ class FakeWavPlayer(
 
     override fun release() {
         releaseCount.incrementAndGet()
-        // Idempotent at the flag level: matches MediaPlayerWavPlayer L222 /
-        // AudioTrackWavPlayer L401, where calling release() repeatedly
-        // simply re-sets `released = true` and re-runs cleanup.
+        // Idempotent at the flag level: matches the production release()
+        // in MediaPlayerWavPlayer and AudioTrackWavPlayer (search
+        // "released = true" — symbol-based reference avoids line drift),
+        // where calling release() repeatedly simply re-sets
+        // `released = true` and re-runs cleanup.
         released = true
         state = PlayerState.IDLE
     }
