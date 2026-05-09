@@ -4221,25 +4221,36 @@ void main() {
     );
 
     testWidgets(
-      'engine switch with old-native getStatus (no started key) does not '
-      'spuriously flip mirror at engine_switched boundary (Issue #915 '
-      'forward-compat)',
+      'engine switch under old-native (no started key) completes the switch '
+      'flow without throwing (Issue #915 forward-compat smoke test)',
       (WidgetTester tester) async {
         // Simulate the new-Flutter + old-native combination: the native
         // binary has not been rebuilt with the Issue #915 patch, so the
         // map-form of SpeechRuntimeStatus omits the `started` key, and
         // SpeechRuntimeStatus.fromMap defaults `started` to false.
         //
-        // At the engine-switch reconcile point this Flutter code path
-        // calls _stopSpeech first (because we were started), so the
-        // mirror is already false by the time reconcile runs. Therefore
-        // the mirror=false ↔ native=false equality short-circuits the
-        // setState branch, and no spurious "true → false" debug log is
-        // emitted. This test guards against a future regression where a
-        // new reconcile call site is added that fires while the mirror
-        // is genuinely true — such a call would silently downgrade a
-        // valid mirror under old-native and the failure mode would only
-        // surface in field telemetry.
+        // SCOPE OF THIS TEST (read carefully before extending):
+        // What is asserted: the missing `started` key does NOT cause a
+        // type error, throw, or early abort anywhere along the engine-
+        // switch flow.
+        //
+        // What is NOT exercised: the "mirror=true ↔ native=false"
+        // reconcile branch. The engine-switch path calls _stopSpeech
+        // first (because we were started), which flips the mirror to
+        // false BEFORE reconcile runs. By the time
+        // _reconcileSpeechStartedFromNative is invoked, mirror=false
+        // and native=false (the default) — the equality short-circuits
+        // the setState branch and no "true → false" downgrade happens
+        // here.
+        //
+        // This is intentional: the only current reconcile call site
+        // is on the post-_stopSpeech edge. If a future PR adds a
+        // reconcile call site that fires while the mirror is genuinely
+        // true (lifecycle resume, post-process-recreation), THAT PR
+        // must add the corresponding "true downgrade silently swallowed
+        // by old-native default" regression test — see the forward-compat
+        // caveat on `_speechStarted` in comment_screen.dart for why
+        // blanket-reconcile is unsafe under old-native.
         await tester.pumpWidget(
           _buildScreen(
             speechPlatform: fakePlatform,
