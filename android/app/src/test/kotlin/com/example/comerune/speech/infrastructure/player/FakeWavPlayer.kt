@@ -31,29 +31,50 @@ class FakeWavPlayer(
     val stopCount = AtomicInteger(0)
     val releaseCount = AtomicInteger(0)
 
-    /**
-     * Test-only entry latch. When non-null, [play] increments [playCount]
-     * and signals [playEnteredLatch], then blocks on this latch BEFORE
-     * flipping [shouldBePlayingFlag] to true. This lets a test observe
-     * the narrow "play() invoked but intent not yet set" window — used
-     * by the AC5(b) "swap done, new delegate not yet driven" assertion.
-     */
-    @Volatile
-    var playEntryLatch: CountDownLatch? = null
+    // Two coordinating latches form a "freeze + signal" pair around the
+    // intent-flip point inside [play]. They are intentionally separated so
+    // a test can (1) wait until play() has been reached and (2) decide
+    // when it may proceed past the freeze point.
+    //
+    //   test thread          fake.play() coroutine
+    //   -----------          ---------------------
+    //                        playCount.incrementAndGet()
+    //                        playEnteredSignal.countDown()  <-- step 1
+    //   playEnteredSignal.await()
+    //   <observe pre-intent>
+    //                        playProceedGate.await()        <-- step 2
+    //   playProceedGate.countDown()
+    //                        shouldBePlayingFlag = true
+    //                        ...
+    //
+    // Both default to null so production-style tests are unaffected.
 
     /**
-     * Test-only signal latch. Counted down once [play] has been entered
-     * (after [playCount] increment, before the [playEntryLatch] wait).
+     * Test-only freeze gate. The test side calls `countDown()` on this
+     * latch when it wants the suspended [play] coroutine to resume past
+     * the freeze point and flip [shouldBePlayingFlag] to true. While the
+     * latch's count is non-zero, [play] is parked on `await()` BEFORE the
+     * intent-flip assignment.
      */
     @Volatile
-    var playEnteredLatch: CountDownLatch? = null
+    var playProceedGate: CountDownLatch? = null
+
+    /**
+     * Test-only reached-the-freeze-point signal. Counted down by [play]
+     * once it has incremented [playCount] and is about to park on
+     * [playProceedGate]. The test side calls `await()` to be told that
+     * the swap has completed and the new delegate is now the one inside
+     * `play()` but has not yet asserted intent.
+     */
+    @Volatile
+    var playEnteredSignal: CountDownLatch? = null
 
     override suspend fun play(wavBytes: ByteArray): Result<Unit> {
         playCount.incrementAndGet()
-        playEnteredLatch?.countDown()
+        playEnteredSignal?.countDown()
         // Hold here BEFORE the intent flip so the test can observe the
         // post-swap pre-intent window deterministically.
-        playEntryLatch?.await(5, TimeUnit.SECONDS)
+        playProceedGate?.await(5, TimeUnit.SECONDS)
         // Mirror real implementations: intent flips to true on play() and
         // back to false on natural completion / stop / release.
         shouldBePlayingFlag = true

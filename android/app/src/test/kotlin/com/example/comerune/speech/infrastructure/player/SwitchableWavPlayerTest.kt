@@ -267,8 +267,8 @@ class SwitchableWavPlayerTest {
         runBlocking {
             val audioTrack = FakeWavPlayer(tag = "audio")
             val mediaPlayer = FakeWavPlayer(tag = "media").apply {
-                playEntryLatch = CountDownLatch(1)
-                playEnteredLatch = CountDownLatch(1)
+                playProceedGate = CountDownLatch(1)
+                playEnteredSignal = CountDownLatch(1)
             }
             val player = newSwitchable(audioTrack, mediaPlayer)
 
@@ -282,7 +282,7 @@ class SwitchableWavPlayerTest {
             // swap is fully applied (old delegate released, new delegate
             // installed) but the new delegate has not yet asserted intent.
             val playJob = async { player.play(ByteArray(0)) }
-            mediaPlayer.playEnteredLatch!!.await()
+            mediaPlayer.playEnteredSignal!!.await()
 
             // Swap is fully applied: old delegate was released, the new
             // delegate is the one running play(). Yet its intent flag is
@@ -294,7 +294,7 @@ class SwitchableWavPlayerTest {
 
             // Let play() proceed and run to completion so the test
             // teardown leaves the player in a deterministic state.
-            mediaPlayer.playEntryLatch!!.countDown()
+            mediaPlayer.playProceedGate!!.countDown()
             playJob.await()
         }
 
