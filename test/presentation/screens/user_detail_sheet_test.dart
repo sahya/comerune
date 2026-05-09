@@ -496,7 +496,8 @@ void main() {
     });
 
     testWidgets(
-      'adjacent preset color buttons do not overlap their hit targets (#777 AC4)',
+      'adjacent color buttons (preset + custom) do not overlap their hit '
+      'targets (Issue #845 / #777 AC4)',
       (WidgetTester tester) async {
         // Pin the viewport so the Wrap layout is deterministic regardless
         // of the host machine's default test screen size. With horizontal
@@ -524,20 +525,20 @@ void main() {
         // their horizontal bounds must not overlap (`right <= next.left`).
         // Wrap row breaks (when they happen) are also acceptable: the
         // next button moves to a new row with `top >= previous.bottom`.
-        const List<int> paletteValues = <int>[
-          0xFFE53935,
-          0xFFD81B60,
-          0xFF8E24AA,
-          0xFF3949AB,
-          0xFF1E88E5,
-          0xFF00ACC1,
-          0xFF00897B,
-          0xFF43A047,
-          0xFFFF8F00,
-          0xFFFF6D00,
-          0xFF6D4C41,
-          0xFF546E7A,
-        ];
+        //
+        // Derive the palette ARGB32 values from the production-side
+        // [kUserColorPaletteEntries] so that adding / reordering entries
+        // does not silently desynchronise this test. The conversion
+        // mirrors the private `_colorToARGB32` helper in
+        // user_detail_sheet.dart that builds the per-button `Key`.
+        int colorToArgb32(Color c) =>
+            ((c.a * 255).round() << 24) |
+            ((c.r * 255).round() << 16) |
+            ((c.g * 255).round() << 8) |
+            (c.b * 255).round();
+        final List<int> paletteValues = kUserColorPaletteEntries
+            .map((({Color color, String label}) e) => colorToArgb32(e.color))
+            .toList();
 
         Rect rectFor(int colorValue) =>
             tester.getRect(find.byKey(Key('user-color-$colorValue')));
@@ -545,11 +546,15 @@ void main() {
         // Sanity: at the chosen viewport every preset circle shares the
         // same `top`, so neighbours are guaranteed to be on one row and
         // the right/left comparison is the load-bearing check.
+        // `closeTo` (0.5dp) defends against future paddings introducing
+        // sub-pixel offsets while still failing fast if the viewport
+        // assumption breaks (rows would differ by 48dp, far above the
+        // tolerance).
         final double firstTop = rectFor(paletteValues.first).top;
         for (final int value in paletteValues) {
           expect(
             rectFor(value).top,
-            firstTop,
+            closeTo(firstTop, 0.5),
             reason:
                 'Preset color $value should be on the same row as the '
                 'first preset at viewport 800x1200; if this fails the '
