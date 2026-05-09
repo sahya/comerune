@@ -1,16 +1,16 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/application/settings/settings_save_helper.dart';
-import 'package:comerune/application/settings/settings_store.dart';
 import 'package:comerune/domain/models/app_settings.dart';
+
+import '../../helpers/recording_settings_store.dart';
 
 void main() {
   group('saveSettings', () {
     test('awaits store.save and returns when persistence succeeds', () async {
-      final _RecordingSettingsStore store = _RecordingSettingsStore();
+      final RecordingSettingsStore store = RecordingSettingsStore();
       const AppSettings settings = AppSettings.defaults;
 
       await saveSettings(store, settings);
@@ -20,13 +20,13 @@ void main() {
     });
 
     test('rethrows after logging when store.save throws', () async {
-      final _RecordingSettingsStore store = _RecordingSettingsStore(
+      final RecordingSettingsStore store = RecordingSettingsStore(
         saveError: StateError('boom'),
       );
       const AppSettings settings = AppSettings.defaults;
 
       final List<String> printed = <String>[];
-      await _withCapturedDebugPrint(printed, () async {
+      await withCapturedDebugPrint(printed, () async {
         await expectLater(
           saveSettings(store, settings),
           throwsA(isA<StateError>()),
@@ -45,7 +45,7 @@ void main() {
 
   group('saveSettingsUnawaited', () {
     test('forwards the latest settings value to store.save', () async {
-      final _RecordingSettingsStore store = _RecordingSettingsStore();
+      final RecordingSettingsStore store = RecordingSettingsStore();
       const AppSettings settings = AppSettings.defaults;
 
       saveSettingsUnawaited(store, settings);
@@ -57,7 +57,7 @@ void main() {
     });
 
     test('swallows the failure and logs instead of escaping', () async {
-      final _RecordingSettingsStore store = _RecordingSettingsStore(
+      final RecordingSettingsStore store = RecordingSettingsStore(
         saveError: StateError('boom'),
       );
       const AppSettings settings = AppSettings.defaults;
@@ -66,7 +66,7 @@ void main() {
       // Use runZonedGuarded so an unhandled future error in the helper
       // would explicitly fail the test rather than silently leaking.
       final List<Object> unhandled = <Object>[];
-      await _withCapturedDebugPrint(printed, () async {
+      await withCapturedDebugPrint(printed, () async {
         await runZonedGuarded(() async {
           saveSettingsUnawaited(store, settings);
           await Future<void>.delayed(Duration.zero);
@@ -87,73 +87,4 @@ void main() {
       expect(joined, isNot(contains('AppSettings(')));
     });
   });
-}
-
-/// Runs [body] with [debugPrint] redirected into [sink] and restored
-/// afterwards.  Used to capture the debug-build error log written by
-/// [appErrorLog] without coupling to its private formatting.
-Future<void> _withCapturedDebugPrint(
-  List<String> sink,
-  Future<void> Function() body,
-) async {
-  final DebugPrintCallback original = debugPrint;
-  debugPrint = (String? message, {int? wrapWidth}) {
-    if (message != null) {
-      sink.add(message);
-    }
-  };
-  try {
-    await body();
-  } finally {
-    debugPrint = original;
-  }
-}
-
-/// Minimal [SettingsStore] fake that records [save] invocations and can
-/// be configured to throw on [save].  Other [SettingsStore] members are
-/// not exercised by [saveSettings] / [saveSettingsUnawaited] and throw
-/// [UnimplementedError] to surface accidental coupling in tests.
-class _RecordingSettingsStore implements SettingsStore {
-  _RecordingSettingsStore({this.saveError});
-
-  final Object? saveError;
-  int saveCallCount = 0;
-  AppSettings? lastSavedSettings;
-
-  @override
-  Future<void> save(AppSettings settings) async {
-    saveCallCount += 1;
-    lastSavedSettings = settings;
-    final Object? error = saveError;
-    if (error != null) {
-      throw error;
-    }
-  }
-
-  @override
-  Future<AppSettings> load() async => throw UnimplementedError();
-
-  @override
-  double? loadPreMuteVolume() => throw UnimplementedError();
-
-  @override
-  Future<void> savePreMuteVolume(double? volume) async =>
-      throw UnimplementedError();
-
-  @override
-  double? loadPreMuteAndroidTtsVolume() => throw UnimplementedError();
-
-  @override
-  Future<void> savePreMuteAndroidTtsVolume(double? volume) async =>
-      throw UnimplementedError();
-
-  @override
-  Future<String> exportAsJson() async => throw UnimplementedError();
-
-  @override
-  Future<String> writeExportToTempFile() async => throw UnimplementedError();
-
-  @override
-  Future<AppSettings> importFromJson(String jsonString) async =>
-      throw UnimplementedError();
 }

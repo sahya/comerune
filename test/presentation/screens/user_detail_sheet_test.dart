@@ -495,6 +495,127 @@ void main() {
       expect(customSize.height, 48);
     });
 
+    testWidgets(
+      'adjacent color buttons (preset + custom) do not overlap their hit '
+      'targets (Issue #845 / #777 AC4)',
+      (WidgetTester tester) async {
+        // Pin the viewport so the Wrap layout is deterministic regardless
+        // of the host machine's default test screen size. With horizontal
+        // 16dp padding on the palette row, the inner width is 800-32=768dp,
+        // which fits 768/48=16 buttons per row. The palette has 12 preset
+        // circles + 1 custom button (13 total), so all entries land on a
+        // single row and adjacent pairs share the same vertical position.
+        tester.view.physicalSize = const Size(800, 1200);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          _buildSheet(
+            userId: '12345',
+            allMessages: const <AppMessage>[],
+            onColorChanged: (_) {},
+          ),
+        );
+        await openSheet(tester);
+
+        // Walk the preset palette in declaration order and assert that
+        // each pair of consecutive 48x48 hit-target boxes is strictly
+        // non-overlapping. Same-row neighbours have matching `top`, and
+        // their horizontal bounds must not overlap (`right <= next.left`).
+        // Wrap row breaks (when they happen) are also acceptable: the
+        // next button moves to a new row with `top >= previous.bottom`.
+        //
+        // Derive the palette ARGB32 values from the production-side
+        // [kUserColorPaletteEntries] so that adding / reordering entries
+        // does not silently desynchronise this test. The conversion
+        // mirrors the private `_colorToARGB32` helper in
+        // user_detail_sheet.dart that builds the per-button `Key`.
+        int colorToArgb32(Color c) =>
+            ((c.a * 255).round() << 24) |
+            ((c.r * 255).round() << 16) |
+            ((c.g * 255).round() << 8) |
+            (c.b * 255).round();
+        final List<int> paletteValues = kUserColorPaletteEntries
+            .map((({Color color, String label}) e) => colorToArgb32(e.color))
+            .toList();
+
+        Rect rectFor(int colorValue) =>
+            tester.getRect(find.byKey(Key('user-color-$colorValue')));
+
+        // Sanity: at the chosen viewport every preset circle shares the
+        // same `top`, so neighbours are guaranteed to be on one row and
+        // the right/left comparison is the load-bearing check.
+        // `closeTo` (0.5dp) defends against future paddings introducing
+        // sub-pixel offsets while still failing fast if the viewport
+        // assumption breaks (rows would differ by 48dp, far above the
+        // tolerance).
+        final double firstTop = rectFor(paletteValues.first).top;
+        for (final int value in paletteValues) {
+          expect(
+            rectFor(value).top,
+            closeTo(firstTop, 0.5),
+            reason:
+                'Preset color $value should be on the same row as the '
+                'first preset at viewport 800x1200; if this fails the '
+                'viewport assumption (768dp inner width / 13 buttons) '
+                'is wrong.',
+          );
+        }
+
+        for (int i = 0; i < paletteValues.length - 1; i++) {
+          final Rect current = rectFor(paletteValues[i]);
+          final Rect next = rectFor(paletteValues[i + 1]);
+          final bool sameRow = current.top == next.top;
+          if (sameRow) {
+            expect(
+              current.right <= next.left,
+              isTrue,
+              reason:
+                  'Hit targets for ${paletteValues[i].toRadixString(16)} '
+                  '(right=${current.right}) and '
+                  '${paletteValues[i + 1].toRadixString(16)} '
+                  '(left=${next.left}) overlap on the same row.',
+            );
+          } else {
+            expect(
+              current.bottom <= next.top,
+              isTrue,
+              reason:
+                  'Hit targets for ${paletteValues[i].toRadixString(16)} '
+                  '(bottom=${current.bottom}) and '
+                  '${paletteValues[i + 1].toRadixString(16)} '
+                  '(top=${next.top}) overlap across rows.',
+            );
+          }
+        }
+
+        // Also verify the boundary between the last preset and the
+        // custom-color button, since they live in the same Wrap.
+        final Rect lastPreset = rectFor(paletteValues.last);
+        final Rect customButton = tester.getRect(
+          find.byKey(const Key('user-color-custom-button')),
+        );
+        if (lastPreset.top == customButton.top) {
+          expect(
+            lastPreset.right <= customButton.left,
+            isTrue,
+            reason:
+                'Last preset and custom-color button overlap on the same row '
+                '(${lastPreset.right} > ${customButton.left}).',
+          );
+        } else {
+          expect(
+            lastPreset.bottom <= customButton.top,
+            isTrue,
+            reason:
+                'Last preset and custom-color button overlap across rows '
+                '(${lastPreset.bottom} > ${customButton.top}).',
+          );
+        }
+      },
+    );
+
     testWidgets('custom color dialog shows a Hex input field (#779)', (
       WidgetTester tester,
     ) async {

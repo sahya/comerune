@@ -17,6 +17,7 @@ import 'package:comerune/presentation/screens/comment_screen_config.dart';
 
 import '../../comment_speech/fake_comment_speech_platform.dart';
 import '../../helpers/in_memory_shared_preferences.dart';
+import '../../helpers/recording_settings_store.dart';
 
 void main() {
   group('CommentScreen speech integration', () {
@@ -4801,6 +4802,236 @@ void main() {
       );
     },
   );
+
+  group('CommentScreen teach command save error logging (Issue #840)', () {
+    late FakeCommentSpeechPlatform fakePlatform;
+
+    setUp(() {
+      fakePlatform = FakeCommentSpeechPlatform();
+    });
+
+    testWidgets(
+      'a successful /teach updates dictionaryRules and fires the callback',
+      (WidgetTester tester) async {
+        // Sanity baseline for the failure-path tests below: the Option C
+        // refactor must not regress the success path. When save succeeds,
+        // onDictionaryRulesChanged still fires with the updated settings
+        // and no save-related error log is emitted.
+        final SharedPreferencesSettingsStore settingsStore =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        final List<AppSettings> changedRulesPayloads = <AppSettings>[];
+
+        final List<AppMessage> messages = <AppMessage>[
+          _chatMessage(id: 'msg-1', content: '最初'),
+        ];
+
+        final List<String> printed = <String>[];
+        await withCapturedDebugPrint(printed, () async {
+          await tester.pumpWidget(
+            _buildScreen(
+              speechPlatform: fakePlatform,
+              speechSettings: const SpeechSettings(enabled: true),
+              messages: messages,
+              slashPrefixSkipEnabled: false,
+              settingsStore: settingsStore,
+              broadcasterUserId: 'broadcaster-1',
+              onDictionaryRulesChanged: changedRulesPayloads.add,
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          final _SpeechTestHostState host = tester.state(
+            find.byType(_SpeechTestHost),
+          );
+          host.addMessage(
+            _chatMessage(
+              id: 'msg-2',
+              content: '/teach パターン よみがな',
+              userId: 'broadcaster-1',
+            ),
+          );
+          await tester.pumpAndSettle();
+        });
+
+        expect(changedRulesPayloads, hasLength(1));
+        expect(
+          changedRulesPayloads.first.dictionaryRules,
+          isNot(isEmpty),
+          reason:
+              'A successful /teach must produce a non-empty dictionaryRules '
+              'snapshot in the onDictionaryRulesChanged callback.',
+        );
+
+        final String joined = printed.join('\n');
+        expect(joined, isNot(contains('saveSettings: SettingsStore.save')));
+        expect(
+          joined,
+          isNot(contains('[CommentScreen] _handleTeachCommand FAILED')),
+        );
+      },
+    );
+
+    testWidgets(
+      'save failure is logged once via SettingsSaveHelper, not via the outer '
+      'CommentScreen catch (no double-log)',
+      (WidgetTester tester) async {
+        // Issue #840 acceptance criterion: when SettingsStore.save throws
+        // inside _handleTeachCommand, the failure must be logged exactly
+        // once through SettingsSaveHelper. The outer try/catch in
+        // _handleTeachCommand must not re-emit "[CommentScreen]
+        // _handleTeachCommand FAILED" — that would be the double-log
+        // regression we are guarding against.
+        final SharedPreferencesSettingsStore inner =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+        final AppSettings initialSettings = await inner.load();
+
+        final DelegatingSettingsStore settingsStore = DelegatingSettingsStore(
+          inner: inner,
+          saveError: StateError('persistence failure'),
+        );
+
+        final List<AppSettings> changedRulesPayloads = <AppSettings>[];
+
+        final List<AppMessage> messages = <AppMessage>[
+          _chatMessage(id: 'msg-1', content: '最初'),
+        ];
+
+        final List<String> printed = <String>[];
+        await withCapturedDebugPrint(printed, () async {
+          await tester.pumpWidget(
+            _buildScreen(
+              speechPlatform: fakePlatform,
+              speechSettings: const SpeechSettings(enabled: true),
+              messages: messages,
+              slashPrefixSkipEnabled: false,
+              settingsStore: settingsStore,
+              broadcasterUserId: 'broadcaster-1',
+              onDictionaryRulesChanged: changedRulesPayloads.add,
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          final _SpeechTestHostState host = tester.state(
+            find.byType(_SpeechTestHost),
+          );
+          host.addMessage(
+            _chatMessage(
+              id: 'msg-2',
+              content: '/teach パターン よみがな',
+              userId: 'broadcaster-1',
+            ),
+          );
+          await tester.pumpAndSettle();
+        });
+
+        expect(settingsStore.saveAttempts, 1);
+        expect(
+          changedRulesPayloads,
+          isEmpty,
+          reason:
+              'When persistence fails, onDictionaryRulesChanged must NOT '
+              'fire because the in-memory state would diverge from the '
+              'store. Option C achieves this by `return`-ing from the '
+              'inner catch before invoking the callback.',
+        );
+
+        final String joined = printed.join('\n');
+        // Helper-level log must be present (single source of truth).
+        expect(joined, contains('saveSettings: SettingsStore.save FAILED'));
+        // Outer CommentScreen log must NOT be present — that is the
+        // pre-#840 double-log that this PR removes.
+        expect(
+          joined,
+          isNot(contains('[CommentScreen] _handleTeachCommand FAILED')),
+        );
+        // Exactly one helper-emitted line, regression guard against any
+        // future caller adding a second log.
+        final int helperHits = printed
+            .where(
+              (String line) =>
+                  line.contains('saveSettings: SettingsStore.save FAILED'),
+            )
+            .length;
+        expect(helperHits, 1);
+        // Zero outer-CommentScreen log lines for the save failure path.
+        // Pairing this `count == 0` assertion with `count == 1` above
+        // makes the "single source of truth" invariant explicit even if
+        // future code changes ever start wrapping the failure in
+        // additional error messages.
+        final int outerHits = printed
+            .where(
+              (String line) =>
+                  line.contains('[CommentScreen] _handleTeachCommand FAILED'),
+            )
+            .length;
+        expect(outerHits, 0);
+
+        // The persisted dictionaryRules in the underlying store must be
+        // unchanged — _ThrowingSaveSettingsStore intercepts before
+        // delegating to inner.save, so failure leaves persistence at the
+        // pre-teach baseline.
+        final AppSettings reloaded = await inner.load();
+        expect(reloaded.dictionaryRules, initialSettings.dictionaryRules);
+      },
+    );
+
+    testWidgets(
+      'load failure still falls through to the outer CommentScreen catch '
+      '(regression guard for the unchanged load error path)',
+      (WidgetTester tester) async {
+        // Option C must NOT remove the outer try/catch — load() failures
+        // still need to be logged via _errorLog. This regression guard
+        // ensures the outer logger keeps working for non-save failures.
+        final RecordingSettingsStore settingsStore = RecordingSettingsStore(
+          loadError: StateError('load failure'),
+        );
+
+        final List<AppSettings> changedRulesPayloads = <AppSettings>[];
+
+        final List<AppMessage> messages = <AppMessage>[
+          _chatMessage(id: 'msg-1', content: '最初'),
+        ];
+
+        final List<String> printed = <String>[];
+        await withCapturedDebugPrint(printed, () async {
+          await tester.pumpWidget(
+            _buildScreen(
+              speechPlatform: fakePlatform,
+              speechSettings: const SpeechSettings(enabled: true),
+              messages: messages,
+              slashPrefixSkipEnabled: false,
+              settingsStore: settingsStore,
+              broadcasterUserId: 'broadcaster-1',
+              onDictionaryRulesChanged: changedRulesPayloads.add,
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          final _SpeechTestHostState host = tester.state(
+            find.byType(_SpeechTestHost),
+          );
+          host.addMessage(
+            _chatMessage(
+              id: 'msg-2',
+              content: '/teach パターン よみがな',
+              userId: 'broadcaster-1',
+            ),
+          );
+          await tester.pumpAndSettle();
+        });
+
+        expect(settingsStore.loadCallCount, 1);
+        expect(changedRulesPayloads, isEmpty);
+
+        final String joined = printed.join('\n');
+        // Outer CommentScreen logger still surfaces non-save failures.
+        expect(joined, contains('[CommentScreen] _handleTeachCommand FAILED'));
+        // Helper-level log must NOT appear because save was never reached.
+        expect(joined, isNot(contains('saveSettings: SettingsStore.save')));
+      },
+    );
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -4986,6 +5217,7 @@ class _SpeechTestHost extends StatefulWidget {
     this.androidTtsAvailability,
     this.settingsStore,
     this.broadcasterUserId,
+    this.onDictionaryRulesChanged,
   });
 
   final List<AppMessage> initialMessages;
@@ -5007,6 +5239,7 @@ class _SpeechTestHost extends StatefulWidget {
   final SpeechAvailabilityNotifier? androidTtsAvailability;
   final SettingsStore? settingsStore;
   final String? broadcasterUserId;
+  final void Function(AppSettings updated)? onDictionaryRulesChanged;
 
   @override
   State<_SpeechTestHost> createState() => _SpeechTestHostState();
@@ -5068,6 +5301,7 @@ class _SpeechTestHostState extends State<_SpeechTestHost> {
         onReconnectSameLv: () async {},
         onDifferentLvConnected: (_, _) async {},
         onSpeechMuteToggled: widget.onSpeechMuteToggled,
+        onDictionaryRulesChanged: widget.onDictionaryRulesChanged,
       ),
       themeMode: AppThemeMode.light,
       showUserName: widget.showUserName,
@@ -5113,6 +5347,7 @@ Widget _buildScreen({
   SpeechAvailabilityNotifier? androidTtsAvailability,
   SettingsStore? settingsStore,
   String? broadcasterUserId,
+  void Function(AppSettings updated)? onDictionaryRulesChanged,
 }) {
   return MaterialApp(
     home: _SpeechTestHost(
@@ -5135,6 +5370,7 @@ Widget _buildScreen({
       androidTtsAvailability: androidTtsAvailability,
       settingsStore: settingsStore,
       broadcasterUserId: broadcasterUserId,
+      onDictionaryRulesChanged: onDictionaryRulesChanged,
     ),
   );
 }

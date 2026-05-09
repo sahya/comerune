@@ -7,6 +7,7 @@ import 'package:comerune/presentation/mixins/settings_screen_mixin.dart';
 import 'package:comerune/presentation/screens/comment_display_settings_screen.dart';
 
 import '../../helpers/in_memory_shared_preferences.dart';
+import '../../helpers/throwing_settings_store.dart';
 
 void main() {
   group('SettingsScreenMixin', () {
@@ -14,7 +15,7 @@ void main() {
       testWidgets('shows error UI when settingsStore.load() throws', (
         WidgetTester tester,
       ) async {
-        final _ThrowingSettingsStore store = _ThrowingSettingsStore();
+        final ThrowingSettingsStore store = ThrowingSettingsStore();
 
         await tester.pumpWidget(
           MaterialApp(home: _ErrorTestScreen(settingsStore: store)),
@@ -31,7 +32,7 @@ void main() {
         // パースできず `StateError` 等を投げるシナリオを再現する。
         // `Error` 系を捕捉できないと `settings`/`settingsError` ともに null
         // のままになり、画面が CircularProgressIndicator で固まる。
-        final _ThrowingSettingsStore store = _ThrowingSettingsStore(
+        final ThrowingSettingsStore store = ThrowingSettingsStore(
           errorToThrow: StateError('simulated legacy parse failure'),
         );
 
@@ -58,7 +59,7 @@ void main() {
           WidgetTester tester,
           Object thrownError,
         ) async {
-          final _ThrowingSettingsStore store = _ThrowingSettingsStore(
+          final ThrowingSettingsStore store = ThrowingSettingsStore(
             errorToThrow: thrownError,
           );
           await tester.pumpWidget(
@@ -95,7 +96,7 @@ void main() {
       testWidgets('tapping retry clears error and retries load', (
         WidgetTester tester,
       ) async {
-        final _ThrowingSettingsStore store = _ThrowingSettingsStore();
+        final ThrowingSettingsStore store = ThrowingSettingsStore();
 
         await tester.pumpWidget(
           MaterialApp(home: _ErrorTestScreen(settingsStore: store)),
@@ -156,7 +157,7 @@ void main() {
       testWidgets('markChanged sets hasChanges to true', (
         WidgetTester tester,
       ) async {
-        final _ThrowingSettingsStore store = _ThrowingSettingsStore()
+        final ThrowingSettingsStore store = ThrowingSettingsStore()
           ..shouldThrow = false;
         final GlobalKey<_ErrorTestScreenState> screenKey =
             GlobalKey<_ErrorTestScreenState>();
@@ -286,64 +287,6 @@ void main() {
 // ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
-
-/// A settings store that throws on [load] when [shouldThrow] is true.
-///
-// TODO: extract to test/helpers/throwing_settings_store.dart so this stub
-// and `_LegacyParseFailureSettingsStore` in
-// test/presentation/screens/settings_screen_test.dart can share one
-// implementation.
-class _ThrowingSettingsStore implements SettingsStore {
-  _ThrowingSettingsStore({this.errorToThrow});
-
-  bool shouldThrow = true;
-
-  /// Optional alternative thing to throw — allows tests to simulate `Error`
-  /// subclasses (StateError / TypeError 等) escaping `SettingsStore.load()`
-  /// from legacy persisted data parsing, not just `Exception`.
-  final Object? errorToThrow;
-
-  final SharedPreferencesSettingsStore _delegate =
-      SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-
-  @override
-  Future<AppSettings> load() async {
-    if (shouldThrow) {
-      // ignore: only_throw_errors, test stub intentionally throws Object
-      // subclasses (Exception or Error) for parameterized failure cases.
-      throw errorToThrow ?? Exception('simulated load failure');
-    }
-    return _delegate.load();
-  }
-
-  @override
-  Future<void> save(AppSettings settings) => _delegate.save(settings);
-
-  @override
-  double? loadPreMuteVolume() => _delegate.loadPreMuteVolume();
-
-  @override
-  Future<void> savePreMuteVolume(double? volume) =>
-      _delegate.savePreMuteVolume(volume);
-
-  @override
-  double? loadPreMuteAndroidTtsVolume() =>
-      _delegate.loadPreMuteAndroidTtsVolume();
-
-  @override
-  Future<void> savePreMuteAndroidTtsVolume(double? volume) =>
-      _delegate.savePreMuteAndroidTtsVolume(volume);
-
-  @override
-  Future<String> exportAsJson() => _delegate.exportAsJson();
-
-  @override
-  Future<String> writeExportToTempFile() => _delegate.writeExportToTempFile();
-
-  @override
-  Future<AppSettings> importFromJson(String jsonString) =>
-      _delegate.importFromJson(jsonString);
-}
 
 /// Minimal StatefulWidget that uses [SettingsScreenMixin] for testing
 /// error state behaviour.
