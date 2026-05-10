@@ -128,6 +128,15 @@ PR を作成する際、対応する Issue 番号がある場合は必ず PR の
 - 複数の Issue に対応する場合はすべて記載する（例: `Closes #123, Closes #124`）
 - Issue 番号が不明な場合や Issue なしで作業している場合は記載不要
 
+### Committer Identity (user.name / user.email)
+
+公開リポジトリへ push されるコミットの author / committer 情報は、リポジトリで設定された `git config` 値（通常は GitHub の `*****+username@users.noreply.github.com` などの noreply）をそのまま使うこと。
+
+- **`-c user.email=...` / `-c user.name=...` で git コマンドを上書きしてはならない** — `git commit`、`git rebase`、`git cherry-pick` 等いずれも対象。意図せずプライベートな実 email を公開コミットに刻むリスクがある。
+- **Claude Code ハーネスが context に注入する `# userEmail` (Anthropic アカウントログイン用 email) を commit / PR 本文 / Issue 本文 / コードコメント / 公開ドキュメントに書かない** — これはアカウント識別用の参照情報であり、公開コミットに残すと当該 email がリポジトリ履歴に永続的に紐付く。
+- 既存の `git config user.email` 値が想定と異なる場合は、まずユーザーに確認する。勝手に書き換えない。
+- レビューで上書きや実 email 漏れが見つかった場合は **must fix** として差し戻す。
+
 ## Dependency Version Pinning
 
 サプライチェーン攻撃対策として、`pubspec.yaml` の依存パッケージバージョンはピン留め（exact version）で指定すること。
