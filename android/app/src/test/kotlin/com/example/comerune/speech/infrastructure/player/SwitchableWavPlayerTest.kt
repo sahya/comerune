@@ -2,6 +2,7 @@ package com.example.comerune.speech.infrastructure.player
 
 import com.example.comerune.speech.domain.model.PlayerState
 import com.example.comerune.speech.domain.player.WavPlayer
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
@@ -282,7 +283,11 @@ class SwitchableWavPlayerTest {
             // suspends on the entry latch BEFORE flipping intent, so the
             // swap is fully applied (old delegate released, new delegate
             // installed) but the new delegate has not yet asserted intent.
-            val playJob = async { player.play(ByteArray(0)) }
+            //
+            // Dispatchers.Default is required because the assertions below
+            // use blocking CountDownLatch.await(), which would deadlock the
+            // single-threaded runBlocking event loop if play() shared it.
+            val playJob = async(Dispatchers.Default) { player.play(ByteArray(0)) }
             // Bounded wait so a regression cannot hang the suite. The
             // fake's playProceedGate await is also bounded at 5s.
             assertTrue(
@@ -301,7 +306,7 @@ class SwitchableWavPlayerTest {
             // Let play() proceed and run to completion so the test
             // teardown leaves the player in a deterministic state.
             mediaPlayer.playProceedGate!!.countDown()
-            playJob.await()
+            assertTrue(playJob.await().isSuccess)
         }
 
     // Companion to AC5 (b): once play() has completed naturally, the new
