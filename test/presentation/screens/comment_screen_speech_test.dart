@@ -4194,12 +4194,21 @@ void main() {
       // futures (getStatus → updateSettings → start) before the
       // setState({_speechStarted=true}) rebuild. A single pump() flushes
       // all pending microtasks AND renders one frame, so one pump is
-      // sufficient in practice; the second pump is defensive in case a
-      // future refactor inserts an extra await between start() and the
-      // rebuild. pumpAndSettle is intentionally avoided (AGENTS.md
-      // L121-122) — the fake schedules no real timers.
-      await tester.pump();
-      await tester.pump();
+      // typically sufficient. We use a bounded poll instead of a fixed
+      // pump count so that a future refactor adding an extra await
+      // between start() and the setState rebuild does not silently break
+      // the test (it would just take one more pump iteration). The cap
+      // is small enough that a real regression — where init never
+      // completes — still fails fast. pumpAndSettle is intentionally
+      // avoided (AGENTS.md「実行時間」section) — the fake schedules no
+      // real timers.
+      for (
+        int i = 0;
+        i < 8 && find.byIcon(Icons.hourglass_top).evaluate().isNotEmpty;
+        i++
+      ) {
+        await tester.pump();
+      }
       expect(
         find.byIcon(Icons.hourglass_top),
         findsNothing,
@@ -4240,12 +4249,18 @@ void main() {
           ),
         );
         // Drain the init microtasks (getStatus → updateSettings →
-        // start → setState). One pump() flushes all pending microtasks;
-        // the second pump is defensive against a future extra await.
-        // pumpAndSettle is intentionally avoided because the fake
-        // schedules no real timers (AGENTS.md L121-122).
-        await tester.pump();
-        await tester.pump();
+        // start → setState). Bounded poll instead of fixed pump count:
+        // robust against a future refactor adding an extra await on the
+        // success path. pumpAndSettle is intentionally avoided because
+        // the fake schedules no real timers (AGENTS.md「実行時間」
+        // section).
+        for (
+          int i = 0;
+          i < 8 && find.byIcon(Icons.hourglass_top).evaluate().isNotEmpty;
+          i++
+        ) {
+          await tester.pump();
+        }
         expect(find.byIcon(Icons.hourglass_top), findsNothing);
 
         // Gate the Android-TTS availability check so the await inside
@@ -4278,12 +4293,19 @@ void main() {
             engineType: SpeechEngineType.androidTts,
           ),
         );
-        // Pump enough times to flush _stopSpeech's awaits and reach the
-        // gated checkAndroidTtsAvailability call. Each pump processes
-        // pending microtasks.
-        await tester.pump();
-        await tester.pump();
-        await tester.pump();
+        // Pump until the Android-TTS init branch parks on the gated
+        // availability check. Bounded poll: robust against future
+        // refactors that add or remove awaits between updateWidget and
+        // checkAndroidTtsAvailability. The cap is small enough that a
+        // real regression — where the gate is never reached — fails
+        // fast.
+        for (
+          int i = 0;
+          i < 16 && !fakePlatform.checkAndroidTtsAvailabilityCalled;
+          i++
+        ) {
+          await tester.pump();
+        }
 
         expect(
           fakePlatform.checkAndroidTtsAvailabilityCalled,
@@ -4302,10 +4324,16 @@ void main() {
 
         // (d) Release the gate → checkAndroidTtsAvailability resolves →
         // _initializedEngineType = androidTts → start() resolves →
-        // setState({_speechStarted=true}) → hourglass gone.
+        // setState({_speechStarted=true}) → hourglass gone. Bounded
+        // poll for the same refactor-resilience reason as (b)/(c).
         fakePlatform.checkAndroidTtsAvailabilityGate!.complete();
-        await tester.pump();
-        await tester.pump();
+        for (
+          int i = 0;
+          i < 8 && find.byIcon(Icons.hourglass_top).evaluate().isNotEmpty;
+          i++
+        ) {
+          await tester.pump();
+        }
         expect(
           find.byIcon(Icons.hourglass_top),
           findsNothing,
