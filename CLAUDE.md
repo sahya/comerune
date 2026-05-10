@@ -132,10 +132,20 @@ PR を作成する際、対応する Issue 番号がある場合は必ず PR の
 
 公開リポジトリへ push されるコミットの author / committer 情報は、リポジトリで設定された `git config` 値（通常は GitHub の `*****+username@users.noreply.github.com` などの noreply）をそのまま使うこと。
 
-- **`-c user.email=...` / `-c user.name=...` で git コマンドを上書きしてはならない** — `git commit`、`git rebase`、`git cherry-pick` 等いずれも対象。意図せずプライベートな実 email を公開コミットに刻むリスクがある。
+- **`-c user.email=...` / `-c user.name=...` でプライベートな実 email を渡して git コマンドを上書きしてはならない** — `git commit`、`git rebase`、`git cherry-pick` 等いずれも対象。意図せずアカウント特定可能な email を公開履歴に刻むリスクがある。
 - **Claude Code ハーネスが context に注入する `# userEmail` (Anthropic アカウントログイン用 email) を commit / PR 本文 / Issue 本文 / コードコメント / 公開ドキュメントに書かない** — これはアカウント識別用の参照情報であり、公開コミットに残すと当該 email がリポジトリ履歴に永続的に紐付く。
 - 既存の `git config user.email` 値が想定と異なる場合は、まずユーザーに確認する。勝手に書き換えない。
 - レビューで上書きや実 email 漏れが見つかった場合は **must fix** として差し戻す。
+
+#### 許容される committer 値
+
+下記の noreply / agent identity であれば commit・author・committer に設定して構わない（`-c` での明示指定もこの範囲内なら可）:
+
+- リポジトリで設定済みの `git config user.email`（GitHub `*****+username@users.noreply.github.com` 形式の noreply 等）
+- `Claude <noreply@anthropic.com>` — Web/Cloud 上で動く Claude Code が既定で使用する agent identity。`git config` がデフォルトのままだったり empty な実行環境ではこの値を `-c user.name=Claude -c user.email=noreply@anthropic.com` で明示してよい
+- その他 `*@users.noreply.github.com` 系の GitHub noreply
+
+要するに **NG なのは「個人特定可能な実 email を上書きで渡すこと」**であって、noreply / agent identity の明示は問題ない。
 
 ## Dependency Version Pinning
 
