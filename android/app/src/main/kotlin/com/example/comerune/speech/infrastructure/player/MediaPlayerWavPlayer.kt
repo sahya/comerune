@@ -44,7 +44,12 @@ class MediaPlayerWavPlayer(
 
     override fun shouldBePlaying(): Boolean = shouldBePlayingFlag
 
-    private val audioAttributes: AudioAttributes =
+    // Lazy so that constructing the player on a pure-JVM unit test JVM
+    // (where AudioAttributes.Builder.build() returns null via the
+    // returnDefaultValues stub) does not NPE during field init. The first
+    // play() access triggers the real build on a real device. This mirrors
+    // PR #853's same shift for AndroidTtsSpeaker.
+    private val audioAttributes: AudioAttributes by lazy {
         AudioAttributes.Builder().apply {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 setUsage(AudioAttributes.USAGE_ASSISTANT)
@@ -53,6 +58,7 @@ class MediaPlayerWavPlayer(
             }
             setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
         }.build()
+    }
 
     private val focusListener = AudioFocusGuard.FocusChangeListener { event ->
         when (event) {
