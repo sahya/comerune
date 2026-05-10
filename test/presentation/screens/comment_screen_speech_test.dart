@@ -4150,6 +4150,21 @@ void main() {
       currentSpeakerId: 0,
     );
 
+    // Caps for the bounded poll loops below. Sized for the current
+    // production await chain plus comfortable headroom so that adding
+    // one or two awaits to _initializeAndStartSpeech in the future
+    // does not require touching this test. Real regressions (where
+    // the awaited future never resolves) still fail fast — the cap is
+    // not an arbitrary timeout, it is a "max number of microtask
+    // drains we are willing to do before declaring failure".
+    //   shortPath: success path through _initializeAndStartSpeech
+    //              (~3 awaits today: getStatus → updateSettings → start).
+    //   switchPath: engine-switch path through
+    //               _handleSpeechSettingsChanged → _stopSpeech →
+    //               _initializeAndStartSpeech, which has more awaits.
+    const int kPumpCapShortPath = 8;
+    const int kPumpCapSwitchPath = 16;
+
     setUp(() {
       fakePlatform = FakeCommentSpeechPlatform();
       // Voicevox (initial) sees READY → init completes via the
@@ -4204,7 +4219,8 @@ void main() {
       // real timers.
       for (
         int i = 0;
-        i < 8 && find.byIcon(Icons.hourglass_top).evaluate().isNotEmpty;
+        i < kPumpCapShortPath &&
+            find.byIcon(Icons.hourglass_top).evaluate().isNotEmpty;
         i++
       ) {
         await tester.pump();
@@ -4256,7 +4272,8 @@ void main() {
         // section).
         for (
           int i = 0;
-          i < 8 && find.byIcon(Icons.hourglass_top).evaluate().isNotEmpty;
+          i < kPumpCapShortPath &&
+              find.byIcon(Icons.hourglass_top).evaluate().isNotEmpty;
           i++
         ) {
           await tester.pump();
@@ -4301,7 +4318,8 @@ void main() {
         // fast.
         for (
           int i = 0;
-          i < 16 && !fakePlatform.checkAndroidTtsAvailabilityCalled;
+          i < kPumpCapSwitchPath &&
+              !fakePlatform.checkAndroidTtsAvailabilityCalled;
           i++
         ) {
           await tester.pump();
@@ -4329,7 +4347,8 @@ void main() {
         fakePlatform.checkAndroidTtsAvailabilityGate!.complete();
         for (
           int i = 0;
-          i < 8 && find.byIcon(Icons.hourglass_top).evaluate().isNotEmpty;
+          i < kPumpCapShortPath &&
+              find.byIcon(Icons.hourglass_top).evaluate().isNotEmpty;
           i++
         ) {
           await tester.pump();
