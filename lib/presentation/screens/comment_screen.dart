@@ -2204,6 +2204,20 @@ class _CommentScreenState extends State<CommentScreen>
   /// Failure mode: if the platform call throws (channel hiccup, plugin
   /// not registered in a host-test environment, etc.) we leave the local
   /// mirror untouched. The next genuine start/stop write will fix it.
+  ///
+  /// Forward-compat guard (Issue #915, structurally identical to the
+  /// Issue #692 Android-TTS silent-drop footgun): if the native payload
+  /// did not carry the `started` key at all
+  /// ([SpeechRuntimeStatus.startedReported] is `false`), the `false` we
+  /// would otherwise read is a *default*, not a *reported* value. An old
+  /// native binary running under a new Flutter binary would then silently
+  /// downgrade a genuinely-`true` mirror to `false`, dropping queued
+  /// comments. Today the only call site is the post-`_stopSpeech`
+  /// engine-switch edge where the mirror is already `false`, so this is
+  /// latent — but it would activate the moment a future call site
+  /// reconciles while the mirror is genuinely `true` (lifecycle resume,
+  /// post-process-recreation). We refuse to trust an unreported value and
+  /// preserve the mirror instead.
   Future<void> _reconcileSpeechStartedFromNative({
     required String reason,
   }) async {
@@ -2212,6 +2226,19 @@ class _CommentScreenState extends State<CommentScreen>
     try {
       final SpeechRuntimeStatus status = await platform.getStatus();
       if (!mounted) return;
+      if (!status.startedReported) {
+        // Old native binary did not report `started` — the `false` here
+        // is a fromMap default, not native ground truth. Trusting it
+        // would silently downgrade the mirror (Issue #692-style footgun).
+        // Preserve the mirror and let the next genuine start/stop write
+        // correct it.
+        _debugLog(
+          '[CommentScreen] reconcileSpeechStarted ($reason): native did '
+          'not report started (old binary?) — preserving mirror '
+          '($_speechStarted)',
+        );
+        return;
+      }
       if (_speechStarted != status.started) {
         _debugLog(
           '[CommentScreen] reconcileSpeechStarted ($reason): '

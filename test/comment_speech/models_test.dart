@@ -333,6 +333,90 @@ void main() {
       );
       expect(status.started, false);
     });
+
+    test('fromMap sets startedReported=true when the started key is '
+        'present (Issue #915 forward-compat guard)', () {
+      // Both an explicit true and an explicit false must count as
+      // "reported" — the flag tracks key *presence*, not the value.
+      final reportedTrue = SpeechRuntimeStatus.fromMap({
+        'enabled': true,
+        'engineState': 'READY',
+        'playerState': 'IDLE',
+        'queueSize': 0,
+        'currentSpeakerId': 0,
+        'started': true,
+      });
+      final reportedFalse = SpeechRuntimeStatus.fromMap({
+        'enabled': true,
+        'engineState': 'READY',
+        'playerState': 'IDLE',
+        'queueSize': 0,
+        'currentSpeakerId': 0,
+        'started': false,
+      });
+      expect(reportedTrue.startedReported, true);
+      expect(reportedFalse.startedReported, true);
+    });
+
+    test('fromMap sets startedReported=false when the started key is '
+        'absent (old native binary, Issue #915 forward-compat guard)', () {
+      // An old native binary that has not been rebuilt with the
+      // Issue #915 patch omits `started` entirely. The defaulted
+      // `started=false` must be distinguishable from a reported
+      // `false` so the reconcile guard can refuse to trust it.
+      final status = SpeechRuntimeStatus.fromMap({
+        'enabled': true,
+        'engineState': 'READY',
+        'playerState': 'IDLE',
+        'queueSize': 0,
+        'currentSpeakerId': 0,
+      });
+      expect(status.started, false);
+      expect(status.startedReported, false);
+    });
+
+    test('default constructor leaves startedReported=false', () {
+      const status = SpeechRuntimeStatus(
+        enabled: false,
+        engineState: 'UNKNOWN',
+        playerState: 'UNKNOWN',
+        queueSize: 0,
+        currentSpeakerId: 0,
+      );
+      expect(status.startedReported, false);
+    });
+
+    test('startedReported is excluded from == and hashCode '
+        '(wire metadata, not logical state — Issue #915)', () {
+      // Two statuses describing the SAME runtime must compare equal
+      // regardless of whether the `started` key was transported. If
+      // startedReported leaked into equality, an old-native status and
+      // an otherwise-identical new-native status would spuriously
+      // differ, breaking change-detection / dedup at every call site
+      // that compares SpeechRuntimeStatus instances.
+      final reported = SpeechRuntimeStatus.fromMap({
+        'enabled': true,
+        'engineState': 'READY',
+        'playerState': 'IDLE',
+        'queueSize': 0,
+        'currentSpeakerId': 0,
+        'started': false,
+      });
+      final notReported = SpeechRuntimeStatus.fromMap({
+        'enabled': true,
+        'engineState': 'READY',
+        'playerState': 'IDLE',
+        'queueSize': 0,
+        'currentSpeakerId': 0,
+      });
+      // Same logical runtime (started=false either way), differing only
+      // in wire-presence metadata.
+      expect(reported.started, notReported.started);
+      expect(reported.startedReported, isNot(notReported.startedReported));
+      // Equality and hashCode must ignore the metadata difference.
+      expect(reported, equals(notReported));
+      expect(reported.hashCode, equals(notReported.hashCode));
+    });
   });
 
   group('SpeechEvent', () {
