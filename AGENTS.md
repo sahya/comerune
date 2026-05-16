@@ -179,6 +179,12 @@ PR を作成する際、対応する Issue 番号がある場合は必ず PR の
 - 複数の Issue に対応する場合はすべて記載する（例: `Closes #123, Closes #124`）
 - Issue 番号が不明な場合や Issue なしで作業している場合は記載不要
 
+公開リポジトリのため、PR 本文およびコミットメッセージに AI 支援ツールの痕跡を残さないこと。
+- AI ツールのセッション URL（例: `https://claude.ai/code/session_...`）を含めない
+- AI の co-author 行・「Generated with ...」等の帰属行・モデル識別子（バージョン名等）を含めない
+- リポジトリの `.claude/settings.json` の `attribution`（`commit` / `pr` を空文字列）で自動付与は抑止済み。これを無効化せず、手動でも記載しないこと
+- 人間コントリビューター向けの同方針は `CONTRIBUTING.md` にも記載している
+
 ## Issue Lifecycle
 - Agents must not close issues.
 - Only the human owner may close an issue, after confirming the implementation satisfies the acceptance criteria.
