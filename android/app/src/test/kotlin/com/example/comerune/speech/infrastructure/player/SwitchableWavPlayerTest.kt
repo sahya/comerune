@@ -368,4 +368,85 @@ class SwitchableWavPlayerTest {
 
         assertEquals(false, player.shouldBePlaying())
     }
+
+    // ---------------------------------------------------------------------
+    // Issue #917: post-release contract
+    //
+    // These tests pin the *external* contract only — "release() then play()
+    // resolves to a failure Result". They intentionally do NOT assert which
+    // layer (delegate or SwitchableWavPlayer itself) produced the failure,
+    // nor the exception type. A future refactor that adds an early-out
+    // released-guard inside SwitchableWavPlayer must keep these tests
+    // passing without modification.
+    //
+    // FakeWavPlayer mirrors the production released-guard contract (see
+    // FakeWavPlayer.play), so these tests observe realistic delegate
+    // behaviour without dragging in Robolectric or a real Android Context.
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `release then play returns failure`() = runBlocking {
+        val audioTrack = FakeWavPlayer(tag = "audio")
+        val mediaPlayer = FakeWavPlayer(tag = "media")
+        val player = newSwitchable(audioTrack, mediaPlayer)
+
+        player.release()
+        val result = player.play(ByteArray(0))
+
+        // Contract: play() after release() resolves to failure. The
+        // failure path (delegate-side guard vs. a hypothetical future
+        // SwitchableWavPlayer self-guard) is intentionally NOT asserted.
+        assertTrue(
+            "play() after release() must return Result.failure (got: $result)",
+            result.isFailure
+        )
+        // Pin the failure transition more precisely:
+        //  - Today (delegate-side guard path): play() routes to the
+        //    released delegate, so playCount == 1 and successfulPlayCount
+        //    == 0 (guard short-circuits before audio is produced).
+        //  - Tomorrow (SwitchableWavPlayer self-guard path): play()
+        //    short-circuits before reaching the delegate, so playCount ==
+        //    0. successfulPlayCount stays 0 either way.
+        // We assert only the "no audio actually played" invariant
+        // (successfulPlayCount == 0 for both delegates) so a future
+        // self-guard refactor does not require rewriting this test.
+        assertEquals(0, audioTrack.successfulPlayCount.get())
+        assertEquals(0, mediaPlayer.successfulPlayCount.get())
+        // Sanity: the second delegate was never constructed-into-use
+        // because the active type at release() was AUDIO_TRACK.
+        assertEquals(0, mediaPlayer.playCount.get())
+    }
+
+    @Test
+    fun `release then switchPlayerType does not throw`() = runBlocking {
+        val audioTrack = FakeWavPlayer(tag = "audio")
+        val mediaPlayer = FakeWavPlayer(tag = "media")
+        val player = newSwitchable(audioTrack, mediaPlayer)
+
+        player.release()
+
+        // Contract: switchPlayerType() after release() must not throw.
+        // It only mutates pendingType; any subsequent play() is itself
+        // guarded to return failure. We deliberately do NOT assert the
+        // post-call value of currentPlayerType()/pendingType — those are
+        // implementation details that may change if a self-guard is added
+        // later in SwitchableWavPlayer.
+        //
+        // Wrap the call in an explicit try/catch so the test name's
+        // "does not throw" claim is enforced loudly: any thrown exception
+        // surfaces as an `AssertionError` with the original cause, not as
+        // a generic JUnit "test failed" report.
+        try {
+            player.switchPlayerType(SwitchableWavPlayer.TYPE_MEDIA_PLAYER)
+        } catch (t: Throwable) {
+            throw AssertionError(
+                "switchPlayerType() after release() must not throw",
+                t,
+            )
+        }
+
+        // No second release on the delegate from switchPlayerType alone.
+        assertEquals(1, audioTrack.releaseCount.get())
+        assertEquals(0, mediaPlayer.releaseCount.get())
+    }
 }
