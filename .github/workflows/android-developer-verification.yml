@@ -62,7 +62,10 @@ jobs:
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
-          cache: true
+          # 署名 secrets を持つ特権ワークフローのため、PR/push CI と共有される
+          # Actions キャッシュ経由のポイズニング (低信頼 CI が書いた main スコープ
+          # キャッシュを署名ビルドが復元する経路) を断ち、毎回クリーン取得する。
+          cache: false
 
       - name: Install dependencies
         run: flutter pub get
