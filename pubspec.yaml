@@ -50,7 +50,7 @@ dependencies:
 
   # Android Foreground Service（バックグラウンド接続維持・通知バー常駐表示）
   flutter_foreground_task: 9.2.2
-  wakelock_plus: 1.5.1
+  wakelock_plus: 1.6.1
 
   # コメント内URLを既定ブラウザで開く（WebView 経由ではなく OS ハンドラに委ねる）
   url_launcher: 6.3.2
