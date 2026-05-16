@@ -4113,6 +4113,258 @@ void main() {
   });
 
   // -------------------------------------------------------------------------
+  // Issue #918 (Issue #741 Problem 6): icon-level observation of the
+  // engine init / re-init transition (the underlying state is the
+  // private _initializedEngineType field on _CommentScreenState, but
+  // the test asserts only the user-visible icon, not the field). The
+  // sibling group above ('engine type switch (issue #734)') only asserts
+  // platform calls (start/stop/getStatus/lastUpdatedSettings). This
+  // group is the user-visible counterpart: while the engine is being
+  // initialized the AppBar must render Icons.hourglass_top, and once
+  // initialization completes the hourglass must give way to
+  // Icons.volume_up (started, unmuted). The bg→fg lifecycle path is
+  // intentionally out of scope (Non-scope of Issue #918).
+  // -------------------------------------------------------------------------
+  group('CommentScreen engine init icon transition '
+      '(Issue #918 / #741 Problem 6)', () {
+    late FakeCommentSpeechPlatform fakePlatform;
+
+    // Non-READY status used after the engine switch so the Android-TTS
+    // branch in _initializeAndStartSpeech actually awaits
+    // checkAndroidTtsAvailability (gated below) instead of short-circuiting
+    // through the "engine already READY" shortcut at the top of
+    // _initializeAndStartSpeech (the path that sets
+    // _initializedEngineType immediately when getStatus reports READY).
+    const SpeechRuntimeStatus readyStatus = SpeechRuntimeStatus(
+      enabled: true,
+      engineState: 'READY',
+      playerState: 'IDLE',
+      queueSize: 0,
+      currentSpeakerId: 0,
+    );
+    const SpeechRuntimeStatus unknownStatus = SpeechRuntimeStatus(
+      enabled: true,
+      engineState: 'UNKNOWN',
+      playerState: 'UNKNOWN',
+      queueSize: 0,
+      currentSpeakerId: 0,
+    );
+
+    // Caps for the bounded poll loops below. Sized for the current
+    // production await chain plus comfortable headroom so that adding
+    // one or two awaits to _initializeAndStartSpeech in the future
+    // does not require touching this test. Real regressions (where
+    // the awaited future never resolves) still fail fast — the cap is
+    // not an arbitrary timeout, it is a "max number of microtask
+    // drains we are willing to do before declaring failure".
+    //   shortPath: success path through _initializeAndStartSpeech
+    //              (~3 awaits today: getStatus → updateSettings → start).
+    //   switchPath: engine-switch path through
+    //               _handleSpeechSettingsChanged → _stopSpeech →
+    //               _initializeAndStartSpeech, which has more awaits.
+    const int kPumpCapShortPath = 8;
+    const int kPumpCapSwitchPath = 16;
+
+    setUp(() {
+      fakePlatform = FakeCommentSpeechPlatform();
+      // Voicevox (initial) sees READY → init completes via the
+      // status-shortcut path. Subsequent calls (after engine switch to
+      // Android TTS) see UNKNOWN so the flow falls through to the
+      // checkAndroidTtsAvailability branch we gate below.
+      fakePlatform.statusSequenceToReturn = const <SpeechRuntimeStatus>[
+        readyStatus,
+        unknownStatus,
+      ];
+    });
+
+    tearDown(() {
+      fakePlatform.dispose();
+    });
+
+    testWidgets('(a)/(b) hourglass shown until Voicevox init completes', (
+      WidgetTester tester,
+    ) async {
+      // (a) First frame: _initializedEngineType is still null because
+      // _initializeAndStartSpeech is scheduled via addPostFrameCallback
+      // and its first await (getStatus) has not resolved yet. The icon
+      // must be the "initializing" hourglass.
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.voicevox,
+          ),
+        ),
+      );
+      expect(
+        find.byIcon(Icons.hourglass_top),
+        findsOneWidget,
+        reason:
+            '(a) initial frame must render hourglass while '
+            '_initializedEngineType is null',
+      );
+
+      // (b) Drain the init microtasks. The success path awaits three
+      // futures (getStatus → updateSettings → start) before the
+      // setState({_speechStarted=true}) rebuild. A single pump() flushes
+      // all pending microtasks AND renders one frame, so one pump is
+      // typically sufficient. We use a bounded poll instead of a fixed
+      // pump count so that a future refactor adding an extra await
+      // between start() and the setState rebuild does not silently break
+      // the test (it would just take one more pump iteration). The cap
+      // is small enough that a real regression — where init never
+      // completes — still fails fast. pumpAndSettle is intentionally
+      // avoided (AGENTS.md「実行時間」section) — the fake schedules no
+      // real timers.
+      for (
+        int i = 0;
+        i < kPumpCapShortPath &&
+            find.byIcon(Icons.hourglass_top).evaluate().isNotEmpty;
+        i++
+      ) {
+        await tester.pump();
+      }
+      expect(
+        find.byIcon(Icons.hourglass_top),
+        findsNothing,
+        reason:
+            '(b) hourglass must disappear once _initializedEngineType '
+            'matches the current engine',
+      );
+      // After the two pumps above, _initializeAndStartSpeech has reached
+      // setState({_speechStarted=true}) and engineState=READY. With the
+      // default isMuted=false this lands on Icons.volume_up
+      // (icon priority ladder: ERROR → !initialized → !started → muted →
+      // volume_up). Asserting the exact icon — instead of "one of" —
+      // locks the post-init UX state so a regression that leaves the
+      // engine stuck on Icons.pause_circle_outline (i.e. start() failed
+      // silently) would now fail this test.
+      expect(
+        find.byIcon(Icons.volume_up),
+        findsOneWidget,
+        reason:
+            '(b) post-init icon must be Icons.volume_up '
+            '(started, unmuted, ready)',
+      );
+    });
+
+    testWidgets(
+      '(c)/(d) hourglass reappears during engine switch to Android TTS '
+      'until checkAndroidTtsAvailability completes',
+      (WidgetTester tester) async {
+        // Bring Voicevox to ready so we have a known "non-hourglass"
+        // baseline before the engine switch.
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.voicevox,
+            ),
+          ),
+        );
+        // Drain the init microtasks (getStatus → updateSettings →
+        // start → setState). Bounded poll instead of fixed pump count:
+        // robust against a future refactor adding an extra await on the
+        // success path. pumpAndSettle is intentionally avoided because
+        // the fake schedules no real timers (AGENTS.md「実行時間」
+        // section).
+        for (
+          int i = 0;
+          i < kPumpCapShortPath &&
+              find.byIcon(Icons.hourglass_top).evaluate().isNotEmpty;
+          i++
+        ) {
+          await tester.pump();
+        }
+        expect(find.byIcon(Icons.hourglass_top), findsNothing);
+
+        // Gate the Android-TTS availability check so the await inside
+        // _initializeAndStartSpeech parks while _initializedEngineType
+        // is null, giving us a deterministic window to observe the
+        // hourglass.
+        fakePlatform.checkAndroidTtsAvailabilityGate = Completer<void>();
+
+        // Switch the engine. _handleSpeechSettingsChanged awaits
+        // _stopSpeech (which calls setState({_speechStarted=false})),
+        // then assigns _initializedEngineType = null, then awaits
+        // _initializeAndStartSpeech which parks on the gated availability
+        // check. The setState from _stopSpeech triggers the rebuild we
+        // need to observe the hourglass.
+        //
+        // Refactor-resilience note: this scenario assumes the
+        // tear-down-then-init order ("stop the old engine BEFORE the new
+        // one's init parks"). That order is the intended UX contract —
+        // it prevents the previous engine from continuing to speak while
+        // the new engine is warming up. A refactor that reverses the
+        // order ("init the new engine first, then stop the old one")
+        // would silently change the user-visible icon transition and
+        // legitimately break this test, prompting a UX re-evaluation.
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.updateSpeechSettings(
+          const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.androidTts,
+          ),
+        );
+        // Pump until the Android-TTS init branch parks on the gated
+        // availability check. Bounded poll: robust against future
+        // refactors that add or remove awaits between updateWidget and
+        // checkAndroidTtsAvailability. The cap is small enough that a
+        // real regression — where the gate is never reached — fails
+        // fast.
+        for (
+          int i = 0;
+          i < kPumpCapSwitchPath &&
+              !fakePlatform.checkAndroidTtsAvailabilityCalled;
+          i++
+        ) {
+          await tester.pump();
+        }
+
+        expect(
+          fakePlatform.checkAndroidTtsAvailabilityCalled,
+          isTrue,
+          reason:
+              'sanity: the Android-TTS init branch must have reached the '
+              'gated availability check by now',
+        );
+        expect(
+          find.byIcon(Icons.hourglass_top),
+          findsOneWidget,
+          reason:
+              '(c) hourglass must reappear while _initializedEngineType '
+              'is null during the engine switch',
+        );
+
+        // (d) Release the gate → checkAndroidTtsAvailability resolves →
+        // _initializedEngineType = androidTts → start() resolves →
+        // setState({_speechStarted=true}) → hourglass gone. Bounded
+        // poll for the same refactor-resilience reason as (b)/(c).
+        fakePlatform.checkAndroidTtsAvailabilityGate!.complete();
+        for (
+          int i = 0;
+          i < kPumpCapShortPath &&
+              find.byIcon(Icons.hourglass_top).evaluate().isNotEmpty;
+          i++
+        ) {
+          await tester.pump();
+        }
+        expect(
+          find.byIcon(Icons.hourglass_top),
+          findsNothing,
+          reason:
+              '(d) hourglass must disappear once Android TTS init '
+              'completes and _initializedEngineType matches androidTts',
+        );
+      },
+    );
+  });
+
+  // -------------------------------------------------------------------------
   // Issue #762 (was Issue #758): TimelineStore reactive listener replaces
   // the previous Timer.periodic(2s) bg poll. The screen now subscribes to
   // [TimelineStore.notifyListeners] and submits new comments synchronously
