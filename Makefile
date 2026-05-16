@@ -19,7 +19,7 @@ ENV := $(MISE_ACTIVATE) && \
 OAUTH_BFF_ENV_FILE := android/oauth_bff.env
 DART_DEFINE_OAUTH_BFF := $(if $(wildcard $(OAUTH_BFF_ENV_FILE)),--dart-define-from-file=$(OAUTH_BFF_ENV_FILE),)
 
-.PHONY: help doctor clean build build-release build-release-aab build-adi-verification build-clean test pub-get analyze format format-all check setup-libs ext-gen setup-config show-config
+.PHONY: help doctor clean build build-release build-release-aab build-adi-verification build-clean distribute-apk test pub-get analyze format format-all check setup-libs ext-gen setup-config show-config
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-38s\033[0m %s\n", $$1, $$2}'
@@ -56,6 +56,12 @@ build-adi-verification: setup-libs ## Build Android Developer Verification APK (
 	$(ENV) && bash scripts/build-android-developer-verification-apk.sh
 
 build-clean: clean build ## Clean + build debug APK
+
+# No $(ENV): this needs the AWS CLI and an already-built APK, not the
+# Flutter toolchain. Configure via env (S3_BUCKET + dedicated
+# least-privilege IAM user creds). See scripts/distribute-apk-s3.sh.
+distribute-apk: ## Upload release APK to a private S3 bucket and print a presigned URL (set S3_BUCKET; AWS creds via env)
+	@bash scripts/distribute-apk-s3.sh
 
 test: ## Run tests
 	$(ENV) && flutter test

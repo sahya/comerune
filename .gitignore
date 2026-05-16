@@ -67,6 +67,13 @@ android/app/src/main/jniLibs/
 android/app/src/main/assets/voicevox_models/*.vvm
 android/app/src/main/assets/open_jtalk_dic_utf_8-1.11/
 
+# Build artifacts: never commit APKs to this PUBLIC repo (supply-chain;
+# committing one also defeats private/temporary distribution since it
+# becomes world-readable via GitHub). Built APKs already live under the
+# ignored build/ dir; this is belt-and-suspenders for any copy a
+# distribution script (scripts/distribute-apk-s3.sh) might place.
+*.apk
+
 # Claude Code
 .claude/
 CLAUDE.local.md
