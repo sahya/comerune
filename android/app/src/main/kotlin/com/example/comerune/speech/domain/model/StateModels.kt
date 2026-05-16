@@ -36,12 +36,22 @@ enum class PlayerState {
 // with explicit pause; the per-player intent flag is the authoritative
 // source instead.
 //
-// TODO(#741 Problem 3): consider exposing `started` on
-// [SpeechRuntimeStatus] so the Flutter side can reconcile its local
-// `_speechStarted` flag with the native worker loop after process
-// recreation (currently the two can drift). Deferred until Issue #743
-// (engine-switch fix) lands so the changes don't conflict.
+// Resolved by Issue #915: `started` is now exposed on
+// [SpeechRuntimeStatus] (see below) so the Flutter side can reconcile
+// its local `_speechStarted` flag with the native worker loop after
+// process recreation.
 
+/**
+ * Snapshot of speech-engine runtime state, marshalled to the Flutter side
+ * via `CommentSpeechPlugin.getStatus()`.
+ *
+ * @property started Whether the queue worker loop is currently armed
+ *   (i.e. `start()` has been called and `stop()`/`release()` has not).
+ *   This is the **ground truth** for the Flutter-side `_speechStarted`
+ *   mirror flag (Issue #915). It represents *worker-loop intent* only —
+ *   it is independent of [engineState] (e.g. the worker can be `started`
+ *   while the engine is still `INITIALIZING`).
+ */
 data class SpeechRuntimeStatus(
     val enabled: Boolean,
     val engineState: TtsEngineState,
@@ -49,7 +59,8 @@ data class SpeechRuntimeStatus(
     val queueSize: Int,
     val currentCommentId: String?,
     val currentText: String?,
-    val currentSpeakerId: Int
+    val currentSpeakerId: Int,
+    val started: Boolean
 )
 
 /**

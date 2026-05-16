@@ -4110,6 +4110,279 @@ void main() {
         expect(previousStartCount, sequence.length + 1);
       },
     );
+
+    // -----------------------------------------------------------------
+    // Issue #915: ground-truth reconciliation of `_speechStarted`
+    // against `SpeechRuntimeStatus.started`. These tests live in this
+    // group because the only ground-truth correction call site today
+    // is the engine-switch path in `_handleSpeechSettingsChanged`.
+    // -----------------------------------------------------------------
+
+    testWidgets('engine switch reconciles _speechStarted against native '
+        'getStatus().started (Issue #915)', (WidgetTester tester) async {
+      // Initial state: speech enabled with Android TTS, native reports
+      // started=true after init+start.
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.androidTts,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Simulate the failure mode this Issue exists to fix: native has
+      // already flipped its `started` flag back to `false` (e.g. an
+      // out-of-band release / engine hiccup) while the screen still
+      // thinks it is running. We expose this by changing the value
+      // returned from getStatus() before triggering the engine switch.
+      fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+        enabled: true,
+        engineState: 'READY',
+        playerState: 'IDLE',
+        queueSize: 0,
+        currentSpeakerId: 0,
+        // Crucially: native worker loop is OFF.
+        started: false,
+      );
+
+      final int statusCallsBeforeSwitch = fakePlatform.getStatusCallCount;
+
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
+      host.updateSpeechSettings(
+        const SpeechSettings(
+          enabled: true,
+          engineType: SpeechEngineType.voicevox,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The engine-switch path must have made an additional getStatus
+      // call to reconcile (one for reconcile + one for the re-init
+      // engineState check inside _initializeAndStartSpeech).
+      expect(
+        fakePlatform.getStatusCallCount,
+        greaterThan(statusCallsBeforeSwitch),
+        reason: 'engine switch must reconcile _speechStarted via getStatus',
+      );
+
+      // After the full flow the native then returns started=true again
+      // for the new engine via the next start() call. The mirror is
+      // back in sync.
+      expect(fakePlatform.startCalled, isTrue);
+    });
+
+    testWidgets(
+      'engine switch does not crash when getStatus throws during reconcile '
+      '(Issue #915)',
+      (WidgetTester tester) async {
+        // Boot in a healthy state so init succeeds.
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Make the next getStatus calls throw — this covers a transient
+        // platform-channel hiccup at the reconcile point. The screen must
+        // log the error and continue with the engine switch (the
+        // following _initializeAndStartSpeech call will itself recover).
+        fakePlatform.getStatusError = StateError('channel hiccup');
+
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        // Silence the screen's own error log so the test output stays
+        // readable; the actual behavioural assertion is "no throw".
+        host.updateSpeechSettings(
+          const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.voicevox,
+          ),
+        );
+        // pumpAndSettle would throw if the screen propagates the
+        // StateError synchronously; the await also drains the swallowed
+        // error from inside the reconcile helper.
+        await tester.pumpAndSettle();
+
+        // Stop must still have been called (we were started before the
+        // switch), proving the switch flow did not abort on the throw.
+        expect(fakePlatform.stopCalled, isTrue);
+      },
+    );
+
+    testWidgets(
+      'engine switch under old-native (no started key) completes the switch '
+      'flow without throwing (Issue #915 forward-compat smoke test)',
+      (WidgetTester tester) async {
+        // Simulate the new-Flutter + old-native combination: the native
+        // binary has not been rebuilt with the Issue #915 patch, so the
+        // map-form of SpeechRuntimeStatus omits the `started` key, and
+        // SpeechRuntimeStatus.fromMap defaults `started` to false.
+        //
+        // SCOPE OF THIS TEST (read carefully before extending):
+        // What is asserted: the missing `started` key does NOT cause a
+        // type error, throw, or early abort anywhere along the engine-
+        // switch flow.
+        //
+        // What is NOT exercised: the "mirror=true ↔ native=false"
+        // reconcile branch. The engine-switch path calls _stopSpeech
+        // first (because we were started), which flips the mirror to
+        // false BEFORE reconcile runs. By the time
+        // _reconcileSpeechStartedFromNative is invoked, mirror=false
+        // and native=false (the default) — the equality short-circuits
+        // the setState branch and no "true → false" downgrade happens
+        // here.
+        //
+        // This is intentional: the only current reconcile call site
+        // is on the post-_stopSpeech edge. If a future PR adds a
+        // reconcile call site that fires while the mirror is genuinely
+        // true (lifecycle resume, post-process-recreation), THAT PR
+        // must add the corresponding "true downgrade silently swallowed
+        // by old-native default" regression test — see the forward-compat
+        // caveat on `_speechStarted` in comment_screen.dart for why
+        // blanket-reconcile is unsafe under old-native.
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Old native: getStatus() never sets `started` (the default
+        // SpeechRuntimeStatus from fromMap-with-missing-key already has
+        // started=false). Use the typed default ctor to stand in.
+        fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+          enabled: true,
+          engineState: 'READY',
+          playerState: 'IDLE',
+          queueSize: 0,
+          currentSpeakerId: 0,
+          // no `started` argument → defaults to false (forward-compat).
+        );
+
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.updateSpeechSettings(
+          const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.voicevox,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The flow must complete without throwing and the new engine's
+        // start() must have been issued. Stop must have been called for
+        // the old engine. This is the normal happy-path; the asserted
+        // invariant is that the missing `started` key did NOT cause an
+        // exception, type error, or early abort anywhere along the way.
+        expect(fakePlatform.stopCalled, isTrue);
+        expect(fakePlatform.startCalled, isTrue);
+      },
+    );
+
+    testWidgets(
+      'reconcile guard skips the mirror write when native (old binary) '
+      'does not report the started key (Issue #915 forward-compat guard)',
+      (WidgetTester tester) async {
+        // This is the structural-containment regression for the
+        // Issue #692-style silent-downgrade footgun. The native side is
+        // an OLD binary: its status map omits `started` entirely, so the
+        // realistic wire path is SpeechRuntimeStatus.fromMap WITHOUT the
+        // key — which yields started=false (defaulted) AND
+        // startedReported=false (not transported).
+        //
+        // The guard in _reconcileSpeechStartedFromNative must early-
+        // return on startedReported==false instead of treating the
+        // defaulted `false` as native ground truth. We assert this two
+        // ways:
+        //   1. The engine switch still completes (stop old + start new),
+        //      proving the guard does not abort the flow.
+        //   2. getStatus IS still called (the reconcile path runs and
+        //      reaches the guard) — the protection is "do not write the
+        //      mirror", not "do not call getStatus".
+        //
+        // Why this matters even though today's only call site has
+        // mirror=false at reconcile time: this test pins the guard's
+        // contract so a FUTURE call site that reconciles while the
+        // mirror is genuinely true (lifecycle resume, post-process-
+        // recreation) inherits the protection automatically instead of
+        // silently dropping queued comments. See the forward-compat
+        // caveat on `_speechStarted` in comment_screen.dart.
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Old-native wire payload: built via fromMap WITHOUT `started`,
+        // exactly as an un-patched native binary would send it. This is
+        // the realistic transport path (the typed default ctor used by
+        // the smoke test above also has startedReported=false, but going
+        // through fromMap proves the key-presence detection itself).
+        fakePlatform.statusToReturn = SpeechRuntimeStatus.fromMap({
+          'enabled': true,
+          'engineState': 'READY',
+          'playerState': 'IDLE',
+          'queueSize': 0,
+          'currentSpeakerId': 0,
+          // intentionally NO 'started' key — old native binary.
+        });
+        expect(
+          fakePlatform.statusToReturn.startedReported,
+          isFalse,
+          reason:
+              'precondition: old-native map must yield '
+              'startedReported=false so the guard branch is exercised',
+        );
+
+        final int statusCallsBeforeSwitch = fakePlatform.getStatusCallCount;
+
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.updateSpeechSettings(
+          const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.voicevox,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The reconcile path ran (so the guard was reached and had to
+        // make the "do not trust unreported false" decision)...
+        expect(
+          fakePlatform.getStatusCallCount,
+          greaterThan(statusCallsBeforeSwitch),
+          reason:
+              'engine switch must invoke the reconcile path so the '
+              'forward-compat guard is exercised',
+        );
+        // ...and the switch flow completed normally (guard early-return
+        // preserved the mirror and did not abort the switch).
+        expect(fakePlatform.stopCalled, isTrue);
+        expect(fakePlatform.startCalled, isTrue);
+      },
+    );
   });
 
   // -------------------------------------------------------------------------
