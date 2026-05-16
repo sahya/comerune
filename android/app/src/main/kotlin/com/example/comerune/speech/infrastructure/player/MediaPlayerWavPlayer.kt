@@ -34,10 +34,15 @@ class MediaPlayerWavPlayer(
      * Tracks whether the caller still wants playback to be live. Used to
      * resume from a STOPPED-by-focus-loss state when focus comes back
      * during the same logical utterance, and to avoid spurious resumes
-     * after the player has been intentionally stopped.
+     * after the player has been intentionally stopped. Exposed via
+     * [shouldBePlaying] on the [WavPlayer] contract so AudioFocus / DI
+     * callers can read the intent without inferring it from the physical
+     * [PlayerState].
      */
     @Volatile
-    private var shouldBePlaying: Boolean = false
+    private var shouldBePlayingFlag: Boolean = false
+
+    override fun shouldBePlaying(): Boolean = shouldBePlayingFlag
 
     private val audioAttributes: AudioAttributes =
         AudioAttributes.Builder().apply {
@@ -99,14 +104,14 @@ class MediaPlayerWavPlayer(
 
         // Mark intent to play before any suspension so a focus-loss
         // racing with prepare() can still trigger a correct resume later.
-        shouldBePlaying = true
+        shouldBePlayingFlag = true
 
         // Acquire focus once for this logical utterance. The guard
         // handles DELAYED → GAIN, idempotency for back-to-back
         // utterances, and abandons via scheduleRelease() afterwards.
         val focusResult = audioFocusGuard.acquire()
         if (focusResult.isFailure) {
-            shouldBePlaying = false
+            shouldBePlayingFlag = false
             return Result.failure(
                 focusResult.exceptionOrNull()
                     ?: IllegalStateException("Audio focus request denied"),
@@ -137,7 +142,7 @@ class MediaPlayerWavPlayer(
                         player.prepare()
 
                         player.setOnCompletionListener {
-                            shouldBePlaying = false
+                            shouldBePlayingFlag = false
                             audioFocusGuard.scheduleRelease()
                             releaseMediaPlayer()
                             val cont: CancellableContinuation<Unit>?
@@ -151,7 +156,7 @@ class MediaPlayerWavPlayer(
                         }
 
                         player.setOnErrorListener { _, what, extra ->
-                            shouldBePlaying = false
+                            shouldBePlayingFlag = false
                             audioFocusGuard.scheduleRelease()
                             releaseMediaPlayer()
                             val cont: CancellableContinuation<Unit>?
@@ -191,7 +196,7 @@ class MediaPlayerWavPlayer(
                         state = PlayerState.ERROR
                     }
                 }
-                shouldBePlaying = false
+                shouldBePlayingFlag = false
                 releaseMediaPlayer()
                 cleanupTempFile()
                 audioFocusGuard.scheduleRelease()
@@ -245,10 +250,10 @@ class MediaPlayerWavPlayer(
 
     private fun resumeInternal() {
         // Only attempt to resume if the caller still wants playback.
-        // shouldBePlaying remains true for the entire utterance lifetime
+        // shouldBePlayingFlag remains true for the entire utterance lifetime
         // (cleared only on completion / stop / error), so it is the
         // single source of truth for "should GAIN restart playback?".
-        if (!shouldBePlaying) return
+        if (!shouldBePlayingFlag) return
         val resumeFailed: Boolean
         synchronized(lock) {
             resumeFailed = if (state == PlayerState.PAUSED || state == PlayerState.STOPPED) {
@@ -271,7 +276,7 @@ class MediaPlayerWavPlayer(
     }
 
     private fun stopInternal() {
-        shouldBePlaying = false
+        shouldBePlayingFlag = false
         val cont: CancellableContinuation<Unit>?
         synchronized(lock) {
             mediaPlayer?.let { player ->

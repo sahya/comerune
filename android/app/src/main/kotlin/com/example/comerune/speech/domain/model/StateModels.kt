@@ -29,14 +29,12 @@ enum class PlayerState {
     ERROR
 }
 
-// TODO(#741 Problem 4): a `PlayerState.shouldBePlaying` extension that
-// folds together `PLAYING` and `PAUSED` (i.e. "the user wants audio out
-// even though the AudioFocus has been transiently lost") would let the
-// AudioFocus / WAV player code stop hand-rolling the same OR check.
-// Deferred here because Issue #735 (PR #746) introduces an
-// AudioFocusGuard that already adds a similar predicate per WavPlayer
-// implementation; consolidating is owned by that work to avoid two
-// competing definitions.
+// Resolved by Issue #916: the intent-vs-physical-state split is now
+// modelled by `WavPlayer.shouldBePlaying()` on the player contract, not
+// by an extension on the [PlayerState] enum. Folding `PLAYING + PAUSED`
+// into a single derived predicate would have conflated focus-loss pause
+// with explicit pause; the per-player intent flag is the authoritative
+// source instead.
 //
 // TODO(#741 Problem 3): consider exposing `started` on
 // [SpeechRuntimeStatus] so the Flutter side can reconcile its local

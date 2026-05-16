@@ -132,6 +132,31 @@ class SwitchableWavPlayer internal constructor(
         }
     }
 
+    /**
+     * Returns the intent flag of the current delegate. [SwitchableWavPlayer]
+     * itself does **not** hold an intent field — the delegate is the single
+     * source of truth.
+     *
+     * Swap semantics (see Issue #916 AC5):
+     *
+     * - **(a)** Right after [switchPlayerType] sets `pendingType` but before
+     *   [applyPendingSwitch] has run, the swap has not happened yet. This
+     *   call returns the intent of the **current (= old) delegate**.
+     * - **(b)** Immediately after [applyPendingSwitch] tears down the old
+     *   delegate (which calls [WavPlayer.release], driving its intent to
+     *   `false`) and creates a fresh delegate, this call returns `false`
+     *   because the new delegate has not received any [play] yet. The old
+     *   delegate's intent value is **not** carried over.
+     * - **(c)** After the first [play] on the new delegate, this call
+     *   returns the new delegate's intent.
+     * - **(d)** After [release], the (now released) delegate reports
+     *   `false`, so this call also returns `false`.
+     */
+    override fun shouldBePlaying(): Boolean {
+        val player = synchronized(lock) { delegate }
+        return player.shouldBePlaying()
+    }
+
     override fun release() {
         synchronized(lock) {
             pendingType = null
