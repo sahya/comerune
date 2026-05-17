@@ -80,20 +80,29 @@ Future<void> presentUpdateStatus({
   }
 }
 
-/// 配布ページを外部ブラウザで開く。開けない場合はスナックバーで通知し
-/// false を返す。
-Future<bool> _openReleaseUrl(BuildContext context, String? url) async {
+/// 配布ページを外部ブラウザで開く（副作用は起動のみ）。開けたら true。
+///
+/// `url` が null / 不正、または `url_launcher` が例外（対応ブラウザ不在
+/// 等）の場合は false。`Error` は伝搬させる。
+Future<bool> _launchReleaseUrl(String? url) async {
   final Uri? uri = url == null ? null : Uri.tryParse(url);
-  bool launched = false;
-  if (uri != null) {
-    try {
-      launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } on Object catch (e) {
-      // url_launcher は対応ブラウザ不在等で例外を投げ得る。種別のみ記録。
-      log('launchUrl threw (${e.runtimeType})', name: 'AppUpdate');
-      launched = false;
-    }
+  if (uri == null) {
+    return false;
   }
+  try {
+    return await launchUrl(uri, mode: LaunchMode.externalApplication);
+  } on Exception catch (e) {
+    // 例外の文字列に URL が含まれ得るため種別のみ記録する。
+    log('launchUrl threw (${e.runtimeType})', name: 'AppUpdate');
+    return false;
+  }
+}
+
+/// 任意更新ダイアログ用: 起動を試み、失敗時は SnackBar で通知する。
+///
+/// 任意ダイアログは通常の Scaffold 上で表示されるため SnackBar が見える。
+Future<void> _openReleaseUrl(BuildContext context, String? url) async {
+  final bool launched = await _launchReleaseUrl(url);
   if (!launched && context.mounted) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -101,21 +110,50 @@ Future<bool> _openReleaseUrl(BuildContext context, String? url) async {
         SnackBar(content: Text(AppStrings.appUpdate.launchFailed)),
       );
   }
-  return launched;
 }
 
 /// 強制更新時に操作をブロックする全画面ダイアログ。
-class _ForcedUpdateBlocker extends StatelessWidget {
+///
+/// ユーザーは画面を離脱できないため、起動失敗時の通知に SnackBar は使えない
+/// （フルスクリーン Dialog の背後の Scaffold に出て見えない）。失敗は
+/// **画面内インライン**で提示し、ボタンは再試行可能なまま残す。
+class _ForcedUpdateBlocker extends StatefulWidget {
   const _ForcedUpdateBlocker({required this.version, required this.releaseUrl});
 
   final String? version;
   final String? releaseUrl;
 
   @override
+  State<_ForcedUpdateBlocker> createState() => _ForcedUpdateBlockerState();
+}
+
+class _ForcedUpdateBlockerState extends State<_ForcedUpdateBlocker> {
+  bool _launching = false;
+  bool _launchFailed = false;
+
+  Future<void> _onUpdatePressed() async {
+    if (_launching) {
+      return;
+    }
+    setState(() {
+      _launching = true;
+      _launchFailed = false;
+    });
+    final bool launched = await _launchReleaseUrl(widget.releaseUrl);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _launching = false;
+      _launchFailed = !launched;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final String message = version == null
+    final String message = widget.version == null
         ? AppStrings.appUpdate.forcedMessage
-        : AppStrings.appUpdate.forcedMessageWithVersion(version!);
+        : AppStrings.appUpdate.forcedMessageWithVersion(widget.version!);
     return Dialog.fullscreen(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -135,9 +173,24 @@ class _ForcedUpdateBlocker extends StatelessWidget {
               const SizedBox(height: 24),
               FilledButton(
                 key: const Key('app-update-forced-now'),
-                onPressed: () => _openReleaseUrl(context, releaseUrl),
-                child: Text(AppStrings.appUpdate.updateButton),
+                onPressed: _launching ? null : _onUpdatePressed,
+                child: _launching
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(AppStrings.appUpdate.updateButton),
               ),
+              if (_launchFailed) ...<Widget>[
+                const SizedBox(height: 12),
+                Text(
+                  AppStrings.appUpdate.launchFailed,
+                  key: const Key('app-update-forced-error'),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
             ],
           ),
         ),

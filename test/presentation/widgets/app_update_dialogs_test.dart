@@ -162,4 +162,39 @@ void main() {
     await tester.pumpAndSettle();
     expect(fakeLauncher.launchedUrls, <String>['https://example.invalid/r']);
   });
+
+  testWidgets(
+    'forced blocker shows inline error and stays retryable on launch failure',
+    (WidgetTester tester) async {
+      fakeLauncher.shouldSucceed = false;
+      await _present(
+        tester,
+        status: UpdateStatus.forced(
+          latestVersion: SemanticVersion(2, 0, 0),
+          releaseUrl: 'https://example.invalid/r',
+        ),
+        promptStore: newStore(),
+      );
+
+      expect(find.byKey(const Key('app-update-forced-error')), findsNothing);
+      await tester.tap(find.byKey(const Key('app-update-forced-now')));
+      await tester.pumpAndSettle();
+
+      // インラインのエラーが出て、ボタンは残り再試行できる。
+      expect(find.byKey(const Key('app-update-forced-error')), findsOneWidget);
+      expect(find.byKey(const Key('app-update-forced-now')), findsOneWidget);
+      expect(find.text('更新が必要です'), findsOneWidget);
+
+      // 再試行で成功すればエラーは消える。
+      fakeLauncher.shouldSucceed = true;
+      await tester.tap(find.byKey(const Key('app-update-forced-now')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('app-update-forced-error')), findsNothing);
+      // 失敗時 + 再試行成功時の 2 回、起動が試行されている。
+      expect(fakeLauncher.launchedUrls, <String>[
+        'https://example.invalid/r',
+        'https://example.invalid/r',
+      ]);
+    },
+  );
 }

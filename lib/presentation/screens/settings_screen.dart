@@ -710,7 +710,10 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   Widget _buildAppUpdateTile(BuildContext context) {
     final String version = _appVersion ?? '—';
-    final bool canCheck = widget.versionUpdateChecker != null;
+    // 手動確認は判定（checker）と見送り版の記録（promptStore）の両方が
+    // 必要。片方でも欠けるとタップしても何も起きないため不活性にする。
+    final bool canCheck =
+        widget.versionUpdateChecker != null && widget.updatePromptStore != null;
     return Card(
       child: ListTile(
         key: const Key('app-update-tile'),
@@ -735,13 +738,23 @@ class _SettingsScreenState extends State<SettingsScreen>
     final VersionUpdateChecker? checker = widget.versionUpdateChecker;
     final UpdatePromptStore? promptStore = widget.updatePromptStore;
     final String? version = _appVersion;
-    if (checker == null || version == null || _isCheckingUpdate) {
+    if (checker == null || _isCheckingUpdate) {
+      // checker 無し（タイル非活性のはず）/ 確認中は黙って無視。
+      return;
+    }
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    if (version == null) {
+      // PackageInfo 取得失敗で現在版が不明。沈黙せず確認不能を通知する。
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text(AppStrings.appUpdate.checkUnavailable)),
+        );
       return;
     }
     setState(() {
       _isCheckingUpdate = true;
     });
-    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
     messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(AppStrings.appUpdate.checking)));
@@ -749,7 +762,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     UpdateCheckResult result;
     try {
       result = await checker.check(version);
-    } on Object catch (error) {
+    } on Exception catch (error) {
       developer.log(
         'manual update check failed (${error.runtimeType})',
         name: 'SettingsScreen',

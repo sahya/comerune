@@ -450,9 +450,9 @@ class _ComeruneAppState extends State<ComeruneApp> {
       final PackageInfo info = await PackageInfo.fromPlatform();
       final UpdateCheckResult result = await checker.check(info.version);
       status = result.status;
-    } on Object catch (e) {
+    } on Exception catch (e) {
       // 取得経路は内部で握りつぶす設計だが、念のため最終防衛で
-      // 起動を妨げない。
+      // 起動を妨げない。`Error` は伝搬させる。
       log('startup update check failed (${e.runtimeType})', name: 'AppUpdate');
       return;
     }

@@ -149,9 +149,13 @@ class SemanticVersion implements Comparable<SemanticVersion> {
     return other is SemanticVersion && compareTo(other) == 0;
   }
 
+  // `==` は [compareTo] で定義しており、数値プレリリース識別子は数値として
+  // 等価判定される（例 `1.0.0-01` と `1.0.0-1`）。preRelease の文字列表現を
+  // ハッシュに含めると等価オブジェクトで hashCode が割れ equals/hashCode
+  // 契約に違反するため、確実に一致する major/minor/patch のみで算出する
+  // （同一 X.Y.Z の別プレリリース衝突は許容範囲）。
   @override
-  int get hashCode =>
-      Object.hash(major, minor, patch, Object.hashAll(preRelease));
+  int get hashCode => Object.hash(major, minor, patch);
 
   @override
   String toString() {

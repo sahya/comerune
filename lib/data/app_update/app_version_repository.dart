@@ -66,9 +66,10 @@ class AppVersionRepository {
             headers: const <String, String>{'Accept': 'application/json'},
           )
           .timeout(_timeout);
-    } on Object catch (e) {
+    } on Exception catch (e) {
       // ネットワーク例外の文字列に URL が含まれることがあるため
-      // `$e` を展開せず種別のみ記録する。
+      // `$e` を展開せず種別のみ記録する。`Error`（プログラミングミス）は
+      // 握り潰さず伝搬させる。
       log(
         'optional integration request failed (${e.runtimeType})',
         name: _logName,
