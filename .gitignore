@@ -27,6 +27,8 @@ doc/api/
 *.js.map
 # Hand-written static-site scripts are not dart2js output; keep them tracked.
 !/site/*.js
+# Cloudflare Pages Functions (hand-written, not dart2js output).
+!/site/functions/**/*.js
 
 .flutter-plugins
 .flutter-plugins-dependencies
