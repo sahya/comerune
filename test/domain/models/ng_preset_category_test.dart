@@ -22,6 +22,10 @@ Object _loadShippedPresetDoc() {
 /// tests below assert against these digests instead of plaintext so the real
 /// dictionary words do not live in the test source (the encrypted `.enc` is
 /// the only committed copy).
+///
+/// To regenerate an expected digest for a word (e.g. when the historical
+/// v2-era set is audited), compute the SHA-256 of its UTF-8 bytes — this
+/// matches `printf '%s' '<word>' | sha256sum` and equals `_h('<word>')`.
 String _h(String word) => sha256.convert(utf8.encode(word)).toString();
 
 void main() {

@@ -60,6 +60,10 @@ int main(List<String> args) {
       'decrypted ${enc.lengthSync()} bytes -> $_jsonPath '
       '(${plaintext.length} bytes)',
     );
+    stdout.writeln(
+      'NOTE: $_jsonPath is git-ignored. Never commit it — '
+      'only commit the regenerated .enc.',
+    );
     return 0;
   } on NgDictCipherException catch (e) {
     stderr.writeln('decrypt failed: ${e.reason}');
