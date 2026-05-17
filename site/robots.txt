@@ -3,7 +3,11 @@ User-agent: *
 Allow: /
 
 # AI 回答エンジン / AI Overviews 系クローラも明示的に許可（AIO 対応）。
-# 既定でも * で許可されるが、意図を明文化し誤ブロックを防ぐ目的で列挙する。
+# 意図の明文化が目的で、機能上は上の `User-agent: *` と等価。
+# 【保守注意】robots.txt は各 bot が「最も具体的に一致した1グループのみ」を
+# 読む。将来 `User-agent: *` に Disallow を追加しても、下記で個別列挙した
+# bot はそれを継承しない。クロール禁止を入れるときは下記グループにも必ず
+# 同じ Disallow を反映すること（さもないと主要 bot だけ素通しになる）。
 User-agent: Googlebot
 Allow: /
 
