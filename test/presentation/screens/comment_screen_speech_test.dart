@@ -2032,12 +2032,61 @@ void main() {
     );
 
     testWidgets(
-      'Android TTS availability check is skipped when engine is already READY',
+      'Android TTS availability check still runs when engine reports READY '
+      '(Issue #933: stale VOICEVOX engineState must not skip TTS init)',
       (WidgetTester tester) async {
-        // Simulate a session where VOICEVOX was used first (engine is READY)
-        // and the user then switched to Android TTS. The existing pre-check
-        // at the top of _initializeAndStartSpeech flips _speechInitialized
-        // to true, so the Android TTS branch is bypassed entirely.
+        // Issue #933 regression: native getStatus().engineState reflects only
+        // the VOICEVOX engine, never AndroidTtsSpeaker.isReady(). After the
+        // user uses VOICEVOX (engineState stays READY) then switches to
+        // Android TTS — or reconnects on a fresh screen — engineState=='READY'
+        // is stale. The old READY short-circuit set _initializedEngineType to
+        // androidTts and skipped checkAndroidTtsAvailability, leaving the
+        // native speaker ready=false → every comment silently dropped
+        // (android_tts_not_ready). The check must run regardless of the
+        // VOICEVOX-only READY state.
+        fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+          enabled: true,
+          engineState: 'READY',
+          playerState: 'IDLE',
+          queueSize: 0,
+          currentSpeakerId: 0,
+        );
+        fakePlatform.androidTtsAvailableToReturn = true;
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          fakePlatform.checkAndroidTtsAvailabilityCalled,
+          isTrue,
+          reason:
+              'Android TTS readiness must be verified even when the '
+              'VOICEVOX-only engineState is stale-READY (Issue #933).',
+        );
+        // initialize() must still NOT be called — the Android TTS path only
+        // touches checkAndroidTtsAvailability so VOICEVOX assets are never
+        // forced for an Android-TTS-only user (Issue #682 invariant).
+        expect(fakePlatform.initializeCalled, isFalse);
+        expect(fakePlatform.startCalled, isTrue);
+      },
+    );
+
+    testWidgets(
+      'VOICEVOX READY short-circuit is preserved — no perf regression '
+      '(Issue #933: bypass is gated to Android TTS only)',
+      (WidgetTester tester) async {
+        // Non-degradation guard: for VOICEVOX the engineState IS the engine
+        // state, so an already-READY engine must still short-circuit (skip
+        // the setup dialog / model reload). Only the Android TTS path
+        // changed; the VOICEVOX perf optimisation must stay intact.
         fakePlatform.statusToReturn = const SpeechRuntimeStatus(
           enabled: true,
           engineState: 'READY',
@@ -2051,13 +2100,73 @@ void main() {
             speechPlatform: fakePlatform,
             speechSettings: const SpeechSettings(
               enabled: true,
-              engineType: SpeechEngineType.androidTts,
+              engineType: SpeechEngineType.voicevox,
             ),
           ),
         );
         await tester.pumpAndSettle();
 
+        // VOICEVOX + READY → short-circuit: no setup dialog, no extra
+        // re-check, straight to start().
         expect(fakePlatform.checkAndroidTtsAvailabilityCalled, isFalse);
+        expect(fakePlatform.startCalled, isTrue);
+      },
+    );
+
+    testWidgets(
+      'live VOICEVOX→Android TTS switch re-runs checkAndroidTtsAvailability '
+      'even though engineState stays READY (Issue #933 C2)',
+      (WidgetTester tester) async {
+        // Issue #933 C2 core: start on VOICEVOX with the engine already READY
+        // (engineState reflects only VOICEVOX). The user switches to Android
+        // TTS while comments are flowing. _handleSpeechSettingsChanged nulls
+        // _initializedEngineType and re-enters _initializeAndStartSpeech,
+        // where getStatus() still returns the stale VOICEVOX READY. Before
+        // the fix the READY short-circuit re-marked the engine initialised
+        // and skipped checkAndroidTtsAvailability, so AndroidTtsSpeaker stayed
+        // ready=false and every comment was dropped (android_tts_not_ready).
+        fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+          enabled: true,
+          engineState: 'READY',
+          playerState: 'IDLE',
+          queueSize: 0,
+          currentSpeakerId: 0,
+        );
+        fakePlatform.androidTtsAvailableToReturn = true;
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.voicevox,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // VOICEVOX start: short-circuit honoured, no Android TTS check yet.
+        expect(fakePlatform.checkAndroidTtsAvailabilityCalled, isFalse);
+
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.updateSpeechSettings(
+          const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.androidTts,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          fakePlatform.checkAndroidTtsAvailabilityCalled,
+          isTrue,
+          reason:
+              'Switching to Android TTS must force a real readiness check '
+              'even when the VOICEVOX-only engineState is stale-READY '
+              '(Issue #933 — otherwise every comment is silently dropped).',
+        );
         expect(fakePlatform.initializeCalled, isFalse);
         expect(fakePlatform.startCalled, isTrue);
       },
@@ -2296,6 +2405,14 @@ void main() {
         // Recovery flow: user reinstalled Japanese voice data, opened TTS
         // settings, and the re-check now succeeds. The AppBar must follow
         // back to a non-error icon without requiring a reconnect.
+        // Issue #933: the Android TTS init path now genuinely runs its
+        // availability check (the old engineState=='READY' short-circuit is
+        // bypassed for Android TTS). The check fails here, so the screen sets
+        // a local ERROR and (re)publishes unavailable — the AppBar is in
+        // ERROR. The subsequent notifier.publishAvailable() must then clear
+        // it via _onAndroidTtsAvailabilityChanged (engine is Android TTS),
+        // exactly the cross-screen recovery this test targets.
+        fakePlatform.androidTtsAvailableToReturn = false;
         final SpeechAvailabilityNotifier notifier =
             SpeechAvailabilityNotifier();
         addTearDown(notifier.dispose);
@@ -2592,9 +2709,21 @@ void main() {
         // (counter at threshold + 1 = 4 ≥ 3) would re-trip ERROR
         // immediately — an "ERROR rebound" that makes the recovery look
         // ineffective from the user's perspective.
+        // Issue #933: the Android TTS init path now genuinely runs its
+        // availability check (the old engineState=='READY' short-circuit is
+        // bypassed for Android TTS). The check fails here so the screen
+        // publishes `unavailable`; the later notifier.publishAvailable() is
+        // then a real unavailable→available transition that fires
+        // _onAndroidTtsAvailabilityChanged (a no-op publish of an already
+        // -available value would NOT notify — SpeechAvailabilityNotifier._set
+        // early-returns on an unchanged value). This keeps the test's intent
+        // intact: cross-screen recovery must reset the runtime failure
+        // counter so a subsequent transient failure cannot immediately
+        // re-trip ERROR.
         final SpeechAvailabilityNotifier notifier =
             SpeechAvailabilityNotifier();
         addTearDown(notifier.dispose);
+        fakePlatform.androidTtsAvailableToReturn = false;
         fakePlatform.statusToReturn = const SpeechRuntimeStatus(
           enabled: true,
           engineState: 'READY',
