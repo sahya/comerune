@@ -1,10 +1,32 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:comerune/data/filter/ng_dict_cipher.dart';
 import 'package:comerune/domain/models/ng_display_subcategory.dart';
 import 'package:comerune/domain/models/ng_policy.dart';
 import 'package:comerune/domain/models/ng_preset_category.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+/// Loads and decrypts the shipped preset asset (committed as the encrypted
+/// `preset_ng_words.enc`). Mirrors the runtime decrypt path so these
+/// regression tests still exercise the real bundled dictionary while staying
+/// independent of Flutter's rootBundle.
+Object _loadShippedPresetDoc() {
+  final File file = File('android/app/src/main/assets/preset_ng_words.enc');
+  return jsonDecode(utf8.decode(decryptNgDict(file.readAsBytesSync())))
+      as Object;
+}
+
+/// SHA-256 hex of [word]'s UTF-8 bytes. The shipped-dictionary regression
+/// tests below assert against these digests instead of plaintext so the real
+/// dictionary words do not live in the test source (the encrypted `.enc` is
+/// the only committed copy).
+///
+/// To regenerate an expected digest for a word (e.g. when the historical
+/// v2-era set is audited), compute the SHA-256 of its UTF-8 bytes — this
+/// matches `printf '%s' '<word>' | sha256sum` and equals `_h('<word>')`.
+String _h(String word) => sha256.convert(utf8.encode(word)).toString();
 
 void main() {
   group('NgPresetCategory.parseDocument', () {
@@ -30,13 +52,13 @@ void main() {
             'description': 'crime',
             'policy': 'blockSpeechOnly',
             'displaySubcategory': 'violence',
-            'words': <String>['殺す', '爆弾'],
+            'words': <String>['ngword', 'ngwordb'],
           },
           'child_safety': <String, dynamic>{
             'description': 'child',
             'policy': 'blockSpeechOnly',
             'displaySubcategory': 'minors',
-            'words': <String>['児童ポルノ'],
+            'words': <String>['ngwordc'],
           },
         },
       };
@@ -47,7 +69,7 @@ void main() {
       );
       expect(crime.policy, NgPolicy.blockSpeechOnly);
       expect(crime.displaySubcategory, NgDisplaySubcategory.violence);
-      expect(crime.words, <String>['殺す', '爆弾']);
+      expect(crime.words, <String>['ngword', 'ngwordb']);
       expect(crime.description, 'crime');
 
       final NgPresetCategory child = parsed.firstWhere(
@@ -451,17 +473,17 @@ void main() {
 
   group('Shipped preset_ng_words.json (v3)', () {
     test('the bundled asset parses cleanly and every category is valid', () {
-      // Read the asset from disk directly so we are independent of Flutter's
-      // rootBundle (which would require a widget test binding).
-      final File file = File(
-        'android/app/src/main/assets/preset_ng_words.json',
-      );
+      // The shipped asset is committed in encrypted form; decrypt it the
+      // same way the runtime loader does. Read from disk directly so we are
+      // independent of Flutter's rootBundle (which would require a widget
+      // test binding).
+      final File file = File('android/app/src/main/assets/preset_ng_words.enc');
       expect(
         file.existsSync(),
         isTrue,
-        reason: 'preset_ng_words.json must exist',
+        reason: 'preset_ng_words.enc must exist',
       );
-      final Object decoded = jsonDecode(file.readAsStringSync());
+      final Object decoded = _loadShippedPresetDoc();
       expect(decoded, isA<Map<String, dynamic>>());
       final Map<String, dynamic> doc = decoded as Map<String, dynamic>;
       expect(doc['version'], 3, reason: 'schema version must be 3');
@@ -507,10 +529,7 @@ void main() {
     });
 
     test('regression: flattened NG words from v3 match the union of words', () {
-      final File file = File(
-        'android/app/src/main/assets/preset_ng_words.json',
-      );
-      final Object decoded = jsonDecode(file.readAsStringSync());
+      final Object decoded = _loadShippedPresetDoc();
       final List<NgPresetCategory> categories = NgPresetCategory.parseDocument(
         decoded,
       );
@@ -524,15 +543,24 @@ void main() {
         reason: 'flattenWords must deduplicate across categories',
       );
 
-      // Sampling: words that existed in the v2 file should still be reachable.
-      expect(flat, contains('殺す'));
-      expect(flat, contains('凌辱')); // moved into severe_public_morals_sexual
-      expect(
-        flat,
-        contains('拷問配信'),
-      ); // moved into severe_public_morals_violence
-      expect(flat, contains('児童ポルノ'));
-      expect(flat, contains('まんこ'));
+      // Sampling: a fixed set of v2-era words must still be reachable after
+      // the v3 split. Asserted by SHA-256 digest (not plaintext) so the real
+      // dictionary words stay out of the test source.
+      final Set<String> flatHashes = flat.map(_h).toSet();
+      const List<String> v2EraWordHashes = <String>[
+        '17ab6be094215b5f005ee2a3919020107a1848472beafaf672b3eb54e299e486',
+        'dfdb6153dcfd20400d3aff0948dbbcb5de3456db62784a19b7b509661e8ae530',
+        'ff45489f2434e0ad488203f3cbf6adabbb9f833a9574b06278203a93b73ddd9d',
+        'efa2b643d4606882e19d6a98d93a1956884d09cfb3fa70590afa027c5e169890',
+        '5abee33174d01effaab1fd2f167c9616365e7932d0ce83ca2df5c39272aebb27',
+      ];
+      for (final String digest in v2EraWordHashes) {
+        expect(
+          flatHashes,
+          contains(digest),
+          reason: 'v2-era word (sha256 $digest) must remain reachable',
+        );
+      }
     });
 
     test(
@@ -541,10 +569,7 @@ void main() {
         // Historical context: v2 had a single `severe_public_morals` category
         // containing 5 words. v3 splits that into violence/sexual subcategories.
         // This test guards against accidental word loss during the split.
-        final File file = File(
-          'android/app/src/main/assets/preset_ng_words.json',
-        );
-        final Object decoded = jsonDecode(file.readAsStringSync());
+        final Object decoded = _loadShippedPresetDoc();
         final List<NgPresetCategory> categories =
             NgPresetCategory.parseDocument(decoded);
 
@@ -559,17 +584,19 @@ void main() {
           ...sexualCat.words,
         };
 
-        // Original v2 word set. Must be preserved entirely across the split.
-        const Set<String> originalV2Words = <String>{
-          'グロ画像',
-          '死体画像',
-          '凌辱',
-          '拷問配信',
-          'リベンジポルノ',
+        // The 5 original v2 words must be preserved entirely across the
+        // split. Compared by SHA-256 digest so the plaintext words are not
+        // embedded in the test source.
+        const Set<String> originalV2WordHashes = <String>{
+          'fb7ff9fdeb0eed19d550221588c915d8f0a1098c6bac5d4bdeaef7ca7f5be1fc',
+          'fdb671bc3b17e05f8aa6fbbb01e4ca9434770a7bb3344e627a5961bf1e08044e',
+          'dfdb6153dcfd20400d3aff0948dbbcb5de3456db62784a19b7b509661e8ae530',
+          'ff45489f2434e0ad488203f3cbf6adabbb9f833a9574b06278203a93b73ddd9d',
+          'dbf84b8ed512e0bb61732d645ab67b8ee0ffa14c4029271ab052caad8714b745',
         };
         expect(
-          combined,
-          containsAll(originalV2Words),
+          combined.map(_h).toSet(),
+          containsAll(originalV2WordHashes),
           reason: 'all 5 original v2 words must survive the v3 split',
         );
 

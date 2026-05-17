@@ -2537,7 +2537,7 @@ void main() {
           id: 'chat-ng-preset',
           timestamp: DateTime(2026, 3, 22, 12, 0, 1),
           userId: 'user-2',
-          content: 'これは爆破予告です',
+          content: 'これはngwordです',
           type: AppMessageType.chat,
         ),
       ];
@@ -2547,7 +2547,7 @@ void main() {
           supervisor: supervisor,
           messages: messages,
           ngWords: const <String>[],
-          presetNgWords: const <String>['爆破予告'],
+          presetNgWords: const <String>['ngword'],
         ),
       );
 
@@ -2592,7 +2592,9 @@ void main() {
           id: 'chat-lookalike-expanded',
           timestamp: DateTime(2026, 3, 22, 12, 0, 0),
           userId: 'user-1',
-          content: '冂リ匚ンネタ',
+          // 匚→コ, 又→マ are expanded look-alike-table entries; the
+          // normalizer must fold this to match the NG word "コマ".
+          content: '匚又ネタ',
           type: AppMessageType.chat,
         ),
       ];
@@ -2601,7 +2603,7 @@ void main() {
         _buildScreen(
           supervisor: supervisor,
           messages: messages,
-          ngWords: const <String>['ロリコン'],
+          ngWords: const <String>['コマ'],
         ),
       );
 
@@ -2658,7 +2660,7 @@ void main() {
           supervisor: supervisor,
           messages: messages,
           ngWords: const <String>[],
-          presetNgWords: const <String>['爆破予告', '児童ポルノ'],
+          presetNgWords: const <String>['ngword', 'ngwordc'],
         ),
       );
 
@@ -2667,6 +2669,61 @@ void main() {
         findsOneWidget,
       );
     });
+
+    testWidgets(
+      'corrupt preset asset falls back to empty preset without throwing '
+      '(2-stage fallback)',
+      (WidgetTester tester) async {
+        // AGENTS.md "Optional Reference Two-Stage Fallback": when the
+        // bundled preset asset is missing or corrupt, the loader must log
+        // and continue with an empty preset list — the app must not throw
+        // and must stay usable.
+        tester.binding.defaultBinaryMessenger.setMockMessageHandler(
+          'flutter/assets',
+          (ByteData? message) async {
+            final String key = const StringCodec().decodeMessage(message) ?? '';
+            if (key == 'android/app/src/main/assets/preset_ng_words.enc') {
+              // 3 bytes < the 52-byte header → decryptNgDict throws →
+              // the loader's catch path runs.
+              return ByteData(3);
+            }
+            return null;
+          },
+        );
+        addTearDown(() {
+          tester.binding.defaultBinaryMessenger.setMockMessageHandler(
+            'flutter/assets',
+            null,
+          );
+        });
+
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final List<AppMessage> messages = <AppMessage>[
+          AppMessage(
+            id: 'chat-after-bad-asset',
+            timestamp: DateTime(2026, 3, 22, 12, 0, 0),
+            userId: 'user-1',
+            content: '通常コメント',
+            type: AppMessageType.chat,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildScreen(supervisor: supervisor, messages: messages),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        // No exception escaped the loader's catch, and the screen is
+        // still usable (the message renders) despite the unreadable
+        // preset asset.
+        expect(tester.takeException(), isNull);
+        expect(
+          find.byKey(const Key('comment-row-chat-after-bad-asset')),
+          findsOneWidget,
+        );
+      },
+    );
 
     testWidgets('long-press on comment row opens actions sheet', (
       WidgetTester tester,
@@ -8174,7 +8231,7 @@ void main() {
       description: 'test violence preset',
       policy: NgPolicy.blockSpeechOnly,
       displaySubcategory: NgDisplaySubcategory.violence,
-      words: <String>['殺す'],
+      words: <String>['ngword'],
     );
 
     testWidgets(
@@ -8202,7 +8259,7 @@ void main() {
             id: 'preset-violence-allowed',
             timestamp: DateTime(2026, 3, 22, 12, 0, 0),
             userId: 'user-a',
-            content: 'これは殺すという言葉を含む',
+            content: 'これはngwordという言葉を含む',
             type: AppMessageType.chat,
           ),
         );
@@ -8238,7 +8295,7 @@ void main() {
             id: 'preset-violence-blocked',
             timestamp: DateTime(2026, 3, 22, 12, 0, 0),
             userId: 'user-a',
-            content: 'これは殺すという言葉を含む',
+            content: 'これはngwordという言葉を含む',
             type: AppMessageType.chat,
           ),
         );
@@ -8273,7 +8330,7 @@ void main() {
                 id: 'preset-banner-match',
                 timestamp: DateTime(2026, 3, 22, 12, 0, 0),
                 userId: 'user-a',
-                content: '殺すぞ',
+                content: 'ngwordを含む',
                 type: AppMessageType.chat,
               ),
             ],
@@ -8331,7 +8388,7 @@ void main() {
             id: 'preset-violence-after-update',
             timestamp: DateTime(2026, 3, 22, 12, 0, 0),
             userId: 'user-a',
-            content: 'これは殺すという言葉を含む',
+            content: 'これはngwordという言葉を含む',
             type: AppMessageType.chat,
           ),
         );
