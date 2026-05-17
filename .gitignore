@@ -81,10 +81,6 @@ CLAUDE.local.md
 # AI agent local rules (Codex / その他)
 AGENTS.local.md
 
-# ニコニコ生放送 連携ドキュメント (NDA相当・外部共有禁止)
-# Git Submodule (private) として管理する想定 — 公開リポジトリには含めない
-niconame-integration-docs/
-
 # OpenAI Codex local project settings
 .codex
 .codex.project.toml
