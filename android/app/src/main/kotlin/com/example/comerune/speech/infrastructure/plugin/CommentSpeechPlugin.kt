@@ -577,7 +577,11 @@ class CommentSpeechPlugin :
         "queueSize" to queueSize,
         "currentCommentId" to currentCommentId,
         "currentText" to currentText,
-        "currentSpeakerId" to currentSpeakerId
+        "currentSpeakerId" to currentSpeakerId,
+        // Issue #915: native worker-loop intent. Old Flutter binaries that
+        // do not yet read this key default to `false` on the Dart side,
+        // matching the conservative pre-existing default of the mirror.
+        "started" to started
     )
 
     // --- Preset NG word loading ---

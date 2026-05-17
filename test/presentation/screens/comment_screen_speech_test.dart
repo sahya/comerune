@@ -4110,6 +4110,531 @@ void main() {
         expect(previousStartCount, sequence.length + 1);
       },
     );
+
+    // -----------------------------------------------------------------
+    // Issue #915: ground-truth reconciliation of `_speechStarted`
+    // against `SpeechRuntimeStatus.started`. These tests live in this
+    // group because the only ground-truth correction call site today
+    // is the engine-switch path in `_handleSpeechSettingsChanged`.
+    // -----------------------------------------------------------------
+
+    testWidgets('engine switch reconciles _speechStarted against native '
+        'getStatus().started (Issue #915)', (WidgetTester tester) async {
+      // Initial state: speech enabled with Android TTS, native reports
+      // started=true after init+start.
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.androidTts,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Simulate the failure mode this Issue exists to fix: native has
+      // already flipped its `started` flag back to `false` (e.g. an
+      // out-of-band release / engine hiccup) while the screen still
+      // thinks it is running. We expose this by changing the value
+      // returned from getStatus() before triggering the engine switch.
+      fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+        enabled: true,
+        engineState: 'READY',
+        playerState: 'IDLE',
+        queueSize: 0,
+        currentSpeakerId: 0,
+        // Crucially: native worker loop is OFF.
+        started: false,
+      );
+
+      final int statusCallsBeforeSwitch = fakePlatform.getStatusCallCount;
+
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
+      host.updateSpeechSettings(
+        const SpeechSettings(
+          enabled: true,
+          engineType: SpeechEngineType.voicevox,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The engine-switch path must have made an additional getStatus
+      // call to reconcile (one for reconcile + one for the re-init
+      // engineState check inside _initializeAndStartSpeech).
+      expect(
+        fakePlatform.getStatusCallCount,
+        greaterThan(statusCallsBeforeSwitch),
+        reason: 'engine switch must reconcile _speechStarted via getStatus',
+      );
+
+      // After the full flow the native then returns started=true again
+      // for the new engine via the next start() call. The mirror is
+      // back in sync.
+      expect(fakePlatform.startCalled, isTrue);
+    });
+
+    testWidgets(
+      'engine switch does not crash when getStatus throws during reconcile '
+      '(Issue #915)',
+      (WidgetTester tester) async {
+        // Boot in a healthy state so init succeeds.
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Make the next getStatus calls throw — this covers a transient
+        // platform-channel hiccup at the reconcile point. The screen must
+        // log the error and continue with the engine switch (the
+        // following _initializeAndStartSpeech call will itself recover).
+        fakePlatform.getStatusError = StateError('channel hiccup');
+
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        // Silence the screen's own error log so the test output stays
+        // readable; the actual behavioural assertion is "no throw".
+        host.updateSpeechSettings(
+          const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.voicevox,
+          ),
+        );
+        // pumpAndSettle would throw if the screen propagates the
+        // StateError synchronously; the await also drains the swallowed
+        // error from inside the reconcile helper.
+        await tester.pumpAndSettle();
+
+        // Stop must still have been called (we were started before the
+        // switch), proving the switch flow did not abort on the throw.
+        expect(fakePlatform.stopCalled, isTrue);
+      },
+    );
+
+    testWidgets(
+      'engine switch under old-native (no started key) completes the switch '
+      'flow without throwing (Issue #915 forward-compat smoke test)',
+      (WidgetTester tester) async {
+        // Simulate the new-Flutter + old-native combination: the native
+        // binary has not been rebuilt with the Issue #915 patch, so the
+        // map-form of SpeechRuntimeStatus omits the `started` key, and
+        // SpeechRuntimeStatus.fromMap defaults `started` to false.
+        //
+        // SCOPE OF THIS TEST (read carefully before extending):
+        // What is asserted: the missing `started` key does NOT cause a
+        // type error, throw, or early abort anywhere along the engine-
+        // switch flow.
+        //
+        // What is NOT exercised: the "mirror=true ↔ native=false"
+        // reconcile branch. The engine-switch path calls _stopSpeech
+        // first (because we were started), which flips the mirror to
+        // false BEFORE reconcile runs. By the time
+        // _reconcileSpeechStartedFromNative is invoked, mirror=false
+        // and native=false (the default) — the equality short-circuits
+        // the setState branch and no "true → false" downgrade happens
+        // here.
+        //
+        // This is intentional: the only current reconcile call site
+        // is on the post-_stopSpeech edge. If a future PR adds a
+        // reconcile call site that fires while the mirror is genuinely
+        // true (lifecycle resume, post-process-recreation), THAT PR
+        // must add the corresponding "true downgrade silently swallowed
+        // by old-native default" regression test — see the forward-compat
+        // caveat on `_speechStarted` in comment_screen.dart for why
+        // blanket-reconcile is unsafe under old-native.
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Old native: getStatus() never sets `started` (the default
+        // SpeechRuntimeStatus from fromMap-with-missing-key already has
+        // started=false). Use the typed default ctor to stand in.
+        fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+          enabled: true,
+          engineState: 'READY',
+          playerState: 'IDLE',
+          queueSize: 0,
+          currentSpeakerId: 0,
+          // no `started` argument → defaults to false (forward-compat).
+        );
+
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.updateSpeechSettings(
+          const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.voicevox,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The flow must complete without throwing and the new engine's
+        // start() must have been issued. Stop must have been called for
+        // the old engine. This is the normal happy-path; the asserted
+        // invariant is that the missing `started` key did NOT cause an
+        // exception, type error, or early abort anywhere along the way.
+        expect(fakePlatform.stopCalled, isTrue);
+        expect(fakePlatform.startCalled, isTrue);
+      },
+    );
+
+    testWidgets(
+      'reconcile guard skips the mirror write when native (old binary) '
+      'does not report the started key (Issue #915 forward-compat guard)',
+      (WidgetTester tester) async {
+        // This is the structural-containment regression for the
+        // Issue #692-style silent-downgrade footgun. The native side is
+        // an OLD binary: its status map omits `started` entirely, so the
+        // realistic wire path is SpeechRuntimeStatus.fromMap WITHOUT the
+        // key — which yields started=false (defaulted) AND
+        // startedReported=false (not transported).
+        //
+        // The guard in _reconcileSpeechStartedFromNative must early-
+        // return on startedReported==false instead of treating the
+        // defaulted `false` as native ground truth. We assert this two
+        // ways:
+        //   1. The engine switch still completes (stop old + start new),
+        //      proving the guard does not abort the flow.
+        //   2. getStatus IS still called (the reconcile path runs and
+        //      reaches the guard) — the protection is "do not write the
+        //      mirror", not "do not call getStatus".
+        //
+        // Why this matters even though today's only call site has
+        // mirror=false at reconcile time: this test pins the guard's
+        // contract so a FUTURE call site that reconciles while the
+        // mirror is genuinely true (lifecycle resume, post-process-
+        // recreation) inherits the protection automatically instead of
+        // silently dropping queued comments. See the forward-compat
+        // caveat on `_speechStarted` in comment_screen.dart.
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Old-native wire payload: built via fromMap WITHOUT `started`,
+        // exactly as an un-patched native binary would send it. This is
+        // the realistic transport path (the typed default ctor used by
+        // the smoke test above also has startedReported=false, but going
+        // through fromMap proves the key-presence detection itself).
+        fakePlatform.statusToReturn = SpeechRuntimeStatus.fromMap({
+          'enabled': true,
+          'engineState': 'READY',
+          'playerState': 'IDLE',
+          'queueSize': 0,
+          'currentSpeakerId': 0,
+          // intentionally NO 'started' key — old native binary.
+        });
+        expect(
+          fakePlatform.statusToReturn.startedReported,
+          isFalse,
+          reason:
+              'precondition: old-native map must yield '
+              'startedReported=false so the guard branch is exercised',
+        );
+
+        final int statusCallsBeforeSwitch = fakePlatform.getStatusCallCount;
+
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.updateSpeechSettings(
+          const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.voicevox,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The reconcile path ran (so the guard was reached and had to
+        // make the "do not trust unreported false" decision)...
+        expect(
+          fakePlatform.getStatusCallCount,
+          greaterThan(statusCallsBeforeSwitch),
+          reason:
+              'engine switch must invoke the reconcile path so the '
+              'forward-compat guard is exercised',
+        );
+        // ...and the switch flow completed normally (guard early-return
+        // preserved the mirror and did not abort the switch).
+        expect(fakePlatform.stopCalled, isTrue);
+        expect(fakePlatform.startCalled, isTrue);
+      },
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // Issue #918 (Issue #741 Problem 6): icon-level observation of the
+  // engine init / re-init transition (the underlying state is the
+  // private _initializedEngineType field on _CommentScreenState, but
+  // the test asserts only the user-visible icon, not the field). The
+  // sibling group above ('engine type switch (issue #734)') only asserts
+  // platform calls (start/stop/getStatus/lastUpdatedSettings). This
+  // group is the user-visible counterpart: while the engine is being
+  // initialized the AppBar must render Icons.hourglass_top, and once
+  // initialization completes the hourglass must give way to
+  // Icons.volume_up (started, unmuted). The bg→fg lifecycle path is
+  // intentionally out of scope (Non-scope of Issue #918).
+  // -------------------------------------------------------------------------
+  group('CommentScreen engine init icon transition '
+      '(Issue #918 / #741 Problem 6)', () {
+    late FakeCommentSpeechPlatform fakePlatform;
+
+    // Non-READY status used after the engine switch so the Android-TTS
+    // branch in _initializeAndStartSpeech actually awaits
+    // checkAndroidTtsAvailability (gated below) instead of short-circuiting
+    // through the "engine already READY" shortcut at the top of
+    // _initializeAndStartSpeech (the path that sets
+    // _initializedEngineType immediately when getStatus reports READY).
+    const SpeechRuntimeStatus readyStatus = SpeechRuntimeStatus(
+      enabled: true,
+      engineState: 'READY',
+      playerState: 'IDLE',
+      queueSize: 0,
+      currentSpeakerId: 0,
+    );
+    const SpeechRuntimeStatus unknownStatus = SpeechRuntimeStatus(
+      enabled: true,
+      engineState: 'UNKNOWN',
+      playerState: 'UNKNOWN',
+      queueSize: 0,
+      currentSpeakerId: 0,
+    );
+
+    // Caps for the bounded poll loops below. Sized for the current
+    // production await chain plus comfortable headroom so that adding
+    // one or two awaits to _initializeAndStartSpeech in the future
+    // does not require touching this test. Real regressions (where
+    // the awaited future never resolves) still fail fast — the cap is
+    // not an arbitrary timeout, it is a "max number of microtask
+    // drains we are willing to do before declaring failure".
+    //   shortPath: success path through _initializeAndStartSpeech
+    //              (~3 awaits today: getStatus → updateSettings → start).
+    //   switchPath: engine-switch path through
+    //               _handleSpeechSettingsChanged → _stopSpeech →
+    //               _initializeAndStartSpeech, which has more awaits.
+    const int kPumpCapShortPath = 8;
+    const int kPumpCapSwitchPath = 16;
+
+    setUp(() {
+      fakePlatform = FakeCommentSpeechPlatform();
+      // Voicevox (initial) sees READY → init completes via the
+      // status-shortcut path. Subsequent calls (after engine switch to
+      // Android TTS) see UNKNOWN so the flow falls through to the
+      // checkAndroidTtsAvailability branch we gate below.
+      fakePlatform.statusSequenceToReturn = const <SpeechRuntimeStatus>[
+        readyStatus,
+        unknownStatus,
+      ];
+    });
+
+    tearDown(() {
+      fakePlatform.dispose();
+    });
+
+    testWidgets('(a)/(b) hourglass shown until Voicevox init completes', (
+      WidgetTester tester,
+    ) async {
+      // (a) First frame: _initializedEngineType is still null because
+      // _initializeAndStartSpeech is scheduled via addPostFrameCallback
+      // and its first await (getStatus) has not resolved yet. The icon
+      // must be the "initializing" hourglass.
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.voicevox,
+          ),
+        ),
+      );
+      expect(
+        find.byIcon(Icons.hourglass_top),
+        findsOneWidget,
+        reason:
+            '(a) initial frame must render hourglass while '
+            '_initializedEngineType is null',
+      );
+
+      // (b) Drain the init microtasks. The success path awaits three
+      // futures (getStatus → updateSettings → start) before the
+      // setState({_speechStarted=true}) rebuild. A single pump() flushes
+      // all pending microtasks AND renders one frame, so one pump is
+      // typically sufficient. We use a bounded poll instead of a fixed
+      // pump count so that a future refactor adding an extra await
+      // between start() and the setState rebuild does not silently break
+      // the test (it would just take one more pump iteration). The cap
+      // is small enough that a real regression — where init never
+      // completes — still fails fast. pumpAndSettle is intentionally
+      // avoided (AGENTS.md「実行時間」section) — the fake schedules no
+      // real timers.
+      for (
+        int i = 0;
+        i < kPumpCapShortPath &&
+            find.byIcon(Icons.hourglass_top).evaluate().isNotEmpty;
+        i++
+      ) {
+        await tester.pump();
+      }
+      expect(
+        find.byIcon(Icons.hourglass_top),
+        findsNothing,
+        reason:
+            '(b) hourglass must disappear once _initializedEngineType '
+            'matches the current engine',
+      );
+      // After the two pumps above, _initializeAndStartSpeech has reached
+      // setState({_speechStarted=true}) and engineState=READY. With the
+      // default isMuted=false this lands on Icons.volume_up
+      // (icon priority ladder: ERROR → !initialized → !started → muted →
+      // volume_up). Asserting the exact icon — instead of "one of" —
+      // locks the post-init UX state so a regression that leaves the
+      // engine stuck on Icons.pause_circle_outline (i.e. start() failed
+      // silently) would now fail this test.
+      expect(
+        find.byIcon(Icons.volume_up),
+        findsOneWidget,
+        reason:
+            '(b) post-init icon must be Icons.volume_up '
+            '(started, unmuted, ready)',
+      );
+    });
+
+    testWidgets(
+      '(c)/(d) hourglass reappears during engine switch to Android TTS '
+      'until checkAndroidTtsAvailability completes',
+      (WidgetTester tester) async {
+        // Bring Voicevox to ready so we have a known "non-hourglass"
+        // baseline before the engine switch.
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.voicevox,
+            ),
+          ),
+        );
+        // Drain the init microtasks (getStatus → updateSettings →
+        // start → setState). Bounded poll instead of fixed pump count:
+        // robust against a future refactor adding an extra await on the
+        // success path. pumpAndSettle is intentionally avoided because
+        // the fake schedules no real timers (AGENTS.md「実行時間」
+        // section).
+        for (
+          int i = 0;
+          i < kPumpCapShortPath &&
+              find.byIcon(Icons.hourglass_top).evaluate().isNotEmpty;
+          i++
+        ) {
+          await tester.pump();
+        }
+        expect(find.byIcon(Icons.hourglass_top), findsNothing);
+
+        // Gate the Android-TTS availability check so the await inside
+        // _initializeAndStartSpeech parks while _initializedEngineType
+        // is null, giving us a deterministic window to observe the
+        // hourglass.
+        fakePlatform.checkAndroidTtsAvailabilityGate = Completer<void>();
+
+        // Switch the engine. _handleSpeechSettingsChanged awaits
+        // _stopSpeech (which calls setState({_speechStarted=false})),
+        // then assigns _initializedEngineType = null, then awaits
+        // _initializeAndStartSpeech which parks on the gated availability
+        // check. The setState from _stopSpeech triggers the rebuild we
+        // need to observe the hourglass.
+        //
+        // Refactor-resilience note: this scenario assumes the
+        // tear-down-then-init order ("stop the old engine BEFORE the new
+        // one's init parks"). That order is the intended UX contract —
+        // it prevents the previous engine from continuing to speak while
+        // the new engine is warming up. A refactor that reverses the
+        // order ("init the new engine first, then stop the old one")
+        // would silently change the user-visible icon transition and
+        // legitimately break this test, prompting a UX re-evaluation.
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.updateSpeechSettings(
+          const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.androidTts,
+          ),
+        );
+        // Pump until the Android-TTS init branch parks on the gated
+        // availability check. Bounded poll: robust against future
+        // refactors that add or remove awaits between updateWidget and
+        // checkAndroidTtsAvailability. The cap is small enough that a
+        // real regression — where the gate is never reached — fails
+        // fast.
+        for (
+          int i = 0;
+          i < kPumpCapSwitchPath &&
+              !fakePlatform.checkAndroidTtsAvailabilityCalled;
+          i++
+        ) {
+          await tester.pump();
+        }
+
+        expect(
+          fakePlatform.checkAndroidTtsAvailabilityCalled,
+          isTrue,
+          reason:
+              'sanity: the Android-TTS init branch must have reached the '
+              'gated availability check by now',
+        );
+        expect(
+          find.byIcon(Icons.hourglass_top),
+          findsOneWidget,
+          reason:
+              '(c) hourglass must reappear while _initializedEngineType '
+              'is null during the engine switch',
+        );
+
+        // (d) Release the gate → checkAndroidTtsAvailability resolves →
+        // _initializedEngineType = androidTts → start() resolves →
+        // setState({_speechStarted=true}) → hourglass gone. Bounded
+        // poll for the same refactor-resilience reason as (b)/(c).
+        fakePlatform.checkAndroidTtsAvailabilityGate!.complete();
+        for (
+          int i = 0;
+          i < kPumpCapShortPath &&
+              find.byIcon(Icons.hourglass_top).evaluate().isNotEmpty;
+          i++
+        ) {
+          await tester.pump();
+        }
+        expect(
+          find.byIcon(Icons.hourglass_top),
+          findsNothing,
+          reason:
+              '(d) hourglass must disappear once Android TTS init '
+              'completes and _initializedEngineType matches androidTts',
+        );
+      },
+    );
   });
 
   // -------------------------------------------------------------------------

@@ -156,12 +156,20 @@ class AudioTrackWavPlayer(
 
     /**
      * Tracks whether the caller still wants playback to be live. See
-     * [MediaPlayerWavPlayer] for the same-pattern rationale.
+     * [MediaPlayerWavPlayer] for the same-pattern rationale. Exposed via
+     * [shouldBePlaying] on the [WavPlayer] contract.
      */
     @Volatile
-    private var shouldBePlaying: Boolean = false
+    private var shouldBePlayingFlag: Boolean = false
 
-    private val audioAttributes: AudioAttributes =
+    override fun shouldBePlaying(): Boolean = shouldBePlayingFlag
+
+    // Lazy so that constructing the player on a pure-JVM unit test JVM
+    // (where AudioAttributes.Builder.build() returns null via the
+    // returnDefaultValues stub) does not NPE during field init. The first
+    // play() access triggers the real build on a real device. This mirrors
+    // PR #853's same shift for AndroidTtsSpeaker.
+    private val audioAttributes: AudioAttributes by lazy {
         AudioAttributes.Builder().apply {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 setUsage(AudioAttributes.USAGE_ASSISTANT)
@@ -170,6 +178,7 @@ class AudioTrackWavPlayer(
             }
             setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
         }.build()
+    }
 
     private val focusListener = AudioFocusGuard.FocusChangeListener { event ->
         when (event) {
@@ -229,12 +238,12 @@ class AudioTrackWavPlayer(
 
         // Mark intent to play before any suspension so a focus-loss
         // racing with track build can still trigger a correct resume later.
-        shouldBePlaying = true
+        shouldBePlayingFlag = true
 
         // Acquire focus once for this logical utterance via the shared guard.
         val focusResult = audioFocusGuard.acquire()
         if (focusResult.isFailure) {
-            shouldBePlaying = false
+            shouldBePlayingFlag = false
             return Result.failure(
                 focusResult.exceptionOrNull()
                     ?: IllegalStateException("Audio focus request denied"),
@@ -310,7 +319,7 @@ class AudioTrackWavPlayer(
                                 override fun onMarkerReached(track: AudioTrack?) {
                                     markerTimeoutJob?.cancel()
                                     markerTimeoutJob = null
-                                    shouldBePlaying = false
+                                    shouldBePlayingFlag = false
                                     audioFocusGuard.scheduleRelease()
                                     releaseAudioTrack()
                                     val cont: CancellableContinuation<Unit>?
@@ -345,7 +354,7 @@ class AudioTrackWavPlayer(
                         markerTimeoutJob = timeoutScope.launch {
                             delay(timeoutMs)
                             Log.w(TAG, "Marker timeout fired after ${timeoutMs}ms — forcing completion")
-                            shouldBePlaying = false
+                            shouldBePlayingFlag = false
                             audioFocusGuard.scheduleRelease()
                             releaseAudioTrack()
                             val cont: CancellableContinuation<Unit>?
@@ -371,7 +380,7 @@ class AudioTrackWavPlayer(
                         state = PlayerState.ERROR
                     }
                 }
-                shouldBePlaying = false
+                shouldBePlayingFlag = false
                 releaseAudioTrack()
                 audioFocusGuard.scheduleRelease()
             }
@@ -424,7 +433,7 @@ class AudioTrackWavPlayer(
     }
 
     private fun resumeInternal() {
-        if (!shouldBePlaying) return
+        if (!shouldBePlayingFlag) return
         val resumeFailed: Boolean
         synchronized(lock) {
             resumeFailed = if (state == PlayerState.PAUSED || state == PlayerState.STOPPED) {
@@ -450,7 +459,7 @@ class AudioTrackWavPlayer(
     private fun stopInternal() {
         markerTimeoutJob?.cancel()
         markerTimeoutJob = null
-        shouldBePlaying = false
+        shouldBePlayingFlag = false
         val cont: CancellableContinuation<Unit>?
         synchronized(lock) {
             audioTrack?.let { track ->
