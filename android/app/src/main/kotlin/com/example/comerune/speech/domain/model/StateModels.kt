@@ -29,21 +29,29 @@ enum class PlayerState {
     ERROR
 }
 
-// TODO(#741 Problem 4): a `PlayerState.shouldBePlaying` extension that
-// folds together `PLAYING` and `PAUSED` (i.e. "the user wants audio out
-// even though the AudioFocus has been transiently lost") would let the
-// AudioFocus / WAV player code stop hand-rolling the same OR check.
-// Deferred here because Issue #735 (PR #746) introduces an
-// AudioFocusGuard that already adds a similar predicate per WavPlayer
-// implementation; consolidating is owned by that work to avoid two
-// competing definitions.
+// Resolved by Issue #916: the intent-vs-physical-state split is now
+// modelled by `WavPlayer.shouldBePlaying()` on the player contract, not
+// by an extension on the [PlayerState] enum. Folding `PLAYING + PAUSED`
+// into a single derived predicate would have conflated focus-loss pause
+// with explicit pause; the per-player intent flag is the authoritative
+// source instead.
 //
-// TODO(#741 Problem 3): consider exposing `started` on
-// [SpeechRuntimeStatus] so the Flutter side can reconcile its local
-// `_speechStarted` flag with the native worker loop after process
-// recreation (currently the two can drift). Deferred until Issue #743
-// (engine-switch fix) lands so the changes don't conflict.
+// Resolved by Issue #915: `started` is now exposed on
+// [SpeechRuntimeStatus] (see below) so the Flutter side can reconcile
+// its local `_speechStarted` flag with the native worker loop after
+// process recreation.
 
+/**
+ * Snapshot of speech-engine runtime state, marshalled to the Flutter side
+ * via `CommentSpeechPlugin.getStatus()`.
+ *
+ * @property started Whether the queue worker loop is currently armed
+ *   (i.e. `start()` has been called and `stop()`/`release()` has not).
+ *   This is the **ground truth** for the Flutter-side `_speechStarted`
+ *   mirror flag (Issue #915). It represents *worker-loop intent* only —
+ *   it is independent of [engineState] (e.g. the worker can be `started`
+ *   while the engine is still `INITIALIZING`).
+ */
 data class SpeechRuntimeStatus(
     val enabled: Boolean,
     val engineState: TtsEngineState,
@@ -51,7 +59,8 @@ data class SpeechRuntimeStatus(
     val queueSize: Int,
     val currentCommentId: String?,
     val currentText: String?,
-    val currentSpeakerId: Int
+    val currentSpeakerId: Int,
+    val started: Boolean
 )
 
 /**

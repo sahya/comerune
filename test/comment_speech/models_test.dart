@@ -114,6 +114,19 @@ void main() {
       );
     });
 
+    test('SynthesisMode fromStorageValue stays defensive against empty / '
+        'literally bogus values', () {
+      // 永続化値が空文字や旧バージョン由来の未知文字列でも、
+      // 例外を投げず必ずデフォルトへフォールバックすること
+      // （`SettingsStore.load()` 全体が倒れて画面が無限スピナーに
+      // ならないための防御）。
+      expect(SynthesisMode.fromStorageValue(''), SynthesisMode.audioQuery);
+      expect(
+        SynthesisMode.fromStorageValue('__not_a_real_enum_value__'),
+        SynthesisMode.audioQuery,
+      );
+    });
+
     test('toMap includes all fields with defaults', () {
       const settings = SpeechSettings();
       final map = settings.toMap();
@@ -233,6 +246,7 @@ void main() {
         'currentCommentId': 'c1',
         'currentText': 'hello',
         'currentSpeakerId': 2,
+        'started': true,
       });
       expect(status.enabled, true);
       expect(status.engineState, 'READY');
@@ -241,6 +255,7 @@ void main() {
       expect(status.currentCommentId, 'c1');
       expect(status.currentText, 'hello');
       expect(status.currentSpeakerId, 2);
+      expect(status.started, true);
     });
 
     test('fromMap uses defaults for missing fields', () {
@@ -252,6 +267,155 @@ void main() {
       expect(status.currentCommentId, isNull);
       expect(status.currentText, isNull);
       expect(status.currentSpeakerId, 0);
+      expect(status.started, false);
+    });
+
+    test('fromMap defaults started to false when key is missing '
+        '(Issue #915 backward compat with older native binaries)', () {
+      // Older native binaries that have not been rebuilt with the
+      // Issue #915 patch will not include `started` in their toMap
+      // output. The Dart side must default to `false` (the safe
+      // mirror initial value) instead of throwing or carrying the
+      // last seen value.
+      final status = SpeechRuntimeStatus.fromMap({
+        'enabled': true,
+        'engineState': 'READY',
+        'playerState': 'IDLE',
+        'queueSize': 0,
+        'currentSpeakerId': 0,
+      });
+      expect(status.started, false);
+    });
+
+    test('fromMap reads started=false explicitly', () {
+      final status = SpeechRuntimeStatus.fromMap({
+        'enabled': true,
+        'engineState': 'READY',
+        'playerState': 'IDLE',
+        'queueSize': 0,
+        'currentSpeakerId': 0,
+        'started': false,
+      });
+      expect(status.started, false);
+    });
+
+    test('equality and hashCode include started (Issue #915)', () {
+      const a = SpeechRuntimeStatus(
+        enabled: true,
+        engineState: 'READY',
+        playerState: 'IDLE',
+        queueSize: 0,
+        currentSpeakerId: 0,
+        started: true,
+      );
+      const b = SpeechRuntimeStatus(
+        enabled: true,
+        engineState: 'READY',
+        playerState: 'IDLE',
+        queueSize: 0,
+        currentSpeakerId: 0,
+        started: false,
+      );
+      expect(a, isNot(equals(b)));
+      // Hash differs is not contractually required, but it would be a
+      // bug if SpeechRuntimeStatus dropped `started` from its hash —
+      // that is exactly the kind of mistake this assertion catches.
+      expect(a.hashCode, isNot(equals(b.hashCode)));
+    });
+
+    test('default constructor leaves started=false', () {
+      const status = SpeechRuntimeStatus(
+        enabled: false,
+        engineState: 'UNKNOWN',
+        playerState: 'UNKNOWN',
+        queueSize: 0,
+        currentSpeakerId: 0,
+      );
+      expect(status.started, false);
+    });
+
+    test('fromMap sets startedReported=true when the started key is '
+        'present (Issue #915 forward-compat guard)', () {
+      // Both an explicit true and an explicit false must count as
+      // "reported" — the flag tracks key *presence*, not the value.
+      final reportedTrue = SpeechRuntimeStatus.fromMap({
+        'enabled': true,
+        'engineState': 'READY',
+        'playerState': 'IDLE',
+        'queueSize': 0,
+        'currentSpeakerId': 0,
+        'started': true,
+      });
+      final reportedFalse = SpeechRuntimeStatus.fromMap({
+        'enabled': true,
+        'engineState': 'READY',
+        'playerState': 'IDLE',
+        'queueSize': 0,
+        'currentSpeakerId': 0,
+        'started': false,
+      });
+      expect(reportedTrue.startedReported, true);
+      expect(reportedFalse.startedReported, true);
+    });
+
+    test('fromMap sets startedReported=false when the started key is '
+        'absent (old native binary, Issue #915 forward-compat guard)', () {
+      // An old native binary that has not been rebuilt with the
+      // Issue #915 patch omits `started` entirely. The defaulted
+      // `started=false` must be distinguishable from a reported
+      // `false` so the reconcile guard can refuse to trust it.
+      final status = SpeechRuntimeStatus.fromMap({
+        'enabled': true,
+        'engineState': 'READY',
+        'playerState': 'IDLE',
+        'queueSize': 0,
+        'currentSpeakerId': 0,
+      });
+      expect(status.started, false);
+      expect(status.startedReported, false);
+    });
+
+    test('default constructor leaves startedReported=false', () {
+      const status = SpeechRuntimeStatus(
+        enabled: false,
+        engineState: 'UNKNOWN',
+        playerState: 'UNKNOWN',
+        queueSize: 0,
+        currentSpeakerId: 0,
+      );
+      expect(status.startedReported, false);
+    });
+
+    test('startedReported is excluded from == and hashCode '
+        '(wire metadata, not logical state — Issue #915)', () {
+      // Two statuses describing the SAME runtime must compare equal
+      // regardless of whether the `started` key was transported. If
+      // startedReported leaked into equality, an old-native status and
+      // an otherwise-identical new-native status would spuriously
+      // differ, breaking change-detection / dedup at every call site
+      // that compares SpeechRuntimeStatus instances.
+      final reported = SpeechRuntimeStatus.fromMap({
+        'enabled': true,
+        'engineState': 'READY',
+        'playerState': 'IDLE',
+        'queueSize': 0,
+        'currentSpeakerId': 0,
+        'started': false,
+      });
+      final notReported = SpeechRuntimeStatus.fromMap({
+        'enabled': true,
+        'engineState': 'READY',
+        'playerState': 'IDLE',
+        'queueSize': 0,
+        'currentSpeakerId': 0,
+      });
+      // Same logical runtime (started=false either way), differing only
+      // in wire-presence metadata.
+      expect(reported.started, notReported.started);
+      expect(reported.startedReported, isNot(notReported.startedReported));
+      // Equality and hashCode must ignore the metadata difference.
+      expect(reported, equals(notReported));
+      expect(reported.hashCode, equals(notReported.hashCode));
     });
   });
 

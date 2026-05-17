@@ -1,7 +1,26 @@
 import 'dart:developer' as developer;
+import 'dart:ui';
 
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:meta/meta.dart';
+
+/// The meta-data name used to reference the notification icon in AndroidManifest.xml.
+///
+/// Declared under the `<application>` element as:
+///   `<meta-data android:name="com.example.comerune.service.NOTIFICATION_ICON"
+///               android:resource="@mipmap/ic_launcher" />`
+const String _kNotificationIconMetaDataName =
+    'com.example.comerune.service.NOTIFICATION_ICON';
+
+/// The notification icon configuration for the foreground service notification.
+///
+/// Uses the app launcher icon via AndroidManifest.xml meta-data to ensure a
+/// complete notification is displayed on all Android versions, stabilizing
+/// foreground service startup.
+const NotificationIcon _kNotificationIcon = NotificationIcon(
+  metaDataName: _kNotificationIconMetaDataName,
+  backgroundColor: Color(0xFF000000),
+);
 
 /// Manages the Android Foreground Service lifecycle for maintaining
 /// WebSocket/HTTP streaming connections while the app is backgrounded.
@@ -41,6 +60,15 @@ class ForegroundServiceManager {
         priority: NotificationPriority.LOW,
       ),
       iosNotificationOptions: const IOSNotificationOptions(),
+      // The "stop on app task removal" behaviour is configured via
+      // android:stopWithTask="true" on the service declaration in
+      // AndroidManifest.xml — that lets Android stop the service natively
+      // when the task is swiped away. The Dart-level
+      // ForegroundTaskOptions.stopWithTask is intentionally omitted: in
+      // flutter_foreground_task 9.x it installs a TrackVisibilityUtils
+      // ActivityLifecycleCallback that stops the service on EVERY activity
+      // pause (e.g. pressing home), which would break legitimate background
+      // comment streaming.
       foregroundTaskOptions: ForegroundTaskOptions(
         eventAction: ForegroundTaskEventAction.nothing(),
         autoRunOnBoot: false,
@@ -71,6 +99,7 @@ class ForegroundServiceManager {
       await _ops.start(
         notificationTitle: title,
         notificationText: text,
+        notificationIcon: _kNotificationIcon,
         callback: _foregroundTaskCallback,
       );
       _isRunning = true;
@@ -164,6 +193,7 @@ abstract class ForegroundTaskOperations {
   Future<void> start({
     required String notificationTitle,
     required String notificationText,
+    NotificationIcon? notificationIcon,
     required Function callback,
   });
 
@@ -211,11 +241,13 @@ class _DefaultForegroundTaskOperations extends ForegroundTaskOperations {
   Future<void> start({
     required String notificationTitle,
     required String notificationText,
+    NotificationIcon? notificationIcon,
     required Function callback,
   }) async {
     await FlutterForegroundTask.startService(
       notificationTitle: notificationTitle,
       notificationText: notificationText,
+      notificationIcon: notificationIcon,
       callback: callback,
     );
   }

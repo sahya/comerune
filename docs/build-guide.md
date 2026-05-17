@@ -15,7 +15,7 @@ Android の `applicationId` は `android/app_id.properties` から読み込ま�
 cp android/app_id.properties.example android/app_id.properties
 
 # applicationId を編集
-# applicationId=app.spectacles_software.comerune  ← 本番用
+# applicationId=<id>  ← 本番用
 ```
 
 ファイルが存在しない場合、`com.example.comerune`（開発用プレースホルダー）が使用されます。

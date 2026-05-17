@@ -25,6 +25,8 @@ class AppThemeColors {
     required this.loginBannerWarningIcon,
     required this.pinnedMessageBackground,
     required this.broadcastEndedBackground,
+    required this.autoExtendSuccessBackground,
+    required this.autoExtendFailureBackground,
     required this.operatorTextColor,
   });
 
@@ -64,6 +66,21 @@ class AppThemeColors {
   final Color loginBannerWarningIcon;
   final Color pinnedMessageBackground;
   final Color broadcastEndedBackground;
+
+  /// Issue #876: shaded background applied to client-side notifications
+  /// that the auto-extend controller emits when the API succeeds. Picked
+  /// to read as "positive but informational" — kept distinct from
+  /// [giftMessageBackground] (which is opt-in green for gift emphasis)
+  /// by hue per theme. Contrast vs `colorScheme.onSurface` is enforced
+  /// by `test/presentation/theme/notification_contrast_test.dart`.
+  final Color autoExtendSuccessBackground;
+
+  /// Issue #876: shaded background for auto-extend failure notifications
+  /// (all retries exhausted). Picked to read as "warning" without being
+  /// destructive — kept distinct from [operatorMessageBackground] which
+  /// already carries the warning semantic. Contrast vs
+  /// `colorScheme.onSurface` is enforced by the contrast test.
+  final Color autoExtendFailureBackground;
 
   /// Text color used to render operator (運営) comment content and user name.
   /// Intended to convey the "red" / warning-like semantic consistently per
@@ -136,6 +153,14 @@ class AppTheme {
     loginBannerWarningIcon: Color(0xFFE65100),
     pinnedMessageBackground: Color(0xFFFFF8E1),
     broadcastEndedBackground: Color(0xFFECEFF1),
+    // Issue #876: pale teal — distinguishable from giftMessageBackground's
+    // green and from notificationMessageBackground's blue-grey, so the
+    // success row reads as "positive client notification" without clashing
+    // with opt-in gift emphasis.
+    autoExtendSuccessBackground: Color(0xFFE0F2F1),
+    // Issue #876: pale red-pink — readable warning hue distinct from
+    // operatorMessageBackground (which is warm cream).
+    autoExtendFailureBackground: Color(0xFFFFEBEE),
     // WCAG AA (>= 4.5:1) vs operatorMessageBackground is enforced by
     // `test/presentation/theme/operator_contrast_test.dart`.
     operatorTextColor: Color(0xFFC62828),
@@ -171,6 +196,14 @@ class AppTheme {
     loginBannerWarningIcon: Color(0xFFFFB74D),
     pinnedMessageBackground: Color(0xFF4E342E),
     broadcastEndedBackground: Color(0xFF37474F),
+    // Issue #876: deep teal carrying the same "positive" semantic as the
+    // light theme's pale teal, while staying dark enough for contrast vs
+    // the dark scheme's tinted onSurface (~#E4E1E9 for indigo).
+    autoExtendSuccessBackground: Color(0xFF1F3A3D),
+    // Issue #876: deep wine red — warning hue distinct from
+    // operatorMessageBackground's warm grey and dark enough for
+    // onSurface contrast.
+    autoExtendFailureBackground: Color(0xFF3E2A2E),
     // WCAG AA (>= 4.5:1) vs operatorMessageBackground is enforced by
     // `test/presentation/theme/operator_contrast_test.dart`.
     operatorTextColor: Color(0xFFFF8A80),
@@ -202,6 +235,12 @@ class AppTheme {
     loginBannerWarningIcon: Color(0xFFE65100),
     pinnedMessageBackground: Color(0xFFFFF8E1),
     broadcastEndedBackground: Color(0xFFEFEBE9),
+    // P-type: pale blue carries the "positive" semantic on the
+    // blue/orange axis that protanopia users distinguish well.
+    autoExtendSuccessBackground: Color(0xFFE3F2FD),
+    // P-type: pale orange carries the "warning" semantic, kept low
+    // saturation so the row reads as informational not destructive.
+    autoExtendFailureBackground: Color(0xFFFFF3E0),
     // P-type: the "red / warning" semantic uses the deep-orange family so
     // protanopia users still perceive it (red confuses with green; orange
     // does not). WCAG AA vs operatorMessageBackground is enforced by
@@ -236,6 +275,12 @@ class AppTheme {
     loginBannerWarningIcon: Color(0xFFBF360C),
     pinnedMessageBackground: Color(0xFFFFF8E1),
     broadcastEndedBackground: Color(0xFFF3E5F5),
+    // D-type: pale lavender for "positive" — distinguishable from
+    // notificationMessageBackground's tone on the purple/amber axis.
+    autoExtendSuccessBackground: Color(0xFFE8E0F2),
+    // D-type: pale amber for "warning" — sits on the deuteranope-friendly
+    // purple/amber distinction.
+    autoExtendFailureBackground: Color(0xFFFFF8E1),
     // D-type: deep red-orange that remains visible for deuteranopia users,
     // differentiated from the P-type palette so theme switching yields a
     // visually distinct tone. WCAG AA vs operatorMessageBackground is
@@ -272,6 +317,12 @@ class AppTheme {
     loginBannerWarningIcon: Color(0xFFC62828),
     pinnedMessageBackground: Color(0xFFFFEBEE),
     broadcastEndedBackground: Color(0xFFE0E0E0),
+    // T-type: pale cyan for "positive" — sits on the cyan side of the
+    // tritanope-friendly red/cyan distinction.
+    autoExtendSuccessBackground: Color(0xFFE0F7FA),
+    // T-type: pale red-pink for "warning" — sits on the red side of the
+    // red/cyan distinction.
+    autoExtendFailureBackground: Color(0xFFFCE4EC),
     // T-type: red/cyan contrast is preserved using the standard red. WCAG
     // AA vs operatorMessageBackground is enforced by
     // `test/presentation/theme/operator_contrast_test.dart`.

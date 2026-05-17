@@ -712,8 +712,12 @@ class SessionWsMessageParser {
           continue;
         }
 
+        // NDGR view URL は HTTPS のみ受理する。
+        // 抽出された URL は NDGR HTTP fetch で認証 Cookie /
+        // X-Niconico-Session ヘッダ付きで利用されるため、
+        // http:// を許容すると認証情報が平文で流出するリスクがある。
         if (ndgrViewUri == null &&
-            (url.startsWith('http://') || url.startsWith('https://')) &&
+            url.startsWith('https://') &&
             url.contains('/api/view/v4/')) {
           ndgrViewUri = url;
           continue;

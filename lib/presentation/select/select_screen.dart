@@ -4,15 +4,21 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../app_logging.dart';
+import '../../application/comment_log/broadcast_history_recorder.dart';
 import '../../application/comment_post/comment_post_controller.dart';
 import '../../application/timeshift_fetch/timeshift_fetch_controller.dart';
+import '../../application/settings/settings_save_helper.dart';
 import '../../application/settings/settings_store.dart';
 import '../../application/speech/speech_availability_notifier.dart';
+import '../../application/statistics/recent_broadcast_stats_holder.dart';
+import '../../application/statistics/recent_broadcast_stats_recorder.dart';
 import '../../application/statistics/statistics_store.dart';
 import '../../application/timeline/timeline_store.dart';
 import '../../data/auth/user_session_store.dart';
+import '../../data/comment_log/broadcast_history_store.dart';
 import '../../data/comment_log/comment_log_writer.dart';
 import '../../data/broadcast/broadcast_control_repository.dart';
+import '../../data/broadcaster/broadcaster_name_store.dart';
 import '../../data/filter/broadcaster_ng_store.dart';
 import '../../data/follow/favorite_user_live_checker.dart';
 import '../../data/niconico/broadcaster_embed_resolver.dart';
@@ -31,6 +37,7 @@ import '../../domain/utils/lv_parser.dart';
 import '../../domain/utils/nico_icon_url.dart';
 import '../../comment_speech/comment_speech.dart'
     show MethodChannelCommentSpeech, SpeechSettings;
+import '../../domain/comment_log/recent_broadcast_stats.dart';
 import '../screens/comment_screen.dart';
 import '../screens/comment_screen_config.dart';
 import '../screens/settings_screen.dart';
@@ -133,12 +140,15 @@ class SelectScreen extends StatefulWidget {
     this.favoriteUserLiveChecker,
     this.userAttributeStore,
     this.broadcasterNgStore,
+    this.broadcasterNameStore,
+    this.recentBroadcastStatsHolder,
+    this.broadcastHistoryStore,
     this.commentPostController,
     this.timeshiftFetchController,
     this.androidTtsAvailability,
     this.broadcasterEmbedResolver,
     this.playRemainingAfterEndedSink,
-    this.onSpeechQueueDrained,
+    this.onSpeechGraceEnded,
     super.key,
   });
 
@@ -173,6 +183,24 @@ class SelectScreen extends StatefulWidget {
   /// to the legacy global NG fields on [AppSettings] so existing tests and
   /// embedding scenarios that do not wire a store keep working.
   final BroadcasterNgStore? broadcasterNgStore;
+
+  /// Issue #727 follow-up: persistent cache of broadcaster display names.
+  /// Forwarded to [SettingsScreen] so the NG picker can render friendly
+  /// tile titles. Optional — when null, the picker falls back to raw IDs.
+  final BroadcasterNameStore? broadcasterNameStore;
+
+  /// Issue #767: optional in-memory holder for the previous broadcast's
+  /// stats snapshot. When non-null, the comment screen surfaces a "直前
+  /// の統計を見る" entry inside its status detail view, and the comment
+  /// screen's broadcast-ended hook updates the holder. When null (legacy
+  /// embedders / minimal test harnesses), both code paths become no-ops.
+  final RecentBroadcastStatsHolder? recentBroadcastStatsHolder;
+
+  /// Issue #766: optional integration. Forwarded to [SettingsScreen] (so
+  /// the user can open the history view) and to [CommentScreen] (so each
+  /// ended broadcast's stats summary is recorded). Optional — when null,
+  /// the settings tile and the recording side-effect are both skipped.
+  final BroadcastHistoryStore? broadcastHistoryStore;
   final CommentPostController? commentPostController;
   final TimeshiftFetchController? timeshiftFetchController;
 
@@ -199,10 +227,11 @@ class SelectScreen extends StatefulWidget {
   /// the notifier.
   final ValueNotifier<bool>? playRemainingAfterEndedSink;
 
-  /// Issue #739: forwarded to [CommentSpeechConfig.onSpeechQueueDrained].
-  /// Called when the comment screen's speech grace ends so the parallel FGS
-  /// grace can terminate early. Optional — null in test harnesses.
-  final VoidCallback? onSpeechQueueDrained;
+  /// Issue #739: forwarded to [CommentSpeechConfig.onSpeechGraceEnded].
+  /// Called when the comment screen's speech grace ends (timeout, queue
+  /// drained, or speech disabled mid-grace) so the parallel FGS grace can
+  /// terminate early. Optional — null in test harnesses.
+  final VoidCallback? onSpeechGraceEnded;
 
   @override
   State<SelectScreen> createState() => _SelectScreenState();
@@ -739,6 +768,8 @@ class _SelectScreenState extends State<SelectScreen>
       if (widget.supplierUserIdNotifier != null) widget.supplierUserIdNotifier!,
       if (widget.beginAtNotifier != null) widget.beginAtNotifier!,
       if (widget.vposBaseAtNotifier != null) widget.vposBaseAtNotifier!,
+      if (widget.recentBroadcastStatsHolder != null)
+        widget.recentBroadcastStatsHolder!,
     ];
 
     return ListenableBuilder(
@@ -777,6 +808,12 @@ class _SelectScreenState extends State<SelectScreen>
             // follow-list equivalent), so unlike beginAt it does not need
             // a dual-source _resolveCommentBeginAt-style helper.
             vposBaseAt: widget.vposBaseAtNotifier?.value,
+            // Issue #876: broadcast end time. Sourced from `_myProgram`
+            // (broadcaster's own program) when its lv matches the active
+            // viewing lv; otherwise null. Used by the auto-extend
+            // controller — currently only meaningful in broadcaster mode
+            // (the Switch is hidden for non-broadcasters anyway).
+            endAt: _resolveCommentEndAt(lv),
             connectionMethod: _connectionMethod,
           ),
           connectionSupervisor: widget.connectionSupervisor,
@@ -806,6 +843,28 @@ class _SelectScreenState extends State<SelectScreen>
                 ? _toggleSpeechMute
                 : null,
             onSortOrderChanged: _onSortOrderChanged,
+            onAutoExtendBroadcastChanged: widget.settingsStore == null
+                ? null
+                : _onAutoExtendBroadcastChanged,
+            // Issue #876: feedback path for manual / auto extend
+            // success — refresh _myProgram.endAt so the next
+            // CommentScreen rebuild carries the updated value back into
+            // the AutoExtendBroadcastController's `update()` cycle.
+            onBroadcastEndTimeExtended: _onBroadcastEndTimeExtended,
+            // Issue #876: forward client-side notifications synthesised
+            // by the auto-extend controller into the timeline. When
+            // there is no TimelineStore wired (rare) the message is
+            // silently dropped and the renderer never sees it.
+            onAutoExtendSystemMessage: widget.timelineStore == null
+                ? null
+                : _onAutoExtendSystemMessage,
+            onRecentBroadcastStatsCaptured:
+                widget.recentBroadcastStatsHolder == null
+                ? null
+                : _onRecentBroadcastStatsCaptured,
+            onBroadcastEndedStats: widget.broadcastHistoryStore == null
+                ? null
+                : _onBroadcastEndedStats,
           ),
           debugMode: _settingsNotifier.value.debugMode,
           showUserName: _settingsNotifier.value.showUserName,
@@ -820,6 +879,8 @@ class _SelectScreenState extends State<SelectScreen>
               _settingsNotifier.value.commentZebraStripingEnabled,
           commentSortOrder: _settingsNotifier.value.commentSortOrder,
           showCommentNo: _settingsNotifier.value.showCommentNo,
+          autoExtendBroadcastEnabled:
+              _settingsNotifier.value.autoExtendBroadcastEnabled,
           userColorMap: _userAttrNotifier.value.colors,
           onUserColorChanged: widget.userAttributeStore != null
               ? _onUserColorChanged
@@ -879,7 +940,7 @@ class _SelectScreenState extends State<SelectScreen>
             androidTtsAvailability: widget.androidTtsAvailability,
             playRemainingAfterEnded:
                 _settingsNotifier.value.playRemainingAfterEnded,
-            onSpeechQueueDrained: widget.onSpeechQueueDrained,
+            onSpeechGraceEnded: widget.onSpeechGraceEnded,
             // Issue #758: bg poll timer reads the latest snapshot directly
             // from the store (widget.messages stops updating in bg because
             // frame scheduling is paused).
@@ -894,6 +955,13 @@ class _SelectScreenState extends State<SelectScreen>
           // comment screen gates the menu entry on `_isBroadcaster`, so
           // viewers never see a wired-but-non-applicable repository.
           broadcastControlRepository: widget.broadcastControlRepository,
+          // Issue #767: hand the in-memory snapshot of the previous
+          // broadcast (if any) to the comment screen so its status
+          // detail view can surface a "直前の統計を見る" entry. The
+          // comment screen itself filters out the case where the
+          // snapshot's lv equals the current lv, so we forward
+          // unconditionally.
+          recentBroadcastStats: widget.recentBroadcastStatsHolder?.value,
         );
       },
     );
@@ -1146,9 +1214,8 @@ class _SelectScreenState extends State<SelectScreen>
       return;
     }
     try {
-      // Issue #727 review fix: single combined load avoids the duplicate
-      // template-seeding round-trip that calling loadNgUserIds + loadNg
-      // WordRules back to back would do on first access.
+      // Issue #727 review fix: single combined load keeps the NG snapshot
+      // consistent across user IDs and word rules with one store read.
       final ({Set<String> ngUserIds, List<NgWordRule> rules}) snapshot =
           await store.loadBroadcasterNgAttributes(broadcasterId);
       if (!mounted || _currentBroadcasterId != broadcasterId) {
@@ -1458,7 +1525,7 @@ class _SelectScreenState extends State<SelectScreen>
     _settingsNotifier.value = updated;
     final SettingsStore? settingsStore = widget.settingsStore;
     if (settingsStore != null) {
-      unawaited(settingsStore.save(updated));
+      saveSettingsUnawaited(settingsStore, updated);
     }
   }
 
@@ -1475,7 +1542,109 @@ class _SelectScreenState extends State<SelectScreen>
     _settingsNotifier.value = updated;
     final SettingsStore? settingsStore = widget.settingsStore;
     if (settingsStore != null) {
-      unawaited(settingsStore.save(updated));
+      saveSettingsUnawaited(settingsStore, updated);
+    }
+  }
+
+  /// Issue #875: 配信者が AppBar オーバーフローメニュー内の「自動延長」
+  /// Switch を切り替えたときに呼ばれる。`_settingsNotifier` を更新して
+  /// 再ビルド時に同じ値が再注入されるようにし、`SettingsStore.save` で
+  /// 次回起動でも復元できるようにする（`_onSortOrderChanged` と同じ流儀）。
+  ///
+  /// Timer 動作の有効化は #876 (PR2) で行う。本 PR では Switch の
+  /// ON/OFF 状態を永続化するだけで、API 呼出は走らない。
+  void _onAutoExtendBroadcastChanged(bool enabled) {
+    final AppSettings current = _settingsNotifier.value;
+    if (current.autoExtendBroadcastEnabled == enabled) {
+      return;
+    }
+    final AppSettings updated = current.copyWith(
+      autoExtendBroadcastEnabled: enabled,
+    );
+    _settingsNotifier.value = updated;
+    final SettingsStore? settingsStore = widget.settingsStore;
+    if (settingsStore != null) {
+      saveSettingsUnawaited(settingsStore, updated);
+    }
+  }
+
+  /// Issue #876: Resolves the broadcast end time to pass into
+  /// CommentScreen for the active program lv. Currently only sourced
+  /// from `_myProgram` — auto-extend is broadcaster-only and the Switch
+  /// is hidden for non-broadcasters, so non-broadcaster end times are
+  /// not consumed.
+  DateTime? _resolveCommentEndAt(String lv) {
+    final FollowProgram? myProgram = _myProgram;
+    if (myProgram != null && myProgram.programId == lv) {
+      return myProgram.endAt;
+    }
+    return null;
+  }
+
+  /// Issue #876: invoked by [CommentScreen] when a manual or auto extend
+  /// API call returned a new authoritative end time. We refresh
+  /// `_myProgram.endAt` so the next rebuild flows the new value back
+  /// into the auto-extend controller via `CommentProgramInfo.endAt`.
+  ///
+  /// Equality check ensures unrelated parent rebuilds don't churn.
+  void _onBroadcastEndTimeExtended(DateTime newEndAt) {
+    final FollowProgram? myProgram = _myProgram;
+    if (myProgram == null) {
+      return;
+    }
+    if (myProgram.endAt == newEndAt) {
+      return;
+    }
+    setState(() {
+      _myProgram = myProgram.copyWith(endAt: newEndAt);
+    });
+  }
+
+  /// Issue #876: forwards a client-side notification (auto-extend
+  /// success / failure) into the timeline so the comment renderer
+  /// can apply the auto-extend theme color to the row.
+  void _onAutoExtendSystemMessage(AppMessage message) {
+    final TimelineStore? store = widget.timelineStore;
+    if (store == null) {
+      return;
+    }
+    store.add(message);
+  }
+
+  /// Issue #767: receive a finished broadcast's snapshot from
+  /// `CommentScreen` and update the in-memory holder so the next
+  /// broadcast's status detail view can surface a "直前の統計" entry.
+  ///
+  /// gating（isBroadcaster / lv 空）はアプリ層 helper に集約してテスト
+  /// 容易な形にしている。ここではホルダー解決のみを担当する。
+  void _onRecentBroadcastStatsCaptured(RecentBroadcastStats snapshot) {
+    final RecentBroadcastStatsHolder? holder =
+        widget.recentBroadcastStatsHolder;
+    if (holder == null) {
+      return;
+    }
+    recordRecentBroadcastStatsToHolder(snapshot: snapshot, holder: holder);
+  }
+
+  /// Issue #766: receive a finalised broadcast's stats snapshot from
+  /// `CommentScreen` and persist it to the broadcast history store, but
+  /// only when the local user is the broadcaster (viewer-only sessions
+  /// must not be recorded). Wired only when [SelectScreen.broadcastHistoryStore]
+  /// is non-null.
+  void _onBroadcastEndedStats(BroadcastEndedStatsSnapshot snapshot) {
+    final BroadcastHistoryStore? store = widget.broadcastHistoryStore;
+    if (store == null) {
+      return;
+    }
+    // Snapshot → entry の詰め替え + isBroadcaster / lv 空のフィルタは
+    // application 層 helper に集約 (テスト容易化と select_screen の責務縮小)。
+    // Persistence は fire-and-forget; 失敗はストア内で log される。
+    final Future<void>? scheduled = recordBroadcastHistoryFromSnapshot(
+      snapshot: snapshot,
+      store: store,
+    );
+    if (scheduled != null) {
+      unawaited(scheduled);
     }
   }
 
@@ -1496,6 +1665,8 @@ class _SelectScreenState extends State<SelectScreen>
           themeModeNotifier: widget.themeModeNotifier,
           userAttributeStore: widget.userAttributeStore,
           broadcasterNgStore: widget.broadcasterNgStore,
+          broadcasterNameStore: widget.broadcasterNameStore,
+          broadcastHistoryStore: widget.broadcastHistoryStore,
           broadcasterIdNotifier: widget.supplierUserIdNotifier,
           userNameResolution: widget.userNameResolution,
           speechPlatform: MethodChannelCommentSpeech(),

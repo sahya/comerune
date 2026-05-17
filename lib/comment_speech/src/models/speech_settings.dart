@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/foundation.dart';
 
 import 'replace_rule.dart';
@@ -34,7 +36,18 @@ enum SynthesisMode {
       case 'ONE_SHOT':
         return SynthesisMode.oneShot;
       case 'AUDIO_QUERY':
+      case null:
+        return SynthesisMode.audioQuery;
       default:
+        // 未知の値（旧バージョンの保存値・破損値・改ざん）は黙ってデフォルト
+        // へフォールバックする。例外を投げると `SettingsStore.load()` 全体が
+        // 失敗し、設定画面が無限スピナーや空表示になりかねないため、ここで
+        // 必ず安全な値を返す。観測性のためログだけ残す。
+        developer.log(
+          'Unknown SynthesisMode storage value: "$raw", '
+          'falling back to AUDIO_QUERY',
+          name: 'SynthesisMode',
+        );
         return SynthesisMode.audioQuery;
     }
   }

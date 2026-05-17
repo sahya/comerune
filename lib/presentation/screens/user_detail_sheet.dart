@@ -4,7 +4,29 @@ import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/utils/elapsed_formatter.dart';
+import '../strings/app_strings.dart';
 import '../theme/app_theme.dart';
+
+// --- Color picker layout constants ---
+//
+// Visible diameter of each color circle button. Matches the previous design
+// so this change is purely about the hit-target, not the visual size.
+const double _kColorCircleVisualSize = 32.0;
+
+// Material/WCAG minimum recommended interactive target size. Each preset color
+// circle and the custom-color button is wrapped in a transparent 48×48 box
+// so taps register reliably even when the visible circle is smaller. The
+// surrounding `Wrap` uses `spacing: 0` so the transparent padding alone
+// (8dp on each side) creates a 16dp visual gap between adjacent circles
+// while keeping their hit areas non-overlapping.
+const double _kColorCircleHitTargetSize = 48.0;
+
+// Cap for the custom color picker dialog. The hue wheel inside
+// flutter_colorpicker grows with available width, so on tablets / landscape
+// the dialog can become unreadably large. These caps keep the picker at a
+// usable size on big screens while leaving small phones unaffected.
+const double _kColorPickerDialogMaxWidth = 420.0;
+const double _kColorPickerDialogMaxHeight = 640.0;
 
 /// Converts a [Color] to its ARGB32 integer representation without using the
 /// deprecated `Color.value` getter.
@@ -164,7 +186,7 @@ class UserDetailSheet extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'ユーザー詳細',
+                  AppStrings.userDetailSheet.title,
                   key: const Key('user-detail-title'),
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
@@ -179,13 +201,13 @@ class UserDetailSheet extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'ID: $userId',
+            AppStrings.userDetailSheet.userIdLine(userId),
             key: const Key('user-detail-id'),
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           if (nickname != null)
             Text(
-              'コテハン: $nickname',
+              AppStrings.userDetailSheet.userNicknameLine(nickname!),
               key: const Key('user-detail-nickname'),
               style: Theme.of(
                 context,
@@ -193,7 +215,7 @@ class UserDetailSheet extends StatelessWidget {
             ),
           if (resolvedUserName != null)
             Text(
-              '名前: $resolvedUserName',
+              AppStrings.userDetailSheet.userNameLine(resolvedUserName!),
               key: const Key('user-detail-name'),
               style: Theme.of(context).textTheme.bodyMedium,
             ),
@@ -209,42 +231,43 @@ class UserDetailSheet extends StatelessWidget {
     AppThemeColors themeColors,
   ) {
     if (userComments.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Text('この放送でのコメントはありません', key: Key('user-detail-no-comments')),
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            AppStrings.userDetailSheet.noCommentsInBroadcast,
+            key: const Key('user-detail-no-comments'),
+          ),
         ),
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text(
-            'コメント履歴（${userComments.length}件）',
-            key: const Key('user-detail-comment-count'),
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
-        ),
-        Expanded(
-          child: ListView.builder(
-            key: const Key('user-detail-comment-list'),
-            controller: scrollController,
-            itemCount: userComments.length,
-            itemBuilder: (BuildContext context, int index) {
-              final AppMessage message = userComments[index];
-              return _UserCommentRow(
-                key: Key('user-comment-row-$index'),
-                message: message,
-                themeColors: themeColors,
-                beginAt: beginAt,
-              );
-            },
-          ),
-        ),
-      ],
+    return ListView.builder(
+      key: const Key('user-detail-comment-list'),
+      controller: scrollController,
+      itemCount: userComments.length + 1,
+      itemBuilder: (BuildContext context, int index) {
+        if (index == 0) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              AppStrings.userDetailSheet.commentHistoryCount(
+                userComments.length,
+              ),
+              key: const Key('user-detail-comment-count'),
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          );
+        }
+        final int messageIndex = index - 1;
+        final AppMessage message = userComments[messageIndex];
+        return _UserCommentRow(
+          key: Key('user-comment-row-$messageIndex'),
+          message: message,
+          themeColors: themeColors,
+          beginAt: beginAt,
+        );
+      },
     );
   }
 }
@@ -273,7 +296,9 @@ class _NgUserButton extends StatelessWidget {
             : themeColors.subtleTextColor,
       ),
       label: Text(
-        isNgUser ? 'NG解除' : 'NG登録',
+        isNgUser
+            ? AppStrings.userDetailSheet.ngButtonUnregister
+            : AppStrings.userDetailSheet.ngButtonRegister,
         style: TextStyle(
           fontSize: 12,
           color: isNgUser
@@ -311,12 +336,17 @@ class _ColorPaletteRow extends StatelessWidget {
         children: <Widget>[
           Row(
             children: <Widget>[
-              Text('コメント色', style: Theme.of(context).textTheme.titleSmall),
+              Text(
+                AppStrings.userDetailSheet.commentColorSectionTitle,
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
               const Spacer(),
               if (currentColorValue != null)
                 Semantics(
                   button: true,
-                  label: 'コメント色をリセット',
+                  label: AppStrings
+                      .userDetailSheet
+                      .commentColorResetSemanticsLabel,
                   child: InkWell(
                     key: const Key('user-color-reset-button'),
                     onTap: onColorRemoved,
@@ -327,7 +357,7 @@ class _ColorPaletteRow extends StatelessWidget {
                         vertical: 2,
                       ),
                       child: Text(
-                        'リセット',
+                        AppStrings.userDetailSheet.commentColorReset,
                         style: TextStyle(
                           fontSize: 12,
                           color: Theme.of(context).colorScheme.primary,
@@ -340,8 +370,14 @@ class _ColorPaletteRow extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            // Each child is a 48×48 hit-target box that contains a 32dp
+            // visible circle centered with 8dp transparent padding. With
+            // spacing/runSpacing 0, adjacent boxes touch exactly at the
+            // hit-area boundary, which keeps the visual gap between the
+            // visible circles at 16dp (8dp + 8dp) without overlapping
+            // tap regions.
+            spacing: 0,
+            runSpacing: 0,
             children: <Widget>[
               for (final ({Color color, String label}) entry
                   in kUserColorPaletteEntries)
@@ -404,34 +440,47 @@ class _CustomColorButton extends StatelessWidget {
 
     return Semantics(
       button: true,
-      label: hasCustom ? 'カスタムカラー 選択中' : 'カスタムカラーを選択',
-      child: GestureDetector(
-        onTap: () => _showCustomColorDialog(context),
-        child: Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            color: displayColor,
-            shape: BoxShape.circle,
-            border: hasCustom
-                ? Border.all(color: Colors.white, width: 2)
-                : Border.all(color: borderColor, width: 1),
-            boxShadow: hasCustom
-                ? <BoxShadow>[
-                    BoxShadow(
-                      color: displayColor.withValues(alpha: 0.6),
-                      blurRadius: 4,
-                      spreadRadius: 1,
-                    ),
-                  ]
-                : null,
-          ),
-          child: Icon(
-            hasCustom ? Icons.check : Icons.add,
-            color: hasCustom
-                ? Colors.white
-                : Theme.of(context).colorScheme.onSurfaceVariant,
-            size: 18,
+      label: hasCustom
+          ? AppStrings.userDetailSheet.customColorSelectedSemanticsLabel
+          : AppStrings.userDetailSheet.customColorSelectSemanticsLabel,
+      // 48×48 transparent hit target wraps the visible 32dp circle so
+      // taps register reliably (Material/WCAG min target). HitTestBehavior
+      // .opaque ensures the surrounding transparent area still counts as
+      // tappable.
+      child: SizedBox(
+        width: _kColorCircleHitTargetSize,
+        height: _kColorCircleHitTargetSize,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _showCustomColorDialog(context),
+          child: Center(
+            child: Container(
+              width: _kColorCircleVisualSize,
+              height: _kColorCircleVisualSize,
+              decoration: BoxDecoration(
+                color: displayColor,
+                shape: BoxShape.circle,
+                border: hasCustom
+                    ? Border.all(color: Colors.white, width: 2)
+                    : Border.all(color: borderColor, width: 1),
+                boxShadow: hasCustom
+                    ? <BoxShadow>[
+                        BoxShadow(
+                          color: displayColor.withValues(alpha: 0.6),
+                          blurRadius: 4,
+                          spreadRadius: 1,
+                        ),
+                      ]
+                    : null,
+              ),
+              child: Icon(
+                hasCustom ? Icons.check : Icons.add,
+                color: hasCustom
+                    ? Colors.white
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
+                size: 18,
+              ),
+            ),
           ),
         ),
       ),
@@ -447,30 +496,51 @@ class _CustomColorButton extends StatelessWidget {
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          title: const Text('カスタムカラー'),
-          content: SingleChildScrollView(
-            child: ColorPicker(
-              pickerColor: picked,
-              onColorChanged: (Color value) {
-                picked = value;
-              },
-              pickerAreaHeightPercent: 0.6,
-              enableAlpha: false,
-              displayThumbColor: true,
-              paletteType: PaletteType.hueWheel,
-              labelTypes: const <ColorLabelType>[],
+          title: Text(AppStrings.userDetailSheet.customColorDialogTitle),
+          // Cap the dialog content so the hue wheel does not balloon on
+          // tablets / landscape. ConstrainedBox is intentionally outside
+          // the SingleChildScrollView so the scroll view inherits the cap
+          // and the picker lays out against a bounded width.
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: _kColorPickerDialogMaxWidth,
+              maxHeight: _kColorPickerDialogMaxHeight,
+            ),
+            child: SingleChildScrollView(
+              child: ColorPicker(
+                pickerColor: picked,
+                onColorChanged: (Color value) {
+                  picked = value;
+                },
+                pickerAreaHeightPercent: 0.6,
+                enableAlpha: false,
+                displayThumbColor: true,
+                paletteType: PaletteType.hueWheel,
+                labelTypes: const <ColorLabelType>[],
+                // Show a Hex (#RRGGBB) text field below the wheel so users
+                // can paste / type a brand color directly. The package
+                // already validates the input and ignores invalid Hex
+                // strings, so a malformed Hex cannot crash the dialog.
+                hexInputBar: true,
+                // Force the single-column (portrait) layout regardless of
+                // the actual orientation. The package's landscape branch
+                // assumes a wider canvas than _kColorPickerDialogMaxWidth
+                // and overflows when constrained, so we keep portrait
+                // layout for both orientations.
+                portraitOnly: true,
+              ),
             ),
           ),
           actions: <Widget>[
             TextButton(
               key: const Key('user-color-custom-dialog-cancel-button'),
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('キャンセル'),
+              child: Text(AppStrings.userDetailSheet.customColorDialogCancel),
             ),
             TextButton(
               key: const Key('user-color-custom-dialog-apply-button'),
               onPressed: () => Navigator.of(dialogContext).pop(picked),
-              child: const Text('適用'),
+              child: Text(AppStrings.userDetailSheet.customColorDialogApply),
             ),
           ],
         );
@@ -503,30 +573,39 @@ class _ColorCircle extends StatelessWidget {
     return Semantics(
       button: true,
       label: isSelected ? '$colorLabel 選択中' : colorLabel,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-            border: isSelected
-                ? Border.all(color: Colors.white, width: 2)
-                : null,
-            boxShadow: isSelected
-                ? <BoxShadow>[
-                    BoxShadow(
-                      color: color.withValues(alpha: 0.6),
-                      blurRadius: 4,
-                      spreadRadius: 1,
-                    ),
-                  ]
-                : null,
+      // 48×48 transparent hit-target wrapping the visible 32dp circle.
+      // See class-level constants for the spacing rationale.
+      child: SizedBox(
+        width: _kColorCircleHitTargetSize,
+        height: _kColorCircleHitTargetSize,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: Center(
+            child: Container(
+              width: _kColorCircleVisualSize,
+              height: _kColorCircleVisualSize,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                border: isSelected
+                    ? Border.all(color: Colors.white, width: 2)
+                    : null,
+                boxShadow: isSelected
+                    ? <BoxShadow>[
+                        BoxShadow(
+                          color: color.withValues(alpha: 0.6),
+                          blurRadius: 4,
+                          spreadRadius: 1,
+                        ),
+                      ]
+                    : null,
+              ),
+              child: isSelected
+                  ? const Icon(Icons.check, color: Colors.white, size: 18)
+                  : null,
+            ),
           ),
-          child: isSelected
-              ? const Icon(Icons.check, color: Colors.white, size: 18)
-              : null,
         ),
       ),
     );
@@ -553,11 +632,14 @@ class _NicknameRow extends StatelessWidget {
         children: <Widget>[
           const Icon(Icons.badge, size: 18),
           const SizedBox(width: 8),
-          Text('コテハン', style: Theme.of(context).textTheme.titleSmall),
+          Text(
+            AppStrings.userDetailSheet.nicknameSectionTitle,
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              nickname ?? '未登録',
+              nickname ?? AppStrings.userDetailSheet.nicknameUnregistered,
               style: TextStyle(
                 fontSize: 13,
                 color: nickname != null
@@ -569,7 +651,9 @@ class _NicknameRow extends StatelessWidget {
           ),
           Semantics(
             button: true,
-            label: nickname != null ? 'コテハンを変更' : 'コテハンを登録',
+            label: nickname != null
+                ? AppStrings.userDetailSheet.nicknameEditSemanticsLabel
+                : AppStrings.userDetailSheet.nicknameAddSemanticsLabel,
             child: InkWell(
               key: const Key('user-nickname-edit-button'),
               onTap: () => _showEditDialog(context),
@@ -577,7 +661,9 @@ class _NicknameRow extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                 child: Text(
-                  nickname != null ? '変更' : '登録',
+                  nickname != null
+                      ? AppStrings.userDetailSheet.nicknameEditButton
+                      : AppStrings.userDetailSheet.nicknameAddButton,
                   style: TextStyle(
                     fontSize: 12,
                     color: Theme.of(context).colorScheme.primary,
@@ -590,7 +676,7 @@ class _NicknameRow extends StatelessWidget {
             const SizedBox(width: 4),
             Semantics(
               button: true,
-              label: 'コテハンを削除',
+              label: AppStrings.userDetailSheet.nicknameRemoveSemanticsLabel,
               child: InkWell(
                 key: const Key('user-nickname-remove-button'),
                 onTap: onNicknameRemoved,
@@ -601,7 +687,7 @@ class _NicknameRow extends StatelessWidget {
                     vertical: 2,
                   ),
                   child: Text(
-                    '削除',
+                    AppStrings.userDetailSheet.nicknameRemoveButton,
                     style: TextStyle(
                       fontSize: 12,
                       color: Theme.of(context).colorScheme.error,
@@ -625,27 +711,27 @@ class _NicknameRow extends StatelessWidget {
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          title: const Text('コテハン登録'),
+          title: Text(AppStrings.userDetailSheet.nicknameDialogTitle),
           content: TextField(
             key: const Key('user-nickname-dialog-field'),
             controller: controller,
             autofocus: true,
-            decoration: const InputDecoration(
-              labelText: 'コテハン',
-              hintText: 'ニックネームを入力',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: AppStrings.userDetailSheet.nicknameDialogFieldLabel,
+              hintText: AppStrings.userDetailSheet.nicknameDialogFieldHint,
+              border: const OutlineInputBorder(),
             ),
           ),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('キャンセル'),
+              child: Text(AppStrings.userDetailSheet.nicknameDialogCancel),
             ),
             TextButton(
               key: const Key('user-nickname-dialog-save-button'),
               onPressed: () =>
                   Navigator.of(dialogContext).pop(controller.text.trim()),
-              child: const Text('保存'),
+              child: Text(AppStrings.userDetailSheet.nicknameDialogSave),
             ),
           ],
         );

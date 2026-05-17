@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:comerune/data/filter/broadcaster_ng_store.dart';
 import 'package:comerune/domain/models/ng_word_rule.dart';
 import 'package:comerune/presentation/screens/ng_word_list_view.dart';
+import 'package:comerune/presentation/strings/app_strings.dart';
 
 import '../../helpers/fake_broadcaster_ng_store.dart';
 
@@ -56,7 +57,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('ng-word-list-empty')), findsOneWidget);
-      expect(find.text('NGワードは登録されていません'), findsOneWidget);
+      // Iter 3 fix: assert via AppStrings to pin "screen → AppStrings"
+      // wiring (the literal would still pass on byte-equality alone).
+      expect(find.text(AppStrings.ngWordList.emptyMessage), findsOneWidget);
     });
 
     testWidgets('shows local-only settings notice after load', (
@@ -126,7 +129,10 @@ void main() {
       await tester.tap(find.byKey(const Key('ng-word-delete-0')));
       await tester.pumpAndSettle();
 
-      expect(find.text('NGワード削除'), findsOneWidget);
+      expect(
+        find.text(AppStrings.ngWordList.deleteDialogTitle),
+        findsOneWidget,
+      );
 
       await tester.tap(find.byKey(const Key('ng-word-delete-confirm-button')));
       await tester.pumpAndSettle();
@@ -151,7 +157,7 @@ void main() {
       await tester.tap(find.byKey(const Key('ng-word-add-button')));
       await tester.pumpAndSettle();
 
-      expect(find.text('NGワード追加'), findsWidgets);
+      expect(find.text(AppStrings.ngWordList.addButton), findsWidgets);
 
       await tester.enterText(
         find.byKey(const Key('ng-word-add-input')),
@@ -189,7 +195,10 @@ void main() {
       await tester.tap(find.byKey(const Key('ng-word-add-confirm-button')));
       await tester.pumpAndSettle();
 
-      expect(find.text('無効なパターンです'), findsOneWidget);
+      expect(
+        find.text(AppStrings.ngWordList.invalidPatternSnackBar),
+        findsOneWidget,
+      );
 
       final List<NgWordRule> persisted = await store.loadNgWordRules(
         'caster-1',
@@ -240,7 +249,10 @@ void main() {
       await tester.tap(find.byKey(const Key('ng-word-add-confirm-button')));
       await tester.pumpAndSettle();
 
-      expect(find.text('同じパターンが既に登録されています'), findsOneWidget);
+      expect(
+        find.text(AppStrings.ngWordList.duplicatePatternSnackBar),
+        findsOneWidget,
+      );
 
       final List<NgWordRule> persisted = await store.loadNgWordRules(
         'caster-1',
@@ -315,7 +327,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('ng-word-list-error')), findsOneWidget);
-      expect(find.text('NG リストの読込みに失敗しました'), findsOneWidget);
+      expect(
+        find.text(AppStrings.ngWordList.loadFailedMessage),
+        findsOneWidget,
+      );
       expect(find.byKey(const Key('ng-word-list-retry')), findsOneWidget);
 
       // Retry succeeds when the throw flag is cleared.

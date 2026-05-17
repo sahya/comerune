@@ -63,6 +63,86 @@ void main() {
     });
   });
 
+  group('PastCommentFetchCountValue.fromStorageValue (defensive cases)', () {
+    test('returns default count500 for empty string (corrupted slot)', () {
+      // 永続化キーが空文字で残ってしまったケース。例外で `SettingsStore.load()`
+      // 全体を倒さないこと。
+      expect(
+        PastCommentFetchCountValue.fromStorageValue(''),
+        PastCommentFetchCount.count500,
+      );
+    });
+
+    test('returns default count500 for literally bogus value', () {
+      expect(
+        PastCommentFetchCountValue.fromStorageValue(
+          '__not_a_real_enum_value__',
+        ),
+        PastCommentFetchCount.count500,
+      );
+    });
+  });
+
+  group('commentFontSizeFromStorageValue (defensive cases)', () {
+    test('returns default for null', () {
+      expect(commentFontSizeFromStorageValue(null), commentFontSizeDefault);
+    });
+
+    test('returns default for empty string', () {
+      // tryParse が null を返し、enum マッチも default に落ちる。
+      expect(commentFontSizeFromStorageValue(''), commentFontSizeDefault);
+    });
+
+    test('returns default for literally bogus value', () {
+      expect(
+        commentFontSizeFromStorageValue('__not_a_real_enum_value__'),
+        commentFontSizeDefault,
+      );
+    });
+
+    test('clamps numeric values that are out of range', () {
+      expect(commentFontSizeFromStorageValue('9999'), commentFontSizeMax);
+      expect(commentFontSizeFromStorageValue('-100'), commentFontSizeMin);
+    });
+
+    test('preserves legacy enum string mappings', () {
+      expect(commentFontSizeFromStorageValue('small'), 12);
+      expect(commentFontSizeFromStorageValue('large'), 16);
+    });
+  });
+
+  group('CommentSortOrderValue.fromStorageValue (defensive cases)', () {
+    test('returns default for null', () {
+      expect(
+        CommentSortOrderValue.fromStorageValue(null),
+        AppSettings.defaults.commentSortOrder,
+      );
+    });
+
+    test('returns default for empty string', () {
+      expect(
+        CommentSortOrderValue.fromStorageValue(''),
+        AppSettings.defaults.commentSortOrder,
+      );
+    });
+
+    test('returns default for literally bogus value', () {
+      expect(
+        CommentSortOrderValue.fromStorageValue('__not_a_real_enum_value__'),
+        AppSettings.defaults.commentSortOrder,
+      );
+    });
+
+    test('round-trips known values', () {
+      for (final CommentSortOrder value in CommentSortOrder.values) {
+        expect(
+          CommentSortOrderValue.fromStorageValue(value.storageValue),
+          value,
+        );
+      }
+    });
+  });
+
   group('AppSettings.defaults.pastCommentFetchCount', () {
     test('defaults to count500 (initial fetch target)', () {
       expect(

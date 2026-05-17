@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 
@@ -43,7 +44,18 @@ mixin SettingsScreenMixin<T extends StatefulWidget> on State<T> {
         settingsError = null;
         settings = loaded;
       });
-    } on Exception catch (e) {
+    } on Object catch (e, st) {
+      // `Exception` だけでなく `Error`（`StateError` / `TypeError` /
+      // `ArgumentError` / `RangeError` / `AssertionError` 等）も捕捉する。
+      // これらが伝播すると `settings` も `settingsError` も null のままになり、
+      // 画面が CircularProgressIndicator のまま固まる（旧バージョンが
+      // 保存した値を新バージョンで読めないアップデート時に発生し得る）。
+      developer.log(
+        'Failed to load settings',
+        name: 'SettingsScreenMixin',
+        error: e,
+        stackTrace: st,
+      );
       if (!mounted) {
         return;
       }
@@ -54,6 +66,14 @@ mixin SettingsScreenMixin<T extends StatefulWidget> on State<T> {
   }
 
   /// Builds an error UI with a retry button for when settings fail to load.
+  ///
+  /// NOTE: Retry re-runs [loadSettings] (i.e. [SettingsStore.load]) as-is.
+  /// It does NOT auto-recover from persistent data corruption — if the
+  /// underlying SharedPreferences value is the source of the failure,
+  /// retry will simply re-throw and the user will be stuck in a loop.
+  /// A real self-heal mechanism (e.g. "factory reset" affordance, or
+  /// silently dropping the corrupt key) is intentionally out of scope
+  /// for this PR; see follow-up issue for self-heal options.
   Widget buildSettingsError(BuildContext context) {
     return Center(
       child: Column(
