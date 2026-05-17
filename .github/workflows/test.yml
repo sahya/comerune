@@ -58,6 +58,14 @@ jobs:
       - name: Run tests
         run: flutter test
 
+      # android/gradlew と gradle-wrapper.jar は android/.gitignore で除外して
+      # いるため checkout 直後には存在しない。Flutter ツールチェーンに Android
+      # の Gradle 設定を生成させることで wrapper を materialize する
+      # (release.yml が `flutter build apk` 経由で wrapper を再生成しているのと
+      # 同じ仕組み。ここではフルビルドせず --config-only で設定生成のみ行う)。
+      - name: Generate Android Gradle wrapper
+        run: flutter build apk --config-only
+
       # Kotlin JVM unit tests (android/app/src/test). `flutter pub get` above
       # populates .flutter-plugins-dependencies, which the Flutter Gradle
       # plugin reads during task configuration.
