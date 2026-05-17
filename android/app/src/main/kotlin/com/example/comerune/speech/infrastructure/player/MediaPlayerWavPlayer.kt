@@ -88,7 +88,7 @@ class MediaPlayerWavPlayer(
 
         synchronized(lock) {
             if (released) {
-                return Result.failure(IllegalStateException("Player has been released"))
+                return Result.failure(IllegalStateException(PLAYER_RELEASED_MESSAGE))
             }
         }
 
