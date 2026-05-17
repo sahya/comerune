@@ -7,13 +7,20 @@
 #     CI workflow), not by CodeQL.
 #   - HTML and shell scripts are likewise not CodeQL-supported languages
 #     and are intentionally not in the matrix below.
-#   - The matrix therefore covers only the CodeQL-supported languages that
-#     actually exist in the tree: Kotlin (Android host code), Python
-#     (build/asset scripts), and the GitHub Actions workflows themselves.
 #   - `c-cpp` is intentionally omitted: the only C++ is a single Android
 #     JNI file that requires the Android NDK to build, so CodeQL cannot
-#     produce a database for it without a fragile custom build. That file
-#     is covered by code review instead.
+#     produce a database for it without a fragile custom build.
+#   - `java-kotlin` is intentionally omitted: the Android host module is
+#     100% Kotlin (no Java). CodeQL's Kotlin extractor is a kotlinc plugin
+#     that requires a build, so build-mode 'none' extracts nothing
+#     ("no source code seen"). The only working alternative is a manual
+#     Gradle build with a full Flutter SDK setup on every run, which is
+#     costly and carries a CodeQL-vs-Kotlin extractor version risk.
+#   - The Kotlin and C++ code is covered instead by the Kotlin unit tests
+#     (see the CI workflow) and by code review.
+#   - The matrix therefore covers only the CodeQL-supported languages that
+#     can be analyzed reliably here: Python (build/asset scripts) and the
+#     GitHub Actions workflows themselves.
 #
 name: "CodeQL Advanced"
 
@@ -52,15 +59,11 @@ jobs:
         include:
         - language: actions
           build-mode: none
-        - language: java-kotlin
-          build-mode: none
         - language: python
           build-mode: none
         # CodeQL supports the following values keywords for 'language': 'actions', 'c-cpp', 'csharp', 'go', 'java-kotlin', 'javascript-typescript', 'python', 'ruby', 'rust', 'swift'
-        # 'java-kotlin' uses build-mode 'none' (no Gradle build needed for analysis,
-        # which avoids the Android NDK / external native lib build entirely).
-        # Dart, HTML, shell, and C++ are intentionally not listed — see the
-        # language coverage notes at the top of this file.
+        # Dart, HTML, shell, C++, and Kotlin are intentionally not listed —
+        # see the language coverage notes at the top of this file.
         # To learn more about changing the languages that are analyzed or customizing the build mode for your analysis,
         # see https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/customizing-your-advanced-setup-for-code-scanning.
         # If you are analyzing a compiled language, you can modify the 'build-mode' for that language to customize how
