@@ -23,6 +23,7 @@ import '../../comment_speech/comment_speech.dart';
 import '../../data/broadcast/broadcast_control_repository.dart';
 import '../../data/comment_log/comment_log_tag.dart';
 import '../../data/comment_log/comment_log_writer.dart';
+import '../../data/filter/ng_dict_cipher.dart';
 import '../../domain/comment_log/comment_log_stats.dart';
 import '../../domain/comment_log/recent_broadcast_stats.dart';
 import '../../domain/models/teach_command.dart';
@@ -5164,9 +5165,17 @@ class _CommentScreenState extends State<CommentScreen>
       return;
     }
     try {
-      final String jsonText = await rootBundle.loadString(
-        'android/app/src/main/assets/preset_ng_words.json',
+      // The bundled asset is stored as a lightly-obfuscated blob so the
+      // dictionary is not readable by simply unzipping the APK. Decrypt it
+      // in memory only — the plaintext is never written back to disk.
+      final ByteData raw = await rootBundle.load(
+        'android/app/src/main/assets/preset_ng_words.enc',
       );
+      final Uint8List blob = raw.buffer.asUint8List(
+        raw.offsetInBytes,
+        raw.lengthInBytes,
+      );
+      final String jsonText = utf8.decode(decryptNgDict(blob));
       final Object? decoded = jsonDecode(jsonText);
       final List<NgPresetCategory> categories = NgPresetCategory.parseDocument(
         decoded,
@@ -5181,8 +5190,20 @@ class _CommentScreenState extends State<CommentScreen>
       _effectivePresetCategories = categories;
       _rebuildNgMatcher();
       setState(() {});
-    } catch (_) {
-      // Keep empty preset list when asset is unavailable (e.g. tests without bundle).
+    } catch (e, st) {
+      // Defense-in-depth fallback: the preset filter is optional. If the
+      // asset is missing, truncated, or fails the integrity check, keep an
+      // empty preset list and let the app continue — user-configured NG
+      // words are unaffected. The message is intentionally generic so it
+      // does not reveal anything about the asset's internal structure; the
+      // stack trace is kept (debug only / runtimeType in release) so a
+      // swallowed failure is still reproducible per the error-handling rule.
+      appErrorLog(
+        name: 'ng_preset',
+        stackTrace: st,
+        message: 'optional preset filter unavailable; continuing without it',
+        error: e,
+      );
     }
   }
 
