@@ -1,0 +1,40 @@
+# comerune — すべての検索エンジン（Google / Bing / DuckDuckGo 等）にクロールを許可
+User-agent: *
+Allow: /
+
+# AI 回答エンジン / AI Overviews 系クローラも明示的に許可（AIO 対応）。
+# 既定でも * で許可されるが、意図を明文化し誤ブロックを防ぐ目的で列挙する。
+User-agent: Googlebot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: DuckDuckBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+# LLM 向けの構造化サマリ
+# https://comerune.pages.dev/llms.txt
+
+Sitemap: https://comerune.pages.dev/sitemap.xml

@@ -5,13 +5,33 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="color-scheme" content="light dark" />
   <title>comerune — ニコニコ生放送のコメントを、手のひらの上で</title>
-  <meta name="description" content="ニコニコ生放送のコメントをリアルタイムに表示し、読み上げもできる非公式モバイルコメントビューア。" />
+  <meta name="description" content="ニコニコ生放送のコメントをリアルタイムに表示し、読み上げもできる非公式モバイルコメントビューア。放送番号やURLを入力するだけでコメントが流れ、VOICEVOX による音声読み上げにも対応。" />
+  <meta name="robots" content="index,follow" />
 
-  <meta property="og:title" content="comerune" />
+  <!-- Cloudflare Pages はカスタムドメインのほか *.pages.dev でも公開され、
+       プレビューデプロイも一意のホスト名を持つため、評価分散を防ぐ目的で
+       全ページに本番URLの canonical を固定で指定する。 -->
+  <link rel="canonical" href="https://comerune.pages.dev/" />
+
+  <meta property="og:title" content="comerune — ニコニコ生放送のコメントを、手のひらの上で" />
   <meta property="og:description" content="ニコニコ生放送のコメントを、手のひらの上で楽しむ非公式コメントビューア。" />
   <meta property="og:type" content="website" />
   <meta property="og:locale" content="ja_JP" />
+  <meta property="og:url" content="https://comerune.pages.dev/" />
+  <meta property="og:site_name" content="comerune" />
+  <meta property="og:image" content="https://comerune.pages.dev/icon.png" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:alt" content="comerune アイコン" />
   <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="comerune — ニコニコ生放送のコメントを、手のひらの上で" />
+  <meta name="twitter:description" content="ニコニコ生放送のコメントを、手のひらの上で楽しむ非公式コメントビューア。" />
+  <meta name="twitter:image" content="https://comerune.pages.dev/icon.png" />
+
+  <!-- Google Search Console（URLプレフィックス型）のHTML確認用。
+       Search Console で取得した content 値を貼って下のコメントを外す。
+       pages.dev は Cloudflare 所有ドメインのため DNS 確認は使えない。
+  <meta name="google-site-verification" content="ここに確認コード" />
+  -->
 
   <link rel="icon" type="image/png" href="/icon.png" />
   <link rel="apple-touch-icon" href="/icon.png" />
@@ -306,6 +326,74 @@
     }
     .signoff strong { color: var(--text); }
   </style>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "comerune",
+    "alternateName": "こめるーん",
+    "description": "ニコニコ生放送のコメントをリアルタイムに表示し、VOICEVOX による音声読み上げもできる非公式モバイルコメントビューア。",
+    "url": "https://comerune.pages.dev/",
+    "applicationCategory": "MultimediaApplication",
+    "operatingSystem": "Android",
+    "inLanguage": "ja",
+    "license": "https://opensource.org/licenses/MIT",
+    "isAccessibleForFree": true,
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "JPY"
+    },
+    "author": {
+      "@type": "Person",
+      "name": "sahya",
+      "url": "https://github.com/sahya"
+    },
+    "sameAs": "https://github.com/sahya/comerune"
+  }
+  </script>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "comerune とは何ですか？",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "ニコニコ生放送のコメントをリアルタイムに表示し、音声で読み上げることもできるモバイル向けの非公式コメントビューアです。株式会社ドワンゴの公式アプリではありません。"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "comerune の読みかたは？",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "「こめるーん」と読みます。のばす音が読みづらいときは「こめるん」でも構いません。"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "comerune は無料で使えますか？",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "無料です。MIT ライセンスのオープンソースとして公開されており、ソースコードは GitHub で確認できます。"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "利用にニコニコアカウントは必要ですか？",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "コメントの取得にはニコニコアカウントへのログインが必要です。ログインはニコニコのログイン画面に対して直接行われ、ID やパスワードが開発者のサーバーを経由することはありません。"
+        }
+      }
+    ]
+  }
+  </script>
 </head>
 <body>
 
