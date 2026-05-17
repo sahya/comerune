@@ -7,7 +7,7 @@ A mobile comment viewer for Nico live streams with optional voice reading.
 
 ニコニコ生放送のコメントを、手のひらの上で楽しむための非公式コメントビューアです。
 
-> **読みかた**: 「こめるーん」（comerune）。**Comment**（コメント）と **Rune**（ルーン文字）の響きをもじった造語です。コメントが画面に書きこまれていく光景と、文字を一字ずつ刻むルーンの所作が、ふしぎと重なって見えました。「Rune」のひびきが、なんとなく好きで選んだ、というのが正直なところでもあります。
+> **読みかた**: 「こめるーん」（comerune）。長音が読みづらいときは「こめるん」でも。**Comment**（コメント）と **Rune**（ルーン文字）の響きをもじった造語です。コメントが画面に書きこまれていく光景と、文字を一字ずつ刻むルーンの所作が、ふしぎと重なって見えました。「Rune」のひびきが、なんとなく好きで選んだ、というのが正直なところでもあります。
 
 放送のコメントをリアルタイムに取得・表示するのはもちろん、読み上げ機能も備えているので、画面を見られないときでもコメントの流れを耳で追うことができます。
 
@@ -29,7 +29,10 @@ A mobile comment viewer for Nico live streams with optional voice reading.
 
 ## スクリーンショット
 
-<!-- TODO: スクリーンショットを追加してください -->
+<p>
+  <img width="32%"alt="broadcast_list" src="https://github.com/user-attachments/assets/1019ea84-fa49-464a-8dbd-62be68b8e6c0" />
+  <img width="32%"alt="comment_list" src="https://github.com/user-attachments/assets/9f39d6d8-1e56-469d-bbb0-8f33bb788a9c" />
+</p>
 
 ---
 
@@ -69,16 +72,21 @@ comeruneはMITライセンスのオープンソースです。「こんな機能
 
 ### ビルド手順
 
-開発には Flutter SDK 3.22.0 以上（Dart SDK 3.4.0 以上）と Android SDK が必要です。
+ビルドに必要な Flutter SDK / Dart SDK のバージョンは [`pubspec.yaml`](pubspec.yaml) の `environment.sdk` を参照してください。あわせて Android SDK が必要です。
 ビルド方法や Makefile の使い方は [docs/build-guide.md](docs/build-guide.md) を参照してください。
 
-直接プルリクエストを送る場合のルールは [CONTRIBUTING.md](CONTRIBUTING.md) にまとめています。セキュリティ上の問題を見つけた場合は [SECURITY.md](SECURITY.md) の方法でご報告ください。
+直接プルリクエストを送る場合のルールは [CONTRIBUTING.md](CONTRIBUTING.md) にまとめています。コミュニティ参加時のお願いは [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) を、セキュリティ上の問題を見つけた場合の報告フローは [SECURITY.md](SECURITY.md) を参照してください。
 
 ---
 
 ## ライセンス
 
 このプロジェクトは [MIT License](LICENSE) のもとで公開されています。
+
+### サードパーティのクレジット
+
+- **VOICEVOX**: 音声読み上げ機能で [VOICEVOX](https://voicevox.hiroshiba.jp/) の音声合成エンジンと、Nemo / 春日部つむぎ / 波音リツ などの音声ライブラリを利用しています。VOICEVOX とその音声ライブラリは、それぞれの利用規約に従ってご利用ください。アプリ内では設定画面の「ライセンス」から VOICEVOX 関連のライセンス本文を確認できます
+- 上記以外の OSS 依存パッケージのライセンスは、アプリ内設定画面の「ライセンス」から一覧で確認できます（Flutter 標準の `LicenseRegistry` が `pubspec.yaml` の依存解決結果から自動収集します）
 
 ## ご支援について
 

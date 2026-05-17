@@ -148,14 +148,9 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   NavigationDecision _onNavigationRequest(NavigationRequest request) {
-    final Uri? uri = Uri.tryParse(request.url);
-    if (uri == null) {
-      return NavigationDecision.prevent;
-    }
-    if (isAllowedLoginDomain(uri.host)) {
-      return NavigationDecision.navigate;
-    }
-    return NavigationDecision.prevent;
+    return isAllowedLoginNavigation(Uri.tryParse(request.url))
+        ? NavigationDecision.navigate
+        : NavigationDecision.prevent;
   }
 
   bool _isPostLoginUrl(String url) {
@@ -415,6 +410,40 @@ class _LoginScreenState extends State<LoginScreen> {
 /// and Apple sign-in.
 bool isAllowedLoginDomain(String host) {
   return _allowedLoginHosts.contains(host) || host.endsWith('.nicovideo.jp');
+}
+
+/// Returns whether [scheme] is allowed during the niconico login flow.
+///
+/// Only `https` is permitted for real navigation so that credentials
+/// (OAuth provider login forms, niconico login form) are never sent over
+/// plaintext HTTP. `about` is also permitted because the WebView issues
+/// `about:blank` internally during initialization / blank pages.
+///
+/// All other schemes (`http`, `javascript`, `data`, `file`, custom app
+/// schemes, etc.) are rejected.
+bool isAllowedLoginScheme(String scheme) {
+  return scheme == 'https' || scheme == 'about';
+}
+
+/// Returns whether the WebView should navigate to [uri] during the niconico
+/// login flow. This is the single source of truth for the navigation gate
+/// applied by the login WebView.
+///
+/// Returns `false` for `null` (unparseable URLs), disallowed schemes
+/// (anything other than `https` / `about`), and disallowed hosts.
+/// `about:` URIs bypass the host allowlist because they are issued by the
+/// WebView itself during initialization and have no meaningful host.
+bool isAllowedLoginNavigation(Uri? uri) {
+  if (uri == null) {
+    return false;
+  }
+  if (!isAllowedLoginScheme(uri.scheme)) {
+    return false;
+  }
+  if (uri.scheme == 'about') {
+    return true;
+  }
+  return isAllowedLoginDomain(uri.host);
 }
 
 /// Parses the user_session cookie value from a cookie string.

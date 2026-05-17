@@ -5,9 +5,13 @@ import '../../application/speech/speech_availability_notifier.dart';
 import '../../application/timeline/timeline_store.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../data/comment_log/comment_log_writer.dart';
+import '../../domain/comment_log/comment_log_stats.dart';
+import '../../domain/comment_log/recent_broadcast_stats.dart';
 import '../../domain/connection/connection_method.dart';
 import '../../domain/matchers/ng_matcher.dart';
+import '../../domain/models/app_message.dart';
 import '../../domain/models/app_settings.dart';
+import '../../domain/models/ng_preset_category.dart';
 
 /// Program-level metadata for the comment screen.
 @immutable
@@ -20,6 +24,7 @@ class CommentProgramInfo {
     this.broadcasterIconUrl,
     this.beginAt,
     this.vposBaseAt,
+    this.endAt,
     this.connectionMethod,
   });
 
@@ -50,6 +55,13 @@ class CommentProgramInfo {
   /// otherwise shows up as this client's comments being mis-ordered
   /// against other viewers server-side.
   final DateTime? vposBaseAt;
+
+  /// Issue #876: program scheduled end time. Sourced from
+  /// `FollowProgram.endAt` upstream and refreshed via the
+  /// [CommentCallbacks.onBroadcastEndTimeExtended] feedback path when a
+  /// manual or auto extension succeeds. Used by the auto-extend
+  /// controller to schedule the "残り 5 分前" timer.
+  final DateTime? endAt;
 
   /// The connection method used to connect to the program.
   final ConnectionMethod? connectionMethod;
@@ -106,6 +118,11 @@ class CommentCallbacks {
     this.onNicknameChanged,
     this.onNicknameRemoved,
     this.onSortOrderChanged,
+    this.onAutoExtendBroadcastChanged,
+    this.onBroadcastEndTimeExtended,
+    this.onAutoExtendSystemMessage,
+    this.onRecentBroadcastStatsCaptured,
+    this.onBroadcastEndedStats,
   });
 
   final Future<void> Function() onStopAllConnections;
@@ -140,7 +157,177 @@ class CommentCallbacks {
   /// toggle. The composition root is responsible for persisting this via
   /// [SettingsStore.save]. Issue #774.
   final void Function(CommentSortOrder)? onSortOrderChanged;
+
+  /// Called when the broadcaster toggles the "自動延長" Switch in the
+  /// AppBar overflow menu. The argument is the **new** ON/OFF state
+  /// after the toggle. The composition root is responsible for
+  /// persisting this via [SettingsStore.save].
+  ///
+  /// PR1 範囲では Switch 状態の永続化のみ。Timer 動作は Issue #876
+  /// で配線される（このコールバックを subscribe する controller を
+  /// 経由する形になる予定）。
+  final void Function(bool enabled)? onAutoExtendBroadcastChanged;
+
+  /// Issue #876: invoked when the broadcast's scheduled end time is
+  /// extended (manually via the dialog or automatically by the timer).
+  /// The composition root is responsible for refreshing the upstream
+  /// `FollowProgram.endAt` so the `endAt` prop flowing back into
+  /// [CommentScreen] reflects the new value. This in turn lets the
+  /// auto-extend controller re-schedule its next firing.
+  ///
+  /// The argument is the **new** end time (after extension). When null
+  /// the callback is a no-op so legacy embedders / minimally-wired
+  /// hosts continue to work without behavior regression.
+  final void Function(DateTime newEndAt)? onBroadcastEndTimeExtended;
+
+  /// Issue #876: invoked when the auto-extend controller wants to surface
+  /// a client-side notification on the comment timeline (success /
+  /// failure). The composition root is expected to forward the message
+  /// to its `TimelineStore` so the row is rendered with the auto-extend
+  /// theme color.
+  ///
+  /// When null the controller silently drops the message (host that
+  /// does not own a TimelineStore — typically tests).
+  final void Function(AppMessage message)? onAutoExtendSystemMessage;
+
+  /// Issue #767: optional integration. Invoked once per finalised
+  /// broadcast at the moment the comment screen builds its end-of-broadcast
+  /// stats panel. The composition root is expected to capture the snapshot
+  /// into a memory-only "previous broadcast" holder so the user can
+  /// re-open it from the next broadcast's status detail view. The comment
+  /// screen does not own the holding concern. When null this is a no-op
+  /// so legacy embedders / minimal test harnesses do not need to wire it.
+  final RecentBroadcastStatsCallback? onRecentBroadcastStatsCaptured;
+
+  /// Issue #766: optional integration. Invoked once per broadcast at the
+  /// moment the comment screen finalises its end-of-broadcast stats panel
+  /// (i.e. when `_pendingStats` becomes non-null). The composition root is
+  /// expected to forward the snapshot to a persistent history store when
+  /// the user is the broadcaster. The comment screen itself does not own
+  /// the persistence concern — when null this is a no-op so legacy
+  /// embedders / tests that do not need history keep working.
+  final BroadcastEndedStatsCallback? onBroadcastEndedStats;
 }
+
+/// Issue #766: callback signature for [CommentCallbacks.onBroadcastEndedStats].
+typedef BroadcastEndedStatsCallback =
+    void Function(BroadcastEndedStatsSnapshot snapshot);
+
+/// Issue #766: snapshot of a finished broadcast's stats handed to the
+/// [CommentCallbacks.onBroadcastEndedStats] callback. Carries only the
+/// summary the history store needs — no raw message bodies.
+@immutable
+class BroadcastEndedStatsSnapshot {
+  const BroadcastEndedStatsSnapshot({
+    required this.lv,
+    required this.endedAt,
+    required this.totalComments,
+    required this.uniqueUserCount,
+    required this.durationSeconds,
+    this.programTitle,
+    this.broadcasterUserId,
+    this.broadcasterName,
+    this.beginAt,
+    this.peakMinuteOffset,
+    this.peakMinuteCount = 0,
+    this.peaks = const <BroadcastEndedStatsPeak>[],
+    this.isBroadcaster = false,
+  });
+
+  final String lv;
+  final DateTime endedAt;
+  final int totalComments;
+  final int uniqueUserCount;
+  final int durationSeconds;
+  final String? programTitle;
+  final String? broadcasterUserId;
+  final String? broadcasterName;
+  final DateTime? beginAt;
+  final int? peakMinuteOffset;
+  final int peakMinuteCount;
+  final List<BroadcastEndedStatsPeak> peaks;
+
+  /// True when the local user is the broadcaster of this program. Issue
+  /// #766 records only the user's own broadcasts; viewer-only sessions
+  /// must be skipped by the callback receiver.
+  final bool isBroadcaster;
+
+  /// Issue #766: build a snapshot from the just-finalised stats and
+  /// program metadata. Centralises the DTO-construction logic so the
+  /// `comment_screen` build method does not need to know the field
+  /// layout. `peakOffset` is derived deterministically from
+  /// `commentsPerMinute` (smallest-key tiebreak) so restarts and tests
+  /// see the same value.
+  static BroadcastEndedStatsSnapshot buildFromStats({
+    required String lv,
+    required CommentLogStats stats,
+    required DateTime endedAt,
+    required bool isBroadcaster,
+    String? programTitle,
+    String? broadcasterUserId,
+    String? broadcasterName,
+    DateTime? beginAt,
+    List<HighlightPeak> highlightPeaks = const <HighlightPeak>[],
+  }) {
+    int? peakOffset;
+    if (stats.peakMinuteCount > 0 && stats.peakMinuteLabel != null) {
+      for (final MapEntry<int, int> entry in stats.commentsPerMinute.entries) {
+        if (entry.value == stats.peakMinuteCount) {
+          if (peakOffset == null || entry.key < peakOffset) {
+            peakOffset = entry.key;
+          }
+        }
+      }
+    }
+    return BroadcastEndedStatsSnapshot(
+      lv: lv,
+      endedAt: endedAt,
+      totalComments: stats.totalComments,
+      uniqueUserCount: stats.uniqueUserCount,
+      durationSeconds: stats.duration.inSeconds,
+      programTitle: programTitle,
+      broadcasterUserId: broadcasterUserId,
+      broadcasterName: broadcasterName,
+      beginAt: beginAt,
+      peakMinuteOffset: peakOffset,
+      peakMinuteCount: stats.peakMinuteCount,
+      peaks: highlightPeaks
+          .map(
+            (HighlightPeak p) => BroadcastEndedStatsPeak(
+              minuteOffset: p.minuteOffset,
+              label: p.label,
+              commentCount: p.commentCount,
+            ),
+          )
+          .toList(growable: false),
+      isBroadcaster: isBroadcaster,
+    );
+  }
+}
+
+/// One representative peak inside a [BroadcastEndedStatsSnapshot]. Mirrors
+/// `HighlightPeak` from the comment_log domain but drops the raw
+/// representative messages so the history layer never persists comment
+/// bodies.
+@immutable
+class BroadcastEndedStatsPeak {
+  const BroadcastEndedStatsPeak({
+    required this.minuteOffset,
+    required this.label,
+    required this.commentCount,
+  });
+
+  final int minuteOffset;
+  final String label;
+  final int commentCount;
+}
+
+/// Issue #767: callback signature for
+/// [CommentCallbacks.onRecentBroadcastStatsCaptured]. The receiver is
+/// expected to inspect [RecentBroadcastStats.isBroadcaster] and only
+/// persist (in memory) when the local user owns the broadcast.
+typedef RecentBroadcastStatsCallback =
+    void Function(RecentBroadcastStats snapshot);
 
 /// Content-based filtering and per-user rendering attributes for
 /// [CommentScreen].
@@ -159,6 +346,7 @@ class ContentFilterConfig {
     this.ngUserIds = const <String>{},
     this.ngWords = const <String>[],
     this.presetNgWords = const <String>[],
+    this.presetCategories = const <NgPresetCategory>[],
     this.starPrefixHidingEnabled = false,
     this.slashPrefixSkipEnabled = true,
     this.emphasizeGiftNicoadComment = true,
@@ -178,6 +366,17 @@ class ContentFilterConfig {
   ///
   /// When empty, the widget attempts to load `preset_ng_words.json` from assets.
   final List<String> presetNgWords;
+
+  /// Structured preset NG categories injection seam (Issue #628).
+  ///
+  /// When non-empty, the widget uses these categories directly and derives
+  /// the flat preset NG word list via [NgPresetCategory.flattenWords]. This
+  /// takes precedence over [presetNgWords] and skips the asset-load
+  /// fallback. Empty (the default) preserves the pre-#628 behavior:
+  /// callers that only inject [presetNgWords] continue to work as before,
+  /// and callers that inject neither still fall back to the bundled
+  /// `preset_ng_words.json` asset.
+  final List<NgPresetCategory> presetCategories;
 
   /// When true, comments starting with `☆` have their body hidden
   /// and can be revealed by tapping.
@@ -282,7 +481,7 @@ class CommentSpeechConfig {
     this.isSpeechMuted = false,
     this.androidTtsAvailability,
     this.playRemainingAfterEnded = true,
-    this.onSpeechQueueDrained,
+    this.onSpeechGraceEnded,
     this.timelineStore,
   });
 
@@ -340,29 +539,30 @@ class CommentSpeechConfig {
   final bool playRemainingAfterEnded;
 
   /// Issue #739: optional callback fired when the comment screen's grace
-  /// window ends (timeout, queue drained, manual stop, etc.). Wired by the
-  /// app composition root to [ForegroundServiceController.notifyQueueDrained]
-  /// so the FGS notification can drop early when speech actually finishes,
-  /// instead of waiting out the controller's own 30 s timer.
+  /// window ends (timeout, queue drained, or speech disabled mid-grace).
+  /// Wired by the app composition root to
+  /// [ForegroundServiceController.notifyQueueDrained] so the FGS notification
+  /// can drop early when speech actually finishes or is cancelled, instead of
+  /// waiting out the controller's own 30 s timer.
   ///
   /// Null in test harnesses that do not need to assert FGS coordination.
-  final VoidCallback? onSpeechQueueDrained;
+  final VoidCallback? onSpeechGraceEnded;
 
-  /// Issue #758: optional source for the background speech poll timer.
+  /// Issue #758 / #762: optional reactive source for the speech submit
+  /// pipeline.
   ///
-  /// In foreground, [CommentScreen.didUpdateWidget] propagates the latest
-  /// [TimelineStore] snapshot to `widget.messages` on every rebuild. In
-  /// background the Flutter engine suspends frame scheduling, so
-  /// `widget.messages` remains the snapshot captured at the last build
-  /// before backgrounding and the periodic poll timer would never see new
-  /// arrivals. The poll timer reads from this store directly so it always
-  /// observes the current snapshot, even when the widget tree is not
-  /// rebuilding. PR #721 made [TimelineStore.messages] return a cached
-  /// view that is replaced on every mutation, so direct reads are always
-  /// fresh and identity-stable between mutations.
+  /// When provided, [CommentScreen] subscribes to this store via
+  /// [ChangeNotifier.addListener] and submits new comments for speech the
+  /// instant a mutation fires `notifyListeners()` — both in foreground
+  /// (immediate, no waiting for the next widget rebuild) and in background
+  /// (no longer waiting up to 2 s for the previous periodic poll).
   ///
-  /// Null in test harnesses that do not need background simulation; in
-  /// that case the timer falls back to `widget.messages` (which is
-  /// foreground-only correct).
+  /// PR #721 made [TimelineStore.messages] return a cached snapshot that
+  /// is re-published just before `notifyListeners()`, so the listener sees
+  /// the new entry on the very first read inside the callback.
+  ///
+  /// Null in test harnesses that do not exercise the reactive submit path;
+  /// in that case the screen falls back to the foreground-only submit
+  /// triggered from [State.didUpdateWidget] when `widget.messages` changes.
   final TimelineStore? timelineStore;
 }

@@ -236,6 +236,11 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   static const String _kCommentSortOrder = 'settings.comment.sortOrder';
   // Issue #784: コメント番号 (NDGR `Chat.no`) の表示 ON/OFF の永続化キー。
   static const String _kShowCommentNo = 'settings.comment.showCommentNo';
+  // Issue #875: 自動延長 (Auto-extend broadcast) Switch の ON/OFF 永続化キー。
+  // Switch UI は配信者向け AppBar オーバーフローメニューに置かれ、PR1
+  // 範囲では表示状態のみを保持する（Timer 動作は #876 で実装）。
+  static const String _kAutoExtendBroadcastEnabled =
+      'settings.broadcast.autoExtendEnabled';
 
   @override
   Future<AppSettings> load() async {
@@ -381,6 +386,9 @@ class SharedPreferencesSettingsStore implements SettingsStore {
         _prefs.getString(_kCommentSortOrder),
       ),
       showCommentNo: _prefs.getBool(_kShowCommentNo) ?? defaults.showCommentNo,
+      autoExtendBroadcastEnabled:
+          _prefs.getBool(_kAutoExtendBroadcastEnabled) ??
+          defaults.autoExtendBroadcastEnabled,
     );
   }
 
@@ -518,6 +526,10 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       settings.commentSortOrder.storageValue,
     );
     await _prefs.setBool(_kShowCommentNo, settings.showCommentNo);
+    await _prefs.setBool(
+      _kAutoExtendBroadcastEnabled,
+      settings.autoExtendBroadcastEnabled,
+    );
   }
 
   List<NgWordRule> _loadNgWordRules() {
@@ -585,6 +597,15 @@ class SharedPreferencesSettingsStore implements SettingsStore {
 
   @override
   Future<String> exportAsJson() async {
+    // 意図的に除外されている永続化キー（追加時はここにメモを残す）:
+    //
+    // - `stats.broadcastHistory.v1` (Issue #766): 端末ローカルの放送履歴。
+    //   設計判断として Export には含めない (CLAUDE.md「設定項目の変更時の
+    //   注意」: 古い Export ファイルに当該キーが無くても安全に動作する形を
+    //   維持するための除外。`SharedPreferencesBroadcastHistoryStore` も参照)。
+    //
+    // - `settings.voicevox.preMuteVolume` / `settings.androidTts.preMuteVolume`:
+    //   ミュート前ボリューム退避値 (Issue #697)。
     final AppSettings settings = await load();
     final Map<String, dynamic> json = settings.toJson();
     final BroadcasterNgStore? ngStore = _broadcasterNgStore;

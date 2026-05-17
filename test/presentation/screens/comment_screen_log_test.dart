@@ -6,11 +6,16 @@ import 'package:comerune/domain/connection/connection_supervisor.dart';
 import 'package:comerune/domain/matchers/ng_matcher.dart';
 import 'package:comerune/domain/models/app_message.dart';
 import 'package:comerune/domain/models/app_settings.dart';
+import 'package:comerune/domain/models/ng_display_subcategory.dart';
+import 'package:comerune/domain/models/ng_policy.dart';
+import 'package:comerune/domain/models/ng_preset_category.dart';
 import 'package:comerune/presentation/screens/comment_screen.dart';
 import 'package:comerune/presentation/screens/comment_screen_config.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 // ignore: depend_on_referenced_packages
 import 'package:wakelock_plus_platform_interface/wakelock_plus_platform_interface.dart';
+
+import '../../helpers/fake_wakelock_plus_platform.dart';
 
 /// Widget integration tests for `_messagesForLog()` on [CommentScreen].
 ///
@@ -23,18 +28,17 @@ void main() {
     late WakelockPlusPlatformInterface previousWakelockPlatform;
 
     setUpAll(() async {
-      // Prime the rootBundle cache for `preset_ng_words.json` once for the
-      // whole suite. `_loadPresetNgWordsFromAsset()` inside the widget uses
-      // the same cached Future, so subsequent calls resolve synchronously
-      // even inside the fake-async zone used by [WidgetTester].
-      await rootBundle.loadString(
-        'android/app/src/main/assets/preset_ng_words.json',
-      );
+      // Prime the rootBundle cache for the encrypted preset asset once for
+      // the whole suite. `_loadPresetNgWordsFromAsset()` inside the widget
+      // loads the same key via `rootBundle.load`, so priming with the same
+      // key/method lets subsequent calls resolve synchronously even inside
+      // the fake-async zone used by [WidgetTester].
+      await rootBundle.load('android/app/src/main/assets/preset_ng_words.enc');
     });
 
     setUp(() {
       previousWakelockPlatform = wakelockPlusPlatformInstance;
-      wakelockPlusPlatformInstance = _FakeWakelockPlusPlatform();
+      wakelockPlusPlatformInstance = FakeWakelockPlusPlatform();
     });
 
     tearDown(() {
@@ -109,13 +113,14 @@ void main() {
         final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
         final List<AppMessage> messages = <AppMessage>[
           _chat(id: 'chat-clean', content: 'こんばんは', second: 1),
-          _chat(id: 'chat-violent', content: '爆弾の話', second: 2),
+          _chat(id: 'chat-violent', content: 'ngwordの話', second: 2),
         ];
 
         await tester.pumpWidget(
           _buildScreen(
             supervisor: supervisor,
             messages: messages,
+            presetCategories: const <NgPresetCategory>[_violencePreset],
             // Display toggle off — but _messagesForLog() ignores display prefs
             // and always tags preset matches for the log.
             ngDisplayPreferences: const NgDisplayPreferences(),
@@ -129,7 +134,7 @@ void main() {
         expect(log[0].id, 'chat-clean');
         expect(log[0].content, 'こんばんは');
         expect(log[1].id, 'chat-violent');
-        expect(log[1].content, '[filtered:violence] 爆弾の話');
+        expect(log[1].content, '[filtered:violence] ngwordの話');
       },
     );
 
@@ -147,13 +152,19 @@ void main() {
         final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
         final List<AppMessage> messages = <AppMessage>[
           _chat(id: 'chat-clean', content: 'こんばんは', second: 1, commentNo: 100),
-          _chat(id: 'chat-violent', content: '爆弾の話', second: 2, commentNo: 555),
+          _chat(
+            id: 'chat-violent',
+            content: 'ngwordの話',
+            second: 2,
+            commentNo: 555,
+          ),
         ];
 
         await tester.pumpWidget(
           _buildScreen(
             supervisor: supervisor,
             messages: messages,
+            presetCategories: const <NgPresetCategory>[_violencePreset],
             ngDisplayPreferences: const NgDisplayPreferences(),
           ),
         );
@@ -168,7 +179,7 @@ void main() {
         // The preset-tagged chat must retain its commentNo even though
         // _messagesForLog() rebuilds it with the [filtered:...] prefix.
         expect(log[1].id, 'chat-violent');
-        expect(log[1].content, '[filtered:violence] 爆弾の話');
+        expect(log[1].content, '[filtered:violence] ngwordの話');
         expect(
           log[1].commentNo,
           555,
@@ -189,13 +200,14 @@ void main() {
         // accidentally suppresses the tag when the toggle is on is caught.
         final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
         final List<AppMessage> messages = <AppMessage>[
-          _chat(id: 'chat-violent', content: '爆弾の話', second: 1),
+          _chat(id: 'chat-violent', content: 'ngwordの話', second: 1),
         ];
 
         await tester.pumpWidget(
           _buildScreen(
             supervisor: supervisor,
             messages: messages,
+            presetCategories: const <NgPresetCategory>[_violencePreset],
             ngDisplayPreferences: const NgDisplayPreferences(
               allowViolence: true,
             ),
@@ -206,7 +218,7 @@ void main() {
         final List<AppMessage> log = _logFor(tester);
 
         expect(log, hasLength(1));
-        expect(log[0].content, '[filtered:violence] 爆弾の話');
+        expect(log[0].content, '[filtered:violence] ngwordの話');
         // Regression guard: the `speech_blocked` reason is reserved for a
         // future wiring (see CommentLogTag.reasonSpeechBlocked). The current
         // helper must not emit it.
@@ -261,9 +273,9 @@ void main() {
         final List<AppMessage> messages = <AppMessage>[
           _chat(id: 'a-clean', content: 'あいさつ', second: 1),
           _chat(id: 'b-user-ng', content: 'ばなな大好き', second: 2),
-          _chat(id: 'c-preset', content: '爆弾の話その2', second: 3),
+          _chat(id: 'c-preset', content: 'ngwordの話その2', second: 3),
           _chat(id: 'd-clean', content: 'ふつうのコメント', second: 4),
-          _chat(id: 'e-preset', content: '児童ポルノ関連', second: 5),
+          _chat(id: 'e-preset', content: 'ngminorかんれん', second: 5),
           _chat(id: 'f-clean', content: 'しめのあいさつ', second: 6),
         ];
 
@@ -271,6 +283,10 @@ void main() {
           _buildScreen(
             supervisor: supervisor,
             messages: messages,
+            presetCategories: const <NgPresetCategory>[
+              _violencePreset,
+              _minorsPreset,
+            ],
             ngWords: const <String>['ばなな'],
           ),
         );
@@ -444,14 +460,16 @@ void main() {
         // would silently drop these rows from the log.
         final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
         final List<AppMessage> messages = <AppMessage>[
-          _chat(id: 'chat-mixed', content: '爆弾とばなな', second: 1),
+          _chat(id: 'chat-mixed', content: 'ngwordとばなな', second: 1),
         ];
 
         await tester.pumpWidget(
           _buildScreen(
             supervisor: supervisor,
             messages: messages,
-            // 'ばなな' is a user-NG; '爆弾' is a preset violence hit.
+            // 'ばなな' is a user-NG; 'ngword' is an injected preset violence
+            // hit.
+            presetCategories: const <NgPresetCategory>[_violencePreset],
             ngWords: const <String>['ばなな'],
           ),
         );
@@ -498,8 +516,8 @@ void main() {
 /// Drains the `_loadPresetNgWordsFromAsset() -> setState()` chain triggered
 /// by [CommentScreen.initState].
 ///
-/// `preset_ng_words.json` is primed by [setUpAll], but even so
-/// `rootBundle.loadString` resolves through a microtask that the fake-async
+/// The encrypted preset asset is primed by [setUpAll], but even so
+/// `rootBundle.load` resolves through a microtask that the fake-async
 /// zone [WidgetTester] uses does not always flush via [pumpAndSettle] alone.
 /// A zero-duration real-async gap plus a [WidgetTester.pump] inside
 /// [WidgetTester.runAsync] reliably lets the awaited load land; the trailing
@@ -546,11 +564,34 @@ AppMessage _chat({
   );
 }
 
+/// Placeholder preset categories for the log-tagging tests. The real shipped
+/// dictionary words are never embedded in test source (Issue 3); injecting a
+/// structured category via the #628 seam reproduces the exact
+/// `[filtered:<subcategory>]` tagging behavior with harmless placeholder
+/// words and keeps these tests deterministic (no asset/decrypt dependency).
+const NgPresetCategory _violencePreset = NgPresetCategory(
+  id: 'violence_test',
+  description: 'test violence preset',
+  policy: NgPolicy.blockSpeechOnly,
+  displaySubcategory: NgDisplaySubcategory.violence,
+  words: <String>['ngword'],
+);
+const NgPresetCategory _minorsPreset = NgPresetCategory(
+  id: 'minors_test',
+  description: 'test minors preset',
+  policy: NgPolicy.blockSpeechOnly,
+  displaySubcategory: NgDisplaySubcategory.minors,
+  // Not a sub/superstring of the violence placeholder ('ngword'), otherwise
+  // a substring match could mis-tag a minors hit as violence.
+  words: <String>['ngminor'],
+);
+
 Widget _buildScreen({
   required ConnectionSupervisor supervisor,
   required List<AppMessage> messages,
   Set<String> ngUserIds = const <String>{},
   List<String> ngWords = const <String>[],
+  List<NgPresetCategory> presetCategories = const <NgPresetCategory>[],
   NgDisplayPreferences ngDisplayPreferences = NgDisplayPreferences.defaults,
 }) {
   return MaterialApp(
@@ -567,12 +608,13 @@ Widget _buildScreen({
       contentFilter: ContentFilterConfig(
         ngUserIds: ngUserIds,
         ngWords: ngWords,
-        // Empty so initState() triggers _loadPresetNgWordsFromAsset(). The
-        // asset bundle declared in pubspec.yaml makes the real file
-        // available to the test binding, which in turn populates the
-        // structured `_effectivePresetCategories` list used by the log
-        // tagging branch.
         presetNgWords: const <String>[],
+        // When [presetCategories] is empty (default), initState() triggers
+        // _loadPresetNgWordsFromAsset() and the screen exercises the real
+        // asset path. Tests that need a deterministic preset hit inject a
+        // structured placeholder category here instead (#628 seam), which
+        // makes the screen bypass the asset load entirely.
+        presetCategories: presetCategories,
         ngDisplayPreferences: ngDisplayPreferences,
       ),
     ),
@@ -585,16 +627,4 @@ ConnectionSupervisor _buildStreamingSupervisor() {
   expect(supervisor.onSessionWsConnected(), isTrue);
   expect(supervisor.onNdgrEndpointResolved(), isTrue);
   return supervisor;
-}
-
-class _FakeWakelockPlusPlatform extends WakelockPlusPlatformInterface {
-  bool _enabled = false;
-
-  @override
-  Future<bool> get enabled async => _enabled;
-
-  @override
-  Future<void> toggle({required bool enable}) async {
-    _enabled = enable;
-  }
 }

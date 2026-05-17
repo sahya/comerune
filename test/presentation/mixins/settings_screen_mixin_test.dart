@@ -7,6 +7,7 @@ import 'package:comerune/presentation/mixins/settings_screen_mixin.dart';
 import 'package:comerune/presentation/screens/comment_display_settings_screen.dart';
 
 import '../../helpers/in_memory_shared_preferences.dart';
+import '../../helpers/throwing_settings_store.dart';
 
 void main() {
   group('SettingsScreenMixin', () {
@@ -14,7 +15,7 @@ void main() {
       testWidgets('shows error UI when settingsStore.load() throws', (
         WidgetTester tester,
       ) async {
-        final _ThrowingSettingsStore store = _ThrowingSettingsStore();
+        final ThrowingSettingsStore store = ThrowingSettingsStore();
 
         await tester.pumpWidget(
           MaterialApp(home: _ErrorTestScreen(settingsStore: store)),
@@ -25,10 +26,77 @@ void main() {
         expect(find.text('再試行'), findsOneWidget);
       });
 
+      testWidgets('shows error UI when settingsStore.load() throws an Error '
+          '(legacy persisted parse failure)', (WidgetTester tester) async {
+        // 旧バージョンが保存した SharedPreferences の値を新バージョンが
+        // パースできず `StateError` 等を投げるシナリオを再現する。
+        // `Error` 系を捕捉できないと `settings`/`settingsError` ともに null
+        // のままになり、画面が CircularProgressIndicator で固まる。
+        final ThrowingSettingsStore store = ThrowingSettingsStore(
+          errorToThrow: StateError('simulated legacy parse failure'),
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(home: _ErrorTestScreen(settingsStore: store)),
+        );
+        await tester.pumpAndSettle();
+
+        // The error UI must render — NOT the spinner.
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        expect(find.text('設定の読み込みに失敗しました'), findsOneWidget);
+        expect(find.text('再試行'), findsOneWidget);
+      });
+
+      group('catches Error subclasses', () {
+        // `on Object catch` の契約が `Error` 階層全般に対して成り立つかを
+        // 担保する回帰テスト群。`on Exception catch` のままだと `Error` 系
+        // （`TypeError` / `RangeError` / `ArgumentError` / `AssertionError`
+        // 等）を素通りしてしまい、`settings`/`settingsError` が共に null
+        // のままになり画面が CircularProgressIndicator で固まる。
+        // 各 variant を個別 testWidgets として宣言することで、CI の失敗報告
+        // でどの Error 種別が落ちたか即座に判別できる。
+        Future<void> runErrorVariant(
+          WidgetTester tester,
+          Object thrownError,
+        ) async {
+          final ThrowingSettingsStore store = ThrowingSettingsStore(
+            errorToThrow: thrownError,
+          );
+          await tester.pumpWidget(
+            MaterialApp(home: _ErrorTestScreen(settingsStore: store)),
+          );
+          await tester.pumpAndSettle();
+          expect(find.byType(CircularProgressIndicator), findsNothing);
+          expect(find.text('設定の読み込みに失敗しました'), findsOneWidget);
+        }
+
+        testWidgets(
+          'TypeError',
+          (WidgetTester tester) => runErrorVariant(tester, TypeError()),
+        );
+        testWidgets(
+          'RangeError',
+          (WidgetTester tester) =>
+              runErrorVariant(tester, RangeError('out of range')),
+        );
+        testWidgets(
+          'ArgumentError',
+          (WidgetTester tester) =>
+              runErrorVariant(tester, ArgumentError('bad arg')),
+        );
+        testWidgets(
+          'AssertionError',
+          (WidgetTester tester) => runErrorVariant(
+            tester,
+            AssertionError('simulated assertion violation'),
+          ),
+        );
+      });
+
       testWidgets('tapping retry clears error and retries load', (
         WidgetTester tester,
       ) async {
-        final _ThrowingSettingsStore store = _ThrowingSettingsStore();
+        final ThrowingSettingsStore store = ThrowingSettingsStore();
 
         await tester.pumpWidget(
           MaterialApp(home: _ErrorTestScreen(settingsStore: store)),
@@ -89,7 +157,7 @@ void main() {
       testWidgets('markChanged sets hasChanges to true', (
         WidgetTester tester,
       ) async {
-        final _ThrowingSettingsStore store = _ThrowingSettingsStore()
+        final ThrowingSettingsStore store = ThrowingSettingsStore()
           ..shouldThrow = false;
         final GlobalKey<_ErrorTestScreenState> screenKey =
             GlobalKey<_ErrorTestScreenState>();
@@ -219,50 +287,6 @@ void main() {
 // ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
-
-/// A settings store that throws on [load] when [shouldThrow] is true.
-class _ThrowingSettingsStore implements SettingsStore {
-  bool shouldThrow = true;
-
-  final SharedPreferencesSettingsStore _delegate =
-      SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-
-  @override
-  Future<AppSettings> load() async {
-    if (shouldThrow) {
-      throw Exception('simulated load failure');
-    }
-    return _delegate.load();
-  }
-
-  @override
-  Future<void> save(AppSettings settings) => _delegate.save(settings);
-
-  @override
-  double? loadPreMuteVolume() => _delegate.loadPreMuteVolume();
-
-  @override
-  Future<void> savePreMuteVolume(double? volume) =>
-      _delegate.savePreMuteVolume(volume);
-
-  @override
-  double? loadPreMuteAndroidTtsVolume() =>
-      _delegate.loadPreMuteAndroidTtsVolume();
-
-  @override
-  Future<void> savePreMuteAndroidTtsVolume(double? volume) =>
-      _delegate.savePreMuteAndroidTtsVolume(volume);
-
-  @override
-  Future<String> exportAsJson() => _delegate.exportAsJson();
-
-  @override
-  Future<String> writeExportToTempFile() => _delegate.writeExportToTempFile();
-
-  @override
-  Future<AppSettings> importFromJson(String jsonString) =>
-      _delegate.importFromJson(jsonString);
-}
 
 /// Minimal StatefulWidget that uses [SettingsScreenMixin] for testing
 /// error state behaviour.

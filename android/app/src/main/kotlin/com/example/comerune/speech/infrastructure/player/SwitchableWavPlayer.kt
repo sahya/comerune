@@ -132,6 +132,66 @@ class SwitchableWavPlayer internal constructor(
         }
     }
 
+    /**
+     * Returns the intent flag of the current delegate. [SwitchableWavPlayer]
+     * itself does **not** hold an intent field — the delegate is the single
+     * source of truth.
+     *
+     * Swap semantics (see Issue #916 AC5):
+     *
+     * - **(a)** Right after [switchPlayerType] sets `pendingType` but before
+     *   [applyPendingSwitch] has run, the swap has not happened yet. This
+     *   call returns the intent of the **current (= old) delegate**.
+     * - **(b)** Immediately after [applyPendingSwitch] tears down the old
+     *   delegate (which calls [WavPlayer.release], driving its intent to
+     *   `false`) and creates a fresh delegate, this call returns `false`
+     *   because the new delegate has not received any [play] yet. The old
+     *   delegate's intent value is **not** carried over.
+     * - **(c)** After the first [play] on the new delegate, this call
+     *   returns the new delegate's intent.
+     * - **(d)** After [release], the (now released) delegate reports
+     *   `false`, so this call also returns `false`.
+     */
+    override fun shouldBePlaying(): Boolean {
+        val player = synchronized(lock) { delegate }
+        return player.shouldBePlaying()
+    }
+
+    /**
+     * Release the underlying delegate and clear any pending switch.
+     *
+     * Post-release contract (Issue #917): once [release] has returned, any
+     * subsequent [play] call MUST resolve to a [Result.failure] — it must
+     * NOT throw, and it must NOT silently succeed. The current
+     * implementation routes the failed `play()` straight to the released
+     * delegate, which then returns a failure from its own released-guard
+     * (search "Player has been released" in [MediaPlayerWavPlayer] /
+     * [AudioTrackWavPlayer]). A future change may add an early-out guard
+     * here in [SwitchableWavPlayer]. Either path is contract-compliant.
+     * Tests assert the failure status only and intentionally do not pin
+     * the exception type or the guard's location, so the implementation
+     * can evolve without rewriting the contract test.
+     *
+     * Note on AC2 of Issue #917: the issue body's AC2 example asserts the
+     * concrete `IllegalStateException` failure type for the delegate
+     * players. That assertion is verified at the production source level
+     * (see the `Result.failure(IllegalStateException(...))` in each
+     * delegate's `play()`) and is exercised through the
+     * [SwitchableWavPlayer] external contract above. A direct runtime
+     * assertion against the delegate would require Robolectric — without
+     * it, the SDK-level guard `Build.VERSION.SDK_INT < O` short-circuits
+     * with [UnsupportedOperationException] before the released-guard is
+     * reachable on a pure-JVM unit test. Adding Robolectric for this
+     * single assertion is out of scope; the implementation lock is
+     * provided by the external [SwitchableWavPlayer] contract test plus
+     * the [MediaPlayerWavPlayer] / [AudioTrackWavPlayer] release
+     * idempotency tests.
+     *
+     * Calling [release] more than once is safe (idempotent at the
+     * delegate level — see [MediaPlayerWavPlayer.release] /
+     * [AudioTrackWavPlayer.release], both of which set `released = true`
+     * before doing any teardown).
+     */
     override fun release() {
         synchronized(lock) {
             pendingType = null

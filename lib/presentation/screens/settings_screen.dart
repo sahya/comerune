@@ -12,6 +12,8 @@ import '../../application/settings/settings_store.dart';
 import '../../application/speech/speech_availability_notifier.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../data/auth/user_session_store.dart';
+import '../../data/broadcaster/broadcaster_name_store.dart';
+import '../../data/comment_log/broadcast_history_store.dart';
 import '../../data/filter/broadcaster_ng_store.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/user_name_resolution.dart';
@@ -19,6 +21,7 @@ import '../../data/user/user_attribute_store.dart';
 import '../mixins/settings_screen_mixin.dart';
 import '../strings/app_strings.dart';
 import '../widgets/settings_widgets.dart';
+import 'broadcast_history_screen.dart';
 import 'broadcaster_ng_list_screen.dart';
 import 'comment_display_settings_screen.dart';
 import 'login_screen.dart';
@@ -33,10 +36,12 @@ class SettingsScreen extends StatefulWidget {
     this.themeModeNotifier,
     this.userAttributeStore,
     this.broadcasterNgStore,
+    this.broadcasterNameStore,
     this.broadcasterIdNotifier,
     this.userNameResolution,
     this.speechPlatform,
     this.androidTtsAvailability,
+    this.broadcastHistoryStore,
   });
 
   final SettingsStore settingsStore;
@@ -47,6 +52,11 @@ class SettingsScreen extends StatefulWidget {
   /// Issue #727: per-broadcaster NG management store. Forwarded to the
   /// child screens that expose NG editing UI.
   final BroadcasterNgStore? broadcasterNgStore;
+
+  /// Issue #727 follow-up: persistent cache of broadcaster display names.
+  /// When provided, the NG picker uses it to render `name(id)` tile titles
+  /// instead of raw IDs. Optional — null falls back to ID-only rendering.
+  final BroadcasterNameStore? broadcasterNameStore;
   final ValueNotifier<String?>? broadcasterIdNotifier;
   final UserNameResolution? userNameResolution;
   final CommentSpeechPlatform? speechPlatform;
@@ -54,6 +64,11 @@ class SettingsScreen extends StatefulWidget {
   /// Issue #694: passed through to [TtsSettingsScreen] so its availability
   /// check publishes to the cross-screen notifier.
   final SpeechAvailabilityNotifier? androidTtsAvailability;
+
+  /// Issue #766: optional integration. When provided, the settings screen
+  /// shows a "放送履歴" tile that opens [BroadcastHistoryScreen]. When
+  /// null (legacy embedders / minimal test harnesses), the tile is hidden.
+  final BroadcastHistoryStore? broadcastHistoryStore;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -347,6 +362,10 @@ class _SettingsScreenState extends State<SettingsScreen>
                 _buildUserManagementTile(context, settings),
                 const SizedBox(height: 12),
                 _buildBroadcasterNgTile(context),
+                if (widget.broadcastHistoryStore != null) ...<Widget>[
+                  const SizedBox(height: 12),
+                  _buildBroadcastHistoryTile(context),
+                ],
                 const Divider(height: 24),
                 // --- 管理・上級 ---
                 _buildDataManagementSection(context),
@@ -528,10 +547,12 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Widget _buildBroadcasterNgTile(BuildContext context) {
-    // Issue #727: single Settings-level entry into the per-broadcaster NG
-    // editor. When no [BroadcasterNgStore] is wired the tile is shown as
-    // disabled with a 「未対応」 subtitle so legacy embedders / minimally
-    // wired tests still render without crashing.
+    // Issue #727 follow-up: single Settings-level entry into the
+    // per-broadcaster NG editor. Title chosen to match sibling tiles
+    // (「コメント表示設定」「読み上げ設定」) and the AppBar of the editor
+    // (「NG設定 - <放送者名>」). Subtitle is shown ONLY when the store
+    // is unwired, so legacy embedders see a 「未対応」 hint instead of an
+    // unresponsive tile.
     final BroadcasterNgStore? store = widget.broadcasterNgStore;
     final bool enabled = store != null;
     return Card(
@@ -539,18 +560,33 @@ class _SettingsScreenState extends State<SettingsScreen>
         key: const Key('broadcaster-ng-filter-tile'),
         enabled: enabled,
         leading: const Icon(Icons.block),
-        title: const Text('NG フィルタ'),
-        subtitle: Text(enabled ? 'NG ユーザー / NG ワードを放送者ごとに管理' : '未対応'),
+        title: Text(AppStrings.settings.ngFilterTileTitle),
+        subtitle: enabled
+            ? null
+            : Text(AppStrings.settings.ngFilterTileSubtitleDisabled),
         trailing: const Icon(Icons.chevron_right),
         onTap: !enabled
             ? null
             : () async {
                 await Navigator.of(context).push(
                   MaterialPageRoute<void>(
-                    builder: (_) => BroadcasterNgListScreen(
-                      broadcasterNgStore: store,
-                      broadcasterIdNotifier: widget.broadcasterIdNotifier,
-                    ),
+                    builder: (_) {
+                      final BroadcasterNameStore? nameStore =
+                          widget.broadcasterNameStore;
+                      return BroadcasterNgListScreen(
+                        broadcasterNgStore: store,
+                        broadcasterIdNotifier: widget.broadcasterIdNotifier,
+                        broadcasterNameResolver: nameStore == null
+                            ? null
+                            : (String id) => nameStore.loadName(id),
+                        // Prefer a single O(N) snapshot read per build over
+                        // N per-tile resolver calls; each resolver call would
+                        // re-parse SharedPreferences once.
+                        broadcasterNamesSnapshot: nameStore == null
+                            ? null
+                            : () => nameStore.loadAll(),
+                      );
+                    },
                   ),
                 );
                 // Refresh settings on return so any side-effects in the NG
@@ -560,6 +596,32 @@ class _SettingsScreenState extends State<SettingsScreen>
                   await _loadSettings();
                 }
               },
+      ),
+    );
+  }
+
+  Widget _buildBroadcastHistoryTile(BuildContext context) {
+    // Issue #766: 過去放送のコメント統計を再アクセスできる履歴ビューへの導線。
+    // ストアが未注入のとき、そもそもこのタイルは描画されない（呼び出し側で
+    // null ガード済み）。
+    final BroadcastHistoryStore? store = widget.broadcastHistoryStore;
+    if (store == null) {
+      return const SizedBox.shrink();
+    }
+    return Card(
+      child: ListTile(
+        key: const Key('broadcast-history-tile'),
+        leading: const Icon(Icons.history),
+        title: Text(AppStrings.broadcastHistory.settingsTileTitle),
+        subtitle: Text(AppStrings.broadcastHistory.settingsTileSubtitle),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () async {
+          await Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => BroadcastHistoryScreen(store: store),
+            ),
+          );
+        },
       ),
     );
   }

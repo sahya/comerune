@@ -2,6 +2,7 @@ package com.example.comerune.speech.infrastructure.player
 
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.os.Build
 import com.example.comerune.speech.domain.player.AudioFocusGuard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -30,6 +31,39 @@ import org.junit.Test
  * speaker offloads the blocking native constructor — see issue #597).
  */
 class AndroidTtsSpeakerTest {
+
+    @Test
+    fun `default speech audio profile uses media before Android Q`() {
+        assertEquals(
+            SpeechAudioAttributesProfile(
+                usage = android.media.AudioAttributes.USAGE_MEDIA,
+                contentType = android.media.AudioAttributes.CONTENT_TYPE_SPEECH,
+            ),
+            defaultSpeechAudioAttributesProfile(sdkInt = Build.VERSION_CODES.P),
+        )
+    }
+
+    @Test
+    fun `default speech audio profile uses assistant on Android Q and later`() {
+        assertEquals(
+            SpeechAudioAttributesProfile(
+                usage = android.media.AudioAttributes.USAGE_ASSISTANT,
+                contentType = android.media.AudioAttributes.CONTENT_TYPE_SPEECH,
+            ),
+            defaultSpeechAudioAttributesProfile(sdkInt = Build.VERSION_CODES.Q),
+        )
+    }
+
+    @Test
+    fun `default speech audio profile uses assistant on Android versions after Q`() {
+        assertEquals(
+            SpeechAudioAttributesProfile(
+                usage = android.media.AudioAttributes.USAGE_ASSISTANT,
+                contentType = android.media.AudioAttributes.CONTENT_TYPE_SPEECH,
+            ),
+            defaultSpeechAudioAttributesProfile(sdkInt = Build.VERSION_CODES.Q + 1),
+        )
+    }
 
     @Test
     fun `initialize is idempotent when called sequentially after success`() = runBlocking {
@@ -347,6 +381,35 @@ class AndroidTtsSpeakerTest {
             "doInitialize must call setAudioAttributes exactly once",
             1,
             engine.audioAttributesCalls.size,
+        )
+        assertEquals(
+            "doInitialize must apply the shared speech audio profile",
+            defaultSpeechAudioAttributesProfile(),
+            engine.audioAttributesCalls.single(),
+        )
+    }
+
+    @Test
+    fun `initialize continues and is ready when audio-attributes application fails`() = runBlocking {
+        val factory = FakeTextToSpeechFactory()
+        val speaker = AndroidTtsSpeaker(factory)
+
+        val job = launch { speaker.initialize() }
+        factory.awaitPendingInit()
+        // Arrange failure BEFORE completing init so the callback-driven
+        // doInitialize sees the error result from setSpeechAudioAttributes.
+        factory.createdEngines.last().audioAttributesResult = TextToSpeech.ERROR
+        factory.completePendingInit(TextToSpeech.SUCCESS)
+        job.join()
+
+        assertTrue(
+            "speaker must be ready despite audio-attributes failure",
+            speaker.isReady(),
+        )
+        assertEquals(
+            "audio-attributes application must have been attempted once",
+            1,
+            factory.createdEngines.last().audioAttributesCalls.size,
         )
     }
 

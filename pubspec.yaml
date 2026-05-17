@@ -2,7 +2,7 @@ name: comerune
 description: ニコ生コメント取得・表示・読み上げアプリ
 publish_to: "none"
 
-version: 1.0.0+2
+version: 1.0.0+7
 
 environment:
   sdk: ">=3.11.0 <4.0.0"
@@ -70,6 +70,11 @@ dependencies:
   # （ビルド時注入された BFF host 上のコールバック URL への復帰を intent としてアプリで受ける）
   app_links: 7.0.0
 
+  # SHA-256 / HMAC-SHA256（同梱プリセットフィルタの軽量難読化アセットの復号に使用）。
+  # 発行元 dart.dev（検証済みパブリッシャ）。既に依存解決ツリーに 3.0.7 が存在するため
+  # exact pin で直接依存へ昇格するだけで sha256 ハッシュは変わらない。
+  crypto: 3.0.7
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -79,5 +84,5 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - android/app/src/main/assets/preset_ng_words.json
+    - android/app/src/main/assets/preset_ng_words.enc
     - android/app/src/main/assets/voicevox_models/TERMS.txt

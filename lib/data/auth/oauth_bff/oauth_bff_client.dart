@@ -51,8 +51,19 @@ class OAuthBffClient {
             body: jsonEncode(body),
           )
           .timeout(_timeout);
-    } catch (e) {
-      log('BFF token endpoint unreachable: $e', name: 'OAuthBffClient');
+    } catch (e, stackTrace) {
+      // Avoid interpolating `$e`: some network exceptions stringify the
+      // request body, which contains the authorization code or refresh
+      // token. Surface the error type only — matches the convention used
+      // for the malformed-JSON branch below. `error:` receives the type
+      // (not the exception instance) for the same reason; `stackTrace`
+      // is safe because it carries call sites, not request payloads.
+      log(
+        'BFF token endpoint unreachable (error type: ${e.runtimeType})',
+        name: 'OAuthBffClient',
+        error: e.runtimeType,
+        stackTrace: stackTrace,
+      );
       throw const OAuthFailure(
         reason: OAuthFailureReason.networkFailure,
         message: 'Failed to reach BFF token endpoint',

@@ -1,7 +1,5 @@
 package com.example.comerune.speech.infrastructure.player
 
-import android.media.AudioAttributes
-import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
@@ -40,7 +38,7 @@ import kotlin.coroutines.resume
  *   Defaults to [Dispatchers.IO]; override in tests with a deterministic
  *   dispatcher when needed.
  */
-class AndroidTtsSpeaker(
+internal class AndroidTtsSpeaker(
     private val factory: TextToSpeechFactory,
     private val audioFocusGuard: AudioFocusGuard? = null,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
@@ -53,21 +51,7 @@ class AndroidTtsSpeaker(
 
     private var tts: TextToSpeechAdapter? = null
 
-    /**
-     * Same `USAGE_ASSISTANT (Q+) | USAGE_MEDIA (older)` + `CONTENT_TYPE_SPEECH`
-     * profile the WAV players use, so the system applies a single ducking
-     * policy across all comerune voices and routes them through the
-     * media volume slider rather than the silent ringtone stream.
-     */
-    private val audioAttributes: AudioAttributes =
-        AudioAttributes.Builder().apply {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                setUsage(AudioAttributes.USAGE_ASSISTANT)
-            } else {
-                setUsage(AudioAttributes.USAGE_MEDIA)
-            }
-            setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-        }.build()
+    private val speechAudioAttributesProfile = defaultSpeechAudioAttributesProfile()
 
     /**
      * Listener registered against [audioFocusGuard] (when present) so
@@ -230,7 +214,8 @@ class AndroidTtsSpeaker(
                     // platform may treat system TTS output as
                     // USAGE_UNKNOWN and silence it during DND or
                     // battery-saver focus restrictions (#736).
-                    val attributesResult = currentEngine.setAudioAttributes(audioAttributes)
+                    val attributesResult =
+                        currentEngine.setSpeechAudioAttributes(speechAudioAttributesProfile)
                     if (attributesResult != TextToSpeech.SUCCESS) {
                         Log.w(
                             TAG,

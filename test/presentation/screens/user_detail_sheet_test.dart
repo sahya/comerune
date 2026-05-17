@@ -467,6 +467,308 @@ void main() {
       },
     );
 
+    testWidgets('preset color buttons expose a 48x48 hit target (a11y)', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildSheet(
+          userId: '12345',
+          allMessages: const <AppMessage>[],
+          onColorChanged: (_) {},
+        ),
+      );
+      await openSheet(tester);
+
+      // The visible circle is 32dp but the wrapping hit target should be
+      // exactly 48dp on each side (Material / WCAG min target). Check
+      // both a preset circle and the custom-color button.
+      final Size presetSize = tester.getSize(
+        find.byKey(const Key('user-color-$_kFirstColorValue')),
+      );
+      expect(presetSize.width, 48);
+      expect(presetSize.height, 48);
+
+      final Size customSize = tester.getSize(
+        find.byKey(const Key('user-color-custom-button')),
+      );
+      expect(customSize.width, 48);
+      expect(customSize.height, 48);
+    });
+
+    testWidgets(
+      'adjacent color buttons (preset + custom) do not overlap their hit '
+      'targets (Issue #845 / #777 AC4)',
+      (WidgetTester tester) async {
+        // Pin the viewport so the Wrap layout is deterministic regardless
+        // of the host machine's default test screen size. With horizontal
+        // 16dp padding on the palette row, the inner width is 800-32=768dp,
+        // which fits 768/48=16 buttons per row. The palette has 12 preset
+        // circles + 1 custom button (13 total), so all entries land on a
+        // single row and adjacent pairs share the same vertical position.
+        tester.view.physicalSize = const Size(800, 1200);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          _buildSheet(
+            userId: '12345',
+            allMessages: const <AppMessage>[],
+            onColorChanged: (_) {},
+          ),
+        );
+        await openSheet(tester);
+
+        // Walk the preset palette in declaration order and assert that
+        // each pair of consecutive 48x48 hit-target boxes is strictly
+        // non-overlapping. Same-row neighbours have matching `top`, and
+        // their horizontal bounds must not overlap (`right <= next.left`).
+        // Wrap row breaks (when they happen) are also acceptable: the
+        // next button moves to a new row with `top >= previous.bottom`.
+        //
+        // Derive the palette ARGB32 values from the production-side
+        // [kUserColorPaletteEntries] so that adding / reordering entries
+        // does not silently desynchronise this test. The conversion
+        // mirrors the private `_colorToARGB32` helper in
+        // user_detail_sheet.dart that builds the per-button `Key`.
+        int colorToArgb32(Color c) =>
+            ((c.a * 255).round() << 24) |
+            ((c.r * 255).round() << 16) |
+            ((c.g * 255).round() << 8) |
+            (c.b * 255).round();
+        final List<int> paletteValues = kUserColorPaletteEntries
+            .map((({Color color, String label}) e) => colorToArgb32(e.color))
+            .toList();
+
+        Rect rectFor(int colorValue) =>
+            tester.getRect(find.byKey(Key('user-color-$colorValue')));
+
+        // Sanity: at the chosen viewport every preset circle shares the
+        // same `top`, so neighbours are guaranteed to be on one row and
+        // the right/left comparison is the load-bearing check.
+        // `closeTo` (0.5dp) defends against future paddings introducing
+        // sub-pixel offsets while still failing fast if the viewport
+        // assumption breaks (rows would differ by 48dp, far above the
+        // tolerance).
+        final double firstTop = rectFor(paletteValues.first).top;
+        for (final int value in paletteValues) {
+          expect(
+            rectFor(value).top,
+            closeTo(firstTop, 0.5),
+            reason:
+                'Preset color $value should be on the same row as the '
+                'first preset at viewport 800x1200; if this fails the '
+                'viewport assumption (768dp inner width / 13 buttons) '
+                'is wrong.',
+          );
+        }
+
+        for (int i = 0; i < paletteValues.length - 1; i++) {
+          final Rect current = rectFor(paletteValues[i]);
+          final Rect next = rectFor(paletteValues[i + 1]);
+          final bool sameRow = current.top == next.top;
+          if (sameRow) {
+            expect(
+              current.right <= next.left,
+              isTrue,
+              reason:
+                  'Hit targets for ${paletteValues[i].toRadixString(16)} '
+                  '(right=${current.right}) and '
+                  '${paletteValues[i + 1].toRadixString(16)} '
+                  '(left=${next.left}) overlap on the same row.',
+            );
+          } else {
+            expect(
+              current.bottom <= next.top,
+              isTrue,
+              reason:
+                  'Hit targets for ${paletteValues[i].toRadixString(16)} '
+                  '(bottom=${current.bottom}) and '
+                  '${paletteValues[i + 1].toRadixString(16)} '
+                  '(top=${next.top}) overlap across rows.',
+            );
+          }
+        }
+
+        // Also verify the boundary between the last preset and the
+        // custom-color button, since they live in the same Wrap.
+        final Rect lastPreset = rectFor(paletteValues.last);
+        final Rect customButton = tester.getRect(
+          find.byKey(const Key('user-color-custom-button')),
+        );
+        if (lastPreset.top == customButton.top) {
+          expect(
+            lastPreset.right <= customButton.left,
+            isTrue,
+            reason:
+                'Last preset and custom-color button overlap on the same row '
+                '(${lastPreset.right} > ${customButton.left}).',
+          );
+        } else {
+          expect(
+            lastPreset.bottom <= customButton.top,
+            isTrue,
+            reason:
+                'Last preset and custom-color button overlap across rows '
+                '(${lastPreset.bottom} > ${customButton.top}).',
+          );
+        }
+      },
+    );
+
+    testWidgets('custom color dialog shows a Hex input field (#779)', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildSheet(
+          userId: '12345',
+          allMessages: const <AppMessage>[],
+          onColorChanged: (_) {},
+        ),
+      );
+      await openSheet(tester);
+
+      await tester.tap(find.byKey(const Key('user-color-custom-button')));
+      await tester.pumpAndSettle();
+
+      // hexInputBar:true causes the package to render its
+      // ColorPickerInput row, which contains a TextField. We don't rely
+      // on the package's internal class name, only that an editable
+      // TextField is present inside the dialog.
+      expect(find.byType(ColorPicker), findsOneWidget);
+      expect(find.byType(TextField), findsWidgets);
+    });
+
+    testWidgets(
+      'typing a valid Hex into the dialog input is accepted by the picker and apply forwards it (#779 AC2/AC4)',
+      (WidgetTester tester) async {
+        int? selectedColor;
+
+        await tester.pumpWidget(
+          _buildSheet(
+            userId: '12345',
+            allMessages: const <AppMessage>[],
+            currentColorValue: _kFirstColorValue,
+            onColorChanged: (int value) {
+              selectedColor = value;
+            },
+          ),
+        );
+        await openSheet(tester);
+
+        await tester.tap(find.byKey(const Key('user-color-custom-button')));
+        await tester.pumpAndSettle();
+
+        // Type a valid hex (without #) into the package's hex bar text
+        // field. The package's internal hex input synchronously parses
+        // valid hex strings and forwards the resulting Color through the
+        // ColorPicker.onColorChanged callback, which our dialog stores in
+        // the closure-captured `picked` variable. Applying afterwards
+        // must forward that color to the host onColorChanged.
+        final Finder hexField = find.byType(TextField).last;
+        await tester.enterText(hexField, '112233');
+        await tester.pumpAndSettle();
+
+        await tester.tap(
+          find.byKey(const Key('user-color-custom-dialog-apply-button')),
+        );
+        await tester.pumpAndSettle();
+
+        // The host should have received the typed Hex (#112233) as ARGB32.
+        expect(selectedColor, 0xFF112233);
+      },
+    );
+
+    testWidgets('invalid Hex input does not crash the dialog (#779 AC3)', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildSheet(
+          userId: '12345',
+          allMessages: const <AppMessage>[],
+          onColorChanged: (_) {},
+        ),
+      );
+      await openSheet(tester);
+
+      await tester.tap(find.byKey(const Key('user-color-custom-button')));
+      await tester.pumpAndSettle();
+
+      // Type a clearly invalid hex into the field. The package validates
+      // input internally and ignores malformed strings, so no exception
+      // should escape and the dialog should remain open and usable.
+      final Finder hexField = find.byType(TextField).last;
+      await tester.enterText(hexField, 'ZZZZZZ');
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(ColorPicker), findsOneWidget);
+      // Apply / Cancel buttons should still be usable.
+      expect(
+        find.byKey(const Key('user-color-custom-dialog-cancel-button')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('user-color-custom-dialog-apply-button')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+      'small phone (360dp) is unaffected by the dialog max width (#780 AC3)',
+      (WidgetTester tester) async {
+        // 360dp wide phone — well below the 420dp cap, so the cap should
+        // never kick in and the picker simply uses the available width.
+        await tester.binding.setSurfaceSize(const Size(360, 800));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        await tester.pumpWidget(
+          _buildSheet(
+            userId: '12345',
+            allMessages: const <AppMessage>[],
+            onColorChanged: (_) {},
+          ),
+        );
+        await openSheet(tester);
+
+        await tester.tap(find.byKey(const Key('user-color-custom-button')));
+        await tester.pumpAndSettle();
+
+        // Picker must still be visible and not zero-sized.
+        final Size pickerSize = tester.getSize(find.byType(ColorPicker));
+        expect(pickerSize.width, greaterThan(0));
+        expect(pickerSize.width, lessThanOrEqualTo(360.0));
+      },
+    );
+
+    testWidgets(
+      'custom color dialog content is capped to the configured max width on large screens (#780)',
+      (WidgetTester tester) async {
+        // Simulate a tablet / landscape viewport that is wider than the
+        // configured cap (420dp).
+        await tester.binding.setSurfaceSize(const Size(1024, 800));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        await tester.pumpWidget(
+          _buildSheet(
+            userId: '12345',
+            allMessages: const <AppMessage>[],
+            onColorChanged: (_) {},
+          ),
+        );
+        await openSheet(tester);
+
+        await tester.tap(find.byKey(const Key('user-color-custom-button')));
+        await tester.pumpAndSettle();
+
+        // The ColorPicker is laid out inside our ConstrainedBox. Its
+        // rendered width must therefore not exceed the cap (420dp), even
+        // though the surrounding viewport is much wider.
+        final Size pickerSize = tester.getSize(find.byType(ColorPicker));
+        expect(pickerSize.width, lessThanOrEqualTo(420.0));
+      },
+    );
+
     testWidgets('tapping reset calls onColorRemoved', (
       WidgetTester tester,
     ) async {

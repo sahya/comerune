@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:clock/clock.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -11,15 +12,20 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../app_logging.dart';
+import '../../application/broadcast/auto_extend_broadcast_controller.dart';
 import '../../application/comment_post/comment_post_controller.dart';
 import '../../application/timeshift_fetch/timeshift_fetch_controller.dart';
+import '../../application/settings/settings_save_helper.dart';
 import '../../application/settings/settings_store.dart';
 import '../../application/speech/speech_availability_notifier.dart';
+import '../../application/timeline/timeline_store.dart';
 import '../../comment_speech/comment_speech.dart';
 import '../../data/broadcast/broadcast_control_repository.dart';
 import '../../data/comment_log/comment_log_tag.dart';
 import '../../data/comment_log/comment_log_writer.dart';
+import '../../data/filter/ng_dict_cipher.dart';
 import '../../domain/comment_log/comment_log_stats.dart';
+import '../../domain/comment_log/recent_broadcast_stats.dart';
 import '../../domain/models/teach_command.dart';
 import '../../domain/models/teach_command_handler.dart';
 import '../../domain/utils/elapsed_formatter.dart';
@@ -35,11 +41,14 @@ import '../../domain/models/ng_display_subcategory.dart';
 import '../../domain/models/ng_policy.dart';
 import '../../domain/models/ng_preset_category.dart';
 import '../../domain/models/user_name_resolution.dart';
+import '../../extension/extension_slot.dart';
+import '../../extension/slot_ids.dart';
 import '../errors/user_facing_error_messages.dart';
 import '../strings/app_strings.dart';
 import '../theme/app_theme.dart';
 import '../widgets/comment_input_bar.dart';
 import '../widgets/display_subcategory_warning_dialog.dart';
+import '../widgets/extend_broadcast_dialog.dart';
 import 'comment_log_stats_sheet.dart';
 import 'comment_screen_config.dart';
 import 'tts_settings_screen.dart';
@@ -47,6 +56,17 @@ import '../widgets/timeshift_fetch_panel.dart';
 import 'user_detail_sheet.dart';
 
 const String kLegacyUnsupportedFormatMessage = 'legacy: 未対応フォーマット';
+
+// Comment-content prefix markers used by the speech pipeline.
+//
+// '☆' marks comments hidden from display by the star-prefix filter.
+// '/' marks comments skipped from TTS by the slash-prefix filter
+// (also covers owner commands such as `/teach`).
+const String _kStarPrefix = '☆';
+const String _kSlashPrefix = '/';
+
+bool _hasStarPrefix(String content) => content.startsWith(_kStarPrefix);
+bool _hasSlashPrefix(String content) => content.startsWith(_kSlashPrefix);
 
 /// Feature flag: コメント投稿 UI（FAB + 入力バー）の有効化。
 ///
@@ -395,6 +415,7 @@ class CommentRowHarness extends StatelessWidget {
     this.onOpenUrl,
     this.beginAt,
     this.ngMatcher,
+    this.normalizedSearchQuery,
   });
 
   final AppMessage message;
@@ -415,6 +436,10 @@ class CommentRowHarness extends StatelessWidget {
   final ValueChanged<AppMessage>? onOpenUrl;
   final DateTime? beginAt;
   final NgMatcher? ngMatcher;
+
+  /// Forwarded to [_CommentRow.normalizedSearchQuery]. Tests pass this in
+  /// to verify search highlighting without spinning up the full screen.
+  final String? normalizedSearchQuery;
 
   @override
   Widget build(BuildContext context) {
@@ -437,6 +462,7 @@ class CommentRowHarness extends StatelessWidget {
       onOpenUrl: onOpenUrl,
       beginAt: beginAt,
       ngMatcher: ngMatcher,
+      normalizedSearchQuery: normalizedSearchQuery,
     );
   }
 }
@@ -460,6 +486,7 @@ class PinnedCommentRowHarness extends StatelessWidget {
     this.beginAt,
     this.textScaler = TextScaler.noScaling,
     this.ngMatcher,
+    this.normalizedSearchQuery,
   });
 
   final AppMessage message;
@@ -475,6 +502,11 @@ class PinnedCommentRowHarness extends StatelessWidget {
   final DateTime? beginAt;
   final TextScaler textScaler;
   final NgMatcher? ngMatcher;
+
+  /// Forwarded to [_PinnedCommentRow.normalizedSearchQuery]. Tests pass
+  /// this in to verify search highlighting on pinned rows without
+  /// spinning up the full screen.
+  final String? normalizedSearchQuery;
 
   @override
   Widget build(BuildContext context) {
@@ -492,13 +524,20 @@ class PinnedCommentRowHarness extends StatelessWidget {
       beginAt: beginAt,
       textScaler: textScaler,
       ngMatcher: ngMatcher,
+      normalizedSearchQuery: normalizedSearchQuery,
     );
   }
 }
 
 /// Actions reachable through the AppBar overflow menu. Kept private to the
 /// screen because the menu's wiring lives entirely inside [CommentScreen].
-enum _AppBarMenuAction { endBroadcast, search, saveLog, settings }
+enum _AppBarMenuAction {
+  extendBroadcast,
+  endBroadcast,
+  search,
+  saveLog,
+  settings,
+}
 
 /// Single source of truth for the "emphasize gift / nicoad" decision so
 /// that background color and leading icon stay in sync.
@@ -566,6 +605,7 @@ class CommentScreen extends StatefulWidget {
     this.commentZebraStripingEnabled = false,
     this.commentSortOrder = CommentSortOrder.ascending,
     this.showCommentNo = false,
+    this.autoExtendBroadcastEnabled = false,
     this.userColorMap = const <String, int>{},
     this.onUserColorChanged,
     this.onUserColorRemoved,
@@ -584,6 +624,7 @@ class CommentScreen extends StatefulWidget {
     this.timeshiftFetchController,
     this.broadcastControlRepository,
     this.clock,
+    this.recentBroadcastStats,
   });
 
   /// Program-level metadata (lv, title, broadcaster info, etc.).
@@ -623,6 +664,11 @@ class CommentScreen extends StatefulWidget {
   /// `true` のとき、コメント行のメタ情報先頭（時刻の前）に
   /// `AppMessage.commentNo` を表示する。Issue #784。
   final bool showCommentNo;
+
+  /// 配信中に「残り 5 分」を切ったら自動延長するかどうか（Issue #875）。
+  /// PR1 範囲では AppBar オーバーフローメニュー内の Switch 表示状態の
+  /// 初期値として使うのみ。Timer 動作の配線は #876 (PR2) で行う。
+  final bool autoExtendBroadcastEnabled;
 
   /// Per-user comment color map. Keys are user IDs, values are ARGB32 ints.
   final Map<String, int> userColorMap;
@@ -692,11 +738,21 @@ class CommentScreen extends StatefulWidget {
   /// the wall clock.
   final Clock? clock;
 
+  /// Issue #767: optional snapshot of the **previous** broadcast's stats
+  /// (memory-only, fed by the composition root). When non-null and the
+  /// snapshot's lv differs from [programInfo.lv], the status detail view
+  /// surfaces a "直前の統計を見る" entry. The snapshot is intentionally
+  /// not built from this screen's own state — `_showStatsPanel` already
+  /// renders the *current* broadcast's stats; this prop is purely about
+  /// the **previous** broadcast.
+  final RecentBroadcastStats? recentBroadcastStats;
+
   @override
   State<CommentScreen> createState() => _CommentScreenState();
 }
 
 class _CommentScreenState extends State<CommentScreen>
+    with WidgetsBindingObserver
     implements CommentScreenTestAccess {
   static const double _autoScrollResumeThreshold = 50;
   static const Duration _wakelockReleaseDelay = Duration(seconds: 45);
@@ -715,7 +771,85 @@ class _CommentScreenState extends State<CommentScreen>
   /// In-flight guard for the AppBar overflow "配信を終了" entry. While
   /// `true` the menu item is rendered disabled and re-tapping after
   /// re-opening the menu cannot trigger a second `endBroadcast` API call.
+  ///
+  /// This covers the entire flow including the confirmation dialog window,
+  /// not only the API region (see [_isEndBroadcastApiInFlight] for that).
   bool _isEndingBroadcast = false;
+
+  /// Tighter sub-interval flag covering only the actual
+  /// `BroadcastControlRepository.endBroadcast` API call. Used to drive a
+  /// thin AppBar bottom progress indicator so the user gets visual
+  /// feedback during the 1–2 second window between confirming and the
+  /// connection-close → `_showStatsPanel` flow taking over (#785).
+  ///
+  /// Kept separate from [_isEndingBroadcast] on purpose: the indeterminate
+  /// `LinearProgressIndicator` animation never settles, so leaving it
+  /// running during the modal confirmation dialog would break
+  /// `pumpAndSettle()` in widget tests for that dialog. Restricting it to
+  /// the API region keeps the dialog phase test-friendly and matches the
+  /// product intent (only show progress while waiting on the network).
+  bool _isEndBroadcastApiInFlight = false;
+
+  /// Re-entrancy guard for the manual extend dialog flow (Issue #872).
+  ///
+  /// Mirrors [_isEndingBroadcast] in spirit: covers the entire window from
+  /// menu tap until the dialog and any in-flight API call resolve so a
+  /// re-tap on the menu cannot stack a second dialog.
+  bool _isExtendingBroadcast = false;
+
+  /// Issue #875: 自動延長 Switch の現在の ON/OFF 状態。
+  ///
+  /// `widget.autoExtendBroadcastEnabled` の初期値で起動し、ユーザーが
+  /// メニューでトグルすると即座に反転する。永続化はコールバック経由で
+  /// 上位レイヤー（select_screen / SettingsStore）に委ねるため、ここでは
+  /// 表示用キャッシュとしてのみ保持する。Issue #876 で Timer 動作と
+  /// 配線され、`_autoExtendController` が真のオーナーになる。
+  late bool _autoExtendBroadcastEnabled = widget.autoExtendBroadcastEnabled;
+
+  /// Issue #876: 自動延長 Timer 管理コントローラー。`broadcastControlRepository`
+  /// が wired な場合のみ生成される（未配線環境＝テスト/最小ホストでは
+  /// `null`）。State から所有して initState で生成、dispose で解放。
+  AutoExtendBroadcastController? _autoExtendController;
+
+  /// 自動延長 UI 一時非表示フラグ（Issue #876）。
+  ///
+  /// PR #879 で Timer 動作（PR #878）が完成するまでの間、配信主が
+  /// 「Switch ON にしたのに延長されない」と誤解しないように UI 自体を
+  /// 隠していた。PR #878 で Timer 配線が完了したが、niconico API 側の
+  /// endAt 取得経路に既知のフォールバックリスク
+  /// （`docs/analysis/auto-extend-coldstart-audit-2026-05-05.md` 参照）
+  /// があるため、まずは debug / dart-define オプトインだけで露出し、
+  /// 実機検証を継続できるようにする運用にしている。
+  ///
+  /// release ビルドで一般ユーザーへ露出する準備が整ったらこのフラグを
+  /// `true` に戻す。設定の永続化・Export/Import 互換は維持しているので、
+  /// フラグを戻すだけで Switch の最終状態も保持されたまま再表示できる。
+  ///
+  /// 完全 release 時のクリーンアップ予告: 本フラグを `true` に戻すと
+  /// 同時に [_autoExtendDebugUiOverride] と [_showAutoExtendUi] の
+  /// 3 段ガードは不要になる。簡略化したい場合はそのタイミングで
+  /// `if (canEndBroadcast)` 直書きに戻し、本 const と dart-define
+  /// オーバーライド・合成 const ごと削除して良い。
+  static const bool _autoExtendUiVisible = false;
+
+  /// Issue #876: release ビルドでも opt-in で Switch を露出するための
+  /// dart-define オーバーライド。QA / 配信主に検証ビルドを配布する
+  /// ときに `--dart-define=COMERUNE_AUTO_EXTEND_DEBUG_UI=true` で
+  /// 有効化する。`lib/extension/extension_debug_overrides.dart` の
+  /// 既存 dart-define パターンと同じ流儀。
+  static const bool _autoExtendDebugUiOverride = bool.fromEnvironment(
+    'COMERUNE_AUTO_EXTEND_DEBUG_UI',
+    defaultValue: false,
+  );
+
+  /// 自動延長 Switch を AppBar オーバーフローメニューに表示してよいか。
+  ///
+  /// 優先順位:
+  /// 1. `_autoExtendUiVisible == true` → 一般リリース（最終形）
+  /// 2. `_autoExtendDebugUiOverride == true` → release でも opt-in 可
+  /// 3. `kDebugMode == true` → 開発時は常に表示（debug build / widget test）
+  static const bool _showAutoExtendUi =
+      _autoExtendUiVisible || _autoExtendDebugUiOverride || kDebugMode;
 
   /// Timestamp at which the broadcast transitioned to ended/stopped.
   /// Used to freeze the status-bar elapsed timer display.
@@ -751,12 +885,55 @@ class _CommentScreenState extends State<CommentScreen>
   /// Writers set this to `widget.speechConfig.speechSettings.engineType`
   /// on success and to `null` on teardown / retry.
   ///
-  /// TODO(#741 follow-up — Problem 3): the Flutter-side `_speechStarted`
-  /// flag is still maintained independently of the native
-  /// `SpeechRuntimeStatus`. Once the native side exposes a `started`
-  /// field via getStatus(), this screen should reconcile both flags
-  /// instead of trusting only the local one.
   String? _initializedEngineType;
+
+  /// Mirror of the native worker-loop intent
+  /// ([SpeechRuntimeStatus.started]).
+  ///
+  /// Issue #915: the native side (`SpeechControllerImpl.started`) is the
+  /// **ground truth**; this Dart flag is a UI / guard mirror so frequent
+  /// reads do not require a method-channel round-trip. It represents
+  /// *worker-loop intent* only — it is independent of engine readiness
+  /// (e.g. `_speechStarted == true` does not imply
+  /// `_speechEngineState == ready`).
+  ///
+  /// Write-time invariants kept in sync with native (AC2):
+  /// - **Successful true-set**: only after `platform.start()` returns and
+  ///   the post-start abort guards have passed
+  ///   ([_initializeAndStartSpeech]).
+  /// - **Intentional false-set (abort path of `_initializeAndStartSpeech`)**:
+  ///   written *before* awaiting `platform.stop(clearQueue: true)` so that
+  ///   any guards that fire while we await the stop see the new intent
+  ///   immediately. This is required because the abort path runs after
+  ///   `platform.start()` succeeded — without the pre-await flip, a guard
+  ///   could observe `_speechStarted == true` racing against the in-flight
+  ///   teardown.
+  /// - **Intentional false-set (`_stopSpeech` path)**: written *after*
+  ///   `await platform.stop(clearQueue: true)` returns. The native
+  ///   `SpeechControllerImpl.stop()` flips its own `started` flag
+  ///   synchronously at entry (before any suspension), so the native
+  ///   ground truth is already `false` while we await. The post-await
+  ///   `setState` is the matching mirror update and is intentionally
+  ///   scheduled in the same microtask as `_setSpeechEngineState` to keep
+  ///   the rebuild atomic. Any guard that races during the await would
+  ///   re-query native truth via reconcile, not the mirror, so the
+  ///   late mirror-flip is safe.
+  /// - **Ground-truth correction**: re-read from `getStatus().started`
+  ///   at the engine-switch boundary ([_handleSpeechSettingsChanged])
+  ///   to absorb cases where native has flipped the flag without the
+  ///   screen observing (e.g. `release()`).
+  ///
+  /// Forward-compat caveat (Issue #915): when a *new Flutter binary*
+  /// runs against an *old native binary* that does not yet emit the
+  /// `started` key in `SpeechRuntimeStatus`, `getStatus().started` will
+  /// always default to `false`. This is harmless at the only current
+  /// reconcile call site (engine-switch, where the mirror is either
+  /// already false or has just been stopped via `_stopSpeech`). New
+  /// reconcile call sites that may fire while the mirror is genuinely
+  /// `true` (e.g. lifecycle resume, post-process-recreation hooks) MUST
+  /// be added with this caveat in mind — do not blanket-reconcile from
+  /// arbitrary points until the native binary is guaranteed to emit
+  /// the field.
   bool _speechStarted = false;
 
   /// True when [_initializedEngineType] matches the engine type currently
@@ -800,10 +977,6 @@ class _CommentScreenState extends State<CommentScreen>
 
   Timer? _wakelockReleaseTimer;
 
-  /// Periodic timer that ensures new comments are submitted for speech
-  /// even when the widget tree is not rebuilt (e.g. while the app is
-  /// backgrounded and [didUpdateWidget] is not called).
-  Timer? _speechPollTimer;
   StreamSubscription<SpeechEvent>? _speechEventSub;
 
   /// Issue #739: countdown that delays the broadcast-end speech-stop so the
@@ -1016,12 +1189,50 @@ class _CommentScreenState extends State<CommentScreen>
     widget.connectionSupervisor.addListener(_handleConnectionChanged);
     unawaited(_resolveCommentPostContext());
 
+    // Issue #876: register lifecycle observer so the auto-extend Timer
+    // can pause when the app goes to background and resume on return.
+    WidgetsBinding.instance.addObserver(this);
+
+    // Issue #876: instantiate the auto-extend controller only when a
+    // BroadcastControlRepository is wired. Test / minimal hosts that
+    // omit the repository skip the controller entirely; the Switch row
+    // is hidden in that case anyway (`canEndBroadcast` ガード).
+    final BroadcastControlRepository? repo = widget.broadcastControlRepository;
+    if (repo != null) {
+      // i18n 済の表示文字列は presentation 層 (AppStrings) から取り、
+      // controller 自体は presentation 層に依存しない設計にする
+      // （application → presentation の逆方向 import を避ける）。
+      _autoExtendController = AutoExtendBroadcastController(
+        repository: repo,
+        emitMessage: (AppMessage message) {
+          widget.callbacks.onAutoExtendSystemMessage?.call(message);
+        },
+        onEndTimeUpdated: (DateTime newEndAt) {
+          widget.callbacks.onBroadcastEndTimeExtended?.call(newEndAt);
+        },
+        successMessageBuilder: AppStrings.autoExtendBroadcast.successMessage,
+        failureMessage: AppStrings.autoExtendBroadcast.failureMessage,
+      );
+      _evaluateAutoExtendController();
+    }
+
     // Keep screen on while viewing comments.
     unawaited(WakelockPlus.enable());
     _syncWakelockForStatus(_lastStatus);
 
     _requestUserNameResolution(widget.messages);
-    _effectivePresetNgWords = widget.contentFilter.presetNgWords;
+    // Issue #628: structured `presetCategories` injection seam takes
+    // precedence over the flat `presetNgWords` list. When provided, the
+    // matcher is seeded with the categories directly and the asset-load
+    // fallback is skipped.
+    if (widget.contentFilter.presetCategories.isNotEmpty) {
+      _effectivePresetCategories = widget.contentFilter.presetCategories;
+      _effectivePresetNgWords = NgPresetCategory.flattenWords(
+        widget.contentFilter.presetCategories,
+      );
+    } else {
+      _effectivePresetNgWords = widget.contentFilter.presetNgWords;
+    }
     _rebuildNgMatcher();
 
     // Seed the NG-protection cursor with the current tail so that messages
@@ -1047,7 +1258,10 @@ class _CommentScreenState extends State<CommentScreen>
     if (widget.messages.isNotEmpty) {
       _lastProcessedTailMessageId = widget.messages.last.id;
     }
-    if (widget.contentFilter.presetNgWords.isEmpty) {
+    // Issue #628: only fall back to asset load when neither the structured
+    // `presetCategories` nor the flat `presetNgWords` were provided.
+    if (widget.contentFilter.presetCategories.isEmpty &&
+        widget.contentFilter.presetNgWords.isEmpty) {
       unawaited(_loadPresetNgWordsFromAsset());
     }
 
@@ -1078,6 +1292,16 @@ class _CommentScreenState extends State<CommentScreen>
       _onAndroidTtsAvailabilityChanged,
     );
 
+    // Issue #762: subscribe to TimelineStore mutations so that new comments
+    // are submitted for speech the moment they arrive — both in foreground
+    // (immediate) and in background (no longer waiting up to 2 s for the
+    // previous Timer.periodic poll). The foreground submit path in
+    // [didUpdateWidget] is intentionally retained: callers may pass
+    // `widget.messages` from a source other than [timelineStore], and the
+    // `_lastSpeechMessageId` cursor in [_submitNewCommentsForSpeech]
+    // de-duplicates between the two entry points.
+    widget.speechConfig.timelineStore?.addListener(_onTimelineStoreChanged);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToEdge(animated: false);
     });
@@ -1086,6 +1310,48 @@ class _CommentScreenState extends State<CommentScreen>
   @override
   void didUpdateWidget(covariant CommentScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    // Issue #782: re-seed [_sortOrder] when the parent rebuilds CommentScreen
+    // with a different [commentSortOrder]. The presentation layer keeps a
+    // local copy so the AppBar toggle can flip direction without waiting for
+    // the parent's persisted value to round-trip through SharedPreferences.
+    // The same local copy means any external change to the prop (Settings
+    // Import replacing AppSettings, restore-defaults, etc.) would otherwise
+    // be silently ignored. Equality check guarantees:
+    //   - same-value parent rebuilds (which happen on every unrelated parent
+    //     setState) leave the user's last manual toggle direction intact;
+    //   - only a genuine prop change triggers the re-seed and the
+    //     accompanying scroll-to-edge so the user does not end up staring at
+    //     the opposite end of the timeline after a sort flip.
+    if (oldWidget.commentSortOrder != widget.commentSortOrder) {
+      _sortOrder = widget.commentSortOrder;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _scrollToEdge(animated: false);
+      });
+    }
+
+    // Issue #875: re-seed the local Switch cache when the parent
+    // rebuilds CommentScreen with a different [autoExtendBroadcastEnabled]
+    // (e.g. Settings Import replacing AppSettings). The local copy lets
+    // the user's tap update the menu without round-tripping through
+    // SharedPreferences first; equality check leaves the user's last
+    // toggle intact on unrelated parent rebuilds.
+    if (oldWidget.autoExtendBroadcastEnabled !=
+        widget.autoExtendBroadcastEnabled) {
+      _autoExtendBroadcastEnabled = widget.autoExtendBroadcastEnabled;
+    }
+
+    // Issue #876: forward state shifts that affect auto-extend scheduling
+    // to the controller. The controller diff-checks internally so calling
+    // it on every rebuild is safe; we still narrow to genuine prop
+    // changes to avoid unnecessary work on unrelated rebuilds.
+    if (oldWidget.programInfo.lv != widget.programInfo.lv ||
+        oldWidget.programInfo.endAt != widget.programInfo.endAt ||
+        oldWidget.autoExtendBroadcastEnabled !=
+            widget.autoExtendBroadcastEnabled) {
+      _evaluateAutoExtendController();
+    }
 
     if (oldWidget.connectionSupervisor != widget.connectionSupervisor) {
       oldWidget.connectionSupervisor.removeListener(_handleConnectionChanged);
@@ -1115,6 +1381,21 @@ class _CommentScreenState extends State<CommentScreen>
       newNotifier?.addListener(_onAndroidTtsAvailabilityChanged);
     }
 
+    // Issue #762: re-attach the TimelineStore listener if the parent swapped
+    // in a different store instance. Without this swap the listener would
+    // silently keep firing on the previous store and miss mutations on the
+    // new one — symmetric with the [SpeechAvailabilityNotifier] swap above.
+    final TimelineStore? oldStore = oldWidget.speechConfig.timelineStore;
+    final TimelineStore? newStore = widget.speechConfig.timelineStore;
+    if (!identical(oldStore, newStore)) {
+      oldStore?.removeListener(_onTimelineStoreChanged);
+      newStore?.addListener(_onTimelineStoreChanged);
+    }
+
+    final bool presetCategoriesChanged = !identical(
+      oldWidget.contentFilter.presetCategories,
+      widget.contentFilter.presetCategories,
+    );
     if (!_listEqualsShallow(
           oldWidget.contentFilter.ngWords,
           widget.contentFilter.ngWords,
@@ -1122,8 +1403,18 @@ class _CommentScreenState extends State<CommentScreen>
         !_listEqualsShallow(
           oldWidget.contentFilter.presetNgWords,
           widget.contentFilter.presetNgWords,
-        )) {
-      if (widget.contentFilter.presetNgWords.isNotEmpty) {
+        ) ||
+        presetCategoriesChanged) {
+      // Issue #628: structured `presetCategories` injection seam wins over
+      // the flat `presetNgWords` fallback and over asset loading. Mirrors
+      // the priority order in [initState].
+      if (widget.contentFilter.presetCategories.isNotEmpty) {
+        _effectivePresetCategories = widget.contentFilter.presetCategories;
+        _effectivePresetNgWords = NgPresetCategory.flattenWords(
+          widget.contentFilter.presetCategories,
+        );
+        _rebuildNgMatcher();
+      } else if (widget.contentFilter.presetNgWords.isNotEmpty) {
         _effectivePresetNgWords = widget.contentFilter.presetNgWords;
         // Flat list provided by the caller loses category info; drop any
         // previously loaded structured categories so the matcher does not
@@ -1133,8 +1424,16 @@ class _CommentScreenState extends State<CommentScreen>
         // returns null for flat-fallback entries.
         _effectivePresetCategories = const <NgPresetCategory>[];
         _rebuildNgMatcher();
-      } else if (oldWidget.contentFilter.presetNgWords.isNotEmpty &&
-          widget.contentFilter.presetNgWords.isEmpty) {
+      } else if ((oldWidget.contentFilter.presetNgWords.isNotEmpty ||
+              oldWidget.contentFilter.presetCategories.isNotEmpty) &&
+          widget.contentFilter.presetNgWords.isEmpty &&
+          widget.contentFilter.presetCategories.isEmpty) {
+        // Issue #628: caller cleared *both* injection seams (the
+        // structured `presetCategories` and the flat `presetNgWords`).
+        // Drop our cached state and fall back to the bundled
+        // `preset_ng_words.json` asset, mirroring the cold-start path
+        // in [initState] so the matcher never observes a stale
+        // category list after a clear.
         _effectivePresetNgWords = const <String>[];
         _effectivePresetCategories = const <NgPresetCategory>[];
         _rebuildNgMatcher();
@@ -1333,7 +1632,16 @@ class _CommentScreenState extends State<CommentScreen>
     _debugLogLazy(
       () => '[CommentScreen] dispose: speechStarted=$_speechStarted',
     );
-    _stopSpeechPollTimer();
+    // Issue #876: tear down the auto-extend Timer + lifecycle observer
+    // before the rest of the screen disposes so any in-flight retry
+    // chain settles against a still-valid State.
+    WidgetsBinding.instance.removeObserver(this);
+    _autoExtendController?.dispose();
+    _autoExtendController = null;
+    // Issue #762: detach the reactive submit listener before tearing down
+    // any other speech state so a late mutation racing with dispose cannot
+    // call back into a half-disposed widget.
+    widget.speechConfig.timelineStore?.removeListener(_onTimelineStoreChanged);
     // Issue #739: cancel any in-flight broadcast-end grace timer so it
     // cannot fire after dispose and call into a torn-down widget.
     _speechGraceTimer?.cancel();
@@ -1746,6 +2054,11 @@ class _CommentScreenState extends State<CommentScreen>
         _speechEventSub?.cancel();
         _speechEventSub = null;
         _speechBaselineTimestamp = null;
+        // Issue #915 AC2(b): record stop intent in the same synchronous
+        // block as the `platform.stop()` call below. The native side will
+        // also flip its `started` flag inside `stop()`, but we set the
+        // mirror first so any guards that fire while we await `stop()`
+        // see the new intent immediately.
         _speechStarted = false;
         _setSpeechEngineState(SpeechEngineState.unknown);
         // Issue #695: counter must also be reset on abort, not just on the
@@ -1761,12 +2074,15 @@ class _CommentScreenState extends State<CommentScreen>
       }
 
       if (mounted) {
+        // Issue #915 AC2(a): only flip the mirror to `true` AFTER
+        // `platform.start()` has returned and the abort guards above have
+        // passed. This keeps the screen-side mirror at most as optimistic
+        // as the native worker-loop intent.
         setState(() {
           _speechStarted = true;
         });
         _setSpeechEngineState(SpeechEngineState.ready);
       }
-      _startSpeechPollTimer();
       _debugLogLazy(
         () =>
             '[CommentScreen] Speech started. baseline=$_lastSpeechMessageId, '
@@ -1817,6 +2133,12 @@ class _CommentScreenState extends State<CommentScreen>
       // re-runs the full setup path (status check → setup dialog if needed
       // → updateSettings → start) for the new engine.
       _initializedEngineType = null;
+      // Issue #915 AC2(c) / AC4: at this point we expect the native
+      // worker-loop to be off (we either already called stop() above, or
+      // it was off to begin with). Reconcile against the native ground
+      // truth so that any race / stale state from the previous engine
+      // does not leak into the new engine.
+      await _reconcileSpeechStartedFromNative(reason: 'engine_switched');
       if (newSettings.enabled) {
         await _initializeAndStartSpeech();
       }
@@ -1847,7 +2169,6 @@ class _CommentScreenState extends State<CommentScreen>
 
   Future<void> _stopSpeech() async {
     _debugLogLazy(() => '[CommentScreen] stopSpeech: started=$_speechStarted');
-    _stopSpeechPollTimer();
     if (_speechStarted) {
       try {
         await widget.speechConfig.speechPlatform?.stop(clearQueue: true);
@@ -1858,11 +2179,81 @@ class _CommentScreenState extends State<CommentScreen>
       _speechBaselineTimestamp = null;
       _consecutiveAndroidTtsFailures = 0;
       if (mounted) {
+        // Issue #915 AC2(b): the native `stop()` already flipped
+        // `started=false` (see SpeechControllerImpl.stop), so this
+        // setState is the matching mirror update. We do it after the
+        // await so the state-change frame is scheduled in the same
+        // microtask as the engine-state reset below.
         setState(() {
           _speechStarted = false;
         });
         _setSpeechEngineState(SpeechEngineState.unknown);
       }
+    }
+  }
+
+  /// Reconciles [_speechStarted] against the native ground truth
+  /// ([SpeechRuntimeStatus.started]).
+  ///
+  /// Issue #915: invoked at synchronisation boundaries (currently the
+  /// engine-switch path) where the native worker-loop intent may have
+  /// changed without the screen observing it through normal flow — for
+  /// example after a process recreation, after a `release()` triggered
+  /// outside this screen, or after an engine switch where stop() was
+  /// skipped because we already thought the worker was off.
+  ///
+  /// Failure mode: if the platform call throws (channel hiccup, plugin
+  /// not registered in a host-test environment, etc.) we leave the local
+  /// mirror untouched. The next genuine start/stop write will fix it.
+  ///
+  /// Forward-compat guard (Issue #915, structurally identical to the
+  /// Issue #692 Android-TTS silent-drop footgun): if the native payload
+  /// did not carry the `started` key at all
+  /// ([SpeechRuntimeStatus.startedReported] is `false`), the `false` we
+  /// would otherwise read is a *default*, not a *reported* value. An old
+  /// native binary running under a new Flutter binary would then silently
+  /// downgrade a genuinely-`true` mirror to `false`, dropping queued
+  /// comments. Today the only call site is the post-`_stopSpeech`
+  /// engine-switch edge where the mirror is already `false`, so this is
+  /// latent — but it would activate the moment a future call site
+  /// reconciles while the mirror is genuinely `true` (lifecycle resume,
+  /// post-process-recreation). We refuse to trust an unreported value and
+  /// preserve the mirror instead.
+  Future<void> _reconcileSpeechStartedFromNative({
+    required String reason,
+  }) async {
+    final CommentSpeechPlatform? platform = widget.speechConfig.speechPlatform;
+    if (platform == null) return;
+    try {
+      final SpeechRuntimeStatus status = await platform.getStatus();
+      if (!mounted) return;
+      if (!status.startedReported) {
+        // Old native binary did not report `started` — the `false` here
+        // is a fromMap default, not native ground truth. Trusting it
+        // would silently downgrade the mirror (Issue #692-style footgun).
+        // Preserve the mirror and let the next genuine start/stop write
+        // correct it.
+        _debugLog(
+          '[CommentScreen] reconcileSpeechStarted ($reason): native did '
+          'not report started (old binary?) — preserving mirror '
+          '($_speechStarted)',
+        );
+        return;
+      }
+      if (_speechStarted != status.started) {
+        _debugLog(
+          '[CommentScreen] reconcileSpeechStarted ($reason): '
+          'mirror=$_speechStarted → native=${status.started}',
+        );
+        setState(() {
+          _speechStarted = status.started;
+        });
+      }
+    } catch (e) {
+      _errorLog(
+        '[CommentScreen] reconcileSpeechStarted ($reason): getStatus FAILED',
+        error: e,
+      );
     }
   }
 
@@ -1899,6 +2290,16 @@ class _CommentScreenState extends State<CommentScreen>
   /// Cancels the grace timer without firing the deferred stop. Used when
   /// the connection transitions to a non-ended status (reconnect / manual
   /// stop) — those branches drive their own teardown.
+  ///
+  /// [onSpeechGraceEnded] callback behaviour by [reason]:
+  /// - `'speech_disabled_by_user'`: fires the callback so the FGS
+  ///   controller's parallel grace timer ends immediately instead of
+  ///   waiting out the full 30 s (Issue #764 Phase 2).
+  /// - `'user_stop_for_exit'`, `'status=<code>'` (reconnect/manual-stop):
+  ///   does NOT fire the callback — these paths handle their own FGS
+  ///   teardown independently.
+  ///
+  /// For the path that fires the callback unconditionally, see [_endSpeechGrace].
   void _cancelSpeechGrace({required String reason}) {
     if (!_isInSpeechGrace && _speechGraceTimer == null) {
       return;
@@ -1907,6 +2308,9 @@ class _CommentScreenState extends State<CommentScreen>
     _speechGraceTimer?.cancel();
     _speechGraceTimer = null;
     _isInSpeechGrace = false;
+    if (reason == 'speech_disabled_by_user') {
+      widget.speechConfig.onSpeechGraceEnded?.call();
+    }
   }
 
   /// Completes the grace window, firing the deferred `_stopSpeech` exactly
@@ -1922,7 +2326,7 @@ class _CommentScreenState extends State<CommentScreen>
     // Notify the FGS controller so its parallel grace timer can end early
     // too. The callback is no-op when not in FGS-grace, so calling on every
     // reason (timeout / queue_drained / cancel) is safe.
-    widget.speechConfig.onSpeechQueueDrained?.call();
+    widget.speechConfig.onSpeechGraceEnded?.call();
     if (!mounted) {
       // Widget already torn down — dispose() will (or did) call stop().
       return;
@@ -2109,36 +2513,42 @@ class _CommentScreenState extends State<CommentScreen>
     }
   }
 
-  void _startSpeechPollTimer() {
-    _stopSpeechPollTimer();
-    _speechPollTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+  /// Issue #762: reactive replacement for the previous bg poll timer.
+  ///
+  /// Fires synchronously from [TimelineStore.notifyListeners], which the
+  /// store dispatches AFTER `_publishSnapshot()` so `messages` already
+  /// reflects the new entry by the time we read it here. Runs in BOTH
+  /// foreground and background — the foreground path was previously the
+  /// `didUpdateWidget` submit, which is retained for callers that pass
+  /// `widget.messages` from a non-store source. The `_lastSpeechMessageId`
+  /// cursor in [_submitNewCommentsForSpeech] de-duplicates between the two
+  /// entry points so a comment is never spoken twice.
+  ///
+  /// Note: [TimelineStore.setCapacity] also calls [notifyListeners] even
+  /// when no messages are evicted (capacity-only change). In that case
+  /// `messages.last.id == _lastSpeechMessageId` and
+  /// [_submitNewCommentsForSpeech] exits early — no spurious submit.
+  ///
+  /// Wrapped in try/catch so a single buggy invocation cannot tear down
+  /// the [TimelineStore]'s listener list (which would silently disable
+  /// reactive submit for the rest of the screen's lifetime). Mirrors the
+  /// defensive wrapper around [_onAndroidTtsAvailabilityChanged].
+  void _onTimelineStoreChanged() {
+    try {
       if (!mounted) return;
-      // Only poll when the app is not in a resumed (foreground) state.
-      // When resumed, didUpdateWidget already submits new comments.
-      final AppLifecycleState? lifecycleState =
-          WidgetsBinding.instance.lifecycleState;
-      if (lifecycleState == AppLifecycleState.resumed) return;
-
-      if (_speechStarted && widget.speechConfig.speechSettings.enabled) {
-        // Issue #758: in foreground, didUpdateWidget propagates the latest
-        // TimelineStore snapshot to widget.messages. In background the
-        // widget tree rebuild is paused (Flutter engine suspends frame
-        // scheduling), so widget.messages remains the snapshot captured
-        // at the last build before backgrounding. Read directly from the
-        // store here so the poll timer always sees the current snapshot.
-        // PR #721 made the messages getter return a cached view that is
-        // replaced on every mutation, so direct reads are always fresh.
-        // Falls back to widget.messages when no store is wired (tests).
-        final List<AppMessage> latest =
-            widget.speechConfig.timelineStore?.messages ?? widget.messages;
-        _submitNewCommentsForSpeech(latest);
-      }
-    });
-  }
-
-  void _stopSpeechPollTimer() {
-    _speechPollTimer?.cancel();
-    _speechPollTimer = null;
+      if (!_speechStarted) return;
+      if (!widget.speechConfig.speechSettings.enabled) return;
+      final List<AppMessage>? latest =
+          widget.speechConfig.timelineStore?.messages;
+      if (latest == null) return;
+      _submitNewCommentsForSpeech(latest);
+    } catch (e, stackTrace) {
+      _errorLog(
+        '[CommentScreen] _onTimelineStoreChanged: handler threw',
+        error: e,
+        stackTrace: stackTrace,
+      );
+    }
   }
 
   void _submitNewCommentsForSpeech(List<AppMessage> messages) {
@@ -2173,8 +2583,7 @@ class _CommentScreenState extends State<CommentScreen>
     for (int i = start; i < messages.length; i++) {
       final AppMessage message = messages[i];
       // Skip messages that arrived before speech was initialized.
-      if (_speechBaselineTimestamp != null &&
-          message.timestamp.isBefore(_speechBaselineTimestamp!)) {
+      if (_isBeforeSpeechBaseline(message)) {
         continue;
       }
       // Decide whether this message type should ever be spoken.
@@ -2222,15 +2631,14 @@ class _CommentScreenState extends State<CommentScreen>
       }
       // Skip NG users.
       final String? userId = message.userId;
-      if (userId != null && widget.contentFilter.ngUserIds.contains(userId)) {
+      if (_isNgUserSkippable(message)) {
         _debugLogLazy(
           () => '[CommentScreen] submitComment: SKIP NG user=$userId',
         );
         continue;
       }
       // Skip star-prefix hidden comments.
-      if (widget.contentFilter.starPrefixHidingEnabled &&
-          message.content.startsWith('☆')) {
+      if (_isStarPrefixSkippable(message)) {
         _debugLog('[CommentScreen] submitComment: SKIP star-prefix');
         continue;
       }
@@ -2245,8 +2653,7 @@ class _CommentScreenState extends State<CommentScreen>
         continue;
       }
       // Skip slash-prefix comments (shown in the list, but not read aloud).
-      if (widget.contentFilter.slashPrefixSkipEnabled &&
-          message.content.startsWith('/')) {
+      if (_isSlashPrefixSkippable(message)) {
         _debugLog('[CommentScreen] submitComment: SKIP slash-prefix');
         continue;
       }
@@ -2280,6 +2687,38 @@ class _CommentScreenState extends State<CommentScreen>
         }),
       );
     }
+  }
+
+  /// True when [message] arrived before speech was initialized and therefore
+  /// must not be spoken. Pure predicate extracted from
+  /// [_submitNewCommentsForSpeech].
+  bool _isBeforeSpeechBaseline(AppMessage message) {
+    return _speechBaselineTimestamp != null &&
+        message.timestamp.isBefore(_speechBaselineTimestamp!);
+  }
+
+  /// True when [message] is authored by an NG user and therefore must be
+  /// skipped for speech. Pure predicate extracted from
+  /// [_submitNewCommentsForSpeech].
+  bool _isNgUserSkippable(AppMessage message) {
+    final String? userId = message.userId;
+    return userId != null && widget.contentFilter.ngUserIds.contains(userId);
+  }
+
+  /// True when [message] is a star-prefix hidden comment that must be
+  /// skipped for speech. Pure predicate extracted from
+  /// [_submitNewCommentsForSpeech].
+  bool _isStarPrefixSkippable(AppMessage message) {
+    return widget.contentFilter.starPrefixHidingEnabled &&
+        _hasStarPrefix(message.content);
+  }
+
+  /// True when [message] is a slash-prefix comment that must be skipped for
+  /// speech (still shown in the list). Pure predicate extracted from
+  /// [_submitNewCommentsForSpeech].
+  bool _isSlashPrefixSkippable(AppMessage message) {
+    return widget.contentFilter.slashPrefixSkipEnabled &&
+        _hasSlashPrefix(message.content);
   }
 
   /// Submits a gift / ニコニ広告 message body to TTS.
@@ -2366,7 +2805,17 @@ class _CommentScreenState extends State<CommentScreen>
         final AppSettings updated = settings.copyWith(
           dictionaryRules: result.updatedRules,
         );
-        await store.save(updated);
+        try {
+          await saveSettings(store, updated);
+        } on Object {
+          // saveSettings already routed the error through appErrorLog
+          // (settingsSaveHelperLoggerName); the outer catch would
+          // otherwise double-log the same failure under the
+          // CommentScreen logger name. Match the previous behaviour of
+          // failing silently for save errors and skip the success
+          // SnackBar / callback.
+          return;
+        }
         widget.callbacks.onDictionaryRulesChanged?.call(updated);
       }
 
@@ -2502,6 +2951,14 @@ class _CommentScreenState extends State<CommentScreen>
           _commentInputExpanded = false;
         }
       });
+      // Issue #876: session resolution is async, so the auto-extend
+      // controller seeded in initState ran with `_commentPostUserSession`
+      // empty. Re-evaluate now that the session has flipped to its
+      // resolved value — without this the Timer never gets armed for
+      // a broadcaster who opens the screen with a stale empty session
+      // (e.g. cold start on a broadcast that already crossed the 5-min
+      // threshold).
+      _evaluateAutoExtendController();
     }
     if (trimmed.isEmpty) {
       return;
@@ -2520,6 +2977,11 @@ class _CommentScreenState extends State<CommentScreen>
       setState(() {
         _isBroadcaster = isBroadcaster;
       });
+      // Issue #876: broadcaster status is resolved asynchronously, so
+      // the controller's `enabled` gate (`_isBroadcaster && ...`) flipped
+      // while the controller was idle. Re-evaluate so the Timer arms
+      // immediately for late-arrival broadcaster confirmations.
+      _evaluateAutoExtendController();
     }
   }
 
@@ -2979,8 +3441,8 @@ class _CommentScreenState extends State<CommentScreen>
                               : Icons.arrow_upward,
                         ),
                         tooltip: _sortOrder == CommentSortOrder.ascending
-                            ? '新しい順に切替'
-                            : '古い順に切替',
+                            ? AppStrings.commentScreen.sortToggleToDescending
+                            : AppStrings.commentScreen.sortToggleToAscending,
                         onPressed: _toggleSortOrder,
                       ),
                       if (widget
@@ -3013,6 +3475,32 @@ class _CommentScreenState extends State<CommentScreen>
                       // stays visible because it conveys state at a glance.
                       _buildOverflowMenuButton(),
                     ],
+              // Thin progress strip pinned to the AppBar's bottom edge.
+              // Visible only while the "配信を終了" API call is in
+              // flight so the user sees feedback during the otherwise
+              // silent 1–2s window before the connection-close →
+              // _showStatsPanel flow surfaces its own UI (#785). We
+              // always reserve the 2px slot via PreferredSize so the
+              // AppBar height does not jump when the indicator
+              // appears/disappears (avoids a layout shift in the
+              // body below).
+              bottom: PreferredSize(
+                preferredSize: const Size.fromHeight(2),
+                child: _isEndBroadcastApiInFlight
+                    ? Semantics(
+                        // Screen-reader feedback for the otherwise silent
+                        // 1–2s API window (#785). Without this label the
+                        // indicator is invisible to assistive tech.
+                        label: '配信終了処理中',
+                        liveRegion: true,
+                        container: true,
+                        child: const LinearProgressIndicator(
+                          key: Key('end-broadcast-progress-indicator'),
+                          minHeight: 2,
+                        ),
+                      )
+                    : const SizedBox(height: 2),
+              ),
             ),
             body: Column(
               children: <Widget>[
@@ -3040,6 +3528,17 @@ class _CommentScreenState extends State<CommentScreen>
                   viewerCount: widget.statistics.viewerCount,
                   totalCommentCount: widget.statistics.totalCommentCount,
                   activeUserCount: widget.statistics.activeUserCount,
+                  // Issue #767: surface a "直前の統計を見る" entry only when
+                  // a recent broadcast snapshot exists AND it does not refer
+                  // to the current lv (so we never show the in-progress
+                  // broadcast as its own "previous" link).
+                  recentBroadcastStats:
+                      (widget.recentBroadcastStats != null &&
+                          widget.recentBroadcastStats!.lv !=
+                              widget.programInfo.lv)
+                      ? widget.recentBroadcastStats
+                      : null,
+                  onShowRecentBroadcastStats: _showRecentBroadcastStats,
                 ),
                 if (widget.timeshiftFetchController != null)
                   TimeshiftFetchPanel(
@@ -3072,6 +3571,9 @@ class _CommentScreenState extends State<CommentScreen>
                     showCommentNo: widget.showCommentNo,
                     textScaler: textScaler,
                     ngMatcher: _ngMatcher,
+                    normalizedSearchQuery: _normalizedSearchQuery.isEmpty
+                        ? null
+                        : _normalizedSearchQuery,
                   ),
                 if (widget.speechConfig.speechSettings.enabled &&
                     widget.speechConfig.isSpeechMuted)
@@ -3168,6 +3670,10 @@ class _CommentScreenState extends State<CommentScreen>
                                 onOpenUrl: _showUrlConfirmDialog,
                                 beginAt: widget.programInfo.beginAt,
                                 ngMatcher: _ngMatcher,
+                                normalizedSearchQuery:
+                                    _normalizedSearchQuery.isEmpty
+                                    ? null
+                                    : _normalizedSearchQuery,
                               );
                             },
                           ),
@@ -3816,6 +4322,16 @@ class _CommentScreenState extends State<CommentScreen>
     }
 
     _lastStatus = currentStatus;
+
+    // Issue #876: re-evaluate the auto-extend Timer on every connection
+    // status change so the `isOnAir` gate inside
+    // [_evaluateAutoExtendController] correctly cancels the Timer for
+    // `ended` / `failed` / `stopped` transitions. Calling this on every
+    // status change is safe — the controller's internal diff-check
+    // turns redundant updates into no-ops, and we explicitly want the
+    // network-failure path to disable the Timer too (a Timer fired on
+    // a failed connection would burn 3 retries against a dead session).
+    _evaluateAutoExtendController();
   }
 
   String _buildFailedSnackbarMessage() {
@@ -4075,12 +4591,74 @@ class _CommentScreenState extends State<CommentScreen>
     final bool showDividerBeforeSettings = hasSettings;
     final Color endBroadcastColor = Theme.of(context).colorScheme.error;
 
-    final _AppBarMenuAction? action = await showMenu<_AppBarMenuAction>(
+    // Items list type widened to `PopupMenuEntry<Object>` so that
+    // extension-provided menu entries (which cannot reference the
+    // private `_AppBarMenuAction` enum) can coexist with the host's
+    // own entries. The host's PopupMenuItem instances still carry
+    // `_AppBarMenuAction` values; we use a runtime type guard below
+    // to dispatch them.
+    final Object? action = await showMenu<Object>(
       context: context,
       position: position,
-      items: <PopupMenuEntry<_AppBarMenuAction>>[
+      items: <PopupMenuEntry<Object>>[
         if (canEndBroadcast)
-          PopupMenuItem<_AppBarMenuAction>(
+          PopupMenuItem<Object>(
+            key: const Key('extend-broadcast-button'),
+            value: _AppBarMenuAction.extendBroadcast,
+            child: _OverflowMenuRow(
+              icon: Icons.update,
+              label: AppStrings.extendBroadcast.menuItem,
+            ),
+          ),
+        if (_showAutoExtendUi && canEndBroadcast)
+          // Issue #875: 「自動延長」トグル行はメニューを閉じずに状態を
+          // 切り替える特別な振る舞いを持つ。配信主がトグル後に新しい状態
+          // をその場で視覚的に確認できるようにするため、PopupMenuItem の
+          // 標準的な「タップで Navigator.pop」を内側の InkWell で奪い
+          // (gesture arena で内側が優先)、メニューを開いたまま画面 state
+          // と StatefulBuilder の両方を更新する。
+          //
+          // value を持たず dispatch にも回さないので `_AppBarMenuAction`
+          // enum に対応する値は持たせていない。型パラメータ `<Object>`
+          // は他のメニュー項目（value 経由 dispatch を行うもの）と並ぶ
+          // showMenu のリスト型に揃えるためのもので、本項目自体は value
+          // を返さない。
+          PopupMenuItem<Object>(
+            padding: EdgeInsets.zero,
+            // StatefulBuilder はローカル state を持たず、再ビルドの
+            // トリガーとしてのみ使う（`_autoExtendBroadcastEnabled` の
+            // 真のオーナーは画面 state）。`innerSetState(() {})` は
+            // menu route 内の builder を再評価させるための空 setState。
+            child: StatefulBuilder(
+              builder: (BuildContext innerContext, StateSetter innerSetState) {
+                return InkWell(
+                  key: const Key('auto-extend-broadcast-toggle'),
+                  onTap: () {
+                    _toggleAutoExtendBroadcast();
+                    // メニュー route 側の StatefulBuilder を再ビルド
+                    // して Switch のサム位置を即座に更新する。
+                    // 画面 state は既に `_toggleAutoExtendBroadcast`
+                    // 内で setState 済みだが、メニュー route は別
+                    // Navigator route なので画面 setState では
+                    // 再ビルドされない。
+                    innerSetState(() {});
+                  },
+                  child: Container(
+                    constraints: const BoxConstraints(
+                      minHeight: kMinInteractiveDimension,
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: _OverflowMenuToggleRow(
+                      label: AppStrings.autoExtendBroadcast.menuItem,
+                      checked: _autoExtendBroadcastEnabled,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        if (canEndBroadcast)
+          PopupMenuItem<Object>(
             key: const Key('end-broadcast-button'),
             value: _AppBarMenuAction.endBroadcast,
             enabled: !_isEndingBroadcast,
@@ -4091,14 +4669,25 @@ class _CommentScreenState extends State<CommentScreen>
               labelColor: endBroadcastColor,
             ),
           ),
+        // Optional integration: extension-supplied broadcaster
+        // actions (e.g. "extend broadcast"). Gated on the same
+        // broadcaster check that hides the destructive end-broadcast
+        // affordance, per the SlotIds.broadcasterScreenActions
+        // contract.
+        if (canEndBroadcast)
+          ...resolveSlotChildren<PopupMenuEntry<Object>>(
+            context,
+            slotId: SlotIds.broadcasterScreenActions,
+            hostChildren: const <PopupMenuEntry<Object>>[],
+          ),
         if (showDividerAfterEndBroadcast) const PopupMenuDivider(),
-        const PopupMenuItem<_AppBarMenuAction>(
+        const PopupMenuItem<Object>(
           key: Key('comment-search-button'),
           value: _AppBarMenuAction.search,
           child: _OverflowMenuRow(icon: Icons.search, label: 'コメントを検索'),
         ),
         if (hasLogWriter)
-          PopupMenuItem<_AppBarMenuAction>(
+          PopupMenuItem<Object>(
             key: const Key('save-comment-log-button'),
             value: _AppBarMenuAction.saveLog,
             enabled: !_isSavingLog,
@@ -4110,7 +4699,7 @@ class _CommentScreenState extends State<CommentScreen>
           ),
         if (showDividerBeforeSettings) const PopupMenuDivider(),
         if (hasSettings)
-          const PopupMenuItem<_AppBarMenuAction>(
+          const PopupMenuItem<Object>(
             key: Key('settings-button'),
             value: _AppBarMenuAction.settings,
             child: _OverflowMenuRow(icon: Icons.settings, label: '設定'),
@@ -4120,7 +4709,20 @@ class _CommentScreenState extends State<CommentScreen>
 
     if (!mounted || action == null) return;
 
+    // Extension-provided entries handle their own onTap and report
+    // values that are not `_AppBarMenuAction`; the type guard isolates
+    // host dispatch so unknown values silently no-op.
+    if (action is! _AppBarMenuAction) return;
+
     switch (action) {
+      case _AppBarMenuAction.extendBroadcast:
+        // Re-check the in-flight flag here too: the menu auto-closes on
+        // tap, but it can be re-opened during an in-flight extend call,
+        // and `enabled:` on the item is intentionally always-true (the
+        // 2-値 SnackBar UX does not need to grey the menu out).
+        if (!_isExtendingBroadcast) {
+          unawaited(_extendBroadcastFromMenu());
+        }
       case _AppBarMenuAction.endBroadcast:
         // `_isEndingBroadcast` may have flipped to true between menu open
         // and selection (e.g. user re-opened during an in-flight call),
@@ -4216,10 +4818,29 @@ class _CommentScreenState extends State<CommentScreen>
       if (confirmed != true || !mounted) {
         return;
       }
-      final BroadcastControlResult result = await repo.endBroadcast(
-        programId: widget.programInfo.lv,
-        userSession: _commentPostUserSession,
-      );
+      // Flip the API-only sub-flag so the AppBar bottom progress
+      // indicator becomes visible for the network round-trip. We
+      // intentionally do this AFTER the confirmation dialog so the
+      // indeterminate animation does not run during the dialog phase
+      // (see field doc for why this matters in widget tests). The flag
+      // is cleared in a nested finally so it always falls back to false
+      // even when the API throws or the widget unmounts mid-flight.
+      setState(() {
+        _isEndBroadcastApiInFlight = true;
+      });
+      final BroadcastControlResult result;
+      try {
+        result = await repo.endBroadcast(
+          programId: widget.programInfo.lv,
+          userSession: _commentPostUserSession,
+        );
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isEndBroadcastApiInFlight = false;
+          });
+        }
+      }
       if (result.success || result.isAlreadyEnded) {
         // Flip the broadcaster-cache so any subsequent broadcaster check
         // does not return the stale "broadcaster" outcome cached during
@@ -4244,6 +4865,159 @@ class _CommentScreenState extends State<CommentScreen>
       if (mounted) {
         setState(() {
           _isEndingBroadcast = false;
+        });
+      }
+    }
+  }
+
+  /// Issue #875: Flips the local "自動延長" Switch state and notifies the
+  /// composition root so the new value can be persisted via
+  /// [SettingsStore.save]. The local cache is updated immediately so the
+  /// menu reflects the new state on the next reopen without waiting for
+  /// the persistence round-trip.
+  ///
+  /// Issue #876: also pushes the new state into the auto-extend
+  /// controller so the Timer is armed / cancelled in lockstep with the
+  /// Switch.
+  void _toggleAutoExtendBroadcast() {
+    final bool next = !_autoExtendBroadcastEnabled;
+    // Light haptic feedback so a broadcaster who is operating with the
+    // device away from their gaze (typical mid-stream multitasking) gets
+    // a tactile confirmation that the toggle registered. Matches the
+    // existing haptic pattern used for other in-stream interactions.
+    HapticFeedback.selectionClick();
+    setState(() {
+      _autoExtendBroadcastEnabled = next;
+    });
+    widget.callbacks.onAutoExtendBroadcastChanged?.call(next);
+    _evaluateAutoExtendController();
+  }
+
+  /// Issue #876: forwards the current screen state to the auto-extend
+  /// controller. Called from initState (seed), didUpdateWidget (prop
+  /// changes that affect scheduling), the toggle handler, the session
+  /// resolution path, and `_handleConnectionChanged` so broadcast-ended
+  /// transitions also propagate. The controller is a no-op when the
+  /// repository is unwired (`_autoExtendController == null`).
+  ///
+  /// `enabled` is gated on:
+  /// - the user being the broadcaster of the active program
+  /// - the user-facing Switch being ON (Issue #875)
+  /// - the connection currently being on-air (gates against ended /
+  ///   failed / stopped states so a Timer armed for `endAt - 5min`
+  ///   does not fire after the broadcast is already over).
+  void _evaluateAutoExtendController() {
+    final AutoExtendBroadcastController? controller = _autoExtendController;
+    if (controller == null) {
+      return;
+    }
+    final ConnectionStatus status = widget.connectionSupervisor.status;
+    final bool isOnAir =
+        status != ConnectionStatus.ended &&
+        status != ConnectionStatus.failed &&
+        status != ConnectionStatus.stopped;
+    controller.update(
+      enabled: _isBroadcaster && _autoExtendBroadcastEnabled && isOnAir,
+      programId: widget.programInfo.lv,
+      userSession: _commentPostUserSession,
+      endAt: widget.programInfo.endAt,
+    );
+  }
+
+  /// Issue #876: pause the Timer when the app goes to background and
+  /// resume on return. Without this, the OS may freeze background
+  /// timers (Android) or fire them with delayed semantics that leak
+  /// into the next foreground session.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    final AutoExtendBroadcastController? controller = _autoExtendController;
+    if (controller == null) {
+      return;
+    }
+    switch (state) {
+      case AppLifecycleState.resumed:
+        controller.resume();
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.detached:
+        controller.pause();
+    }
+  }
+
+  /// Opens the "放送を延長" dialog and dispatches the extension API call
+  /// for the currently viewed program (Issue #872). Surfaces success /
+  /// failure as a 2-値 SnackBar; intentionally does not differentiate
+  /// error codes (kept as a follow-up scope).
+  Future<void> _extendBroadcastFromMenu() async {
+    if (_isExtendingBroadcast) {
+      return;
+    }
+    final BroadcastControlRepository? repo = widget.broadcastControlRepository;
+    if (repo == null) {
+      return;
+    }
+    if (_commentPostUserSession.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          key: Key('extend-broadcast-session-required-snackbar'),
+          content: Text('ログインが必要です'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isExtendingBroadcast = true;
+    });
+    try {
+      final ExtendBroadcastDialogResult? outcome =
+          await showExtendBroadcastDialog(
+            context,
+            onConfirm: (int minutes) async {
+              final BroadcastControlResult result = await repo.extendBroadcast(
+                programId: widget.programInfo.lv,
+                userSession: _commentPostUserSession,
+                minutes: minutes,
+              );
+              // Issue #876: propagate the server-authoritative new
+              // end time upstream so `FollowProgram.endAt` updates and
+              // the auto-extend controller can re-schedule. Closes the
+              // #872 follow-up TODO.
+              final int? endTimeSec = result.endTime;
+              if (result.success && endTimeSec != null) {
+                final DateTime newEndAt = DateTime.fromMillisecondsSinceEpoch(
+                  endTimeSec * 1000,
+                );
+                widget.callbacks.onBroadcastEndTimeExtended?.call(newEndAt);
+              }
+              return result.success;
+            },
+          );
+      if (!mounted || outcome == null) {
+        // null = ユーザーがキャンセル。SnackBar は出さない。
+        return;
+      }
+      final ExtendBroadcastStrings strings = AppStrings.extendBroadcast;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            key: outcome.success
+                ? const Key('extend-broadcast-success-snackbar')
+                : const Key('extend-broadcast-failure-snackbar'),
+            content: Text(
+              outcome.success
+                  ? strings.success(outcome.minutes)
+                  : strings.failure,
+            ),
+          ),
+        );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isExtendingBroadcast = false;
         });
       }
     }
@@ -4383,24 +5157,53 @@ class _CommentScreenState extends State<CommentScreen>
   }
 
   Future<void> _loadPresetNgWordsFromAsset() async {
+    // Issue #628 defense-in-depth: when the structured `presetCategories`
+    // injection seam is populated, the asset load is irrelevant. Bail out
+    // early so a stray scheduled call cannot clobber the injected
+    // categories.
+    if (widget.contentFilter.presetCategories.isNotEmpty) {
+      return;
+    }
     try {
-      final String jsonText = await rootBundle.loadString(
-        'android/app/src/main/assets/preset_ng_words.json',
+      // The bundled asset is stored as a lightly-obfuscated blob so the
+      // dictionary is not readable by simply unzipping the APK. Decrypt it
+      // in memory only — the plaintext is never written back to disk.
+      final ByteData raw = await rootBundle.load(
+        'android/app/src/main/assets/preset_ng_words.enc',
       );
+      final Uint8List blob = raw.buffer.asUint8List(
+        raw.offsetInBytes,
+        raw.lengthInBytes,
+      );
+      final String jsonText = utf8.decode(decryptNgDict(blob));
       final Object? decoded = jsonDecode(jsonText);
       final List<NgPresetCategory> categories = NgPresetCategory.parseDocument(
         decoded,
       );
       final List<String> words = NgPresetCategory.flattenWords(categories);
-      if (!mounted || widget.contentFilter.presetNgWords.isNotEmpty) {
+      if (!mounted ||
+          widget.contentFilter.presetNgWords.isNotEmpty ||
+          widget.contentFilter.presetCategories.isNotEmpty) {
         return;
       }
       _effectivePresetNgWords = words;
       _effectivePresetCategories = categories;
       _rebuildNgMatcher();
       setState(() {});
-    } catch (_) {
-      // Keep empty preset list when asset is unavailable (e.g. tests without bundle).
+    } catch (e, st) {
+      // Defense-in-depth fallback: the preset filter is optional. If the
+      // asset is missing, truncated, or fails the integrity check, keep an
+      // empty preset list and let the app continue — user-configured NG
+      // words are unaffected. The message is intentionally generic so it
+      // does not reveal anything about the asset's internal structure; the
+      // stack trace is kept (debug only / runtimeType in release) so a
+      // swallowed failure is still reproducible per the error-handling rule.
+      appErrorLog(
+        name: 'ng_preset',
+        stackTrace: st,
+        message: 'optional preset filter unavailable; continuing without it',
+        error: e,
+      );
     }
   }
 
@@ -4569,6 +5372,18 @@ class _CommentScreenState extends State<CommentScreen>
       _statsPanelExpanded = true;
     });
 
+    // Issue #767: hand the snapshot to the composition root so it can
+    // memorise it as "the previous broadcast" for the next session's
+    // status detail redirect. Failures in the receiver must not tear down
+    // the panel UI, so the call is wrapped in try/catch.
+    _notifyRecentBroadcastStatsCaptured(stats);
+
+    // Issue #766: notify the composition root once per finalised broadcast
+    // so it can record a persistent history entry (when the user is the
+    // broadcaster). The callback is intentionally fire-and-forget; failures
+    // in the receiver must not block the panel from being shown.
+    _notifyBroadcastEndedStats(stats, messagesForStatsAndLogs);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
@@ -4585,6 +5400,146 @@ class _CommentScreenState extends State<CommentScreen>
         ),
       );
     });
+  }
+
+  /// Issue #767: build a [RecentBroadcastStats] snapshot from the stats
+  /// just computed and the program metadata, then hand it off to the
+  /// `onRecentBroadcastStatsCaptured` callback. Opt-in: when the callback
+  /// is null this is a no-op.
+  ///
+  /// Race-condition note (`_isBroadcaster`): this flag is set
+  /// asynchronously after [CommentPostController.ensureBroadcasterStatus]
+  /// resolves. If the broadcast ends *before* the broadcaster check
+  /// completes (rare but possible on slow networks), `_isBroadcaster`
+  /// is still `false` and the receiver drops the snapshot. The fallout
+  /// is bounded — only the *first* broadcast in a session is at risk
+  /// because `ensureBroadcasterStatus` is re-resolved when the user
+  /// session changes; subsequent sessions inherit the resolved value.
+  /// We accept this trade-off rather than blocking the panel display
+  /// on a slow API call. Tracked as follow-up if reports emerge.
+  void _notifyRecentBroadcastStatsCaptured(CommentLogStats stats) {
+    final RecentBroadcastStatsCallback? callback =
+        widget.callbacks.onRecentBroadcastStatsCaptured;
+    if (callback == null) {
+      return;
+    }
+    final RecentBroadcastStats snapshot = RecentBroadcastStats(
+      lv: widget.programInfo.lv,
+      endedAt: _endedAt ?? DateTime.now(),
+      totalComments: stats.totalComments,
+      uniqueUserCount: stats.uniqueUserCount,
+      durationSeconds: stats.duration.inSeconds,
+      programTitle: widget.programInfo.programTitle,
+      beginAt: widget.programInfo.beginAt,
+      // peakOffset 算出は domain 層の純関数に委譲（テスト容易化）。
+      peakMinuteOffset: RecentBroadcastStats.resolvePeakMinuteOffset(stats),
+      peakMinuteCount: stats.peakMinuteCount,
+      peakMinuteLabel: stats.peakMinuteLabel,
+      isBroadcaster: _isBroadcaster,
+    );
+    try {
+      callback(snapshot);
+    } on Object catch (error, stackTrace) {
+      _debugLogLazy(
+        () =>
+            '[CommentScreen] onRecentBroadcastStatsCaptured threw '
+            '(suppressed): $error\n$stackTrace',
+      );
+    }
+  }
+
+  /// Issue #766: notify the composition root with a non-message-bearing
+  /// snapshot of the finalised broadcast's stats. The callback is opt-in
+  /// (null in legacy embedders / tests); failures in the receiver are
+  /// suppressed so they cannot tear down the panel UI.
+  ///
+  /// DTO construction is delegated to
+  /// [BroadcastEndedStatsSnapshot.buildFromStats] so the comment screen
+  /// stays focused on collecting the inputs (program info, broadcaster
+  /// flag, peak detection) and the snapshot's field layout lives next to
+  /// the type itself.
+  void _notifyBroadcastEndedStats(
+    CommentLogStats stats,
+    List<AppMessage> messagesForStatsAndLogs,
+  ) {
+    final BroadcastEndedStatsCallback? callback =
+        widget.callbacks.onBroadcastEndedStats;
+    if (callback == null) {
+      return;
+    }
+    final List<HighlightPeak> highlightPeaks =
+        widget.statistics.highlightPickupEnabled
+        ? CommentLogStats.detectPeaks(
+            messagesForStatsAndLogs,
+            commentsPerMinute: stats.commentsPerMinute,
+            ngUserIds: widget.contentFilter.ngUserIds,
+          )
+        : const <HighlightPeak>[];
+    final BroadcastEndedStatsSnapshot snapshot =
+        BroadcastEndedStatsSnapshot.buildFromStats(
+          lv: widget.programInfo.lv,
+          stats: stats,
+          endedAt: _endedAt ?? DateTime.now(),
+          isBroadcaster: _isBroadcaster,
+          programTitle: widget.programInfo.programTitle,
+          broadcasterUserId: widget.programInfo.broadcasterUserId,
+          broadcasterName: widget.programInfo.broadcasterName,
+          beginAt: widget.programInfo.beginAt,
+          highlightPeaks: highlightPeaks,
+        );
+    try {
+      callback(snapshot);
+    } on Object catch (error, stackTrace) {
+      _debugLogLazy(
+        () =>
+            '[CommentScreen] onBroadcastEndedStats threw (suppressed): '
+            '$error\n$stackTrace',
+      );
+    }
+  }
+
+  /// Issue #767: open a modal `CommentLogStatsSheet` for the **previous**
+  /// broadcast (the snapshot held in [CommentScreen.recentBroadcastStats]).
+  /// Reuses the existing modal sheet so visual + interactive parity with
+  /// the end-of-broadcast panel is automatic. The previous snapshot has
+  /// no raw messages, so peak-detection / representative comments are
+  /// intentionally suppressed.
+  void _showRecentBroadcastStats() {
+    if (!mounted) {
+      return;
+    }
+    final RecentBroadcastStats? snapshot = widget.recentBroadcastStats;
+    if (snapshot == null || snapshot.lv == widget.programInfo.lv) {
+      return;
+    }
+    final CommentLogStats stats = CommentLogStats(
+      totalComments: snapshot.totalComments,
+      uniqueUserCount: snapshot.uniqueUserCount,
+      duration: snapshot.duration,
+      peakMinuteLabel: snapshot.peakMinuteLabel,
+      peakMinuteCount: snapshot.peakMinuteCount,
+      // No per-minute distribution available without raw messages; pass
+      // an empty map so the frequency chart and peak detection sections
+      // are hidden naturally by the existing sheet rendering.
+      commentsPerMinute: const <int, int>{},
+    );
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext _) {
+        return CommentLogStatsSheet(
+          key: const Key('recent-broadcast-stats-sheet'),
+          stats: stats,
+          themeMode: widget.themeMode,
+          programTitle: snapshot.programTitle,
+          lv: snapshot.lv,
+          // Highlight pickup needs raw messages we no longer hold; force
+          // it off so the sheet does not silently render an empty
+          // "盛り上がり" section.
+          highlightPickupEnabled: false,
+        );
+      },
+    );
   }
 
   /// Re-opens or expands the stats panel. Safe to call when stats are
@@ -4795,6 +5750,12 @@ class _CommentScreenState extends State<CommentScreen>
       _isBroadcaster = isBroadcaster;
       _commentPostUserSession = userSession;
     });
+    // Issue #876: keep the test-only seam aligned with the production
+    // `_resolveCommentPostContext` path. Both flip _isBroadcaster /
+    // _commentPostUserSession and must re-evaluate the auto-extend
+    // controller so tests that simulate broadcaster resolution after
+    // mount also exercise the Timer arming.
+    _evaluateAutoExtendController();
   }
 
   List<AppMessage> _messagesForLog() {
@@ -5025,6 +5986,62 @@ class _OverflowMenuRow extends StatelessWidget {
   }
 }
 
+/// Issue #875: AppBar オーバーフローメニュー用のトグル行。`_OverflowMenuRow`
+/// と同じ高さ・余白を維持しつつ、左端のアイコン枠を空白で揃えて
+/// 行末に [Switch] を配置する。タップは PopupMenuItem 全体に任せる
+/// 設計のため、Switch 自体は [IgnorePointer] で包んで二重発火を防ぎ、
+/// `onChanged: (_) {}` で disable 表示にしないダミーを与える。
+///
+/// Accessibility:
+/// - [MergeSemantics] / [Semantics(toggled:)] で「ON / OFF のトグル可能
+///   ボタン」と読み上げられるようにする。
+/// - [Tooltip] でタッチ長押し / ホバー時にラベルを表示する。
+/// - [ExcludeSemantics] で内部の [Text] / [Switch] の Semantics 重複を
+///   防ぐ（外側の `Semantics.label` を一次情報源とする）。
+class _OverflowMenuToggleRow extends StatelessWidget {
+  const _OverflowMenuToggleRow({required this.label, required this.checked});
+
+  final String label;
+  final bool checked;
+
+  @override
+  Widget build(BuildContext context) {
+    return MergeSemantics(
+      child: Semantics(
+        button: true,
+        toggled: checked,
+        label: label,
+        child: Tooltip(
+          message: label,
+          child: ExcludeSemantics(
+            child: Row(
+              children: <Widget>[
+                // 既存メニュー項目の左端 Icon (24×24) と縦位置を揃える
+                // ためのダミー領域。空欄で残しておき、Switch は行末に
+                // 寄せる構成にする。
+                const SizedBox(width: 24, height: 24),
+                const SizedBox(width: 12),
+                Expanded(child: Text(label)),
+                IgnorePointer(
+                  child: Switch(
+                    value: checked,
+                    // `onChanged: null` だと Switch が disabled 表示
+                    // (薄色) になるため、ダミーで通常表示を維持する。
+                    // タップは IgnorePointer で吸収され、上位の
+                    // PopupMenuItem に伝播する。
+                    onChanged: (_) {},
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ProgramTitleBar extends StatelessWidget {
   const _ProgramTitleBar({
     super.key,
@@ -5080,6 +6097,8 @@ class _StatusBar extends StatefulWidget {
     this.viewerCount,
     this.totalCommentCount = 0,
     this.activeUserCount = 0,
+    this.recentBroadcastStats,
+    this.onShowRecentBroadcastStats,
   });
 
   final String lv;
@@ -5098,6 +6117,17 @@ class _StatusBar extends StatefulWidget {
   final int? viewerCount;
   final int totalCommentCount;
   final int activeUserCount;
+
+  /// Issue #767: optional snapshot of the previous broadcast's stats.
+  /// When non-null and the bar is expanded, a "直前の統計を見る" entry is
+  /// rendered. The caller is expected to pre-filter this to null when no
+  /// snapshot exists or when the snapshot's lv equals the current lv (so
+  /// we never link to "this broadcast" as its own previous entry).
+  final RecentBroadcastStats? recentBroadcastStats;
+
+  /// Issue #767: invoked when the user taps the "直前の統計を見る" entry.
+  /// Required when [recentBroadcastStats] is non-null; null otherwise.
+  final VoidCallback? onShowRecentBroadcastStats;
 
   @override
   State<_StatusBar> createState() => _StatusBarState();
@@ -5123,13 +6153,19 @@ class _StatusBarState extends State<_StatusBar> {
   @override
   void initState() {
     super.initState();
-    _autoCollapseTimer = Timer(const Duration(milliseconds: 1500), () {
-      if (mounted) {
-        setState(() {
-          _collapsed = true;
-        });
-      }
-    });
+    // Issue #767: 直前の統計ボタンが表示される放送ではユーザーが導線に
+    // 気付くまでに時間がかかるため、自動折りたたみをスキップする。それ
+    // 以外は従来通り 1500ms で折りたたむ（縦方向の節約）。
+    if (widget.recentBroadcastStats == null ||
+        widget.onShowRecentBroadcastStats == null) {
+      _autoCollapseTimer = Timer(const Duration(milliseconds: 1500), () {
+        if (mounted) {
+          setState(() {
+            _collapsed = true;
+          });
+        }
+      });
+    }
     if (_shouldTickElapsed) {
       _startElapsedTimer();
     }
@@ -5257,6 +6293,54 @@ class _StatusBarState extends State<_StatusBar> {
                       ],
                     ),
                   ],
+                  // Issue #767: 直前1件の統計への動線。スナップショット
+                  // が無い／初回放送時は当該行ごと描画しない（暫定 UI を
+                  // 残さない方針）。視聴セッションは callback 受け側で
+                  // フィルタされるためここに到達しない。
+                  // 注: 通常はステータスバーが 1500ms で自動折りたたまれる
+                  // が、本ボタンが表示される放送では initState 側で
+                  // _autoCollapseTimer をスキップしてユーザーが導線に
+                  // 気付ける時間を確保している。
+                  if (widget.recentBroadcastStats != null &&
+                      widget.onShowRecentBroadcastStats != null) ...<Widget>[
+                    const SizedBox(height: 4),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Semantics(
+                        button: true,
+                        label: _recentBroadcastStatsSemanticsLabel(
+                          widget.recentBroadcastStats!,
+                        ),
+                        child: TextButton.icon(
+                          key: const Key('show-recent-broadcast-stats-button'),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 0,
+                            ),
+                            minimumSize: const Size(0, 32),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          icon: const Icon(Icons.bar_chart, size: 16),
+                          // ConstrainedBox で max width を制限し、長尺タイトル
+                          // でステータスバー高さが膨らむのを防ぐ。
+                          label: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 240),
+                            child: Text(
+                              _recentBroadcastStatsButtonLabel(
+                                widget.recentBroadcastStats!,
+                              ),
+                              style: const TextStyle(fontSize: 12),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ),
+                          onPressed: widget.onShowRecentBroadcastStats,
+                        ),
+                      ),
+                    ),
+                  ],
                   if (widget.debugMode) ...<Widget>[
                     const SizedBox(height: 4),
                     // 放送者ID / 最終受信 / 再接続 are debug-only
@@ -5306,6 +6390,39 @@ class _StatusBarState extends State<_StatusBar> {
   }
 }
 
+/// Issue #767: button label for the "直前1件の統計" entry. Compact form
+/// preferred so the status bar does not balloon vertically. Uses the
+/// previous broadcast's title when available, falling back to the lv.
+///
+/// Title is hard-truncated at 40 chars in addition to the `Text` overflow
+/// ellipsis (defense-in-depth against pathological titles).
+String _recentBroadcastStatsButtonLabel(RecentBroadcastStats snapshot) {
+  final String? title = snapshot.programTitle;
+  if (title != null && title.trim().isNotEmpty) {
+    final String safe = _truncateForUi(title.trim(), 40);
+    return '直前の統計を見る: $safe';
+  }
+  return '直前の統計を見る (${snapshot.lv})';
+}
+
+/// Screen-reader label that omits the visual ellipsis trick and keeps the
+/// statement form ("直前の放送の統計を表示します") so VoiceOver / TalkBack
+/// reads it as a button purpose, not a fragment.
+String _recentBroadcastStatsSemanticsLabel(RecentBroadcastStats snapshot) {
+  final String? title = snapshot.programTitle?.trim();
+  final String suffix = (title != null && title.isNotEmpty)
+      ? '：${_truncateForUi(title, 40)}'
+      : '（${snapshot.lv}）';
+  return '直前の放送の統計を表示する$suffix';
+}
+
+String _truncateForUi(String input, int maxChars) {
+  if (input.length <= maxChars) {
+    return input;
+  }
+  return '${input.substring(0, maxChars)}…';
+}
+
 class _BroadcasterIcon extends StatelessWidget {
   const _BroadcasterIcon({required this.url, required this.size});
 
@@ -5334,6 +6451,152 @@ class _BroadcasterIcon extends StatelessWidget {
   }
 }
 
+/// Builds inline spans for [content], highlighting every occurrence of
+/// [query] with [matchStyle] and rendering the rest with [baseStyle].
+///
+/// Behavior (Issue #471):
+/// - Empty / null query short-circuits to a single [baseStyle] span so
+///   the non-search render path stays allocation-cheap.
+/// - Matching is case- and width-insensitive: both [content] and [query]
+///   are folded via [normalizeForSearch] (the same normalizer used by
+///   the filter) so the visual highlight stays in lock-step with which
+///   rows the search filter actually selects.
+/// - Match offsets are snapped to grapheme-cluster boundaries (via the
+///   [Characters] API) so emoji, ZWJ sequences, and combined characters
+///   are never split mid-codepoint. If a match overlaps a grapheme only
+///   partially, the highlight widens to cover the whole grapheme.
+///
+/// Hoisted to file scope so both [_CommentRow] and [_PinnedCommentRow] can
+/// share the exact same highlighter (Issue #471 acceptance criteria — the
+/// pinned panel must use the same decoration as the inline list).
+List<TextSpan> _buildHighlightedContent(
+  String content,
+  String? query,
+  TextStyle baseStyle,
+  TextStyle matchStyle,
+) {
+  if (query == null || query.isEmpty || content.isEmpty) {
+    return <TextSpan>[TextSpan(text: content, style: baseStyle)];
+  }
+
+  // Walk grapheme clusters of [content] and build a parallel normalized
+  // string. We record the cumulative original / normalized end-offsets
+  // *at every grapheme boundary* so a match found in normalized space
+  // can be widened back to the nearest enclosing graphemes — preventing
+  // an emoji or ZWJ sequence from being split.
+  final Characters chars = Characters(content);
+  final List<int> origBoundaries = <int>[0];
+  final List<int> normBoundaries = <int>[0];
+  final StringBuffer normBuf = StringBuffer();
+  int origCursor = 0;
+  int normCursor = 0;
+  for (final String grapheme in chars) {
+    origCursor += grapheme.length;
+    final String normGrapheme = normalizeForSearch(grapheme);
+    normBuf.write(normGrapheme);
+    normCursor += normGrapheme.length;
+    origBoundaries.add(origCursor);
+    normBoundaries.add(normCursor);
+  }
+  final String normContent = normBuf.toString();
+  if (normContent.isEmpty) {
+    return <TextSpan>[TextSpan(text: content, style: baseStyle)];
+  }
+
+  // Cheap pre-check: if the normalized body does not contain the query at
+  // all, skip the match-collection / boundary-mapping work entirely. This
+  // keeps the steady-state cost of "user typed a query that filters most
+  // rows out" down to a single grapheme walk per row.
+  if (!normContent.contains(query)) {
+    return <TextSpan>[TextSpan(text: content, style: baseStyle)];
+  }
+
+  // Find all match ranges in normalized space.
+  final List<List<int>> matches = <List<int>>[];
+  int searchFrom = 0;
+  while (true) {
+    final int hit = normContent.indexOf(query, searchFrom);
+    if (hit < 0) break;
+    final int end = hit + query.length;
+    matches.add(<int>[hit, end]);
+    // Advance by at least one to avoid infinite loops on a degenerate
+    // empty-query case (already guarded above) and to skip past the
+    // current match so highlights do not overlap.
+    searchFrom = end > hit ? end : hit + 1;
+  }
+  if (matches.isEmpty) {
+    return <TextSpan>[TextSpan(text: content, style: baseStyle)];
+  }
+
+  // Map normalized ranges back to original-content ranges, snapping to
+  // grapheme boundaries so we never split a grapheme.
+  int origStartFor(int normIndex) {
+    // Largest boundary i with normBoundaries[i] <= normIndex.
+    int lo = 0;
+    int hi = normBoundaries.length - 1;
+    while (lo < hi) {
+      final int mid = (lo + hi + 1) >> 1;
+      if (normBoundaries[mid] <= normIndex) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return origBoundaries[lo];
+  }
+
+  int origEndFor(int normIndex) {
+    // Smallest boundary i with normBoundaries[i] >= normIndex.
+    int lo = 0;
+    int hi = normBoundaries.length - 1;
+    while (lo < hi) {
+      final int mid = (lo + hi) >> 1;
+      if (normBoundaries[mid] >= normIndex) {
+        hi = mid;
+      } else {
+        lo = mid + 1;
+      }
+    }
+    return origBoundaries[lo];
+  }
+
+  final List<TextSpan> spans = <TextSpan>[];
+  int cursor = 0;
+  for (final List<int> range in matches) {
+    final int origStart = origStartFor(range[0]);
+    final int origEnd = origEndFor(range[1]);
+    // Skip overlapping / non-progressing matches that resolve to the
+    // same widened span as the previous match.
+    if (origEnd <= cursor) continue;
+    final int safeStart = origStart < cursor ? cursor : origStart;
+    if (safeStart > cursor) {
+      spans.add(
+        TextSpan(text: content.substring(cursor, safeStart), style: baseStyle),
+      );
+    }
+    spans.add(
+      TextSpan(text: content.substring(safeStart, origEnd), style: matchStyle),
+    );
+    cursor = origEnd;
+  }
+  if (cursor < content.length) {
+    spans.add(TextSpan(text: content.substring(cursor), style: baseStyle));
+  }
+  return spans;
+}
+
+/// Resolves the highlight [TextStyle] used for matched substrings inside
+/// comment bodies. Centralized so `_CommentRow` and `_PinnedCommentRow`
+/// always pick up the same Material-3 (`secondaryContainer` /
+/// `onSecondaryContainer`) color pair.
+TextStyle _searchMatchStyle(BuildContext context) {
+  final ColorScheme cs = Theme.of(context).colorScheme;
+  return TextStyle(
+    backgroundColor: cs.secondaryContainer,
+    color: cs.onSecondaryContainer,
+  );
+}
+
 class _PinnedCommentsSection extends StatelessWidget {
   const _PinnedCommentsSection({
     super.key,
@@ -5350,6 +6613,7 @@ class _PinnedCommentsSection extends StatelessWidget {
     this.showCommentNo = false,
     this.textScaler = TextScaler.noScaling,
     this.ngMatcher,
+    this.normalizedSearchQuery,
   });
 
   final List<AppMessage> pinnedMessages;
@@ -5367,6 +6631,12 @@ class _PinnedCommentsSection extends StatelessWidget {
   final bool showCommentNo;
   final TextScaler textScaler;
   final NgMatcher? ngMatcher;
+
+  /// Issue #471. When non-null and non-empty, matched substrings inside
+  /// each pinned comment body are highlighted with the same decoration as
+  /// the inline list. Already normalized via [normalizeForSearch] on the
+  /// parent side.
+  final String? normalizedSearchQuery;
 
   @override
   Widget build(BuildContext context) {
@@ -5429,6 +6699,7 @@ class _PinnedCommentsSection extends StatelessWidget {
               beginAt: beginAt,
               textScaler: textScaler,
               ngMatcher: ngMatcher,
+              normalizedSearchQuery: normalizedSearchQuery,
             ),
         ],
       ),
@@ -5452,6 +6723,7 @@ class _PinnedCommentRow extends StatelessWidget {
     this.beginAt,
     this.textScaler = TextScaler.noScaling,
     this.ngMatcher,
+    this.normalizedSearchQuery,
   });
 
   final AppMessage message;
@@ -5480,6 +6752,14 @@ class _PinnedCommentRow extends StatelessWidget {
   /// pinned-specific semantics label so screen-reader users can tell a
   /// read-skipped pinned comment apart from a read-skipped inline comment.
   final NgMatcher? ngMatcher;
+
+  /// Issue #471. Already-normalized search query forwarded from the
+  /// parent. When non-null and non-empty, matched substrings in the pinned
+  /// body are highlighted with the same decoration as the inline list.
+  /// Read-skipped pinned bodies (NG match) intentionally skip highlighting
+  /// because the body is dimmed to ~30% opacity and we do not want to fight
+  /// the dimming with a high-contrast background swatch.
+  final String? normalizedSearchQuery;
 
   @override
   Widget build(BuildContext context) {
@@ -5550,15 +6830,48 @@ class _PinnedCommentRow extends StatelessWidget {
       fontSize: fontSize,
       color: effectiveUserColor,
     );
+    final bool hasQuery =
+        normalizedSearchQuery != null && normalizedSearchQuery!.isNotEmpty;
     if (matchedSubcategory == null) {
-      final String lineText = _commentLineText(
+      if (!hasQuery) {
+        final String lineText = _commentLineText(
+          message: message,
+          showUserName: showUserName,
+          resolvedUserName: resolvedUserName,
+          beginAt: beginAt,
+          showCommentNo: showCommentNo,
+        );
+        return Text(lineText, style: bodyStyle);
+      }
+      // Issue #471. Search active → split meta-prefix from body so the
+      // matched substring inside the body can be highlighted. We reuse
+      // [_commentLineText] with [contentOverride] = '' for the meta
+      // formatting so the prefix stays in lock-step with the no-query
+      // path (operator handling, anonymous, comment-no, etc.).
+      final String metaPrefix = _commentLineText(
         message: message,
         showUserName: showUserName,
         resolvedUserName: resolvedUserName,
+        contentOverride: '',
         beginAt: beginAt,
         showCommentNo: showCommentNo,
       );
-      return Text(lineText, style: bodyStyle);
+      final TextStyle matchStyle = _searchMatchStyle(
+        context,
+      ).copyWith(fontSize: fontSize);
+      return Text.rich(
+        TextSpan(
+          children: <InlineSpan>[
+            TextSpan(text: metaPrefix, style: bodyStyle),
+            ..._buildHighlightedContent(
+              message.content,
+              normalizedSearchQuery,
+              bodyStyle,
+              matchStyle,
+            ),
+          ],
+        ),
+      );
     }
     // Only the body content is dimmed; timestamp + display name stay at
     // full contrast so the row still reads as a legitimate pinned message.
@@ -5566,6 +6879,12 @@ class _PinnedCommentRow extends StatelessWidget {
     // stays in lock-step with the unmatched path — any future change to
     // [_commentLineText] (operator handling, anonymous, etc.) propagates
     // here automatically instead of drifting.
+    //
+    // Read-skipped (NG-matched) bodies intentionally skip search-match
+    // highlighting: the body is rendered at ~30% opacity and a high-
+    // contrast highlight swatch would visually fight that dimming. The
+    // user can still locate the row because the row remains visible
+    // (filter passed it) and the meta line is unaffected.
     final String metaPrefix = _commentLineText(
       message: message,
       showUserName: showUserName,
@@ -5657,10 +6976,34 @@ class _PinnedCommentRow extends StatelessWidget {
       ),
     );
 
-    Widget bodyText = Text(
-      message.content,
-      style: TextStyle(fontSize: fontSize, color: effectiveUserColor),
+    final TextStyle bodyStyle = TextStyle(
+      fontSize: fontSize,
+      color: effectiveUserColor,
     );
+    final bool hasQuery =
+        normalizedSearchQuery != null && normalizedSearchQuery!.isNotEmpty;
+    // Issue #471: when search is active and the row is not read-skipped,
+    // highlight matches inside the body. Read-skipped bodies skip the
+    // highlight for the same reason as in [_buildSingleLinePinned] —
+    // the dimming would fight a high-contrast highlight swatch.
+    Widget bodyText;
+    if (hasQuery && matchedSubcategory == null) {
+      final TextStyle matchStyle = _searchMatchStyle(
+        context,
+      ).copyWith(fontSize: fontSize);
+      bodyText = Text.rich(
+        TextSpan(
+          children: _buildHighlightedContent(
+            message.content,
+            normalizedSearchQuery,
+            bodyStyle,
+            matchStyle,
+          ),
+        ),
+      );
+    } else {
+      bodyText = Text(message.content, style: bodyStyle);
+    }
     if (matchedSubcategory != null) {
       bodyText = Opacity(opacity: _readSkippedBodyOpacity, child: bodyText);
     }
@@ -5751,6 +7094,7 @@ class _CommentRow extends StatefulWidget {
     this.onOpenUrl,
     this.beginAt,
     this.ngMatcher,
+    this.normalizedSearchQuery,
   });
 
   final AppMessage message;
@@ -5792,6 +7136,14 @@ class _CommentRow extends StatefulWidget {
   /// or no match) render the row unchanged.
   final NgMatcher? ngMatcher;
 
+  /// Active normalized search query forwarded from the parent screen.
+  ///
+  /// When non-null and non-empty, matched substrings inside the body are
+  /// highlighted with the theme's secondary container colors. Issue #471.
+  /// Already normalized via [normalizeForSearch] on the parent side so the
+  /// row does not pay the fold cost again.
+  final String? normalizedSearchQuery;
+
   @override
   State<_CommentRow> createState() => _CommentRowState();
 }
@@ -5819,7 +7171,7 @@ class _CommentRowState extends State<_CommentRow> {
 
   bool get _isStarHidden =>
       widget.starPrefixHidingEnabled &&
-      widget.message.content.startsWith('☆') &&
+      _hasStarPrefix(widget.message.content) &&
       !_revealed;
 
   List<UrlMatch> _resolveUrlMatches() {
@@ -6034,6 +7386,10 @@ class _CommentRowState extends State<_CommentRow> {
       content: content,
       urlMatches: urlMatches,
       baseStyle: contentStyle,
+      // Issue #471: highlight matched substrings inside the body when a
+      // search query is active. Hidden bodies (ネタバレ防止) are placeholder
+      // text, not the actual content, so skip highlighting for them.
+      searchQuery: hidden ? null : widget.normalizedSearchQuery,
     );
     if (matchedSubcategory != null) {
       // Wrap the body in an inline Opacity so timestamp/username stay at
@@ -6197,6 +7553,10 @@ class _CommentRowState extends State<_CommentRow> {
           content: content,
           urlMatches: urlMatches,
           baseStyle: contentStyle,
+          // Issue #471: highlight matched substrings inside the body when a
+          // search query is active. Hidden bodies (ネタバレ防止) are placeholder
+          // text, not the actual content, so skip highlighting for them.
+          searchQuery: hidden ? null : widget.normalizedSearchQuery,
         ),
       ),
     );
@@ -6220,42 +7580,87 @@ class _CommentRowState extends State<_CommentRow> {
   /// When [urlMatches] is empty the result is a single [TextSpan] with the
   /// full content, preserving the previous rendering behavior for non-URL
   /// comments.
+  ///
+  /// When [searchQuery] is non-null and non-empty (Issue #471), each text
+  /// segment is further split via [_buildHighlightedContent] so the matched
+  /// substring is rendered with the theme's secondary container colors.
+  /// Highlighting layers on top of URL coloring: a query that lands inside
+  /// a URL span paints over the URL's link style, which is the expected
+  /// behavior since the user is currently filtering by that query.
   List<InlineSpan> _buildContentSpans({
     required BuildContext context,
     required String content,
     required List<UrlMatch> urlMatches,
     required TextStyle baseStyle,
+    String? searchQuery,
   }) {
+    final ThemeData theme = Theme.of(context);
+    final TextStyle matchStyle = _searchMatchStyle(context);
+    final bool hasQuery = searchQuery != null && searchQuery.isNotEmpty;
+
     if (urlMatches.isEmpty) {
-      return <InlineSpan>[TextSpan(text: content, style: baseStyle)];
+      if (!hasQuery) {
+        return <InlineSpan>[TextSpan(text: content, style: baseStyle)];
+      }
+      return _buildHighlightedContent(
+        content,
+        searchQuery,
+        baseStyle,
+        matchStyle,
+      );
     }
-    final Color linkColor = Theme.of(context).colorScheme.primary;
+
+    final Color linkColor = theme.colorScheme.primary;
     final TextStyle linkStyle = baseStyle.copyWith(
       color: linkColor,
       decoration: TextDecoration.underline,
       decorationColor: linkColor,
     );
+    // For URL spans we keep the link decoration but layer the highlight
+    // background/foreground on top so the URL still reads as a link while
+    // the matched fragment is visible.
+    final TextStyle linkMatchStyle = linkStyle.copyWith(
+      backgroundColor: matchStyle.backgroundColor,
+      color: matchStyle.color,
+    );
+
+    void appendSegment(
+      List<InlineSpan> sink,
+      String text,
+      TextStyle style,
+      TextStyle highlightStyle,
+    ) {
+      if (text.isEmpty) return;
+      if (!hasQuery) {
+        sink.add(TextSpan(text: text, style: style));
+      } else {
+        sink.addAll(
+          _buildHighlightedContent(text, searchQuery, style, highlightStyle),
+        );
+      }
+    }
+
     final List<InlineSpan> spans = <InlineSpan>[];
     int cursor = 0;
     for (final UrlMatch match in urlMatches) {
       if (match.start > cursor) {
-        spans.add(
-          TextSpan(
-            text: content.substring(cursor, match.start),
-            style: baseStyle,
-          ),
+        appendSegment(
+          spans,
+          content.substring(cursor, match.start),
+          baseStyle,
+          matchStyle,
         );
       }
-      spans.add(
-        TextSpan(
-          text: content.substring(match.start, match.end),
-          style: linkStyle,
-        ),
+      appendSegment(
+        spans,
+        content.substring(match.start, match.end),
+        linkStyle,
+        linkMatchStyle,
       );
       cursor = match.end;
     }
     if (cursor < content.length) {
-      spans.add(TextSpan(text: content.substring(cursor), style: baseStyle));
+      appendSegment(spans, content.substring(cursor), baseStyle, matchStyle);
     }
     return spans;
   }
@@ -6267,6 +7672,18 @@ class _CommentRowState extends State<_CommentRow> {
 
     if (_isBroadcastEndedMessage(message)) {
       return widget.themeColors.broadcastEndedBackground;
+    }
+
+    // Issue #876: client-side notifications synthesised by the
+    // auto-extend controller use dedicated theme colors so the
+    // success / failure rows are visually distinct from neutral
+    // notification rows. The dispatch is by message-id prefix
+    // (same pattern as `_isBroadcastEndedMessage`).
+    if (_isAutoExtendSuccessMessage(message)) {
+      return widget.themeColors.autoExtendSuccessBackground;
+    }
+    if (_isAutoExtendFailureMessage(message)) {
+      return widget.themeColors.autoExtendFailureBackground;
     }
 
     switch (message.type) {
@@ -6342,6 +7759,14 @@ class _CommentRowState extends State<_CommentRow> {
 
   bool _isBroadcastEndedMessage(AppMessage message) {
     return message.id.startsWith(kSystemBroadcastEndedMessageIdPrefix);
+  }
+
+  bool _isAutoExtendSuccessMessage(AppMessage message) {
+    return message.id.startsWith(kSystemAutoExtendSuccessMessageIdPrefix);
+  }
+
+  bool _isAutoExtendFailureMessage(AppMessage message) {
+    return message.id.startsWith(kSystemAutoExtendFailureMessageIdPrefix);
   }
 }
 

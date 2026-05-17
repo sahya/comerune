@@ -4,10 +4,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:comerune/application/statistics/statistics_store.dart';
 import 'package:comerune/domain/models/app_message.dart';
 
-AppMessage _chatMessage({required String id, String? userId}) {
+AppMessage _chatMessage({
+  required String id,
+  String? userId,
+  DateTime? timestamp,
+}) {
   return AppMessage(
     id: id,
-    timestamp: DateTime.parse('2026-03-29T12:00:00Z'),
+    timestamp: timestamp ?? DateTime.parse('2026-03-29T12:00:00Z'),
     userId: userId,
     content: 'hello',
     type: AppMessageType.chat,
@@ -39,7 +43,8 @@ void main() {
     });
 
     test('recordComment tracks unique active users', () {
-      final StatisticsStore store = StatisticsStore();
+      final DateTime fakeNow = DateTime.parse('2026-03-29T12:00:00Z');
+      final StatisticsStore store = StatisticsStore(now: () => fakeNow);
 
       store.recordComment(_chatMessage(id: '1', userId: 'u1'));
       store.recordComment(_chatMessage(id: '2', userId: 'u2'));
@@ -77,6 +82,26 @@ void main() {
       store.dispose();
     });
 
+    test('activeUserCount keeps comments exactly on the cutoff boundary', () {
+      DateTime fakeNow = DateTime.parse('2026-03-29T12:05:00Z');
+      final StatisticsStore store = StatisticsStore(
+        activeWindow: const Duration(minutes: 5),
+        now: () => fakeNow,
+      );
+
+      store.recordComment(
+        _chatMessage(
+          id: '1',
+          userId: 'u1',
+          timestamp: DateTime.parse('2026-03-29T12:00:00Z'),
+        ),
+      );
+
+      expect(store.activeUserCount, 1);
+
+      store.dispose();
+    });
+
     test('all users expire when window fully elapses', () {
       DateTime fakeNow = DateTime.parse('2026-03-29T12:00:00Z');
       final StatisticsStore store = StatisticsStore(
@@ -93,6 +118,27 @@ void main() {
       store.dispose();
     });
 
+    test('past comment does not become active based on receive time', () {
+      DateTime fakeNow = DateTime.parse('2026-03-29T12:10:00Z');
+      final StatisticsStore store = StatisticsStore(
+        activeWindow: const Duration(minutes: 5),
+        now: () => fakeNow,
+      );
+
+      store.recordComment(
+        _chatMessage(
+          id: '1',
+          userId: 'u1',
+          timestamp: DateTime.parse('2026-03-29T12:00:00Z'),
+        ),
+      );
+
+      expect(store.totalCommentCount, 1);
+      expect(store.activeUserCount, 0);
+
+      store.dispose();
+    });
+
     test(
       'user with renewed activity stays active after old activity expires',
       () {
@@ -102,11 +148,15 @@ void main() {
           now: () => fakeNow,
         );
 
-        store.recordComment(_chatMessage(id: '1', userId: 'u1'));
+        store.recordComment(
+          _chatMessage(id: '1', userId: 'u1', timestamp: fakeNow),
+        );
 
         // u1 comments again at 3 minutes
         fakeNow = fakeNow.add(const Duration(minutes: 3));
-        store.recordComment(_chatMessage(id: '2', userId: 'u1'));
+        store.recordComment(
+          _chatMessage(id: '2', userId: 'u1', timestamp: fakeNow),
+        );
 
         // At 6 minutes, old activity expired but u1 has recent activity
         fakeNow = fakeNow.add(const Duration(minutes: 3));
@@ -115,6 +165,63 @@ void main() {
         store.dispose();
       },
     );
+
+    test('older late-arriving comment does not roll back latest activity', () {
+      DateTime fakeNow = DateTime.parse('2026-03-29T12:04:00Z');
+      final StatisticsStore store = StatisticsStore(
+        activeWindow: const Duration(minutes: 5),
+        now: () => fakeNow,
+      );
+
+      store.recordComment(
+        _chatMessage(
+          id: '1',
+          userId: 'u1',
+          timestamp: DateTime.parse('2026-03-29T12:04:00Z'),
+        ),
+      );
+      expect(store.activeUserCount, 1);
+
+      fakeNow = DateTime.parse('2026-03-29T12:08:00Z');
+      store.recordComment(
+        _chatMessage(
+          id: '2',
+          userId: 'u1',
+          timestamp: DateTime.parse('2026-03-29T12:01:00Z'),
+        ),
+      );
+
+      expect(store.activeUserCount, 1);
+
+      store.dispose();
+    });
+
+    test('expired users are pruned even when comments arrive out of order', () {
+      DateTime fakeNow = DateTime.parse('2026-03-29T12:06:00Z');
+      final StatisticsStore store = StatisticsStore(
+        activeWindow: const Duration(minutes: 5),
+        now: () => fakeNow,
+      );
+
+      store.recordComment(
+        _chatMessage(
+          id: '1',
+          userId: 'u1',
+          timestamp: DateTime.parse('2026-03-29T12:04:00Z'),
+        ),
+      );
+      store.recordComment(
+        _chatMessage(
+          id: '2',
+          userId: 'u2',
+          timestamp: DateTime.parse('2026-03-29T12:00:00Z'),
+        ),
+      );
+
+      expect(store.activeUserCount, 1);
+
+      store.dispose();
+    });
 
     test('updateViewerCount sets viewerCount', () {
       final StatisticsStore store = StatisticsStore();
@@ -203,7 +310,9 @@ void main() {
           now: () => fakeNow,
         );
 
-        store.recordComment(_chatMessage(id: '1', userId: 'u1'));
+        store.recordComment(
+          _chatMessage(id: '1', userId: 'u1', timestamp: fakeNow),
+        );
         expect(store.activeUserCount, 1);
 
         int notifyCount = 0;
@@ -290,7 +399,9 @@ void main() {
 
         // New comment should restart the timer.
         fakeNow = fakeNow.add(const Duration(seconds: 1));
-        store.recordComment(_chatMessage(id: '2', userId: 'u2'));
+        store.recordComment(
+          _chatMessage(id: '2', userId: 'u2', timestamp: fakeNow),
+        );
         expect(store.activeUserCount, 1);
 
         int notifyCount = 0;
@@ -359,10 +470,14 @@ void main() {
           now: () => fakeNow,
         );
 
-        store.recordComment(_chatMessage(id: '1', userId: 'u1'));
+        store.recordComment(
+          _chatMessage(id: '1', userId: 'u1', timestamp: fakeNow),
+        );
 
         fakeNow = fakeNow.add(const Duration(minutes: 3));
-        store.recordComment(_chatMessage(id: '2', userId: 'u2'));
+        store.recordComment(
+          _chatMessage(id: '2', userId: 'u2', timestamp: fakeNow),
+        );
 
         int notifyCount = 0;
         store.addListener(() => notifyCount += 1);

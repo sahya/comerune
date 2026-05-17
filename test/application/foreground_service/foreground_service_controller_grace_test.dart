@@ -261,6 +261,7 @@ class FakeForegroundTaskOperations extends ForegroundTaskOperations {
   Future<void> start({
     required String notificationTitle,
     required String notificationText,
+    NotificationIcon? notificationIcon,
     required Function callback,
   }) async {
     startCallCount++;

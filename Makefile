@@ -19,7 +19,7 @@ ENV := $(MISE_ACTIVATE) && \
 OAUTH_BFF_ENV_FILE := android/oauth_bff.env
 DART_DEFINE_OAUTH_BFF := $(if $(wildcard $(OAUTH_BFF_ENV_FILE)),--dart-define-from-file=$(OAUTH_BFF_ENV_FILE),)
 
-.PHONY: help doctor clean build build-release build-release-aab build-adi-verification build-clean test pub-get analyze format format-all check setup-libs
+.PHONY: help doctor clean build build-release build-release-aab build-adi-verification build-clean test pub-get analyze format format-all check setup-libs ext-gen setup-config show-config
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-38s\033[0m %s\n", $$1, $$2}'
@@ -33,14 +33,23 @@ clean: ## Run flutter clean
 setup-libs: ## Download VOICEVOX native libraries if missing
 	@bash scripts/setup-voicevox-libs.sh
 
+setup-config: ## Copy android/{key.properties,oauth_bff.env,app_id.properties}.example → real files (skips existing)
+	@bash scripts/setup-build-config.sh
+
+show-config: ## Show which property/key files the next build will load (release vs debug fallback)
+	@bash scripts/show-build-config.sh inspect
+
 build: setup-libs ## Build debug APK
+	@bash scripts/show-build-config.sh debug
 	$(ENV) && flutter build apk --debug $(DART_DEFINE_OAUTH_BFF)
 
 build-release: setup-libs ## Build release APK
+	@bash scripts/show-build-config.sh release
 	$(ENV) && bash scripts/guard-no-adi-registration-asset.sh && bash scripts/verify-release-keystore.sh && flutter build apk --release --obfuscate --split-debug-info=build/debug-info $(DART_DEFINE_OAUTH_BFF)
 
 # AAB は本来複数 ABI 同梱が強みだが、現状は arm64-v8a のみ（android/app/build.gradle.kts の release abiFilters による）。
 build-release-aab: setup-libs ## Build release AAB (arm64-v8a only — for Google Play upload)
+	@bash scripts/show-build-config.sh release
 	$(ENV) && bash scripts/guard-no-adi-registration-asset.sh && bash scripts/verify-release-keystore.sh && flutter build appbundle --release --obfuscate --split-debug-info=build/debug-info $(DART_DEFINE_OAUTH_BFF)
 
 build-adi-verification: setup-libs ## Build Android Developer Verification APK (requires ANDROID_ADI_REGISTRATION_PUBLIC_CONTENT_FILE)
@@ -64,3 +73,6 @@ format-all: ## Run code formatter for the whole repository (use in dedicated PRs
 	$(ENV) && dart format .
 
 check: analyze format test ## Run all checks (analyze → format → test)
+
+ext-gen: ## Regenerate optional integration overrides + registry from integrations/
+	$(ENV) && dart run scripts/gen_extension_overrides.dart && dart run scripts/gen_extension_registry.dart

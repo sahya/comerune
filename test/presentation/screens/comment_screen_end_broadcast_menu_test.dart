@@ -469,20 +469,197 @@ void main() {
       await tester.tap(find.byKey(const Key('end-broadcast-button')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('end-broadcast-confirm-button')));
-      await tester.pump(); // start the future, do not settle
+      // Use bounded pump() instead of pumpAndSettle() — once the API
+      // request is in flight the AppBar bottom LinearProgressIndicator
+      // animates indefinitely, so pumpAndSettle would time out (#785).
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
 
       // Re-open the menu — the item should be present but disabled.
       await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
-      await tester.pumpAndSettle();
+      // Same reasoning here: the indicator is still animating, so we
+      // pump a small fixed window to give the menu route time to open
+      // without waiting for animations to settle.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
       final PopupMenuItem<Object?> item = tester.widget(
         find.byKey(const Key('end-broadcast-button')),
       );
       expect(item.enabled, isFalse);
 
-      // Drain the pending future so the test exits cleanly.
+      // Drain the pending future so the test exits cleanly. Once the
+      // API resolves the indicator is removed and pumpAndSettle is
+      // safe again.
       pending.complete(const BroadcastControlResult(success: true));
       await tester.pumpAndSettle();
     });
+
+    testWidgets(
+      'AppBar bottom progress indicator is visible while the end-broadcast API is in flight',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final Completer<BroadcastControlResult> pending =
+            Completer<BroadcastControlResult>();
+        final _RecordingBroadcastControlRepository repo =
+            _RecordingBroadcastControlRepository(
+              responder: (_, _) => pending.future,
+            );
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            broadcastControlRepository: repo,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        (tester.state<State<CommentScreen>>(find.byType(CommentScreen))
+                as CommentScreenTestAccess)
+            .setBroadcasterForTesting(isBroadcaster: true);
+        await tester.pumpAndSettle();
+
+        // Indicator must NOT exist before the user even opens the menu.
+        expect(
+          find.byKey(const Key('end-broadcast-progress-indicator')),
+          findsNothing,
+        );
+
+        await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('end-broadcast-button')));
+        await tester.pumpAndSettle();
+
+        // Indicator must NOT show while the confirmation dialog is up
+        // (would otherwise break pumpAndSettle for the dialog phase).
+        expect(
+          find.byKey(const Key('end-broadcast-progress-indicator')),
+          findsNothing,
+        );
+
+        await tester.tap(find.byKey(const Key('end-broadcast-confirm-button')));
+        // Bounded pumps only — the indeterminate indicator never settles.
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+
+        expect(
+          find.byKey(const Key('end-broadcast-progress-indicator')),
+          findsOneWidget,
+        );
+
+        pending.complete(const BroadcastControlResult(success: true));
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      'AppBar bottom progress indicator disappears once the end-broadcast API resolves',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final Completer<BroadcastControlResult> pending =
+            Completer<BroadcastControlResult>();
+        final _RecordingBroadcastControlRepository repo =
+            _RecordingBroadcastControlRepository(
+              responder: (_, _) => pending.future,
+            );
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            broadcastControlRepository: repo,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        (tester.state<State<CommentScreen>>(find.byType(CommentScreen))
+                as CommentScreenTestAccess)
+            .setBroadcasterForTesting(isBroadcaster: true);
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('end-broadcast-button')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('end-broadcast-confirm-button')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+
+        // Sanity check — indicator is up while in flight.
+        expect(
+          find.byKey(const Key('end-broadcast-progress-indicator')),
+          findsOneWidget,
+        );
+
+        // Resolve the API and confirm the indicator is gone again.
+        pending.complete(const BroadcastControlResult(success: true));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('end-broadcast-progress-indicator')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'AppBar bottom progress indicator is cleared even when the API resolves with an error',
+      (WidgetTester tester) async {
+        // Regression guard for the API-region try/finally: a non-success
+        // result must still tear down the indicator so the user is not
+        // left looking at a permanently-spinning bar (#785).
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        final Completer<BroadcastControlResult> pending =
+            Completer<BroadcastControlResult>();
+        final _RecordingBroadcastControlRepository repo =
+            _RecordingBroadcastControlRepository(
+              responder: (_, _) => pending.future,
+            );
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            broadcastControlRepository: repo,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        (tester.state<State<CommentScreen>>(find.byType(CommentScreen))
+                as CommentScreenTestAccess)
+            .setBroadcasterForTesting(isBroadcaster: true);
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('appbar-overflow-menu')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('end-broadcast-button')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('end-broadcast-confirm-button')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+
+        expect(
+          find.byKey(const Key('end-broadcast-progress-indicator')),
+          findsOneWidget,
+        );
+
+        pending.complete(
+          const BroadcastControlResult(
+            success: false,
+            errorCode: BroadcastControlErrorCode.networkError,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('end-broadcast-progress-indicator')),
+          findsNothing,
+        );
+        // Sanity: the existing error path still surfaces the SnackBar
+        // so we did not regress the user-visible failure feedback.
+        expect(
+          find.byKey(const Key('end-broadcast-error-snackbar')),
+          findsOneWidget,
+        );
+      },
+    );
 
     testWidgets('successful end flushes the comment-post broadcaster cache', (
       WidgetTester tester,

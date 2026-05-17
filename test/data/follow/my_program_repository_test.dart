@@ -203,7 +203,7 @@ void main() {
                 'title': 'Front Fallback Icon',
                 'supplier': <String, Object?>{
                   'name': 'Fallback Supplier',
-                  'programProviderId': 18897569,
+                  'programProviderId': 99999999,
                 },
               },
             ],
@@ -221,7 +221,7 @@ void main() {
         expect(result, isNotNull);
         expect(
           result!.providerIconUrl,
-          'https://secure-dcdn.cdn.nimg.jp/nicoaccount/usericon/1889/18897569.jpg',
+          'https://secure-dcdn.cdn.nimg.jp/nicoaccount/usericon/9999/99999999.jpg',
         );
 
         repository.dispose();
@@ -439,7 +439,7 @@ void main() {
                 'status': 'onAir',
                 'supplier': <String, Object?>{
                   'name': 'Tool Supplier',
-                  'programProviderId': 18897569,
+                  'programProviderId': 99999999,
                 },
               },
             ],
@@ -458,7 +458,7 @@ void main() {
       expect(result, isNotNull);
       expect(
         result!.providerIconUrl,
-        'https://secure-dcdn.cdn.nimg.jp/nicoaccount/usericon/1889/18897569.jpg',
+        'https://secure-dcdn.cdn.nimg.jp/nicoaccount/usericon/9999/99999999.jpg',
       );
 
       repository.dispose();

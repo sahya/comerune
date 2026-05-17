@@ -23,6 +23,7 @@ import '../../helpers/fake_share_platform.dart';
 import '../../helpers/in_memory_shared_preferences.dart';
 import '../../helpers/in_memory_user_session_store.dart';
 import '../../helpers/settings_test_helpers.dart';
+import '../../helpers/throwing_settings_store.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -479,7 +480,7 @@ void main() {
     // when the store is wired, and renders disabled with 「未対応」 when
     // not.
     testWidgets(
-      'NG フィルタ tile is disabled with 「未対応」 when broadcasterNgStore is null',
+      'NG設定 tile is disabled with 「未対応」 when broadcasterNgStore is null',
       (WidgetTester tester) async {
         final SharedPreferencesSettingsStore settingsStore =
             SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
@@ -495,7 +496,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(find.text('NG フィルタ'), findsOneWidget);
+        expect(find.text('NG設定'), findsOneWidget);
         expect(find.text('未対応'), findsOneWidget);
 
         final ListTile tile = tester.widget(
@@ -506,32 +507,58 @@ void main() {
       },
     );
 
+    testWidgets('NG設定 tile pushes BroadcasterNgListScreen when store wired', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeBroadcasterNgStore ngStore = FakeBroadcasterNgStore();
+
+      await tester.pumpWidget(
+        _buildScreen(settingsStore, broadcasterNgStore: ngStore),
+      );
+      await tester.pumpAndSettle();
+
+      final Finder scrollable = find.byType(Scrollable).first;
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('broadcaster-ng-filter-tile')),
+        200,
+        scrollable: scrollable,
+      );
+      await tester.pumpAndSettle();
+
+      // No subtitle is rendered when the tile is enabled (sage review:
+      // tile name 「NG設定」 is self-explanatory; subtitle removed
+      // for tile compactness and above-the-fold space).
+      expect(find.text('未対応'), findsNothing);
+      expect(find.text('NG設定'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('broadcaster-ng-filter-tile')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(BroadcasterNgListScreen), findsOneWidget);
+    });
+
     testWidgets(
-      'NG フィルタ tile pushes BroadcasterNgListScreen when store wired',
+      'shows error UI (not perma-spinner) when settingsStore.load() throws '
+      'a StateError from legacy persisted data',
       (WidgetTester tester) async {
-        final SharedPreferencesSettingsStore settingsStore =
-            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
-        final FakeBroadcasterNgStore ngStore = FakeBroadcasterNgStore();
-
-        await tester.pumpWidget(
-          _buildScreen(settingsStore, broadcasterNgStore: ngStore),
+        // 「更新インストール後に NG 設定項目が一覧に出ない」報告の根本原因
+        // 再現テスト。`SettingsStore.load()` が `Error` 系を投げると、
+        // SettingsScreenMixin が `Exception` 限定で catch していた頃は
+        // `settings`/`settingsError` ともに null のままで CircularProgress
+        // Indicator が消えず、ユーザーには「設定一覧が出てない」ように
+        // 見えていた。修正後はエラー UI と再試行ボタンが表示されること。
+        final ThrowingSettingsStore store = ThrowingSettingsStore(
+          errorToThrow: StateError('simulated legacy parse failure'),
         );
+
+        await tester.pumpWidget(_buildScreen(store));
         await tester.pumpAndSettle();
 
-        final Finder scrollable = find.byType(Scrollable).first;
-        await tester.scrollUntilVisible(
-          find.byKey(const Key('broadcaster-ng-filter-tile')),
-          200,
-          scrollable: scrollable,
-        );
-        await tester.pumpAndSettle();
-
-        expect(find.text('NG ユーザー / NG ワードを放送者ごとに管理'), findsOneWidget);
-
-        await tester.tap(find.byKey(const Key('broadcaster-ng-filter-tile')));
-        await tester.pumpAndSettle();
-
-        expect(find.byType(BroadcasterNgListScreen), findsOneWidget);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        expect(find.text('設定の読み込みに失敗しました'), findsOneWidget);
+        expect(find.text('再試行'), findsOneWidget);
       },
     );
   });
