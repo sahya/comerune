@@ -69,6 +69,11 @@ android/app/src/main/jniLibs/
 android/app/src/main/assets/voicevox_models/*.vvm
 android/app/src/main/assets/open_jtalk_dic_utf_8-1.11/
 
+# Bundled preset filter: only the encrypted blob (preset_ng_words.enc) is
+# committed. The plaintext is a developer-local working copy regenerated via
+# `dart run tool/ng_dict.dart decrypt` — never commit it.
+android/app/src/main/assets/preset_ng_words.json
+
 # Claude Code
 .claude/
 CLAUDE.local.md
