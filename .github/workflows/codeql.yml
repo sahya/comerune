@@ -1,0 +1,100 @@
+# CodeQL advanced setup.
+#
+# Language coverage notes for this repository:
+#   - This is a Flutter app, so the majority of the source (~87%) is Dart.
+#     CodeQL has no Dart analyzer, so Dart cannot be scanned here. Dart
+#     static analysis is handled separately by `flutter analyze` (see the
+#     CI workflow), not by CodeQL.
+#   - HTML and shell scripts are likewise not CodeQL-supported languages
+#     and are intentionally not in the matrix below.
+#   - `c-cpp` is intentionally omitted: the only C++ is a single Android
+#     JNI file that requires the Android NDK to build, so CodeQL cannot
+#     produce a database for it without a fragile custom build.
+#   - `java-kotlin` is intentionally omitted: the Android host module is
+#     100% Kotlin (no Java). CodeQL's Kotlin extractor is a kotlinc plugin
+#     that requires a build, so build-mode 'none' extracts nothing
+#     ("no source code seen"). The only working alternative is a manual
+#     Gradle build with a full Flutter SDK setup on every run, which is
+#     costly and carries a CodeQL-vs-Kotlin extractor version risk.
+#   - The Kotlin and C++ code is covered instead by the Kotlin unit tests
+#     (see the CI workflow) and by code review.
+#   - The matrix therefore covers only the CodeQL-supported languages that
+#     can be analyzed reliably here: Python (build/asset scripts) and the
+#     GitHub Actions workflows themselves.
+#
+name: "CodeQL Advanced"
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '30 17 * * 5'
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    # Runner size impacts CodeQL analysis time. To learn more, please see:
+    #   - https://gh.io/recommended-hardware-resources-for-running-codeql
+    #   - https://gh.io/supported-runners-and-hardware-resources
+    #   - https://gh.io/using-larger-runners (GitHub.com only)
+    # Consider using larger runners or machines with greater resources for possible analysis time improvements.
+    # All analyzed languages here run on Linux (no Swift), so a single runner is enough.
+    runs-on: ubuntu-latest
+    permissions:
+      # required for all workflows
+      security-events: write
+
+      # required to fetch internal or private CodeQL packs
+      packages: read
+
+      # only required for workflows in private repositories
+      actions: read
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - language: actions
+          build-mode: none
+        - language: python
+          build-mode: none
+        # CodeQL supports the following values keywords for 'language': 'actions', 'c-cpp', 'csharp', 'go', 'java-kotlin', 'javascript-typescript', 'python', 'ruby', 'rust', 'swift'
+        # Dart, HTML, shell, C++, and Kotlin are intentionally not listed —
+        # see the language coverage notes at the top of this file.
+        # To learn more about changing the languages that are analyzed or customizing the build mode for your analysis,
+        # see https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/customizing-your-advanced-setup-for-code-scanning.
+        # If you are analyzing a compiled language, you can modify the 'build-mode' for that language to customize how
+        # your codebase is analyzed, see https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/codeql-code-scanning-for-compiled-languages
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+    # Add any setup steps before running the `github/codeql-action/init` action.
+    # This includes steps like installing compilers or runtimes (`actions/setup-node`
+    # or others). This is typically only required for manual builds.
+    # - name: Setup runtime (example)
+    #   uses: actions/setup-example@v1
+
+    # Initializes the CodeQL tools for scanning.
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
+      with:
+        languages: ${{ matrix.language }}
+        build-mode: ${{ matrix.build-mode }}
+        # If you wish to specify custom queries, you can do so here or in a config file.
+        # By default, queries listed here will override any specified in a config file.
+        # Prefix the list here with "+" to use these queries and those in the config file.
+
+        # For more details on CodeQL's query packs, refer to: https://docs.github.com/en/code-security/code-scanning/automatically-scanning-your-code-for-vulnerabilities-and-errors/configuring-code-scanning#using-queries-in-ql-packs
+        # queries: security-extended,security-and-quality
+
+    # No manual build step is needed: every analyzed language uses
+    # build-mode 'none', so CodeQL builds its database directly from source.
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
+      with:
+        category: "/language:${{matrix.language}}"
