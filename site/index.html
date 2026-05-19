@@ -5,14 +5,31 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="color-scheme" content="light dark" />
   <title>comerune — ニコニコ生放送のコメントを、手のひらの上で</title>
-  <meta name="description" content="ニコニコ生放送のコメントをリアルタイムに表示し、読み上げもできる非公式モバイルコメントビューア。" />
+  <meta name="description" content="ニコニコ生放送のコメントをリアルタイムに表示し、読み上げもできる非公式モバイルコメントビューア。放送番号やURLを入力するだけでコメントが流れ、VOICEVOX による音声読み上げにも対応。" />
+  <meta name="robots" content="index,follow" />
 
-  <meta property="og:title" content="comerune" />
+  <!-- Cloudflare Pages はカスタムドメインのほか *.pages.dev でも公開され、
+       プレビューデプロイも一意のホスト名を持つため、評価分散を防ぐ目的で
+       全ページに本番URLの canonical を固定で指定する。 -->
+  <link rel="canonical" href="https://comerune.pages.dev/" />
+
+  <meta property="og:title" content="comerune — ニコニコ生放送のコメントを、手のひらの上で" />
   <meta property="og:description" content="ニコニコ生放送のコメントを、手のひらの上で楽しむ非公式コメントビューア。" />
   <meta property="og:type" content="website" />
   <meta property="og:locale" content="ja_JP" />
+  <meta property="og:url" content="https://comerune.pages.dev/" />
+  <meta property="og:site_name" content="comerune" />
+  <meta property="og:image" content="https://comerune.pages.dev/icon.png" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:width" content="1024" />
+  <meta property="og:image:height" content="1024" />
+  <meta property="og:image:alt" content="comerune アイコン" />
   <meta name="twitter:card" content="summary" />
-
+  <meta name="twitter:title" content="comerune — ニコニコ生放送のコメントを、手のひらの上で" />
+  <meta name="twitter:description" content="ニコニコ生放送のコメントを、手のひらの上で楽しむ非公式コメントビューア。" />
+  <meta name="twitter:image" content="https://comerune.pages.dev/icon.png" />
+  <meta name="google-site-verification" content="4KlWrNw9uAPsnbCZPDAPfNe96bRE9sj05sEkuQdjVQ8" />
+  <meta name="msvalidate.01" content="858AA1CEF8B389C1E9F32A2CB3F7C534" />
   <link rel="icon" type="image/png" href="/icon.png" />
   <link rel="apple-touch-icon" href="/icon.png" />
 
@@ -306,6 +323,74 @@
     }
     .signoff strong { color: var(--text); }
   </style>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "comerune",
+    "alternateName": "こめるーん",
+    "description": "ニコニコ生放送のコメントをリアルタイムに表示し、VOICEVOX による音声読み上げもできる非公式モバイルコメントビューア。",
+    "url": "https://comerune.pages.dev/",
+    "applicationCategory": "MultimediaApplication",
+    "operatingSystem": "Android",
+    "inLanguage": "ja",
+    "license": "https://opensource.org/licenses/MIT",
+    "isAccessibleForFree": true,
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "JPY"
+    },
+    "author": {
+      "@type": "Person",
+      "name": "sahya",
+      "url": "https://github.com/sahya"
+    },
+    "sameAs": "https://github.com/sahya/comerune"
+  }
+  </script>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "comerune とは何ですか？",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "ニコニコ生放送のコメントをリアルタイムに表示し、音声で読み上げることもできるモバイル向けの非公式コメントビューアです。株式会社ドワンゴの公式アプリではありません。"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "comerune の読みかたは？",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "「こめるーん」と読みます。のばす音が読みづらいときは「こめるん」でも構いません。"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "comerune は無料で使えますか？",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "無料です。MIT ライセンスのオープンソースとして公開されており、ソースコードは GitHub で確認できます。"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "利用にニコニコアカウントは必要ですか？",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "コメントの取得にはニコニコアカウントへのログインが必要です。"
+        }
+      }
+    ]
+  }
+  </script>
 </head>
 <body>
 
@@ -431,17 +516,15 @@
       </p>
     </section>
 
-    <!-- 期間限定・隠しベータ。ロゴ5連打で開錠／期限後は失効。
-         TODO: 配布先確定後、下の <a href="#"> を実 URL に差し替え。 -->
-    <section id="beta" aria-labelledby="beta-heading" tabindex="-1" hidden>
-      <h2 id="beta-heading"><span class="num">β</span>ベータ版（期間限定）</h2>
+    <!-- ベータ版。誰でもダウンロード可能。 -->
+    <section id="beta" aria-labelledby="beta-heading" tabindex="-1">
+      <h2 id="beta-heading"><span class="num">β</span>ベータ版</h2>
       <div class="teaser">
-        <p>見つけてくださって、ありがとうございます。ストア公開を待つあいだの、ベータ版をこっそり置いておきます。</p>
-        <p>動作が不安定なことがあります。気になる挙動に出会ったら、そっと教えていただけるとうれしいです。</p>
+        <p>見つけてくださって、ありがとうございます。ベータ版をこっそり置いておきます。</p>
+        <p>まだ動作が安定しないことがあります。何か変だなと思ったら、まずはアプリを再起動してみてください。再起動しても気になる大きな不都合があれば、無理のない範囲でGitHub Issuesに残していただけたらうれしいです。</p>
         <p>
-          <a class="beta-download" href="https://comerune-temp-release-v1.s3.ap-northeast-1.amazonaws.com/6e03260bd6b33ec3a30017de04a84948/apk/f0ca06ba7b4eb2b5abf5c35e755a6581/comerune-v1.0.0-f0ca06ba.apk?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=ASIAWNHACFVYLZQMADQ6%2F20260516%2Fap-northeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260516T163454Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEMj%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaDmFwLW5vcnRoZWFzdC0xIkcwRQIgdtlh%2FD2mQZ7pjMVDRPvWoQkn7dKfzH6s3f0HUmjvemMCIQDzJDfRusI5tzZiYNF%2Bc0rUmMr9PJfDVS9OskJEkspK8irZAgiS%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAQaDDQ0MDcwNDA1MjU5MiIMKwpWhuURL9iB2lNmKq0CP3RZ9MqW7gXifzfsbPnwJKVAXzTq0uBw%2F109vnauzxqQ3yN8Q8xn2nDWdydeMWXulDdEnvjFNRFiQggz2ZdQNTU%2FDIm8o4CGrqulRQzczC%2Bd%2F2MkRJsgtISq546bfURfKFuiAaDrmcgW%2FAyAnLclKG9e1Ob8hjFdi7OPIkRIQggwaVrScrKsa7kJ3B6ne1Ei3o%2FI8puCZG7IZWdoBAvMoLOQm3EREOzHNlaRYov0crVrUBWWKVSxwhdC5D%2BOF1BojOtLJcTD442JEgmFhIqCdgdwKvx9bA9%2F3UT0bP8B9y6%2FBZbh%2BHKIl2NCA%2F81snD60gWoeQJro0lncH9%2FcZGHJWueXj1tDHvvdzZ6UdR6gLd5grUHb32Wjzr8AOjTWgLFlTaoRvNYjosdWSOvITD0saLQBjqqAgDEe6HdjZtkSF%2FagvEeHrvGEqV7ep94r0xI%2Fp4wrDVOhKwm61Dv0pue9r7VE4qaWmVj6KLMknu1ujcI8opU7fOehDJF3Y1ACS%2BoEoBbLUCa4o%2FC%2BPYWXYKJsxZ5noBjivZLjvzXKV66bx7VKoe8EDjiSfZs9OZZmfjMhryE7rTRz8vWYiRmxLg%2BpUnmuB6ElxwiskEL5QsJN8u2IUFY89QunIZtv%2BO5GWfnAT2DpAZIyUTDVV4IUz%2FPxre3lm3hOgWonWDQvUanJVQ%2BAjLhi8Z4H%2FPPc1%2B5UcX02TNfk%2B3PeSSomj7DNqBKgRCTNrqe%2B7P2ObXCwvlXi01vr1eRkmHuX8rlSPyPOU%2B9TDe4D1jdzDOkQQm84Etu1qO1%2BOBDWOe659p0nkfykno%3D&X-Amz-Signature=792f085a6e7a7b6f1e6ba8189ac070dd8ffa23b96a2d5940e6f32f74cea4fc75" rel="nofollow noopener" aria-label="ベータ版をダウンロード">→ ベータ版をダウンロード</a>
+          <a class="beta-download" href="https://github.com/sahya/comerune/releases/download/v1.0.0/comerune-v1.0.0-arm64.apk" rel="nofollow noopener" aria-label="ベータ版をダウンロード">→ ベータ版をダウンロード</a>
         </p>
-        <p class="beta-until">公開はおおむね <time datetime="2026-05-24">2026年5月24日</time> ごろまでの予定です。</p>
       </div>
     </section>
 
@@ -469,8 +552,6 @@
       <strong>comerune</strong>
     </p>
   </footer>
-
-  <script src="/beta.js" defer></script>
 
 </body>
 </html>
