@@ -98,7 +98,10 @@ jobs:
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
-          cache: true
+          # 署名 secrets を持つ特権ワークフローのため、PR/push CI と共有される
+          # Actions キャッシュ経由のポイズニング (低信頼 CI が書いた main スコープ
+          # キャッシュを署名ビルドが復元する経路) を断ち、毎回クリーン取得する。
+          cache: false
 
       - name: Install dependencies
         run: flutter pub get
@@ -256,6 +259,14 @@ jobs:
         env:
           VERSION: ${{ needs.validate.outputs.version }}
         run: |
+          # Annotated tags embed a tagger identity, but a fresh runner has
+          # no git user configured (fails with "empty ident name"). Use the
+          # github-actions[bot] identity: GitHub's well-known public
+          # noreply, the same identity GitHub attributes the
+          # token-authenticated tag push to. The human who dispatched the
+          # release is recorded as github.actor in the run logs, not here.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$VERSION" -m "Release $VERSION"
           git push origin "$VERSION"
 

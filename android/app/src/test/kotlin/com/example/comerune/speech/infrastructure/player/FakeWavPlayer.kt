@@ -88,10 +88,10 @@ class FakeWavPlayer(
         // post-swap pre-intent window deterministically.
         playProceedGate?.await(5, TimeUnit.SECONDS)
         // Mirror the released-guard in MediaPlayerWavPlayer.play() and
-        // AudioTrackWavPlayer.play() (search "Player has been released"
-        // in those files — using a stable token rather than line numbers
-        // so this comment does not drift when the production source is
-        // edited). Once release() has run, every subsequent play() must
+        // AudioTrackWavPlayer.play(). The message text is the shared
+        // production constant [PLAYER_RELEASED_MESSAGE] (Issue #927) so a
+        // production rename forces this fake to change too — no silent
+        // drift. Once release() has run, every subsequent play() must
         // resolve to a failure Result. Locking this into the fake means
         // the SwitchableWavPlayer post-release contract test (Issue #917)
         // observes realistic delegate behaviour without dragging in
@@ -99,7 +99,7 @@ class FakeWavPlayer(
         // intent flip so a released player never reports intent-to-play.
         if (released) {
             return Result.failure(
-                IllegalStateException("Player has been released")
+                IllegalStateException(PLAYER_RELEASED_MESSAGE)
             )
         }
         // Mirror real implementations: intent flips to true on play() and

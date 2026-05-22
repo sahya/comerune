@@ -1,6 +1,7 @@
 package com.example.comerune.speech.infrastructure.player
 
 import android.content.ContextWrapper
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -66,4 +67,27 @@ class MediaPlayerWavPlayerTest {
         player.release()
         assertEquals(0, focusGuard.listenerCount)
     }
+
+    /**
+     * Issue #927: drift guard. The production released-guard message and the
+     * [FakeWavPlayer] released-guard message must stay identical. Both now
+     * read the shared [PLAYER_RELEASED_MESSAGE] constant, so renaming it
+     * changes production and the fake together. This test fails the moment
+     * the fake's released failure stops matching the shared constant —
+     * catching the silent drift the comment-only "search the literal"
+     * convention could not.
+     */
+    @Test
+    fun `fake released-guard message matches the shared production constant`() =
+        runBlocking {
+            val fake = FakeWavPlayer()
+            fake.release()
+            val result = fake.play(ByteArray(0))
+
+            assertEquals(true, result.isFailure)
+            assertEquals(
+                PLAYER_RELEASED_MESSAGE,
+                result.exceptionOrNull()?.message
+            )
+        }
 }
