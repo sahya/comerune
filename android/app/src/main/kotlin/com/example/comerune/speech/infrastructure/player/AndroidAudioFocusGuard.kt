@@ -7,6 +7,7 @@ import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import androidx.annotation.RequiresApi
 import com.example.comerune.speech.domain.player.AudioFocusGuard
 import com.example.comerune.speech.domain.player.AudioFocusGuard.FocusChangeListener
@@ -126,6 +127,11 @@ class AndroidAudioFocusGuard internal constructor(
     private val delayedRunner: DelayedRunner,
 ) : AudioFocusGuard {
 
+    companion object {
+        // Diagnostic tag for issue #933 focus-event observation.
+        private const val TAG = "AudioFocusGuard-debug"
+    }
+
     constructor(context: Context) : this(
         controller = RealAudioFocusController(
             context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager,
@@ -215,18 +221,23 @@ class AndroidAudioFocusGuard internal constructor(
                     else -> when (val response = controller.request()) {
                         AudioManager.AUDIOFOCUS_REQUEST_GRANTED -> {
                             held = true
+                            Log.d(TAG, "acquire: response=GRANTED held=true")
                             Result.success(Unit)
                         }
                         AudioManager.AUDIOFOCUS_REQUEST_DELAYED -> {
                             held = true
                             pendingAcquire = cont
+                            Log.d(TAG, "acquire: response=DELAYED held=true pending")
                             null
                         }
-                        else -> Result.failure(
-                            IllegalStateException(
-                                "Audio focus request denied (response=$response)",
-                            ),
-                        )
+                        else -> {
+                            Log.w(TAG, "acquire: response=FAILED ($response) held=$held")
+                            Result.failure(
+                                IllegalStateException(
+                                    "Audio focus request denied (response=$response)",
+                                ),
+                            )
+                        }
                     }
                 }
             }
@@ -372,6 +383,7 @@ class AndroidAudioFocusGuard internal constructor(
     }
 
     private fun notifyListeners(event: FocusEvent) {
+        Log.d(TAG, "notifyListeners: event=$event held=$held listeners=${listeners.size}")
         // listeners is CopyOnWriteArrayList — safe to iterate without lock.
         for (listener in listeners) {
             try {

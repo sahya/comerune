@@ -1914,6 +1914,12 @@ class _CommentScreenState extends State<CommentScreen>
         // 落とす（idempotent・ready 済みなら native 側で早期 return）。
         // VOICEVOX は engineState がそのままエンジン状態なので従来どおり
         // short-circuit を温存（perf 非退化）。
+        _debugLogLazy(
+          () =>
+              '[speech-debug] initSpeech gate: '
+              'engineState=${status.engineState} isAndroidTts=$isAndroidTts '
+              'shortCircuit=${status.engineState == 'READY' && !isAndroidTts}',
+        );
         if (status.engineState == 'READY' && !isAndroidTts) {
           _initializedEngineType =
               widget.speechConfig.speechSettings.engineType;
@@ -1999,6 +2005,9 @@ class _CommentScreenState extends State<CommentScreen>
       );
       try {
         final bool available = await platform.checkAndroidTtsAvailability();
+        _debugLogLazy(
+          () => '[speech-debug] checkAndroidTtsAvailability → $available',
+        );
         // Issue #694: keep the cross-screen notifier in sync so the TTS
         // settings screen (and any other subscriber) sees the same result
         // without re-running the check.
@@ -2549,12 +2558,36 @@ class _CommentScreenState extends State<CommentScreen>
   /// defensive wrapper around [_onAndroidTtsAvailabilityChanged].
   void _onTimelineStoreChanged() {
     try {
-      if (!mounted) return;
-      if (!_speechStarted) return;
-      if (!widget.speechConfig.speechSettings.enabled) return;
+      if (!mounted) {
+        _debugLogLazy(
+          () =>
+              '[speech-debug] timelineStoreChanged drop reason=not_mounted '
+              'started=$_speechStarted',
+        );
+        return;
+      }
+      if (!_speechStarted) {
+        _debugLogLazy(
+          () =>
+              '[speech-debug] timelineStoreChanged drop reason=not_started '
+              'enabled=${widget.speechConfig.speechSettings.enabled}',
+        );
+        return;
+      }
+      if (!widget.speechConfig.speechSettings.enabled) {
+        _debugLog(
+          '[speech-debug] timelineStoreChanged drop reason=speech_disabled',
+        );
+        return;
+      }
       final List<AppMessage>? latest =
           widget.speechConfig.timelineStore?.messages;
-      if (latest == null) return;
+      if (latest == null) {
+        _debugLog(
+          '[speech-debug] timelineStoreChanged drop reason=null_messages',
+        );
+        return;
+      }
       _submitNewCommentsForSpeech(latest);
     } catch (e, stackTrace) {
       _errorLog(

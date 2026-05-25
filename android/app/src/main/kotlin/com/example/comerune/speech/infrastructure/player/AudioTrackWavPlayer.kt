@@ -181,6 +181,10 @@ class AudioTrackWavPlayer(
     }
 
     private val focusListener = AudioFocusGuard.FocusChangeListener { event ->
+        Log.d(
+            TAG,
+            "focusEvent=$event state=${currentState()} shouldBePlaying=$shouldBePlayingFlag released=$released",
+        )
         when (event) {
             AudioFocusGuard.FocusEvent.LOSS -> stopInternal()
             AudioFocusGuard.FocusEvent.LOSS_TRANSIENT -> pauseInternal()
@@ -198,6 +202,7 @@ class AudioTrackWavPlayer(
     }
 
     override suspend fun play(wavBytes: ByteArray): Result<Unit> {
+        Log.d(TAG, "play: enter bytes=${wavBytes.size} released=$released state=${currentState()}")
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             return Result.failure(
                 UnsupportedOperationException(
@@ -208,6 +213,7 @@ class AudioTrackWavPlayer(
 
         synchronized(lock) {
             if (released) {
+                Log.w(TAG, "play: REJECT post-release call (released=true)")
                 return Result.failure(IllegalStateException("Player has been released"))
             }
         }
@@ -239,9 +245,11 @@ class AudioTrackWavPlayer(
         // Mark intent to play before any suspension so a focus-loss
         // racing with track build can still trigger a correct resume later.
         shouldBePlayingFlag = true
+        Log.d(TAG, "play: shouldBePlayingFlag:=true → guard.acquire()")
 
         // Acquire focus once for this logical utterance via the shared guard.
         val focusResult = audioFocusGuard.acquire()
+        Log.d(TAG, "play: guard.acquire() success=${focusResult.isSuccess}")
         if (focusResult.isFailure) {
             shouldBePlayingFlag = false
             return Result.failure(
@@ -406,6 +414,7 @@ class AudioTrackWavPlayer(
     }
 
     override fun release() {
+        Log.d(TAG, "release: enter state=${currentState()} shouldBePlaying=$shouldBePlayingFlag")
         synchronized(lock) {
             released = true
         }

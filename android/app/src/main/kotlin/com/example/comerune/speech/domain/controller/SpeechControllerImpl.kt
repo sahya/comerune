@@ -20,6 +20,7 @@ import com.example.comerune.speech.domain.queue.SpeechQueueManager
 import com.example.comerune.speech.domain.settings.SettingsRepository
 import com.example.comerune.speech.domain.splitter.JapaneseTextSplitter
 import com.example.comerune.speech.domain.splitter.TextSplitter
+import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CloseableCoroutineDispatcher
 import kotlinx.coroutines.CoroutineDispatcher
@@ -53,6 +54,14 @@ class SpeechControllerImpl(
     private val textSplitter: TextSplitter = JapaneseTextSplitter(),
     private val ttsSpeaker: TtsSpeaker? = null
 ) : SpeechController {
+
+    companion object {
+        // Diagnostic tag for issue #933 queue/worker observation.
+        // Behavior is unchanged; logs are added only for grep-friendly tracing
+        // of "comments enqueued but not drained" symptoms. Search prefix:
+        //   adb logcat -s SpeechController-debug
+        private const val TAG = "SpeechController-debug"
+    }
 
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
 
@@ -140,6 +149,7 @@ class SpeechControllerImpl(
             return Result.failure(IllegalStateException("Controller has been released"))
         }
         started = true
+        Log.d(TAG, "start: started:=true queueSize=${queueManager.size()}")
         startWorkerIfNeeded()
         return Result.success(Unit)
     }
@@ -149,6 +159,7 @@ class SpeechControllerImpl(
             return Result.failure(IllegalStateException("Controller has been released"))
         }
         started = false
+        Log.d(TAG, "stop: started:=false clearQueue=$clearQueue queueSize=${queueManager.size()}")
         player.stop()
         ttsSpeaker?.stop()
         activePrefetchJob?.cancel()
@@ -255,6 +266,13 @@ class SpeechControllerImpl(
 
         eventEmitter.emit(SpeechEvents.queueUpdated(queueManager.size()))
 
+        val workerActive = workerJob?.isActive == true
+        Log.d(
+            TAG,
+            "submitComment: enqueued id=${normalized.id} textLen=${normalized.normalizedText.length} " +
+                "queueSize=${queueManager.size()} started=$started workerActive=$workerActive",
+        )
+
         if (started) {
             startWorkerIfNeeded()
         }
@@ -332,6 +350,7 @@ class SpeechControllerImpl(
             if (released) return
             released = true
             started = false
+            Log.d(TAG, "release: released:=true started:=false")
             activePrefetchJob?.cancel()
             activePrefetchJob = null
             prefetched = null
@@ -367,8 +386,12 @@ class SpeechControllerImpl(
     private suspend fun startWorkerIfNeeded() {
         workerMutex.withLock {
             val currentJob = workerJob
-            if (currentJob != null && currentJob.isActive) return
+            if (currentJob != null && currentJob.isActive) {
+                Log.d(TAG, "startWorkerIfNeeded: noop (worker already active)")
+                return
+            }
 
+            Log.d(TAG, "startWorkerIfNeeded: launching worker queueSize=${queueManager.size()}")
             workerJob = scope.launch {
                 processQueue()
             }
@@ -376,17 +399,30 @@ class SpeechControllerImpl(
     }
 
     private suspend fun processQueue() {
+        Log.d(TAG, "processQueue: enter started=$started released=$released queueSize=${queueManager.size()}")
         do {
             while (started && !released) {
-                val item = queueManager.poll() ?: break
+                val item = queueManager.poll()
+                if (item == null) {
+                    Log.d(TAG, "processQueue: poll=null exit-inner queueSize=${queueManager.size()}")
+                    break
+                }
+                Log.d(
+                    TAG,
+                    "processQueue: iter id=${item.commentId} textLen=${item.text.length} " +
+                        "remainingQueueSize=${queueManager.size()}",
+                )
 
                 try {
                     processingMutex.withLock {
                         processItem(item)
                     }
+                    Log.d(TAG, "processQueue: iter done id=${item.commentId}")
                 } catch (e: CancellationException) {
+                    Log.d(TAG, "processQueue: iter cancelled id=${item.commentId}")
                     throw e
                 } catch (e: Exception) {
+                    Log.w(TAG, "processQueue: iter threw id=${item.commentId} msg=${e.message}")
                     try {
                         // Issue #695 round-2 review: when the engine in use is
                         // Android TTS, anything that throws *before* reaching
@@ -430,6 +466,12 @@ class SpeechControllerImpl(
             }
         }
 
+        Log.d(
+            TAG,
+            "processQueue: exit started=$started released=$released " +
+                "queueSize=${queueManager.size()} relaunched=$relaunched",
+        )
+
         if (!relaunched && !released) {
             eventEmitter.emit(SpeechEvents.queueUpdated(queueManager.size()))
         }
@@ -442,6 +484,11 @@ class SpeechControllerImpl(
         eventEmitter.emit(SpeechEvents.speechStarted(item.commentId, item.text))
 
         val settings = settingsRepository.get()
+
+        Log.d(
+            TAG,
+            "processItem: id=${item.commentId} engine=${settings.engineType.name}",
+        )
 
         if (settings.engineType == EngineType.ANDROID_TTS) {
             processWithAndroidTts(item, settings)
@@ -463,7 +510,16 @@ class SpeechControllerImpl(
         settings: SpeechSettings
     ) {
         val speaker = ttsSpeaker
-        if (speaker == null || !speaker.isReady()) {
+        val speakerReady = speaker?.isReady() ?: false
+        Log.d(
+            TAG,
+            "processWithAndroidTts: id=${item.commentId} speakerPresent=${speaker != null} ready=$speakerReady",
+        )
+        if (speaker == null || !speakerReady) {
+            Log.w(
+                TAG,
+                "processWithAndroidTts: emit speech_failed=android_tts_not_ready id=${item.commentId}",
+            )
             eventEmitter.emit(
                 SpeechEvents.speechFailed(item.commentId, "android_tts_not_ready")
             )
@@ -490,13 +546,19 @@ class SpeechControllerImpl(
                 lastAndroidTtsVolume = settings.androidTtsVolume
             }
 
+            Log.d(TAG, "processWithAndroidTts: → speaker.speak() id=${item.commentId}")
             val result = try {
                 speaker.speak(item.text, item.commentId)
             } catch (e: CancellationException) {
+                Log.d(TAG, "processWithAndroidTts: speak cancelled id=${item.commentId}")
                 throw e
             } catch (e: Exception) {
                 Result.failure(e)
             }
+            Log.d(
+                TAG,
+                "processWithAndroidTts: ← speaker.speak() id=${item.commentId} success=${result.isSuccess}",
+            )
 
             if (result.isFailure) {
                 // Issue #695: always include the `android_tts_failed:` prefix so
@@ -545,15 +607,21 @@ class SpeechControllerImpl(
 
         val prefetchNextItem = startPrefetch(settings)
 
+        Log.d(TAG, "processSingleChunk: → player.play() id=${item.commentId} bytes=${wavResult.wavBytes.size}")
         val playResult = try {
             player.play(wavResult.wavBytes)
         } catch (e: CancellationException) {
+            Log.d(TAG, "processSingleChunk: player.play cancelled id=${item.commentId}")
             activePrefetchJob?.cancel()
             activePrefetchJob = null
             throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
+        Log.d(
+            TAG,
+            "processSingleChunk: ← player.play() id=${item.commentId} success=${playResult.isSuccess}",
+        )
 
         if (prefetchNextItem != null) {
             collectPrefetch(prefetchNextItem)

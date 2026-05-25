@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.os.Build
+import android.util.Log
 import androidx.annotation.RequiresApi
 import com.example.comerune.speech.domain.model.PlayerState
 import com.example.comerune.speech.domain.player.AudioFocusGuard
@@ -22,6 +23,11 @@ class MediaPlayerWavPlayer(
     private val context: Context,
     private val audioFocusGuard: AudioFocusGuard,
 ) : WavPlayer {
+
+    companion object {
+        // Diagnostic tag for issue #933 player-stall observation.
+        private const val TAG = "MediaPlayerWav-debug"
+    }
 
     private val lock = Any()
     private var mediaPlayer: MediaPlayer? = null
@@ -61,6 +67,10 @@ class MediaPlayerWavPlayer(
     }
 
     private val focusListener = AudioFocusGuard.FocusChangeListener { event ->
+        Log.d(
+            TAG,
+            "focusEvent=$event state=${currentState()} shouldBePlaying=$shouldBePlayingFlag released=$released",
+        )
         when (event) {
             AudioFocusGuard.FocusEvent.LOSS -> stopInternal()
             AudioFocusGuard.FocusEvent.LOSS_TRANSIENT -> pauseInternal()
@@ -78,6 +88,7 @@ class MediaPlayerWavPlayer(
     }
 
     override suspend fun play(wavBytes: ByteArray): Result<Unit> {
+        Log.d(TAG, "play: enter bytes=${wavBytes.size} released=$released state=${currentState()}")
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             return Result.failure(
                 UnsupportedOperationException(
@@ -88,6 +99,7 @@ class MediaPlayerWavPlayer(
 
         synchronized(lock) {
             if (released) {
+                Log.w(TAG, "play: REJECT post-release call (released=true)")
                 return Result.failure(IllegalStateException("Player has been released"))
             }
         }
@@ -111,11 +123,13 @@ class MediaPlayerWavPlayer(
         // Mark intent to play before any suspension so a focus-loss
         // racing with prepare() can still trigger a correct resume later.
         shouldBePlayingFlag = true
+        Log.d(TAG, "play: shouldBePlayingFlag:=true → guard.acquire()")
 
         // Acquire focus once for this logical utterance. The guard
         // handles DELAYED → GAIN, idempotency for back-to-back
         // utterances, and abandons via scheduleRelease() afterwards.
         val focusResult = audioFocusGuard.acquire()
+        Log.d(TAG, "play: guard.acquire() success=${focusResult.isSuccess}")
         if (focusResult.isFailure) {
             shouldBePlayingFlag = false
             return Result.failure(
@@ -229,6 +243,7 @@ class MediaPlayerWavPlayer(
     }
 
     override fun release() {
+        Log.d(TAG, "release: enter state=${currentState()} shouldBePlaying=$shouldBePlayingFlag")
         synchronized(lock) {
             released = true
         }

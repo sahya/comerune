@@ -62,6 +62,7 @@ internal class AndroidTtsSpeaker(
      */
     private val focusListener: AudioFocusGuard.FocusChangeListener =
         AudioFocusGuard.FocusChangeListener { event ->
+            Log.d(TAG, "focusEvent=$event ready=$ready speaking=$speaking state=$state")
             when (event) {
                 AudioFocusGuard.FocusEvent.LOSS,
                 AudioFocusGuard.FocusEvent.LOSS_TRANSIENT,
@@ -141,14 +142,22 @@ internal class AndroidTtsSpeaker(
     private val initMutex = Mutex()
 
     override suspend fun initialize(): Result<Unit> = initMutex.withLock {
+        val startNs = System.nanoTime()
+        Log.d(TAG, "initialize: enter ready=$ready released=$released")
         // Clear the released flag so a release()-then-initialize() sequence
         // can succeed. We only observe `released` inside this mutex or the
         // single-threaded TTS init callback, so the reset does not race with
         // a concurrent release() that raced our lock acquisition — such a
         // release() simply sets the flag back to true before we touch TTS.
         released = false
-        if (ready) return@withLock Result.success(Unit)
-        doInitialize()
+        if (ready) {
+            Log.d(TAG, "initialize: short-circuit ready=true")
+            return@withLock Result.success(Unit)
+        }
+        val result = doInitialize()
+        val elapsedMs = (System.nanoTime() - startNs) / 1_000_000
+        Log.d(TAG, "initialize: exit success=${result.isSuccess} ready=$ready elapsedMs=$elapsedMs")
+        result
     }
 
     // The `TextToSpeech` constructor and any companion shutdown of the
@@ -364,7 +373,12 @@ internal class AndroidTtsSpeaker(
 
     override suspend fun speak(text: String, utteranceId: String): Result<Unit> {
         val engine = this.engine
+        Log.d(
+            TAG,
+            "speak: enter id=$utteranceId textLen=${text.length} ready=$ready enginePresent=${engine != null}",
+        )
         if (engine == null || !ready) {
+            Log.w(TAG, "speak: REJECT not-initialized id=$utteranceId")
             return Result.failure(IllegalStateException("TTS not initialized"))
         }
 
@@ -377,6 +391,7 @@ internal class AndroidTtsSpeaker(
         val guard = audioFocusGuard
         if (guard != null) {
             val focusResult = guard.acquire()
+            Log.d(TAG, "speak: guard.acquire() success=${focusResult.isSuccess} id=$utteranceId")
             if (focusResult.isFailure) {
                 return Result.failure(
                     focusResult.exceptionOrNull()
@@ -439,6 +454,7 @@ internal class AndroidTtsSpeaker(
             return Result.failure(RuntimeException("TTS speak timed out"))
         }
 
+        Log.d(TAG, "speak: exit id=$utteranceId success=${result.isSuccess}")
         return result
     }
 
@@ -472,6 +488,7 @@ internal class AndroidTtsSpeaker(
     }
 
     override fun release() {
+        Log.d(TAG, "release: enter ready=$ready speaking=$speaking state=$state")
         // Set `released` first so that any initialize() coroutine still
         // racing with us observes the flag before it finishes wiring up a
         // fresh TextToSpeech instance. The follow-up shutdown of the
