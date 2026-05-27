@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       # flutter-version は pubspec.yaml の sdk constraint と整合する範囲で
       # 明示固定する。stable channel の更新で `flutter pub get` の resolve
