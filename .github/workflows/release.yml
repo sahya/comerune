@@ -250,6 +250,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+          persist-credentials: false
 
       - name: Download release APK
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -264,6 +265,8 @@ jobs:
 
       - name: Create and push annotated tag
         env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
           VERSION: ${{ needs.validate.outputs.version }}
         run: |
           # Annotated tags embed a tagger identity, but a fresh runner has
@@ -275,7 +278,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$VERSION" -m "Release $VERSION"
-          git push origin "$VERSION"
+          # checkout step は persist-credentials: false で token を runner の
+          # .git/config に残さない。ここでは push の都度 token を URL に埋め込み、
+          # 必要最小限の寿命で渡す (GH_TOKEN は secrets として GitHub Actions が
+          # ログマスクする)。
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "$VERSION"
 
       - name: Generate release notes
         id: notes
