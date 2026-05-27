@@ -241,15 +241,12 @@ jobs:
       contents: write
 
     steps:
-      # NOTE: 直後の "Create and push annotated tag" step で git tag / git push を
-      # 実行するため、checkout 後に token を runner 上に残す必要がある。よって
-      # persist-credentials: false を付けられない。これは tag push を必要とする
-      # release job 固有の例外。
-      - name: Checkout repository # zizmor: ignore[artipacked] tag push 用に token persist が必要
+      - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
           fetch-tags: true
+          persist-credentials: false
 
       - name: Download release APK
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -264,6 +261,8 @@ jobs:
 
       - name: Create and push annotated tag
         env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
           VERSION: ${{ needs.validate.outputs.version }}
         run: |
           # Annotated tags embed a tagger identity, but a fresh runner has
@@ -275,7 +274,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$VERSION" -m "Release $VERSION"
-          git push origin "$VERSION"
+          # checkout step は persist-credentials: false で token を runner の
+          # .git/config に残さない。ここでは push の都度 token を URL に埋め込み、
+          # 必要最小限の寿命で渡す (GH_TOKEN は secrets として GitHub Actions が
+          # ログマスクする)。
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "$VERSION"
 
       - name: Generate release notes
         id: notes
