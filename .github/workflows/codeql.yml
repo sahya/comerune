@@ -42,6 +42,7 @@ jobs:
     # Consider using larger runners or machines with greater resources for possible analysis time improvements.
     # All analyzed languages here run on Linux (no Swift), so a single runner is enough.
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       # required for all workflows
       security-events: write
