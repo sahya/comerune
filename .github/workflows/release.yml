@@ -241,7 +241,11 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout repository
+      # NOTE: 直後の "Create and push annotated tag" step で git tag / git push を
+      # 実行するため、checkout 後に token を runner 上に残す必要がある。よって
+      # persist-credentials: false を付けられない。これは tag push を必要とする
+      # release job 固有の例外。
+      - name: Checkout repository # zizmor: ignore[artipacked] tag push 用に token persist が必要
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
