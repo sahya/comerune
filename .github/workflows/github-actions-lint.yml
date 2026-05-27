@@ -1,0 +1,41 @@
+name: GitHub Actions Lint
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: koki-develop/github-actions-lint/actionlint@3fbdd60d7c99615307410f6f349d0b79fd20ed64 # actionlint-v0.0.5
+
+  ghalint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: koki-develop/github-actions-lint/ghalint@978b29dad0901f7b255c3366f0ae2a890c57cc8c # ghalint-v0.2.0
+
+  zizmor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: koki-develop/github-actions-lint/zizmor@38252b4e19fee928206cf9cd993bc4050cf4c823 # zizmor-v0.4.0
+        with:
+          github-token: ${{ github.token }}
