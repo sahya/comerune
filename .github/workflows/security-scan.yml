@@ -25,10 +25,14 @@ jobs:
       # flutter-version は pubspec.yaml の sdk constraint と整合する範囲で
       # 明示固定する。stable channel の更新で `flutter pub get` の resolve
       # 結果が振動し、Trivy の検知対象が静かに変わるのを防ぐため。
+      # サプライチェーン anchor（人手レビュー用、subosito/flutter-action が
+      # 公式 releases manifest 経由で検証する値と一致すべき）:
+      #   framework SHA: 559ffa3f75e7402d65a8def9c28389a9b2e6fe42
+      #   bundle SHA-256: e1ec95e6c550458a34de93580cb85dac24da0e9bedb9bb42811f050ac5a0c7d5
       - name: Setup Flutter
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
-          flutter-version: 3.41.9
+          flutter-version: 3.44.0
           channel: stable
           cache: true
 
