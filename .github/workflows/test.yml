@@ -42,9 +42,13 @@ jobs:
 
       # flutter-version は pubspec.lock を生成した SDK と一致させ、CI 上で
       # `flutter pub get` の resolve 結果が振動しないよう明示固定する。
+      # サプライチェーン anchor（人手レビュー用、subosito/flutter-action が
+      # 公式 releases manifest 経由で検証する値と一致すべき）:
+      #   framework SHA: 559ffa3f75e7402d65a8def9c28389a9b2e6fe42
+      #   bundle SHA-256: e1ec95e6c550458a34de93580cb85dac24da0e9bedb9bb42811f050ac5a0c7d5
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
-          flutter-version: 3.41.9
+          flutter-version: 3.44.0
           channel: stable
           cache: true
 
