@@ -140,6 +140,63 @@ abstract final class AppStrings {
       ExtendBroadcastStrings._();
   static const AutoExtendBroadcastStrings autoExtendBroadcast =
       AutoExtendBroadcastStrings._();
+  static const AppUpdateStrings appUpdate = AppUpdateStrings._();
+}
+
+/// GitHub リリース連動のバージョン更新通知・強制更新で使う文字列。
+final class AppUpdateStrings {
+  const AppUpdateStrings._();
+
+  // --- 任意更新ダイアログ ---
+
+  /// 新しい版がある旨のダイアログタイトル。
+  String get optionalTitle => '新しいバージョンがあります';
+
+  /// 任意更新ダイアログ本文。`version` は最新版（例 `1.2.0`）。
+  String optionalMessage(String version) =>
+      'バージョン $version が公開されています。最新版へ更新できます。';
+
+  /// 更新へ進むボタン。
+  String get updateButton => '更新する';
+
+  /// 任意更新を見送るボタン。
+  String get laterButton => '後で';
+
+  // --- 強制更新ブロック画面 ---
+
+  /// 強制更新ブロック画面のタイトル。
+  String get forcedTitle => '更新が必要です';
+
+  /// 強制更新ブロック画面の本文（最新版が判明している場合）。
+  /// `version` は更新先の版。
+  String forcedMessageWithVersion(String version) =>
+      'このバージョンはサポートを終了しました。'
+      'バージョン $version へ更新してご利用ください。';
+
+  /// 強制更新ブロック画面の本文（最新版が判明していない場合）。
+  String get forcedMessage =>
+      'このバージョンはサポートを終了しました。'
+      '最新版へ更新してご利用ください。';
+
+  // --- 設定画面の手動確認タイル ---
+
+  /// 設定画面タイルのタイトル。
+  String get settingsTileTitle => 'アプリ情報・更新確認';
+
+  /// 設定タイルのサブタイトル。`version` は現在の版。
+  String settingsTileSubtitle(String version) => '現在のバージョン: $version';
+
+  /// 手動確認中のスナックバー。
+  String get checking => '更新を確認しています…';
+
+  /// 最新版だったときのスナックバー。
+  String get upToDate => 'お使いのバージョンは最新です';
+
+  /// 確認できなかったとき（オフライン等）のスナックバー。
+  String get checkUnavailable => '更新を確認できませんでした';
+
+  /// 配布ページを開けなかったときのスナックバー／インライン表示。
+  String get launchFailed => '更新ページを開けませんでした';
 }
 
 /// `SettingsScreen` で使用する文字列の集約。

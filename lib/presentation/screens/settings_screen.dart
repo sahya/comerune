@@ -8,6 +8,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../../application/app_update/update_prompt_store.dart';
+import '../../application/app_update/version_update_checker.dart';
 import '../../application/settings/settings_store.dart';
 import '../../application/speech/speech_availability_notifier.dart';
 import '../../comment_speech/comment_speech.dart';
@@ -16,10 +18,12 @@ import '../../data/broadcaster/broadcaster_name_store.dart';
 import '../../data/comment_log/broadcast_history_store.dart';
 import '../../data/filter/broadcaster_ng_store.dart';
 import '../../domain/models/app_settings.dart';
+import '../../domain/models/app_update.dart';
 import '../../domain/models/user_name_resolution.dart';
 import '../../data/user/user_attribute_store.dart';
 import '../mixins/settings_screen_mixin.dart';
 import '../strings/app_strings.dart';
+import '../widgets/app_update_dialogs.dart';
 import '../widgets/settings_widgets.dart';
 import 'broadcast_history_screen.dart';
 import 'broadcaster_ng_list_screen.dart';
@@ -42,6 +46,8 @@ class SettingsScreen extends StatefulWidget {
     this.speechPlatform,
     this.androidTtsAvailability,
     this.broadcastHistoryStore,
+    this.versionUpdateChecker,
+    this.updatePromptStore,
   });
 
   final SettingsStore settingsStore;
@@ -70,6 +76,11 @@ class SettingsScreen extends StatefulWidget {
   /// null (legacy embedders / minimal test harnesses), the tile is hidden.
   final BroadcastHistoryStore? broadcastHistoryStore;
 
+  /// GitHub Releases 連動の更新確認。null の場合は手動確認を行わず
+  /// 現在バージョンの表示のみ（最小テストハーネス向け optional integration）。
+  final VersionUpdateChecker? versionUpdateChecker;
+  final UpdatePromptStore? updatePromptStore;
+
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
@@ -82,6 +93,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _isLoggedIn = false;
   bool _isExporting = false;
   bool _isImporting = false;
+  bool _isCheckingUpdate = false;
+  String? _appVersion;
 
   @override
   void initState() {
@@ -92,6 +105,28 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _loadSettings() async {
     await loadSettings();
     await _refreshLoginState();
+    await _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    String? version;
+    try {
+      final PackageInfo info = await PackageInfo.fromPlatform();
+      version = info.version;
+    } on Exception catch (error, stackTrace) {
+      developer.log(
+        'Failed to load PackageInfo for app update tile',
+        name: 'SettingsScreen',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _appVersion = version;
+    });
   }
 
   Future<void> _refreshLoginState() async {
@@ -370,6 +405,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                 // --- 管理・上級 ---
                 _buildDataManagementSection(context),
                 const Divider(height: 24),
+                // --- アプリ情報・更新確認 ---
+                _buildAppUpdateTile(context),
+                const SizedBox(height: 12),
                 // --- ライセンス ---
                 _buildLicenseTile(context),
                 const SizedBox(height: 12),
@@ -667,6 +705,100 @@ class _SettingsScreenState extends State<SettingsScreen>
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ],
+    );
+  }
+
+  Widget _buildAppUpdateTile(BuildContext context) {
+    final String version = _appVersion ?? '—';
+    // 手動確認は判定（checker）と見送り版の記録（promptStore）の両方が
+    // 必要。片方でも欠けるとタップしても何も起きないため不活性にする。
+    final bool canCheck =
+        widget.versionUpdateChecker != null && widget.updatePromptStore != null;
+    return Card(
+      child: ListTile(
+        key: const Key('app-update-tile'),
+        leading: const Icon(Icons.system_update_outlined),
+        title: Text(AppStrings.appUpdate.settingsTileTitle),
+        subtitle: Text(AppStrings.appUpdate.settingsTileSubtitle(version)),
+        trailing: _isCheckingUpdate
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : (canCheck ? const Icon(Icons.refresh) : null),
+        onTap: canCheck && !_isCheckingUpdate
+            ? () => _checkForUpdates(context)
+            : null,
+      ),
+    );
+  }
+
+  Future<void> _checkForUpdates(BuildContext context) async {
+    final VersionUpdateChecker? checker = widget.versionUpdateChecker;
+    final UpdatePromptStore? promptStore = widget.updatePromptStore;
+    final String? version = _appVersion;
+    if (checker == null || _isCheckingUpdate) {
+      return;
+    }
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    if (version == null) {
+      // PackageInfo 取得失敗で現在版が不明。沈黙せず確認不能を通知する。
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text(AppStrings.appUpdate.checkUnavailable)),
+        );
+      return;
+    }
+    setState(() {
+      _isCheckingUpdate = true;
+    });
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(AppStrings.appUpdate.checking)));
+
+    UpdateCheckResult result;
+    try {
+      result = await checker.check(version);
+    } on Exception catch (error) {
+      developer.log(
+        'manual update check failed (${error.runtimeType})',
+        name: 'SettingsScreen',
+      );
+      result = const UpdateCheckResult.unavailable();
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isCheckingUpdate = false;
+    });
+
+    if (!result.couldCheck) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text(AppStrings.appUpdate.checkUnavailable)),
+        );
+      return;
+    }
+    if (result.status.isNone) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(AppStrings.appUpdate.upToDate)));
+      return;
+    }
+    messenger.hideCurrentSnackBar();
+    if (!context.mounted || promptStore == null) {
+      return;
+    }
+    // 手動確認では「後で」見送り済みでも必ず表示する。
+    await presentUpdateStatus(
+      context: context,
+      status: result.status,
+      promptStore: promptStore,
+      bypassDismissed: true,
     );
   }
 

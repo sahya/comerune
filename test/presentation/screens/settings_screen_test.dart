@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -10,7 +11,13 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:share_plus_platform_interface/share_plus_platform_interface.dart';
 
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+
+import 'package:comerune/application/app_update/update_prompt_store.dart';
+import 'package:comerune/application/app_update/version_update_checker.dart';
 import 'package:comerune/application/settings/settings_store.dart';
+import 'package:comerune/data/app_update/github_release_repository.dart';
 import 'package:comerune/data/auth/user_session_store.dart';
 import 'package:comerune/data/filter/broadcaster_ng_store.dart';
 import 'package:comerune/domain/models/app_settings.dart';
@@ -933,6 +940,108 @@ void main() {
       ]);
     });
   });
+
+  group('SettingsScreen app update tile', () {
+    SharedPreferencesSettingsStore newStore() =>
+        SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+    testWidgets('shows current version from PackageInfo', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(_buildScreen(newStore()));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('app-update-tile')),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('現在のバージョン: 1.2.0'), findsOneWidget);
+    });
+
+    testWidgets('is not actionable when no checker is wired', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(_buildScreen(newStore()));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('app-update-tile')),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      final ListTile tile = tester.widget<ListTile>(
+        find.byKey(const Key('app-update-tile')),
+      );
+      expect(tile.onTap, isNull);
+    });
+
+    testWidgets('manual check reports up to date', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        _buildScreen(
+          newStore(),
+          versionUpdateChecker: _checkerReturning(tag: 'v1.2.0'),
+          updatePromptStore: UpdatePromptStore(
+            prefs: InMemorySharedPreferences(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('app-update-tile')),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.byKey(const Key('app-update-tile')));
+      await tester.pumpAndSettle();
+      expect(find.text('お使いのバージョンは最新です'), findsOneWidget);
+    });
+
+    testWidgets('manual check surfaces an optional update dialog', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildScreen(
+          newStore(),
+          versionUpdateChecker: _checkerReturning(tag: 'v9.9.9'),
+          updatePromptStore: UpdatePromptStore(
+            prefs: InMemorySharedPreferences(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('app-update-tile')),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.byKey(const Key('app-update-tile')));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.byKey(const Key('app-update-now')), findsOneWidget);
+    });
+
+    testWidgets('manual check reports unavailable on fetch failure', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildScreen(
+          newStore(),
+          versionUpdateChecker: _checkerFailing(),
+          updatePromptStore: UpdatePromptStore(
+            prefs: InMemorySharedPreferences(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('app-update-tile')),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.byKey(const Key('app-update-tile')));
+      await tester.pumpAndSettle();
+      expect(find.text('更新を確認できませんでした'), findsOneWidget);
+    });
+  });
 }
 
 /// In-memory stub SettingsStore that avoids real filesystem I/O.
@@ -1035,6 +1144,8 @@ Widget _buildScreen(
   ValueNotifier<AppThemeMode>? themeModeNotifier,
   BroadcasterNgStore? broadcasterNgStore,
   ValueNotifier<String?>? broadcasterIdNotifier,
+  VersionUpdateChecker? versionUpdateChecker,
+  UpdatePromptStore? updatePromptStore,
 }) {
   return MaterialApp(
     home: SettingsScreen(
@@ -1043,6 +1154,34 @@ Widget _buildScreen(
       themeModeNotifier: themeModeNotifier,
       broadcasterNgStore: broadcasterNgStore,
       broadcasterIdNotifier: broadcasterIdNotifier,
+      versionUpdateChecker: versionUpdateChecker,
+      updatePromptStore: updatePromptStore,
     ),
+  );
+}
+
+VersionUpdateChecker _checkerReturning({required String tag, String? body}) {
+  final MockClient mock = MockClient((http.Request request) async {
+    return http.Response(
+      jsonEncode(<String, Object?>{
+        'tag_name': tag,
+        if (body != null) 'body': body,
+      }),
+      200,
+    );
+  });
+  return VersionUpdateChecker(
+    repository: GithubReleaseRepository(httpClient: mock),
+    isSupportedPlatform: true,
+  );
+}
+
+VersionUpdateChecker _checkerFailing() {
+  final MockClient mock = MockClient((http.Request request) async {
+    return http.Response('err', 500);
+  });
+  return VersionUpdateChecker(
+    repository: GithubReleaseRepository(httpClient: mock),
+    isSupportedPlatform: true,
   );
 }
