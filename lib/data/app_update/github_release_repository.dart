@@ -24,7 +24,15 @@ import '../../domain/utils/semantic_version.dart';
 /// ## 強制更新マーカー
 /// Release 本文に `<!-- min-supported: X.Y.Z -->` を埋めると、その Release
 /// 公開以降に古い版で起動したユーザーは強制更新画面でブロックされる。
-/// HTML コメントなので GitHub の Release ページ表示では非表示。
+/// HTML コメントなので GitHub の Release ページ表示では非表示。マーカーは
+/// 大文字小文字を区別せず、`v` プレフィクスも許容する。
+///
+/// ## `/releases/latest` の仕様メモ
+/// GitHub の `/releases/latest` は**最後に「latest としてマーク」された
+/// 非プレリリース**を返す（厳密に最高 SemVer ではない）。例えば `v1.4.0`
+/// 公開後に過去ブランチから `v1.3.5` を後発で公開すると `latest=1.3.5`
+/// となるが、本実装は `current < latest` のときだけ通知する設計なので
+/// `v1.4.0` 利用者には何も起きず実害は出ない。
 ///
 /// ## レート制限
 /// 匿名 GitHub API は IP あたり 60 req/h。起動毎 1 回・キャッシュ無しでも
@@ -60,10 +68,11 @@ class GithubReleaseRepository {
   final String _repo;
   final String _userAgent;
 
-  /// `<!-- min-supported: X.Y.Z -->`（前後空白許容）を抽出する正規表現。
-  /// 大文字小文字を区別。複数行モード（`body` は改行を含む）。
+  /// `<!-- min-supported: X.Y.Z -->`（前後空白・先頭 `v`/`V`・大文字小文字を
+  /// 許容）を抽出する正規表現。
   static final RegExp _minSupportedRe = RegExp(
-    r'<!--\s*min-supported:\s*([0-9]+\.[0-9]+\.[0-9]+)\s*-->',
+    r'<!--\s*min-supported:\s*v?([0-9]+\.[0-9]+\.[0-9]+)\s*-->',
+    caseSensitive: false,
   );
 
   Uri get _endpoint =>

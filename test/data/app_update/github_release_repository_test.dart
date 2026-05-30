@@ -13,7 +13,9 @@ http.Response _utf8Response(Map<String, Object?> json, [int status = 200]) {
   return http.Response.bytes(
     utf8.encode(jsonEncode(json)),
     status,
-    headers: <String, String>{'content-type': 'application/json; charset=utf-8'},
+    headers: <String, String>{
+      'content-type': 'application/json; charset=utf-8',
+    },
   );
 }
 
@@ -117,6 +119,48 @@ void main() {
         return http.Response('{not json', 200);
       });
       expect(await GithubReleaseRepository(httpClient: mock).fetch(), isNull);
+    });
+
+    test('falls back to `name` when `tag_name` is missing', () async {
+      final MockClient mock = MockClient((http.Request request) async {
+        return _utf8Response(<String, Object?>{
+          'name': 'v1.5.0',
+          'html_url': 'https://github.com/sahya/comerune/releases/tag/v1.5.0',
+        });
+      });
+      final RemoteVersionManifest? m = await GithubReleaseRepository(
+        httpClient: mock,
+      ).fetch();
+      expect(m, isNotNull);
+      expect(m!.latest.toString(), '1.5.0');
+    });
+
+    test('null body is safe and yields minSupported 0.0.0', () async {
+      final MockClient mock = MockClient((http.Request request) async {
+        return _utf8Response(<String, Object?>{
+          'tag_name': 'v1.0.0',
+          'body': null,
+        });
+      });
+      final RemoteVersionManifest? m = await GithubReleaseRepository(
+        httpClient: mock,
+      ).fetch();
+      expect(m, isNotNull);
+      expect(m!.minSupported.toString(), '0.0.0');
+    });
+
+    test('marker is case-insensitive and accepts a leading v', () async {
+      final MockClient mock = MockClient((http.Request request) async {
+        return _utf8Response(<String, Object?>{
+          'tag_name': 'v2.0.0',
+          'body': 'release notes\n<!-- Min-Supported: v1.5.0 -->',
+        });
+      });
+      final RemoteVersionManifest? m = await GithubReleaseRepository(
+        httpClient: mock,
+      ).fetch();
+      expect(m, isNotNull);
+      expect(m!.minSupported.toString(), '1.5.0');
     });
 
     test('returns null on network error', () async {
