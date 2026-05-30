@@ -43,11 +43,17 @@ build: setup-libs ## Build debug APK
 	@bash scripts/show-build-config.sh debug
 	$(ENV) && flutter build apk --debug $(DART_DEFINE_OAUTH_BFF)
 
-build-release: setup-libs ## Build release APK
+# --dart-define=APP_UPDATE_ENABLED=true は APK 直接配布（GitHub Releases 経由
+# サイドロード）向けにアプリ内更新通知・強制更新を有効にするフラグ。
+# AAB（Play Store 向け）はこのフラグを付けない — Google Play デベロッパー
+# ポリシーが Play 外への更新導線を禁じているため。詳細は
+# lib/main.dart の kAppUpdateEnabled コメント参照。
+build-release: setup-libs ## Build release APK (sideload — enables in-app update notification)
 	@bash scripts/show-build-config.sh release
-	$(ENV) && bash scripts/guard-no-adi-registration-asset.sh && bash scripts/verify-release-keystore.sh && flutter build apk --release --obfuscate --split-debug-info=build/debug-info $(DART_DEFINE_OAUTH_BFF)
+	$(ENV) && bash scripts/guard-no-adi-registration-asset.sh && bash scripts/verify-release-keystore.sh && flutter build apk --release --obfuscate --split-debug-info=build/debug-info $(DART_DEFINE_OAUTH_BFF) --dart-define=APP_UPDATE_ENABLED=true
 
 # AAB は本来複数 ABI 同梱が強みだが、現状は arm64-v8a のみ（android/app/build.gradle.kts の release abiFilters による）。
+# APP_UPDATE_ENABLED は意図的に付与しない（Play Store ポリシー遵守）。
 build-release-aab: setup-libs ## Build release AAB (arm64-v8a only — for Google Play upload)
 	@bash scripts/show-build-config.sh release
 	$(ENV) && bash scripts/guard-no-adi-registration-asset.sh && bash scripts/verify-release-keystore.sh && flutter build appbundle --release --obfuscate --split-debug-info=build/debug-info $(DART_DEFINE_OAUTH_BFF)

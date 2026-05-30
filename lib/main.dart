@@ -9,6 +9,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'application/app_update/app_update_gate.dart';
 import 'application/app_update/update_prompt_store.dart';
 import 'application/app_update/version_update_checker.dart';
 import 'application/auth/oauth_auth_controller.dart';
@@ -230,17 +231,32 @@ Future<void> main() async {
   );
 
   // GitHub Releases 連動のバージョン更新通知・強制更新。
-  // 対象は Android のみ。それ以外は VersionUpdateChecker が unavailable を
-  // 返すので何も起こらない。判定/取得の失敗はすべて fail-open。
-  // 自前の配信エンドポイントは持たず、GitHub Releases を真実の源とする
-  // ことで攻撃面と運用上のキルスイッチリスクを増やさない設計。
-  final UpdatePromptStore updatePromptStore = UpdatePromptStore(
-    prefs: prefsAdapter,
+  //
+  // ## 多層ガードレール
+  // 1. **ビルド時オプトイン** (層 1): `--dart-define=APP_UPDATE_ENABLED=true`
+  //    が無いと checker / store を構築しない。既定は false。
+  //    - 直接配布 APK（GitHub Releases 経由のサイドロード）は CI / Makefile で
+  //      明示的に true を渡す
+  //    - Play Store 向け AAB（`make build-release-aab`）は既定の false のため
+  //      機能 OFF。Google Play デベロッパーポリシー違反を構造的に防ぐ
+  // 2. **ランタイム判定** (層 2): 起動時 / 手動確認時に
+  //    `PackageInfo.installerStore` を見て、管理ストア（Play Store / F-Droid
+  //    等）由来のインストールなら何もしない（[isAppUpdateAllowedForInstaller]）。
+  //    層 1 を誤って true でビルドして公開しても、層 2 が catch する
+  // 3. **fail-open** (層 3): 取得失敗・非 Android・現在版不正は no-op
+  const bool kAppUpdateEnabled = bool.fromEnvironment(
+    'APP_UPDATE_ENABLED',
+    defaultValue: false,
   );
-  final VersionUpdateChecker versionUpdateChecker = VersionUpdateChecker(
-    repository: GithubReleaseRepository(),
-    isSupportedPlatform: Platform.isAndroid,
-  );
+  final UpdatePromptStore? updatePromptStore = kAppUpdateEnabled
+      ? UpdatePromptStore(prefs: prefsAdapter)
+      : null;
+  final VersionUpdateChecker? versionUpdateChecker = kAppUpdateEnabled
+      ? VersionUpdateChecker(
+          repository: GithubReleaseRepository(),
+          isSupportedPlatform: Platform.isAndroid,
+        )
+      : null;
 
   ForegroundServiceManager? foregroundServiceManager;
   if (Platform.isAndroid) {
@@ -447,6 +463,16 @@ class _ComeruneAppState extends State<ComeruneApp> {
     final UpdateStatus status;
     try {
       final PackageInfo info = await PackageInfo.fromPlatform();
+      // 層 2: 管理ストア（Play Store 等）由来なら何もしない。
+      // ビルド時に APP_UPDATE_ENABLED=true で構築されていてもここで止める。
+      if (!isAppUpdateAllowedForInstaller(info.installerStore)) {
+        log(
+          'startup update check skipped: installerStore '
+          '"${info.installerStore}" is a managed store',
+          name: 'AppUpdate',
+        );
+        return;
+      }
       final UpdateCheckResult result = await checker.check(info.version);
       status = result.status;
     } on Exception catch (e) {

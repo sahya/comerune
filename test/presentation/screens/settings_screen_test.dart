@@ -1041,6 +1041,40 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('更新を確認できませんでした'), findsOneWidget);
     });
+
+    testWidgets('Play Store installer disables the tile (runtime guardrail)', (
+      WidgetTester tester,
+    ) async {
+      // 層 2 ランタイムゲート: installerStore が Play Store 由来なら、
+      // checker/store が DI されていてもタイルは不活性。
+      PackageInfo.setMockInitialValues(
+        appName: 'comerune',
+        packageName: 'app.comerune',
+        version: '1.2.0',
+        buildNumber: '1',
+        buildSignature: '',
+        installerStore: 'com.android.vending',
+      );
+      await tester.pumpWidget(
+        _buildScreen(
+          newStore(),
+          versionUpdateChecker: _checkerReturning(tag: 'v9.9.9'),
+          updatePromptStore: UpdatePromptStore(
+            prefs: InMemorySharedPreferences(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('app-update-tile')),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      final ListTile tile = tester.widget<ListTile>(
+        find.byKey(const Key('app-update-tile')),
+      );
+      expect(tile.onTap, isNull);
+    });
   });
 }
 

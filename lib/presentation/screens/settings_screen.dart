@@ -8,6 +8,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../../application/app_update/app_update_gate.dart';
 import '../../application/app_update/update_prompt_store.dart';
 import '../../application/app_update/version_update_checker.dart';
 import '../../application/settings/settings_store.dart';
@@ -96,6 +97,11 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _isCheckingUpdate = false;
   String? _appVersion;
 
+  /// 管理ストア由来インストールなら手動確認も無効化する（多層ガードレールの
+  /// 層 2）。PackageInfo 取得失敗時は true（許可）を既定とし、サイドロード
+  /// 利用者を締め出さない。
+  bool _installerAllowed = true;
+
   @override
   void initState() {
     super.initState();
@@ -110,9 +116,11 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   Future<void> _loadAppVersion() async {
     String? version;
+    bool installerAllowed = true;
     try {
       final PackageInfo info = await PackageInfo.fromPlatform();
       version = info.version;
+      installerAllowed = isAppUpdateAllowedForInstaller(info.installerStore);
     } on Exception catch (error, stackTrace) {
       developer.log(
         'Failed to load PackageInfo for app update tile',
@@ -126,6 +134,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
     setState(() {
       _appVersion = version;
+      _installerAllowed = installerAllowed;
     });
   }
 
@@ -710,10 +719,13 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   Widget _buildAppUpdateTile(BuildContext context) {
     final String version = _appVersion ?? '—';
-    // 手動確認は判定（checker）と見送り版の記録（promptStore）の両方が
-    // 必要。片方でも欠けるとタップしても何も起きないため不活性にする。
+    // 手動確認は次のすべてが揃ったときだけ有効:
+    // - checker / promptStore が DI されている（ビルド時オプトイン済）
+    // - インストール元が管理ストアでない（層 2 ランタイムゲート）
     final bool canCheck =
-        widget.versionUpdateChecker != null && widget.updatePromptStore != null;
+        widget.versionUpdateChecker != null &&
+        widget.updatePromptStore != null &&
+        _installerAllowed;
     return Card(
       child: ListTile(
         key: const Key('app-update-tile'),
