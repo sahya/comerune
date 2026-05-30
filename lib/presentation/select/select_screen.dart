@@ -4,6 +4,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../app_logging.dart';
+import '../../application/app_update/update_prompt_store.dart';
+import '../../application/app_update/version_update_checker.dart';
 import '../../application/comment_log/broadcast_history_recorder.dart';
 import '../../application/comment_post/comment_post_controller.dart';
 import '../../application/timeshift_fetch/timeshift_fetch_controller.dart';
@@ -149,6 +151,8 @@ class SelectScreen extends StatefulWidget {
     this.broadcasterEmbedResolver,
     this.playRemainingAfterEndedSink,
     this.onSpeechGraceEnded,
+    this.versionUpdateChecker,
+    this.updatePromptStore,
     super.key,
   });
 
@@ -232,6 +236,11 @@ class SelectScreen extends StatefulWidget {
   /// drained, or speech disabled mid-grace) so the parallel FGS grace can
   /// terminate early. Optional — null in test harnesses.
   final VoidCallback? onSpeechGraceEnded;
+
+  /// 設定画面の「アプリ情報・更新確認」タイルへ受け渡す。null の場合は
+  /// 手動確認を行わずバージョン表示のみ（最小テストハーネス向け）。
+  final VersionUpdateChecker? versionUpdateChecker;
+  final UpdatePromptStore? updatePromptStore;
 
   @override
   State<SelectScreen> createState() => _SelectScreenState();
@@ -1671,6 +1680,8 @@ class _SelectScreenState extends State<SelectScreen>
           userNameResolution: widget.userNameResolution,
           speechPlatform: MethodChannelCommentSpeech(),
           androidTtsAvailability: widget.androidTtsAvailability,
+          versionUpdateChecker: widget.versionUpdateChecker,
+          updatePromptStore: widget.updatePromptStore,
         ),
       ),
     );

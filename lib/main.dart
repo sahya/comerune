@@ -5,9 +5,13 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'application/app_update/app_update_gate.dart';
+import 'application/app_update/update_prompt_store.dart';
+import 'application/app_update/version_update_checker.dart';
 import 'application/auth/oauth_auth_controller.dart';
 import 'application/auth/oauth_auth_scope.dart';
 import 'application/comment_post/comment_post_controller.dart';
@@ -22,6 +26,7 @@ import 'application/statistics/recent_broadcast_stats_holder.dart';
 import 'application/statistics/statistics_store.dart';
 import 'application/upgrade/upgrade_initializer.dart';
 import 'application/timeline/timeline_store.dart';
+import 'data/app_update/github_release_repository.dart';
 import 'data/auth/oauth_bff/oauth_bff_auth_service.dart';
 import 'data/auth/oauth_bff/oauth_bff_client.dart';
 import 'data/auth/oauth_bff/oauth_bff_config.dart';
@@ -54,8 +59,10 @@ import 'domain/connection/ndgr_timeshift_client.dart';
 import 'domain/connection/session_ws_client.dart' as session_impl;
 import 'domain/models/app_message.dart';
 import 'domain/models/app_settings.dart';
+import 'domain/models/app_update.dart';
 import 'domain/models/user_name_resolution.dart';
 import 'presentation/screens/onboarding_screen.dart';
+import 'presentation/widgets/app_update_dialogs.dart';
 import 'presentation/select/select_screen.dart';
 import 'presentation/strings/app_strings.dart';
 import 'presentation/theme/app_theme.dart';
@@ -223,6 +230,34 @@ Future<void> main() async {
     prefs: prefsAdapter,
   );
 
+  // GitHub Releases 連動のバージョン更新通知・強制更新。
+  //
+  // ## 多層ガードレール
+  // 1. **ビルド時オプトイン** (層 1): `--dart-define=APP_UPDATE_ENABLED=true`
+  //    が無いと checker / store を構築しない。既定は false。
+  //    - 直接配布 APK（GitHub Releases 経由のサイドロード）は CI / Makefile で
+  //      明示的に true を渡す
+  //    - Play Store 向け AAB（`make build-release-aab`）は既定の false のため
+  //      機能 OFF。Google Play デベロッパーポリシー違反を構造的に防ぐ
+  // 2. **ランタイム判定** (層 2): 起動時 / 手動確認時に
+  //    `PackageInfo.installerStore` を見て、管理ストア（Play Store / F-Droid
+  //    等）由来のインストールなら何もしない（[isAppUpdateAllowedForInstaller]）。
+  //    層 1 を誤って true でビルドして公開しても、層 2 が catch する
+  // 3. **fail-open** (層 3): 取得失敗・非 Android・現在版不正は no-op
+  const bool kAppUpdateEnabled = bool.fromEnvironment(
+    'APP_UPDATE_ENABLED',
+    defaultValue: false,
+  );
+  final UpdatePromptStore? updatePromptStore = kAppUpdateEnabled
+      ? UpdatePromptStore(prefs: prefsAdapter)
+      : null;
+  final VersionUpdateChecker? versionUpdateChecker = kAppUpdateEnabled
+      ? VersionUpdateChecker(
+          repository: GithubReleaseRepository(),
+          isSupportedPlatform: Platform.isAndroid,
+        )
+      : null;
+
   ForegroundServiceManager? foregroundServiceManager;
   if (Platform.isAndroid) {
     foregroundServiceManager = ForegroundServiceManager();
@@ -271,6 +306,8 @@ Future<void> main() async {
       onboardingStore: onboardingStore,
       oauthAuthController: oauthAuthController,
       extensionRegistry: extensionLoader.registry,
+      versionUpdateChecker: versionUpdateChecker,
+      updatePromptStore: updatePromptStore,
     ),
   );
 }
@@ -290,6 +327,8 @@ class ComeruneApp extends StatefulWidget {
     required this.onboardingStore,
     required this.oauthAuthController,
     this.extensionRegistry,
+    this.versionUpdateChecker,
+    this.updatePromptStore,
   });
 
   final SettingsStore settingsStore;
@@ -320,6 +359,14 @@ class ComeruneApp extends StatefulWidget {
   /// used so descendants that look it up via [ExtensionScope] still
   /// see a valid (empty) registry rather than throwing.
   final ExtensionRegistry? extensionRegistry;
+
+  /// GitHub Releases 連動の更新判定。null（最小テストハーネス等）の場合は
+  /// 更新確認を行わない optional integration。
+  final VersionUpdateChecker? versionUpdateChecker;
+
+  /// 任意更新通知の「後で」見送り版を記録するストア。null の場合は
+  /// 更新確認を行わない。
+  final UpdatePromptStore? updatePromptStore;
 
   @override
   State<ComeruneApp> createState() => _ComeruneAppState();
@@ -402,6 +449,52 @@ class _ComeruneAppState extends State<ComeruneApp> {
   late final ExtensionRegistry _extensionRegistry =
       widget.extensionRegistry ?? ExtensionRegistry();
 
+  /// 起動時に最大 1 回だけ更新を確認し、必要に応じて UI を提示する。
+  ///
+  /// fail-open: 非対象 OS・取得失敗・現在版解析不能時は何も出さない。
+  /// 任意更新は「後で」で見送った版を再表示しない。強制更新は閉じられない
+  /// ブロック画面を表示する。
+  Future<void> _runStartupUpdateCheck() async {
+    final VersionUpdateChecker? checker = widget.versionUpdateChecker;
+    final UpdatePromptStore? promptStore = widget.updatePromptStore;
+    if (checker == null || promptStore == null) {
+      return;
+    }
+    final UpdateStatus status;
+    try {
+      final PackageInfo info = await PackageInfo.fromPlatform();
+      // 層 2: 管理ストア（Play Store 等）由来なら何もしない。
+      // ビルド時に APP_UPDATE_ENABLED=true で構築されていてもここで止める。
+      if (!isAppUpdateAllowedForInstaller(info.installerStore)) {
+        log(
+          'startup update check skipped: installerStore '
+          '"${info.installerStore}" is a managed store',
+          name: 'AppUpdate',
+        );
+        return;
+      }
+      final UpdateCheckResult result = await checker.check(info.version);
+      status = result.status;
+    } on Exception catch (e) {
+      // 取得経路は内部で握りつぶす設計だが、念のため最終防衛で起動を
+      // 妨げない。`Error` は伝搬させる。
+      log('startup update check failed (${e.runtimeType})', name: 'AppUpdate');
+      return;
+    }
+    if (status.isNone || !mounted) {
+      return;
+    }
+    final NavigatorState? navigator = _navigatorKey.currentState;
+    if (navigator == null) {
+      return;
+    }
+    await presentUpdateStatus(
+      context: navigator.context,
+      status: status,
+      promptStore: promptStore,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -414,6 +507,13 @@ class _ComeruneAppState extends State<ComeruneApp> {
             onboardingStore: widget.onboardingStore,
           );
         }
+      });
+    } else if (widget.versionUpdateChecker != null &&
+        widget.updatePromptStore != null) {
+      // 初回起動はオンボーディングを優先し、更新確認は次回起動から。
+      // ダイアログの重なりを避けるためオンボーディング完了時のみ実行。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_runStartupUpdateCheck());
       });
     }
     _ndgrHistoryCount =
@@ -766,6 +866,8 @@ class _ComeruneAppState extends State<ComeruneApp> {
               // the full 30 s. No-op when the FGS controller is not configured.
               onSpeechGraceEnded:
                   _foregroundServiceController?.notifyQueueDrained,
+              versionUpdateChecker: widget.versionUpdateChecker,
+              updatePromptStore: widget.updatePromptStore,
             ),
           ),
         ),
