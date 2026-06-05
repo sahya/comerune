@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../app_logging.dart';
 import '../../application/comment_post/comment_post_controller.dart';
 
 /// Send callback signature for [CommentInputBar].
@@ -264,15 +266,29 @@ class _CommentInputBarState extends State<CommentInputBar> {
   Future<void> _send() async {
     final TextEditingValue value = _textController.value;
     if (!_canSendForValue(value)) {
+      if (kDebugMode) {
+        appDebugLog(
+          '[CommentInputBar] _send: canSend=false '
+          'sending=$_sending text="${value.text}" '
+          'length=${value.text.length} maxLength=$_maxLength',
+        );
+      }
       return;
     }
     final String text = value.text;
     final bool asOperator = widget.isBroadcaster && _asOperator;
-    // The anonymous flag is meaningful only for normal comments. Operator
-    // comments are always labelled "運営" server-side and the operator
-    // endpoint accepts no such field, so we deliberately clamp it to
-    // `false` on the wire regardless of any residual UI state.
     final bool isAnonymous = !asOperator && _isAnonymous;
+
+    if (kDebugMode) {
+      appDebugLog(
+        '[CommentInputBar] _send START: '
+        'text="${text.length > 20 ? '${text.substring(0, 20)}...' : text}" '
+        '(${text.length} chars) asOperator=$asOperator '
+        'isAnonymous=$isAnonymous maxLength=$_maxLength '
+        'isBroadcaster=${widget.isBroadcaster} '
+        '_asOperator=$_asOperator _isAnonymous=$_isAnonymous',
+      );
+    }
 
     setState(() {
       _sending = true;
@@ -285,12 +301,19 @@ class _CommentInputBarState extends State<CommentInputBar> {
         maxLength: _maxLength,
         isAnonymous: isAnonymous,
       );
+      if (kDebugMode) {
+        appDebugLog(
+          '[CommentInputBar] _send result: '
+          'isSuccess=${result.isSuccess} '
+          'validationError=${result.validationError} '
+          'postResult.errorCode=${result.postResult?.errorCode}',
+        );
+      }
       if (!mounted) {
         widget.onSendingChanged?.call(false);
         return;
       }
       if (result.isSuccess) {
-        // Parent dismisses this widget; no further setState needed.
         widget.onSendingChanged?.call(false);
         widget.onCollapse();
         return;

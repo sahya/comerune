@@ -945,6 +945,12 @@ class _FakeHttpClientResponse extends Stream<List<int>>
   final String _body;
 
   @override
+  String get reasonPhrase => 'OK';
+
+  @override
+  HttpHeaders get headers => _FakeResponseHeaders();
+
+  @override
   StreamSubscription<List<int>> listen(
     void Function(List<int> event)? onData, {
     Function? onError,
@@ -967,6 +973,18 @@ class _FakeHttpClientResponse extends Stream<List<int>>
   @override
   Future<Socket> detachSocket() {
     throw UnimplementedError();
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) {
+    return super.noSuchMethod(invocation);
+  }
+}
+
+class _FakeResponseHeaders implements HttpHeaders {
+  @override
+  void forEach(void Function(String name, List<String> values) f) {
+    // No-op for tests.
   }
 
   @override
