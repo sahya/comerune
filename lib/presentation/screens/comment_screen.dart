@@ -1884,6 +1884,10 @@ class _CommentScreenState extends State<CommentScreen>
     }
     _speechInitializing = true;
 
+    final bool isAndroidTts =
+        widget.speechConfig.speechSettings.engineType ==
+        SpeechEngineType.androidTts;
+
     // Check if engine is already ready from a previous session.
     // We also surface a previously-stuck ERROR (e.g. VOICEVOX setup was
     // cancelled / failed in a prior call) to the AppBar icon so the user
@@ -1898,7 +1902,19 @@ class _CommentScreenState extends State<CommentScreen>
               '[CommentScreen] initSpeech: engine=${status.engineState}, '
               'player=${status.playerState}, queue=${status.queueSize}',
         );
-        if (status.engineState == 'READY') {
+        // Issue #933: engine 切替時 Android TTS 再 init を強制（READY
+        // short-circuit を Android TTS 時は bypass）。native の
+        // getStatus().engineState は VOICEVOX エンジン状態のみを反映し、
+        // AndroidTtsSpeaker.isReady() とは無関係。VOICEVOX→Android TTS
+        // 切替や再接続後は engineState=='READY'（VOICEVOX 由来）が残るため、
+        // ここで _initializedEngineType を Android TTS に確定させると下の
+        // checkAndroidTtsAvailability ブランチが skip され、speaker 未 ready
+        // のまま start → 全件 silent drop する。Android TTS では READY
+        // short-circuit を温存せず必ず checkAndroidTtsAvailability まで
+        // 落とす（idempotent・ready 済みなら native 側で早期 return）。
+        // VOICEVOX は engineState がそのままエンジン状態なので従来どおり
+        // short-circuit を温存（perf 非退化）。
+        if (status.engineState == 'READY' && !isAndroidTts) {
           _initializedEngineType =
               widget.speechConfig.speechSettings.engineType;
           _debugLog('[CommentScreen] initSpeech: engine already READY');
@@ -1939,9 +1955,7 @@ class _CommentScreenState extends State<CommentScreen>
 
     // Show setup dialog for first-time download & initialization.
     // Android TTS does not require VOICEVOX assets, so skip the dialog.
-    final bool isAndroidTts =
-        widget.speechConfig.speechSettings.engineType ==
-        SpeechEngineType.androidTts;
+    // `isAndroidTts` is hoisted above the engine-status check (Issue #933).
     if (!_isInitializedForCurrentEngine && !isAndroidTts) {
       _debugLog('[CommentScreen] initSpeech: showing SetupDialog...');
       if (!mounted) {
