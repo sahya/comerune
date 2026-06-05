@@ -550,8 +550,16 @@ class AndroidTtsSpeakerTest {
         assertTrue("matching onDone must resume speak with success", result.isSuccess)
 
         // A subsequent stop() must be a benign no-op — no exception, no
-        // attempt to resume an already-resumed continuation.
-        speaker.stop()
+        // attempt to resume an already-resumed continuation. Assert success
+        // both to verify the no-op contract AND so the test method's body
+        // (which is `= runBlocking { ... }`) returns Unit; otherwise JUnit
+        // rejects the whole class with InvalidTestClassError because the
+        // last expression of `runBlocking` is the `Result<Unit>` returned
+        // by stop().
+        assertTrue(
+            "subsequent stop() after natural completion must be a benign no-op",
+            speaker.stop().isSuccess,
+        )
     }
 
     @Test
