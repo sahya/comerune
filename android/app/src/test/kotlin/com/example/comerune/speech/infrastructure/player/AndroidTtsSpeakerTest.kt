@@ -11,6 +11,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -502,6 +503,91 @@ class AndroidTtsSpeakerTest {
             "engine.stop must be invoked on focus loss",
             engine.stopCount >= 1,
         )
+    }
+
+    // ----------------------------------------------------------------------
+    // Issue #962: stop() must interrupt an in-flight speak() within ~1s so
+    // the queue worker is never frozen waiting on the SPEAK_TIMEOUT_MS
+    // safety net. Previously stop() cleared currentContinuation before
+    // calling engine.stop(), so the UtteranceProgressListener.onStop/onDone
+    // callback's id-equality check discarded the resume and the worker
+    // suspended for up to the full timeout.
+    // ----------------------------------------------------------------------
+
+    @Test
+    fun `stop interrupts in-flight speak synchronously`() = runBlocking {
+        val (speaker, factory, _) = readySpeaker()
+        val engine = factory.createdEngines.first()
+
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hello", "u-stop") }
+        awaitSpeakRecorded(factory, "u-stop")
+
+        // Call stop while the speak continuation is suspended.
+        speaker.stop()
+
+        // speak must resume promptly with a failure result. Use a generous
+        // 1s ceiling: production must resume within milliseconds, but slow
+        // CI runners need headroom over the assertion that proved the bug
+        // (60s freeze) is gone.
+        val result = withTimeout(1000) { speakJob.await() }
+        assertTrue("stop must surface as a failed speak", result.isFailure)
+        assertTrue(
+            "stop must invoke engine.stop on the native TTS",
+            engine.stopCount >= 1,
+        )
+    }
+
+    @Test
+    fun `stop after natural completion does not double-resume`() = runBlocking {
+        val (speaker, factory, listener) = readySpeaker()
+
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hello", "u-done") }
+        awaitSpeakRecorded(factory, "u-done")
+
+        // Natural completion path.
+        listener.onDone("u-done")
+        val result = speakJob.await()
+        assertTrue("matching onDone must resume speak with success", result.isSuccess)
+
+        // A subsequent stop() must be a benign no-op — no exception, no
+        // attempt to resume an already-resumed continuation.
+        speaker.stop()
+    }
+
+    @Test
+    fun `onStop callback resumes the in-flight speak with failure`() = runBlocking {
+        val (speaker, factory, listener) = readySpeaker()
+
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hello", "u-onstop") }
+        awaitSpeakRecorded(factory, "u-onstop")
+
+        // Simulate the platform delivering onStop (e.g. external TTS.stop()
+        // by some other component on API 23+).
+        listener.onStop("u-onstop", interrupted = true)
+
+        val result = speakJob.await()
+        assertTrue("onStop must resume speak with failure", result.isFailure)
+    }
+
+    @Test
+    fun `stale onStop for previous utteranceId does not resume current speak`() = runBlocking {
+        val (speaker, factory, listener) = readySpeaker()
+
+        val aJob = async(Dispatchers.Default) { speaker.speak("hello A", "A") }
+        awaitSpeakRecorded(factory, "A")
+
+        val bJob = async(Dispatchers.Default) { speaker.speak("hello B", "B") }
+        awaitSpeakRecorded(factory, "B")
+
+        // Stale onStop(id="A") must not resume B.
+        listener.onStop("A", interrupted = true)
+        assertTrue("speak(B) must remain in flight after stale onStop(A)", bJob.isActive)
+
+        listener.onDone("B")
+        val bResult = bJob.await()
+        assertTrue("speak(B) must succeed when its own onDone fires", bResult.isSuccess)
+
+        aJob.cancel()
     }
 
     @Test

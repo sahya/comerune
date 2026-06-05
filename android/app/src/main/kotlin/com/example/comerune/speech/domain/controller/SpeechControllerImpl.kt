@@ -149,8 +149,15 @@ class SpeechControllerImpl(
             return Result.failure(IllegalStateException("Controller has been released"))
         }
         started = false
-        player.stop()
+        // Issue #962: interrupt the Android TTS engine FIRST. Without this,
+        // the worker stays suspended inside speaker.speak() for up to the
+        // speaker's safety timeout, the queue does not drain, and engine
+        // switch / stop appears frozen to the user for tens of seconds.
+        // speaker.stop() resumes the in-flight continuation synchronously
+        // (see AndroidTtsSpeaker.stop) and is a benign no-op when no
+        // utterance is in flight, so it is safe to call unconditionally.
         ttsSpeaker?.stop()
+        player.stop()
         activePrefetchJob?.cancel()
         activePrefetchJob = null
         prefetched = null
