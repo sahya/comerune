@@ -562,8 +562,9 @@ class AndroidTtsSpeakerTest {
         awaitSpeakRecorded(factory, "u-onstop")
 
         // Simulate the platform delivering onStop (e.g. external TTS.stop()
-        // by some other component on API 23+).
-        listener.onStop("u-onstop", interrupted = true)
+        // by some other component on API 23+). `interrupted` is positional —
+        // Kotlin prohibits named arguments for Java framework methods.
+        listener.onStop("u-onstop", true)
 
         val result = speakJob.await()
         assertTrue("onStop must resume speak with failure", result.isFailure)
@@ -579,8 +580,9 @@ class AndroidTtsSpeakerTest {
         val bJob = async(Dispatchers.Default) { speaker.speak("hello B", "B") }
         awaitSpeakRecorded(factory, "B")
 
-        // Stale onStop(id="A") must not resume B.
-        listener.onStop("A", interrupted = true)
+        // Stale onStop(id="A") must not resume B. (Positional — Kotlin
+        // prohibits named arguments for Java framework methods.)
+        listener.onStop("A", true)
         assertTrue("speak(B) must remain in flight after stale onStop(A)", bJob.isActive)
 
         listener.onDone("B")
