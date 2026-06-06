@@ -326,7 +326,7 @@ class SessionWsClient {
     required int vpos,
     required bool isAnonymous,
   }) async {
-    if (!_isConnected || _channel == null) {
+    if (_isDisposed || !_isConnected || _channel == null) {
       return const CommentPostResult(
         success: false,
         errorCode: CommentPostErrorCode.networkError,
@@ -338,7 +338,7 @@ class SessionWsClient {
     if (existing != null && !existing.isCompleted) {
       return const CommentPostResult(
         success: false,
-        errorCode: 'IN_FLIGHT',
+        errorCode: CommentPostErrorCode.inFlight,
         errorMessage: 'A comment post is already in progress',
       );
     }
@@ -747,6 +747,7 @@ class SessionWsClient {
     _endpointResolveTimer?.cancel();
     _endpointResolveTimer = null;
     _stopKeepSeatTimer();
+    _cancelPendingPostComment();
 
     await _subscription?.cancel();
     _subscription = null;
