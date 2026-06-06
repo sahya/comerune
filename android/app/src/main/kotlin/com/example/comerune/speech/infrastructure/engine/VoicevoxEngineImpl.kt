@@ -296,23 +296,41 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                     // Issue #970: when recovering from SYNTHESIZING (dispose race) or
                     // INITIALIZING (cancelled prior init), log so post-mortem can
                     // distinguish soft cancel from a clean start.
-                    if (state == TtsEngineState.SYNTHESIZING ||
+                    val recovering = state == TtsEngineState.SYNTHESIZING ||
                         state == TtsEngineState.INITIALIZING
-                    ) {
+                    if (recovering) {
                         Log.i(
                             TAG,
                             "initialize: recovering from $state via soft cancel"
                         )
-                        // Reset synthesis counter so any in-flight coroutine's
-                        // finally block sees a consistent state. The stale
-                        // synthesize() will observe state != SYNTHESIZING after
-                        // we transition below and skip the READY restore.
+                    }
+                    // Atomic soft-cancel: flip state to INITIALIZING and reset the
+                    // synthesis counter under [stateLock]. If we reset the counter
+                    // outside the lock, an in-flight synthesize()'s finally block
+                    // could decrement after the reset (count → -1) and a subsequent
+                    // synthesize() would never observe count == 0, leaving the
+                    // engine stuck in SYNTHESIZING (Issue #970 regression).
+                    //
+                    // Doing the flip under [stateLock] also pairs cleanly with
+                    // synthesize()'s entry block (which guards state + count under
+                    // the same lock) and its finally block (which checks
+                    // state == SYNTHESIZING before restoring READY). A stale
+                    // finally that runs after this point will observe
+                    // state == INITIALIZING and skip the restore entirely.
+                    val previousState = synchronized(stateLock) {
+                        val prior = state
+                        state = TtsEngineState.INITIALIZING
                         activeSynthesisCount.set(0)
+                        prior
+                    }
+                    if (previousState != TtsEngineState.INITIALIZING) {
+                        Log.i(
+                            TAG,
+                            "Engine state changed: $previousState -> ${TtsEngineState.INITIALIZING} (initialize_started)"
+                        )
                     }
                 }
             }
-
-            updateEngineState(TtsEngineState.INITIALIZING, "initialize_started")
             loadedModelPaths.clear()
             loadedModelIds.clear()
 
