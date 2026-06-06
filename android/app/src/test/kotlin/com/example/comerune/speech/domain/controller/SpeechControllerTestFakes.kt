@@ -237,8 +237,11 @@ open class FakeTtsSpeaker : TtsSpeaker {
      * [Result.failure] with this sealed sub-type so the controller's
      * UserStopped suppression path can be tested without driving a real
      * stop() race. Takes precedence over [failOnSpeak] / [throwOnSpeak].
+     *
+     * `internal` because `TtsSpeakException` itself is `internal` and a
+     * public property cannot expose an internal type.
      */
-    var speakFailureOverride: TtsSpeakException? = null
+    internal var speakFailureOverride: TtsSpeakException? = null
     val speakCalls = AtomicInteger(0)
     // Issue #962: hooks for the stop-interrupts-in-flight-speak regression
     // test. `suspendOnSpeak` makes speak() suspend until stop() releases it;
