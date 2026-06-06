@@ -492,11 +492,22 @@ internal class AndroidTtsSpeaker(
         speaking = false
         state = PlayerState.STOPPED
         if (pending != null && pending.isActive) {
-            pending.resume(
-                Result.failure(
-                    RuntimeException("TTS stopped by caller"),
-                ),
-            )
+            // Defensive: a listener callback (onDone/onError/onStop) on the
+            // native TTS worker thread may have already resumed `pending`
+            // between our isActive check and the resume below. The
+            // continuation API throws IllegalStateException on a second
+            // resume; swallow it so stop() stays an unconditional, idempotent
+            // operation. The first resume wins; the failure result here is
+            // discarded silently.
+            try {
+                pending.resume(
+                    Result.failure(
+                        RuntimeException("TTS stopped by caller"),
+                    ),
+                )
+            } catch (e: IllegalStateException) {
+                Log.d(TAG, "stop(): continuation already resumed concurrently: ${e.message}")
+            }
         }
         return Result.success(Unit)
     }

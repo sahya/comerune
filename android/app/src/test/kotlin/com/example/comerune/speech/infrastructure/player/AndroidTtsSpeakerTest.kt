@@ -601,6 +601,79 @@ class AndroidTtsSpeakerTest {
     }
 
     @Test
+    fun `stop swallows native engine stop exception and still resumes speak`() = runBlocking {
+        val (speaker, factory, _) = readySpeaker()
+        val engine = factory.createdEngines.first()
+        engine.throwOnStop = true
+
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hello", "u-stop-throw") }
+        awaitSpeakRecorded(factory, "u-stop-throw")
+
+        // stop() must return success even when engine.stop() throws, AND it
+        // must still resume the suspended speak() so the queue worker is not
+        // wedged on the safety timeout.
+        val stopResult = speaker.stop()
+        assertTrue(
+            "stop() must surface success even when engine.stop() throws",
+            stopResult.isSuccess,
+        )
+
+        val result = withTimeout(1000) { speakJob.await() }
+        assertTrue(
+            "speak() must resume with failure even when engine.stop() threw",
+            result.isFailure,
+        )
+        assertTrue(
+            "engine.stop() must have been attempted before the swallow",
+            engine.stopCount >= 1,
+        )
+    }
+
+    @Test
+    fun `stop after release is a benign no-op`() = runBlocking {
+        val (speaker, _, _) = readySpeaker()
+        speaker.release()
+
+        // No in-flight speak, engine reference cleared by release(); stop()
+        // must still return success without throwing.
+        assertTrue(
+            "stop() after release must remain a benign no-op",
+            speaker.stop().isSuccess,
+        )
+    }
+
+    @Test
+    fun `concurrent stop and onDone do not double-resume the speak continuation`() = runBlocking {
+        // Reproduce the TOCTOU window between AndroidTtsSpeaker.stop()'s
+        // isActive check and pending.resume(): a listener callback on the
+        // native TTS worker thread can resume the continuation in between.
+        // The IllegalStateException catch in stop() must keep stop()
+        // idempotent and prevent the failure from escaping the speaker.
+        repeat(20) { iteration ->
+            val (speaker, factory, listener) = readySpeaker()
+            val id = "u-race-$iteration"
+            val speakJob = async(Dispatchers.Default) { speaker.speak("hello", id) }
+            awaitSpeakRecorded(factory, id)
+
+            // Fire stop() and onDone() concurrently. Whichever resumes the
+            // continuation first wins; the loser must not crash stop().
+            val stopJob = async(Dispatchers.Default) { speaker.stop() }
+            val doneJob = async(Dispatchers.Default) { listener.onDone(id) }
+
+            val stopResult = withTimeout(2000) { stopJob.await() }
+            doneJob.await()
+            assertTrue(
+                "iteration $iteration: stop() must stay idempotent under race",
+                stopResult.isSuccess,
+            )
+
+            // speak() must have resumed exactly once (success or failure).
+            withTimeout(2000) { speakJob.await() }
+            speaker.release()
+        }
+    }
+
+    @Test
     fun `release unsubscribes from the audio focus guard`() = runBlocking {
         val factory = FakeTextToSpeechFactory()
         val guard = FakeAudioFocusGuard()
