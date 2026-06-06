@@ -559,11 +559,15 @@ class CommentSpeechPlugin :
             androidTtsVolume = call.argument<Number>("androidTtsVolume")?.toFloat() ?: 1.0f,
             // Issue #965: optional configurable timeout. Older Flutter
             // binaries that do not yet send this key fall back to the
-            // 15_000L default, preserving PR #963's behaviour. The 1s floor
-            // is also enforced inside AndroidTtsSpeaker.setSpeakTimeoutMs
-            // as defence-in-depth.
-            speakTimeoutMs = (call.argument<Number>("speakTimeoutMs")?.toLong() ?: 15_000L)
-                .coerceAtLeast(1_000L)
+            // shared default, preserving PR #963's behaviour. The shared
+            // floor is also enforced inside AndroidTtsSpeaker.setSpeakTimeoutMs
+            // as defence-in-depth. Default / floor are sourced from
+            // AndroidTtsSpeaker so the two layers cannot drift.
+            speakTimeoutMs = (
+                call.argument<Number>("speakTimeoutMs")?.toLong()
+                    ?: AndroidTtsSpeaker.DEFAULT_SPEAK_TIMEOUT_MS
+                )
+                .coerceAtLeast(AndroidTtsSpeaker.MIN_SPEAK_TIMEOUT_MS)
         )
     }
 

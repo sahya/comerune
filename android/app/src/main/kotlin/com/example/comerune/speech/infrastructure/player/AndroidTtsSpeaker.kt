@@ -56,13 +56,16 @@ internal class AndroidTtsSpeaker(
         // slow devices / long utterances can extend the safety net without
         // changing code. The default is preserved to keep PR #963's 15s
         // behaviour for unchanged callers.
-        private const val DEFAULT_SPEAK_TIMEOUT_MS = 15_000L
+        // Visibility intentionally [internal]: CommentSpeechPlugin reads these
+        // when parsing the Flutter-side speak-timeout value so the default /
+        // floor live in exactly one place. Do not lower visibility further.
+        internal const val DEFAULT_SPEAK_TIMEOUT_MS = 15_000L
 
         // Sanity floor for setSpeakTimeoutMs: a 0ms / negative value would
         // immediately trip withTimeoutOrNull and wedge the queue worker into
         // a tight failure loop. 1s is well below any realistic utterance
         // and still leaves the safety net active.
-        private const val MIN_SPEAK_TIMEOUT_MS = 1_000L
+        internal const val MIN_SPEAK_TIMEOUT_MS = 1_000L
     }
 
     private var tts: TextToSpeechAdapter? = null
@@ -468,7 +471,16 @@ internal class AndroidTtsSpeaker(
                 cont.invokeOnCancellation {
                     currentContinuation = null
                     currentUtteranceId = null
-                    engine.stop()
+                    // Issue #965: mirror the defensive try/catch around
+                    // engine.stop() used by stop() / release() / focusListener /
+                    // the timeout cleanup below. A native exception on the
+                    // cancel path would otherwise leak out of the cancellation
+                    // handler and leave [speaking] / [state] inconsistent.
+                    try {
+                        engine.stop()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "engine.stop() during cancel cleanup failed: ${e.message}")
+                    }
                     speaking = false
                     state = PlayerState.STOPPED
                 }
