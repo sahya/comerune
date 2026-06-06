@@ -157,18 +157,6 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         }
 
         /**
-         * Outcome of evaluating [TtsEngineState] at the entry of [initialize].
-         *
-         * - [ALREADY_READY] — engine is already initialized; [initialize] returns success
-         *   without doing any work.
-         * - [PROCEED] — start initialization (fresh, error recovery, or soft cancel of an
-         *   abandoned in-flight synthesis).
-         * - [REJECT] — refuse with `IllegalStateException`; the engine is in a transitional
-         *   state that should not be re-entered.
-         */
-        internal enum class InitializeStartDecision { ALREADY_READY, PROCEED, REJECT }
-
-        /**
          * Decide whether [initialize] may run given the current [state].
          *
          * Issue #970: VOICEVOX synthesis runs on a coroutine that calls into the JNI
@@ -269,6 +257,23 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
     private val loadedModelIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
     private class MissingAssetsException(message: String) : IllegalStateException(message)
+
+    /**
+     * Outcome of evaluating [TtsEngineState] at the entry of [initialize].
+     *
+     * - [ALREADY_READY] — engine is already initialized; [initialize] returns success
+     *   without doing any work.
+     * - [PROCEED] — start initialization (fresh, error recovery, or soft cancel of an
+     *   abandoned in-flight synthesis).
+     * - [REJECT] — refuse with `IllegalStateException`; the engine is in a transitional
+     *   state that should not be re-entered.
+     *
+     * Declared at class scope (not inside the [companion object]) so it can be
+     * referenced from tests as `VoicevoxEngineImpl.InitializeStartDecision`. Kotlin's
+     * companion-member shortcut applies to functions and properties, not to nested
+     * classifiers.
+     */
+    internal enum class InitializeStartDecision { ALREADY_READY, PROCEED, REJECT }
 
     /**
      * Optional callback invoked during asset download to report progress.
