@@ -4,6 +4,7 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.os.Build
 import com.example.comerune.speech.domain.player.AudioFocusGuard
+import com.example.comerune.speech.domain.player.TtsSpeakException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -748,30 +749,111 @@ class AndroidTtsSpeakerTest {
     }
 
     // ----------------------------------------------------------------------
-    // Issue #965: SPEAK_TIMEOUT_MS configurable via setSpeakTimeoutMs +
-    // timeout-cleanup path's engine.stop() must swallow native exceptions
-    // (parity with stop() / release() / focusListener).
+    // Issue #966 / #968: sealed [TtsSpeakException] hierarchy + Issue #965:
+    // configurable SPEAK_TIMEOUT_MS with timeout-cleanup engine.stop()
+    // protected against native exceptions (parity with stop() / release()
+    // / focusListener).
     // ----------------------------------------------------------------------
+
+    @Test
+    fun `stop surfaces speak failure as UserStopped`() = runBlocking {
+        val (speaker, factory, _) = readySpeaker()
+        val engine = factory.createdEngines.first()
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hi", "u-stop-typed") }
+        awaitSpeakRecorded(factory, "u-stop-typed")
+
+        speaker.stop()
+
+        val result = withTimeout(1000) { speakJob.await() }
+        assertTrue("stop must surface as failure", result.isFailure)
+        val cause = result.exceptionOrNull()
+        assertTrue(
+            "stop must surface as TtsSpeakException.UserStopped",
+            cause is TtsSpeakException.UserStopped,
+        )
+        assertTrue(
+            "engine.stop must still be invoked on the native TTS",
+            engine.stopCount >= 1,
+        )
+    }
+
+    @Test
+    fun `onStop callback surfaces speak failure as UserStopped`() = runBlocking {
+        val (speaker, factory, listener) = readySpeaker()
+
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hi", "u-onstop-typed") }
+        awaitSpeakRecorded(factory, "u-onstop-typed")
+
+        listener.onStop("u-onstop-typed", true)
+
+        val result = speakJob.await()
+        assertTrue(result.isFailure)
+        val cause = result.exceptionOrNull()
+        assertTrue(
+            "platform onStop must surface as TtsSpeakException.UserStopped",
+            cause is TtsSpeakException.UserStopped,
+        )
+    }
+
+    @Test
+    fun `onError callback surfaces speak failure as EngineError with code detail`() = runBlocking {
+        val (speaker, factory, listener) = readySpeaker()
+
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hi", "u-err-typed") }
+        awaitSpeakRecorded(factory, "u-err-typed")
+
+        listener.onError("u-err-typed", -1)
+
+        val result = speakJob.await()
+        assertTrue(result.isFailure)
+        val cause = result.exceptionOrNull()
+        assertTrue(
+            "engine onError must surface as TtsSpeakException.EngineError",
+            cause is TtsSpeakException.EngineError,
+        )
+        assertTrue(
+            "EngineError detail must include the error code",
+            cause?.message?.contains("-1") == true,
+        )
+    }
+
+    @Test
+    fun `focus loss surfaces speak failure as FocusLost`() = runBlocking {
+        val factory = FakeTextToSpeechFactory()
+        val guard = FakeAudioFocusGuard()
+        val speaker = AndroidTtsSpeaker(factory, audioFocusGuard = guard)
+
+        val initJob = launch { speaker.initialize() }
+        factory.awaitPendingInit()
+        factory.completePendingInit(TextToSpeech.SUCCESS)
+        initJob.join()
+
+        val engine = factory.createdEngines.last()
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hi", "u-focus-typed") }
+        waitUntil("speak must reach engine.speak") {
+            engine.speakInvocations.isNotEmpty()
+        }
+
+        guard.emit(AudioFocusGuard.FocusEvent.LOSS)
+
+        val result = speakJob.await()
+        assertTrue(result.isFailure)
+        val cause = result.exceptionOrNull()
+        assertTrue(
+            "focus loss must surface as TtsSpeakException.FocusLost",
+            cause is TtsSpeakException.FocusLost,
+        )
+    }
 
     @Test
     fun `setSpeakTimeoutMs shortens the safety-net so timeout fires sooner`() = runBlocking {
         val (speaker, factory, _) = readySpeaker()
         val engine = factory.createdEngines.first()
-        // Shorten the safety net well below the 15s default so this test
-        // does not block CI for 15s when the fake engine never delivers
-        // onDone. The setter clamps to a 1s floor (MIN_SPEAK_TIMEOUT_MS),
-        // so any request <1s collapses to 1s — request exactly the floor
-        // here and give the outer await generous headroom so the test
-        // measures the configurable safety-net firing, not a race between
-        // the production timeout and the test's own withTimeout.
         speaker.setSpeakTimeoutMs(1_000L)
 
         val speakJob = async(Dispatchers.Default) { speaker.speak("hello", "u-timeout") }
         awaitSpeakRecorded(factory, "u-timeout")
 
-        // 3s ceiling sits comfortably above the 1s clamped safety-net
-        // while still failing fast if the configurable timeout was not
-        // honoured (the unmodified default would be 15s).
         val result = withTimeout(3_000) { speakJob.await() }
         assertTrue("custom timeout must surface as a failed speak", result.isFailure)
         assertTrue(
@@ -789,17 +871,11 @@ class AndroidTtsSpeakerTest {
         val (speaker, factory, _) = readySpeaker()
         val engine = factory.createdEngines.first()
         engine.throwOnStop = true
-        // Same rationale as the previous test: setSpeakTimeoutMs clamps to
-        // a 1s floor, so request the floor explicitly and give the outer
-        // await enough headroom to not race the production timeout.
         speaker.setSpeakTimeoutMs(1_000L)
 
         val speakJob = async(Dispatchers.Default) { speaker.speak("hello", "u-timeout-throw") }
         awaitSpeakRecorded(factory, "u-timeout-throw")
 
-        // Even though engine.stop() throws during timeout cleanup, the
-        // outer speak() coroutine must still resume with failure (never
-        // escape the cleanup block) and the speaking flag must be reset.
         val result = withTimeout(3_000) { speakJob.await() }
         assertTrue(
             "timeout cleanup must surface a failed speak even when engine.stop() throws",
@@ -813,9 +889,6 @@ class AndroidTtsSpeakerTest {
             "speaking flag must be reset even when engine.stop() threw during cleanup",
             speaker.isSpeaking(),
         )
-
-        // The speaker must remain usable: a follow-up stop() is a benign
-        // no-op (no double-resume, no thrown exception).
         assertTrue(
             "follow-up stop() after timeout cleanup must stay idempotent",
             speaker.stop().isSuccess,
@@ -825,23 +898,16 @@ class AndroidTtsSpeakerTest {
     @Test
     fun `setSpeakTimeoutMs clamps non-positive values to the floor`() = runBlocking {
         val (speaker, factory, _) = readySpeaker()
-        // A 0ms / negative timeout would immediately trip
-        // withTimeoutOrNull and wedge the queue worker into a tight failure
-        // loop. The implementation clamps to the 1s floor; verify by
-        // showing a 0ms request still gives the suspended speak() time to
-        // observe an onDone before the timeout fires.
         speaker.setSpeakTimeoutMs(0L)
 
         val listener = factory.createdEngines.first().registeredProgressListeners.first()
         val speakJob = async(Dispatchers.Default) { speaker.speak("hello", "u-clamp") }
         awaitSpeakRecorded(factory, "u-clamp")
 
-        // Fire onDone shortly after — well within the 1s clamp floor but
-        // far past 0ms. If clamping was missing, the timeout would fire
-        // first and surface failure instead of success.
         listener.onDone("u-clamp")
         val result = withTimeout(1500) { speakJob.await() }
         assertTrue("clamped timeout must allow normal onDone to succeed", result.isSuccess)
+    }
     }
 
     @Test
