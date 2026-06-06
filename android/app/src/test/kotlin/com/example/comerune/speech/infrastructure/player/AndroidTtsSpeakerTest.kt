@@ -713,16 +713,22 @@ class AndroidTtsSpeakerTest {
     fun `setSpeakTimeoutMs shortens the safety-net so timeout fires sooner`() = runBlocking {
         val (speaker, factory, _) = readySpeaker()
         val engine = factory.createdEngines.first()
-        // Short, deterministic timeout. The fake engine never delivers
-        // onDone, so speak() must surface failure via the safety net.
-        speaker.setSpeakTimeoutMs(50L)
+        // Shorten the safety net well below the 15s default so this test
+        // does not block CI for 15s when the fake engine never delivers
+        // onDone. The setter clamps to a 1s floor (MIN_SPEAK_TIMEOUT_MS),
+        // so any request <1s collapses to 1s — request exactly the floor
+        // here and give the outer await generous headroom so the test
+        // measures the configurable safety-net firing, not a race between
+        // the production timeout and the test's own withTimeout.
+        speaker.setSpeakTimeoutMs(1_000L)
 
         val speakJob = async(Dispatchers.Default) { speaker.speak("hello", "u-timeout") }
         awaitSpeakRecorded(factory, "u-timeout")
 
-        // 1s ceiling gives plenty of headroom over the 50ms timeout while
-        // still failing fast if the configurable timeout was not honoured.
-        val result = withTimeout(1000) { speakJob.await() }
+        // 3s ceiling sits comfortably above the 1s clamped safety-net
+        // while still failing fast if the configurable timeout was not
+        // honoured (the unmodified default would be 15s).
+        val result = withTimeout(3_000) { speakJob.await() }
         assertTrue("custom timeout must surface as a failed speak", result.isFailure)
         assertTrue(
             "timeout cleanup must invoke engine.stop on the native TTS",
@@ -739,7 +745,10 @@ class AndroidTtsSpeakerTest {
         val (speaker, factory, _) = readySpeaker()
         val engine = factory.createdEngines.first()
         engine.throwOnStop = true
-        speaker.setSpeakTimeoutMs(50L)
+        // Same rationale as the previous test: setSpeakTimeoutMs clamps to
+        // a 1s floor, so request the floor explicitly and give the outer
+        // await enough headroom to not race the production timeout.
+        speaker.setSpeakTimeoutMs(1_000L)
 
         val speakJob = async(Dispatchers.Default) { speaker.speak("hello", "u-timeout-throw") }
         awaitSpeakRecorded(factory, "u-timeout-throw")
@@ -747,7 +756,7 @@ class AndroidTtsSpeakerTest {
         // Even though engine.stop() throws during timeout cleanup, the
         // outer speak() coroutine must still resume with failure (never
         // escape the cleanup block) and the speaking flag must be reset.
-        val result = withTimeout(1000) { speakJob.await() }
+        val result = withTimeout(3_000) { speakJob.await() }
         assertTrue(
             "timeout cleanup must surface a failed speak even when engine.stop() throws",
             result.isFailure,
