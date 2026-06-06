@@ -1115,18 +1115,32 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
   }
 
   Future<void> _connectSessionWsForCommentPost(String lv) async {
+    log(
+      'Starting comment-post WS connection for $lv',
+      name: 'SessionWsClientAdapter',
+    );
     final session_impl.SessionWsClient client = session_impl.SessionWsClient(
       lv: lv,
     );
     _activeClient = client;
     _activeSubscription = client.events.listen(
-      (session_impl.SessionWsEvent event) {},
+      (session_impl.SessionWsEvent event) {
+        log(
+          'Comment-post WS event: ${event.type.name}'
+          '${event.errorDetail != null ? ' detail=${event.errorDetail}' : ''}',
+          name: 'SessionWsClientAdapter',
+        );
+      },
       onError: (Object error, StackTrace stackTrace) {
         log('Comment-post WS error: $error', name: 'SessionWsClientAdapter');
       },
     );
     try {
       await client.connect();
+      log(
+        'Comment-post WS connected successfully',
+        name: 'SessionWsClientAdapter',
+      );
     } on Object catch (error) {
       log(
         'Comment-post WS connect failed: $error',
