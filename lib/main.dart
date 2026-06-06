@@ -1011,6 +1011,10 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
           reconnect.SessionWsConnectFailureKind.broadcastEnded,
         );
       }
+      // Establish session WebSocket in the background for comment posting.
+      // The endpoint is already resolved via programinfo, but postComment
+      // requires a live WebSocket connection with commentable: true.
+      unawaited(_connectSessionWsForCommentPost(lv));
       return reconnect.SessionEndpoints(ndgrViewApiUri: programInfo.viewUri);
     } on reconnect.SessionWsConnectException {
       // Re-throw our own signalling exception so it is not swallowed by
@@ -1108,6 +1112,27 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       );
     }
     return client.postComment(text: text, vpos: vpos, isAnonymous: isAnonymous);
+  }
+
+  Future<void> _connectSessionWsForCommentPost(String lv) async {
+    final session_impl.SessionWsClient client = session_impl.SessionWsClient(
+      lv: lv,
+    );
+    _activeClient = client;
+    _activeSubscription = client.events.listen(
+      (session_impl.SessionWsEvent event) {},
+      onError: (Object error, StackTrace stackTrace) {
+        log('Comment-post WS error: $error', name: 'SessionWsClientAdapter');
+      },
+    );
+    try {
+      await client.connect();
+    } on Object catch (error) {
+      log(
+        'Comment-post WS connect failed: $error',
+        name: 'SessionWsClientAdapter',
+      );
+    }
   }
 
   Future<void> dispose() async {
