@@ -16,6 +16,7 @@ import com.example.comerune.speech.domain.player.WavPlayer
 import com.example.comerune.speech.domain.player.TtsSpeaker
 import com.example.comerune.speech.domain.queue.SpeechQueueManager
 import com.example.comerune.speech.domain.settings.SettingsRepository
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import java.io.IOException
 import java.util.concurrent.CopyOnWriteArrayList
@@ -230,6 +231,13 @@ open class FakeTtsSpeaker : TtsSpeaker {
     var failOnSpeak: Boolean = false
     var throwOnSpeak: Boolean = false
     val speakCalls = AtomicInteger(0)
+    // Issue #962: hooks for the stop-interrupts-in-flight-speak regression
+    // test. `suspendOnSpeak` makes speak() suspend until stop() releases it;
+    // `stopCalls` records that the controller propagated stop() to the
+    // speaker.
+    val stopCalls = AtomicInteger(0)
+    var suspendOnSpeak: Boolean = false
+    private val speakResumed = CompletableDeferred<Result<Unit>>()
 
     override suspend fun initialize(): Result<Unit> = Result.success(Unit)
 
@@ -237,13 +245,22 @@ open class FakeTtsSpeaker : TtsSpeaker {
         speakCalls.incrementAndGet()
         if (throwOnSpeak) throw RuntimeException("simulated speak throw")
         if (failOnSpeak) return Result.failure(IOException("simulated speak failure"))
+        if (suspendOnSpeak) return speakResumed.await()
         return Result.success(Unit)
     }
 
-    override suspend fun stop(): Result<Unit> = Result.success(Unit)
+    override suspend fun stop(): Result<Unit> {
+        stopCalls.incrementAndGet()
+        if (suspendOnSpeak && !speakResumed.isCompleted) {
+            speakResumed.complete(
+                Result.failure(RuntimeException("simulated stop interrupt")),
+            )
+        }
+        return Result.success(Unit)
+    }
 
     override fun isReady(): Boolean = readyOverride
-    override fun isSpeaking(): Boolean = false
+    override fun isSpeaking(): Boolean = suspendOnSpeak && !speakResumed.isCompleted
     override fun currentState(): PlayerState = PlayerState.IDLE
 
     override fun setSpeechRate(rate: Float) {

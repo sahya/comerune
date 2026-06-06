@@ -98,6 +98,14 @@ internal class FakeTextToSpeechAdapter(
     @Volatile
     var audioAttributesResult: Int = TextToSpeech.SUCCESS
 
+    /**
+     * When true, [stop] throws a RuntimeException so tests can verify
+     * AndroidTtsSpeaker.stop() swallows native engine exceptions and still
+     * resumes the pending continuation (issue #962 round 1 review hardening).
+     */
+    @Volatile
+    var throwOnStop: Boolean = false
+
     val shutdownCount: Int get() = shutdownCounter.get()
 
     val stopCount: Int get() = stopCounter.get()
@@ -158,6 +166,9 @@ internal class FakeTextToSpeechAdapter(
 
     override fun stop(): Int {
         stopCounter.incrementAndGet()
+        if (throwOnStop) {
+            throw RuntimeException("simulated native TTS stop() failure")
+        }
         return TextToSpeech.SUCCESS
     }
 
