@@ -660,7 +660,13 @@ class SessionWsClient {
       case SessionWsStartWatchingMode.commentOnly:
         return const <String, Object>{
           'type': 'startWatching',
-          'data': <String, Object>{'reconnect': false},
+          'data': <String, Object>{
+            'room': <String, Object>{
+              'protocol': 'webSocket',
+              'commentable': true,
+            },
+            'reconnect': false,
+          },
         };
     }
   }
