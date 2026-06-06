@@ -149,4 +149,46 @@ class PrepareForModelDownloadFlowTest {
             VoicevoxEngineImpl.evaluateInitializeStartState(TtsEngineState.EXTRACTING)
         )
     }
+
+    // ── Issue #970 follow-up: atomic soft-cancel counter reset ──────────
+    //
+    // Documentation-only test (no shared engine instance to drive here —
+    // synthesize() and initialize() both depend on the Android Context and
+    // the JNI bridge, so a true integration test runs on the device CI).
+    //
+    // Race the fix prevents:
+    //   1. synthesize #1 in flight: activeSynthesisCount=1, state=SYNTHESIZING
+    //   2. dispose triggers initialize() → PROCEED path. If the counter reset
+    //      ran BEFORE the state flip, the in-flight synthesize()'s `finally`
+    //      could decrement (1 → 0), then the reset would clobber it to 0,
+    //      then a stale decrement could push it to -1. With the counter ever
+    //      negative, later synthesize() / decrementAndGet() pairs never
+    //      observe `== 0` and the READY restore never fires, leaving the
+    //      engine wedged at SYNTHESIZING — the original #970 symptom.
+    //   3. Fix: state flip + activeSynthesisCount.set(0) under a single
+    //      synchronized(stateLock) block, paired with synthesize()'s entry
+    //      block that takes the same lock. The stale finally observes
+    //      state == INITIALIZING (or later state) and skips the restore.
+    //
+    // The runtime invariant is verified at code-review level by inspecting
+    // initialize()'s synchronized(stateLock) block and synthesize()'s
+    // finally block in VoicevoxEngineImpl.kt.
+
+    @Test
+    fun `soft cancel recovery is documented to be atomic under stateLock`() {
+        // Marker test: documents that both SYNTHESIZING and INITIALIZING
+        // are treated as recoverable states whose counter reset MUST be
+        // performed under stateLock together with the state flip.
+        val recoverableStates = listOf(
+            TtsEngineState.SYNTHESIZING,
+            TtsEngineState.INITIALIZING
+        )
+        recoverableStates.forEach { state ->
+            assertEquals(
+                "Recoverable state $state must PROCEED via soft cancel",
+                VoicevoxEngineImpl.InitializeStartDecision.PROCEED,
+                VoicevoxEngineImpl.evaluateInitializeStartState(state)
+            )
+        }
+    }
 }
