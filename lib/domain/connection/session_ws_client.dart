@@ -610,6 +610,7 @@ class SessionWsClient {
       uri,
       headers: headers.isEmpty ? null : headers,
     );
+    await channel.ready;
     return WebSocketSessionWsChannel(channel);
   }
 
@@ -625,6 +626,9 @@ class SessionWsClient {
     );
     if (!hasUserAgentHeader && userAgent.trim().isNotEmpty) {
       headers['User-Agent'] = userAgent.trim();
+    }
+    if (!headers.keys.any((String k) => k.toLowerCase() == 'origin')) {
+      headers['Origin'] = 'https://live.nicovideo.jp';
     }
     return headers;
   }
