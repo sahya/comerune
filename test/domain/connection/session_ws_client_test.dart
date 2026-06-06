@@ -1081,7 +1081,7 @@ void main() {
         );
 
         expect(second.success, isFalse);
-        expect(second.errorCode, 'IN_FLIGHT');
+        expect(second.errorCode, CommentPostErrorCode.inFlight);
 
         // Complete the first call
         fakeChannel.pushIncoming(
