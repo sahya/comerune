@@ -1011,10 +1011,6 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
           reconnect.SessionWsConnectFailureKind.broadcastEnded,
         );
       }
-      // Establish session WebSocket in the background for comment posting.
-      // The endpoint is already resolved via programinfo, but postComment
-      // requires a live WebSocket connection with commentable: true.
-      unawaited(_connectSessionWsForCommentPost(lv));
       return reconnect.SessionEndpoints(ndgrViewApiUri: programInfo.viewUri);
     } on reconnect.SessionWsConnectException {
       // Re-throw our own signalling exception so it is not swallowed by
@@ -1103,50 +1099,67 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     required int vpos,
     required bool isAnonymous,
   }) async {
-    final session_impl.SessionWsClient? client = _activeClient;
-    if (client == null) {
+    final String lv = _lvProvider();
+    if (lv.isEmpty) {
       return const reconnect.CommentPostResult(
         success: false,
         errorCode: reconnect.CommentPostErrorCode.networkError,
-        errorMessage: 'Session WebSocket not connected',
+        errorMessage: 'lv is empty',
       );
+    }
+
+    session_impl.SessionWsClient? client = _activeClient;
+    if (client == null || client.isDisposed || !client.isConnected) {
+      log(
+        'postComment: WS not ready (client=${client != null}, '
+        'disposed=${client?.isDisposed}, connected=${client?.isConnected}), '
+        'establishing connection for $lv',
+        name: 'SessionWsClientAdapter',
+      );
+      try {
+        await _ensureCommentPostWs(lv);
+        client = _activeClient;
+      } on Object catch (error) {
+        log(
+          'postComment: WS connect failed: $error',
+          name: 'SessionWsClientAdapter',
+        );
+      }
+      if (client == null || client.isDisposed || !client.isConnected) {
+        return const reconnect.CommentPostResult(
+          success: false,
+          errorCode: reconnect.CommentPostErrorCode.networkError,
+          errorMessage: 'WebSocket not connected',
+        );
+      }
     }
     return client.postComment(text: text, vpos: vpos, isAnonymous: isAnonymous);
   }
 
-  Future<void> _connectSessionWsForCommentPost(String lv) async {
-    log(
-      'Starting comment-post WS connection for $lv',
-      name: 'SessionWsClientAdapter',
-    );
+  Future<void> _ensureCommentPostWs(String lv) async {
+    final session_impl.SessionWsClient? existing = _activeClient;
+    if (existing != null) {
+      await existing.dispose();
+    }
+    await _activeSubscription?.cancel();
+
     final session_impl.SessionWsClient client = session_impl.SessionWsClient(
       lv: lv,
     );
     _activeClient = client;
-    _activeSubscription = client.events.listen(
-      (session_impl.SessionWsEvent event) {
+    _activeSubscription = client.events.listen((
+      session_impl.SessionWsEvent event,
+    ) {
+      if (event.type == session_impl.SessionWsEventType.error ||
+          event.type == session_impl.SessionWsEventType.disconnected) {
         log(
-          'Comment-post WS event: ${event.type.name}'
-          '${event.errorDetail != null ? ' detail=${event.errorDetail}' : ''}',
+          'Comment-post WS event: ${event.type.name}',
           name: 'SessionWsClientAdapter',
         );
-      },
-      onError: (Object error, StackTrace stackTrace) {
-        log('Comment-post WS error: $error', name: 'SessionWsClientAdapter');
-      },
-    );
-    try {
-      await client.connect();
-      log(
-        'Comment-post WS connected successfully',
-        name: 'SessionWsClientAdapter',
-      );
-    } on Object catch (error) {
-      log(
-        'Comment-post WS connect failed: $error',
-        name: 'SessionWsClientAdapter',
-      );
-    }
+      }
+    });
+    await client.connect();
+    log('Comment-post WS connected for $lv', name: 'SessionWsClientAdapter');
   }
 
   Future<void> dispose() async {

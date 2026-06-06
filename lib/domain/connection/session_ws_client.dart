@@ -188,6 +188,8 @@ class SessionWsClient {
   Completer<CommentPostResult>? _postCommentCompleter;
 
   Stream<SessionWsEvent> get events => _eventsController.stream;
+  bool get isConnected => _isConnected;
+  bool get isDisposed => _isDisposed;
   SessionWsStartWatchingMode get startWatchingMode => _startWatchingMode;
   Map<String, String> get connectHeaders =>
       Map<String, String>.unmodifiable(_connectHeaders);
