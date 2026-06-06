@@ -640,6 +640,13 @@ class AndroidTtsSpeakerTest {
             "stop() after release must remain a benign no-op",
             speaker.stop().isSuccess,
         )
+        // release()'s post-condition: speaker reports not-ready until a
+        // fresh initialize() succeeds. Re-asserting here records that
+        // stop() does not accidentally flip readiness back on.
+        assertFalse(
+            "speaker must stay not-ready after release()+stop()",
+            speaker.isReady(),
+        )
     }
 
     @Test
@@ -649,7 +656,10 @@ class AndroidTtsSpeakerTest {
         // native TTS worker thread can resume the continuation in between.
         // The IllegalStateException catch in stop() must keep stop()
         // idempotent and prevent the failure from escaping the speaker.
-        repeat(20) { iteration ->
+        // 100 iterations: 20 in round 1 detected nothing; widening the
+        // window improves the chance of catching a regression while still
+        // running under ~1s on a typical CI worker.
+        repeat(100) { iteration ->
             val (speaker, factory, listener) = readySpeaker()
             val id = "u-race-$iteration"
             val speakJob = async(Dispatchers.Default) { speaker.speak("hello", id) }

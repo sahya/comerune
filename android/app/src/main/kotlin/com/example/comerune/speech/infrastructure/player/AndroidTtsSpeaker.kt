@@ -493,12 +493,17 @@ internal class AndroidTtsSpeaker(
         state = PlayerState.STOPPED
         if (pending != null && pending.isActive) {
             // Defensive: a listener callback (onDone/onError/onStop) on the
-            // native TTS worker thread may have already resumed `pending`
-            // between our isActive check and the resume below. The
-            // continuation API throws IllegalStateException on a second
-            // resume; swallow it so stop() stays an unconditional, idempotent
-            // operation. The first resume wins; the failure result here is
-            // discarded silently.
+            // native TTS worker thread can race with us between this
+            // isActive check and the resume call below. If the listener
+            // wins, kotlinx.coroutines throws IllegalStateException on our
+            // second resume attempt; swallow it so stop() stays
+            // unconditional and idempotent. The earlier resume's result
+            // (success on onDone, failure on onError/onStop) is preserved —
+            // only our redundant failure here is dropped.
+            //
+            // Regression test:
+            //   AndroidTtsSpeakerTest.`concurrent stop and onDone do not
+            //   double-resume the speak continuation`.
             try {
                 pending.resume(
                     Result.failure(
