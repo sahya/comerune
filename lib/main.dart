@@ -1145,6 +1145,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
 
     final session_impl.SessionWsClient client = session_impl.SessionWsClient(
       lv: lv,
+      startWatchingMode: session_impl.SessionWsStartWatchingMode.commentOnly,
     );
     _activeClient = client;
     _activeSubscription = client.events.listen((

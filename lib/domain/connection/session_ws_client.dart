@@ -33,7 +33,7 @@ enum SessionWsFailurePhase {
   keepalive,
 }
 
-enum SessionWsStartWatchingMode { full, minimal }
+enum SessionWsStartWatchingMode { full, minimal, commentOnly }
 
 class SessionWsErrorDetail {
   const SessionWsErrorDetail({
@@ -257,7 +257,9 @@ class SessionWsClient {
         return;
       }
       _emit(const SessionWsEvent(type: SessionWsEventType.connected));
-      _startEndpointResolveTimer();
+      if (_startWatchingMode != SessionWsStartWatchingMode.commentOnly) {
+        _startEndpointResolveTimer();
+      }
     } catch (error, stackTrace) {
       final SessionWsErrorDetail detail = _buildErrorDetail(
         code: SessionWsErrorCode.connectFailed,
@@ -650,6 +652,11 @@ class SessionWsClient {
         return const <String, Object>{
           'type': 'startWatching',
           'data': <String, Object>{},
+        };
+      case SessionWsStartWatchingMode.commentOnly:
+        return const <String, Object>{
+          'type': 'startWatching',
+          'data': <String, Object>{'reconnect': false},
         };
     }
   }
