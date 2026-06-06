@@ -5,6 +5,8 @@ import 'dart:developer';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../models/comment_post_result.dart';
+
 enum SessionWsEventType {
   connected,
   disconnected,
@@ -183,6 +185,7 @@ class SessionWsClient {
   bool _isClosing = false;
   bool _isDisposed = false;
   Uri? _sessionWsUri;
+  Completer<CommentPostResult>? _postCommentCompleter;
 
   Stream<SessionWsEvent> get events => _eventsController.stream;
   SessionWsStartWatchingMode get startWatchingMode => _startWatchingMode;
@@ -308,9 +311,110 @@ class SessionWsClient {
     if (_isDisposed) {
       return;
     }
+    _cancelPendingPostComment();
     await disconnect();
     _isDisposed = true;
     await _eventsController.close();
+  }
+
+  /// Posts a comment via the session WebSocket.
+  ///
+  /// Returns a [CommentPostResult] when the server responds with
+  /// `postCommentResult`. Times out after 10 seconds if no response arrives.
+  Future<CommentPostResult> postComment({
+    required String text,
+    required int vpos,
+    required bool isAnonymous,
+  }) async {
+    if (!_isConnected || _channel == null) {
+      return const CommentPostResult(
+        success: false,
+        errorCode: CommentPostErrorCode.networkError,
+        errorMessage: 'WebSocket not connected',
+      );
+    }
+
+    final Completer<CommentPostResult>? existing = _postCommentCompleter;
+    if (existing != null && !existing.isCompleted) {
+      return const CommentPostResult(
+        success: false,
+        errorCode: 'IN_FLIGHT',
+        errorMessage: 'A comment post is already in progress',
+      );
+    }
+
+    final Completer<CommentPostResult> completer =
+        Completer<CommentPostResult>();
+    _postCommentCompleter = completer;
+
+    try {
+      _sendJson(<String, Object>{
+        'type': 'postComment',
+        'data': <String, Object>{
+          'text': text,
+          'vpos': vpos,
+          'isAnonymous': isAnonymous,
+        },
+      });
+    } on Object catch (e) {
+      _postCommentCompleter = null;
+      return CommentPostResult(
+        success: false,
+        errorCode: CommentPostErrorCode.networkError,
+        errorMessage: 'Failed to send postComment: $e',
+      );
+    }
+
+    return completer.future.timeout(
+      const Duration(seconds: 10),
+      onTimeout: () {
+        _postCommentCompleter = null;
+        return const CommentPostResult(
+          success: false,
+          errorCode: CommentPostErrorCode.networkError,
+          errorMessage: 'Comment post timed out',
+        );
+      },
+    );
+  }
+
+  void _handlePostCommentResult(Map<String, dynamic> decoded) {
+    final Completer<CommentPostResult>? completer = _postCommentCompleter;
+    _postCommentCompleter = null;
+    if (completer == null || completer.isCompleted) {
+      return;
+    }
+
+    final Object? data = decoded['data'];
+    if (data is Map<String, dynamic>) {
+      final Object? error = data['error'];
+      if (error != null) {
+        completer.complete(
+          CommentPostResult(
+            success: false,
+            errorCode: error.toString(),
+            errorMessage: error.toString(),
+          ),
+        );
+        return;
+      }
+    }
+
+    completer.complete(const CommentPostResult(success: true));
+  }
+
+  void _cancelPendingPostComment() {
+    final Completer<CommentPostResult>? completer = _postCommentCompleter;
+    _postCommentCompleter = null;
+    if (completer != null && !completer.isCompleted) {
+      completer.complete(
+        const CommentPostResult(
+          success: false,
+          errorCode: CommentPostErrorCode.networkError,
+          errorMessage: 'WebSocket disconnected',
+        ),
+      );
+    }
   }
 
   void _handleIncoming(dynamic payload) {
@@ -327,6 +431,12 @@ class SessionWsClient {
 
     final Object? decoded = _tryDecodeJson(raw);
     if (decoded is! Map<String, dynamic>) {
+      return;
+    }
+
+    final String? messageType = decoded['type']?.toString();
+    if (messageType == 'postCommentResult') {
+      _handlePostCommentResult(decoded);
       return;
     }
 
@@ -471,6 +581,7 @@ class SessionWsClient {
     _endpointResolveTimer?.cancel();
     _endpointResolveTimer = null;
     _stopKeepSeatTimer();
+    _cancelPendingPostComment();
     _channel = null;
     _isConnected = false;
     _sessionWsUri = null;
@@ -528,7 +639,7 @@ class SessionWsClient {
             },
             'room': <String, Object>{
               'protocol': 'webSocket',
-              'commentable': false,
+              'commentable': true,
             },
             'reconnect': false,
           },

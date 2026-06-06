@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:comerune/domain/connection/session_ws_client.dart';
+import 'package:comerune/domain/models/comment_post_result.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -296,7 +297,7 @@ void main() {
       expect(startWatching['type'], 'startWatching');
       expect(
         (startWatching['data'] as Map<String, dynamic>)['room'],
-        <String, dynamic>{'protocol': 'webSocket', 'commentable': false},
+        <String, dynamic>{'protocol': 'webSocket', 'commentable': true},
       );
 
       fakeChannel.pushIncoming(
@@ -959,6 +960,142 @@ void main() {
 
       await expectLater(client.connect(), throwsA(isA<StateError>()));
       expect(fakeChannel.sentMessages, isEmpty);
+    });
+
+    group('postComment', () {
+      test('sends postComment JSON and resolves on success response', () async {
+        final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+        final SessionWsClient client = SessionWsClient(
+          lv: 'lv123456789',
+          channelFactory: (_, _) async => fakeChannel,
+        );
+
+        await client.connect();
+
+        final Future<CommentPostResult> resultFuture = client.postComment(
+          text: 'テスト',
+          vpos: 1200,
+          isAnonymous: true,
+        );
+
+        await Future<void>.delayed(Duration.zero);
+
+        final Map<String, dynamic> sent =
+            jsonDecode(fakeChannel.sentMessages.last as String)
+                as Map<String, dynamic>;
+        expect(sent['type'], 'postComment');
+        expect((sent['data'] as Map<String, dynamic>)['text'], 'テスト');
+        expect((sent['data'] as Map<String, dynamic>)['vpos'], 1200);
+        expect((sent['data'] as Map<String, dynamic>)['isAnonymous'], true);
+
+        fakeChannel.pushIncoming(
+          jsonEncode(<String, Object?>{
+            'type': 'postCommentResult',
+            'data': <String, Object?>{
+              'chat': <String, Object?>{
+                'content': 'テスト',
+                'mail': '184',
+                'anonymity': 1,
+                'restricted': false,
+              },
+            },
+          }),
+        );
+
+        final CommentPostResult result = await resultFuture;
+        expect(result.success, isTrue);
+
+        await client.dispose();
+      });
+
+      test('resolves with error on postCommentResult error', () async {
+        final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+        final SessionWsClient client = SessionWsClient(
+          lv: 'lv123456789',
+          channelFactory: (_, _) async => fakeChannel,
+        );
+
+        await client.connect();
+
+        final Future<CommentPostResult> resultFuture = client.postComment(
+          text: 'test',
+          vpos: 100,
+          isAnonymous: false,
+        );
+
+        await Future<void>.delayed(Duration.zero);
+
+        fakeChannel.pushIncoming(
+          jsonEncode(<String, Object?>{
+            'type': 'postCommentResult',
+            'data': <String, Object?>{'error': 'INVALID_MESSAGE'},
+          }),
+        );
+
+        final CommentPostResult result = await resultFuture;
+        expect(result.success, isFalse);
+        expect(result.errorCode, 'INVALID_MESSAGE');
+
+        await client.dispose();
+      });
+
+      test('returns network error when not connected', () async {
+        final SessionWsClient client = SessionWsClient(
+          lv: 'lv123456789',
+          channelFactory: (_, _) async => _FakeSessionWsChannel(),
+        );
+
+        final CommentPostResult result = await client.postComment(
+          text: 'test',
+          vpos: 100,
+          isAnonymous: false,
+        );
+
+        expect(result.success, isFalse);
+        expect(result.errorCode, CommentPostErrorCode.networkError);
+
+        await client.dispose();
+      });
+
+      test('rejects concurrent postComment calls', () async {
+        final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+        final SessionWsClient client = SessionWsClient(
+          lv: 'lv123456789',
+          channelFactory: (_, _) async => fakeChannel,
+        );
+
+        await client.connect();
+
+        // First call (no response yet — stays pending)
+        unawaited(
+          client.postComment(text: 'first', vpos: 100, isAnonymous: false),
+        );
+
+        await Future<void>.delayed(Duration.zero);
+
+        // Second call should be rejected
+        final CommentPostResult second = await client.postComment(
+          text: 'second',
+          vpos: 200,
+          isAnonymous: false,
+        );
+
+        expect(second.success, isFalse);
+        expect(second.errorCode, 'IN_FLIGHT');
+
+        // Complete the first call
+        fakeChannel.pushIncoming(
+          jsonEncode(<String, Object?>{
+            'type': 'postCommentResult',
+            'data': <String, Object?>{
+              'chat': <String, Object?>{'content': 'first'},
+            },
+          }),
+        );
+
+        await Future<void>.delayed(Duration.zero);
+        await client.dispose();
+      });
     });
   });
 }

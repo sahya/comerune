@@ -4,6 +4,14 @@ import '../../data/follow/follow_program.dart';
 import '../../data/follow/my_program_repository.dart';
 import '../../domain/utils/unicode_sanitizer.dart';
 
+/// Sends a normal comment via session WebSocket.
+typedef WsCommentSender =
+    Future<CommentPostResult> Function({
+      required String text,
+      required int vpos,
+      required bool isAnonymous,
+    });
+
 /// Maximum length of a normal (viewer) comment.
 const int kNormalCommentMaxLength = 75;
 
@@ -79,11 +87,14 @@ class CommentPostController {
   CommentPostController({
     required LiveCommentRepository liveCommentRepository,
     required MyProgramRepository myProgramRepository,
+    WsCommentSender? wsCommentSender,
   }) : _liveCommentRepository = liveCommentRepository,
-       _myProgramRepository = myProgramRepository;
+       _myProgramRepository = myProgramRepository,
+       _wsCommentSender = wsCommentSender;
 
   final LiveCommentRepository _liveCommentRepository;
   final MyProgramRepository _myProgramRepository;
+  final WsCommentSender? _wsCommentSender;
 
   BroadcasterCheckOutcome? _cachedBroadcasterOutcome;
   String? _cachedBroadcasterLv;
@@ -413,18 +424,32 @@ class CommentPostController {
           vposBaseAt: vposBaseAt,
           now: now,
         );
-        appDebugLogLazy(
-          () =>
-              '[CommentPostController] postComment: '
-              'calling postNormalComment with vpos=$vpos...',
-        );
-        result = await _liveCommentRepository.postNormalComment(
-          programId: lv,
-          userSession: userSession,
-          text: sanitizedText,
-          vpos: vpos,
-          isAnonymous: isAnonymous,
-        );
+        final WsCommentSender? wsSender = _wsCommentSender;
+        if (wsSender != null) {
+          appDebugLogLazy(
+            () =>
+                '[CommentPostController] postComment: '
+                'calling WebSocket postComment with vpos=$vpos...',
+          );
+          result = await wsSender(
+            text: sanitizedText,
+            vpos: vpos,
+            isAnonymous: isAnonymous,
+          );
+        } else {
+          appDebugLogLazy(
+            () =>
+                '[CommentPostController] postComment: '
+                'calling HTTP postNormalComment with vpos=$vpos...',
+          );
+          result = await _liveCommentRepository.postNormalComment(
+            programId: lv,
+            userSession: userSession,
+            text: sanitizedText,
+            vpos: vpos,
+            isAnonymous: isAnonymous,
+          );
+        }
       }
       appDebugLogLazy(
         () =>

@@ -535,6 +535,18 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _commentPostController = CommentPostController(
       liveCommentRepository: _liveCommentRepository,
       myProgramRepository: _myProgramRepository,
+      wsCommentSender:
+          ({
+            required String text,
+            required int vpos,
+            required bool isAnonymous,
+          }) {
+            return _connectionSupervisor.postComment(
+              text: text,
+              vpos: vpos,
+              isAnonymous: isAnonymous,
+            );
+          },
     );
     _timelineStore = TimelineStore(
       capacity: widget.initialSettings.pastCommentFetchCount.displayCapacity,
@@ -1079,6 +1091,23 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     if (client != null) {
       await client.dispose();
     }
+  }
+
+  @override
+  Future<reconnect.CommentPostResult> postComment({
+    required String text,
+    required int vpos,
+    required bool isAnonymous,
+  }) async {
+    final session_impl.SessionWsClient? client = _activeClient;
+    if (client == null) {
+      return const reconnect.CommentPostResult(
+        success: false,
+        errorCode: reconnect.CommentPostErrorCode.networkError,
+        errorMessage: 'Session WebSocket not connected',
+      );
+    }
+    return client.postComment(text: text, vpos: vpos, isAnonymous: isAnonymous);
   }
 
   Future<void> dispose() async {
