@@ -9,6 +9,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'app_logging.dart';
 import 'application/app_update/app_update_gate.dart';
 import 'application/app_update/update_prompt_store.dart';
 import 'application/app_update/version_update_checker.dart';
@@ -987,10 +988,9 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       if (programInfo.isTimeshift) {
         _onTimeshiftDetected?.call(programInfo.viewUri);
       }
-      log(
-        'Resolved NDGR endpoint via programinfo API '
+      appDebugLog(
+        '[SessionWsClientAdapter] Resolved NDGR endpoint via programinfo API '
         '(status: ${programInfo.programStatus?.name ?? 'unknown'})',
-        name: 'SessionWsClientAdapter',
       );
       // Issue #639 follow-up: when the broadcast is already ended,
       // short-circuit the live NDGR streaming path. Both
@@ -1021,15 +1021,14 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       if (error.title != null) {
         _onProgramTitleResolved?.call(error.title!);
       }
-      log(
-        'programinfo resolution failed, falling back to WebSocket: $error',
-        name: 'SessionWsClientAdapter',
+      appDebugLog(
+        '[SessionWsClientAdapter] programinfo resolution failed, '
+        'falling back to WebSocket: $error',
       );
     } on Object catch (error) {
-      log(
-        'Unexpected error during programinfo resolution, '
-        'falling back to WebSocket: $error',
-        name: 'SessionWsClientAdapter',
+      appDebugLog(
+        '[SessionWsClientAdapter] Unexpected error during programinfo '
+        'resolution, falling back to WebSocket: $error',
       );
     }
 
@@ -1110,22 +1109,30 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
 
     session_impl.SessionWsClient? client = _activeClient;
     if (client == null || client.isDisposed || !client.isConnected) {
-      log(
-        'postComment: WS not ready (client=${client != null}, '
-        'disposed=${client?.isDisposed}, connected=${client?.isConnected}), '
-        'establishing connection for $lv',
-        name: 'SessionWsClientAdapter',
+      appDebugLog(
+        '[SessionWsClientAdapter] postComment: WS not ready '
+        '(client=${client != null}, disposed=${client?.isDisposed}, '
+        'connected=${client?.isConnected}), establishing connection for $lv',
       );
       try {
         await _ensureCommentPostWs(lv);
         client = _activeClient;
-      } on Object catch (error) {
-        log(
-          'postComment: WS connect failed: $error',
-          name: 'SessionWsClientAdapter',
+        appDebugLog(
+          '[SessionWsClientAdapter] postComment: after _ensureCommentPostWs '
+          '(client=${client != null}, disposed=${client?.isDisposed}, '
+          'connected=${client?.isConnected})',
+        );
+      } on Object catch (error, stackTrace) {
+        appDebugLog(
+          '[SessionWsClientAdapter] postComment: WS connect failed: '
+          '$error\n$stackTrace',
         );
       }
       if (client == null || client.isDisposed || !client.isConnected) {
+        appDebugLog(
+          '[SessionWsClientAdapter] postComment: giving up, WS still not '
+          'connected after _ensureCommentPostWs',
+        );
         return const reconnect.CommentPostResult(
           success: false,
           errorCode: reconnect.CommentPostErrorCode.networkError,
@@ -1133,17 +1140,27 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
         );
       }
     }
+    appDebugLog('[SessionWsClientAdapter] postComment: sending via WS for $lv');
     return client.postComment(text: text, vpos: vpos, isAnonymous: isAnonymous);
   }
 
   Future<void> _ensureCommentPostWs(String lv) async {
     final session_impl.SessionWsClient? existing = _activeClient;
     if (existing != null) {
+      appDebugLog(
+        '[SessionWsClientAdapter] _ensureCommentPostWs: disposing existing '
+        'client (disposed=${existing.isDisposed}, '
+        'connected=${existing.isConnected})',
+      );
       await existing.dispose();
     }
     await _activeSubscription?.cancel();
 
     final String userSession = await _userSessionProvider();
+    appDebugLog(
+      '[SessionWsClientAdapter] _ensureCommentPostWs: userSession='
+      '${debugMaskSession(userSession)} (${userSession.length} chars)',
+    );
     final Map<String, String>? connectHeaders = userSession.isNotEmpty
         ? <String, String>{'Cookie': 'user_session=$userSession'}
         : null;
@@ -1157,16 +1174,20 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     _activeSubscription = client.events.listen((
       session_impl.SessionWsEvent event,
     ) {
-      if (event.type == session_impl.SessionWsEventType.error ||
-          event.type == session_impl.SessionWsEventType.disconnected) {
-        log(
-          'Comment-post WS event: ${event.type.name}',
-          name: 'SessionWsClientAdapter',
-        );
-      }
+      appDebugLog(
+        '[SessionWsClientAdapter] Comment-post WS event: ${event.type.name}'
+        '${event.errorDetail != null ? ' detail=${event.errorDetail}' : ''}'
+        '${event.error != null ? ' error=${event.error}' : ''}',
+      );
     });
+    appDebugLog(
+      '[SessionWsClientAdapter] _ensureCommentPostWs: connecting to $lv...',
+    );
     await client.connect();
-    log('Comment-post WS connected for $lv', name: 'SessionWsClientAdapter');
+    appDebugLog(
+      '[SessionWsClientAdapter] _ensureCommentPostWs: connect() returned '
+      '(connected=${client.isConnected}, disposed=${client.isDisposed})',
+    );
   }
 
   Future<void> dispose() async {

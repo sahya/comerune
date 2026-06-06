@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
 
+import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -205,12 +206,16 @@ class SessionWsClient {
 
     final Uri uri = Uri.parse('wss://a.live2.nicovideo.jp/wsapi/v2/watch/$lv');
     _sessionWsUri = uri;
+    debugPrint(
+      '[SessionWsClient] connect: $uri (mode=${_startWatchingMode.name})',
+    );
 
     try {
       final SessionWsChannel channel = await _channelFactory(
         uri,
         _connectHeaders,
       );
+      debugPrint('[SessionWsClient] connect: channel ready');
       _channel = channel;
       _subscription = channel.stream.listen(
         _handleIncoming,
@@ -235,9 +240,12 @@ class SessionWsClient {
       );
 
       _isConnected = true;
+      debugPrint('[SessionWsClient] connect: sending startWatching...');
       try {
         _sendStartWatching();
+        debugPrint('[SessionWsClient] connect: startWatching sent');
       } catch (error, stackTrace) {
+        debugPrint('[SessionWsClient] connect: startWatching failed: $error');
         await _cleanupConnectionState(emitDisconnected: false);
         final SessionWsErrorDetail detail = _buildErrorDetail(
           code: SessionWsErrorCode.connectFailed,
@@ -261,6 +269,7 @@ class SessionWsClient {
         _startEndpointResolveTimer();
       }
     } catch (error, stackTrace) {
+      debugPrint('[SessionWsClient] connect: channel open failed: $error');
       final SessionWsErrorDetail detail = _buildErrorDetail(
         code: SessionWsErrorCode.connectFailed,
         phase: SessionWsFailurePhase.openingSocket,
@@ -352,6 +361,10 @@ class SessionWsClient {
     _postCommentCompleter = completer;
 
     try {
+      debugPrint(
+        '[SessionWsClient] postComment: sending '
+        '(text=${text.length} chars, vpos=$vpos)',
+      );
       _sendJson(<String, Object>{
         'type': 'postComment',
         'data': <String, Object>{
@@ -360,6 +373,7 @@ class SessionWsClient {
           'isAnonymous': isAnonymous,
         },
       });
+      debugPrint('[SessionWsClient] postComment: sent, waiting for response');
     } on Object catch (e) {
       _postCommentCompleter = null;
       return CommentPostResult(
