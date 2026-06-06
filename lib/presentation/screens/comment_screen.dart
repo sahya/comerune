@@ -3007,30 +3007,25 @@ class _CommentScreenState extends State<CommentScreen>
     required int maxLength,
     required bool isAnonymous,
   }) async {
-    if (kDebugMode) {
-      final String masked = _commentPostUserSession.length > 8
-          ? '${_commentPostUserSession.substring(0, 4)}...${_commentPostUserSession.substring(_commentPostUserSession.length - 4)}'
-          : (_commentPostUserSession.isEmpty ? '(empty)' : '***');
-      appDebugLog(
-        '[CommentScreen] _handleCommentSend: '
-        'text="${text.length > 20 ? '${text.substring(0, 20)}...' : text}" '
-        '(${text.length} chars) asOperator=$asOperator '
-        'maxLength=$maxLength isAnonymous=$isAnonymous '
-        'lv=${widget.programInfo.lv} session=$masked '
-        'beginAt=${widget.programInfo.beginAt} '
-        'vposBaseAt=${widget.programInfo.vposBaseAt} '
-        'hasController=${widget.commentPostController != null}',
-      );
-    }
+    appDebugLogLazy(
+      () =>
+          '[CommentScreen] _handleCommentSend: '
+          'text="${text.length > 20 ? '${text.substring(0, 20)}...' : text}" '
+          '(${text.length} chars) asOperator=$asOperator '
+          'maxLength=$maxLength isAnonymous=$isAnonymous '
+          'lv=${widget.programInfo.lv} session=${debugMaskSession(_commentPostUserSession)} '
+          'beginAt=${widget.programInfo.beginAt} '
+          'vposBaseAt=${widget.programInfo.vposBaseAt} '
+          'hasController=${widget.commentPostController != null}',
+    );
 
     final CommentPostController? controller = widget.commentPostController;
     if (controller == null) {
-      if (kDebugMode) {
-        appDebugLog(
-          '[CommentScreen] _handleCommentSend: '
-          'commentPostController is null → missingProgram',
-        );
-      }
+      appDebugLogLazy(
+        () =>
+            '[CommentScreen] _handleCommentSend: '
+            'commentPostController is null → missingProgram',
+      );
       return const CommentSendResult.validation(
         CommentValidationError.missingProgram,
       );
@@ -3045,16 +3040,15 @@ class _CommentScreenState extends State<CommentScreen>
       maxLength: maxLength,
       isAnonymous: isAnonymous,
     );
-    if (kDebugMode) {
-      appDebugLog(
-        '[CommentScreen] _handleCommentSend result: '
-        'isSuccess=${result.isSuccess} '
-        'validationError=${result.validationError} '
-        'postResult.success=${result.postResult?.success} '
-        'postResult.errorCode=${result.postResult?.errorCode} '
-        'postResult.errorMessage=${result.postResult?.errorMessage}',
-      );
-    }
+    appDebugLogLazy(
+      () =>
+          '[CommentScreen] _handleCommentSend result: '
+          'isSuccess=${result.isSuccess} '
+          'validationError=${result.validationError} '
+          'postResult.success=${result.postResult?.success} '
+          'postResult.errorCode=${result.postResult?.errorCode} '
+          'postResult.errorMessage=${result.postResult?.errorMessage}',
+    );
     if (!mounted) {
       return result;
     }

@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart' show kDebugMode;
-
 import '../../app_logging.dart';
 import '../../data/comment/live_comment_repository.dart';
 import '../../data/follow/follow_program.dart';
@@ -146,41 +144,35 @@ class CommentPostController {
       asOperator: asOperator,
       maxLength: maxLength,
     );
-    if (kDebugMode) {
-      appDebugLog(
-        '[CommentPostController] validateText: '
-        'text="${text.length > 30 ? '${text.substring(0, 30)}...' : text}" '
-        '(${text.length} chars, trimmed=${trimmed.length}) '
-        'asOperator=$asOperator maxLength=$limit',
-      );
-    }
+    appDebugLogLazy(
+      () =>
+          '[CommentPostController] validateText: '
+          'text="${text.length > 30 ? '${text.substring(0, 30)}...' : text}" '
+          '(${text.length} chars, trimmed=${trimmed.length}) '
+          'asOperator=$asOperator maxLength=$limit',
+    );
     if (trimmed.isEmpty) {
-      if (kDebugMode) {
-        appDebugLog('[CommentPostController] validateText → empty');
-      }
+      appDebugLogLazy(() => '[CommentPostController] validateText → empty');
       return CommentValidationError.empty;
     }
-    if (removeControlAndInvisibleChars(trimmed).isEmpty) {
-      if (kDebugMode) {
-        appDebugLog(
-          '[CommentPostController] validateText → invisibleOnly '
-          '(sanitized="${removeControlAndInvisibleChars(trimmed)}")',
-        );
-      }
+    final String sanitized = removeControlAndInvisibleChars(trimmed);
+    if (sanitized.isEmpty) {
+      appDebugLogLazy(
+        () =>
+            '[CommentPostController] validateText → invisibleOnly '
+            '(sanitized="$sanitized")',
+      );
       return CommentValidationError.invisibleOnly;
     }
     if (text.length > limit) {
-      if (kDebugMode) {
-        appDebugLog(
-          '[CommentPostController] validateText → tooLong '
-          '(${text.length} > $limit)',
-        );
-      }
+      appDebugLogLazy(
+        () =>
+            '[CommentPostController] validateText → tooLong '
+            '(${text.length} > $limit)',
+      );
       return CommentValidationError.tooLong;
     }
-    if (kDebugMode) {
-      appDebugLog('[CommentPostController] validateText → OK');
-    }
+    appDebugLogLazy(() => '[CommentPostController] validateText → OK');
     return null;
   }
 
@@ -205,25 +197,23 @@ class CommentPostController {
   }) {
     final DateTime? reference = vposBaseAt ?? beginAt;
     if (reference == null) {
-      if (kDebugMode) {
-        appDebugLog(
-          '[CommentPostController] computeVpos: '
-          'both vposBaseAt and beginAt are null → vpos=0',
-        );
-      }
+      appDebugLogLazy(
+        () =>
+            '[CommentPostController] computeVpos: '
+            'both vposBaseAt and beginAt are null → vpos=0',
+      );
       return 0;
     }
     final DateTime clock = now ?? DateTime.now();
     final int ms = clock.difference(reference).inMilliseconds;
     final int vpos = ms <= 0 ? 0 : ms ~/ 10;
-    if (kDebugMode) {
-      appDebugLog(
-        '[CommentPostController] computeVpos: '
-        'vposBaseAt=$vposBaseAt beginAt=$beginAt '
-        'reference=$reference now=$clock '
-        'diff=${ms}ms → vpos=$vpos',
-      );
-    }
+    appDebugLogLazy(
+      () =>
+          '[CommentPostController] computeVpos: '
+          'vposBaseAt=$vposBaseAt beginAt=$beginAt '
+          'reference=$reference now=$clock '
+          'diff=${ms}ms → vpos=$vpos',
+    );
     return vpos;
   }
 
@@ -235,30 +225,27 @@ class CommentPostController {
     required String lv,
     required String userSession,
   }) async {
-    if (kDebugMode) {
-      appDebugLog(
-        '[CommentPostController] ensureBroadcasterStatus: lv=$lv '
-        'disposed=$_disposed',
-      );
-    }
+    appDebugLogLazy(
+      () =>
+          '[CommentPostController] ensureBroadcasterStatus: lv=$lv '
+          'disposed=$_disposed',
+    );
     if (_disposed) {
       return BroadcasterCheckOutcome.unknown;
     }
     if (lv.isEmpty) {
-      if (kDebugMode) {
-        appDebugLog(
-          '[CommentPostController] ensureBroadcasterStatus: lv is empty → unknown',
-        );
-      }
+      appDebugLogLazy(
+        () =>
+            '[CommentPostController] ensureBroadcasterStatus: lv is empty → unknown',
+      );
       return BroadcasterCheckOutcome.unknown;
     }
     if (userSession.trim().isEmpty) {
-      if (kDebugMode) {
-        appDebugLog(
-          '[CommentPostController] ensureBroadcasterStatus: '
-          'session is empty → viewer',
-        );
-      }
+      appDebugLogLazy(
+        () =>
+            '[CommentPostController] ensureBroadcasterStatus: '
+            'session is empty → viewer',
+      );
       return BroadcasterCheckOutcome.viewer;
     }
 
@@ -266,24 +253,22 @@ class CommentPostController {
     if (cached != null &&
         _cachedBroadcasterLv == lv &&
         _cachedBroadcasterSession == userSession) {
-      if (kDebugMode) {
-        appDebugLog(
-          '[CommentPostController] ensureBroadcasterStatus: '
-          'cached=$cached (lv=$lv)',
-        );
-      }
+      appDebugLogLazy(
+        () =>
+            '[CommentPostController] ensureBroadcasterStatus: '
+            'cached=$cached (lv=$lv)',
+      );
       return cached;
     }
 
     try {
       final FollowProgram? ownProgram = await _myProgramRepository
           .fetchOwnProgram(userSession: userSession);
-      if (kDebugMode) {
-        appDebugLog(
-          '[CommentPostController] ensureBroadcasterStatus: '
-          'ownProgram=${ownProgram?.programId} target=$lv',
-        );
-      }
+      appDebugLogLazy(
+        () =>
+            '[CommentPostController] ensureBroadcasterStatus: '
+            'ownProgram=${ownProgram?.programId} target=$lv',
+      );
       final BroadcasterCheckOutcome outcome =
           ownProgram != null && ownProgram.programId == lv
           ? BroadcasterCheckOutcome.broadcaster
@@ -291,19 +276,16 @@ class CommentPostController {
       _cachedBroadcasterOutcome = outcome;
       _cachedBroadcasterLv = lv;
       _cachedBroadcasterSession = userSession;
-      if (kDebugMode) {
-        appDebugLog(
-          '[CommentPostController] ensureBroadcasterStatus: '
-          'result=$outcome',
-        );
-      }
+      appDebugLogLazy(
+        () =>
+            '[CommentPostController] ensureBroadcasterStatus: '
+            'result=$outcome',
+      );
       return outcome;
     } on Exception catch (e) {
-      if (kDebugMode) {
-        appDebugLog(
-          '[CommentPostController] ensureBroadcasterStatus EXCEPTION: $e',
-        );
-      }
+      appDebugLogLazy(
+        () => '[CommentPostController] ensureBroadcasterStatus EXCEPTION: $e',
+      );
       return BroadcasterCheckOutcome.unknown;
     }
   }
@@ -344,43 +326,37 @@ class CommentPostController {
     int? maxLength,
     bool isAnonymous = false,
   }) async {
-    if (kDebugMode) {
-      final String masked = userSession.length > 8
-          ? '${userSession.substring(0, 4)}...${userSession.substring(userSession.length - 4)}'
-          : (userSession.isEmpty ? '(empty)' : '***');
-      appDebugLog(
-        '[CommentPostController] postComment START: '
-        'lv=$lv session=$masked (${userSession.length} chars) '
-        'text="${text.length > 30 ? '${text.substring(0, 30)}...' : text}" '
-        '(${text.length} chars) asOperator=$asOperator '
-        'isAnonymous=$isAnonymous beginAt=$beginAt '
-        'vposBaseAt=$vposBaseAt maxLength=$maxLength '
-        'disposed=$_disposed isSending=$_isSending',
-      );
-    }
+    appDebugLogLazy(
+      () =>
+          '[CommentPostController] postComment START: '
+          'lv=$lv session=${debugMaskSession(userSession)} (${userSession.length} chars) '
+          'text="${text.length > 30 ? '${text.substring(0, 30)}...' : text}" '
+          '(${text.length} chars) asOperator=$asOperator '
+          'isAnonymous=$isAnonymous beginAt=$beginAt '
+          'vposBaseAt=$vposBaseAt maxLength=$maxLength '
+          'disposed=$_disposed isSending=$_isSending',
+    );
 
     if (_disposed) {
-      if (kDebugMode) {
-        appDebugLog('[CommentPostController] postComment ABORTED: disposed');
-      }
+      appDebugLogLazy(
+        () => '[CommentPostController] postComment ABORTED: disposed',
+      );
       return const CommentSendResult.validation(
         CommentValidationError.missingProgram,
       );
     }
     if (lv.isEmpty) {
-      if (kDebugMode) {
-        appDebugLog('[CommentPostController] postComment ABORTED: lv is empty');
-      }
+      appDebugLogLazy(
+        () => '[CommentPostController] postComment ABORTED: lv is empty',
+      );
       return const CommentSendResult.validation(
         CommentValidationError.missingProgram,
       );
     }
     if (userSession.trim().isEmpty) {
-      if (kDebugMode) {
-        appDebugLog(
-          '[CommentPostController] postComment ABORTED: session is empty',
-        );
-      }
+      appDebugLogLazy(
+        () => '[CommentPostController] postComment ABORTED: session is empty',
+      );
       return const CommentSendResult.validation(
         CommentValidationError.missingSession,
       );
@@ -392,21 +368,18 @@ class CommentPostController {
       maxLength: maxLength,
     );
     if (validation != null) {
-      if (kDebugMode) {
-        appDebugLog(
-          '[CommentPostController] postComment ABORTED: '
-          'validation=$validation',
-        );
-      }
+      appDebugLogLazy(
+        () =>
+            '[CommentPostController] postComment ABORTED: '
+            'validation=$validation',
+      );
       return CommentSendResult.validation(validation);
     }
 
     if (_isSending) {
-      if (kDebugMode) {
-        appDebugLog(
-          '[CommentPostController] postComment ABORTED: already in flight',
-        );
-      }
+      appDebugLogLazy(
+        () => '[CommentPostController] postComment ABORTED: already in flight',
+      );
       return const CommentSendResult.validation(
         CommentValidationError.inFlight,
       );
@@ -416,12 +389,11 @@ class CommentPostController {
     try {
       final CommentPostResult result;
       if (asOperator) {
-        if (kDebugMode) {
-          appDebugLog(
-            '[CommentPostController] postComment: '
-            'calling postOperatorComment...',
-          );
-        }
+        appDebugLogLazy(
+          () =>
+              '[CommentPostController] postComment: '
+              'calling postOperatorComment...',
+        );
         result = await _liveCommentRepository.postOperatorComment(
           programId: lv,
           userSession: userSession,
@@ -433,12 +405,11 @@ class CommentPostController {
           vposBaseAt: vposBaseAt,
           now: now,
         );
-        if (kDebugMode) {
-          appDebugLog(
-            '[CommentPostController] postComment: '
-            'calling postNormalComment with vpos=$vpos...',
-          );
-        }
+        appDebugLogLazy(
+          () =>
+              '[CommentPostController] postComment: '
+              'calling postNormalComment with vpos=$vpos...',
+        );
         result = await _liveCommentRepository.postNormalComment(
           programId: lv,
           userSession: userSession,
@@ -447,14 +418,13 @@ class CommentPostController {
           isAnonymous: isAnonymous,
         );
       }
-      if (kDebugMode) {
-        appDebugLog(
-          '[CommentPostController] postComment RESULT: '
-          'success=${result.success} '
-          'errorCode=${result.errorCode} '
-          'errorMessage=${result.errorMessage}',
-        );
-      }
+      appDebugLogLazy(
+        () =>
+            '[CommentPostController] postComment RESULT: '
+            'success=${result.success} '
+            'errorCode=${result.errorCode} '
+            'errorMessage=${result.errorMessage}',
+      );
       return CommentSendResult.posted(result);
     } finally {
       _isSending = false;

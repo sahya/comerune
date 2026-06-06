@@ -266,29 +266,27 @@ class _CommentInputBarState extends State<CommentInputBar> {
   Future<void> _send() async {
     final TextEditingValue value = _textController.value;
     if (!_canSendForValue(value)) {
-      if (kDebugMode) {
-        appDebugLog(
-          '[CommentInputBar] _send: canSend=false '
-          'sending=$_sending text="${value.text}" '
-          'length=${value.text.length} maxLength=$_maxLength',
-        );
-      }
+      appDebugLogLazy(
+        () =>
+            '[CommentInputBar] _send: canSend=false '
+            'sending=$_sending text="${value.text}" '
+            'length=${value.text.length} maxLength=$_maxLength',
+      );
       return;
     }
     final String text = value.text;
     final bool asOperator = widget.isBroadcaster && _asOperator;
     final bool isAnonymous = !asOperator && _isAnonymous;
 
-    if (kDebugMode) {
-      appDebugLog(
-        '[CommentInputBar] _send START: '
-        'text="${text.length > 20 ? '${text.substring(0, 20)}...' : text}" '
-        '(${text.length} chars) asOperator=$asOperator '
-        'isAnonymous=$isAnonymous maxLength=$_maxLength '
-        'isBroadcaster=${widget.isBroadcaster} '
-        '_asOperator=$_asOperator _isAnonymous=$_isAnonymous',
-      );
-    }
+    appDebugLogLazy(
+      () =>
+          '[CommentInputBar] _send START: '
+          'text="${text.length > 20 ? '${text.substring(0, 20)}...' : text}" '
+          '(${text.length} chars) asOperator=$asOperator '
+          'isAnonymous=$isAnonymous maxLength=$_maxLength '
+          'isBroadcaster=${widget.isBroadcaster} '
+          '_asOperator=$_asOperator _isAnonymous=$_isAnonymous',
+    );
 
     setState(() {
       _sending = true;
@@ -301,14 +299,13 @@ class _CommentInputBarState extends State<CommentInputBar> {
         maxLength: _maxLength,
         isAnonymous: isAnonymous,
       );
-      if (kDebugMode) {
-        appDebugLog(
-          '[CommentInputBar] _send result: '
-          'isSuccess=${result.isSuccess} '
-          'validationError=${result.validationError} '
-          'postResult.errorCode=${result.postResult?.errorCode}',
-        );
-      }
+      appDebugLogLazy(
+        () =>
+            '[CommentInputBar] _send result: '
+            'isSuccess=${result.isSuccess} '
+            'validationError=${result.validationError} '
+            'postResult.errorCode=${result.postResult?.errorCode}',
+      );
       if (!mounted) {
         widget.onSendingChanged?.call(false);
         return;
@@ -398,8 +395,8 @@ class _CommentInputBarState extends State<CommentInputBar> {
                       onSubmitted: (_) => _send(),
                       decoration: InputDecoration(
                         hintText: widget.isBroadcaster && _asOperator
-                            ? '運営コメントを入力'
-                            : 'コメントを入力',
+                            ? '運営コメントを入力${kDebugMode ? '（デバッグ）' : ''}'
+                            : 'コメントを入力${kDebugMode ? '（デバッグ）' : ''}',
                         isDense: true,
                         border: const OutlineInputBorder(),
                         contentPadding: const EdgeInsets.symmetric(

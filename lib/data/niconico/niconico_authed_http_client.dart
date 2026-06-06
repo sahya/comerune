@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:meta/meta.dart';
 
 import '../../app_logging.dart';
@@ -95,20 +94,12 @@ abstract class NiconicoAuthedHttpClient {
     request.headers.set('Content-Type', 'application/json');
     request.headers.set('Accept', 'application/json');
 
-    if (kDebugMode) {
-      final String masked = userSession.length > 8
-          ? '${userSession.substring(0, 4)}...${userSession.substring(userSession.length - 4)}'
-          : '***';
-      appDebugLog(
-        '[NiconicoAuthedHttpClient] setAuthHeaders: '
-        'method=${request.method} url=${request.uri} '
-        'session=$masked (${userSession.length} chars) '
-        'Cookie=user_session=$masked '
-        'X-Niconico-Session=$masked '
-        'User-Agent=$userAgent '
-        'Content-Type=application/json Accept=application/json',
-      );
-    }
+    appDebugLogLazy(
+      () =>
+          '[NiconicoAuthedHttpClient] setAuthHeaders: '
+          'method=${request.method} url=${request.uri} '
+          'session=${debugMaskSession(userSession)} (${userSession.length} chars)',
+    );
   }
 
   /// Parses a non-success HTTP response body and extracts error fields.
@@ -128,66 +119,56 @@ abstract class NiconicoAuthedHttpClient {
     String logName,
   ) {
     appDebugLogLazy(() => '[$logName] $operationName failed: HTTP $statusCode');
-    if (kDebugMode) {
-      appDebugLog(
-        '[$logName] $operationName response body (${body.length} chars): '
-        '${body.length > 2000 ? '${body.substring(0, 2000)}...(truncated)' : body}',
-      );
-    }
+    appDebugLogLazy(
+      () =>
+          '[$logName] $operationName response body (${body.length} chars): '
+          '${body.length > 2000 ? '${body.substring(0, 2000)}...(truncated)' : body}',
+    );
 
     String? errorCode;
     String? errorMessage;
 
     try {
       final Object? decoded = jsonDecode(body);
-      if (kDebugMode) {
-        appDebugLog(
-          '[$logName] $operationName parsed JSON type: '
-          '${decoded.runtimeType}',
-        );
-      }
+      appDebugLogLazy(
+        () =>
+            '[$logName] $operationName parsed JSON type: '
+            '${decoded.runtimeType}',
+      );
       if (decoded is Map<String, dynamic>) {
         final Object? meta = decoded['meta'];
-        if (kDebugMode) {
-          appDebugLog('[$logName] $operationName meta: $meta');
-        }
+        appDebugLogLazy(() => '[$logName] $operationName meta: $meta');
         if (meta is Map<String, dynamic>) {
           errorCode = meta['errorCode'] as String?;
           errorMessage = meta['errorMessage'] as String?;
-          if (kDebugMode) {
-            appDebugLog(
-              '[$logName] $operationName meta.errorCode=$errorCode '
-              'meta.errorMessage=$errorMessage '
-              'meta.status=${meta['status']}',
-            );
-          }
+          appDebugLogLazy(
+            () =>
+                '[$logName] $operationName meta.errorCode=$errorCode '
+                'meta.errorMessage=$errorMessage '
+                'meta.status=${meta['status']}',
+          );
         }
         if (errorMessage == null) {
           final Object? data = decoded['data'];
           if (data is Map<String, dynamic>) {
             errorMessage = data['message'] as String?;
-            if (kDebugMode) {
-              appDebugLog(
-                '[$logName] $operationName data.message=$errorMessage',
-              );
-            }
+            appDebugLogLazy(
+              () => '[$logName] $operationName data.message=$errorMessage',
+            );
           }
         }
       }
     } on FormatException catch (e) {
-      if (kDebugMode) {
-        appDebugLog('[$logName] $operationName body is not JSON: $e');
-      }
+      appDebugLogLazy(() => '[$logName] $operationName body is not JSON: $e');
     }
 
     errorCode ??= httpStatusToErrorCode(statusCode);
 
-    if (kDebugMode) {
-      appDebugLog(
-        '[$logName] $operationName final error: '
-        'code=$errorCode message=$errorMessage',
-      );
-    }
+    appDebugLogLazy(
+      () =>
+          '[$logName] $operationName final error: '
+          'code=$errorCode message=$errorMessage',
+    );
 
     return NiconicoErrorFields(
       errorCode: errorCode,
@@ -340,25 +321,20 @@ abstract class NiconicoAuthedHttpClient {
     required String userSession,
     required String logName,
   }) {
-    if (kDebugMode) {
-      final String masked = userSession.length > 8
-          ? '${userSession.substring(0, 4)}...${userSession.substring(userSession.length - 4)}'
-          : (userSession.isEmpty ? '(empty)' : '***');
-      appDebugLog(
-        '[$logName] validateCallInputs: '
-        'programId=$programId '
-        'session=$masked (${userSession.length} chars, '
-        'trimmed=${userSession.trim().length} chars)',
-      );
-    }
+    appDebugLogLazy(
+      () =>
+          '[$logName] validateCallInputs: '
+          'programId=$programId '
+          'session=${debugMaskSession(userSession)} (${userSession.length} chars, '
+          'trimmed=${userSession.trim().length} chars)',
+    );
     if (programId.isEmpty || userSession.trim().isEmpty) {
-      if (kDebugMode) {
-        appDebugLog(
-          '[$logName] validateCallInputs REJECTED: '
-          'programId.isEmpty=${programId.isEmpty} '
-          'userSession.trim().isEmpty=${userSession.trim().isEmpty}',
-        );
-      }
+      appDebugLogLazy(
+        () =>
+            '[$logName] validateCallInputs REJECTED: '
+            'programId.isEmpty=${programId.isEmpty} '
+            'userSession.trim().isEmpty=${userSession.trim().isEmpty}',
+      );
       return NiconicoInputValidationStatus.empty;
     }
     final bool sessionOk = isValidAuthHeaderValue(userSession);
@@ -371,9 +347,7 @@ abstract class NiconicoAuthedHttpClient {
       );
       return NiconicoInputValidationStatus.malformed;
     }
-    if (kDebugMode) {
-      appDebugLog('[$logName] validateCallInputs: OK');
-    }
+    appDebugLogLazy(() => '[$logName] validateCallInputs: OK');
     return NiconicoInputValidationStatus.ok;
   }
 }
