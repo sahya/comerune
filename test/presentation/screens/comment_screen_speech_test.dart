@@ -3414,21 +3414,46 @@ void main() {
     // engine failure still trips ERROR — the suppression is type-gated,
     // not blanket.
     testWidgets(
-      'three user-stops (no speech_failed emitted) do NOT flip the AppBar to ERROR',
+      'three user-stops (no speech_failed emitted) do NOT flip the AppBar '
+      'to ERROR (verifiable counter-example)',
       (WidgetTester tester) async {
+        // This test is a STRUCTURAL counter-example, not a no-op pump.
+        // Without this framing the assertion `findsNothing` would hold
+        // even if the listener were torn out entirely, because no events
+        // are emitted. To make the suppression contract observable on
+        // the Dart side we:
+        //
+        //   1. Prime the failure counter to 2 by emitting 2 real
+        //      android_tts_failed events — one below the ERROR threshold.
+        //      This proves the fixture/listener wiring is alive.
+        //   2. Simulate 3 user-initiated stops by emitting the wire
+        //      contract that [SpeechControllerImpl.processWithAndroidTts]
+        //      now produces for [TtsSpeakException.UserStopped]: NO
+        //      speech_failed and NO speech_completed. We interleave a
+        //      neutral `queueUpdated` event each iteration so the
+        //      listener pipeline is actually exercised (proving the
+        //      assertion is not just "subscription was never attached").
+        //   3. Assert the icon is still not ERROR — the counter is at 2,
+        //      not 2 + 3 = 5.
+        //   4. Emit ONE more real android_tts_failed to push the counter
+        //      from 2 to 3 and assert the icon flips to ERROR. If the
+        //      suppression had instead leaked through as failures in
+        //      step 2 (the old broken behaviour), the icon would have
+        //      flipped at step 3 already, and the post-step-4 invariant
+        //      that "exactly 3 failures are required" would not hold.
+        //
+        // The Kotlin contract test
+        // (`SpeechControllerProcessAndroidTtsContractTest`) covers the
+        // native skip path directly; this Dart test covers the Flutter
+        // listener's observable consequence of that contract.
         await pumpAndSettleSpeech(tester);
 
-        // Simulate the new contract: native suppresses speech_failed for
-        // UserStopped (Issue #966). The Flutter side sees no failure
-        // events. This emits a stand-in `engineStateChanged → READY` /
-        // no-op pumps to exercise the listener path without injecting
-        // failures.
-        for (int i = 0; i < 3; i++) {
-          // No event is emitted — this represents the native skip path.
+        // Step 1: prime the counter to 2 (below threshold of 3).
+        for (int i = 0; i < 2; i++) {
+          fakePlatform.emitEvent(androidTtsFailure());
           await tester.pump();
         }
         await tester.pump();
-
         expect(
           find.descendant(
             of: find.byKey(const Key('speech-status-icon')),
@@ -3436,9 +3461,62 @@ void main() {
           ),
           findsNothing,
           reason:
-              'When native suppresses UserStopped (Issue #966), the '
-              'Flutter side must see zero speech_failed events, so '
-              'three user-stops in a row cannot push the icon to ERROR.',
+              'Counter primed to 2 must remain below the ERROR threshold '
+              '— sanity check on the fixture before the suppression arm.',
+        );
+
+        // Step 2: simulate 3 user-stops. Native emits no speech_failed
+        // (and no speech_completed) for UserStopped (Issue #966), but
+        // the worker loop still drives queue size changes, so emit a
+        // neutral `queueUpdated` per iteration to prove the listener is
+        // alive and processing events.
+        for (int i = 0; i < 3; i++) {
+          fakePlatform.emitEvent(
+            const SpeechEvent(
+              type: SpeechEventType.queueUpdated,
+              payload: <String, dynamic>{'size': 1},
+            ),
+          );
+          await tester.pump();
+        }
+        await tester.pump();
+
+        // Step 3: counter must still be 2. If user-stops had leaked as
+        // android_tts_failed (the bug), the counter would now be 5 and
+        // the icon would already be ERROR.
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsNothing,
+          reason:
+              'When native suppresses UserStopped (Issue #966), three '
+              'user-stops must add zero to _consecutiveAndroidTtsFailures. '
+              'If this assertion fails, the suppression contract is '
+              'broken on the wire and the AppBar will flip to ERROR on '
+              'engine switch / settings retry / queue clear.',
+        );
+
+        // Step 4: one more real failure must push from 2 → 3 → ERROR.
+        // This proves the counter was at exactly 2 (not at 5 with a
+        // separate suppression bug masking the increment) — i.e. the
+        // negative assertion in step 3 is meaningful, not vacuous.
+        fakePlatform.emitEvent(androidTtsFailure());
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsOneWidget,
+          reason:
+              'The third real Android TTS failure (after the suppressed '
+              'user-stops) must trip the ERROR threshold. If this fails, '
+              'either the user-stop arm above reset the counter, or the '
+              'threshold logic itself is broken — both invalidate the '
+              'counter-example.',
         );
       },
     );
