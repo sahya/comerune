@@ -348,4 +348,53 @@ class SpeechControllerProcessAndroidTtsContractTest {
                 controller.release()
             }
         }
+
+    // ---------------------------------------------------------------------
+    // Issue #962: controller.stop() must propagate to speaker.stop() so the
+    // queue worker leaves an in-flight Android TTS speak() immediately. The
+    // previous code left the worker suspended in speaker.speak() until the
+    // 60s safety timeout fired, freezing the queue on engine switch / stop.
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `stop interrupts in-flight android tts speak and drains queue`() = runBlocking {
+        val speaker = FakeTtsSpeaker().apply { suspendOnSpeak = true }
+        val controller = newController(ttsSpeaker = speaker)
+        try {
+            controller.initialize()
+            controller.start()
+
+            controller.submitComment(rawComment("c-stop-1", "in-flight"))
+            // Wait until speak() is actually suspended on the worker.
+            val deadline = System.currentTimeMillis() + 500
+            while (speaker.speakCalls.get() == 0 && System.currentTimeMillis() < deadline) {
+                delay(10)
+            }
+            assertEquals(
+                "speak must have been entered before stop is issued",
+                1,
+                speaker.speakCalls.get(),
+            )
+
+            // stop must propagate to speaker.stop() so the worker wakes up
+            // immediately rather than waiting for the safety timeout.
+            controller.stop(clearQueue = true)
+
+            // Generous 1s ceiling: production resumes within milliseconds.
+            // The bug being guarded against is a 60s freeze, so any value
+            // well under that proves the fix.
+            val resumeDeadline = System.currentTimeMillis() + 1000
+            while (speaker.stopCalls.get() == 0 &&
+                System.currentTimeMillis() < resumeDeadline
+            ) {
+                delay(10)
+            }
+            assertTrue(
+                "controller.stop must invoke speaker.stop on the in-flight speaker",
+                speaker.stopCalls.get() >= 1,
+            )
+        } finally {
+            controller.release()
+        }
+    }
 }
