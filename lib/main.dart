@@ -1143,9 +1143,15 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     }
     await _activeSubscription?.cancel();
 
+    final String userSession = await _userSessionProvider();
+    final Map<String, String>? connectHeaders = userSession.isNotEmpty
+        ? <String, String>{'Cookie': 'user_session=$userSession'}
+        : null;
+
     final session_impl.SessionWsClient client = session_impl.SessionWsClient(
       lv: lv,
       startWatchingMode: session_impl.SessionWsStartWatchingMode.commentOnly,
+      connectHeaders: connectHeaders,
     );
     _activeClient = client;
     _activeSubscription = client.events.listen((
