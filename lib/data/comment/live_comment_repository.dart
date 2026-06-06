@@ -96,7 +96,7 @@ class LiveCommentRepository extends NiconicoAuthedHttpClient {
       appDebugLogLazy(
         () => '[$_logName] postOperatorComment request body: $encodedBody',
       );
-      request.write(encodedBody);
+      request.add(utf8.encode(encodedBody));
 
       final HttpClientResponse response = await request.close().timeout(
         requestTimeout,
@@ -182,7 +182,7 @@ class LiveCommentRepository extends NiconicoAuthedHttpClient {
       appDebugLogLazy(
         () => '[$_logName] postNormalComment request body: $encodedBody',
       );
-      request.write(encodedBody);
+      request.add(utf8.encode(encodedBody));
 
       final HttpClientResponse response = await request.close().timeout(
         requestTimeout,

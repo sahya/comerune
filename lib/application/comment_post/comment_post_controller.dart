@@ -387,6 +387,14 @@ class CommentPostController {
 
     _isSending = true;
     try {
+      final String sanitizedText = removeControlAndInvisibleChars(text.trim());
+      appDebugLogLazy(
+        () =>
+            '[CommentPostController] postComment: '
+            'sanitized text="${sanitizedText.length > 30 ? '${sanitizedText.substring(0, 30)}...' : sanitizedText}" '
+            '(${sanitizedText.length} chars, original=${text.length} chars)',
+      );
+
       final CommentPostResult result;
       if (asOperator) {
         appDebugLogLazy(
@@ -397,7 +405,7 @@ class CommentPostController {
         result = await _liveCommentRepository.postOperatorComment(
           programId: lv,
           userSession: userSession,
-          text: text,
+          text: sanitizedText,
         );
       } else {
         final int vpos = computeVpos(
@@ -413,7 +421,7 @@ class CommentPostController {
         result = await _liveCommentRepository.postNormalComment(
           programId: lv,
           userSession: userSession,
-          text: text,
+          text: sanitizedText,
           vpos: vpos,
           isAnonymous: isAnonymous,
         );

@@ -876,6 +876,11 @@ class _FakeHttpClientRequest implements HttpClientRequest {
   }
 
   @override
+  void add(List<int> data) {
+    _body.write(utf8.decode(data));
+  }
+
+  @override
   Future<HttpClientResponse> close() async {
     final Map<String, String> headerMap = <String, String>{};
     _headers._values.forEach((String key, List<String> values) {
