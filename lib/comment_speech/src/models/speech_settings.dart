@@ -84,6 +84,13 @@ class SpeechSettings {
   final double androidTtsPitch;
   final double androidTtsVolume;
 
+  /// Issue #965: safety-net timeout for a single Android TTS utterance in
+  /// milliseconds. Mirrors the Kotlin-side `SpeechSettings.speakTimeoutMs`.
+  /// Default 15000 matches the historical hardcoded value preserved by
+  /// PR #963; advanced callers can extend it for slow devices / long
+  /// utterances without touching native code.
+  final int speakTimeoutMs;
+
   const SpeechSettings({
     this.enabled = true,
     this.engineType = 'voicevox',
@@ -108,6 +115,7 @@ class SpeechSettings {
     this.androidTtsSpeed = 1.0,
     this.androidTtsPitch = 1.0,
     this.androidTtsVolume = 1.0,
+    this.speakTimeoutMs = 15000,
   });
 
   Map<String, dynamic> toMap() => {
@@ -134,6 +142,7 @@ class SpeechSettings {
     'androidTtsSpeed': androidTtsSpeed,
     'androidTtsPitch': androidTtsPitch,
     'androidTtsVolume': androidTtsVolume,
+    'speakTimeoutMs': speakTimeoutMs,
   };
 
   @override
@@ -162,7 +171,8 @@ class SpeechSettings {
           playerType == other.playerType &&
           androidTtsSpeed == other.androidTtsSpeed &&
           androidTtsPitch == other.androidTtsPitch &&
-          androidTtsVolume == other.androidTtsVolume;
+          androidTtsVolume == other.androidTtsVolume &&
+          speakTimeoutMs == other.speakTimeoutMs;
 
   @override
   int get hashCode => Object.hashAll([
@@ -189,5 +199,6 @@ class SpeechSettings {
     androidTtsSpeed,
     androidTtsPitch,
     androidTtsVolume,
+    speakTimeoutMs,
   ]);
 }

@@ -273,5 +273,13 @@ open class FakeTtsSpeaker : TtsSpeaker {
         if (throwOnSetVolume) throw RuntimeException("simulated setVolume throw")
     }
 
+    // Issue #965: record the last value pushed by the controller so contract
+    // tests can assert the timeout propagation path.
+    @Volatile
+    var lastSpeakTimeoutMs: Long? = null
+    override fun setSpeakTimeoutMs(timeoutMs: Long) {
+        lastSpeakTimeoutMs = timeoutMs
+    }
+
     override fun release() {}
 }

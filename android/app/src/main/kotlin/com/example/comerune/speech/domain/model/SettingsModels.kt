@@ -71,7 +71,11 @@ data class SpeechSettings(
     val playerType: String = "audio_track",
     val androidTtsSpeed: Float = 1.0f,
     val androidTtsPitch: Float = 1.0f,
-    val androidTtsVolume: Float = 1.0f
+    val androidTtsVolume: Float = 1.0f,
+    // Issue #965: safety-net timeout for a single Android TTS utterance.
+    // Configurable so slow devices / long comments can be tuned without code
+    // changes. Default mirrors AndroidTtsSpeaker's historical safety value.
+    val speakTimeoutMs: Long = 15_000L
 )
 
 data class ReplaceRule(
