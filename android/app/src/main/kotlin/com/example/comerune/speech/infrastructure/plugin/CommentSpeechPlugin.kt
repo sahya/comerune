@@ -556,7 +556,14 @@ class CommentSpeechPlugin :
             playerType = call.argument<String>("playerType") ?: "audio_track",
             androidTtsSpeed = call.argument<Number>("androidTtsSpeed")?.toFloat() ?: 1.0f,
             androidTtsPitch = call.argument<Number>("androidTtsPitch")?.toFloat() ?: 1.0f,
-            androidTtsVolume = call.argument<Number>("androidTtsVolume")?.toFloat() ?: 1.0f
+            androidTtsVolume = call.argument<Number>("androidTtsVolume")?.toFloat() ?: 1.0f,
+            // Issue #965: optional configurable timeout. Older Flutter
+            // binaries that do not yet send this key fall back to the
+            // 15_000L default, preserving PR #963's behaviour. The 1s floor
+            // is also enforced inside AndroidTtsSpeaker.setSpeakTimeoutMs
+            // as defence-in-depth.
+            speakTimeoutMs = (call.argument<Number>("speakTimeoutMs")?.toLong() ?: 15_000L)
+                .coerceAtLeast(1_000L)
         )
     }
 

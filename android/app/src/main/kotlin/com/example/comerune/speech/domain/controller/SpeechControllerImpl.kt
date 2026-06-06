@@ -116,6 +116,12 @@ class SpeechControllerImpl(
     @Volatile
     private var lastAndroidTtsVolume: Float? = null
 
+    // Issue #965: track the last-pushed speak timeout so we only call the
+    // setter when the value actually changes, matching the speed/pitch/volume
+    // pattern above.
+    @Volatile
+    private var lastSpeakTimeoutMs: Long? = null
+
     private var workerJob: Job? = null
 
     override suspend fun initialize(): Result<Unit> {
@@ -495,6 +501,10 @@ class SpeechControllerImpl(
             if (lastAndroidTtsVolume != settings.androidTtsVolume) {
                 speaker.setVolume(settings.androidTtsVolume)
                 lastAndroidTtsVolume = settings.androidTtsVolume
+            }
+            if (lastSpeakTimeoutMs != settings.speakTimeoutMs) {
+                speaker.setSpeakTimeoutMs(settings.speakTimeoutMs)
+                lastSpeakTimeoutMs = settings.speakTimeoutMs
             }
 
             val result = try {

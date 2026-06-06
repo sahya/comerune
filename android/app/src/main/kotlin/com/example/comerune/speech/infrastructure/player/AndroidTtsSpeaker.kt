@@ -50,9 +50,19 @@ internal class AndroidTtsSpeaker(
         // the speak continuation for prompt interruption; the timeout stays as
         // a safety net for cases where neither stop() nor the
         // UtteranceProgressListener delivers a terminal event (e.g. native TTS
-        // engine wedges). Long utterances on slow devices may need a
-        // configurable value in the future — track in Issue #962.
-        private const val SPEAK_TIMEOUT_MS = 15_000L
+        // engine wedges).
+        //
+        // Issue #965: this default is overridable via [setSpeakTimeoutMs] so
+        // slow devices / long utterances can extend the safety net without
+        // changing code. The default is preserved to keep PR #963's 15s
+        // behaviour for unchanged callers.
+        private const val DEFAULT_SPEAK_TIMEOUT_MS = 15_000L
+
+        // Sanity floor for setSpeakTimeoutMs: a 0ms / negative value would
+        // immediately trip withTimeoutOrNull and wedge the queue worker into
+        // a tight failure loop. 1s is well below any realistic utterance
+        // and still leaves the safety net active.
+        private const val MIN_SPEAK_TIMEOUT_MS = 1_000L
     }
 
     private var tts: TextToSpeechAdapter? = null
@@ -118,6 +128,11 @@ internal class AndroidTtsSpeaker(
 
     @Volatile
     private var volume = 1.0f
+
+    // Issue #965: configurable safety-net timeout. Updated by
+    // [setSpeakTimeoutMs] and read by the active [speak] call.
+    @Volatile
+    private var speakTimeoutMs: Long = DEFAULT_SPEAK_TIMEOUT_MS
 
     @Volatile
     private var currentContinuation: CancellableContinuation<Result<Unit>>? = null
@@ -417,7 +432,10 @@ internal class AndroidTtsSpeaker(
             }
         }
 
-        val result = withTimeoutOrNull(SPEAK_TIMEOUT_MS) {
+        // Snapshot the configurable timeout so a concurrent
+        // setSpeakTimeoutMs() does not change the value mid-suspend.
+        val timeoutMs = speakTimeoutMs
+        val result = withTimeoutOrNull(timeoutMs) {
             suspendCancellableCoroutine { cont ->
                 // Pair the utteranceId with the continuation so the
                 // UtteranceProgressListener can ignore stale callbacks from
@@ -464,10 +482,18 @@ internal class AndroidTtsSpeaker(
         if (result == null) {
             currentContinuation = null
             currentUtteranceId = null
-            engine.stop()
+            // Issue #965: wrap engine.stop() so a native exception during
+            // timeout cleanup cannot leak past the cleanup block and leave
+            // [speaking] / [state] inconsistent. Mirrors the defensive
+            // try/catch already in stop() / release() / focusListener.
+            try {
+                engine.stop()
+            } catch (e: Exception) {
+                Log.w(TAG, "engine.stop() during timeout cleanup failed: ${e.message}")
+            }
             speaking = false
             state = PlayerState.ERROR
-            Log.w(TAG, "speak() timed out after ${SPEAK_TIMEOUT_MS}ms for $utteranceId")
+            Log.w(TAG, "speak() timed out after ${timeoutMs}ms for $utteranceId")
             return Result.failure(RuntimeException("TTS speak timed out"))
         }
 
@@ -535,6 +561,12 @@ internal class AndroidTtsSpeaker(
 
     override fun setVolume(volume: Float) {
         this.volume = volume.coerceIn(0.0f, 1.0f)
+    }
+
+    override fun setSpeakTimeoutMs(timeoutMs: Long) {
+        // Clamp to a safe floor — a 0ms / negative value would immediately
+        // trip withTimeoutOrNull and wedge the worker into a failure loop.
+        this.speakTimeoutMs = timeoutMs.coerceAtLeast(MIN_SPEAK_TIMEOUT_MS)
     }
 
     override fun release() {
