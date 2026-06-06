@@ -4,6 +4,7 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.os.Build
 import com.example.comerune.speech.domain.player.AudioFocusGuard
+import com.example.comerune.speech.domain.player.TtsSpeakException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -700,6 +701,107 @@ class AndroidTtsSpeakerTest {
             "release must remove the speaker's listener from the shared guard",
             0,
             guard.listenerCount,
+        )
+    }
+
+    // ----------------------------------------------------------------------
+    // Issue #966 / #968: sealed [TtsSpeakException] hierarchy. Each speak()
+    // failure path must surface the matching sub-type so the controller can
+    // distinguish a user-initiated stop (skip emit) from a real engine
+    // failure (emit `android_tts_failed:` to drive the Flutter ERROR icon).
+    // ----------------------------------------------------------------------
+
+    @Test
+    fun `stop surfaces speak failure as UserStopped`() = runBlocking {
+        val (speaker, factory, _) = readySpeaker()
+        val engine = factory.createdEngines.first()
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hi", "u-stop-typed") }
+        awaitSpeakRecorded(factory, "u-stop-typed")
+
+        speaker.stop()
+
+        val result = withTimeout(1000) { speakJob.await() }
+        assertTrue("stop must surface as failure", result.isFailure)
+        val cause = result.exceptionOrNull()
+        assertTrue(
+            "stop must surface as TtsSpeakException.UserStopped — was ${cause?.javaClass?.simpleName}: ${cause?.message}",
+            cause is TtsSpeakException.UserStopped,
+        )
+        assertTrue(
+            "engine.stop must still be invoked on the native TTS",
+            engine.stopCount >= 1,
+        )
+    }
+
+    @Test
+    fun `onStop callback surfaces speak failure as UserStopped`() = runBlocking {
+        val (speaker, factory, listener) = readySpeaker()
+
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hi", "u-onstop-typed") }
+        awaitSpeakRecorded(factory, "u-onstop-typed")
+
+        // External onStop (Kotlin prohibits named args for Java overrides).
+        listener.onStop("u-onstop-typed", true)
+
+        val result = speakJob.await()
+        assertTrue(result.isFailure)
+        val cause = result.exceptionOrNull()
+        assertTrue(
+            "platform onStop must surface as TtsSpeakException.UserStopped — was ${cause?.javaClass?.simpleName}",
+            cause is TtsSpeakException.UserStopped,
+        )
+    }
+
+    @Test
+    fun `onError callback surfaces speak failure as EngineError with code detail`() = runBlocking {
+        val (speaker, factory, listener) = readySpeaker()
+
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hi", "u-err-typed") }
+        awaitSpeakRecorded(factory, "u-err-typed")
+
+        listener.onError("u-err-typed", -1)
+
+        val result = speakJob.await()
+        assertTrue(result.isFailure)
+        val cause = result.exceptionOrNull()
+        assertTrue(
+            "engine onError must surface as TtsSpeakException.EngineError — was ${cause?.javaClass?.simpleName}",
+            cause is TtsSpeakException.EngineError,
+        )
+        // Preserve the existing wire-format suffix so the Flutter
+        // `android_tts_failed: <detail>` detector keeps seeing the same
+        // text (Issue #695 contract).
+        assertTrue(
+            "EngineError detail must include the error code: ${cause?.message}",
+            cause?.message?.contains("-1") == true,
+        )
+    }
+
+    @Test
+    fun `focus loss surfaces speak failure as FocusLost`() = runBlocking {
+        val factory = FakeTextToSpeechFactory()
+        val guard = FakeAudioFocusGuard()
+        val speaker = AndroidTtsSpeaker(factory, audioFocusGuard = guard)
+
+        val initJob = launch { speaker.initialize() }
+        factory.awaitPendingInit()
+        factory.completePendingInit(TextToSpeech.SUCCESS)
+        initJob.join()
+
+        val engine = factory.createdEngines.last()
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hi", "u-focus-typed") }
+        waitUntil("speak must reach engine.speak") {
+            engine.speakInvocations.isNotEmpty()
+        }
+
+        guard.emit(AudioFocusGuard.FocusEvent.LOSS)
+
+        val result = speakJob.await()
+        assertTrue(result.isFailure)
+        val cause = result.exceptionOrNull()
+        assertTrue(
+            "focus loss must surface as TtsSpeakException.FocusLost — was ${cause?.javaClass?.simpleName}",
+            cause is TtsSpeakException.FocusLost,
         )
     }
 

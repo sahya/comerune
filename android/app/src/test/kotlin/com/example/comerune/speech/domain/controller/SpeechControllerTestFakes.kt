@@ -12,8 +12,9 @@ import com.example.comerune.speech.domain.model.SpeechSettings
 import com.example.comerune.speech.domain.model.TtsEngineState
 import com.example.comerune.speech.domain.model.WavSynthesisResult
 import com.example.comerune.speech.domain.normalizer.CommentNormalizer
-import com.example.comerune.speech.domain.player.WavPlayer
+import com.example.comerune.speech.domain.player.TtsSpeakException
 import com.example.comerune.speech.domain.player.TtsSpeaker
+import com.example.comerune.speech.domain.player.WavPlayer
 import com.example.comerune.speech.domain.queue.SpeechQueueManager
 import com.example.comerune.speech.domain.settings.SettingsRepository
 import kotlinx.coroutines.CompletableDeferred
@@ -230,6 +231,14 @@ open class FakeTtsSpeaker : TtsSpeaker {
     var throwOnSetVolume: Boolean = false
     var failOnSpeak: Boolean = false
     var throwOnSpeak: Boolean = false
+
+    /**
+     * Issue #966 / #968: when set, [speak] returns
+     * [Result.failure] with this sealed sub-type so the controller's
+     * UserStopped suppression path can be tested without driving a real
+     * stop() race. Takes precedence over [failOnSpeak] / [throwOnSpeak].
+     */
+    var speakFailureOverride: TtsSpeakException? = null
     val speakCalls = AtomicInteger(0)
     // Issue #962: hooks for the stop-interrupts-in-flight-speak regression
     // test. `suspendOnSpeak` makes speak() suspend until stop() releases it;
@@ -243,6 +252,7 @@ open class FakeTtsSpeaker : TtsSpeaker {
 
     override suspend fun speak(text: String, utteranceId: String): Result<Unit> {
         speakCalls.incrementAndGet()
+        speakFailureOverride?.let { return Result.failure(it) }
         if (throwOnSpeak) throw RuntimeException("simulated speak throw")
         if (failOnSpeak) return Result.failure(IOException("simulated speak failure"))
         if (suspendOnSpeak) return speakResumed.await()

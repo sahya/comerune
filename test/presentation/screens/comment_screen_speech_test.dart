@@ -3402,6 +3402,82 @@ void main() {
         );
       },
     );
+
+    // Issue #966 / #968: three user-initiated stops in close succession
+    // (engine switch / settings retry / queue clear) used to flip the
+    // AppBar to ERROR because the native side surfaced each in-flight
+    // speak as a `speech_failed` event with the `android_tts_failed:`
+    // prefix. With the sealed [TtsSpeakException.UserStopped] type
+    // suppressed on the native side, three user-stops produce **zero**
+    // `speech_failed` events, so the counter stays at 0 and the icon
+    // does not flip. The companion sibling test below confirms a real
+    // engine failure still trips ERROR — the suppression is type-gated,
+    // not blanket.
+    testWidgets(
+      'three user-stops (no speech_failed emitted) do NOT flip the AppBar to ERROR',
+      (WidgetTester tester) async {
+        await pumpAndSettleSpeech(tester);
+
+        // Simulate the new contract: native suppresses speech_failed for
+        // UserStopped (Issue #966). The Flutter side sees no failure
+        // events. This emits a stand-in `engineStateChanged → READY` /
+        // no-op pumps to exercise the listener path without injecting
+        // failures.
+        for (int i = 0; i < 3; i++) {
+          // No event is emitted — this represents the native skip path.
+          await tester.pump();
+        }
+        await tester.pump();
+
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsNothing,
+          reason:
+              'When native suppresses UserStopped (Issue #966), the '
+              'Flutter side must see zero speech_failed events, so '
+              'three user-stops in a row cannot push the icon to ERROR.',
+        );
+      },
+    );
+
+    testWidgets(
+      'true engine failures still flip the AppBar to ERROR after user-stop suppression (regression guard)',
+      (WidgetTester tester) async {
+        // Sibling guard for the Issue #966 suppression: a real engine
+        // failure expressed as `android_tts_failed: <engine reason>`
+        // (e.g. TtsSpeakException.EngineError / Timeout / FocusLost on
+        // the native side) must still surface as ERROR after three
+        // consecutive failures (Issue #695 contract preserved).
+        await pumpAndSettleSpeech(tester);
+
+        for (int i = 0; i < 3; i++) {
+          fakePlatform.emitEvent(
+            androidTtsFailure(
+              message: 'android_tts_failed: TTS speak timed out after 15000ms',
+            ),
+          );
+          await tester.pump();
+        }
+        await tester.pump();
+
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsOneWidget,
+          reason:
+              'Three consecutive real engine failures (sealed Timeout / '
+              'EngineError / FocusLost) must still flip the AppBar to '
+              'ERROR — the UserStopped suppression is type-gated on the '
+              'native side, not a blanket mute of failure surfacing '
+              '(Issue #695 contract preserved).',
+        );
+      },
+    );
   });
 
   // ---------------------------------------------------------------------------
