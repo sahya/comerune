@@ -698,27 +698,19 @@ void main() {
       },
     );
 
-    testWidgets('shows stop button during active connection', (
+    testWidgets('does not show stop button during active connection', (
       WidgetTester tester,
     ) async {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
-      int stopCalls = 0;
 
       await tester.pumpWidget(
         _buildScreen(
           supervisor: supervisor,
           messages: const <AppMessage>[],
-          onStopAllConnections: () async {
-            stopCalls += 1;
-          },
         ),
       );
 
-      expect(find.byKey(const Key('stop-button')), findsOneWidget);
-      await tester.tap(find.byKey(const Key('stop-button')));
-      await tester.pumpAndSettle();
-      expect(stopCalls, 1);
-      expect(supervisor.status, ConnectionStatus.stopped);
+      expect(find.byKey(const Key('stop-button')), findsNothing);
     });
 
     testWidgets('shows reconnect button on ENDED and allows retry tap', (
@@ -740,26 +732,10 @@ void main() {
       await tester.pump();
 
       expect(find.byKey(const Key('reconnect-button')), findsOneWidget);
-      expect(find.byKey(const Key('stop-button')), findsNothing);
 
       await tester.tap(find.byKey(const Key('reconnect-button')));
       await tester.pumpAndSettle();
       expect(reconnectCalls, 1);
-    });
-
-    testWidgets('stop button is disabled while idle', (
-      WidgetTester tester,
-    ) async {
-      final ConnectionSupervisor supervisor = ConnectionSupervisor();
-
-      await tester.pumpWidget(
-        _buildScreen(supervisor: supervisor, messages: const <AppMessage>[]),
-      );
-
-      final ElevatedButton stopButton = tester.widget(
-        find.byKey(const Key('stop-button')),
-      );
-      expect(stopButton.onPressed, isNull);
     });
 
     testWidgets('save button uses an archive icon and label', (
@@ -1461,7 +1437,6 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('reconnect-button')), findsOneWidget);
-      expect(find.byKey(const Key('stop-button')), findsNothing);
 
       final BuildContext context = tester.element(find.byType(CommentScreen));
       ScaffoldMessenger.of(context).hideCurrentSnackBar();

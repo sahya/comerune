@@ -4203,22 +4203,7 @@ class _CommentScreenState extends State<CommentScreen>
       );
     }
 
-    return SafeArea(
-      top: false,
-      minimum: const EdgeInsets.all(12),
-      child: SizedBox(
-        width: double.infinity,
-        child: ElevatedButton(
-          key: const Key('stop-button'),
-          onPressed: _isStopEnabled(status)
-              ? () async {
-                  await _stopAndPop();
-                }
-              : null,
-          child: const Text('接続停止'),
-        ),
-      ),
-    );
+    return const SizedBox.shrink();
   }
 
   bool _isStopEnabled(ConnectionStatus status) {
@@ -4235,14 +4220,6 @@ class _CommentScreenState extends State<CommentScreen>
       case ConnectionStatus.failed:
         return false;
     }
-  }
-
-  Future<void> _stopAndPop() async {
-    await _stopForExit();
-    if (!mounted) {
-      return;
-    }
-    Navigator.of(context).pop();
   }
 
   Future<void> _stopForExit() async {
