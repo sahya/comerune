@@ -212,7 +212,7 @@ class SessionWsClient {
         Uri.parse('wss://a.live2.nicovideo.jp/wsapi/v2/watch/$lv');
     _sessionWsUri = uri;
     debugPrint(
-      '[SessionWsClient] connect: $uri '
+      '[SessionWsClient] connect: ${uri.host}${uri.path} '
       '(mode=${_startWatchingMode.name}, '
       'override=${_webSocketUriOverride != null})',
     );
@@ -380,6 +380,8 @@ class SessionWsClient {
           'isAnonymous': isAnonymous,
           'color': 'white',
           'size': 'medium',
+          'position': 'naka',
+          'font': 'defont',
         },
       });
       debugPrint('[SessionWsClient] postComment: sent, waiting for response');
@@ -638,8 +640,8 @@ class SessionWsClient {
             : e.value,
     };
     debugPrint(
-      '[SessionWsClient] _defaultChannelFactory: uri=$uri '
-      'headers=$sanitizedHeaders',
+      '[SessionWsClient] _defaultChannelFactory: '
+      'uri=${uri.host}${uri.path} headers=$sanitizedHeaders',
     );
     final IOWebSocketChannel channel = IOWebSocketChannel.connect(
       uri,

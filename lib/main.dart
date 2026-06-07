@@ -1168,8 +1168,17 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       resolvedWsUri = await _resolveWebSocketUrl(lv, userSession);
       appDebugLog(
         '[SessionWsClientAdapter] _ensureCommentPostWs: '
-        'resolvedWsUri=${resolvedWsUri ?? '(null)'}',
+        'resolvedWsUri=${_maskWsUri(resolvedWsUri)}',
       );
+
+      if (resolvedWsUri != null && _isAnonymousWsUri(resolvedWsUri)) {
+        appDebugLog(
+          '[SessionWsClientAdapter] _ensureCommentPostWs: '
+          'watch page returned anonymous token despite having user_session; '
+          'falling back to direct WS with cookie auth',
+        );
+        resolvedWsUri = null;
+      }
     }
 
     final Map<String, String>? connectHeaders = userSession.isNotEmpty
@@ -1196,7 +1205,8 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       );
     });
     appDebugLog(
-      '[SessionWsClientAdapter] _ensureCommentPostWs: connecting to $lv...',
+      '[SessionWsClientAdapter] _ensureCommentPostWs: connecting to $lv '
+      '(wsUri=${resolvedWsUri != null ? 'resolved' : 'default+cookie'})...',
     );
     await client.connect();
     appDebugLog(
@@ -1205,112 +1215,185 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     );
   }
 
-  static const String _watchPageBaseUrl = 'https://live.nicovideo.jp/watch/';
+  static bool _isAnonymousWsUri(Uri uri) {
+    final String? token = uri.queryParameters['audience_token'];
+    return token != null && token.contains('anonymous');
+  }
+
+  static const List<String> _watchPageBaseUrls = <String>[
+    'https://live2.nicovideo.jp/watch/',
+    'https://live.nicovideo.jp/watch/',
+  ];
 
   static final RegExp _embeddedDataPattern = RegExp(
     r'<script[^>]*\bid="embedded-data"[^>]*\bdata-props="([^"]*)"',
     caseSensitive: false,
   );
 
+  static const int _maxWatchPageRedirects = 5;
+
   Future<Uri?> _resolveWebSocketUrl(String lv, String userSession) async {
-    appDebugLog(
-      '[SessionWsClientAdapter] _resolveWebSocketUrl: fetching watch page '
-      'for $lv',
-    );
+    for (final String baseUrl in _watchPageBaseUrls) {
+      appDebugLog(
+        '[SessionWsClientAdapter] _resolveWebSocketUrl: trying $baseUrl$lv',
+      );
+      final Uri? result = await _fetchWatchPageWsUrl(
+        Uri.parse('$baseUrl$lv'),
+        userSession,
+      );
+      if (result != null) {
+        return result;
+      }
+    }
+    return null;
+  }
+
+  Future<Uri?> _fetchWatchPageWsUrl(Uri watchUri, String userSession) async {
     HttpClient? httpClient;
     try {
       httpClient = HttpClient();
       httpClient.connectionTimeout = const Duration(seconds: 5);
-      final HttpClientRequest request = await httpClient.getUrl(
-        Uri.parse('$_watchPageBaseUrl$lv'),
-      );
-      request.cookies.add(Cookie('user_session', userSession));
-      request.headers.set(
-        'User-Agent',
-        session_impl.SessionWsClient.defaultAndroidUserAgent,
-      );
-      request.headers.set('Accept', 'text/html');
 
-      final HttpClientResponse response = await request.close().timeout(
-        const Duration(seconds: 8),
-      );
-      appDebugLog(
-        '[SessionWsClientAdapter] _resolveWebSocketUrl: '
-        'HTTP ${response.statusCode} '
-        '(redirects=${response.redirects.length})',
-      );
-      if (response.statusCode != 200) {
-        await response.drain<void>();
+      Uri currentUri = watchUri;
+      HttpClientResponse? response;
+
+      for (
+        int redirectCount = 0;
+        redirectCount <= _maxWatchPageRedirects;
+        redirectCount++
+      ) {
+        final HttpClientRequest request = await httpClient.getUrl(currentUri);
+        request.followRedirects = false;
+        request.headers.set('Cookie', 'user_session=$userSession');
+        request.headers.set('X-Niconico-Session', userSession);
+        request.headers.set(
+          'User-Agent',
+          session_impl.SessionWsClient.defaultAndroidUserAgent,
+        );
+        request.headers.set('Accept', 'text/html');
+
+        response = await request.close().timeout(const Duration(seconds: 8));
+        appDebugLog(
+          '[SessionWsClientAdapter] _fetchWatchPageWsUrl: '
+          'HTTP ${response.statusCode} from ${currentUri.host}${currentUri.path}'
+          '${redirectCount > 0 ? ' (redirect #$redirectCount)' : ''}',
+        );
+
+        if (response.statusCode >= 300 && response.statusCode < 400) {
+          final String? location = response.headers.value('location');
+          await response.drain<void>();
+          if (location == null || location.isEmpty) {
+            appDebugLog(
+              '[SessionWsClientAdapter] _fetchWatchPageWsUrl: '
+              'redirect without Location header',
+            );
+            return null;
+          }
+          currentUri = currentUri.resolve(location);
+          appDebugLog(
+            '[SessionWsClientAdapter] _fetchWatchPageWsUrl: '
+            'following redirect to ${currentUri.host}${currentUri.path}',
+          );
+          continue;
+        }
+
+        break;
+      }
+
+      if (response == null || response.statusCode != 200) {
+        if (response != null) {
+          await response.drain<void>();
+        }
         return null;
       }
 
       final String body = await response.transform(utf8.decoder).join();
-      final RegExpMatch? match = _embeddedDataPattern.firstMatch(body);
-      if (match == null) {
-        appDebugLog(
-          '[SessionWsClientAdapter] _resolveWebSocketUrl: '
-          'no embedded-data found',
-        );
-        return null;
-      }
-
-      final String? escaped = match.group(1);
-      if (escaped == null || escaped.isEmpty) {
-        return null;
-      }
-      final String json = _unescapeHtmlAttribute(escaped);
-      final Object? decoded = jsonDecode(json);
-      if (decoded is! Map<String, dynamic>) {
-        return null;
-      }
-
-      final Object? site = decoded['site'];
-      if (site is! Map<String, dynamic>) {
-        appDebugLog(
-          '[SessionWsClientAdapter] _resolveWebSocketUrl: '
-          'no "site" in embedded-data (keys=${decoded.keys.toList()})',
-        );
-        return null;
-      }
-      final Object? relive = site['relive'];
-      if (relive is! Map<String, dynamic>) {
-        appDebugLog(
-          '[SessionWsClientAdapter] _resolveWebSocketUrl: '
-          'no "relive" in site (keys=${site.keys.toList()})',
-        );
-        return null;
-      }
-      final String? wsUrl = relive['webSocketUrl'] as String?;
-      if (wsUrl == null || wsUrl.isEmpty) {
-        appDebugLog(
-          '[SessionWsClientAdapter] _resolveWebSocketUrl: '
-          'no "webSocketUrl" in relive (keys=${relive.keys.toList()})',
-        );
-        return null;
-      }
-
-      final Uri parsed = Uri.parse(wsUrl);
-      final Map<String, String> queryParams = Map<String, String>.from(
-        parsed.queryParameters,
-      );
-      if (!queryParams.containsKey('frontend_id')) {
-        queryParams['frontend_id'] = '9';
-      }
-      final Uri withFrontendId = parsed.replace(queryParameters: queryParams);
-      appDebugLog(
-        '[SessionWsClientAdapter] _resolveWebSocketUrl: '
-        'resolved ${withFrontendId.host}${withFrontendId.path} '
-        '(has audience_token=${queryParams.containsKey('audience_token')})',
-      );
-      return withFrontendId;
+      return _extractWsUrlFromHtml(body);
     } on Object catch (error) {
       appDebugLog(
-        '[SessionWsClientAdapter] _resolveWebSocketUrl: failed: $error',
+        '[SessionWsClientAdapter] _fetchWatchPageWsUrl: failed: $error',
       );
       return null;
     } finally {
       httpClient?.close(force: true);
     }
+  }
+
+  Uri? _extractWsUrlFromHtml(String body) {
+    final RegExpMatch? match = _embeddedDataPattern.firstMatch(body);
+    if (match == null) {
+      appDebugLog(
+        '[SessionWsClientAdapter] _extractWsUrlFromHtml: '
+        'no embedded-data found',
+      );
+      return null;
+    }
+
+    final String? escaped = match.group(1);
+    if (escaped == null || escaped.isEmpty) {
+      return null;
+    }
+    final String json = _unescapeHtmlAttribute(escaped);
+    final Object? decoded = jsonDecode(json);
+    if (decoded is! Map<String, dynamic>) {
+      return null;
+    }
+
+    final Object? site = decoded['site'];
+    if (site is! Map<String, dynamic>) {
+      appDebugLog(
+        '[SessionWsClientAdapter] _extractWsUrlFromHtml: '
+        'no "site" in embedded-data (keys=${decoded.keys.toList()})',
+      );
+      return null;
+    }
+    final Object? relive = site['relive'];
+    if (relive is! Map<String, dynamic>) {
+      appDebugLog(
+        '[SessionWsClientAdapter] _extractWsUrlFromHtml: '
+        'no "relive" in site (keys=${site.keys.toList()})',
+      );
+      return null;
+    }
+    final String? wsUrl = relive['webSocketUrl'] as String?;
+    if (wsUrl == null || wsUrl.isEmpty) {
+      appDebugLog(
+        '[SessionWsClientAdapter] _extractWsUrlFromHtml: '
+        'no "webSocketUrl" in relive (keys=${relive.keys.toList()})',
+      );
+      return null;
+    }
+
+    final Uri parsed = Uri.parse(wsUrl);
+    final Map<String, String> queryParams = Map<String, String>.from(
+      parsed.queryParameters,
+    );
+    if (!queryParams.containsKey('frontend_id')) {
+      queryParams['frontend_id'] = '9';
+    }
+    final Uri withFrontendId = parsed.replace(queryParameters: queryParams);
+    final bool hasToken = queryParams.containsKey('audience_token');
+    final bool isAnonymous =
+        hasToken &&
+        (queryParams['audience_token']?.contains('anonymous') ?? false);
+    appDebugLog(
+      '[SessionWsClientAdapter] _extractWsUrlFromHtml: '
+      'resolved ${withFrontendId.host}${withFrontendId.path} '
+      '(has_token=$hasToken, anonymous=$isAnonymous)',
+    );
+    if (isAnonymous) {
+      appDebugLog(
+        '[SessionWsClientAdapter] _extractWsUrlFromHtml: '
+        'WARNING: got anonymous token despite sending user_session cookie',
+      );
+    }
+    return withFrontendId;
+  }
+
+  static String _maskWsUri(Uri? uri) {
+    if (uri == null) return '(null)';
+    return '${uri.host}${uri.path} '
+        '(has audience_token=${uri.queryParameters.containsKey('audience_token')})';
   }
 
   static String _unescapeHtmlAttribute(String input) {
