@@ -447,14 +447,22 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                             //
                             // Unlike [loadModel] this path does NOT call
                             // [isModelAlreadyLoadedBySpeakerProbe]: this
-                            // branch only runs when SKIP_NATIVE_INIT was
-                            // chosen, which already requires soft cancel +
+                            // skip only fires under SKIP_NATIVE_INIT
+                            // (FULL_INIT clears [loadedModelIds] before the
+                            // loop), which already requires soft cancel +
                             // tracked loaded models — the native cache is
-                            // assumed live. If it ever turns out not to be,
-                            // the surrounding try/catch clears the tracking
-                            // sets and transitions the engine to ERROR, so
-                            // the next initialize() falls into FULL_INIT and
-                            // recovers from a clean state.
+                            // assumed live.
+                            //
+                            // A stale-tracking scenario (the skip fires but
+                            // the native cache is in fact gone) is NOT
+                            // caught inside this initialize(): the skip
+                            // simply `continue`s and does not throw, so the
+                            // surrounding try/catch never fires here. The
+                            // mismatch surfaces at the next synthesize()
+                            // call, which fails and drives the engine into
+                            // ERROR. The subsequent initialize() then sees
+                            // previousState=ERROR and falls into FULL_INIT
+                            // for clean recovery.
                             if (modelId != null && loadedModelIds.contains(modelId)) {
                                 Log.i(
                                     TAG,
