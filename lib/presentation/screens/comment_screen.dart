@@ -69,19 +69,7 @@ bool _hasStarPrefix(String content) => content.startsWith(_kStarPrefix);
 bool _hasSlashPrefix(String content) => content.startsWith(_kSlashPrefix);
 
 /// Feature flag: コメント投稿 UI（FAB + 入力バー）の有効化。
-///
-/// Issue #580 / #581 暫定対応。`user_session` cookie 認証ではツール API
-/// （`/unama/tool/v2/programs/{lv}/comments`）が `AUTHORIZATION_FAILED` を
-/// 返し、UI 上は送信できているように見えてバックエンドで全件失敗する。
-/// OAuth 認証（Issue #581）が実装され投稿が成立するまでは UI を一時的に
-/// 非表示にし、無効体験とログ汚染を防ぐ。バックエンドの
-/// [CommentPostController] / [LiveCommentRepository] / 関連テストは維持する。
-///
-/// 再有効化手順: 本フラグを `true` に戻し、必要に応じて UI 文言・
-/// テストの skip 解除を行うだけで従来挙動に復帰する。
-///
-/// デバッグビルドでは投稿 UI を有効にして動作確認できるようにする。
-const bool kCommentPostFeatureEnabled = kDebugMode;
+const bool kCommentPostFeatureEnabled = true;
 
 /// Two-line mode: minimum meta font size in logical pixels.
 ///
@@ -3007,25 +2995,8 @@ class _CommentScreenState extends State<CommentScreen>
     required int maxLength,
     required bool isAnonymous,
   }) async {
-    appDebugLogLazy(
-      () =>
-          '[CommentScreen] _handleCommentSend: '
-          'text="${text.length > 20 ? '${text.substring(0, 20)}...' : text}" '
-          '(${text.length} chars) asOperator=$asOperator '
-          'maxLength=$maxLength isAnonymous=$isAnonymous '
-          'lv=${widget.programInfo.lv} session=${debugMaskSession(_commentPostUserSession)} '
-          'beginAt=${widget.programInfo.beginAt} '
-          'vposBaseAt=${widget.programInfo.vposBaseAt} '
-          'hasController=${widget.commentPostController != null}',
-    );
-
     final CommentPostController? controller = widget.commentPostController;
     if (controller == null) {
-      appDebugLogLazy(
-        () =>
-            '[CommentScreen] _handleCommentSend: '
-            'commentPostController is null → missingProgram',
-      );
       return const CommentSendResult.validation(
         CommentValidationError.missingProgram,
       );
@@ -3039,15 +3010,6 @@ class _CommentScreenState extends State<CommentScreen>
       vposBaseAt: widget.programInfo.vposBaseAt,
       maxLength: maxLength,
       isAnonymous: isAnonymous,
-    );
-    appDebugLogLazy(
-      () =>
-          '[CommentScreen] _handleCommentSend result: '
-          'isSuccess=${result.isSuccess} '
-          'validationError=${result.validationError} '
-          'postResult.success=${result.postResult?.success} '
-          'postResult.errorCode=${result.postResult?.errorCode} '
-          'postResult.errorMessage=${result.postResult?.errorMessage}',
     );
     if (!mounted) {
       return result;

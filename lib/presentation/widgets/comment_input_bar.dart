@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -395,8 +394,8 @@ class _CommentInputBarState extends State<CommentInputBar> {
                       onSubmitted: (_) => _send(),
                       decoration: InputDecoration(
                         hintText: widget.isBroadcaster && _asOperator
-                            ? '運営コメントを入力${kDebugMode ? '（デバッグ）' : ''}'
-                            : 'コメントを入力${kDebugMode ? '（デバッグ）' : ''}',
+                            ? '運営コメントを入力'
+                            : 'コメントを入力',
                         isDense: true,
                         border: const OutlineInputBorder(),
                         contentPadding: const EdgeInsets.symmetric(

@@ -2,8 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart' show kDebugMode;
-
 import '../../app_logging.dart';
 import '../../domain/models/comment_post_result.dart';
 import '../niconico/niconico_authed_http_client.dart';
@@ -59,23 +57,11 @@ class LiveCommentRepository extends NiconicoAuthedHttpClient {
     required String text,
     bool isPermCommand = false,
   }) async {
-    appDebugLogLazy(
-      () =>
-          '[$_logName] postOperatorComment START: '
-          'programId=$programId text="${text.length > 20 ? '${text.substring(0, 20)}...' : text}" '
-          '(${text.length} chars) isPermCommand=$isPermCommand',
-    );
-
     final CommentPostResult? invalid = _checkCallInputs(
       programId: programId,
       userSession: userSession,
     );
     if (invalid != null) {
-      appDebugLogLazy(
-        () =>
-            '[$_logName] postOperatorComment ABORTED by input validation: '
-            'errorCode=${invalid.errorCode} errorMessage=${invalid.errorMessage}',
-      );
       return invalid;
     }
 
@@ -84,7 +70,6 @@ class LiveCommentRepository extends NiconicoAuthedHttpClient {
       final Uri uri = Uri.parse(
         '$_operatorBaseUrl/$programId/operator_comment',
       );
-      appDebugLogLazy(() => '[$_logName] postOperatorComment PUT $uri');
       request = await httpClient.putUrl(uri);
       setAuthHeaders(request, userSession);
 
@@ -92,30 +77,15 @@ class LiveCommentRepository extends NiconicoAuthedHttpClient {
         'text': text,
         'isPermCommand': isPermCommand,
       };
-      final String encodedBody = jsonEncode(body);
-      appDebugLogLazy(
-        () => '[$_logName] postOperatorComment request body: $encodedBody',
-      );
-      request.add(utf8.encode(encodedBody));
+      request.add(utf8.encode(jsonEncode(body)));
 
       final HttpClientResponse response = await request.close().timeout(
         requestTimeout,
       );
-      appDebugLogLazy(
-        () =>
-            '[$_logName] postOperatorComment response: '
-            'HTTP ${response.statusCode} ${response.reasonPhrase}',
-      );
-      _debugLogResponseHeaders(response, 'postOperatorComment');
       return await _parseResponse(response, 'postOperatorComment');
     } on TimeoutException catch (e) {
       return _toTimeoutResult(request, e, 'postOperatorComment');
     } on Exception catch (e) {
-      appDebugLogLazy(
-        () =>
-            '[$_logName] postOperatorComment EXCEPTION: '
-            '${e.runtimeType}: $e',
-      );
       return _toExceptionResult(e, 'postOperatorComment');
     }
   }
@@ -138,70 +108,35 @@ class LiveCommentRepository extends NiconicoAuthedHttpClient {
     required int vpos,
     bool isAnonymous = false,
   }) async {
-    appDebugLogLazy(
-      () =>
-          '[$_logName] postNormalComment START: '
-          'programId=$programId '
-          'text="${text.length > 20 ? '${text.substring(0, 20)}...' : text}" '
-          '(${text.length} chars) vpos=$vpos isAnonymous=$isAnonymous',
-    );
-
     final CommentPostResult? invalid = _checkCallInputs(
       programId: programId,
       userSession: userSession,
     );
     if (invalid != null) {
-      appDebugLogLazy(
-        () =>
-            '[$_logName] postNormalComment ABORTED by input validation: '
-            'errorCode=${invalid.errorCode} errorMessage=${invalid.errorMessage}',
-      );
       return invalid;
     }
 
     HttpClientRequest? request;
     try {
       final Uri uri = Uri.parse('$_normalBaseUrl/$programId/comments');
-      appDebugLogLazy(() => '[$_logName] postNormalComment POST $uri');
       request = await httpClient.postUrl(uri);
       setAuthHeaders(request, userSession);
       request.headers.set('x-frontend-id', _frontendId);
-      appDebugLogLazy(
-        () =>
-            '[$_logName] postNormalComment x-frontend-id=$_frontendId '
-            '(NOTE: 134 is N-Air\'s registered ID; may need a different '
-            'value for this client)',
-      );
 
       final Map<String, Object> bodyMap = _buildNormalCommentBody(
         text: text,
         vpos: vpos,
         isAnonymous: isAnonymous,
       );
-      final String encodedBody = jsonEncode(bodyMap);
-      appDebugLogLazy(
-        () => '[$_logName] postNormalComment request body: $encodedBody',
-      );
-      request.add(utf8.encode(encodedBody));
+      request.add(utf8.encode(jsonEncode(bodyMap)));
 
       final HttpClientResponse response = await request.close().timeout(
         requestTimeout,
       );
-      appDebugLogLazy(
-        () =>
-            '[$_logName] postNormalComment response: '
-            'HTTP ${response.statusCode} ${response.reasonPhrase}',
-      );
-      _debugLogResponseHeaders(response, 'postNormalComment');
       return await _parseResponse(response, 'postNormalComment');
     } on TimeoutException catch (e) {
       return _toTimeoutResult(request, e, 'postNormalComment');
     } on Exception catch (e) {
-      appDebugLogLazy(
-        () =>
-            '[$_logName] postNormalComment EXCEPTION: '
-            '${e.runtimeType}: $e',
-      );
       return _toExceptionResult(e, 'postNormalComment');
     }
   }
@@ -274,17 +209,7 @@ class LiveCommentRepository extends NiconicoAuthedHttpClient {
     HttpClientResponse response,
     String operationName,
   ) async {
-    appDebugLogLazy(
-      () =>
-          '[$_logName] _parseResponse($operationName): '
-          'statusCode=${response.statusCode}',
-    );
-
-    // HTTP 204: success with no body.
     if (response.statusCode == 204) {
-      appDebugLogLazy(
-        () => '[$_logName] $operationName SUCCESS (HTTP 204 No Content)',
-      );
       await response.drain<void>();
       return const CommentPostResult(success: true);
     }
@@ -294,35 +219,20 @@ class LiveCommentRepository extends NiconicoAuthedHttpClient {
         .join()
         .timeout(requestTimeout);
 
-    appDebugLogLazy(
-      () =>
-          '[$_logName] $operationName response body '
-          '(${body.length} chars): '
-          '${body.length > 2000 ? '${body.substring(0, 2000)}...(truncated)' : body}',
-    );
-
     if (response.statusCode == 200) {
       final CommentPostResult? metaError = _parseMetaError(body);
       if (metaError != null) {
         appDebugLogLazy(
           () =>
-              '[$_logName] $operationName FAILED via meta error: '
+              '[$_logName] $operationName FAILED: '
               'errorCode=${metaError.errorCode} '
               'errorMessage=${metaError.errorMessage}',
         );
         return metaError;
       }
-      appDebugLogLazy(
-        () => '[$_logName] $operationName SUCCESS (HTTP 200, meta OK)',
-      );
       return const CommentPostResult(success: true);
     }
 
-    appDebugLogLazy(
-      () =>
-          '[$_logName] $operationName HTTP error ${response.statusCode}, '
-          'parsing error body...',
-    );
     final NiconicoErrorFields error = parseErrorBody(
       body,
       response.statusCode,
@@ -331,7 +241,7 @@ class LiveCommentRepository extends NiconicoAuthedHttpClient {
     );
     appDebugLogLazy(
       () =>
-          '[$_logName] $operationName FAILED: '
+          '[$_logName] $operationName FAILED (HTTP ${response.statusCode}): '
           'errorCode=${error.errorCode} errorMessage=${error.errorMessage}',
     );
     return CommentPostResult(
@@ -341,86 +251,40 @@ class LiveCommentRepository extends NiconicoAuthedHttpClient {
     );
   }
 
-  void _debugLogResponseHeaders(
-    HttpClientResponse response,
-    String operationName,
-  ) {
-    if (!kDebugMode) {
-      return;
-    }
-    final StringBuffer sb = StringBuffer();
-    sb.writeln('[$_logName] $operationName response headers:');
-    response.headers.forEach((String name, List<String> values) {
-      sb.writeln('  $name: ${values.join(', ')}');
-    });
-    appDebugLog(sb.toString());
-  }
-
   /// Returns a failure [CommentPostResult] when the response body advertises
   /// an error via `meta.status` / `meta.errorCode`, or `null` when the body
   /// indicates success (or is non-JSON / empty, in which case the HTTP status
   /// is authoritative).
   static CommentPostResult? _parseMetaError(String body) {
     if (body.isEmpty) {
-      appDebugLogLazy(
-        () => '[LiveCommentRepository] _parseMetaError: empty body',
-      );
       return null;
     }
     Object? decoded;
     try {
       decoded = jsonDecode(body);
-    } on FormatException catch (e) {
-      appDebugLogLazy(
-        () => '[LiveCommentRepository] _parseMetaError: not JSON: $e',
-      );
+    } on FormatException {
       return null;
     }
     if (decoded is! Map<String, dynamic>) {
-      appDebugLogLazy(
-        () =>
-            '[LiveCommentRepository] _parseMetaError: decoded is not Map, '
-            'type=${decoded.runtimeType}',
-      );
       return null;
     }
     final Object? meta = decoded['meta'];
     if (meta is! Map<String, dynamic>) {
-      appDebugLogLazy(
-        () =>
-            '[LiveCommentRepository] _parseMetaError: no meta map, '
-            'meta=${meta.runtimeType}: $meta',
-      );
       return null;
     }
     final Object? status = meta['status'];
     final Object? errorCode = meta['errorCode'];
-    appDebugLogLazy(
-      () =>
-          '[LiveCommentRepository] _parseMetaError: '
-          'meta.status=$status (${status.runtimeType}) '
-          'meta.errorCode=$errorCode (${errorCode.runtimeType}) '
-          'all meta keys: ${meta.keys.toList()}',
-    );
     final bool statusIsOk =
         (status is int && status == 200) ||
         (status is String && status == '200');
     final bool errorCodeIsOk =
         errorCode == null || (errorCode is String && errorCode == 'OK');
     if (errorCode is String && errorCode == 'OK') {
-      appDebugLogLazy(
-        () => '[LiveCommentRepository] _parseMetaError: errorCode=OK → success',
-      );
       return null;
     }
     if (statusIsOk && errorCodeIsOk) {
-      appDebugLogLazy(
-        () =>
-            '[LiveCommentRepository] _parseMetaError: status+errorCode OK → success',
-      );
       return null;
     }
-    // Otherwise treat as failure even though HTTP was 200.
     final String? resolvedCode = errorCode is String && errorCode.isNotEmpty
         ? errorCode
         : (status is int
@@ -437,12 +301,6 @@ class LiveCommentRepository extends NiconicoAuthedHttpClient {
         }
       }
     }
-    appDebugLogLazy(
-      () =>
-          '[LiveCommentRepository] _parseMetaError FAILURE: '
-          'resolvedCode=$resolvedCode resolvedMessage=$resolvedMessage '
-          'full body=${body.length > 500 ? '${body.substring(0, 500)}...(truncated)' : body}',
-    );
     return CommentPostResult(
       success: false,
       errorCode: resolvedCode,
@@ -468,17 +326,11 @@ class LiveCommentRepository extends NiconicoAuthedHttpClient {
     required String programId,
     required String userSession,
   }) {
-    appDebugLogLazy(
-      () =>
-          '[$_logName] _checkCallInputs: programId=$programId '
-          'session.length=${userSession.length}',
-    );
     final NiconicoInputValidationStatus status = validateCallInputs(
       programId: programId,
       userSession: userSession,
       logName: _logName,
     );
-    appDebugLogLazy(() => '[$_logName] _checkCallInputs result: $status');
     switch (status) {
       case NiconicoInputValidationStatus.ok:
         return null;

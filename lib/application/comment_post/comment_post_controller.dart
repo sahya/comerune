@@ -1,4 +1,3 @@
-import '../../app_logging.dart';
 import '../../data/comment/live_comment_repository.dart';
 import '../../data/follow/follow_program.dart';
 import '../../data/follow/my_program_repository.dart';
@@ -155,35 +154,16 @@ class CommentPostController {
       asOperator: asOperator,
       maxLength: maxLength,
     );
-    appDebugLogLazy(
-      () =>
-          '[CommentPostController] validateText: '
-          'text="${text.length > 30 ? '${text.substring(0, 30)}...' : text}" '
-          '(${text.length} chars, trimmed=${trimmed.length}) '
-          'asOperator=$asOperator maxLength=$limit',
-    );
     if (trimmed.isEmpty) {
-      appDebugLogLazy(() => '[CommentPostController] validateText → empty');
       return CommentValidationError.empty;
     }
     final String sanitized = removeControlAndInvisibleChars(trimmed);
     if (sanitized.isEmpty) {
-      appDebugLogLazy(
-        () =>
-            '[CommentPostController] validateText → invisibleOnly '
-            '(sanitized="$sanitized")',
-      );
       return CommentValidationError.invisibleOnly;
     }
     if (text.length > limit) {
-      appDebugLogLazy(
-        () =>
-            '[CommentPostController] validateText → tooLong '
-            '(${text.length} > $limit)',
-      );
       return CommentValidationError.tooLong;
     }
-    appDebugLogLazy(() => '[CommentPostController] validateText → OK');
     return null;
   }
 
@@ -208,24 +188,11 @@ class CommentPostController {
   }) {
     final DateTime? reference = vposBaseAt ?? beginAt;
     if (reference == null) {
-      appDebugLogLazy(
-        () =>
-            '[CommentPostController] computeVpos: '
-            'both vposBaseAt and beginAt are null → vpos=0',
-      );
       return 0;
     }
     final DateTime clock = now ?? DateTime.now();
     final int ms = clock.difference(reference).inMilliseconds;
-    final int vpos = ms <= 0 ? 0 : ms ~/ 10;
-    appDebugLogLazy(
-      () =>
-          '[CommentPostController] computeVpos: '
-          'vposBaseAt=$vposBaseAt beginAt=$beginAt '
-          'reference=$reference now=$clock '
-          'diff=${ms}ms → vpos=$vpos',
-    );
-    return vpos;
+    return ms <= 0 ? 0 : ms ~/ 10;
   }
 
   /// Determines whether the current user is the broadcaster of [lv].
@@ -236,27 +203,13 @@ class CommentPostController {
     required String lv,
     required String userSession,
   }) async {
-    appDebugLogLazy(
-      () =>
-          '[CommentPostController] ensureBroadcasterStatus: lv=$lv '
-          'disposed=$_disposed',
-    );
     if (_disposed) {
       return BroadcasterCheckOutcome.unknown;
     }
     if (lv.isEmpty) {
-      appDebugLogLazy(
-        () =>
-            '[CommentPostController] ensureBroadcasterStatus: lv is empty → unknown',
-      );
       return BroadcasterCheckOutcome.unknown;
     }
     if (userSession.trim().isEmpty) {
-      appDebugLogLazy(
-        () =>
-            '[CommentPostController] ensureBroadcasterStatus: '
-            'session is empty → viewer',
-      );
       return BroadcasterCheckOutcome.viewer;
     }
 
@@ -264,22 +217,12 @@ class CommentPostController {
     if (cached != null &&
         _cachedBroadcasterLv == lv &&
         _cachedBroadcasterSession == userSession) {
-      appDebugLogLazy(
-        () =>
-            '[CommentPostController] ensureBroadcasterStatus: '
-            'cached=$cached (lv=$lv)',
-      );
       return cached;
     }
 
     try {
       final FollowProgram? ownProgram = await _myProgramRepository
           .fetchOwnProgram(userSession: userSession);
-      appDebugLogLazy(
-        () =>
-            '[CommentPostController] ensureBroadcasterStatus: '
-            'ownProgram=${ownProgram?.programId} target=$lv',
-      );
       final BroadcasterCheckOutcome outcome =
           ownProgram != null && ownProgram.programId == lv
           ? BroadcasterCheckOutcome.broadcaster
@@ -287,16 +230,8 @@ class CommentPostController {
       _cachedBroadcasterOutcome = outcome;
       _cachedBroadcasterLv = lv;
       _cachedBroadcasterSession = userSession;
-      appDebugLogLazy(
-        () =>
-            '[CommentPostController] ensureBroadcasterStatus: '
-            'result=$outcome',
-      );
       return outcome;
-    } on Exception catch (e) {
-      appDebugLogLazy(
-        () => '[CommentPostController] ensureBroadcasterStatus EXCEPTION: $e',
-      );
+    } on Exception {
       return BroadcasterCheckOutcome.unknown;
     }
   }
@@ -337,37 +272,17 @@ class CommentPostController {
     int? maxLength,
     bool isAnonymous = false,
   }) async {
-    appDebugLogLazy(
-      () =>
-          '[CommentPostController] postComment START: '
-          'lv=$lv session=${debugMaskSession(userSession)} (${userSession.length} chars) '
-          'text="${text.length > 30 ? '${text.substring(0, 30)}...' : text}" '
-          '(${text.length} chars) asOperator=$asOperator '
-          'isAnonymous=$isAnonymous beginAt=$beginAt '
-          'vposBaseAt=$vposBaseAt maxLength=$maxLength '
-          'disposed=$_disposed isSending=$_isSending',
-    );
-
     if (_disposed) {
-      appDebugLogLazy(
-        () => '[CommentPostController] postComment ABORTED: disposed',
-      );
       return const CommentSendResult.validation(
         CommentValidationError.missingProgram,
       );
     }
     if (lv.isEmpty) {
-      appDebugLogLazy(
-        () => '[CommentPostController] postComment ABORTED: lv is empty',
-      );
       return const CommentSendResult.validation(
         CommentValidationError.missingProgram,
       );
     }
     if (userSession.trim().isEmpty) {
-      appDebugLogLazy(
-        () => '[CommentPostController] postComment ABORTED: session is empty',
-      );
       return const CommentSendResult.validation(
         CommentValidationError.missingSession,
       );
@@ -379,18 +294,10 @@ class CommentPostController {
       maxLength: maxLength,
     );
     if (validation != null) {
-      appDebugLogLazy(
-        () =>
-            '[CommentPostController] postComment ABORTED: '
-            'validation=$validation',
-      );
       return CommentSendResult.validation(validation);
     }
 
     if (_isSending) {
-      appDebugLogLazy(
-        () => '[CommentPostController] postComment ABORTED: already in flight',
-      );
       return const CommentSendResult.validation(
         CommentValidationError.inFlight,
       );
@@ -399,20 +306,9 @@ class CommentPostController {
     _isSending = true;
     try {
       final String sanitizedText = removeControlAndInvisibleChars(text.trim());
-      appDebugLogLazy(
-        () =>
-            '[CommentPostController] postComment: '
-            'sanitized text="${sanitizedText.length > 30 ? '${sanitizedText.substring(0, 30)}...' : sanitizedText}" '
-            '(${sanitizedText.length} chars, original=${text.length} chars)',
-      );
 
       final CommentPostResult result;
       if (asOperator) {
-        appDebugLogLazy(
-          () =>
-              '[CommentPostController] postComment: '
-              'calling postOperatorComment...',
-        );
         result = await _liveCommentRepository.postOperatorComment(
           programId: lv,
           userSession: userSession,
@@ -426,22 +322,12 @@ class CommentPostController {
         );
         final WsCommentSender? wsSender = _wsCommentSender;
         if (wsSender != null) {
-          appDebugLogLazy(
-            () =>
-                '[CommentPostController] postComment: '
-                'calling WebSocket postComment with vpos=$vpos...',
-          );
           result = await wsSender(
             text: sanitizedText,
             vpos: vpos,
             isAnonymous: isAnonymous,
           );
         } else {
-          appDebugLogLazy(
-            () =>
-                '[CommentPostController] postComment: '
-                'calling HTTP postNormalComment with vpos=$vpos...',
-          );
           result = await _liveCommentRepository.postNormalComment(
             programId: lv,
             userSession: userSession,
@@ -451,13 +337,6 @@ class CommentPostController {
           );
         }
       }
-      appDebugLogLazy(
-        () =>
-            '[CommentPostController] postComment RESULT: '
-            'success=${result.success} '
-            'errorCode=${result.errorCode} '
-            'errorMessage=${result.errorMessage}',
-      );
       return CommentSendResult.posted(result);
     } finally {
       _isSending = false;

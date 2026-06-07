@@ -1110,30 +1110,15 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
 
     session_impl.SessionWsClient? client = _activeClient;
     if (client == null || client.isDisposed || !client.isConnected) {
-      appDebugLog(
-        '[SessionWsClientAdapter] postComment: WS not ready '
-        '(client=${client != null}, disposed=${client?.isDisposed}, '
-        'connected=${client?.isConnected}), establishing connection for $lv',
-      );
       try {
         await _ensureCommentPostWs(lv);
         client = _activeClient;
+      } on Object catch (error) {
         appDebugLog(
-          '[SessionWsClientAdapter] postComment: after _ensureCommentPostWs '
-          '(client=${client != null}, disposed=${client?.isDisposed}, '
-          'connected=${client?.isConnected})',
-        );
-      } on Object catch (error, stackTrace) {
-        appDebugLog(
-          '[SessionWsClientAdapter] postComment: WS connect failed: '
-          '$error\n$stackTrace',
+          '[SessionWsClientAdapter] postComment: WS connect failed: $error',
         );
       }
       if (client == null || client.isDisposed || !client.isConnected) {
-        appDebugLog(
-          '[SessionWsClientAdapter] postComment: giving up, WS still not '
-          'connected after _ensureCommentPostWs',
-        );
         return const reconnect.CommentPostResult(
           success: false,
           errorCode: reconnect.CommentPostErrorCode.networkError,
@@ -1141,41 +1126,26 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
         );
       }
     }
-    appDebugLog('[SessionWsClientAdapter] postComment: sending via WS for $lv');
     return client.postComment(text: text, vpos: vpos, isAnonymous: isAnonymous);
   }
 
   Future<void> _ensureCommentPostWs(String lv) async {
     final session_impl.SessionWsClient? existing = _activeClient;
     if (existing != null) {
-      appDebugLog(
-        '[SessionWsClientAdapter] _ensureCommentPostWs: disposing existing '
-        'client (disposed=${existing.isDisposed}, '
-        'connected=${existing.isConnected})',
-      );
       await existing.dispose();
     }
     await _activeSubscription?.cancel();
 
     final String userSession = await _userSessionProvider();
-    appDebugLog(
-      '[SessionWsClientAdapter] _ensureCommentPostWs: userSession='
-      '${debugMaskSession(userSession)} (${userSession.length} chars)',
-    );
 
     Uri? resolvedWsUri;
     if (userSession.isNotEmpty) {
       resolvedWsUri = await _resolveWebSocketUrl(lv, userSession);
-      appDebugLog(
-        '[SessionWsClientAdapter] _ensureCommentPostWs: '
-        'resolvedWsUri=${_maskWsUri(resolvedWsUri)}',
-      );
 
       if (resolvedWsUri != null && _isAnonymousWsUri(resolvedWsUri)) {
         appDebugLog(
           '[SessionWsClientAdapter] _ensureCommentPostWs: '
-          'watch page returned anonymous token despite having user_session; '
-          'falling back to direct WS with cookie auth',
+          'anonymous token despite user_session; falling back to cookie auth',
         );
         resolvedWsUri = null;
       }
@@ -1198,21 +1168,15 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     _activeSubscription = client.events.listen((
       session_impl.SessionWsEvent event,
     ) {
-      appDebugLog(
-        '[SessionWsClientAdapter] Comment-post WS event: ${event.type.name}'
-        '${event.errorDetail != null ? ' detail=${event.errorDetail}' : ''}'
-        '${event.error != null ? ' error=${event.error}' : ''}',
-      );
+      if (event.error != null || event.errorDetail != null) {
+        appDebugLog(
+          '[SessionWsClientAdapter] WS event: ${event.type.name}'
+          '${event.errorDetail != null ? ' detail=${event.errorDetail}' : ''}'
+          '${event.error != null ? ' error=${event.error}' : ''}',
+        );
+      }
     });
-    appDebugLog(
-      '[SessionWsClientAdapter] _ensureCommentPostWs: connecting to $lv '
-      '(wsUri=${resolvedWsUri != null ? 'resolved' : 'default+cookie'})...',
-    );
     await client.connect();
-    appDebugLog(
-      '[SessionWsClientAdapter] _ensureCommentPostWs: connect() returned '
-      '(connected=${client.isConnected}, disposed=${client.isDisposed})',
-    );
   }
 
   static bool _isAnonymousWsUri(Uri uri) {
@@ -1240,10 +1204,6 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
   static const int _maxWatchPageRedirects = 5;
 
   Future<Uri?> _resolveWebSocketUrl(String lv, String userSession) async {
-    appDebugLog(
-      '[SessionWsClientAdapter] _resolveWebSocketUrl: '
-      'fetching $_watchPageBaseUrl$lv',
-    );
     return _fetchWatchPageWsUrl(
       Uri.parse('$_watchPageBaseUrl$lv'),
       userSession,
@@ -1272,35 +1232,16 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
         request.headers.set('Accept', 'text/html');
 
         response = await request.close().timeout(const Duration(seconds: 8));
-        appDebugLog(
-          '[SessionWsClientAdapter] _fetchWatchPageWsUrl: '
-          'HTTP ${response.statusCode} from ${currentUri.host}${currentUri.path}'
-          '${redirectCount > 0 ? ' (redirect #$redirectCount)' : ''}',
-        );
-
         if (response.statusCode >= 300 && response.statusCode < 400) {
           final String? location = response.headers.value('location');
           await response.drain<void>();
           if (location == null || location.isEmpty) {
-            appDebugLog(
-              '[SessionWsClientAdapter] _fetchWatchPageWsUrl: '
-              'redirect without Location header',
-            );
             return null;
           }
           currentUri = currentUri.resolve(location);
           if (currentUri.host.startsWith('sp.')) {
-            appDebugLog(
-              '[SessionWsClientAdapter] _fetchWatchPageWsUrl: '
-              'rejecting mobile redirect to ${currentUri.host} '
-              '(no embedded-data on sp pages)',
-            );
             return null;
           }
-          appDebugLog(
-            '[SessionWsClientAdapter] _fetchWatchPageWsUrl: '
-            'following redirect to ${currentUri.host}${currentUri.path}',
-          );
           continue;
         }
 
@@ -1316,10 +1257,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
 
       final String body = await response.transform(utf8.decoder).join();
       return _extractWsUrlFromHtml(body);
-    } on Object catch (error) {
-      appDebugLog(
-        '[SessionWsClientAdapter] _fetchWatchPageWsUrl: failed: $error',
-      );
+    } on Object {
       return null;
     } finally {
       httpClient?.close(force: true);
@@ -1329,10 +1267,6 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
   Uri? _extractWsUrlFromHtml(String body) {
     final RegExpMatch? match = _embeddedDataPattern.firstMatch(body);
     if (match == null) {
-      appDebugLog(
-        '[SessionWsClientAdapter] _extractWsUrlFromHtml: '
-        'no embedded-data found',
-      );
       return null;
     }
 
@@ -1348,26 +1282,14 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
 
     final Object? site = decoded['site'];
     if (site is! Map<String, dynamic>) {
-      appDebugLog(
-        '[SessionWsClientAdapter] _extractWsUrlFromHtml: '
-        'no "site" in embedded-data (keys=${decoded.keys.toList()})',
-      );
       return null;
     }
     final Object? relive = site['relive'];
     if (relive is! Map<String, dynamic>) {
-      appDebugLog(
-        '[SessionWsClientAdapter] _extractWsUrlFromHtml: '
-        'no "relive" in site (keys=${site.keys.toList()})',
-      );
       return null;
     }
     final String? wsUrl = relive['webSocketUrl'] as String?;
     if (wsUrl == null || wsUrl.isEmpty) {
-      appDebugLog(
-        '[SessionWsClientAdapter] _extractWsUrlFromHtml: '
-        'no "webSocketUrl" in relive (keys=${relive.keys.toList()})',
-      );
       return null;
     }
 
@@ -1378,29 +1300,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     if (!queryParams.containsKey('frontend_id')) {
       queryParams['frontend_id'] = '9';
     }
-    final Uri withFrontendId = parsed.replace(queryParameters: queryParams);
-    final bool hasToken = queryParams.containsKey('audience_token');
-    final bool isAnonymous =
-        hasToken &&
-        (queryParams['audience_token']?.contains('anonymous') ?? false);
-    appDebugLog(
-      '[SessionWsClientAdapter] _extractWsUrlFromHtml: '
-      'resolved ${withFrontendId.host}${withFrontendId.path} '
-      '(has_token=$hasToken, anonymous=$isAnonymous)',
-    );
-    if (isAnonymous) {
-      appDebugLog(
-        '[SessionWsClientAdapter] _extractWsUrlFromHtml: '
-        'WARNING: got anonymous token despite sending user_session cookie',
-      );
-    }
-    return withFrontendId;
-  }
-
-  static String _maskWsUri(Uri? uri) {
-    if (uri == null) return '(null)';
-    return '${uri.host}${uri.path} '
-        '(has audience_token=${uri.queryParameters.containsKey('audience_token')})';
+    return parsed.replace(queryParameters: queryParams);
   }
 
   static String _unescapeHtmlAttribute(String input) {
