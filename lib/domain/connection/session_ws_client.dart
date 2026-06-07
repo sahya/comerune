@@ -132,6 +132,7 @@ class SessionWsClient {
 
   SessionWsClient({
     required this.lv,
+    Uri? webSocketUri,
     SessionWsChannelFactory? channelFactory,
     Duration endpointFallbackDelay = const Duration(milliseconds: 300),
     Duration endpointResolveTimeout = const Duration(seconds: 5),
@@ -140,7 +141,8 @@ class SessionWsClient {
         SessionWsStartWatchingMode.full,
     Map<String, String>? connectHeaders,
     String userAgent = defaultAndroidUserAgent,
-  }) : _channelFactory = channelFactory ?? _defaultChannelFactory,
+  }) : _webSocketUriOverride = webSocketUri,
+       _channelFactory = channelFactory ?? _defaultChannelFactory,
        _endpointFallbackDelay = endpointFallbackDelay,
        _endpointResolveTimeout = endpointResolveTimeout,
        _startWatchingMode = startWatchingMode,
@@ -162,6 +164,7 @@ class SessionWsClient {
              );
 
   final String lv;
+  final Uri? _webSocketUriOverride;
   final SessionWsChannelFactory _channelFactory;
   final Duration _endpointFallbackDelay;
   final Duration _endpointResolveTimeout;
@@ -204,10 +207,14 @@ class SessionWsClient {
     }
     _resetEndpointResolutionState();
 
-    final Uri uri = Uri.parse('wss://a.live2.nicovideo.jp/wsapi/v2/watch/$lv');
+    final Uri uri =
+        _webSocketUriOverride ??
+        Uri.parse('wss://a.live2.nicovideo.jp/wsapi/v2/watch/$lv');
     _sessionWsUri = uri;
     debugPrint(
-      '[SessionWsClient] connect: $uri (mode=${_startWatchingMode.name})',
+      '[SessionWsClient] connect: $uri '
+      '(mode=${_startWatchingMode.name}, '
+      'override=${_webSocketUriOverride != null})',
     );
 
     try {

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
 import 'dart:ui';
@@ -1161,6 +1162,16 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       '[SessionWsClientAdapter] _ensureCommentPostWs: userSession='
       '${debugMaskSession(userSession)} (${userSession.length} chars)',
     );
+
+    Uri? resolvedWsUri;
+    if (userSession.isNotEmpty) {
+      resolvedWsUri = await _resolveWebSocketUrl(lv, userSession);
+      appDebugLog(
+        '[SessionWsClientAdapter] _ensureCommentPostWs: '
+        'resolvedWsUri=${resolvedWsUri ?? '(null)'}',
+      );
+    }
+
     final Map<String, String>? connectHeaders = userSession.isNotEmpty
         ? <String, String>{
             'Cookie': 'user_session=$userSession',
@@ -1170,6 +1181,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
 
     final session_impl.SessionWsClient client = session_impl.SessionWsClient(
       lv: lv,
+      webSocketUri: resolvedWsUri,
       startWatchingMode: session_impl.SessionWsStartWatchingMode.commentOnly,
       connectHeaders: connectHeaders,
     );
@@ -1191,6 +1203,131 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       '[SessionWsClientAdapter] _ensureCommentPostWs: connect() returned '
       '(connected=${client.isConnected}, disposed=${client.isDisposed})',
     );
+  }
+
+  static const String _watchPageBaseUrl = 'https://live.nicovideo.jp/watch/';
+
+  static final RegExp _embeddedDataPattern = RegExp(
+    r'<script[^>]*\bid="embedded-data"[^>]*\bdata-props="([^"]*)"',
+    caseSensitive: false,
+  );
+
+  Future<Uri?> _resolveWebSocketUrl(String lv, String userSession) async {
+    appDebugLog(
+      '[SessionWsClientAdapter] _resolveWebSocketUrl: fetching watch page '
+      'for $lv',
+    );
+    HttpClient? httpClient;
+    try {
+      httpClient = HttpClient();
+      httpClient.connectionTimeout = const Duration(seconds: 5);
+      final HttpClientRequest request = await httpClient.getUrl(
+        Uri.parse('$_watchPageBaseUrl$lv'),
+      );
+      request.headers.set('Cookie', 'user_session=$userSession');
+      request.headers.set(
+        'User-Agent',
+        session_impl.SessionWsClient.defaultAndroidUserAgent,
+      );
+      request.headers.set('Accept', 'text/html');
+
+      final HttpClientResponse response = await request.close().timeout(
+        const Duration(seconds: 8),
+      );
+      if (response.statusCode != 200) {
+        appDebugLog(
+          '[SessionWsClientAdapter] _resolveWebSocketUrl: '
+          'HTTP ${response.statusCode}',
+        );
+        await response.drain<void>();
+        return null;
+      }
+
+      final String body = await response.transform(utf8.decoder).join();
+      final RegExpMatch? match = _embeddedDataPattern.firstMatch(body);
+      if (match == null) {
+        appDebugLog(
+          '[SessionWsClientAdapter] _resolveWebSocketUrl: '
+          'no embedded-data found',
+        );
+        return null;
+      }
+
+      final String? escaped = match.group(1);
+      if (escaped == null || escaped.isEmpty) {
+        return null;
+      }
+      final String json = _unescapeHtmlAttribute(escaped);
+      final Object? decoded = jsonDecode(json);
+      if (decoded is! Map<String, dynamic>) {
+        return null;
+      }
+
+      final Object? site = decoded['site'];
+      if (site is! Map<String, dynamic>) {
+        appDebugLog(
+          '[SessionWsClientAdapter] _resolveWebSocketUrl: '
+          'no "site" in embedded-data (keys=${decoded.keys.toList()})',
+        );
+        return null;
+      }
+      final Object? relive = site['relive'];
+      if (relive is! Map<String, dynamic>) {
+        appDebugLog(
+          '[SessionWsClientAdapter] _resolveWebSocketUrl: '
+          'no "relive" in site (keys=${site.keys.toList()})',
+        );
+        return null;
+      }
+      final String? wsUrl = relive['webSocketUrl'] as String?;
+      if (wsUrl == null || wsUrl.isEmpty) {
+        appDebugLog(
+          '[SessionWsClientAdapter] _resolveWebSocketUrl: '
+          'no "webSocketUrl" in relive (keys=${relive.keys.toList()})',
+        );
+        return null;
+      }
+
+      final Uri parsed = Uri.parse(wsUrl);
+      final Map<String, String> queryParams = Map<String, String>.from(
+        parsed.queryParameters,
+      );
+      if (!queryParams.containsKey('frontend_id')) {
+        queryParams['frontend_id'] = '9';
+      }
+      final Uri withFrontendId = parsed.replace(queryParameters: queryParams);
+      appDebugLog(
+        '[SessionWsClientAdapter] _resolveWebSocketUrl: '
+        'resolved ${withFrontendId.host}${withFrontendId.path} '
+        '(has audience_token=${queryParams.containsKey('audience_token')})',
+      );
+      return withFrontendId;
+    } on Object catch (error) {
+      appDebugLog(
+        '[SessionWsClientAdapter] _resolveWebSocketUrl: failed: $error',
+      );
+      return null;
+    } finally {
+      httpClient?.close(force: true);
+    }
+  }
+
+  static String _unescapeHtmlAttribute(String input) {
+    String s = input;
+    s = s.replaceAll('&lt;', '<');
+    s = s.replaceAll('&gt;', '>');
+    s = s.replaceAll('&quot;', '"');
+    s = s.replaceAll('&apos;', "'");
+    s = s.replaceAll('&#34;', '"');
+    s = s.replaceAll('&#39;', "'");
+    s = s.replaceAll('&#x22;', '"');
+    s = s.replaceAll('&#x27;', "'");
+    s = s.replaceAll('&#x2F;', '/');
+    s = s.replaceAll('&#47;', '/');
+    s = s.replaceAll('&#60;', '<');
+    s = s.replaceAll('&#62;', '>');
+    s = s.replaceAll('&amp;', '&');
+    return s;
   }
 
   Future<void> dispose() async {
