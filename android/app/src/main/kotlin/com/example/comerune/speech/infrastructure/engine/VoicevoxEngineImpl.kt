@@ -444,6 +444,17 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                             // cache across a soft cancel recovery — the
                             // second nativeLoadModel call would otherwise
                             // return false.
+                            //
+                            // Unlike [loadModel] this path does NOT call
+                            // [isModelAlreadyLoadedBySpeakerProbe]: this
+                            // branch only runs when SKIP_NATIVE_INIT was
+                            // chosen, which already requires soft cancel +
+                            // tracked loaded models — the native cache is
+                            // assumed live. If it ever turns out not to be,
+                            // the surrounding try/catch clears the tracking
+                            // sets and transitions the engine to ERROR, so
+                            // the next initialize() falls into FULL_INIT and
+                            // recovers from a clean state.
                             if (modelId != null && loadedModelIds.contains(modelId)) {
                                 Log.i(
                                     TAG,
