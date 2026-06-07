@@ -3726,7 +3726,6 @@ class _CommentScreenState extends State<CommentScreen>
                     ],
                   ),
                 ),
-                _buildBottomAction(status),
                 if (_pendingStats != null)
                   CommentLogStatsPanel(
                     key: const Key('stats-panel'),
@@ -4198,10 +4197,6 @@ class _CommentScreenState extends State<CommentScreen>
   bool _shouldShowReconnectFab(ConnectionStatus status) {
     return status == ConnectionStatus.ended ||
         status == ConnectionStatus.failed;
-  }
-
-  Widget _buildBottomAction(ConnectionStatus status) {
-    return const SizedBox.shrink();
   }
 
   bool _isStopEnabled(ConnectionStatus status) {
