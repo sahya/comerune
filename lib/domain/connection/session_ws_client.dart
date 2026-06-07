@@ -378,6 +378,8 @@ class SessionWsClient {
           'text': text,
           'vpos': vpos,
           'isAnonymous': isAnonymous,
+          'color': 'white',
+          'size': 'medium',
         },
       });
       debugPrint('[SessionWsClient] postComment: sent, waiting for response');
