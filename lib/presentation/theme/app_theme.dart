@@ -27,6 +27,7 @@ class AppThemeColors {
     required this.broadcastEndedBackground,
     required this.autoExtendSuccessBackground,
     required this.autoExtendFailureBackground,
+    required this.selfCommentBackground,
     required this.operatorTextColor,
   });
 
@@ -81,6 +82,11 @@ class AppThemeColors {
   /// already carries the warning semantic. Contrast vs
   /// `colorScheme.onSurface` is enforced by the contrast test.
   final Color autoExtendFailureBackground;
+
+  /// Subtle tinted background for comments posted by the viewer from this
+  /// device. Kept low-saturation so it reads as "mine" without clashing
+  /// with operator / gift / nicoad emphasis rows.
+  final Color selfCommentBackground;
 
   /// Text color used to render operator (運営) comment content and user name.
   /// Intended to convey the "red" / warning-like semantic consistently per
@@ -161,6 +167,7 @@ class AppTheme {
     // Issue #876: pale red-pink — readable warning hue distinct from
     // operatorMessageBackground (which is warm cream).
     autoExtendFailureBackground: Color(0xFFFFEBEE),
+    selfCommentBackground: Color(0xFFE3F2FD),
     // WCAG AA (>= 4.5:1) vs operatorMessageBackground is enforced by
     // `test/presentation/theme/operator_contrast_test.dart`.
     operatorTextColor: Color(0xFFC62828),
@@ -204,6 +211,7 @@ class AppTheme {
     // operatorMessageBackground's warm grey and dark enough for
     // onSurface contrast.
     autoExtendFailureBackground: Color(0xFF3E2A2E),
+    selfCommentBackground: Color(0xFF1A2733),
     // WCAG AA (>= 4.5:1) vs operatorMessageBackground is enforced by
     // `test/presentation/theme/operator_contrast_test.dart`.
     operatorTextColor: Color(0xFFFF8A80),
@@ -241,6 +249,7 @@ class AppTheme {
     // P-type: pale orange carries the "warning" semantic, kept low
     // saturation so the row reads as informational not destructive.
     autoExtendFailureBackground: Color(0xFFFFF3E0),
+    selfCommentBackground: Color(0xFFE3F2FD),
     // P-type: the "red / warning" semantic uses the deep-orange family so
     // protanopia users still perceive it (red confuses with green; orange
     // does not). WCAG AA vs operatorMessageBackground is enforced by
@@ -281,6 +290,7 @@ class AppTheme {
     // D-type: pale amber for "warning" — sits on the deuteranope-friendly
     // purple/amber distinction.
     autoExtendFailureBackground: Color(0xFFFFF8E1),
+    selfCommentBackground: Color(0xFFE8E0F2),
     // D-type: deep red-orange that remains visible for deuteranopia users,
     // differentiated from the P-type palette so theme switching yields a
     // visually distinct tone. WCAG AA vs operatorMessageBackground is
@@ -323,6 +333,7 @@ class AppTheme {
     // T-type: pale red-pink for "warning" — sits on the red side of the
     // red/cyan distinction.
     autoExtendFailureBackground: Color(0xFFFCE4EC),
+    selfCommentBackground: Color(0xFFE0F7FA),
     // T-type: red/cyan contrast is preserved using the standard red. WCAG
     // AA vs operatorMessageBackground is enforced by
     // `test/presentation/theme/operator_contrast_test.dart`.

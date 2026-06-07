@@ -412,6 +412,7 @@ class CommentRowHarness extends StatelessWidget {
     this.emphasizeGiftNicoadComment = true,
     this.showCommentNo = false,
     this.commentIndex = 0,
+    this.isSelfComment = false,
     this.userColor,
     this.onLongPress,
     this.onOpenUrl,
@@ -433,6 +434,7 @@ class CommentRowHarness extends StatelessWidget {
   final bool emphasizeGiftNicoadComment;
   final bool showCommentNo;
   final int commentIndex;
+  final bool isSelfComment;
   final Color? userColor;
   final VoidCallback? onLongPress;
   final ValueChanged<AppMessage>? onOpenUrl;
@@ -459,6 +461,7 @@ class CommentRowHarness extends StatelessWidget {
       emphasizeGiftNicoadComment: emphasizeGiftNicoadComment,
       showCommentNo: showCommentNo,
       commentIndex: commentIndex,
+      isSelfComment: isSelfComment,
       userColor: userColor,
       onLongPress: onLongPress,
       onOpenUrl: onOpenUrl,
@@ -798,6 +801,10 @@ class _CommentScreenState extends State<CommentScreen>
   /// menu tap until the dialog and any in-flight API call resolve so a
   /// re-tap on the menu cannot stack a second dialog.
   bool _isExtendingBroadcast = false;
+
+  /// Texts of comments successfully posted from this app instance.
+  /// Used to highlight the user's own comments in the list.
+  final Set<String> _postedCommentTexts = <String>{};
 
   /// Issue #875: 自動延長 Switch の現在の ON/OFF 状態。
   ///
@@ -3052,6 +3059,9 @@ class _CommentScreenState extends State<CommentScreen>
     if (!mounted) {
       return result;
     }
+    if (result.isSuccess) {
+      _postedCommentTexts.add(text);
+    }
     _showCommentPostFeedback(result, asOperator: asOperator);
     return result;
   }
@@ -3695,6 +3705,11 @@ class _CommentScreenState extends State<CommentScreen>
                                     .emphasizeGiftNicoadComment,
                                 showCommentNo: widget.showCommentNo,
                                 commentIndex: index,
+                                isSelfComment:
+                                    message.type == AppMessageType.chat &&
+                                    _postedCommentTexts.contains(
+                                      message.content,
+                                    ),
                                 userColor: userColor != null
                                     ? colorFromARGB32(userColor)
                                     : null,
@@ -7121,6 +7136,7 @@ class _CommentRow extends StatefulWidget {
     this.emphasizeGiftNicoadComment = true,
     this.showCommentNo = false,
     this.commentIndex = 0,
+    this.isSelfComment = false,
     this.userColor,
     this.onLongPress,
     this.onOpenUrl,
@@ -7155,6 +7171,10 @@ class _CommentRow extends StatefulWidget {
   final bool showCommentNo;
 
   final int commentIndex;
+
+  /// When true the row is rendered with a subtle tinted background so the
+  /// user can visually distinguish comments they posted from this device.
+  final bool isSelfComment;
   final Color? userColor;
   final VoidCallback? onLongPress;
   final ValueChanged<AppMessage>? onOpenUrl;
@@ -7740,7 +7760,9 @@ class _CommentRowState extends State<_CommentRow> {
             ? widget.themeColors.nicoadMessageBackground
             : null;
       case AppMessageType.chat:
-        return null;
+        return widget.isSelfComment
+            ? widget.themeColors.selfCommentBackground
+            : null;
     }
   }
 
