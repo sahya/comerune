@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:clock/clock.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show AsyncCallback, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -3692,10 +3692,11 @@ class _CommentScreenState extends State<CommentScreen>
                       if (!_autoScrollEnabled)
                         Positioned(
                           right: 12,
-                          // Raise the scroll-to-latest FAB above the
-                          // comment-post FAB when the latter is visible, so
-                          // the two do not overlap.
-                          bottom: _shouldShowCommentPostFab ? 72 : 12,
+                          bottom:
+                              _shouldShowCommentPostFab ||
+                                  _shouldShowReconnectFab(status)
+                              ? 72
+                              : 12,
                           child: FloatingActionButton.small(
                             key: const Key('scroll-to-latest-button'),
                             onPressed: _scrollToLatest,
@@ -3712,6 +3713,15 @@ class _CommentScreenState extends State<CommentScreen>
                           right: 12,
                           bottom: 12,
                           child: CommentPostFab(onPressed: _expandCommentInput),
+                        ),
+                      if (_shouldShowReconnectFab(status))
+                        Positioned(
+                          right: 12,
+                          bottom: 12,
+                          child: _ReconnectFab(
+                            key: const Key('reconnect-button'),
+                            onPressed: widget.callbacks.onReconnectSameLv,
+                          ),
                         ),
                     ],
                   ),
@@ -4185,24 +4195,12 @@ class _CommentScreenState extends State<CommentScreen>
     }
   }
 
-  Widget _buildBottomAction(ConnectionStatus status) {
-    if (status == ConnectionStatus.ended || status == ConnectionStatus.failed) {
-      return SafeArea(
-        top: false,
-        minimum: const EdgeInsets.all(12),
-        child: SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            key: const Key('reconnect-button'),
-            onPressed: () async {
-              await widget.callbacks.onReconnectSameLv();
-            },
-            child: const Text('再接続'),
-          ),
-        ),
-      );
-    }
+  bool _shouldShowReconnectFab(ConnectionStatus status) {
+    return status == ConnectionStatus.ended ||
+        status == ConnectionStatus.failed;
+  }
 
+  Widget _buildBottomAction(ConnectionStatus status) {
     return const SizedBox.shrink();
   }
 
@@ -8020,6 +8018,55 @@ class _SpeechStatusIcon extends StatelessWidget {
           child: Opacity(
             opacity: 0.5,
             child: Icon(icon, size: 24, color: color),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReconnectFab extends StatelessWidget {
+  const _ReconnectFab({super.key, required this.onPressed});
+
+  final AsyncCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    const double visualSize = 40;
+    const double tapTargetSize = 48;
+    return Semantics(
+      button: true,
+      container: true,
+      label: '再接続',
+      child: Tooltip(
+        message: '再接続',
+        child: SizedBox(
+          width: tapTargetSize,
+          height: tapTargetSize,
+          child: Center(
+            child: SizedBox(
+              width: visualSize,
+              height: visualSize,
+              child: Material(
+                color: theme.colorScheme.errorContainer.withValues(alpha: 0.55),
+                surfaceTintColor: Colors.transparent,
+                shape: const CircleBorder(),
+                elevation: 6,
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () => onPressed(),
+                  customBorder: const CircleBorder(),
+                  child: Center(
+                    child: Icon(
+                      Icons.refresh,
+                      size: 22,
+                      color: theme.colorScheme.onErrorContainer,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       ),
