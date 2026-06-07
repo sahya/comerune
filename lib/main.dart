@@ -1162,7 +1162,10 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       '${debugMaskSession(userSession)} (${userSession.length} chars)',
     );
     final Map<String, String>? connectHeaders = userSession.isNotEmpty
-        ? <String, String>{'Cookie': 'user_session=$userSession'}
+        ? <String, String>{
+            'Cookie': 'user_session=$userSession',
+            'X-Niconico-Session': userSession,
+          }
         : null;
 
     final session_impl.SessionWsClient client = session_impl.SessionWsClient(

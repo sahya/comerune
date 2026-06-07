@@ -620,6 +620,18 @@ class SessionWsClient {
     Uri uri,
     Map<String, String> headers,
   ) async {
+    final Map<String, String> sanitizedHeaders = <String, String>{
+      for (final MapEntry<String, String> e in headers.entries)
+        e.key:
+            e.key.toLowerCase() == 'cookie' ||
+                e.key.toLowerCase() == 'x-niconico-session'
+            ? '${e.value.substring(0, e.value.length.clamp(0, 20))}...'
+            : e.value,
+    };
+    debugPrint(
+      '[SessionWsClient] _defaultChannelFactory: uri=$uri '
+      'headers=$sanitizedHeaders',
+    );
     final IOWebSocketChannel channel = IOWebSocketChannel.connect(
       uri,
       headers: headers.isEmpty ? null : headers,
