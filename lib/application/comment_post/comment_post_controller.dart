@@ -1,3 +1,4 @@
+import '../../app_logging.dart';
 import '../../data/comment/live_comment_repository.dart';
 import '../../data/follow/follow_program.dart';
 import '../../data/follow/my_program_repository.dart';
@@ -231,7 +232,8 @@ class CommentPostController {
       _cachedBroadcasterLv = lv;
       _cachedBroadcasterSession = userSession;
       return outcome;
-    } on Exception {
+    } on Exception catch (e) {
+      appDebugLog('[CommentPostController] ensureBroadcasterStatus failed: $e');
       return BroadcasterCheckOutcome.unknown;
     }
   }

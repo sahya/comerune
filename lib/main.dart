@@ -1257,7 +1257,8 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
 
       final String body = await response.transform(utf8.decoder).join();
       return _extractWsUrlFromHtml(body);
-    } on Object {
+    } on Object catch (e) {
+      appDebugLog('[SessionWsClientAdapter] _fetchWatchPageWsUrl: failed: $e');
       return null;
     } finally {
       httpClient?.close(force: true);
