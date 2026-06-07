@@ -1220,10 +1220,17 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     return token != null && token.contains('anonymous');
   }
 
-  static const List<String> _watchPageBaseUrls = <String>[
-    'https://live2.nicovideo.jp/watch/',
-    'https://live.nicovideo.jp/watch/',
-  ];
+  static const String _watchPageBaseUrl = 'https://live.nicovideo.jp/watch/';
+
+  /// Desktop User-Agent for the watch page fetch.
+  ///
+  /// The mobile Android UA (`Chrome Mobile`) triggers a 302 redirect to
+  /// `sp.live.nicovideo.jp` which serves a mobile page WITHOUT the
+  /// `<script id="embedded-data">` tag. A desktop Chrome UA returns the
+  /// desktop page that contains embedded-data with the webSocketUrl.
+  static const String _desktopUserAgent =
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+      '(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
   static final RegExp _embeddedDataPattern = RegExp(
     r'<script[^>]*\bid="embedded-data"[^>]*\bdata-props="([^"]*)"',
@@ -1233,19 +1240,14 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
   static const int _maxWatchPageRedirects = 5;
 
   Future<Uri?> _resolveWebSocketUrl(String lv, String userSession) async {
-    for (final String baseUrl in _watchPageBaseUrls) {
-      appDebugLog(
-        '[SessionWsClientAdapter] _resolveWebSocketUrl: trying $baseUrl$lv',
-      );
-      final Uri? result = await _fetchWatchPageWsUrl(
-        Uri.parse('$baseUrl$lv'),
-        userSession,
-      );
-      if (result != null) {
-        return result;
-      }
-    }
-    return null;
+    appDebugLog(
+      '[SessionWsClientAdapter] _resolveWebSocketUrl: '
+      'fetching $_watchPageBaseUrl$lv',
+    );
+    return _fetchWatchPageWsUrl(
+      Uri.parse('$_watchPageBaseUrl$lv'),
+      userSession,
+    );
   }
 
   Future<Uri?> _fetchWatchPageWsUrl(Uri watchUri, String userSession) async {
@@ -1266,10 +1268,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
         request.followRedirects = false;
         request.headers.set('Cookie', 'user_session=$userSession');
         request.headers.set('X-Niconico-Session', userSession);
-        request.headers.set(
-          'User-Agent',
-          session_impl.SessionWsClient.defaultAndroidUserAgent,
-        );
+        request.headers.set('User-Agent', _desktopUserAgent);
         request.headers.set('Accept', 'text/html');
 
         response = await request.close().timeout(const Duration(seconds: 8));
@@ -1290,6 +1289,14 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
             return null;
           }
           currentUri = currentUri.resolve(location);
+          if (currentUri.host.startsWith('sp.')) {
+            appDebugLog(
+              '[SessionWsClientAdapter] _fetchWatchPageWsUrl: '
+              'rejecting mobile redirect to ${currentUri.host} '
+              '(no embedded-data on sp pages)',
+            );
+            return null;
+          }
           appDebugLog(
             '[SessionWsClientAdapter] _fetchWatchPageWsUrl: '
             'following redirect to ${currentUri.host}${currentUri.path}',
