@@ -3067,22 +3067,12 @@ class _CommentScreenState extends State<CommentScreen>
       return;
     }
 
-    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-    // Hide only the currently-shown snackbar (not the queue) so that an
-    // adjacent NG-protection snackbar from the merged main-side feature
-    // is not silently dropped when a comment post completes.
-    messenger.hideCurrentSnackBar();
-
     if (result.isSuccess) {
-      messenger.showSnackBar(
-        SnackBar(
-          key: const Key('comment-post-success-snackbar'),
-          content: Text(asOperator ? '運営コメントを送信しました' : 'コメントを送信しました'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
       return;
     }
+
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
 
     final String message = commentPostErrorMessage(result);
     messenger.showSnackBar(

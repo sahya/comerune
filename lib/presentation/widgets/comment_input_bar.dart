@@ -161,7 +161,7 @@ class _CommentInputBarState extends State<CommentInputBar> {
   /// cannot leak into a subsequent normal-mode post — operator mode has
   /// no anonymous concept, and Issue #463 prefers a simple reset policy
   /// over restoring the previous value.
-  bool _isAnonymous = false;
+  bool _isAnonymous = true;
 
   @override
   void initState() {
