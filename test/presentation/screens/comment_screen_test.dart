@@ -704,10 +704,7 @@ void main() {
       final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
 
       await tester.pumpWidget(
-        _buildScreen(
-          supervisor: supervisor,
-          messages: const <AppMessage>[],
-        ),
+        _buildScreen(supervisor: supervisor, messages: const <AppMessage>[]),
       );
 
       expect(find.byKey(const Key('stop-button')), findsNothing);
