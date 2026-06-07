@@ -1224,7 +1224,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       final HttpClientRequest request = await httpClient.getUrl(
         Uri.parse('$_watchPageBaseUrl$lv'),
       );
-      request.headers.set('Cookie', 'user_session=$userSession');
+      request.cookies.add(Cookie('user_session', userSession));
       request.headers.set(
         'User-Agent',
         session_impl.SessionWsClient.defaultAndroidUserAgent,
@@ -1234,11 +1234,12 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       final HttpClientResponse response = await request.close().timeout(
         const Duration(seconds: 8),
       );
+      appDebugLog(
+        '[SessionWsClientAdapter] _resolveWebSocketUrl: '
+        'HTTP ${response.statusCode} '
+        '(redirects=${response.redirects.length})',
+      );
       if (response.statusCode != 200) {
-        appDebugLog(
-          '[SessionWsClientAdapter] _resolveWebSocketUrl: '
-          'HTTP ${response.statusCode}',
-        );
         await response.drain<void>();
         return null;
       }
