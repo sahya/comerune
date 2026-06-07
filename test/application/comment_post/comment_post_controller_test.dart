@@ -708,6 +708,85 @@ void main() {
         expect(firstResult.isSuccess, isTrue);
       },
     );
+
+    test('uses wsCommentSender for normal comments when provided', () async {
+      final _FakeHttpClient fake = _FakeHttpClient();
+      fake.responseStatusCode = 200;
+      fake.responseBody = '';
+
+      String? capturedText;
+      int? capturedVpos;
+      bool? capturedAnonymous;
+
+      final CommentPostController controller = CommentPostController(
+        liveCommentRepository: LiveCommentRepository(httpClient: fake),
+        myProgramRepository: MyProgramRepository(httpClient: fake),
+        wsCommentSender:
+            ({
+              required String text,
+              required int vpos,
+              required bool isAnonymous,
+            }) async {
+              capturedText = text;
+              capturedVpos = vpos;
+              capturedAnonymous = isAnonymous;
+              return const CommentPostResult(success: true);
+            },
+      );
+
+      final CommentSendResult result = await controller.postComment(
+        lv: 'lv1',
+        userSession: 'session',
+        text: 'ws test',
+        asOperator: false,
+        beginAt: DateTime(2024),
+        now: DateTime(2024, 1, 1, 0, 0, 1),
+        isAnonymous: true,
+      );
+
+      expect(result.isSuccess, isTrue);
+      expect(capturedText, 'ws test');
+      expect(capturedVpos, 100);
+      expect(capturedAnonymous, isTrue);
+      // HTTP should NOT have been called
+      expect(fake.requests, isEmpty);
+    });
+
+    test(
+      'uses HTTP for operator comments even when wsCommentSender is set',
+      () async {
+        final _FakeHttpClient fake = _FakeHttpClient();
+        fake.responseStatusCode = 200;
+        fake.responseBody = '';
+
+        bool wsCalled = false;
+
+        final CommentPostController controller = CommentPostController(
+          liveCommentRepository: LiveCommentRepository(httpClient: fake),
+          myProgramRepository: MyProgramRepository(httpClient: fake),
+          wsCommentSender:
+              ({
+                required String text,
+                required int vpos,
+                required bool isAnonymous,
+              }) async {
+                wsCalled = true;
+                return const CommentPostResult(success: true);
+              },
+        );
+
+        final CommentSendResult result = await controller.postComment(
+          lv: 'lv1',
+          userSession: 'session',
+          text: 'op comment',
+          asOperator: true,
+        );
+
+        expect(result.isSuccess, isTrue);
+        expect(wsCalled, isFalse);
+        expect(fake.requests, hasLength(1));
+      },
+    );
   });
 
   group('CommentPostController.dispose', () {
@@ -876,6 +955,11 @@ class _FakeHttpClientRequest implements HttpClientRequest {
   }
 
   @override
+  void add(List<int> data) {
+    _body.write(utf8.decode(data));
+  }
+
+  @override
   Future<HttpClientResponse> close() async {
     final Map<String, String> headerMap = <String, String>{};
     _headers._values.forEach((String key, List<String> values) {
@@ -945,6 +1029,12 @@ class _FakeHttpClientResponse extends Stream<List<int>>
   final String _body;
 
   @override
+  String get reasonPhrase => 'OK';
+
+  @override
+  HttpHeaders get headers => _FakeResponseHeaders();
+
+  @override
   StreamSubscription<List<int>> listen(
     void Function(List<int> event)? onData, {
     Function? onError,
@@ -967,6 +1057,18 @@ class _FakeHttpClientResponse extends Stream<List<int>>
   @override
   Future<Socket> detachSocket() {
     throw UnimplementedError();
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) {
+    return super.noSuchMethod(invocation);
+  }
+}
+
+class _FakeResponseHeaders implements HttpHeaders {
+  @override
+  void forEach(void Function(String name, List<String> values) f) {
+    // No-op for tests.
   }
 
   @override

@@ -72,12 +72,12 @@ class LiveCommentRepository extends NiconicoAuthedHttpClient {
       );
       request = await httpClient.putUrl(uri);
       setAuthHeaders(request, userSession);
-      request.write(
-        jsonEncode(<String, Object>{
-          'text': text,
-          'isPermCommand': isPermCommand,
-        }),
-      );
+
+      final Map<String, Object> body = <String, Object>{
+        'text': text,
+        'isPermCommand': isPermCommand,
+      };
+      request.add(utf8.encode(jsonEncode(body)));
 
       final HttpClientResponse response = await request.close().timeout(
         requestTimeout,
@@ -122,15 +122,13 @@ class LiveCommentRepository extends NiconicoAuthedHttpClient {
       request = await httpClient.postUrl(uri);
       setAuthHeaders(request, userSession);
       request.headers.set('x-frontend-id', _frontendId);
-      request.write(
-        jsonEncode(
-          _buildNormalCommentBody(
-            text: text,
-            vpos: vpos,
-            isAnonymous: isAnonymous,
-          ),
-        ),
+
+      final Map<String, Object> bodyMap = _buildNormalCommentBody(
+        text: text,
+        vpos: vpos,
+        isAnonymous: isAnonymous,
       );
+      request.add(utf8.encode(jsonEncode(bodyMap)));
 
       final HttpClientResponse response = await request.close().timeout(
         requestTimeout,
@@ -211,7 +209,6 @@ class LiveCommentRepository extends NiconicoAuthedHttpClient {
     HttpClientResponse response,
     String operationName,
   ) async {
-    // HTTP 204: success with no body.
     if (response.statusCode == 204) {
       await response.drain<void>();
       return const CommentPostResult(success: true);
@@ -223,16 +220,13 @@ class LiveCommentRepository extends NiconicoAuthedHttpClient {
         .timeout(requestTimeout);
 
     if (response.statusCode == 200) {
-      // N Air's `WrappedResult` treats `meta.status != 200` (or a non-"OK"
-      // `errorCode`) as failure even when HTTP is 200 — comment endpoints
-      // can return rate-limit / forbidden-word errors inside a 200 body.
-      // Inspect the body and map to an error when present.
       final CommentPostResult? metaError = _parseMetaError(body);
       if (metaError != null) {
         appDebugLogLazy(
           () =>
-              '[LiveCommentRepository] $operationName failed via meta: '
-              '${metaError.errorCode}',
+              '[$_logName] $operationName FAILED: '
+              'errorCode=${metaError.errorCode} '
+              'errorMessage=${metaError.errorMessage}',
         );
         return metaError;
       }
@@ -244,6 +238,11 @@ class LiveCommentRepository extends NiconicoAuthedHttpClient {
       response.statusCode,
       operationName,
       _logName,
+    );
+    appDebugLogLazy(
+      () =>
+          '[$_logName] $operationName FAILED (HTTP ${response.statusCode}): '
+          'errorCode=${error.errorCode} errorMessage=${error.errorMessage}',
     );
     return CommentPostResult(
       success: false,
@@ -275,27 +274,17 @@ class LiveCommentRepository extends NiconicoAuthedHttpClient {
     }
     final Object? status = meta['status'];
     final Object? errorCode = meta['errorCode'];
-    // Success shapes (defensively tolerate string/int for `status` since the
-    // N Air type declares `number` but some related APIs serialize it as a
-    // string):
-    //   {status: 200}
-    //   {status: "200"}
-    //   {status: 200, errorCode: "OK"}
-    //   {errorCode: "OK"}
     final bool statusIsOk =
         (status is int && status == 200) ||
         (status is String && status == '200');
     final bool errorCodeIsOk =
         errorCode == null || (errorCode is String && errorCode == 'OK');
-    // Explicit OK code overrides a missing / odd status; otherwise require
-    // both the status and error code to look healthy.
     if (errorCode is String && errorCode == 'OK') {
       return null;
     }
     if (statusIsOk && errorCodeIsOk) {
       return null;
     }
-    // Otherwise treat as failure even though HTTP was 200.
     final String? resolvedCode = errorCode is String && errorCode.isNotEmpty
         ? errorCode
         : (status is int

@@ -69,17 +69,7 @@ bool _hasStarPrefix(String content) => content.startsWith(_kStarPrefix);
 bool _hasSlashPrefix(String content) => content.startsWith(_kSlashPrefix);
 
 /// Feature flag: コメント投稿 UI（FAB + 入力バー）の有効化。
-///
-/// Issue #580 / #581 暫定対応。`user_session` cookie 認証ではツール API
-/// （`/unama/tool/v2/programs/{lv}/comments`）が `AUTHORIZATION_FAILED` を
-/// 返し、UI 上は送信できているように見えてバックエンドで全件失敗する。
-/// OAuth 認証（Issue #581）が実装され投稿が成立するまでは UI を一時的に
-/// 非表示にし、無効体験とログ汚染を防ぐ。バックエンドの
-/// [CommentPostController] / [LiveCommentRepository] / 関連テストは維持する。
-///
-/// 再有効化手順: 本フラグを `true` に戻し、必要に応じて UI 文言・
-/// テストの skip 解除を行うだけで従来挙動に復帰する。
-const bool kCommentPostFeatureEnabled = false;
+const bool kCommentPostFeatureEnabled = true;
 
 /// Two-line mode: minimum meta font size in logical pixels.
 ///
@@ -3039,22 +3029,12 @@ class _CommentScreenState extends State<CommentScreen>
       return;
     }
 
-    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-    // Hide only the currently-shown snackbar (not the queue) so that an
-    // adjacent NG-protection snackbar from the merged main-side feature
-    // is not silently dropped when a comment post completes.
-    messenger.hideCurrentSnackBar();
-
     if (result.isSuccess) {
-      messenger.showSnackBar(
-        SnackBar(
-          key: const Key('comment-post-success-snackbar'),
-          content: Text(asOperator ? '運営コメントを送信しました' : 'コメントを送信しました'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
       return;
     }
+
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
 
     final String message = commentPostErrorMessage(result);
     messenger.showSnackBar(

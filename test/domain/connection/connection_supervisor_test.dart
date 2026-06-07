@@ -1136,6 +1136,15 @@ class FakeSessionWsClient implements SessionWsClient {
   }
 
   @override
+  Future<CommentPostResult> postComment({
+    required String text,
+    required int vpos,
+    required bool isAnonymous,
+  }) async {
+    return const CommentPostResult(success: true);
+  }
+
+  @override
   Future<void> disconnect() async {
     disconnectCalls += 1;
   }
