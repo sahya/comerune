@@ -279,6 +279,22 @@ class ConnectionSupervisor extends ChangeNotifier {
   bool get canRetryFromTerminal =>
       _status == ConnectionStatus.ended || _status == ConnectionStatus.failed;
 
+  Future<CommentPostResult> postComment({
+    required String text,
+    required int vpos,
+    required bool isAnonymous,
+  }) async {
+    final SessionWsClient? client = _sessionWsClient;
+    if (client == null) {
+      return const CommentPostResult(
+        success: false,
+        errorCode: CommentPostErrorCode.networkError,
+        errorMessage: 'Session WebSocket client not available',
+      );
+    }
+    return client.postComment(text: text, vpos: vpos, isAnonymous: isAnonymous);
+  }
+
   Duration backoffDelayForAttempt(int attempt) {
     if (attempt <= 0) {
       throw ArgumentError.value(

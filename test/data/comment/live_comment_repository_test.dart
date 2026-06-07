@@ -1013,6 +1013,11 @@ class _FakeHttpClientRequest implements HttpClientRequest {
   }
 
   @override
+  void add(List<int> data) {
+    _body.write(utf8.decode(data));
+  }
+
+  @override
   Future<HttpClientResponse> close() async {
     final Map<String, String> headerMap = <String, String>{};
     _headers._values.forEach((String key, List<String> values) {
@@ -1087,6 +1092,12 @@ class _FakeHttpClientResponse extends Stream<List<int>>
   final Completer<void>? bodyStallCompleter;
 
   @override
+  String get reasonPhrase => 'OK';
+
+  @override
+  HttpHeaders get headers => _FakeResponseHeaders();
+
+  @override
   StreamSubscription<List<int>> listen(
     void Function(List<int> event)? onData, {
     Function? onError,
@@ -1095,8 +1106,6 @@ class _FakeHttpClientResponse extends Stream<List<int>>
   }) {
     final Completer<void>? stall = bodyStallCompleter;
     if (stall != null && !stall.isCompleted) {
-      // Simulate a response whose body never arrives until the completer
-      // fires — used to test body-read timeout.
       final Stream<List<int>> delayed = stall.future
           .then<List<int>>((_) => utf8.encode(_body))
           .asStream();
@@ -1124,6 +1133,16 @@ class _FakeHttpClientResponse extends Stream<List<int>>
   Future<Socket> detachSocket() {
     throw UnimplementedError();
   }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) {
+    return super.noSuchMethod(invocation);
+  }
+}
+
+class _FakeResponseHeaders implements HttpHeaders {
+  @override
+  void forEach(void Function(String name, List<String> values) f) {}
 
   @override
   dynamic noSuchMethod(Invocation invocation) {
