@@ -191,4 +191,120 @@ class PrepareForModelDownloadFlowTest {
             )
         }
     }
+
+    // ── Issue #979: evaluateNativeInitializePlan ────────────────────────
+    //
+    // PR #974 (Issue #970) routed SYNTHESIZING and INITIALIZING to the
+    // PROCEED path so the screen could reopen without a PlatformException.
+    // But the native synthesizer was still alive and its model cache was
+    // still populated, so the PROCEED path's unconditional
+    // `nativeInitialize` + `nativeLoadModel(*.vvm)` re-run caused the
+    // second `nativeLoadModel` to return false:
+    // "Failed to load voice model: n0.vvm".
+    //
+    // The fix introduces a plan: SKIP_NATIVE_INIT when soft cancel
+    // recovery has tracked-loaded models; FULL_INIT otherwise. The plan
+    // gates clearing of [loadedModelPaths] / [loadedModelIds], the
+    // `nativeInitialize` call, and the VVM load loop's per-model
+    // idempotent skip.
+
+    @Test
+    fun `evaluateNativeInitializePlan SKIP_NATIVE_INIT for SYNTHESIZING with loaded models`() {
+        assertEquals(
+            VoicevoxEngineImpl.NativeInitializePlan.SKIP_NATIVE_INIT,
+            VoicevoxEngineImpl.evaluateNativeInitializePlan(
+                previousState = TtsEngineState.SYNTHESIZING,
+                hasLoadedModels = true
+            )
+        )
+    }
+
+    @Test
+    fun `evaluateNativeInitializePlan SKIP_NATIVE_INIT for INITIALIZING with loaded models`() {
+        assertEquals(
+            VoicevoxEngineImpl.NativeInitializePlan.SKIP_NATIVE_INIT,
+            VoicevoxEngineImpl.evaluateNativeInitializePlan(
+                previousState = TtsEngineState.INITIALIZING,
+                hasLoadedModels = true
+            )
+        )
+    }
+
+    @Test
+    fun `evaluateNativeInitializePlan FULL_INIT for SYNTHESIZING when no models tracked`() {
+        // Soft cancel without recorded models — the native side may not
+        // hold a usable model cache, so a full re-init is the safe path.
+        assertEquals(
+            VoicevoxEngineImpl.NativeInitializePlan.FULL_INIT,
+            VoicevoxEngineImpl.evaluateNativeInitializePlan(
+                previousState = TtsEngineState.SYNTHESIZING,
+                hasLoadedModels = false
+            )
+        )
+    }
+
+    @Test
+    fun `evaluateNativeInitializePlan FULL_INIT for INITIALIZING when no models tracked`() {
+        assertEquals(
+            VoicevoxEngineImpl.NativeInitializePlan.FULL_INIT,
+            VoicevoxEngineImpl.evaluateNativeInitializePlan(
+                previousState = TtsEngineState.INITIALIZING,
+                hasLoadedModels = false
+            )
+        )
+    }
+
+    @Test
+    fun `evaluateNativeInitializePlan FULL_INIT for UNINITIALIZED regardless of models`() {
+        // AC4: fresh init must not degenerate into a skip.
+        assertEquals(
+            VoicevoxEngineImpl.NativeInitializePlan.FULL_INIT,
+            VoicevoxEngineImpl.evaluateNativeInitializePlan(
+                previousState = TtsEngineState.UNINITIALIZED,
+                hasLoadedModels = false
+            )
+        )
+        assertEquals(
+            VoicevoxEngineImpl.NativeInitializePlan.FULL_INIT,
+            VoicevoxEngineImpl.evaluateNativeInitializePlan(
+                previousState = TtsEngineState.UNINITIALIZED,
+                hasLoadedModels = true
+            )
+        )
+    }
+
+    @Test
+    fun `evaluateNativeInitializePlan FULL_INIT for ERROR regardless of models`() {
+        // ERROR recovery cannot trust prior tracking — always do a clean
+        // native re-init.
+        assertEquals(
+            VoicevoxEngineImpl.NativeInitializePlan.FULL_INIT,
+            VoicevoxEngineImpl.evaluateNativeInitializePlan(
+                previousState = TtsEngineState.ERROR,
+                hasLoadedModels = false
+            )
+        )
+        assertEquals(
+            VoicevoxEngineImpl.NativeInitializePlan.FULL_INIT,
+            VoicevoxEngineImpl.evaluateNativeInitializePlan(
+                previousState = TtsEngineState.ERROR,
+                hasLoadedModels = true
+            )
+        )
+    }
+
+    @Test
+    fun `evaluateNativeInitializePlan FULL_INIT for READY fallback`() {
+        // READY is normally handled by evaluateInitializeStartState (it
+        // returns ALREADY_READY before this helper is reached). The
+        // fallback guards against future callers and must not silently
+        // skip a real re-init.
+        assertEquals(
+            VoicevoxEngineImpl.NativeInitializePlan.FULL_INIT,
+            VoicevoxEngineImpl.evaluateNativeInitializePlan(
+                previousState = TtsEngineState.READY,
+                hasLoadedModels = true
+            )
+        )
+    }
 }
