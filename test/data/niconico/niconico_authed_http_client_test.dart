@@ -639,6 +639,12 @@ class _FakeHttpClientRequest implements HttpClientRequest {
   HttpHeaders get headers => _headers;
 
   @override
+  String get method => 'PUT';
+
+  @override
+  Uri get uri => Uri.parse('https://test.example.com/');
+
+  @override
   dynamic noSuchMethod(Invocation invocation) {
     return super.noSuchMethod(invocation);
   }

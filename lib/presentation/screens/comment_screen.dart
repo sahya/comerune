@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:clock/clock.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show AsyncCallback, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -69,17 +69,7 @@ bool _hasStarPrefix(String content) => content.startsWith(_kStarPrefix);
 bool _hasSlashPrefix(String content) => content.startsWith(_kSlashPrefix);
 
 /// Feature flag: コメント投稿 UI（FAB + 入力バー）の有効化。
-///
-/// Issue #580 / #581 暫定対応。`user_session` cookie 認証ではツール API
-/// （`/unama/tool/v2/programs/{lv}/comments`）が `AUTHORIZATION_FAILED` を
-/// 返し、UI 上は送信できているように見えてバックエンドで全件失敗する。
-/// OAuth 認証（Issue #581）が実装され投稿が成立するまでは UI を一時的に
-/// 非表示にし、無効体験とログ汚染を防ぐ。バックエンドの
-/// [CommentPostController] / [LiveCommentRepository] / 関連テストは維持する。
-///
-/// 再有効化手順: 本フラグを `true` に戻し、必要に応じて UI 文言・
-/// テストの skip 解除を行うだけで従来挙動に復帰する。
-const bool kCommentPostFeatureEnabled = false;
+const bool kCommentPostFeatureEnabled = true;
 
 /// Two-line mode: minimum meta font size in logical pixels.
 ///
@@ -3039,22 +3029,12 @@ class _CommentScreenState extends State<CommentScreen>
       return;
     }
 
-    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-    // Hide only the currently-shown snackbar (not the queue) so that an
-    // adjacent NG-protection snackbar from the merged main-side feature
-    // is not silently dropped when a comment post completes.
-    messenger.hideCurrentSnackBar();
-
     if (result.isSuccess) {
-      messenger.showSnackBar(
-        SnackBar(
-          key: const Key('comment-post-success-snackbar'),
-          content: Text(asOperator ? '運営コメントを送信しました' : 'コメントを送信しました'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
       return;
     }
+
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
 
     final String message = commentPostErrorMessage(result);
     messenger.showSnackBar(
@@ -3712,10 +3692,11 @@ class _CommentScreenState extends State<CommentScreen>
                       if (!_autoScrollEnabled)
                         Positioned(
                           right: 12,
-                          // Raise the scroll-to-latest FAB above the
-                          // comment-post FAB when the latter is visible, so
-                          // the two do not overlap.
-                          bottom: _shouldShowCommentPostFab ? 72 : 12,
+                          bottom:
+                              _shouldShowCommentPostFab ||
+                                  _shouldShowReconnectFab(status)
+                              ? 72
+                              : 12,
                           child: FloatingActionButton.small(
                             key: const Key('scroll-to-latest-button'),
                             onPressed: _scrollToLatest,
@@ -3733,10 +3714,18 @@ class _CommentScreenState extends State<CommentScreen>
                           bottom: 12,
                           child: CommentPostFab(onPressed: _expandCommentInput),
                         ),
+                      if (_shouldShowReconnectFab(status))
+                        Positioned(
+                          right: 12,
+                          bottom: 12,
+                          child: _ReconnectFab(
+                            key: const Key('reconnect-button'),
+                            onPressed: widget.callbacks.onReconnectSameLv,
+                          ),
+                        ),
                     ],
                   ),
                 ),
-                _buildBottomAction(status),
                 if (_pendingStats != null)
                   CommentLogStatsPanel(
                     key: const Key('stats-panel'),
@@ -4205,40 +4194,9 @@ class _CommentScreenState extends State<CommentScreen>
     }
   }
 
-  Widget _buildBottomAction(ConnectionStatus status) {
-    if (status == ConnectionStatus.ended || status == ConnectionStatus.failed) {
-      return SafeArea(
-        top: false,
-        minimum: const EdgeInsets.all(12),
-        child: SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            key: const Key('reconnect-button'),
-            onPressed: () async {
-              await widget.callbacks.onReconnectSameLv();
-            },
-            child: const Text('再接続'),
-          ),
-        ),
-      );
-    }
-
-    return SafeArea(
-      top: false,
-      minimum: const EdgeInsets.all(12),
-      child: SizedBox(
-        width: double.infinity,
-        child: ElevatedButton(
-          key: const Key('stop-button'),
-          onPressed: _isStopEnabled(status)
-              ? () async {
-                  await _stopAndPop();
-                }
-              : null,
-          child: const Text('接続停止'),
-        ),
-      ),
-    );
+  bool _shouldShowReconnectFab(ConnectionStatus status) {
+    return status == ConnectionStatus.ended ||
+        status == ConnectionStatus.failed;
   }
 
   bool _isStopEnabled(ConnectionStatus status) {
@@ -4255,14 +4213,6 @@ class _CommentScreenState extends State<CommentScreen>
       case ConnectionStatus.failed:
         return false;
     }
-  }
-
-  Future<void> _stopAndPop() async {
-    await _stopForExit();
-    if (!mounted) {
-      return;
-    }
-    Navigator.of(context).pop();
   }
 
   Future<void> _stopForExit() async {
@@ -8063,6 +8013,55 @@ class _SpeechStatusIcon extends StatelessWidget {
           child: Opacity(
             opacity: 0.5,
             child: Icon(icon, size: 24, color: color),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReconnectFab extends StatelessWidget {
+  const _ReconnectFab({super.key, required this.onPressed});
+
+  final AsyncCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    const double visualSize = 40;
+    const double tapTargetSize = 48;
+    return Semantics(
+      button: true,
+      container: true,
+      label: '再接続',
+      child: Tooltip(
+        message: '再接続',
+        child: SizedBox(
+          width: tapTargetSize,
+          height: tapTargetSize,
+          child: Center(
+            child: SizedBox(
+              width: visualSize,
+              height: visualSize,
+              child: Material(
+                color: theme.colorScheme.errorContainer.withValues(alpha: 0.55),
+                surfaceTintColor: Colors.transparent,
+                shape: const CircleBorder(),
+                elevation: 6,
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () => onPressed(),
+                  customBorder: const CircleBorder(),
+                  child: Center(
+                    child: Icon(
+                      Icons.refresh,
+                      size: 22,
+                      color: theme.colorScheme.onErrorContainer,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       ),

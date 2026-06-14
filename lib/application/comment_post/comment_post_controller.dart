@@ -1,7 +1,16 @@
+import '../../app_logging.dart';
 import '../../data/comment/live_comment_repository.dart';
 import '../../data/follow/follow_program.dart';
 import '../../data/follow/my_program_repository.dart';
 import '../../domain/utils/unicode_sanitizer.dart';
+
+/// Sends a normal comment via session WebSocket.
+typedef WsCommentSender =
+    Future<CommentPostResult> Function({
+      required String text,
+      required int vpos,
+      required bool isAnonymous,
+    });
 
 /// Maximum length of a normal (viewer) comment.
 const int kNormalCommentMaxLength = 75;
@@ -78,11 +87,14 @@ class CommentPostController {
   CommentPostController({
     required LiveCommentRepository liveCommentRepository,
     required MyProgramRepository myProgramRepository,
+    WsCommentSender? wsCommentSender,
   }) : _liveCommentRepository = liveCommentRepository,
-       _myProgramRepository = myProgramRepository;
+       _myProgramRepository = myProgramRepository,
+       _wsCommentSender = wsCommentSender;
 
   final LiveCommentRepository _liveCommentRepository;
   final MyProgramRepository _myProgramRepository;
+  final WsCommentSender? _wsCommentSender;
 
   BroadcasterCheckOutcome? _cachedBroadcasterOutcome;
   String? _cachedBroadcasterLv;
@@ -139,14 +151,18 @@ class CommentPostController {
     int? maxLength,
   }) {
     final String trimmed = text.trim();
+    final int limit = maxLengthFor(
+      asOperator: asOperator,
+      maxLength: maxLength,
+    );
     if (trimmed.isEmpty) {
       return CommentValidationError.empty;
     }
-    if (removeControlAndInvisibleChars(trimmed).isEmpty) {
+    final String sanitized = removeControlAndInvisibleChars(trimmed);
+    if (sanitized.isEmpty) {
       return CommentValidationError.invisibleOnly;
     }
-    if (text.length >
-        maxLengthFor(asOperator: asOperator, maxLength: maxLength)) {
+    if (text.length > limit) {
       return CommentValidationError.tooLong;
     }
     return null;
@@ -177,10 +193,7 @@ class CommentPostController {
     }
     final DateTime clock = now ?? DateTime.now();
     final int ms = clock.difference(reference).inMilliseconds;
-    if (ms <= 0) {
-      return 0;
-    }
-    return ms ~/ 10;
+    return ms <= 0 ? 0 : ms ~/ 10;
   }
 
   /// Determines whether the current user is the broadcaster of [lv].
@@ -198,12 +211,9 @@ class CommentPostController {
       return BroadcasterCheckOutcome.unknown;
     }
     if (userSession.trim().isEmpty) {
-      // Not logged in — treat as viewer. Do not query the server.
       return BroadcasterCheckOutcome.viewer;
     }
 
-    // Cache key is (lv, session) — when the logged-in identity changes the
-    // broadcaster status must be re-evaluated against the new user.
     final BroadcasterCheckOutcome? cached = _cachedBroadcasterOutcome;
     if (cached != null &&
         _cachedBroadcasterLv == lv &&
@@ -222,8 +232,8 @@ class CommentPostController {
       _cachedBroadcasterLv = lv;
       _cachedBroadcasterSession = userSession;
       return outcome;
-    } on Exception {
-      // Fetch itself is defensive (returns null on failure), but guard anyway.
+    } on Exception catch (e) {
+      appDebugLog('[CommentPostController] ensureBroadcasterStatus failed: $e');
       return BroadcasterCheckOutcome.unknown;
     }
   }
@@ -280,10 +290,6 @@ class CommentPostController {
       );
     }
 
-    // Route the caller-supplied [maxLength] through the validator so the
-    // UI counter ceiling and the client-side server-contract check stay
-    // identical — prevents a UX break where the UI accepts a longer draft
-    // that server-side validation would then reject locally as tooLong.
     final CommentValidationError? validation = validateText(
       text: text,
       asOperator: asOperator,
@@ -294,8 +300,6 @@ class CommentPostController {
     }
 
     if (_isSending) {
-      // Already sending — surface a dedicated validation error so the caller
-      // can silently ignore it instead of displaying a misleading message.
       return const CommentSendResult.validation(
         CommentValidationError.inFlight,
       );
@@ -303,12 +307,14 @@ class CommentPostController {
 
     _isSending = true;
     try {
+      final String sanitizedText = removeControlAndInvisibleChars(text.trim());
+
       final CommentPostResult result;
       if (asOperator) {
         result = await _liveCommentRepository.postOperatorComment(
           programId: lv,
           userSession: userSession,
-          text: text,
+          text: sanitizedText,
         );
       } else {
         final int vpos = computeVpos(
@@ -316,13 +322,22 @@ class CommentPostController {
           vposBaseAt: vposBaseAt,
           now: now,
         );
-        result = await _liveCommentRepository.postNormalComment(
-          programId: lv,
-          userSession: userSession,
-          text: text,
-          vpos: vpos,
-          isAnonymous: isAnonymous,
-        );
+        final WsCommentSender? wsSender = _wsCommentSender;
+        if (wsSender != null) {
+          result = await wsSender(
+            text: sanitizedText,
+            vpos: vpos,
+            isAnonymous: isAnonymous,
+          );
+        } else {
+          result = await _liveCommentRepository.postNormalComment(
+            programId: lv,
+            userSession: userSession,
+            text: sanitizedText,
+            vpos: vpos,
+            isAnonymous: isAnonymous,
+          );
+        }
       }
       return CommentSendResult.posted(result);
     } finally {

@@ -157,6 +157,40 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         }
 
         /**
+         * Decide whether [initialize] may run given the current [state].
+         *
+         * Issue #970: VOICEVOX synthesis runs on a coroutine that calls into the JNI
+         * synthesizer, which has no cancellation point — the native call holds a shared
+         * lock until it returns. If the user disposes the comment screen while a
+         * synthesis is in flight, the worker is torn down but the engine state stays at
+         * [TtsEngineState.SYNTHESIZING]. When the screen is re-opened the plugin calls
+         * `initialize()` again, and the previous strict guard rejected with
+         * "Cannot initialize from state: SYNTHESIZING" — visible to the user as a
+         * PlatformException dialog.
+         *
+         * The soft-cancel approach: treat [TtsEngineState.SYNTHESIZING] and
+         * [TtsEngineState.INITIALIZING] as recoverable. The native `nativeInitialize`
+         * acquires an exclusive lock and will serialize naturally behind any in-flight
+         * `nativeSynthesis`. The stale synthesize() coroutine's `finally` block already
+         * skips the READY restore when it observes state != SYNTHESIZING, so flipping
+         * state here is safe — the abandoned result is simply discarded.
+         */
+        internal fun evaluateInitializeStartState(
+            state: TtsEngineState
+        ): InitializeStartDecision = when (state) {
+            TtsEngineState.READY -> InitializeStartDecision.ALREADY_READY
+            TtsEngineState.UNINITIALIZED,
+            TtsEngineState.ERROR,
+            // SYNTHESIZING: in-flight synth was abandoned by dispose race (#970).
+            // INITIALIZING: a previous initialize coroutine was cancelled before
+            // it could publish READY or ERROR. Both are recoverable via soft cancel.
+            TtsEngineState.SYNTHESIZING,
+            TtsEngineState.INITIALIZING -> InitializeStartDecision.PROCEED
+            TtsEngineState.DOWNLOADING,
+            TtsEngineState.EXTRACTING -> InitializeStartDecision.REJECT
+        }
+
+        /**
          * Increment this when remote assets change to force re-download.
          * The effective version used for comparison also includes the app's
          * versionCode so that APK upgrades automatically invalidate cached
@@ -225,6 +259,23 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
     private class MissingAssetsException(message: String) : IllegalStateException(message)
 
     /**
+     * Outcome of evaluating [TtsEngineState] at the entry of [initialize].
+     *
+     * - [ALREADY_READY] — engine is already initialized; [initialize] returns success
+     *   without doing any work.
+     * - [PROCEED] — start initialization (fresh, error recovery, or soft cancel of an
+     *   abandoned in-flight synthesis).
+     * - [REJECT] — refuse with `IllegalStateException`; the engine is in a transitional
+     *   state that should not be re-entered.
+     *
+     * Declared at class scope (not inside the [companion object]) so it can be
+     * referenced from tests as `VoicevoxEngineImpl.InitializeStartDecision`. Kotlin's
+     * companion-member shortcut applies to functions and properties, not to nested
+     * classifiers.
+     */
+    internal enum class InitializeStartDecision { ALREADY_READY, PROCEED, REJECT }
+
+    /**
      * Optional callback invoked during asset download to report progress.
      * The map follows the same structure as [com.example.comerune.speech.domain.event.SpeechEvents].
      */
@@ -232,21 +283,54 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
 
     override suspend fun initialize(): Result<Unit> =
         mutex.withLock {
-            if (state == TtsEngineState.READY) {
-                return@withLock Result.success(Unit)
-            }
-
-            // Allow re-initialization from ERROR state (e.g., after a native crash
-            // during a previous initialize attempt)
-            if (state != TtsEngineState.UNINITIALIZED && state != TtsEngineState.ERROR) {
-                return@withLock Result.failure(
-                    IllegalStateException(
-                        "Cannot initialize from state: $state"
+            when (evaluateInitializeStartState(state)) {
+                InitializeStartDecision.ALREADY_READY ->
+                    return@withLock Result.success(Unit)
+                InitializeStartDecision.REJECT ->
+                    return@withLock Result.failure(
+                        IllegalStateException(
+                            "Cannot initialize from state: $state"
+                        )
                     )
-                )
+                InitializeStartDecision.PROCEED -> {
+                    // Issue #970: when recovering from SYNTHESIZING (dispose race) or
+                    // INITIALIZING (cancelled prior init), log so post-mortem can
+                    // distinguish soft cancel from a clean start.
+                    val recovering = state == TtsEngineState.SYNTHESIZING ||
+                        state == TtsEngineState.INITIALIZING
+                    if (recovering) {
+                        Log.i(
+                            TAG,
+                            "initialize: recovering from $state via soft cancel"
+                        )
+                    }
+                    // Atomic soft-cancel: flip state to INITIALIZING and reset the
+                    // synthesis counter under [stateLock]. If we reset the counter
+                    // outside the lock, an in-flight synthesize()'s finally block
+                    // could decrement after the reset (count → -1) and a subsequent
+                    // synthesize() would never observe count == 0, leaving the
+                    // engine stuck in SYNTHESIZING (Issue #970 regression).
+                    //
+                    // Doing the flip under [stateLock] also pairs cleanly with
+                    // synthesize()'s entry block (which guards state + count under
+                    // the same lock) and its finally block (which checks
+                    // state == SYNTHESIZING before restoring READY). A stale
+                    // finally that runs after this point will observe
+                    // state == INITIALIZING and skip the restore entirely.
+                    val previousState = synchronized(stateLock) {
+                        val prior = state
+                        state = TtsEngineState.INITIALIZING
+                        activeSynthesisCount.set(0)
+                        prior
+                    }
+                    if (previousState != TtsEngineState.INITIALIZING) {
+                        Log.i(
+                            TAG,
+                            "Engine state changed: $previousState -> ${TtsEngineState.INITIALIZING} (initialize_started)"
+                        )
+                    }
+                }
             }
-
-            updateEngineState(TtsEngineState.INITIALIZING, "initialize_started")
             loadedModelPaths.clear()
             loadedModelIds.clear()
 
