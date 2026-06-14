@@ -174,11 +174,19 @@ class SpeechControllerImpl(
         if (released) {
             return Result.failure(IllegalStateException("Controller has been released"))
         }
+        // Issue #969: symmetry with stop() — interrupt the Android TTS engine
+        // FIRST so the worker resumes from an in-flight speaker.speak()
+        // immediately rather than waiting on the safety timeout. Without this
+        // ordering, a skip issued while speak() is suspended would block on
+        // player.stop() / prefetch cancellation before reaching speaker.stop()
+        // and the queue could appear frozen on the next item. Calling stop()
+        // is a benign no-op when no utterance is in flight, so it is safe to
+        // invoke unconditionally before the other teardown steps.
+        ttsSpeaker?.stop()
         activePrefetchJob?.cancel()
         activePrefetchJob = null
         prefetched = null
         player.stop()
-        ttsSpeaker?.stop()
         return Result.success(Unit)
     }
 
