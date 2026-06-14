@@ -98,6 +98,10 @@ void main() {
       expect(settings.androidTtsSpeed, 1.0);
       expect(settings.androidTtsPitch, 1.0);
       expect(settings.androidTtsVolume, 1.0);
+      // Issue #965: configurable safety-net timeout default mirrors
+      // AndroidTtsSpeaker.DEFAULT_SPEAK_TIMEOUT_MS (15s) so PR #963 behaviour
+      // is preserved when callers do not override it.
+      expect(settings.speakTimeoutMs, 15000);
     });
 
     test('SynthesisMode round-trip via storageValue', () {
@@ -130,13 +134,30 @@ void main() {
     test('toMap includes all fields with defaults', () {
       const settings = SpeechSettings();
       final map = settings.toMap();
-      expect(map.length, 23);
+      // Issue #965: bumped from 23 → 24 after speakTimeoutMs was added.
+      expect(map.length, 24);
       expect(map['enabled'], true);
       expect(map['synthesisMode'], 'AUDIO_QUERY');
       expect(map['speedScale'], 1.15);
       expect(map['dictionaryRules'], isEmpty);
       expect(map['ngWords'], isEmpty);
       expect(map['playerType'], 'audio_track');
+      expect(map['speakTimeoutMs'], 15000);
+    });
+
+    test('toMap propagates a customized speakTimeoutMs '
+        '(Issue #965 configurable timeout)', () {
+      const settings = SpeechSettings(speakTimeoutMs: 30000);
+      final map = settings.toMap();
+      expect(map['speakTimeoutMs'], 30000);
+    });
+
+    test('equality distinguishes speakTimeoutMs '
+        '(Issue #965 configurable timeout)', () {
+      const base = SpeechSettings();
+      const customized = SpeechSettings(speakTimeoutMs: 30000);
+      expect(base, isNot(equals(customized)));
+      expect(base.hashCode, isNot(equals(customized.hashCode)));
     });
 
     test('toMap serializes dictionary rules', () {

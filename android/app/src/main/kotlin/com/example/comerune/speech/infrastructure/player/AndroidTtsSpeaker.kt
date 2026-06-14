@@ -6,6 +6,7 @@ import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import com.example.comerune.speech.domain.model.PlayerState
 import com.example.comerune.speech.domain.player.AudioFocusGuard
+import com.example.comerune.speech.domain.player.TtsSpeakException
 import com.example.comerune.speech.domain.player.TtsSpeaker
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CoroutineDispatcher
@@ -46,7 +47,26 @@ internal class AndroidTtsSpeaker(
 
     companion object {
         private const val TAG = "AndroidTtsSpeaker"
-        private const val SPEAK_TIMEOUT_MS = 60_000L
+        // Issue #962: previously 60s. The worker now relies on stop() resuming
+        // the speak continuation for prompt interruption; the timeout stays as
+        // a safety net for cases where neither stop() nor the
+        // UtteranceProgressListener delivers a terminal event (e.g. native TTS
+        // engine wedges).
+        //
+        // Issue #965: this default is overridable via [setSpeakTimeoutMs] so
+        // slow devices / long utterances can extend the safety net without
+        // changing code. The default is preserved to keep PR #963's 15s
+        // behaviour for unchanged callers.
+        // Visibility intentionally [internal]: CommentSpeechPlugin reads these
+        // when parsing the Flutter-side speak-timeout value so the default /
+        // floor live in exactly one place. Do not lower visibility further.
+        internal const val DEFAULT_SPEAK_TIMEOUT_MS = 15_000L
+
+        // Sanity floor for setSpeakTimeoutMs: a 0ms / negative value would
+        // immediately trip withTimeoutOrNull and wedge the queue worker into
+        // a tight failure loop. 1s is well below any realistic utterance
+        // and still leaves the safety net active.
+        internal const val MIN_SPEAK_TIMEOUT_MS = 1_000L
     }
 
     private var tts: TextToSpeechAdapter? = null
@@ -77,11 +97,21 @@ internal class AndroidTtsSpeaker(
                     val cont = currentContinuation
                     currentContinuation = null
                     if (cont != null && cont.isActive) {
-                        cont.resume(
-                            Result.failure(
-                                RuntimeException("Audio focus lost during speak"),
-                            ),
-                        )
+                        // Issue #964: same TOCTOU defence as stop() — a
+                        // listener callback can resume between the isActive
+                        // check and resume() below.
+                        try {
+                            cont.resume(
+                                Result.failure(TtsSpeakException.FocusLost()),
+                            )
+                        } catch (e: IllegalStateException) {
+                            // Observe (not ignore) the benign double-resume so
+                            // a regression surfaces in logs.
+                            Log.w(
+                                TAG,
+                                "focusListener: continuation already resumed concurrently: ${e.message}",
+                            )
+                        }
                     }
                 }
                 AudioFocusGuard.FocusEvent.GAIN -> {
@@ -112,6 +142,11 @@ internal class AndroidTtsSpeaker(
 
     @Volatile
     private var volume = 1.0f
+
+    // Issue #965: configurable safety-net timeout. Updated by
+    // [setSpeakTimeoutMs] and read by the active [speak] call.
+    @Volatile
+    private var speakTimeoutMs: Long = DEFAULT_SPEAK_TIMEOUT_MS
 
     @Volatile
     private var currentContinuation: CancellableContinuation<Result<Unit>>? = null
@@ -265,7 +300,9 @@ internal class AndroidTtsSpeaker(
                                     if (c.isActive) {
                                         c.resume(
                                             Result.failure(
-                                                RuntimeException("TTS error for $id")
+                                                TtsSpeakException.EngineError(
+                                                    "TTS error for $id"
+                                                )
                                             )
                                         )
                                     }
@@ -282,10 +319,46 @@ internal class AndroidTtsSpeaker(
                                     if (c.isActive) {
                                         c.resume(
                                             Result.failure(
-                                                RuntimeException(
+                                                TtsSpeakException.EngineError(
                                                     "TTS error code=$errorCode for $id"
                                                 )
                                             )
+                                        )
+                                    }
+                                }
+                                currentContinuation = null
+                                currentUtteranceId = null
+                            }
+
+                            // Issue #962: TextToSpeech.stop() can deliver
+                            // onStop on API 23+. Resume the in-flight speak()
+                            // with a failure so the queue worker advances
+                            // immediately. AndroidTtsSpeaker.stop() also
+                            // resumes synchronously for the same reason, so
+                            // this callback is belt-and-suspenders: whichever
+                            // path delivers first wins via isActive checks.
+                            override fun onStop(id: String?, interrupted: Boolean) {
+                                if (id != currentUtteranceId) return
+                                speaking = false
+                                state = PlayerState.STOPPED
+                                currentContinuation?.let { c ->
+                                    if (c.isActive) {
+                                        // Issue #966: a platform-delivered
+                                        // onStop reflects a caller-driven
+                                        // stop (TextToSpeech.stop() was
+                                        // invoked by us in [stop] /
+                                        // invokeOnCancellation, or by an
+                                        // external component on API 23+).
+                                        // Surfacing it as the same
+                                        // [TtsSpeakException.UserStopped]
+                                        // as the synchronous stop() path
+                                        // lets the controller skip the
+                                        // `speech_failed` emit so the UI
+                                        // does not flip to ERROR.
+                                        c.resume(
+                                            Result.failure(
+                                                TtsSpeakException.UserStopped(),
+                                            ),
                                         )
                                     }
                                 }
@@ -385,7 +458,10 @@ internal class AndroidTtsSpeaker(
             }
         }
 
-        val result = withTimeoutOrNull(SPEAK_TIMEOUT_MS) {
+        // Snapshot the configurable timeout so a concurrent
+        // setSpeakTimeoutMs() does not change the value mid-suspend.
+        val timeoutMs = speakTimeoutMs
+        val result = withTimeoutOrNull(timeoutMs) {
             suspendCancellableCoroutine { cont ->
                 // Pair the utteranceId with the continuation so the
                 // UtteranceProgressListener can ignore stale callbacks from
@@ -407,7 +483,7 @@ internal class AndroidTtsSpeaker(
                     if (cont.isActive) {
                         cont.resume(
                             Result.failure(
-                                RuntimeException(
+                                TtsSpeakException.EngineError(
                                     "TTS speak() returned error: $speakResult"
                                 )
                             )
@@ -418,7 +494,16 @@ internal class AndroidTtsSpeaker(
                 cont.invokeOnCancellation {
                     currentContinuation = null
                     currentUtteranceId = null
-                    engine.stop()
+                    // Issue #965: mirror the defensive try/catch around
+                    // engine.stop() used by stop() / release() / focusListener /
+                    // the timeout cleanup below. A native exception on the
+                    // cancel path would otherwise leak out of the cancellation
+                    // handler and leave [speaking] / [state] inconsistent.
+                    try {
+                        engine.stop()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "engine.stop() during cancel cleanup failed: ${e.message}")
+                    }
                     speaking = false
                     state = PlayerState.STOPPED
                 }
@@ -432,22 +517,62 @@ internal class AndroidTtsSpeaker(
         if (result == null) {
             currentContinuation = null
             currentUtteranceId = null
-            engine.stop()
+            // Issue #965: wrap engine.stop() so a native exception during
+            // timeout cleanup cannot leak past the cleanup block and leave
+            // [speaking] / [state] inconsistent. Mirrors the defensive
+            // try/catch already in stop() / release() / focusListener.
+            try {
+                engine.stop()
+            } catch (e: Exception) {
+                Log.w(TAG, "engine.stop() during timeout cleanup failed: ${e.message}")
+            }
             speaking = false
             state = PlayerState.ERROR
-            Log.w(TAG, "speak() timed out after ${SPEAK_TIMEOUT_MS}ms for $utteranceId")
-            return Result.failure(RuntimeException("TTS speak timed out"))
+            Log.w(TAG, "speak() timed out after ${timeoutMs}ms for $utteranceId")
+            return Result.failure(TtsSpeakException.Timeout(timeoutMs))
         }
 
         return result
     }
 
     override suspend fun stop(): Result<Unit> {
+        // Issue #962: capture and resume any in-flight continuation BEFORE
+        // clearing the pair so the queue worker leaves speak() immediately.
+        // Previously this path set currentContinuation = null first and then
+        // called engine.stop(); the listener's id-equality check then
+        // discarded the onStop/onDone callback and the worker sat in
+        // suspendCancellableCoroutine until the 60s safety timeout fired.
+        val pending = currentContinuation
         currentContinuation = null
         currentUtteranceId = null
-        engine?.stop()
+        try {
+            engine?.stop()
+        } catch (e: Exception) {
+            Log.w(TAG, "engine.stop() failed: ${e.message}")
+        }
         speaking = false
         state = PlayerState.STOPPED
+        if (pending != null && pending.isActive) {
+            // Defensive: a listener callback (onDone/onError/onStop) on the
+            // native TTS worker thread can race with us between this
+            // isActive check and the resume call below. If the listener
+            // wins, kotlinx.coroutines throws IllegalStateException on our
+            // second resume attempt; swallow it so stop() stays
+            // unconditional and idempotent. The earlier resume's result
+            // (success on onDone, failure on onError/onStop) is preserved —
+            // only our redundant failure here is dropped.
+            //
+            // Regression test:
+            //   AndroidTtsSpeakerTest.`concurrent stop and onDone do not
+            //   double-resume the speak continuation`.
+            try {
+                pending.resume(
+                    Result.failure(TtsSpeakException.UserStopped()),
+                )
+            } catch (e: IllegalStateException) {
+                Log.d(TAG, "stop(): continuation already resumed concurrently: ${e.message}")
+            }
+        }
         return Result.success(Unit)
     }
 
@@ -469,6 +594,12 @@ internal class AndroidTtsSpeaker(
 
     override fun setVolume(volume: Float) {
         this.volume = volume.coerceIn(0.0f, 1.0f)
+    }
+
+    override fun setSpeakTimeoutMs(timeoutMs: Long) {
+        // Clamp to a safe floor — a 0ms / negative value would immediately
+        // trip withTimeoutOrNull and wedge the worker into a failure loop.
+        this.speakTimeoutMs = timeoutMs.coerceAtLeast(MIN_SPEAK_TIMEOUT_MS)
     }
 
     override fun release() {

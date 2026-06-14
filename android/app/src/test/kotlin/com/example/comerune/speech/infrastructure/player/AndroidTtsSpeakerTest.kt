@@ -4,6 +4,7 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.os.Build
 import com.example.comerune.speech.domain.player.AudioFocusGuard
+import com.example.comerune.speech.domain.player.TtsSpeakException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -11,6 +12,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -504,6 +506,228 @@ class AndroidTtsSpeakerTest {
         )
     }
 
+    // ----------------------------------------------------------------------
+    // Issue #962: stop() must interrupt an in-flight speak() within ~1s so
+    // the queue worker is never frozen waiting on the SPEAK_TIMEOUT_MS
+    // safety net. Previously stop() cleared currentContinuation before
+    // calling engine.stop(), so the UtteranceProgressListener.onStop/onDone
+    // callback's id-equality check discarded the resume and the worker
+    // suspended for up to the full timeout.
+    // ----------------------------------------------------------------------
+
+    @Test
+    fun `stop interrupts in-flight speak synchronously`() = runBlocking {
+        val (speaker, factory, _) = readySpeaker()
+        val engine = factory.createdEngines.first()
+
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hello", "u-stop") }
+        awaitSpeakRecorded(factory, "u-stop")
+
+        // Call stop while the speak continuation is suspended.
+        speaker.stop()
+
+        // speak must resume promptly with a failure result. Use a generous
+        // 1s ceiling: production must resume within milliseconds, but slow
+        // CI runners need headroom over the assertion that proved the bug
+        // (60s freeze) is gone.
+        val result = withTimeout(1000) { speakJob.await() }
+        assertTrue("stop must surface as a failed speak", result.isFailure)
+        assertTrue(
+            "stop must invoke engine.stop on the native TTS",
+            engine.stopCount >= 1,
+        )
+    }
+
+    @Test
+    fun `stop after natural completion does not double-resume`() = runBlocking {
+        val (speaker, factory, listener) = readySpeaker()
+
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hello", "u-done") }
+        awaitSpeakRecorded(factory, "u-done")
+
+        // Natural completion path.
+        listener.onDone("u-done")
+        val result = speakJob.await()
+        assertTrue("matching onDone must resume speak with success", result.isSuccess)
+
+        // A subsequent stop() must be a benign no-op — no exception, no
+        // attempt to resume an already-resumed continuation. Assert success
+        // both to verify the no-op contract AND so the test method's body
+        // (which is `= runBlocking { ... }`) returns Unit; otherwise JUnit
+        // rejects the whole class with InvalidTestClassError because the
+        // last expression of `runBlocking` is the `Result<Unit>` returned
+        // by stop().
+        assertTrue(
+            "subsequent stop() after natural completion must be a benign no-op",
+            speaker.stop().isSuccess,
+        )
+    }
+
+    @Test
+    fun `onStop callback resumes the in-flight speak with failure`() = runBlocking {
+        val (speaker, factory, listener) = readySpeaker()
+
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hello", "u-onstop") }
+        awaitSpeakRecorded(factory, "u-onstop")
+
+        // Simulate the platform delivering onStop (e.g. external TTS.stop()
+        // by some other component on API 23+). `interrupted` is positional —
+        // Kotlin prohibits named arguments for Java framework methods.
+        listener.onStop("u-onstop", true)
+
+        val result = speakJob.await()
+        assertTrue("onStop must resume speak with failure", result.isFailure)
+    }
+
+    @Test
+    fun `stale onStop for previous utteranceId does not resume current speak`() = runBlocking {
+        val (speaker, factory, listener) = readySpeaker()
+
+        val aJob = async(Dispatchers.Default) { speaker.speak("hello A", "A") }
+        awaitSpeakRecorded(factory, "A")
+
+        val bJob = async(Dispatchers.Default) { speaker.speak("hello B", "B") }
+        awaitSpeakRecorded(factory, "B")
+
+        // Stale onStop(id="A") must not resume B. (Positional — Kotlin
+        // prohibits named arguments for Java framework methods.)
+        listener.onStop("A", true)
+        assertTrue("speak(B) must remain in flight after stale onStop(A)", bJob.isActive)
+
+        listener.onDone("B")
+        val bResult = bJob.await()
+        assertTrue("speak(B) must succeed when its own onDone fires", bResult.isSuccess)
+
+        aJob.cancel()
+    }
+
+    @Test
+    fun `stop swallows native engine stop exception and still resumes speak`() = runBlocking {
+        val (speaker, factory, _) = readySpeaker()
+        val engine = factory.createdEngines.first()
+        engine.throwOnStop = true
+
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hello", "u-stop-throw") }
+        awaitSpeakRecorded(factory, "u-stop-throw")
+
+        // stop() must return success even when engine.stop() throws, AND it
+        // must still resume the suspended speak() so the queue worker is not
+        // wedged on the safety timeout.
+        val stopResult = speaker.stop()
+        assertTrue(
+            "stop() must surface success even when engine.stop() throws",
+            stopResult.isSuccess,
+        )
+
+        val result = withTimeout(1000) { speakJob.await() }
+        assertTrue(
+            "speak() must resume with failure even when engine.stop() threw",
+            result.isFailure,
+        )
+        assertTrue(
+            "engine.stop() must have been attempted before the swallow",
+            engine.stopCount >= 1,
+        )
+    }
+
+    @Test
+    fun `stop after release is a benign no-op`() = runBlocking {
+        val (speaker, _, _) = readySpeaker()
+        speaker.release()
+
+        // No in-flight speak, engine reference cleared by release(); stop()
+        // must still return success without throwing.
+        assertTrue(
+            "stop() after release must remain a benign no-op",
+            speaker.stop().isSuccess,
+        )
+        // release()'s post-condition: speaker reports not-ready until a
+        // fresh initialize() succeeds. Re-asserting here records that
+        // stop() does not accidentally flip readiness back on.
+        assertFalse(
+            "speaker must stay not-ready after release()+stop()",
+            speaker.isReady(),
+        )
+    }
+
+    @Test
+    fun `concurrent stop and onDone do not double-resume the speak continuation`() = runBlocking {
+        // Reproduce the TOCTOU window between AndroidTtsSpeaker.stop()'s
+        // isActive check and pending.resume(): a listener callback on the
+        // native TTS worker thread can resume the continuation in between.
+        // The IllegalStateException catch in stop() must keep stop()
+        // idempotent and prevent the failure from escaping the speaker.
+        // 100 iterations: 20 in round 1 detected nothing; widening the
+        // window improves the chance of catching a regression while still
+        // running under ~1s on a typical CI worker.
+        repeat(100) { iteration ->
+            val (speaker, factory, listener) = readySpeaker()
+            val id = "u-race-$iteration"
+            val speakJob = async(Dispatchers.Default) { speaker.speak("hello", id) }
+            awaitSpeakRecorded(factory, id)
+
+            // Fire stop() and onDone() concurrently. Whichever resumes the
+            // continuation first wins; the loser must not crash stop().
+            val stopJob = async(Dispatchers.Default) { speaker.stop() }
+            val doneJob = async(Dispatchers.Default) { listener.onDone(id) }
+
+            val stopResult = withTimeout(2000) { stopJob.await() }
+            doneJob.await()
+            assertTrue(
+                "iteration $iteration: stop() must stay idempotent under race",
+                stopResult.isSuccess,
+            )
+
+            // speak() must have resumed exactly once (success or failure).
+            withTimeout(2000) { speakJob.await() }
+            speaker.release()
+        }
+    }
+
+    @Test
+    fun `concurrent focus loss and onDone do not double-resume the speak continuation`() =
+        runBlocking {
+            // Issue #964: reproduce the TOCTOU window between the
+            // focusListener's isActive check and pending.resume(). A listener
+            // callback on the native TTS worker thread can resume the
+            // continuation in between. The IllegalStateException catch on the
+            // focusListener path must keep the focus-loss handler idempotent
+            // and prevent the failure from escaping the speaker. Same shape as
+            // the stop()/onDone race test above so both TOCTOU defences are
+            // exercised under the same load (100 iterations).
+            repeat(100) { iteration ->
+                val factory = FakeTextToSpeechFactory()
+                val guard = FakeAudioFocusGuard()
+                val speaker = AndroidTtsSpeaker(factory, audioFocusGuard = guard)
+                val initJob = launch { speaker.initialize() }
+                factory.awaitPendingInit()
+                factory.completePendingInit(TextToSpeech.SUCCESS)
+                initJob.join()
+                val listener = factory.createdEngines.first().registeredProgressListeners.first()
+
+                val id = "u-focus-race-$iteration"
+                val speakJob = async(Dispatchers.Default) { speaker.speak("hello", id) }
+                awaitSpeakRecorded(factory, id)
+
+                // Fire focus loss and onDone() concurrently. Whichever resumes
+                // the continuation first wins; the loser must not crash the
+                // focusListener with an IllegalStateException escaping the
+                // speaker.
+                val lossJob = async(Dispatchers.Default) {
+                    guard.emit(AudioFocusGuard.FocusEvent.LOSS_TRANSIENT)
+                }
+                val doneJob = async(Dispatchers.Default) { listener.onDone(id) }
+
+                lossJob.await()
+                doneJob.await()
+
+                // speak() must have resumed exactly once (success or failure)
+                // and neither resume path must have thrown out of the speaker.
+                withTimeout(2000) { speakJob.await() }
+                speaker.release()
+            }
+        }
+
     @Test
     fun `release unsubscribes from the audio focus guard`() = runBlocking {
         val factory = FakeTextToSpeechFactory()
@@ -522,6 +746,203 @@ class AndroidTtsSpeakerTest {
             0,
             guard.listenerCount,
         )
+    }
+
+    // Issue #966 / #968: sealed [TtsSpeakException] hierarchy. Each speak()
+    // failure path must surface the matching sub-type so the controller can
+    // distinguish a user-initiated stop (skip emit) from a real engine
+    // failure (emit `android_tts_failed:` to drive the Flutter ERROR icon).
+    // ----------------------------------------------------------------------
+
+    @Test
+    fun `stop surfaces speak failure as UserStopped`() = runBlocking {
+        val (speaker, factory, _) = readySpeaker()
+        val engine = factory.createdEngines.first()
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hi", "u-stop-typed") }
+        awaitSpeakRecorded(factory, "u-stop-typed")
+
+        speaker.stop()
+
+        val result = withTimeout(1000) { speakJob.await() }
+        assertTrue("stop must surface as failure", result.isFailure)
+        val cause = result.exceptionOrNull()
+        assertTrue(
+            "stop must surface as TtsSpeakException.UserStopped — was ${cause?.javaClass?.simpleName}: ${cause?.message}",
+            cause is TtsSpeakException.UserStopped,
+        )
+        assertTrue(
+            "engine.stop must still be invoked on the native TTS",
+            engine.stopCount >= 1,
+        )
+    }
+
+    @Test
+    fun `onStop callback surfaces speak failure as UserStopped`() = runBlocking {
+        val (speaker, factory, listener) = readySpeaker()
+
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hi", "u-onstop-typed") }
+        awaitSpeakRecorded(factory, "u-onstop-typed")
+
+        // External onStop (Kotlin prohibits named args for Java overrides).
+        listener.onStop("u-onstop-typed", true)
+
+        val result = speakJob.await()
+        assertTrue(result.isFailure)
+        val cause = result.exceptionOrNull()
+        assertTrue(
+            "platform onStop must surface as TtsSpeakException.UserStopped — was ${cause?.javaClass?.simpleName}",
+            cause is TtsSpeakException.UserStopped,
+        )
+    }
+
+    @Test
+    fun `onError callback surfaces speak failure as EngineError with code detail`() = runBlocking {
+        val (speaker, factory, listener) = readySpeaker()
+
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hi", "u-err-typed") }
+        awaitSpeakRecorded(factory, "u-err-typed")
+
+        listener.onError("u-err-typed", -1)
+
+        val result = speakJob.await()
+        assertTrue(result.isFailure)
+        val cause = result.exceptionOrNull()
+        assertTrue(
+            "engine onError must surface as TtsSpeakException.EngineError — was ${cause?.javaClass?.simpleName}",
+            cause is TtsSpeakException.EngineError,
+        )
+        // Preserve the existing wire-format suffix so the Flutter
+        // `android_tts_failed: <detail>` detector keeps seeing the same
+        // text (Issue #695 contract).
+        assertTrue(
+            "EngineError detail must include the error code: ${cause?.message}",
+            cause?.message?.contains("-1") == true,
+        )
+    }
+
+    @Test
+    fun `focus loss surfaces speak failure as FocusLost`() = runBlocking {
+        val factory = FakeTextToSpeechFactory()
+        val guard = FakeAudioFocusGuard()
+        val speaker = AndroidTtsSpeaker(factory, audioFocusGuard = guard)
+
+        val initJob = launch { speaker.initialize() }
+        factory.awaitPendingInit()
+        factory.completePendingInit(TextToSpeech.SUCCESS)
+        initJob.join()
+
+        val engine = factory.createdEngines.last()
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hi", "u-focus-typed") }
+        waitUntil("speak must reach engine.speak") {
+            engine.speakInvocations.isNotEmpty()
+        }
+
+        guard.emit(AudioFocusGuard.FocusEvent.LOSS)
+
+        val result = speakJob.await()
+        assertTrue(result.isFailure)
+        val cause = result.exceptionOrNull()
+        assertTrue(
+            "focus loss must surface as TtsSpeakException.FocusLost — was ${cause?.javaClass?.simpleName}",
+            cause is TtsSpeakException.FocusLost,
+        )
+    }
+
+    // ----------------------------------------------------------------------
+    // Issue #965: SPEAK_TIMEOUT_MS configurable via setSpeakTimeoutMs +
+    // timeout-cleanup path's engine.stop() must swallow native exceptions
+    // (parity with stop() / release() / focusListener).
+    // ----------------------------------------------------------------------
+
+    @Test
+    fun `setSpeakTimeoutMs shortens the safety-net so timeout fires sooner`() = runBlocking {
+        val (speaker, factory, _) = readySpeaker()
+        val engine = factory.createdEngines.first()
+        // Shorten the safety net well below the 15s default so this test
+        // does not block CI for 15s when the fake engine never delivers
+        // onDone. The setter clamps to a 1s floor (MIN_SPEAK_TIMEOUT_MS),
+        // so any request <1s collapses to 1s — request exactly the floor
+        // here and give the outer await generous headroom so the test
+        // measures the configurable safety-net firing, not a race between
+        // the production timeout and the test's own withTimeout.
+        speaker.setSpeakTimeoutMs(1_000L)
+
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hello", "u-timeout") }
+        awaitSpeakRecorded(factory, "u-timeout")
+
+        // 3s ceiling sits comfortably above the 1s clamped safety-net
+        // while still failing fast if the configurable timeout was not
+        // honoured (the unmodified default would be 15s).
+        val result = withTimeout(3_000) { speakJob.await() }
+        assertTrue("custom timeout must surface as a failed speak", result.isFailure)
+        assertTrue(
+            "timeout cleanup must invoke engine.stop on the native TTS",
+            engine.stopCount >= 1,
+        )
+        assertFalse(
+            "speaker must report not-speaking after timeout cleanup",
+            speaker.isSpeaking(),
+        )
+    }
+
+    @Test
+    fun `timeout cleanup swallows native engine stop exception`() = runBlocking {
+        val (speaker, factory, _) = readySpeaker()
+        val engine = factory.createdEngines.first()
+        engine.throwOnStop = true
+        // Same rationale as the previous test: setSpeakTimeoutMs clamps to
+        // a 1s floor, so request the floor explicitly and give the outer
+        // await enough headroom to not race the production timeout.
+        speaker.setSpeakTimeoutMs(1_000L)
+
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hello", "u-timeout-throw") }
+        awaitSpeakRecorded(factory, "u-timeout-throw")
+
+        // Even though engine.stop() throws during timeout cleanup, the
+        // outer speak() coroutine must still resume with failure (never
+        // escape the cleanup block) and the speaking flag must be reset.
+        val result = withTimeout(3_000) { speakJob.await() }
+        assertTrue(
+            "timeout cleanup must surface a failed speak even when engine.stop() throws",
+            result.isFailure,
+        )
+        assertTrue(
+            "engine.stop() must have been attempted before the swallow",
+            engine.stopCount >= 1,
+        )
+        assertFalse(
+            "speaking flag must be reset even when engine.stop() threw during cleanup",
+            speaker.isSpeaking(),
+        )
+
+        // The speaker must remain usable: a follow-up stop() is a benign
+        // no-op (no double-resume, no thrown exception).
+        assertTrue(
+            "follow-up stop() after timeout cleanup must stay idempotent",
+            speaker.stop().isSuccess,
+        )
+    }
+
+    @Test
+    fun `setSpeakTimeoutMs clamps non-positive values to the floor`() = runBlocking {
+        val (speaker, factory, _) = readySpeaker()
+        // A 0ms / negative timeout would immediately trip
+        // withTimeoutOrNull and wedge the queue worker into a tight failure
+        // loop. The implementation clamps to the 1s floor; verify by
+        // showing a 0ms request still gives the suspended speak() time to
+        // observe an onDone before the timeout fires.
+        speaker.setSpeakTimeoutMs(0L)
+
+        val listener = factory.createdEngines.first().registeredProgressListeners.first()
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hello", "u-clamp") }
+        awaitSpeakRecorded(factory, "u-clamp")
+
+        // Fire onDone shortly after — well within the 1s clamp floor but
+        // far past 0ms. If clamping was missing, the timeout would fire
+        // first and surface failure instead of success.
+        listener.onDone("u-clamp")
+        val result = withTimeout(1500) { speakJob.await() }
+        assertTrue("clamped timeout must allow normal onDone to succeed", result.isSuccess)
     }
 
     @Test

@@ -12,10 +12,12 @@ import com.example.comerune.speech.domain.model.SpeechSettings
 import com.example.comerune.speech.domain.model.TtsEngineState
 import com.example.comerune.speech.domain.model.WavSynthesisResult
 import com.example.comerune.speech.domain.normalizer.CommentNormalizer
-import com.example.comerune.speech.domain.player.WavPlayer
+import com.example.comerune.speech.domain.player.TtsSpeakException
 import com.example.comerune.speech.domain.player.TtsSpeaker
+import com.example.comerune.speech.domain.player.WavPlayer
 import com.example.comerune.speech.domain.queue.SpeechQueueManager
 import com.example.comerune.speech.domain.settings.SettingsRepository
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import java.io.IOException
 import java.util.concurrent.CopyOnWriteArrayList
@@ -229,21 +231,49 @@ open class FakeTtsSpeaker : TtsSpeaker {
     var throwOnSetVolume: Boolean = false
     var failOnSpeak: Boolean = false
     var throwOnSpeak: Boolean = false
+
+    /**
+     * Issue #966 / #968: when set, [speak] returns
+     * [Result.failure] with this sealed sub-type so the controller's
+     * UserStopped suppression path can be tested without driving a real
+     * stop() race. Takes precedence over [failOnSpeak] / [throwOnSpeak].
+     *
+     * `internal` because `TtsSpeakException` itself is `internal` and a
+     * public property cannot expose an internal type.
+     */
+    internal var speakFailureOverride: TtsSpeakException? = null
     val speakCalls = AtomicInteger(0)
+    // Issue #962: hooks for the stop-interrupts-in-flight-speak regression
+    // test. `suspendOnSpeak` makes speak() suspend until stop() releases it;
+    // `stopCalls` records that the controller propagated stop() to the
+    // speaker.
+    val stopCalls = AtomicInteger(0)
+    var suspendOnSpeak: Boolean = false
+    private val speakResumed = CompletableDeferred<Result<Unit>>()
 
     override suspend fun initialize(): Result<Unit> = Result.success(Unit)
 
     override suspend fun speak(text: String, utteranceId: String): Result<Unit> {
         speakCalls.incrementAndGet()
+        speakFailureOverride?.let { return Result.failure(it) }
         if (throwOnSpeak) throw RuntimeException("simulated speak throw")
         if (failOnSpeak) return Result.failure(IOException("simulated speak failure"))
+        if (suspendOnSpeak) return speakResumed.await()
         return Result.success(Unit)
     }
 
-    override suspend fun stop(): Result<Unit> = Result.success(Unit)
+    override suspend fun stop(): Result<Unit> {
+        stopCalls.incrementAndGet()
+        if (suspendOnSpeak && !speakResumed.isCompleted) {
+            speakResumed.complete(
+                Result.failure(RuntimeException("simulated stop interrupt")),
+            )
+        }
+        return Result.success(Unit)
+    }
 
     override fun isReady(): Boolean = readyOverride
-    override fun isSpeaking(): Boolean = false
+    override fun isSpeaking(): Boolean = suspendOnSpeak && !speakResumed.isCompleted
     override fun currentState(): PlayerState = PlayerState.IDLE
 
     override fun setSpeechRate(rate: Float) {
@@ -254,6 +284,14 @@ open class FakeTtsSpeaker : TtsSpeaker {
     }
     override fun setVolume(volume: Float) {
         if (throwOnSetVolume) throw RuntimeException("simulated setVolume throw")
+    }
+
+    // Issue #965: record the last value pushed by the controller so contract
+    // tests can assert the timeout propagation path.
+    @Volatile
+    var lastSpeakTimeoutMs: Long? = null
+    override fun setSpeakTimeoutMs(timeoutMs: Long) {
+        lastSpeakTimeoutMs = timeoutMs
     }
 
     override fun release() {}

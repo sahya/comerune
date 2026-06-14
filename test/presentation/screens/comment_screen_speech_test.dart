@@ -2032,12 +2032,61 @@ void main() {
     );
 
     testWidgets(
-      'Android TTS availability check is skipped when engine is already READY',
+      'Android TTS availability check still runs when engine reports READY '
+      '(Issue #933: stale VOICEVOX engineState must not skip TTS init)',
       (WidgetTester tester) async {
-        // Simulate a session where VOICEVOX was used first (engine is READY)
-        // and the user then switched to Android TTS. The existing pre-check
-        // at the top of _initializeAndStartSpeech flips _speechInitialized
-        // to true, so the Android TTS branch is bypassed entirely.
+        // Issue #933 regression: native getStatus().engineState reflects only
+        // the VOICEVOX engine, never AndroidTtsSpeaker.isReady(). After the
+        // user uses VOICEVOX (engineState stays READY) then switches to
+        // Android TTS — or reconnects on a fresh screen — engineState=='READY'
+        // is stale. The old READY short-circuit set _initializedEngineType to
+        // androidTts and skipped checkAndroidTtsAvailability, leaving the
+        // native speaker ready=false → every comment silently dropped
+        // (android_tts_not_ready). The check must run regardless of the
+        // VOICEVOX-only READY state.
+        fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+          enabled: true,
+          engineState: 'READY',
+          playerState: 'IDLE',
+          queueSize: 0,
+          currentSpeakerId: 0,
+        );
+        fakePlatform.androidTtsAvailableToReturn = true;
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.androidTts,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          fakePlatform.checkAndroidTtsAvailabilityCalled,
+          isTrue,
+          reason:
+              'Android TTS readiness must be verified even when the '
+              'VOICEVOX-only engineState is stale-READY (Issue #933).',
+        );
+        // initialize() must still NOT be called — the Android TTS path only
+        // touches checkAndroidTtsAvailability so VOICEVOX assets are never
+        // forced for an Android-TTS-only user (Issue #682 invariant).
+        expect(fakePlatform.initializeCalled, isFalse);
+        expect(fakePlatform.startCalled, isTrue);
+      },
+    );
+
+    testWidgets(
+      'VOICEVOX READY short-circuit is preserved — no perf regression '
+      '(Issue #933: bypass is gated to Android TTS only)',
+      (WidgetTester tester) async {
+        // Non-degradation guard: for VOICEVOX the engineState IS the engine
+        // state, so an already-READY engine must still short-circuit (skip
+        // the setup dialog / model reload). Only the Android TTS path
+        // changed; the VOICEVOX perf optimisation must stay intact.
         fakePlatform.statusToReturn = const SpeechRuntimeStatus(
           enabled: true,
           engineState: 'READY',
@@ -2051,13 +2100,73 @@ void main() {
             speechPlatform: fakePlatform,
             speechSettings: const SpeechSettings(
               enabled: true,
-              engineType: SpeechEngineType.androidTts,
+              engineType: SpeechEngineType.voicevox,
             ),
           ),
         );
         await tester.pumpAndSettle();
 
+        // VOICEVOX + READY → short-circuit: no setup dialog, no extra
+        // re-check, straight to start().
         expect(fakePlatform.checkAndroidTtsAvailabilityCalled, isFalse);
+        expect(fakePlatform.startCalled, isTrue);
+      },
+    );
+
+    testWidgets(
+      'live VOICEVOX→Android TTS switch re-runs checkAndroidTtsAvailability '
+      'even though engineState stays READY (Issue #933 C2)',
+      (WidgetTester tester) async {
+        // Issue #933 C2 core: start on VOICEVOX with the engine already READY
+        // (engineState reflects only VOICEVOX). The user switches to Android
+        // TTS while comments are flowing. _handleSpeechSettingsChanged nulls
+        // _initializedEngineType and re-enters _initializeAndStartSpeech,
+        // where getStatus() still returns the stale VOICEVOX READY. Before
+        // the fix the READY short-circuit re-marked the engine initialised
+        // and skipped checkAndroidTtsAvailability, so AndroidTtsSpeaker stayed
+        // ready=false and every comment was dropped (android_tts_not_ready).
+        fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+          enabled: true,
+          engineState: 'READY',
+          playerState: 'IDLE',
+          queueSize: 0,
+          currentSpeakerId: 0,
+        );
+        fakePlatform.androidTtsAvailableToReturn = true;
+
+        await tester.pumpWidget(
+          _buildScreen(
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(
+              enabled: true,
+              engineType: SpeechEngineType.voicevox,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // VOICEVOX start: short-circuit honoured, no Android TTS check yet.
+        expect(fakePlatform.checkAndroidTtsAvailabilityCalled, isFalse);
+
+        final _SpeechTestHostState host = tester.state(
+          find.byType(_SpeechTestHost),
+        );
+        host.updateSpeechSettings(
+          const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.androidTts,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          fakePlatform.checkAndroidTtsAvailabilityCalled,
+          isTrue,
+          reason:
+              'Switching to Android TTS must force a real readiness check '
+              'even when the VOICEVOX-only engineState is stale-READY '
+              '(Issue #933 — otherwise every comment is silently dropped).',
+        );
         expect(fakePlatform.initializeCalled, isFalse);
         expect(fakePlatform.startCalled, isTrue);
       },
@@ -2296,6 +2405,14 @@ void main() {
         // Recovery flow: user reinstalled Japanese voice data, opened TTS
         // settings, and the re-check now succeeds. The AppBar must follow
         // back to a non-error icon without requiring a reconnect.
+        // Issue #933: the Android TTS init path now genuinely runs its
+        // availability check (the old engineState=='READY' short-circuit is
+        // bypassed for Android TTS). The check fails here, so the screen sets
+        // a local ERROR and (re)publishes unavailable — the AppBar is in
+        // ERROR. The subsequent notifier.publishAvailable() must then clear
+        // it via _onAndroidTtsAvailabilityChanged (engine is Android TTS),
+        // exactly the cross-screen recovery this test targets.
+        fakePlatform.androidTtsAvailableToReturn = false;
         final SpeechAvailabilityNotifier notifier =
             SpeechAvailabilityNotifier();
         addTearDown(notifier.dispose);
@@ -2592,9 +2709,21 @@ void main() {
         // (counter at threshold + 1 = 4 ≥ 3) would re-trip ERROR
         // immediately — an "ERROR rebound" that makes the recovery look
         // ineffective from the user's perspective.
+        // Issue #933: the Android TTS init path now genuinely runs its
+        // availability check (the old engineState=='READY' short-circuit is
+        // bypassed for Android TTS). The check fails here so the screen
+        // publishes `unavailable`; the later notifier.publishAvailable() is
+        // then a real unavailable→available transition that fires
+        // _onAndroidTtsAvailabilityChanged (a no-op publish of an already
+        // -available value would NOT notify — SpeechAvailabilityNotifier._set
+        // early-returns on an unchanged value). This keeps the test's intent
+        // intact: cross-screen recovery must reset the runtime failure
+        // counter so a subsequent transient failure cannot immediately
+        // re-trip ERROR.
         final SpeechAvailabilityNotifier notifier =
             SpeechAvailabilityNotifier();
         addTearDown(notifier.dispose);
+        fakePlatform.androidTtsAvailableToReturn = false;
         fakePlatform.statusToReturn = const SpeechRuntimeStatus(
           enabled: true,
           engineState: 'READY',
@@ -3270,6 +3399,160 @@ void main() {
               'After a malformed speech_failed payload the listener must '
               'still react to subsequent valid failures (Issue #695 '
               'review #7).',
+        );
+      },
+    );
+
+    // Issue #966 / #968: three user-initiated stops in close succession
+    // (engine switch / settings retry / queue clear) used to flip the
+    // AppBar to ERROR because the native side surfaced each in-flight
+    // speak as a `speech_failed` event with the `android_tts_failed:`
+    // prefix. With the sealed [TtsSpeakException.UserStopped] type
+    // suppressed on the native side, three user-stops produce **zero**
+    // `speech_failed` events, so the counter stays at 0 and the icon
+    // does not flip. The companion sibling test below confirms a real
+    // engine failure still trips ERROR — the suppression is type-gated,
+    // not blanket.
+    testWidgets(
+      'three user-stops (no speech_failed emitted) do NOT flip the AppBar '
+      'to ERROR (verifiable counter-example)',
+      (WidgetTester tester) async {
+        // This test is a STRUCTURAL counter-example, not a no-op pump.
+        // Without this framing the assertion `findsNothing` would hold
+        // even if the listener were torn out entirely, because no events
+        // are emitted. To make the suppression contract observable on
+        // the Dart side we:
+        //
+        //   1. Prime the failure counter to 2 by emitting 2 real
+        //      android_tts_failed events — one below the ERROR threshold.
+        //      This proves the fixture/listener wiring is alive.
+        //   2. Simulate 3 user-initiated stops by emitting the wire
+        //      contract that [SpeechControllerImpl.processWithAndroidTts]
+        //      now produces for [TtsSpeakException.UserStopped]: NO
+        //      speech_failed and NO speech_completed. We interleave a
+        //      neutral `queueUpdated` event each iteration so the
+        //      listener pipeline is actually exercised (proving the
+        //      assertion is not just "subscription was never attached").
+        //   3. Assert the icon is still not ERROR — the counter is at 2,
+        //      not 2 + 3 = 5.
+        //   4. Emit ONE more real android_tts_failed to push the counter
+        //      from 2 to 3 and assert the icon flips to ERROR. If the
+        //      suppression had instead leaked through as failures in
+        //      step 2 (the old broken behaviour), the icon would have
+        //      flipped at step 3 already, and the post-step-4 invariant
+        //      that "exactly 3 failures are required" would not hold.
+        //
+        // The Kotlin contract test
+        // (`SpeechControllerProcessAndroidTtsContractTest`) covers the
+        // native skip path directly; this Dart test covers the Flutter
+        // listener's observable consequence of that contract.
+        await pumpAndSettleSpeech(tester);
+
+        // Step 1: prime the counter to 2 (below threshold of 3).
+        for (int i = 0; i < 2; i++) {
+          fakePlatform.emitEvent(androidTtsFailure());
+          await tester.pump();
+        }
+        await tester.pump();
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsNothing,
+          reason:
+              'Counter primed to 2 must remain below the ERROR threshold '
+              '— sanity check on the fixture before the suppression arm.',
+        );
+
+        // Step 2: simulate 3 user-stops. Native emits no speech_failed
+        // (and no speech_completed) for UserStopped (Issue #966), but
+        // the worker loop still drives queue size changes, so emit a
+        // neutral `queueUpdated` per iteration to prove the listener is
+        // alive and processing events.
+        for (int i = 0; i < 3; i++) {
+          fakePlatform.emitEvent(
+            const SpeechEvent(
+              type: SpeechEventType.queueUpdated,
+              payload: <String, dynamic>{'size': 1},
+            ),
+          );
+          await tester.pump();
+        }
+        await tester.pump();
+
+        // Step 3: counter must still be 2. If user-stops had leaked as
+        // android_tts_failed (the bug), the counter would now be 5 and
+        // the icon would already be ERROR.
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsNothing,
+          reason:
+              'When native suppresses UserStopped (Issue #966), three '
+              'user-stops must add zero to _consecutiveAndroidTtsFailures. '
+              'If this assertion fails, the suppression contract is '
+              'broken on the wire and the AppBar will flip to ERROR on '
+              'engine switch / settings retry / queue clear.',
+        );
+
+        // Step 4: one more real failure must push from 2 → 3 → ERROR.
+        // This proves the counter was at exactly 2 (not at 5 with a
+        // separate suppression bug masking the increment) — i.e. the
+        // negative assertion in step 3 is meaningful, not vacuous.
+        fakePlatform.emitEvent(androidTtsFailure());
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsOneWidget,
+          reason:
+              'The third real Android TTS failure (after the suppressed '
+              'user-stops) must trip the ERROR threshold. If this fails, '
+              'either the user-stop arm above reset the counter, or the '
+              'threshold logic itself is broken — both invalidate the '
+              'counter-example.',
+        );
+      },
+    );
+
+    testWidgets(
+      'true engine failures still flip the AppBar to ERROR after user-stop suppression (regression guard)',
+      (WidgetTester tester) async {
+        // Sibling guard for the Issue #966 suppression: a real engine
+        // failure expressed as `android_tts_failed: <engine reason>`
+        // (e.g. TtsSpeakException.EngineError / Timeout / FocusLost on
+        // the native side) must still surface as ERROR after three
+        // consecutive failures (Issue #695 contract preserved).
+        await pumpAndSettleSpeech(tester);
+
+        for (int i = 0; i < 3; i++) {
+          fakePlatform.emitEvent(
+            androidTtsFailure(
+              message: 'android_tts_failed: TTS speak timed out after 15000ms',
+            ),
+          );
+          await tester.pump();
+        }
+        await tester.pump();
+
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('speech-status-icon')),
+            matching: find.byIcon(Icons.error_outline),
+          ),
+          findsOneWidget,
+          reason:
+              'Three consecutive real engine failures (sealed Timeout / '
+              'EngineError / FocusLost) must still flip the AppBar to '
+              'ERROR — the UserStopped suppression is type-gated on the '
+              'native side, not a blanket mute of failure surfacing '
+              '(Issue #695 contract preserved).',
         );
       },
     );

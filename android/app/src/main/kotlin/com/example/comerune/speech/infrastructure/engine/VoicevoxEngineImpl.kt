@@ -157,6 +157,69 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         }
 
         /**
+         * Decide whether [initialize] may run given the current [state].
+         *
+         * Issue #970: VOICEVOX synthesis runs on a coroutine that calls into the JNI
+         * synthesizer, which has no cancellation point — the native call holds a shared
+         * lock until it returns. If the user disposes the comment screen while a
+         * synthesis is in flight, the worker is torn down but the engine state stays at
+         * [TtsEngineState.SYNTHESIZING]. When the screen is re-opened the plugin calls
+         * `initialize()` again, and the previous strict guard rejected with
+         * "Cannot initialize from state: SYNTHESIZING" — visible to the user as a
+         * PlatformException dialog.
+         *
+         * The soft-cancel approach: treat [TtsEngineState.SYNTHESIZING] and
+         * [TtsEngineState.INITIALIZING] as recoverable. The native `nativeInitialize`
+         * acquires an exclusive lock and will serialize naturally behind any in-flight
+         * `nativeSynthesis`. The stale synthesize() coroutine's `finally` block already
+         * skips the READY restore when it observes state != SYNTHESIZING, so flipping
+         * state here is safe — the abandoned result is simply discarded.
+         */
+        internal fun evaluateInitializeStartState(
+            state: TtsEngineState
+        ): InitializeStartDecision = when (state) {
+            TtsEngineState.READY -> InitializeStartDecision.ALREADY_READY
+            TtsEngineState.UNINITIALIZED,
+            TtsEngineState.ERROR,
+            // SYNTHESIZING: in-flight synth was abandoned by dispose race (#970).
+            // INITIALIZING: a previous initialize coroutine was cancelled before
+            // it could publish READY or ERROR. Both are recoverable via soft cancel.
+            TtsEngineState.SYNTHESIZING,
+            TtsEngineState.INITIALIZING -> InitializeStartDecision.PROCEED
+            TtsEngineState.DOWNLOADING,
+            TtsEngineState.EXTRACTING -> InitializeStartDecision.REJECT
+        }
+
+        /**
+         * Decide how [initialize]'s native-side setup should run.
+         *
+         * Issue #979: when [previousState] is SYNTHESIZING or INITIALIZING and
+         * the engine has already recorded loaded models, the native synthesizer
+         * is still alive and the models are still loaded on the native side.
+         * Re-running `nativeInitialize` and `nativeLoadModel` in that situation
+         * causes the second `nativeLoadModel` call to return false ("Failed to
+         * load voice model: n0.vvm") because the native cache rejects a model
+         * that is already loaded.
+         *
+         * For UNINITIALIZED / ERROR we always perform a full init. For
+         * READY / DOWNLOADING / EXTRACTING this function is never reached
+         * (those are handled by [evaluateInitializeStartState]); we still
+         * default them to FULL_INIT as a safe fallback.
+         */
+        internal fun evaluateNativeInitializePlan(
+            previousState: TtsEngineState,
+            hasLoadedModels: Boolean
+        ): NativeInitializePlan {
+            val isSoftCancelRecovery = previousState == TtsEngineState.SYNTHESIZING ||
+                previousState == TtsEngineState.INITIALIZING
+            return if (isSoftCancelRecovery && hasLoadedModels) {
+                NativeInitializePlan.SKIP_NATIVE_INIT
+            } else {
+                NativeInitializePlan.FULL_INIT
+            }
+        }
+
+        /**
          * Increment this when remote assets change to force re-download.
          * The effective version used for comparison also includes the app's
          * versionCode so that APK upgrades automatically invalidate cached
@@ -225,6 +288,40 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
     private class MissingAssetsException(message: String) : IllegalStateException(message)
 
     /**
+     * Outcome of evaluating [TtsEngineState] at the entry of [initialize].
+     *
+     * - [ALREADY_READY] — engine is already initialized; [initialize] returns success
+     *   without doing any work.
+     * - [PROCEED] — start initialization (fresh, error recovery, or soft cancel of an
+     *   abandoned in-flight synthesis).
+     * - [REJECT] — refuse with `IllegalStateException`; the engine is in a transitional
+     *   state that should not be re-entered.
+     *
+     * Declared at class scope (not inside the [companion object]) so it can be
+     * referenced from tests as `VoicevoxEngineImpl.InitializeStartDecision`. Kotlin's
+     * companion-member shortcut applies to functions and properties, not to nested
+     * classifiers.
+     */
+    internal enum class InitializeStartDecision { ALREADY_READY, PROCEED, REJECT }
+
+    /**
+     * Outcome of evaluating whether the native synthesizer and model cache
+     * must be re-primed at the start of [initialize].
+     *
+     * - [FULL_INIT] — fresh start or recovery from ERROR. Clear the Kotlin
+     *   tracking sets, call `nativeInitialize`, and load every VVM file.
+     * - [SKIP_NATIVE_INIT] — soft cancel recovery (SYNTHESIZING /
+     *   INITIALIZING) where the native side is still initialized and at
+     *   least one model is recorded as loaded. Keep the tracking sets,
+     *   skip `nativeInitialize`, and only call `nativeLoadModel` for VVM
+     *   files whose modelId is not already in [loadedModelIds].
+     *
+     * Declared at class scope (not inside the [companion object]) so it can
+     * be referenced from tests as `VoicevoxEngineImpl.NativeInitializePlan`.
+     */
+    internal enum class NativeInitializePlan { FULL_INIT, SKIP_NATIVE_INIT }
+
+    /**
      * Optional callback invoked during asset download to report progress.
      * The map follows the same structure as [com.example.comerune.speech.domain.event.SpeechEvents].
      */
@@ -232,23 +329,76 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
 
     override suspend fun initialize(): Result<Unit> =
         mutex.withLock {
-            if (state == TtsEngineState.READY) {
-                return@withLock Result.success(Unit)
-            }
-
-            // Allow re-initialization from ERROR state (e.g., after a native crash
-            // during a previous initialize attempt)
-            if (state != TtsEngineState.UNINITIALIZED && state != TtsEngineState.ERROR) {
-                return@withLock Result.failure(
-                    IllegalStateException(
-                        "Cannot initialize from state: $state"
+            val previousState: TtsEngineState = when (evaluateInitializeStartState(state)) {
+                InitializeStartDecision.ALREADY_READY ->
+                    return@withLock Result.success(Unit)
+                InitializeStartDecision.REJECT ->
+                    return@withLock Result.failure(
+                        IllegalStateException(
+                            "Cannot initialize from state: $state"
+                        )
                     )
+                InitializeStartDecision.PROCEED -> {
+                    // Issue #970: when recovering from SYNTHESIZING (dispose race) or
+                    // INITIALIZING (cancelled prior init), log so post-mortem can
+                    // distinguish soft cancel from a clean start.
+                    val recovering = state == TtsEngineState.SYNTHESIZING ||
+                        state == TtsEngineState.INITIALIZING
+                    if (recovering) {
+                        Log.i(
+                            TAG,
+                            "initialize: recovering from $state via soft cancel"
+                        )
+                    }
+                    // Atomic soft-cancel: flip state to INITIALIZING and reset the
+                    // synthesis counter under [stateLock]. If we reset the counter
+                    // outside the lock, an in-flight synthesize()'s finally block
+                    // could decrement after the reset (count → -1) and a subsequent
+                    // synthesize() would never observe count == 0, leaving the
+                    // engine stuck in SYNTHESIZING (Issue #970 regression).
+                    //
+                    // Doing the flip under [stateLock] also pairs cleanly with
+                    // synthesize()'s entry block (which guards state + count under
+                    // the same lock) and its finally block (which checks
+                    // state == SYNTHESIZING before restoring READY). A stale
+                    // finally that runs after this point will observe
+                    // state == INITIALIZING and skip the restore entirely.
+                    val prior = synchronized(stateLock) {
+                        val priorLocal = state
+                        state = TtsEngineState.INITIALIZING
+                        activeSynthesisCount.set(0)
+                        priorLocal
+                    }
+                    if (prior != TtsEngineState.INITIALIZING) {
+                        Log.i(
+                            TAG,
+                            "Engine state changed: $prior -> ${TtsEngineState.INITIALIZING} (initialize_started)"
+                        )
+                    }
+                    prior
+                }
+            }
+            // Issue #979: only clear the Kotlin tracking sets when a full
+            // native re-init will run. For soft cancel recovery the native
+            // synthesizer is still alive and its model cache must stay
+            // aligned with our tracking sets, or the subsequent
+            // `nativeLoadModel` calls return false ("Failed to load voice
+            // model: n0.vvm") because the native cache rejects an already
+            // loaded model.
+            val initialPlan = evaluateNativeInitializePlan(
+                previousState = previousState,
+                hasLoadedModels = loadedModelIds.isNotEmpty()
+            )
+            if (initialPlan == NativeInitializePlan.FULL_INIT) {
+                loadedModelPaths.clear()
+                loadedModelIds.clear()
+            } else {
+                Log.i(
+                    TAG,
+                    "initialize: skipping native re-init (soft cancel recovery), " +
+                        "loadedModelIds=${loadedModelIds.size}"
                 )
             }
-
-            updateEngineState(TtsEngineState.INITIALIZING, "initialize_started")
-            loadedModelPaths.clear()
-            loadedModelIds.clear()
 
             try {
                 withContext(Dispatchers.IO) {
@@ -259,14 +409,21 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                     ensureLocalAssetsAvailable(dictDir, modelDir)
                     updateEngineState(TtsEngineState.INITIALIZING, "assets_ready")
 
-                    Log.i(TAG, "Calling NativeVoicevoxBridge.nativeInitialize(${dictDir.absolutePath})")
-                    val initialized = NativeVoicevoxBridge.nativeInitialize(
-                        dictDir.absolutePath
-                    )
-                    Log.i(TAG, "nativeInitialize returned: $initialized")
-                    if (!initialized) {
-                        throw RuntimeException(
-                            "NativeVoicevoxBridge.nativeInitialize failed"
+                    if (initialPlan == NativeInitializePlan.FULL_INIT) {
+                        Log.i(TAG, "Calling NativeVoicevoxBridge.nativeInitialize(${dictDir.absolutePath})")
+                        val initialized = NativeVoicevoxBridge.nativeInitialize(
+                            dictDir.absolutePath
+                        )
+                        Log.i(TAG, "nativeInitialize returned: $initialized")
+                        if (!initialized) {
+                            throw RuntimeException(
+                                "NativeVoicevoxBridge.nativeInitialize failed"
+                            )
+                        }
+                    } else {
+                        Log.i(
+                            TAG,
+                            "nativeInitialize skipped: already initialized (soft cancel recovery)"
                         )
                     }
 
@@ -280,6 +437,40 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
                         for (vvm in vvmFiles) {
                             val normalizedPath = normalizeModelPath(vvm.absolutePath)
                             val modelId = extractModelId(normalizedPath)
+                            // Issue #979: skip VVM files whose modelId is
+                            // already tracked as loaded. Mirrors the
+                            // idempotent guard in [loadModel] and is required
+                            // when the native synthesizer kept its model
+                            // cache across a soft cancel recovery — the
+                            // second nativeLoadModel call would otherwise
+                            // return false.
+                            //
+                            // Unlike [loadModel] this path does NOT call
+                            // [isModelAlreadyLoadedBySpeakerProbe]: this
+                            // skip only fires under SKIP_NATIVE_INIT
+                            // (FULL_INIT clears [loadedModelIds] before the
+                            // loop), which already requires soft cancel +
+                            // tracked loaded models — the native cache is
+                            // assumed live.
+                            //
+                            // A stale-tracking scenario (the skip fires but
+                            // the native cache is in fact gone) is NOT
+                            // caught inside this initialize(): the skip
+                            // simply `continue`s and does not throw, so the
+                            // surrounding try/catch never fires here. The
+                            // mismatch surfaces at the next synthesize()
+                            // call, which fails and drives the engine into
+                            // ERROR. The subsequent initialize() then sees
+                            // previousState=ERROR and falls into FULL_INIT
+                            // for clean recovery.
+                            if (modelId != null && loadedModelIds.contains(modelId)) {
+                                Log.i(
+                                    TAG,
+                                    "initialize skip: reason=already_loaded_id " +
+                                        "modelId=$modelId modelPath=$normalizedPath"
+                                )
+                                continue
+                            }
                             Log.i(
                                 TAG,
                                 "Loading voice model: $normalizedPath (${vvm.length()} bytes)"
