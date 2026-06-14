@@ -19,6 +19,18 @@ void appDebugLogLazy(String Function() messageBuilder) {
   debugPrint(messageBuilder());
 }
 
+/// Masks a session string for safe debug logging.
+///
+/// Returns:
+/// - `'(empty)'` for an empty string
+/// - `'***'` for strings of 8 characters or fewer
+/// - `'abcd...wxyz'` (first 4 + last 4 characters) for longer strings
+String debugMaskSession(String session) {
+  if (session.isEmpty) return '(empty)';
+  if (session.length <= 8) return '***';
+  return '${session.substring(0, 4)}...${session.substring(session.length - 4)}';
+}
+
 void appErrorLog({
   required String name,
   required String message,

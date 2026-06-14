@@ -65,4 +65,7 @@ class CommentPostErrorCode {
 
   /// Transport-level exception (socket / timeout / TLS).
   static const String networkError = 'NETWORK_ERROR';
+
+  /// A previous post is still in flight on the same WebSocket connection.
+  static const String inFlight = 'IN_FLIGHT';
 }

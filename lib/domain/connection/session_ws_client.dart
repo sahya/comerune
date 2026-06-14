@@ -2,8 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
 
+import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+
+import '../models/comment_post_result.dart';
 
 enum SessionWsEventType {
   connected,
@@ -31,7 +34,7 @@ enum SessionWsFailurePhase {
   keepalive,
 }
 
-enum SessionWsStartWatchingMode { full, minimal }
+enum SessionWsStartWatchingMode { full, minimal, commentOnly }
 
 class SessionWsErrorDetail {
   const SessionWsErrorDetail({
@@ -129,6 +132,7 @@ class SessionWsClient {
 
   SessionWsClient({
     required this.lv,
+    Uri? webSocketUri,
     SessionWsChannelFactory? channelFactory,
     Duration endpointFallbackDelay = const Duration(milliseconds: 300),
     Duration endpointResolveTimeout = const Duration(seconds: 5),
@@ -137,7 +141,8 @@ class SessionWsClient {
         SessionWsStartWatchingMode.full,
     Map<String, String>? connectHeaders,
     String userAgent = defaultAndroidUserAgent,
-  }) : _channelFactory = channelFactory ?? _defaultChannelFactory,
+  }) : _webSocketUriOverride = webSocketUri,
+       _channelFactory = channelFactory ?? _defaultChannelFactory,
        _endpointFallbackDelay = endpointFallbackDelay,
        _endpointResolveTimeout = endpointResolveTimeout,
        _startWatchingMode = startWatchingMode,
@@ -159,6 +164,7 @@ class SessionWsClient {
              );
 
   final String lv;
+  final Uri? _webSocketUriOverride;
   final SessionWsChannelFactory _channelFactory;
   final Duration _endpointFallbackDelay;
   final Duration _endpointResolveTimeout;
@@ -183,8 +189,11 @@ class SessionWsClient {
   bool _isClosing = false;
   bool _isDisposed = false;
   Uri? _sessionWsUri;
+  Completer<CommentPostResult>? _postCommentCompleter;
 
   Stream<SessionWsEvent> get events => _eventsController.stream;
+  bool get isConnected => _isConnected;
+  bool get isDisposed => _isDisposed;
   SessionWsStartWatchingMode get startWatchingMode => _startWatchingMode;
   Map<String, String> get connectHeaders =>
       Map<String, String>.unmodifiable(_connectHeaders);
@@ -198,14 +207,22 @@ class SessionWsClient {
     }
     _resetEndpointResolutionState();
 
-    final Uri uri = Uri.parse('wss://a.live2.nicovideo.jp/wsapi/v2/watch/$lv');
+    final Uri uri =
+        _webSocketUriOverride ??
+        Uri.parse('wss://a.live2.nicovideo.jp/wsapi/v2/watch/$lv');
     _sessionWsUri = uri;
+    debugPrint(
+      '[SessionWsClient] connect: ${uri.host}${uri.path} '
+      '(mode=${_startWatchingMode.name}, '
+      'override=${_webSocketUriOverride != null})',
+    );
 
     try {
       final SessionWsChannel channel = await _channelFactory(
         uri,
         _connectHeaders,
       );
+      debugPrint('[SessionWsClient] connect: channel ready');
       _channel = channel;
       _subscription = channel.stream.listen(
         _handleIncoming,
@@ -230,9 +247,12 @@ class SessionWsClient {
       );
 
       _isConnected = true;
+      debugPrint('[SessionWsClient] connect: sending startWatching...');
       try {
         _sendStartWatching();
+        debugPrint('[SessionWsClient] connect: startWatching sent');
       } catch (error, stackTrace) {
+        debugPrint('[SessionWsClient] connect: startWatching failed: $error');
         await _cleanupConnectionState(emitDisconnected: false);
         final SessionWsErrorDetail detail = _buildErrorDetail(
           code: SessionWsErrorCode.connectFailed,
@@ -252,8 +272,11 @@ class SessionWsClient {
         return;
       }
       _emit(const SessionWsEvent(type: SessionWsEventType.connected));
-      _startEndpointResolveTimer();
+      if (_startWatchingMode != SessionWsStartWatchingMode.commentOnly) {
+        _startEndpointResolveTimer();
+      }
     } catch (error, stackTrace) {
+      debugPrint('[SessionWsClient] connect: channel open failed: $error');
       final SessionWsErrorDetail detail = _buildErrorDetail(
         code: SessionWsErrorCode.connectFailed,
         phase: SessionWsFailurePhase.openingSocket,
@@ -308,9 +331,119 @@ class SessionWsClient {
     if (_isDisposed) {
       return;
     }
+    _cancelPendingPostComment();
     await disconnect();
     _isDisposed = true;
     await _eventsController.close();
+  }
+
+  /// Posts a comment via the session WebSocket.
+  ///
+  /// Returns a [CommentPostResult] when the server responds with
+  /// `postCommentResult`. Times out after 10 seconds if no response arrives.
+  Future<CommentPostResult> postComment({
+    required String text,
+    required int vpos,
+    required bool isAnonymous,
+  }) async {
+    if (_isDisposed || !_isConnected || _channel == null) {
+      return const CommentPostResult(
+        success: false,
+        errorCode: CommentPostErrorCode.networkError,
+        errorMessage: 'WebSocket not connected',
+      );
+    }
+
+    final Completer<CommentPostResult>? existing = _postCommentCompleter;
+    if (existing != null && !existing.isCompleted) {
+      return const CommentPostResult(
+        success: false,
+        errorCode: CommentPostErrorCode.inFlight,
+        errorMessage: 'A comment post is already in progress',
+      );
+    }
+
+    final Completer<CommentPostResult> completer =
+        Completer<CommentPostResult>();
+    _postCommentCompleter = completer;
+
+    try {
+      debugPrint(
+        '[SessionWsClient] postComment: sending '
+        '(text=${text.length} chars, vpos=$vpos)',
+      );
+      _sendJson(<String, Object>{
+        'type': 'postComment',
+        'data': <String, Object>{
+          'text': text,
+          'vpos': vpos,
+          'isAnonymous': isAnonymous,
+          'color': 'white',
+          'size': 'medium',
+          'position': 'naka',
+          'font': 'defont',
+        },
+      });
+      debugPrint('[SessionWsClient] postComment: sent, waiting for response');
+    } on Object catch (e) {
+      _postCommentCompleter = null;
+      return CommentPostResult(
+        success: false,
+        errorCode: CommentPostErrorCode.networkError,
+        errorMessage: 'Failed to send postComment: $e',
+      );
+    }
+
+    return completer.future.timeout(
+      const Duration(seconds: 10),
+      onTimeout: () {
+        _postCommentCompleter = null;
+        return const CommentPostResult(
+          success: false,
+          errorCode: CommentPostErrorCode.networkError,
+          errorMessage: 'Comment post timed out',
+        );
+      },
+    );
+  }
+
+  void _handlePostCommentResult(Map<String, dynamic> decoded) {
+    final Completer<CommentPostResult>? completer = _postCommentCompleter;
+    _postCommentCompleter = null;
+    if (completer == null || completer.isCompleted) {
+      return;
+    }
+
+    final Object? data = decoded['data'];
+    if (data is Map<String, dynamic>) {
+      final Object? error = data['error'];
+      if (error != null) {
+        completer.complete(
+          CommentPostResult(
+            success: false,
+            errorCode: error.toString(),
+            errorMessage: error.toString(),
+          ),
+        );
+        return;
+      }
+    }
+
+    completer.complete(const CommentPostResult(success: true));
+  }
+
+  void _cancelPendingPostComment() {
+    final Completer<CommentPostResult>? completer = _postCommentCompleter;
+    _postCommentCompleter = null;
+    if (completer != null && !completer.isCompleted) {
+      completer.complete(
+        const CommentPostResult(
+          success: false,
+          errorCode: CommentPostErrorCode.networkError,
+          errorMessage: 'WebSocket disconnected',
+        ),
+      );
+    }
   }
 
   void _handleIncoming(dynamic payload) {
@@ -327,6 +460,12 @@ class SessionWsClient {
 
     final Object? decoded = _tryDecodeJson(raw);
     if (decoded is! Map<String, dynamic>) {
+      return;
+    }
+
+    final String? messageType = decoded['type']?.toString();
+    if (messageType == 'postCommentResult') {
+      _handlePostCommentResult(decoded);
       return;
     }
 
@@ -471,6 +610,7 @@ class SessionWsClient {
     _endpointResolveTimer?.cancel();
     _endpointResolveTimer = null;
     _stopKeepSeatTimer();
+    _cancelPendingPostComment();
     _channel = null;
     _isConnected = false;
     _sessionWsUri = null;
@@ -491,10 +631,23 @@ class SessionWsClient {
     Uri uri,
     Map<String, String> headers,
   ) async {
+    final Map<String, String> sanitizedHeaders = <String, String>{
+      for (final MapEntry<String, String> e in headers.entries)
+        e.key:
+            e.key.toLowerCase() == 'cookie' ||
+                e.key.toLowerCase() == 'x-niconico-session'
+            ? '${e.value.substring(0, e.value.length.clamp(0, 20))}...'
+            : e.value,
+    };
+    debugPrint(
+      '[SessionWsClient] _defaultChannelFactory: '
+      'uri=${uri.host}${uri.path} headers=$sanitizedHeaders',
+    );
     final IOWebSocketChannel channel = IOWebSocketChannel.connect(
       uri,
       headers: headers.isEmpty ? null : headers,
     );
+    await channel.ready;
     return WebSocketSessionWsChannel(channel);
   }
 
@@ -510,6 +663,9 @@ class SessionWsClient {
     );
     if (!hasUserAgentHeader && userAgent.trim().isNotEmpty) {
       headers['User-Agent'] = userAgent.trim();
+    }
+    if (!headers.keys.any((String k) => k.toLowerCase() == 'origin')) {
+      headers['Origin'] = 'https://live.nicovideo.jp';
     }
     return headers;
   }
@@ -528,7 +684,7 @@ class SessionWsClient {
             },
             'room': <String, Object>{
               'protocol': 'webSocket',
-              'commentable': false,
+              'commentable': true,
             },
             'reconnect': false,
           },
@@ -537,6 +693,17 @@ class SessionWsClient {
         return const <String, Object>{
           'type': 'startWatching',
           'data': <String, Object>{},
+        };
+      case SessionWsStartWatchingMode.commentOnly:
+        return const <String, Object>{
+          'type': 'startWatching',
+          'data': <String, Object>{
+            'room': <String, Object>{
+              'protocol': 'webSocket',
+              'commentable': true,
+            },
+            'reconnect': false,
+          },
         };
     }
   }
@@ -636,6 +803,7 @@ class SessionWsClient {
     _endpointResolveTimer?.cancel();
     _endpointResolveTimer = null;
     _stopKeepSeatTimer();
+    _cancelPendingPostComment();
 
     await _subscription?.cancel();
     _subscription = null;

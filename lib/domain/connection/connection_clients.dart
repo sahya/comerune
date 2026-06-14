@@ -1,3 +1,7 @@
+import '../models/comment_post_result.dart';
+
+export '../models/comment_post_result.dart';
+
 enum SessionWsEventType { disconnected, broadcastEnded }
 
 class SessionWsEvent {
@@ -24,6 +28,12 @@ abstract class SessionWsClient {
   Stream<SessionWsEvent> get events;
 
   Future<SessionEndpoints> connectAndResolveEndpoints();
+
+  Future<CommentPostResult> postComment({
+    required String text,
+    required int vpos,
+    required bool isAnonymous,
+  });
 
   Future<void> disconnect();
 }
