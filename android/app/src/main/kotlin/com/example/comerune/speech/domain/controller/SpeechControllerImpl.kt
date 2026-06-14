@@ -1,5 +1,6 @@
 package com.example.comerune.speech.domain.controller
 
+import com.example.comerune.speech.domain.audio.CallStateProvider
 import com.example.comerune.speech.domain.engine.VoicevoxEngine
 import com.example.comerune.speech.domain.event.SpeechEventEmitter
 import com.example.comerune.speech.domain.event.SpeechEvents
@@ -51,7 +52,8 @@ class SpeechControllerImpl(
     private val timeProvider: () -> Long = System::currentTimeMillis,
     private val duplicateDetector: DuplicateDetector? = null,
     private val textSplitter: TextSplitter = JapaneseTextSplitter(),
-    private val ttsSpeaker: TtsSpeaker? = null
+    private val ttsSpeaker: TtsSpeaker? = null,
+    private val callStateProvider: CallStateProvider? = null,
 ) : SpeechController {
 
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
@@ -445,6 +447,21 @@ class SpeechControllerImpl(
     private suspend fun processItem(item: SpeechQueueItem) {
         currentCommentId = item.commentId
         currentText = item.text
+
+        // Issue #931: comerune no longer requests AudioFocus per utterance,
+        // so the platform no longer auto-stops TTS when telephony takes
+        // focus. Restore the previous "silent during a call" behavior by
+        // probing the audio mode at dispatch time and skipping the
+        // utterance entirely. The comment stays in CommentLog (Flutter
+        // side) because we only drop the speak, not the log entry.
+        if (callStateProvider?.isInCall() == true) {
+            eventEmitter.emit(
+                SpeechEvents.commentSkipped(item.commentId, "in_call"),
+            )
+            currentCommentId = null
+            currentText = null
+            return
+        }
 
         eventEmitter.emit(SpeechEvents.speechStarted(item.commentId, item.text))
 
