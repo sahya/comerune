@@ -14,6 +14,7 @@ import com.example.comerune.speech.domain.model.TtsEngineState
 import com.example.comerune.speech.domain.model.WavSynthesisResult
 import com.example.comerune.speech.domain.normalizer.CommentNormalizer
 import com.example.comerune.speech.domain.normalizer.DuplicateDetector
+import com.example.comerune.speech.domain.player.TtsSpeakException
 import com.example.comerune.speech.domain.player.TtsSpeaker
 import com.example.comerune.speech.domain.player.WavPlayer
 import com.example.comerune.speech.domain.queue.SpeechQueueManager
@@ -178,11 +179,19 @@ class SpeechControllerImpl(
         if (released) {
             return Result.failure(IllegalStateException("Controller has been released"))
         }
+        // Issue #969: symmetry with stop() — interrupt the Android TTS engine
+        // FIRST so the worker resumes from an in-flight speaker.speak()
+        // immediately rather than waiting on the safety timeout. Without this
+        // ordering, a skip issued while speak() is suspended would block on
+        // player.stop() / prefetch cancellation before reaching speaker.stop()
+        // and the queue could appear frozen on the next item. Calling stop()
+        // is a benign no-op when no utterance is in flight, so it is safe to
+        // invoke unconditionally before the other teardown steps.
+        ttsSpeaker?.stop()
         activePrefetchJob?.cancel()
         activePrefetchJob = null
         prefetched = null
         player.stop()
-        ttsSpeaker?.stop()
         return Result.success(Unit)
     }
 
@@ -516,6 +525,29 @@ class SpeechControllerImpl(
             }
 
             if (result.isFailure) {
+                val cause = result.exceptionOrNull()
+                if (cause is TtsSpeakException.UserStopped) {
+                    // Issue #966: a user-initiated stop (caller invoked
+                    // [stop] / [skip] / [release], or the platform
+                    // delivered onStop because we asked it to) is not an
+                    // engine failure. Surfacing it as `speech_failed`
+                    // would let the Flutter side
+                    // `_consecutiveAndroidTtsFailures` counter treat
+                    // three rapid user-stops (engine switch, settings
+                    // retry, queue clear) as a real degradation and flip
+                    // the AppBar to ERROR — see the failure history
+                    // recorded on the issue. We intentionally emit
+                    // neither `speech_failed` NOR `speech_completed`:
+                    // the worker loop will exit on the next
+                    // `started`/`released` check (stop() flips
+                    // `started=false` before invoking
+                    // ttsSpeaker.stop()), so no terminal event is
+                    // needed to advance the queue. The Flutter-side
+                    // counter is unchanged — neither incremented (no
+                    // failure event) nor reset (no completed event) —
+                    // which is the correct semantic for a stop.
+                    return
+                }
                 // Issue #695: always include the `android_tts_failed:` prefix so
                 // the Flutter side can recognise this as an Android-TTS failure
                 // regardless of the underlying exception text. Without the
@@ -523,7 +555,7 @@ class SpeechControllerImpl(
                 // "TTS speak() returned error: -1", etc.) bypasses the
                 // Flutter-side detector entirely and the AppBar never flips to
                 // ERROR even after sustained failures.
-                val inner = result.exceptionOrNull()?.message ?: "unknown"
+                val inner = cause?.message ?: "unknown"
                 val errorMessage = "android_tts_failed: $inner"
                 eventEmitter.emit(SpeechEvents.speechFailed(item.commentId, errorMessage))
             } else {

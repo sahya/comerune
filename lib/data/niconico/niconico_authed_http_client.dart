@@ -93,6 +93,13 @@ abstract class NiconicoAuthedHttpClient {
     request.headers.set('User-Agent', userAgent);
     request.headers.set('Content-Type', 'application/json');
     request.headers.set('Accept', 'application/json');
+
+    appDebugLogLazy(
+      () =>
+          '[NiconicoAuthedHttpClient] setAuthHeaders: '
+          'method=${request.method} url=${request.uri} '
+          'session=${debugMaskSession(userSession)} (${userSession.length} chars)',
+    );
   }
 
   /// Parses a non-success HTTP response body and extracts error fields.
@@ -112,30 +119,56 @@ abstract class NiconicoAuthedHttpClient {
     String logName,
   ) {
     appDebugLogLazy(() => '[$logName] $operationName failed: HTTP $statusCode');
+    appDebugLogLazy(
+      () =>
+          '[$logName] $operationName response body (${body.length} chars): '
+          '${body.length > 2000 ? '${body.substring(0, 2000)}...(truncated)' : body}',
+    );
 
     String? errorCode;
     String? errorMessage;
 
     try {
       final Object? decoded = jsonDecode(body);
+      appDebugLogLazy(
+        () =>
+            '[$logName] $operationName parsed JSON type: '
+            '${decoded.runtimeType}',
+      );
       if (decoded is Map<String, dynamic>) {
         final Object? meta = decoded['meta'];
+        appDebugLogLazy(() => '[$logName] $operationName meta: $meta');
         if (meta is Map<String, dynamic>) {
           errorCode = meta['errorCode'] as String?;
           errorMessage = meta['errorMessage'] as String?;
+          appDebugLogLazy(
+            () =>
+                '[$logName] $operationName meta.errorCode=$errorCode '
+                'meta.errorMessage=$errorMessage '
+                'meta.status=${meta['status']}',
+          );
         }
         if (errorMessage == null) {
           final Object? data = decoded['data'];
           if (data is Map<String, dynamic>) {
             errorMessage = data['message'] as String?;
+            appDebugLogLazy(
+              () => '[$logName] $operationName data.message=$errorMessage',
+            );
           }
         }
       }
-    } on FormatException {
-      // Non-JSON error response — use status code.
+    } on FormatException catch (e) {
+      appDebugLogLazy(() => '[$logName] $operationName body is not JSON: $e');
     }
 
     errorCode ??= httpStatusToErrorCode(statusCode);
+
+    appDebugLogLazy(
+      () =>
+          '[$logName] $operationName final error: '
+          'code=$errorCode message=$errorMessage',
+    );
 
     return NiconicoErrorFields(
       errorCode: errorCode,
@@ -288,7 +321,20 @@ abstract class NiconicoAuthedHttpClient {
     required String userSession,
     required String logName,
   }) {
+    appDebugLogLazy(
+      () =>
+          '[$logName] validateCallInputs: '
+          'programId=$programId '
+          'session=${debugMaskSession(userSession)} (${userSession.length} chars, '
+          'trimmed=${userSession.trim().length} chars)',
+    );
     if (programId.isEmpty || userSession.trim().isEmpty) {
+      appDebugLogLazy(
+        () =>
+            '[$logName] validateCallInputs REJECTED: '
+            'programId.isEmpty=${programId.isEmpty} '
+            'userSession.trim().isEmpty=${userSession.trim().isEmpty}',
+      );
       return NiconicoInputValidationStatus.empty;
     }
     final bool sessionOk = isValidAuthHeaderValue(userSession);
@@ -301,6 +347,7 @@ abstract class NiconicoAuthedHttpClient {
       );
       return NiconicoInputValidationStatus.malformed;
     }
+    appDebugLogLazy(() => '[$logName] validateCallInputs: OK');
     return NiconicoInputValidationStatus.ok;
   }
 }
