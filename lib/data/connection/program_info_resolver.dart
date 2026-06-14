@@ -103,6 +103,10 @@ class ProgramInfoResolver {
       );
     }
 
+    debugPrint(
+      '[ProgramInfoResolver] response data keys: ${data.keys.toList()}',
+    );
+
     final String? title = data['title'] as String?;
 
     final Object? rooms = data['rooms'];
@@ -121,6 +125,9 @@ class ProgramInfoResolver {
       );
     }
 
+    debugPrint(
+      '[ProgramInfoResolver] rooms[0] keys: ${firstRoom.keys.toList()}',
+    );
     final String? viewUri = firstRoom['viewUri'] as String?;
     if (viewUri == null || viewUri.isEmpty) {
       throw ProgramInfoResolveException(

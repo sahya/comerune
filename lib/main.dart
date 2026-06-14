@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
 import 'dart:ui';
@@ -9,6 +10,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'app_logging.dart';
 import 'application/app_update/app_update_gate.dart';
 import 'application/app_update/update_prompt_store.dart';
 import 'application/app_update/version_update_checker.dart';
@@ -535,6 +537,18 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _commentPostController = CommentPostController(
       liveCommentRepository: _liveCommentRepository,
       myProgramRepository: _myProgramRepository,
+      wsCommentSender:
+          ({
+            required String text,
+            required int vpos,
+            required bool isAnonymous,
+          }) {
+            return _connectionSupervisor.postComment(
+              text: text,
+              vpos: vpos,
+              isAnonymous: isAnonymous,
+            );
+          },
     );
     _timelineStore = TimelineStore(
       capacity: widget.initialSettings.pastCommentFetchCount.displayCapacity,
@@ -975,10 +989,9 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       if (programInfo.isTimeshift) {
         _onTimeshiftDetected?.call(programInfo.viewUri);
       }
-      log(
-        'Resolved NDGR endpoint via programinfo API '
+      appDebugLog(
+        '[SessionWsClientAdapter] Resolved NDGR endpoint via programinfo API '
         '(status: ${programInfo.programStatus?.name ?? 'unknown'})',
-        name: 'SessionWsClientAdapter',
       );
       // Issue #639 follow-up: when the broadcast is already ended,
       // short-circuit the live NDGR streaming path. Both
@@ -1009,15 +1022,14 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       if (error.title != null) {
         _onProgramTitleResolved?.call(error.title!);
       }
-      log(
-        'programinfo resolution failed, falling back to WebSocket: $error',
-        name: 'SessionWsClientAdapter',
+      appDebugLog(
+        '[SessionWsClientAdapter] programinfo resolution failed, '
+        'falling back to WebSocket: $error',
       );
     } on Object catch (error) {
-      log(
-        'Unexpected error during programinfo resolution, '
-        'falling back to WebSocket: $error',
-        name: 'SessionWsClientAdapter',
+      appDebugLog(
+        '[SessionWsClientAdapter] Unexpected error during programinfo '
+        'resolution, falling back to WebSocket: $error',
       );
     }
 
@@ -1079,6 +1091,235 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     if (client != null) {
       await client.dispose();
     }
+  }
+
+  @override
+  Future<reconnect.CommentPostResult> postComment({
+    required String text,
+    required int vpos,
+    required bool isAnonymous,
+  }) async {
+    final String lv = _lvProvider();
+    if (lv.isEmpty) {
+      return const reconnect.CommentPostResult(
+        success: false,
+        errorCode: reconnect.CommentPostErrorCode.networkError,
+        errorMessage: 'lv is empty',
+      );
+    }
+
+    session_impl.SessionWsClient? client = _activeClient;
+    if (client == null || client.isDisposed || !client.isConnected) {
+      try {
+        await _ensureCommentPostWs(lv);
+        client = _activeClient;
+      } on Object catch (error) {
+        appDebugLog(
+          '[SessionWsClientAdapter] postComment: WS connect failed: $error',
+        );
+      }
+      if (client == null || client.isDisposed || !client.isConnected) {
+        return const reconnect.CommentPostResult(
+          success: false,
+          errorCode: reconnect.CommentPostErrorCode.networkError,
+          errorMessage: 'WebSocket not connected',
+        );
+      }
+    }
+    return client.postComment(text: text, vpos: vpos, isAnonymous: isAnonymous);
+  }
+
+  Future<void> _ensureCommentPostWs(String lv) async {
+    final session_impl.SessionWsClient? existing = _activeClient;
+    if (existing != null) {
+      await existing.dispose();
+    }
+    await _activeSubscription?.cancel();
+
+    final String userSession = await _userSessionProvider();
+
+    Uri? resolvedWsUri;
+    if (userSession.isNotEmpty) {
+      resolvedWsUri = await _resolveWebSocketUrl(lv, userSession);
+
+      if (resolvedWsUri != null && _isAnonymousWsUri(resolvedWsUri)) {
+        appDebugLog(
+          '[SessionWsClientAdapter] _ensureCommentPostWs: '
+          'anonymous token despite user_session; falling back to cookie auth',
+        );
+        resolvedWsUri = null;
+      }
+    }
+
+    final Map<String, String>? connectHeaders = userSession.isNotEmpty
+        ? <String, String>{
+            'Cookie': 'user_session=$userSession',
+            'X-Niconico-Session': userSession,
+          }
+        : null;
+
+    final session_impl.SessionWsClient client = session_impl.SessionWsClient(
+      lv: lv,
+      webSocketUri: resolvedWsUri,
+      startWatchingMode: session_impl.SessionWsStartWatchingMode.commentOnly,
+      connectHeaders: connectHeaders,
+    );
+    _activeClient = client;
+    _activeSubscription = client.events.listen((
+      session_impl.SessionWsEvent event,
+    ) {
+      if (event.error != null || event.errorDetail != null) {
+        appDebugLog(
+          '[SessionWsClientAdapter] WS event: ${event.type.name}'
+          '${event.errorDetail != null ? ' detail=${event.errorDetail}' : ''}'
+          '${event.error != null ? ' error=${event.error}' : ''}',
+        );
+      }
+    });
+    await client.connect();
+  }
+
+  static bool _isAnonymousWsUri(Uri uri) {
+    final String? token = uri.queryParameters['audience_token'];
+    return token != null && token.contains('anonymous');
+  }
+
+  static const String _watchPageBaseUrl = 'https://live.nicovideo.jp/watch/';
+
+  /// Desktop User-Agent for the watch page fetch.
+  ///
+  /// The mobile Android UA (`Chrome Mobile`) triggers a 302 redirect to
+  /// `sp.live.nicovideo.jp` which serves a mobile page WITHOUT the
+  /// `<script id="embedded-data">` tag. A desktop Chrome UA returns the
+  /// desktop page that contains embedded-data with the webSocketUrl.
+  static const String _desktopUserAgent =
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+      '(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+  static final RegExp _embeddedDataPattern = RegExp(
+    r'<script[^>]*\bid="embedded-data"[^>]*\bdata-props="([^"]*)"',
+    caseSensitive: false,
+  );
+
+  static const int _maxWatchPageRedirects = 5;
+
+  Future<Uri?> _resolveWebSocketUrl(String lv, String userSession) async {
+    return _fetchWatchPageWsUrl(
+      Uri.parse('$_watchPageBaseUrl$lv'),
+      userSession,
+    );
+  }
+
+  Future<Uri?> _fetchWatchPageWsUrl(Uri watchUri, String userSession) async {
+    HttpClient? httpClient;
+    try {
+      httpClient = HttpClient();
+      httpClient.connectionTimeout = const Duration(seconds: 5);
+
+      Uri currentUri = watchUri;
+      HttpClientResponse? response;
+
+      for (
+        int redirectCount = 0;
+        redirectCount <= _maxWatchPageRedirects;
+        redirectCount++
+      ) {
+        final HttpClientRequest request = await httpClient.getUrl(currentUri);
+        request.followRedirects = false;
+        request.headers.set('Cookie', 'user_session=$userSession');
+        request.headers.set('X-Niconico-Session', userSession);
+        request.headers.set('User-Agent', _desktopUserAgent);
+        request.headers.set('Accept', 'text/html');
+
+        response = await request.close().timeout(const Duration(seconds: 8));
+        if (response.statusCode >= 300 && response.statusCode < 400) {
+          final String? location = response.headers.value('location');
+          await response.drain<void>();
+          if (location == null || location.isEmpty) {
+            return null;
+          }
+          currentUri = currentUri.resolve(location);
+          if (currentUri.host.startsWith('sp.')) {
+            return null;
+          }
+          continue;
+        }
+
+        break;
+      }
+
+      if (response == null || response.statusCode != 200) {
+        if (response != null) {
+          await response.drain<void>();
+        }
+        return null;
+      }
+
+      final String body = await response.transform(utf8.decoder).join();
+      return _extractWsUrlFromHtml(body);
+    } on Object catch (e) {
+      appDebugLog('[SessionWsClientAdapter] _fetchWatchPageWsUrl: failed: $e');
+      return null;
+    } finally {
+      httpClient?.close(force: true);
+    }
+  }
+
+  Uri? _extractWsUrlFromHtml(String body) {
+    final RegExpMatch? match = _embeddedDataPattern.firstMatch(body);
+    if (match == null) {
+      return null;
+    }
+
+    final String? escaped = match.group(1);
+    if (escaped == null || escaped.isEmpty) {
+      return null;
+    }
+    final String json = _unescapeHtmlAttribute(escaped);
+    final Object? decoded = jsonDecode(json);
+    if (decoded is! Map<String, dynamic>) {
+      return null;
+    }
+
+    final Object? site = decoded['site'];
+    if (site is! Map<String, dynamic>) {
+      return null;
+    }
+    final Object? relive = site['relive'];
+    if (relive is! Map<String, dynamic>) {
+      return null;
+    }
+    final String? wsUrl = relive['webSocketUrl'] as String?;
+    if (wsUrl == null || wsUrl.isEmpty) {
+      return null;
+    }
+
+    final Uri parsed = Uri.parse(wsUrl);
+    final Map<String, String> queryParams = Map<String, String>.from(
+      parsed.queryParameters,
+    );
+    if (!queryParams.containsKey('frontend_id')) {
+      queryParams['frontend_id'] = '9';
+    }
+    return parsed.replace(queryParameters: queryParams);
+  }
+
+  static String _unescapeHtmlAttribute(String input) {
+    String s = input;
+    s = s.replaceAll('&lt;', '<');
+    s = s.replaceAll('&gt;', '>');
+    s = s.replaceAll('&quot;', '"');
+    s = s.replaceAll('&apos;', "'");
+    s = s.replaceAll('&#34;', '"');
+    s = s.replaceAll('&#39;', "'");
+    s = s.replaceAll('&#x22;', '"');
+    s = s.replaceAll('&#x27;', "'");
+    s = s.replaceAll('&#x2F;', '/');
+    s = s.replaceAll('&#47;', '/');
+    s = s.replaceAll('&#60;', '<');
+    s = s.replaceAll('&#62;', '>');
+    s = s.replaceAll('&amp;', '&');
+    return s;
   }
 
   Future<void> dispose() async {

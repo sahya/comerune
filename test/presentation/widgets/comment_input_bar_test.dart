@@ -728,7 +728,7 @@ void main() {
       },
     );
 
-    testWidgets('shows anonymous toggle for viewer (default 名札付き)', (
+    testWidgets('shows anonymous toggle for viewer (default 名札なし)', (
       WidgetTester tester,
     ) async {
       await _pump(
@@ -744,11 +744,11 @@ void main() {
         find.byKey(const Key('comment-post-anonymous-toggle')),
         findsOneWidget,
       );
-      // Default state is 名札付き, rendered as Icons.person (icon-only toggle).
+      // Default state is 名札なし (184), rendered as Icons.person_off.
       expect(
         find.descendant(
           of: find.byKey(const Key('comment-post-anonymous-toggle')),
-          matching: find.byIcon(Icons.person),
+          matching: find.byIcon(Icons.person_off),
         ),
         findsOneWidget,
       );
@@ -795,7 +795,7 @@ void main() {
       );
     });
 
-    testWidgets('tapping anonymous toggle swaps icon to person_off', (
+    testWidgets('tapping anonymous toggle swaps icon to person', (
       WidgetTester tester,
     ) async {
       await _pump(
@@ -811,11 +811,11 @@ void main() {
         const Key('comment-post-anonymous-toggle'),
       );
       expect(
-        find.descendant(of: toggle, matching: find.byIcon(Icons.person)),
+        find.descendant(of: toggle, matching: find.byIcon(Icons.person_off)),
         findsOneWidget,
       );
       expect(
-        find.descendant(of: toggle, matching: find.byIcon(Icons.person_off)),
+        find.descendant(of: toggle, matching: find.byIcon(Icons.person)),
         findsNothing,
       );
 
@@ -823,16 +823,16 @@ void main() {
       await tester.pump();
 
       expect(
-        find.descendant(of: toggle, matching: find.byIcon(Icons.person)),
+        find.descendant(of: toggle, matching: find.byIcon(Icons.person_off)),
         findsNothing,
       );
       expect(
-        find.descendant(of: toggle, matching: find.byIcon(Icons.person_off)),
+        find.descendant(of: toggle, matching: find.byIcon(Icons.person)),
         findsOneWidget,
       );
     });
 
-    testWidgets('send forwards isAnonymous=false by default', (
+    testWidgets('send forwards isAnonymous=true by default', (
       WidgetTester tester,
     ) async {
       bool? captured;
@@ -861,10 +861,10 @@ void main() {
       await tester.tap(find.byKey(const Key('comment-post-send-button')));
       await tester.pumpAndSettle();
 
-      expect(captured, isFalse);
+      expect(captured, isTrue);
     });
 
-    testWidgets('send forwards isAnonymous=true when toggled on', (
+    testWidgets('send forwards isAnonymous=false when toggled off', (
       WidgetTester tester,
     ) async {
       bool? captured;
@@ -895,7 +895,7 @@ void main() {
       await tester.tap(find.byKey(const Key('comment-post-send-button')));
       await tester.pumpAndSettle();
 
-      expect(captured, isTrue);
+      expect(captured, isFalse);
     });
 
     testWidgets(
@@ -920,7 +920,7 @@ void main() {
         await tester.tap(find.byKey(const Key('comment-post-fab')));
         await tester.pumpAndSettle();
 
-        // Go to 通常 mode, turn anonymous on, then go back to 運営.
+        // Go to 通常 mode, turn anonymous off, then go back to 運営.
         await tester.tap(find.byKey(const Key('comment-post-operator-toggle')));
         await tester.pump();
         await tester.tap(
@@ -1015,7 +1015,7 @@ void main() {
       final Finder toggle = find.byKey(
         const Key('comment-post-anonymous-toggle'),
       );
-      // Initial state: toggled=false.
+      // Initial state: toggled=true (anonymous by default).
       final Finder semanticsBefore = find
           .ancestor(
             of: toggle,
@@ -1026,7 +1026,7 @@ void main() {
           .first;
       final Semantics before = tester.widget<Semantics>(semanticsBefore);
       expect(before.properties.button, isTrue);
-      expect(before.properties.toggled, isFalse);
+      expect(before.properties.toggled, isTrue);
 
       await tester.tap(toggle);
       await tester.pump();
@@ -1040,7 +1040,7 @@ void main() {
           )
           .first;
       final Semantics after = tester.widget<Semantics>(semanticsAfter);
-      expect(after.properties.toggled, isTrue);
+      expect(after.properties.toggled, isFalse);
     });
 
     testWidgets('close button collapses without sending', (

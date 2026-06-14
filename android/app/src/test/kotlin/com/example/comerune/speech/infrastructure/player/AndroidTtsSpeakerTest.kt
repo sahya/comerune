@@ -685,6 +685,50 @@ class AndroidTtsSpeakerTest {
     }
 
     @Test
+    fun `concurrent focus loss and onDone do not double-resume the speak continuation`() =
+        runBlocking {
+            // Issue #964: reproduce the TOCTOU window between the
+            // focusListener's isActive check and pending.resume(). A listener
+            // callback on the native TTS worker thread can resume the
+            // continuation in between. The IllegalStateException catch on the
+            // focusListener path must keep the focus-loss handler idempotent
+            // and prevent the failure from escaping the speaker. Same shape as
+            // the stop()/onDone race test above so both TOCTOU defences are
+            // exercised under the same load (100 iterations).
+            repeat(100) { iteration ->
+                val factory = FakeTextToSpeechFactory()
+                val guard = FakeAudioFocusGuard()
+                val speaker = AndroidTtsSpeaker(factory, audioFocusGuard = guard)
+                val initJob = launch { speaker.initialize() }
+                factory.awaitPendingInit()
+                factory.completePendingInit(TextToSpeech.SUCCESS)
+                initJob.join()
+                val listener = factory.createdEngines.first().registeredProgressListeners.first()
+
+                val id = "u-focus-race-$iteration"
+                val speakJob = async(Dispatchers.Default) { speaker.speak("hello", id) }
+                awaitSpeakRecorded(factory, id)
+
+                // Fire focus loss and onDone() concurrently. Whichever resumes
+                // the continuation first wins; the loser must not crash the
+                // focusListener with an IllegalStateException escaping the
+                // speaker.
+                val lossJob = async(Dispatchers.Default) {
+                    guard.emit(AudioFocusGuard.FocusEvent.LOSS_TRANSIENT)
+                }
+                val doneJob = async(Dispatchers.Default) { listener.onDone(id) }
+
+                lossJob.await()
+                doneJob.await()
+
+                // speak() must have resumed exactly once (success or failure)
+                // and neither resume path must have thrown out of the speaker.
+                withTimeout(2000) { speakJob.await() }
+                speaker.release()
+            }
+        }
+
+    @Test
     fun `release unsubscribes from the audio focus guard`() = runBlocking {
         val factory = FakeTextToSpeechFactory()
         val guard = FakeAudioFocusGuard()

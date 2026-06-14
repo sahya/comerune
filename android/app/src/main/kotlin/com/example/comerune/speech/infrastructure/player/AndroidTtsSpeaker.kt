@@ -84,9 +84,21 @@ internal class AndroidTtsSpeaker(
                     val cont = currentContinuation
                     currentContinuation = null
                     if (cont != null && cont.isActive) {
-                        cont.resume(
-                            Result.failure(TtsSpeakException.FocusLost()),
-                        )
+                        // Issue #964: same TOCTOU defence as stop() — a
+                        // listener callback can resume between the isActive
+                        // check and resume() below.
+                        try {
+                            cont.resume(
+                                Result.failure(TtsSpeakException.FocusLost()),
+                            )
+                        } catch (e: IllegalStateException) {
+                            // Observe (not ignore) the benign double-resume so
+                            // a regression surfaces in logs.
+                            Log.w(
+                                TAG,
+                                "focusListener: continuation already resumed concurrently: ${e.message}",
+                            )
+                        }
                     }
                 }
                 AudioFocusGuard.FocusEvent.GAIN -> {
