@@ -397,4 +397,55 @@ class SpeechControllerProcessAndroidTtsContractTest {
             controller.release()
         }
     }
+
+    // ---------------------------------------------------------------------
+    // Issue #969: skip() must mirror stop()'s ordering and call
+    // speaker.stop() up-front so an in-flight Android TTS speak() is
+    // interrupted immediately. The previous code called speaker.stop() last,
+    // which left the same regression surface as #962 latent on the skip
+    // path — covered here so future refactors cannot regress the symmetry.
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `skip interrupts in-flight android tts speak symmetrically with stop`() = runBlocking {
+        val speaker = FakeTtsSpeaker().apply { suspendOnSpeak = true }
+        val controller = newController(ttsSpeaker = speaker)
+        try {
+            controller.initialize()
+            controller.start()
+
+            controller.submitComment(rawComment("c-skip-1", "in-flight"))
+            // Wait until speak() is actually suspended on the worker.
+            val deadline = System.currentTimeMillis() + 500
+            while (speaker.speakCalls.get() == 0 && System.currentTimeMillis() < deadline) {
+                delay(10)
+            }
+            assertEquals(
+                "speak must have been entered before skip is issued",
+                1,
+                speaker.speakCalls.get(),
+            )
+
+            // skip must propagate to speaker.stop() so the worker wakes up
+            // immediately rather than waiting for the safety timeout —
+            // the same guarantee stop() makes (Issue #962).
+            controller.skip()
+
+            // Generous 1s ceiling: production resumes within milliseconds.
+            // The bug being guarded against is a 60s freeze, so any value
+            // well under that proves the symmetry holds.
+            val resumeDeadline = System.currentTimeMillis() + 1000
+            while (speaker.stopCalls.get() == 0 &&
+                System.currentTimeMillis() < resumeDeadline
+            ) {
+                delay(10)
+            }
+            assertTrue(
+                "controller.skip must invoke speaker.stop on the in-flight speaker",
+                speaker.stopCalls.get() >= 1,
+            )
+        } finally {
+            controller.release()
+        }
+    }
 }
