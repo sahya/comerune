@@ -68,7 +68,7 @@ dependencies:
 
   # OIDC 認可フローの App Links コールバック受信
   # （ビルド時注入された BFF host 上のコールバック URL への復帰を intent としてアプリで受ける）
-  app_links: 7.1.2
+  app_links: 7.2.0
 
   # SHA-256 / HMAC-SHA256（同梱プリセットフィルタの軽量難読化アセットの復号に使用）。
   # 発行元 dart.dev（検証済みパブリッシャ）。既に依存解決ツリーに 3.0.7 が存在するため
