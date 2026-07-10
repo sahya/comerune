@@ -130,6 +130,28 @@ wsendpoint API の利用には生放送視聴系の OAuth スコープが別途�
   NDGR (HTTP stream) の接続先になったことを記載
 - [tor4kichi: ニコ生 配信情報 WebSocket の雑なまとめ](https://gist.github.com/tor4kichi/c5475c8362ee897911e43c46f0918023)
 
+### nicoNewStreamRecorderKakkoKari（ニコ生新配信録画ツール(仮), C#）
+
+タイムシフト録画・コメント取得に実績のある録画ツール
+[guest-nico/nicoNewStreamRecorderKakkoKari](https://github.com/guest-nico/nicoNewStreamRecorderKakkoKari)
+のソースを確認した結果、**本メモの推奨経路と同一のアーキテクチャ**だった:
+
+- `src/rec/Html5Recorder.cs` — watch ページ HTML から
+  `<script id="embedded-data" data-props="...">` を正規表現で抽出し、
+  そこから WS 接続情報を得る（timeshift も `si.isTimeShift` で同経路を通る）
+- `src/rec/MpnCommentGetter.cs`（NDGR 世代のコメント取得）:
+  - viewUri は **watch WS のメッセージから抽出**:
+    `mpnViewUri = util.getRegGroup(message, "\"viewUri\":\"(.+?)\"")`
+    — つまり `messageServer` メッセージ経由（Hakumai と同じ）
+  - `mpnViewUri + "?at=" + at`（live は `at=now`）で NDGR を fetch し、
+    過去コメントは `ChunkedEntry.Backward.Segment.Uri` → `PackedSegment` を遡って取得
+    — comerune の `NdgrTimeshiftClient`（`_nextBackwardUri` / backward segment 方式）と同型
+  - NDGR fetch に **追加の認証ヘッダは付けていない**（§4 Non-scope の #655 の
+    「viewUri は署名付き URL でありヘッダ不要の可能性が高い」という見立てと整合）
+- `src/rec/TimeShiftCommentGetter.cs` は `thread` / `res_from` / `waybackkey` を使う
+  **2024 年以前の旧コメントサーバ方式**であり、現行 NDGR 環境ではそのまま流用できない。
+  同リポジトリを参考にする場合は Mpn 系（NDGR）クラスの方を見ること
+
 Multi Comment Viewer / MCV 派生（NiconamaCommentViewer 等）も watch ページの
 embedded-data から WS URL を取得する同型の方式（ブラウザと同じ経路）であり、
 **視聴者クライアントで rooms[].viewUri をタイムシフトに使う実装は確認できなかった**。
