@@ -34,7 +34,7 @@ dependencies:
   shared_preferences: 2.5.5
 
   # WebView（ニコニコログイン画面でuser_sessionクッキー取得）
-  webview_flutter: 4.14.0
+  webview_flutter: 4.14.1
 
   # 認証情報の暗号化保存（Android Keystore / iOS Keychain）
   flutter_secure_storage: 10.3.1
