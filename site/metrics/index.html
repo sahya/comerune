@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>ダウンロード統計 — comerune</title>
+  <meta name="description" content="comerune のリリースダウンロード数の推移を表示する統計ページ。" />
+  <!-- 内部向けの統計ページなので検索結果には出さない -->
+  <meta name="robots" content="noindex,follow" />
+  <link rel="canonical" href="https://comerune.pages.dev/metrics/" />
+  <link rel="icon" type="image/png" href="/icon.png" />
+  <link rel="apple-touch-icon" href="/icon.png" />
+
+  <style>
+    :root {
+      --bg: #fafaf7;
+      --surface: #ffffff;
+      --text: #1d1d1b;
+      --muted: #6a6a66;
+      --line: #e7e6df;
+      --accent: #ff7a59;
+      --accent-ink: #b1452b;
+      --shadow: 0 1px 0 rgba(0,0,0,.03), 0 8px 24px rgba(20,20,20,.05);
+      --radius: 14px;
+      --max: 880px;
+      /* グラフ系列色（ライト面 #ffffff で CVD 分離・明度帯を検証済み） */
+      --series-1: #2a78d6;
+      --series-2: #eb6834;
+      --series-3: #1baf7a;
+      --series-4: #eda100;
+      --series-5: #e87ba4;
+      --series-other: #898781;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #15140f;
+        --surface: #1d1c17;
+        --text: #f1efe7;
+        --muted: #a3a299;
+        --line: #2c2b25;
+        --accent: #ff8b6e;
+        --accent-ink: #ffb39d;
+        --shadow: 0 1px 0 rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.4);
+        /* ダーク面 #1d1c17 向けに段を落とした同系色（同じく検証済み） */
+        --series-1: #3987e5;
+        --series-2: #d95926;
+        --series-3: #199e70;
+        --series-4: #c98500;
+        --series-5: #d55181;
+        --series-other: #898781;
+      }
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Segoe UI", Roboto, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--accent-ink); }
+    a:hover { color: var(--accent); }
+    a:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+      border-radius: 2px;
+    }
+    .wrap { max-width: var(--max); margin: 0 auto; padding: 0 20px; }
+
+    header.site {
+      padding: 28px 0 8px;
+    }
+    header.site .back {
+      font-size: .9rem;
+      text-decoration: none;
+    }
+    h1 { font-size: 1.5rem; margin: 8px 0 4px; }
+    .lede { color: var(--muted); font-size: .92rem; margin: 0 0 20px; }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 20px;
+      margin: 0 0 20px;
+    }
+    .card h2 { font-size: 1.05rem; margin: 0 0 12px; }
+
+    /* ステータス表示（読み込み中 / エラー / データなし） */
+    #status { color: var(--muted); font-size: .95rem; }
+    #status.error { color: var(--accent-ink); }
+
+    /* サマリータイル */
+    .tiles {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin: 0 0 20px;
+    }
+    .tile {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 14px 16px;
+    }
+    .tile .label { font-size: .8rem; color: var(--muted); }
+    .tile .value { font-size: 1.6rem; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+    .tile .sub { font-size: .8rem; color: var(--muted); }
+
+    /* グラフ */
+    .chart { position: relative; }
+    .chart svg { display: block; width: 100%; height: auto; }
+    .chart .tooltip {
+      position: absolute;
+      pointer-events: none;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 6px 10px;
+      font-size: .8rem;
+      line-height: 1.5;
+      white-space: nowrap;
+      visibility: hidden;
+      z-index: 1;
+    }
+    .tooltip .t-date { color: var(--muted); }
+    .tooltip .t-row { display: flex; align-items: center; gap: 6px; }
+    .tooltip .t-val { margin-left: auto; padding-left: 12px; font-variant-numeric: tabular-nums; }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 16px;
+      margin: 0 0 8px;
+      font-size: .85rem;
+    }
+    .legend .item { display: flex; align-items: center; gap: 6px; }
+    .chip {
+      width: 10px; height: 10px;
+      border-radius: 3px;
+      flex: none;
+    }
+
+    /* テーブル: 狭い画面では列を潰さず横スクロールさせる */
+    .table-scroll { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; min-width: 420px; font-size: .9rem; }
+    th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+    th { color: var(--muted); font-weight: 600; font-size: .8rem; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+    footer.site {
+      color: var(--muted);
+      font-size: .8rem;
+      padding: 8px 0 40px;
+    }
+  </style>
+</head>
+<body>
+  <header class="site">
+    <div class="wrap">
+      <a class="back" href="/">← comerune トップへ</a>
+      <h1>ダウンロード統計</h1>
+      <p class="lede">GitHub Releases のダウンロード数を 1 日 1 回記録した推移です。</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <p id="status">読み込み中…</p>
+    <noscript><p>このページの表示には JavaScript が必要です。</p></noscript>
+
+    <div id="content" hidden>
+      <div class="tiles" id="tiles"></div>
+
+      <section class="card">
+        <h2>総ダウンロード数の推移</h2>
+        <div class="chart" id="chart-total"></div>
+      </section>
+
+      <section class="card">
+        <h2>リリース別ダウンロード数の推移</h2>
+        <div class="legend" id="legend-by-release"></div>
+        <div class="chart" id="chart-by-release"></div>
+      </section>
+
+      <section class="card">
+        <h2>リリース別ダウンロード数（最新）</h2>
+        <div class="table-scroll">
+          <table id="table-releases">
+            <thead>
+              <tr>
+                <th scope="col">リリース</th>
+                <th scope="col">公開日</th>
+                <th scope="col" class="num">ダウンロード数</th>
+                <th scope="col" class="num">割合</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site">
+    <div class="wrap">
+      <p id="updated-at"></p>
+    </div>
+  </footer>
+
+  <script src="/metrics/app.js" defer></script>
+</body>
+</html>

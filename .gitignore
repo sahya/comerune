@@ -26,7 +26,8 @@ doc/api/
 *.js.deps
 *.js.map
 # Hand-written static-site scripts are not dart2js output; keep them tracked.
-!/site/*.js
+# `**` also matches zero directories, so this covers site/ and its subdirectories.
+!/site/**/*.js
 
 .flutter-plugins
 .flutter-plugins-dependencies
