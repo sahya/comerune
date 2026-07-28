@@ -89,6 +89,7 @@
       margin: 0 0 20px;
     }
     .card h2 { font-size: 1.05rem; margin: 0 0 12px; }
+    .card .note { color: var(--muted); font-size: .85rem; margin: -6px 0 12px; }
 
     /* ステータス表示（読み込み中 / エラー / データなし） */
     #status { color: var(--muted); font-size: .95rem; }
@@ -178,12 +179,19 @@
       <div class="tiles" id="tiles"></div>
 
       <section class="card">
-        <h2>総ダウンロード数の推移</h2>
+        <h2>総ダウンロード数の推移（累計）</h2>
         <div class="chart" id="chart-total"></div>
       </section>
 
+      <section class="card" id="section-daily" hidden>
+        <h2>1 日あたりの増加数（リリース別）</h2>
+        <p class="note">累計ではなく増加ペースです。どのバージョンが今伸びているかが分かります。</p>
+        <div class="legend" id="legend-daily"></div>
+        <div class="chart" id="chart-daily"></div>
+      </section>
+
       <section class="card">
-        <h2>リリース別ダウンロード数の推移</h2>
+        <h2>リリース別ダウンロード数の推移（累計）</h2>
         <div class="legend" id="legend-by-release"></div>
         <div class="chart" id="chart-by-release"></div>
       </section>

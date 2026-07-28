@@ -12,6 +12,10 @@ const MAX_SERIES = 5;
 const OTHER_LABEL = "その他";
 
 const numFmt = new Intl.NumberFormat("ja-JP");
+// 1 日あたりの増加は取得間隔が空くと小数になるため、桁を絞って表示する
+const rateFmt = new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 1 });
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 document.addEventListener("DOMContentLoaded", init);
 
@@ -90,13 +94,20 @@ function render(snapshots) {
     [{ name: "総ダウンロード数", cssVar: "--series-1", values: perSnap.map(totalOf) }],
   );
 
-  // リリース別: 最新時点の DL 数上位を個別系列に、残りは「その他」へ
-  const latestTags = [...perSnap[perSnap.length - 1].byTag.entries()]
+  // リリース別: DL 数上位を個別系列に、残りは「その他」へ。
+  // 対象は全スナップショットに登場した tag の和集合とする。最新時点だけを見ると、
+  // 削除されたリリースの過去の推移まで表示から消えてしまうため
+  // （合計は減っているのに内訳から理由が読み取れなくなる）。
+  const lastKnown = new Map();
+  for (const snap of perSnap) {
+    for (const [tag, v] of snap.byTag) lastKnown.set(tag, v);
+  }
+  const rankedTags = [...lastKnown.entries()]
     .sort((a, b) => b[1] - a[1])
     .map(([tag]) => tag);
-  const topTags = latestTags.slice(0, MAX_SERIES);
+  const topTags = rankedTags.slice(0, MAX_SERIES);
   const topTagSet = new Set(topTags);
-  const hasOther = latestTags.length > MAX_SERIES;
+  const hasOther = rankedTags.length > MAX_SERIES;
 
   const series = topTags.map((tag, i) => ({
     name: tag,
@@ -120,6 +131,8 @@ function render(snapshots) {
     });
   }
 
+  renderDailyChart(series, perSnap);
+
   renderLegend(document.getElementById("legend-by-release"), series);
   renderLineChart(
     document.getElementById("chart-by-release"),
@@ -133,12 +146,47 @@ function render(snapshots) {
     `最終記録: ${fmtDateTime(latest.t)}（毎日 1 回自動更新）`;
 }
 
+// 累計グラフでは「どのリリースが今伸びているか」が分かりにくいため、
+// 隣り合うスナップショットの差分を 1 日あたりに直して増加ペースを見せる。
+// 系列と色は累計グラフと同じものを使う（同じリリース＝同じ色を保つ）。
+function renderDailyChart(series, perSnap) {
+  const section = document.getElementById("section-daily");
+  // 差分は 2 点目以降にしか作れないので、1 点しかない間はセクションごと出さない
+  if (perSnap.length < 2) {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+
+  const daily = series.map((s) => ({
+    name: s.name,
+    cssVar: s.cssVar,
+    values: s.values.slice(1).map((v, i) => {
+      const prev = s.values[i];
+      // そのリリースがまだ無かった区間は比較の基準がないので描かない
+      if (v === null || prev === null) return null;
+      // ワークフローが失敗して間隔が空くことがあるため 1 日あたりに正規化する
+      const days = (perSnap[i + 1].t - perSnap[i].t) / DAY_MS;
+      if (!(days > 0)) return null;
+      return (v - prev) / days;
+    }),
+  }));
+
+  renderLegend(document.getElementById("legend-daily"), daily);
+  renderLineChart(
+    document.getElementById("chart-daily"),
+    perSnap.slice(1).map((s) => s.t),
+    daily,
+    rateFmt.format,
+  );
+}
+
 function renderTiles(snapshots, perSnap, totalOf) {
   const latestSnap = perSnap[perSnap.length - 1];
   const latestTotal = totalOf(latestSnap);
 
   // 7 日前（に最も近い過去のスナップショット）との差分
-  const weekAgo = latestSnap.t - 7 * 24 * 60 * 60 * 1000;
+  const weekAgo = latestSnap.t - 7 * DAY_MS;
   let base = null;
   for (const s of perSnap) {
     if (s.t <= weekAgo) base = s;
@@ -234,8 +282,8 @@ const chartObserver = new ResizeObserver((entries) => {
 
 // グラフはコンテナ幅と同じ座標系で描く。viewBox を固定幅にすると
 // 画面幅の狭い端末で軸ラベルが潰れて読めなくなるため。
-function renderLineChart(root, times, series) {
-  const state = { times, series, w: 0 };
+function renderLineChart(root, times, series, fmt) {
+  const state = { times, series, w: 0, fmt };
   chartStates.set(root, state);
   drawChart(root, state);
   chartObserver.observe(root);
@@ -255,26 +303,32 @@ function drawChart(root, state) {
     "aria-label": `${series.map((s) => s.name).join("、")} の推移グラフ`,
   });
 
+  const fmt = state.fmt ?? numFmt.format;
   const tMin = times[0];
   const tMax = times[times.length - 1];
-  const vMax = niceMax(Math.max(1, ...series.flatMap((s) => s.values.filter((v) => v !== null))));
+
+  // 増加数グラフはリリース削除で負になりうるので、下限も値から決める
+  const vals = series.flatMap((s) => s.values.filter((v) => v !== null));
+  const { vMin, vMax, step } = niceDomain(vals);
 
   const x = (t) => (tMax === tMin
     ? PAD.left + (W - PAD.left - PAD.right) / 2
     : PAD.left + ((t - tMin) / (tMax - tMin)) * (W - PAD.left - PAD.right));
-  const y = (v) => H - PAD.bottom - (v / vMax) * (H - PAD.top - PAD.bottom);
+  const y = (v) =>
+    H - PAD.bottom - ((v - vMin) / (vMax - vMin)) * (H - PAD.top - PAD.bottom);
 
-  // 横グリッドと Y 軸目盛り
-  const yTicks = 4;
+  // 横グリッドと Y 軸目盛り。0 の線だけ基準線として太くする
+  const yTicks = Math.round((vMax - vMin) / step);
   for (let i = 0; i <= yTicks; i++) {
-    const v = (vMax / yTicks) * i;
+    const v = vMin + step * i;
     const gy = y(v);
     svg.append(
       svgEl("line", {
         x1: PAD.left, x2: W - PAD.right, y1: gy, y2: gy,
-        stroke: "var(--line)", "stroke-width": i === 0 ? 1.5 : 1,
+        stroke: "var(--line)",
+        "stroke-width": Math.abs(v) < step * 1e-6 ? 1.5 : 1,
       }),
-      textEl(numFmt.format(v), PAD.left - 8, gy + 4, "end"),
+      textEl(fmt(v), PAD.left - 8, gy + 4, "end"),
     );
   }
 
@@ -368,7 +422,7 @@ function drawChart(root, state) {
       const row = el("div", "t-row");
       const chip = el("span", "chip");
       chip.style.background = `var(${s.cssVar})`;
-      row.append(chip, document.createTextNode(s.name), el("span", "t-val", numFmt.format(v)));
+      row.append(chip, document.createTextNode(s.name), el("span", "t-val", fmt(v)));
       rows.push(row);
     });
     tooltip.replaceChildren(...rows);
@@ -392,11 +446,28 @@ function drawChart(root, state) {
   });
 }
 
-// 軸の最大値をキリのよい数字（1/2/5 × 10^n）に切り上げる
-function niceMax(v) {
-  const pow = Math.pow(10, Math.floor(Math.log10(v)));
-  for (const m of [1, 2, 5, 10]) {
-    if (v <= m * pow) return m * pow;
+// Y 軸の範囲と目盛り幅を決める。
+// 目盛り幅を 1/2/5 × 10^n に丸めた上で範囲をその倍数に広げるので、
+// 目盛りの値がキリのよい数字になり、0 が必ず目盛り線上に来る
+// （増加数はリリース削除で負にもなるため、0 の位置が読み取れることが重要）。
+function niceDomain(vals, targetTicks = 4) {
+  const lo = Math.min(0, ...vals);
+  let hi = Math.max(0, ...vals);
+  if (hi === lo) hi = lo + 1;
+  const step = niceStep((hi - lo) / targetTicks);
+  return {
+    vMin: Math.floor(lo / step) * step,
+    vMax: Math.ceil(hi / step) * step,
+    step,
+  };
+}
+
+// 目盛り幅をキリのよい数字（1/2/5 × 10^n）に切り上げる
+function niceStep(rough) {
+  if (!(rough > 0)) return 1;
+  const pow = Math.pow(10, Math.floor(Math.log10(rough)));
+  for (const m of [1, 2, 5]) {
+    if (rough <= m * pow) return m * pow;
   }
   return 10 * pow;
 }
