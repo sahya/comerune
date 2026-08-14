@@ -46,7 +46,7 @@ dependencies:
   share_plus: 12.0.2
 
   # コメントログ自動保存先のディレクトリ選択
-  file_picker: 11.0.2
+  file_picker: 12.0.0
 
   # Android Foreground Service（バックグラウンド接続維持・通知バー常駐表示）
   flutter_foreground_task: 9.2.2
