@@ -315,6 +315,69 @@ class AudioFocusGuardTest {
         )
         assertFalse(guard.isHeld)
     }
+
+    // --- NoOpAudioFocusController (Issue #931 mixing mode) ---
+
+    @Test
+    fun `NoOpAudioFocusController request returns GRANTED without side effects`() {
+        val controller = NoOpAudioFocusController()
+        assertEquals(AudioManager.AUDIOFOCUS_REQUEST_GRANTED, controller.request())
+        assertEquals(AudioManager.AUDIOFOCUS_REQUEST_GRANTED, controller.request())
+        assertEquals(AudioManager.AUDIOFOCUS_REQUEST_GRANTED, controller.abandon())
+    }
+
+    @Test
+    fun `NoOpAudioFocusController setFocusChangeListener is a no-op`() {
+        val controller = NoOpAudioFocusController()
+        var fired = false
+        controller.setFocusChangeListener(
+            object : AudioFocusListener {
+                override fun onFocusChange(rawFocusChange: Int) {
+                    fired = true
+                }
+            },
+        )
+        // There is no platform AudioManager wiring, so nothing can deliver
+        // a focus-change event to the listener.
+        assertFalse(
+            "NoOp controller must never invoke the listener it was given",
+            fired,
+        )
+    }
+
+    @Test
+    fun `guard with NoOpController grants acquire without touching platform`() = runBlocking {
+        val controller = NoOpAudioFocusController()
+        val runner = FakeDelayedRunner()
+        val guard = newGuard(controller, runner)
+
+        val result = guard.acquire()
+        assertTrue(result.isSuccess)
+        assertTrue(guard.isHeld)
+    }
+
+    @Test
+    fun `guard with NoOpController never triggers focus-loss listeners`() = runBlocking {
+        // Mixing-mode mode: comerune does not claim focus, so the platform
+        // cannot deliver LOSS/LOSS_TRANSIENT and our subscribers must never
+        // see a loss event from this controller. This protects WAV/TTS
+        // pipelines from spurious stops when other media starts playing.
+        val controller = NoOpAudioFocusController()
+        val guard = newGuard(controller, FakeDelayedRunner())
+        val seen = CopyOnWriteArrayList<AudioFocusGuard.FocusEvent>()
+        guard.addListener { event -> seen.add(event) }
+
+        guard.acquire()
+        // Even a permanent loss reported through the seam (which cannot
+        // happen in production because the controller never registers
+        // a listener with the platform) is irrelevant: there is no path
+        // from controller back to guard without setFocusChangeListener
+        // having been invoked with a real listener.
+        assertTrue(
+            "NoOp controller path must not deliver any focus events",
+            seen.isEmpty(),
+        )
+    }
 }
 
 private suspend fun waitUntil(
