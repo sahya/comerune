@@ -218,11 +218,15 @@ function renderTiles(snapshots, perSnap, totalOf) {
     },
   ];
 
-  const root = document.getElementById("tiles");
+  const root = document.getElementById("stats");
   root.replaceChildren(
     ...tiles.map((t) => {
-      const div = el("div", "tile");
-      div.append(el("div", "label", t.label), el("div", "value", t.value), el("div", "sub", t.sub));
+      const div = el("div", "stat");
+      div.append(
+        el("p", "eyebrow", t.label),
+        el("div", "value", t.value),
+        el("div", "sub", t.sub),
+      );
       return div;
     }),
   );
@@ -252,10 +256,10 @@ function renderTable(latestSnapshot) {
       const tr = document.createElement("tr");
       const share = grand > 0 ? `${((r.total / grand) * 100).toFixed(1)}%` : "—";
       tr.append(
-        el("td", "", r.tag),
-        el("td", "", r.published ? fmtDate(Date.parse(r.published)) : "—"),
+        el("td", "tag", r.tag),
+        el("td", "dim", r.published ? fmtDate(Date.parse(r.published)) : "—"),
         el("td", "num", numFmt.format(r.total)),
-        el("td", "num", share),
+        el("td", "num dim", share),
       );
       return tr;
     }),
@@ -291,7 +295,9 @@ function renderLineChart(root, times, series, fmt) {
 
 function drawChart(root, state) {
   const { times, series } = state;
-  const W = Math.max(320, Math.round(root.clientWidth) || 800);
+  // コンテナ幅をそのまま座標系にする（下限を上回ると SVG 全体が縮小され、
+  // 軸ラベルが指定より小さく描画されてしまう）
+  const W = Math.max(240, Math.round(root.clientWidth) || 800);
   const H = Math.round(Math.max(220, Math.min(320, W * 0.5)));
   state.w = W;
 
@@ -462,12 +468,16 @@ function niceDomain(vals, targetTicks = 4) {
   };
 }
 
-// 目盛り幅をキリのよい数字（1/2/5 × 10^n）に切り上げる
+// 目盛り幅をキリのよい数字（1/2/2.5/5 × 10^n）に切り上げる。
+// 2.5 系列がないと 95 のような範囲で幅が 50 に飛び、目盛りが 3 本しか出ず粗くなる。
+// ただし 0.25 のような 1 未満の幅は表示桁を増やさないと読めないので使わない。
 function niceStep(rough) {
   if (!(rough > 0)) return 1;
   const pow = Math.pow(10, Math.floor(Math.log10(rough)));
-  for (const m of [1, 2, 5]) {
-    if (rough <= m * pow) return m * pow;
+  for (const m of [1, 2, 2.5, 5]) {
+    const step = m * pow;
+    if (m === 2.5 && step < 1) continue;
+    if (rough <= step) return step;
   }
   return 10 * pow;
 }
@@ -487,12 +497,13 @@ function svgEl(tag, attrs) {
   return node;
 }
 
+// 見た目は CSS の .chart text.tick 側で指定する（属性値はその指定が
+// 効かない環境向けのフォールバック）
 function textEl(text, x, y, anchor) {
   const node = svgEl("text", {
-    x, y, "text-anchor": anchor,
+    x, y, "text-anchor": anchor, class: "tick",
     "font-size": 11, fill: "var(--muted)",
   });
-  node.style.fontVariantNumeric = "tabular-nums";
   node.textContent = text;
   return node;
 }

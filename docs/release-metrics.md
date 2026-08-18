@@ -38,6 +38,10 @@ GitHub の Releases API（`/repos/{owner}/{repo}/releases`）が返す
   - データ取得のため `site/_headers` で `/metrics/*` のみ
     `connect-src` に `https://raw.githubusercontent.com` を追加している
   - トップページからはリンクしておらず、`noindex` かつ sitemap 未登録
+  - 配色はトップページとは別系統。数値を読むための画面なので、背景・罫線・文字は
+    無彩色に寄せ、彩度はデータ系列だけが持つようにしている。系列色は実際の描画面
+    （ライト `#ffffff` / ダーク `#101012`）に対して明度帯・彩度・色覚多様性の
+    分離・コントラストを検証済みで、面の色を変えるときは再検証が必要
 
 ### 表示している軸
 
