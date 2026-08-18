@@ -2,8 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
-// ignore: implementation_imports
-import 'package:file_picker/src/platform/file_picker_platform_interface.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -843,7 +841,7 @@ void main() {
       final SettingsStore store = buildStore();
       final File bad = File('${tempDir.path}/bad.json')
         ..writeAsStringSync('not valid json');
-      fakeFilePicker.resultToReturn = buildSingleFileResult(path: bad.path);
+      fakeFilePicker.resultToReturn = buildDiskPlatformFile(path: bad.path);
 
       await tester.pumpWidget(_buildScreen(store));
       await tester.pumpAndSettle();

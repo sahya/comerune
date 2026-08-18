@@ -2,22 +2,20 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
-// ignore: implementation_imports
-import 'package:file_picker/src/platform/file_picker_platform_interface.dart';
 
 /// Test double for `FilePickerPlatform`.  Returns a preconfigured
-/// [FilePickerResult] (or null to simulate user cancellation).  Can be
+/// [PlatformFile] (or null to simulate user cancellation).  Can be
 /// configured to throw.
 class FakeFilePickerPlatform extends FilePickerPlatform {
   FakeFilePickerPlatform();
 
-  /// Result returned from [pickFiles].  Defaults to null (user cancelled).
-  FilePickerResult? resultToReturn;
+  /// Result returned from [pickFile].  Defaults to null (user cancelled).
+  PlatformFile? resultToReturn;
 
-  /// When non-null, `pickFiles` throws this error.
+  /// When non-null, `pickFile` throws this error.
   Object? errorToThrow;
 
-  /// Delay inserted before `pickFiles` returns, to simulate slow platform ops
+  /// Delay inserted before `pickFile` returns, to simulate slow platform ops
   /// during widget tests (e.g. disabled-button visualisation).
   Duration responseDelay = Duration.zero;
 
@@ -31,24 +29,21 @@ class FakeFilePickerPlatform extends FilePickerPlatform {
   }
 
   @override
-  Future<FilePickerResult?> pickFiles({
+  Future<PlatformFile?> pickFile({
     String? dialogTitle,
     String? initialDirectory,
     FileType type = FileType.any,
     List<String>? allowedExtensions,
     Function(FilePickerStatus)? onFileLoading,
     int compressionQuality = 0,
-    bool allowMultiple = false,
-    bool withData = false,
-    bool withReadStream = false,
-    bool lockParentWindow = false,
-    bool readSequential = false,
-    bool cancelUploadOnWindowBlur = true,
+    AndroidOptions androidOptions = const AndroidOptions(),
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
   }) async {
     pickCalls.add(<String, Object?>{
       'type': type,
       'allowedExtensions': allowedExtensions,
-      'allowMultiple': allowMultiple,
     });
     if (responseDelay > Duration.zero) {
       await Future<void>.delayed(responseDelay);
@@ -60,17 +55,37 @@ class FakeFilePickerPlatform extends FilePickerPlatform {
   }
 }
 
-/// Convenience to build a [FilePickerResult] whose single file points at a
-/// real path on disk (so the screen can read it via `File(path)`).
-FilePickerResult buildSingleFileResult({required String path}) {
-  final String name = path.split(Platform.pathSeparator).last;
-  return FilePickerResult(<PlatformFile>[
-    PlatformFile(
-      path: path,
-      name: name,
-      size: 0,
-      bytes: Uint8List(0),
-      readStream: null,
-    ),
-  ]);
+/// Convenience to build a [PlatformFile] that points at a real path on disk
+/// (so the screen can read it via `File(path)`).
+PlatformFile buildDiskPlatformFile({required String path}) {
+  return _DiskPlatformFile(path);
+}
+
+/// [PlatformFile] backed by a real file on the local disk.  `file_picker` 12
+/// made [PlatformFile] abstract, so tests provide their own concrete subclass.
+final class _DiskPlatformFile extends PlatformFile {
+  _DiskPlatformFile(this._path);
+
+  final String _path;
+
+  @override
+  String get name => _path.split(Platform.pathSeparator).last;
+
+  @override
+  Uri get uri => Uri.file(_path);
+
+  /// Screens under test read the file via [path] + `dart:io`, so the
+  /// `cross_file` conversion is intentionally unimplemented.
+  @override
+  Never get xFile => throw UnsupportedError('xFile is not used in tests');
+
+  @override
+  Future<int> length() => File(_path).length();
+
+  @override
+  Future<Uint8List> readAsBytes() => File(_path).readAsBytes();
+
+  @override
+  Stream<Uint8List> readAsByteStream() =>
+      File(_path).openRead().map(Uint8List.fromList);
 }

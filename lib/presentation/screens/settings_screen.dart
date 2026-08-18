@@ -285,7 +285,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
     setState(() => _isImporting = true);
     try {
-      final FilePickerResult? result = await FilePicker.pickFiles(
+      final PlatformFile? picked = await FilePicker.pickFile(
         type: FileType.custom,
         // `['json']` 単独だと Android の SAF は `application/json` MIME のみで
         // 絞り込むため、Drive 等で `text/plain` として保存された JSON が
@@ -293,10 +293,10 @@ class _SettingsScreenState extends State<SettingsScreen>
         // 中身が JSON でなければ既存の FormatException ハンドラで拒否される。
         allowedExtensions: <String>['json', 'txt'],
       );
-      if (result == null || result.files.isEmpty) {
+      if (picked == null) {
         return;
       }
-      final String? path = result.files.single.path;
+      final String? path = picked.path;
       if (path == null) {
         return;
       }
