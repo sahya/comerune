@@ -478,10 +478,10 @@ class _CommentDisplaySettingsScreenState
                         value: settings.autoSaveCommentLog,
                         onChanged: (bool value) async {
                           if (value) {
-                            // `androidOptions` は渡さないこと。SAF オプションを
-                            // 渡すと戻り値が実ファイルパスではなく content://
-                            // URI 文字列に変わり、保存先を `Directory` として
-                            // 直接扱っている自動保存が実行時に壊れる。
+                            // SAF オプション付きの `androidOptions` を渡さないこと
+                            // （file_picker 12 時点の挙動）。渡した場合、戻り値が実ファイル
+                            // パスではなく content:// URI 文字列に変わり、保存先を
+                            // `Directory` として直接扱っている自動保存が実行時に壊れる。
                             final String? directory =
                                 await FilePicker.getDirectoryPath();
                             if (directory == null) {
