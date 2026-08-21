@@ -298,6 +298,17 @@ class _SettingsScreenState extends State<SettingsScreen>
       }
       final String? path = picked.path;
       if (path == null) {
+        // 選択結果がローカルの実ファイルを指さない場合（`path` は URI から
+        // 導出されるため、file スキーム以外だと null になる）。ここで無言で
+        // 抜けると「選んだのに何も起きない」状態になるので、他の失敗経路と
+        // 同じ通知を出す。
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              SnackBar(content: Text(AppStrings.settings.importFailedSnackBar)),
+            );
+        }
         return;
       }
       final String jsonString = await File(path).readAsString();

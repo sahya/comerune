@@ -58,34 +58,47 @@ class FakeFilePickerPlatform extends FilePickerPlatform {
 /// Convenience to build a [PlatformFile] that points at a real path on disk
 /// (so the screen can read it via `File(path)`).
 PlatformFile buildDiskPlatformFile({required String path}) {
-  return _DiskPlatformFile(path);
+  return _FakePlatformFile(Uri.file(path));
 }
 
-/// [PlatformFile] backed by a real file on the local disk.  `file_picker` 12
-/// made [PlatformFile] abstract, so tests provide their own concrete subclass.
-final class _DiskPlatformFile extends PlatformFile {
-  _DiskPlatformFile(this._path);
+/// Convenience to build a [PlatformFile] whose URI is not a `file:` URI.
+///
+/// `file_picker` 12 derives [PlatformFile.path] from the URI, so this is the
+/// shape a pick takes when it has no local filesystem path and `path` is null.
+PlatformFile buildPathlessPlatformFile({
+  String uri = 'content://com.example.provider/document/1',
+}) {
+  return _FakePlatformFile(Uri.parse(uri));
+}
 
-  final String _path;
+/// [PlatformFile] built from a bare [Uri].  `file_picker` 12 made
+/// [PlatformFile] abstract, so tests provide their own concrete subclass;
+/// `path` comes for free from the inherited getter that reads [uri].
+final class _FakePlatformFile extends PlatformFile {
+  _FakePlatformFile(this.uri);
 
   @override
-  String get name => _path.split(Platform.pathSeparator).last;
+  final Uri uri;
 
   @override
-  Uri get uri => Uri.file(_path);
+  String get name => uri.pathSegments.isEmpty ? '' : uri.pathSegments.last;
 
   /// Screens under test read the file via [path] + `dart:io`, so the
   /// `cross_file` conversion is intentionally unimplemented.
   @override
   Never get xFile => throw UnsupportedError('xFile is not used in tests');
 
-  @override
-  Future<int> length() => File(_path).length();
+  /// Throws for a non-`file:` URI, which is correct: a screen that reached a
+  /// read on a pathless pick would be skipping its own null-path guard.
+  File get _file => File(uri.toFilePath());
 
   @override
-  Future<Uint8List> readAsBytes() => File(_path).readAsBytes();
+  Future<int> length() => _file.length();
+
+  @override
+  Future<Uint8List> readAsBytes() => _file.readAsBytes();
 
   @override
   Stream<Uint8List> readAsByteStream() =>
-      File(_path).openRead().map(Uint8List.fromList);
+      _file.openRead().map(Uint8List.fromList);
 }

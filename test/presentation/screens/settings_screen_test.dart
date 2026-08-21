@@ -835,6 +835,45 @@ void main() {
       expect(btnWidget.onPressed, isNotNull, reason: 're-enabled after cancel');
     });
 
+    testWidgets(
+      'import: pick without a local path shows importFailed SnackBar',
+      (WidgetTester tester) async {
+        final SettingsStore store = buildStore();
+        // `file_picker` 12 derives `path` from the URI, so a pick that is not a
+        // `file:` URI yields a null path. The screen must say so rather than
+        // returning silently.
+        fakeFilePicker.resultToReturn = buildPathlessPlatformFile();
+
+        await tester.pumpWidget(_buildScreen(store));
+        await tester.pumpAndSettle();
+
+        final Finder importBtn = find.byKey(
+          const Key('import-settings-button'),
+        );
+        await scrollToKeyInList(
+          tester,
+          const Key('settings-list'),
+          const Key('import-settings-button'),
+        );
+
+        await tester.tap(importBtn);
+        await tester.pump();
+        await tester.pump();
+
+        expect(find.text('設定のインポートに失敗しました'), findsOneWidget);
+        expect(find.text('設定をインポートしました'), findsNothing);
+
+        final OutlinedButton btnWidget = tester.widget<OutlinedButton>(
+          importBtn,
+        );
+        expect(
+          btnWidget.onPressed,
+          isNotNull,
+          reason: 're-enabled after the failed import',
+        );
+      },
+    );
+
     testWidgets('import: invalid JSON shows importInvalidFile SnackBar', (
       WidgetTester tester,
     ) async {
