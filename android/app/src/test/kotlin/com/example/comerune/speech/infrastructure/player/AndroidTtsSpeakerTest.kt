@@ -3,6 +3,7 @@ package com.example.comerune.speech.infrastructure.player
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.os.Build
+import com.example.comerune.speech.domain.model.PlayerState
 import com.example.comerune.speech.domain.player.AudioFocusGuard
 import com.example.comerune.speech.domain.player.TtsSpeakException
 import kotlinx.coroutines.Dispatchers
@@ -509,10 +510,10 @@ class AndroidTtsSpeakerTest {
     // ----------------------------------------------------------------------
     // Issue #962: stop() must interrupt an in-flight speak() within ~1s so
     // the queue worker is never frozen waiting on the SPEAK_TIMEOUT_MS
-    // safety net. Previously stop() cleared currentContinuation before
-    // calling engine.stop(), so the UtteranceProgressListener.onStop/onDone
-    // callback's id-equality check discarded the resume and the worker
-    // suspended for up to the full timeout.
+    // safety net. Previously stop() discarded the in-flight continuation
+    // before calling engine.stop(), so the UtteranceProgressListener's
+    // onStop/onDone id check dropped the resume too and the worker suspended
+    // for up to the full timeout.
     // ----------------------------------------------------------------------
 
     @Test
@@ -652,11 +653,11 @@ class AndroidTtsSpeakerTest {
 
     @Test
     fun `concurrent stop and onDone do not double-resume the speak continuation`() = runBlocking {
-        // Reproduce the TOCTOU window between AndroidTtsSpeaker.stop()'s
-        // isActive check and pending.resume(): a listener callback on the
-        // native TTS worker thread can resume the continuation in between.
-        // The IllegalStateException catch in stop() must keep stop()
-        // idempotent and prevent the failure from escaping the speaker.
+        // Drive stop() and a listener callback at the same continuation from
+        // two threads. Only one of them may claim the in-flight utterance,
+        // so only one resume ever reaches the continuation; if a change ever
+        // lets both through, the loser's resume throws IllegalStateException
+        // out of the speaker and fails this test.
         // 100 iterations: 20 in round 1 detected nothing; widening the
         // window improves the chance of catching a regression while still
         // running under ~1s on a typical CI worker.
@@ -666,8 +667,8 @@ class AndroidTtsSpeakerTest {
             val speakJob = async(Dispatchers.Default) { speaker.speak("hello", id) }
             awaitSpeakRecorded(factory, id)
 
-            // Fire stop() and onDone() concurrently. Whichever resumes the
-            // continuation first wins; the loser must not crash stop().
+            // Fire stop() and onDone() concurrently. Whichever claims the
+            // utterance decides the result; the loser must not crash stop().
             val stopJob = async(Dispatchers.Default) { speaker.stop() }
             val doneJob = async(Dispatchers.Default) { listener.onDone(id) }
 
@@ -685,16 +686,66 @@ class AndroidTtsSpeakerTest {
     }
 
     @Test
+    fun `focus loss claims the utterance so a later onDone is a no-op`() = runBlocking {
+        // Deterministic counterpart to the two racing tests around it. Those
+        // fire the terminal paths concurrently and can only catch a
+        // regression when the threads happen to interleave badly; this one
+        // fires them in a fixed order, so it fails every time if the claim
+        // is lost.
+        //
+        // Focus loss takes the in-flight utterance outright, which makes the
+        // onDone that follows a full no-op: it must not resume a second time
+        // (an already-resumed continuation throws), and it must not report
+        // the utterance as completed normally after we stopped it.
+        val factory = FakeTextToSpeechFactory()
+        val guard = FakeAudioFocusGuard()
+        val speaker = AndroidTtsSpeaker(factory, audioFocusGuard = guard)
+        val initJob = launch { speaker.initialize() }
+        factory.awaitPendingInit()
+        factory.completePendingInit(TextToSpeech.SUCCESS)
+        initJob.join()
+        val listener = factory.createdEngines.first().registeredProgressListeners.first()
+
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hello", "u-focus-claim") }
+        awaitSpeakRecorded(factory, "u-focus-claim")
+
+        guard.emit(AudioFocusGuard.FocusEvent.LOSS_TRANSIENT)
+        val result = withTimeout(1000) { speakJob.await() }
+        assertTrue("focus loss must resume speak with failure", result.isFailure)
+        assertEquals(
+            "focus loss must leave the speaker STOPPED",
+            PlayerState.STOPPED,
+            speaker.currentState(),
+        )
+
+        // The platform can still deliver onDone for the utterance we just
+        // stopped. It no longer owns the utterance, so nothing may change.
+        listener.onDone("u-focus-claim")
+
+        assertEquals(
+            "onDone after focus loss must not report the stopped utterance as completed",
+            PlayerState.STOPPED,
+            speaker.currentState(),
+        )
+        assertFalse(
+            "onDone after focus loss must not flip the speaking flag back on",
+            speaker.isSpeaking(),
+        )
+    }
+
+    @Test
     fun `concurrent focus loss and onDone do not double-resume the speak continuation`() =
         runBlocking {
-            // Issue #964: reproduce the TOCTOU window between the
-            // focusListener's isActive check and pending.resume(). A listener
-            // callback on the native TTS worker thread can resume the
-            // continuation in between. The IllegalStateException catch on the
-            // focusListener path must keep the focus-loss handler idempotent
-            // and prevent the failure from escaping the speaker. Same shape as
-            // the stop()/onDone race test above so both TOCTOU defences are
-            // exercised under the same load (100 iterations).
+            // Issue #964: same contract as the stop()/onDone race above, for
+            // the focus-loss path. A focus loss and a listener callback on
+            // the native TTS worker thread can end the same utterance at the
+            // same time; only one may claim it, so only one resume reaches
+            // the continuation. Same shape and load (100 iterations) as that
+            // test so both paths are exercised alike.
+            //
+            // The deterministic assertion that focus loss really does take
+            // the utterance is the `focus loss claims the utterance` test
+            // above; this one covers the interleavings that test cannot.
             repeat(100) { iteration ->
                 val factory = FakeTextToSpeechFactory()
                 val guard = FakeAudioFocusGuard()
@@ -709,10 +760,10 @@ class AndroidTtsSpeakerTest {
                 val speakJob = async(Dispatchers.Default) { speaker.speak("hello", id) }
                 awaitSpeakRecorded(factory, id)
 
-                // Fire focus loss and onDone() concurrently. Whichever resumes
-                // the continuation first wins; the loser must not crash the
-                // focusListener with an IllegalStateException escaping the
-                // speaker.
+                // Fire focus loss and onDone() concurrently. Whichever claims
+                // the utterance decides the result; the loser must not crash
+                // the focusListener with an IllegalStateException escaping
+                // the speaker.
                 val lossJob = async(Dispatchers.Default) {
                     guard.emit(AudioFocusGuard.FocusEvent.LOSS_TRANSIENT)
                 }
@@ -1042,8 +1093,8 @@ private suspend fun readySpeaker():
 /**
  * Suspends until the fake's [FakeTextToSpeechAdapter.speak] has been
  * invoked with [utteranceId]. This is the deterministic signal that
- * [AndroidTtsSpeaker.speak] has installed both `currentContinuation` and
- * `currentUtteranceId` for that id.
+ * [AndroidTtsSpeaker.speak] has published its in-flight utterance (the
+ * utteranceId/continuation pair) for that id.
  */
 private suspend fun awaitSpeakRecorded(
     factory: FakeTextToSpeechFactory,
