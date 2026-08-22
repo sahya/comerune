@@ -285,7 +285,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
     setState(() => _isImporting = true);
     try {
-      final FilePickerResult? result = await FilePicker.pickFiles(
+      final PlatformFile? picked = await FilePicker.pickFile(
         type: FileType.custom,
         // `['json']` 単独だと Android の SAF は `application/json` MIME のみで
         // 絞り込むため、Drive 等で `text/plain` として保存された JSON が
@@ -293,11 +293,22 @@ class _SettingsScreenState extends State<SettingsScreen>
         // 中身が JSON でなければ既存の FormatException ハンドラで拒否される。
         allowedExtensions: <String>['json', 'txt'],
       );
-      if (result == null || result.files.isEmpty) {
+      if (picked == null) {
         return;
       }
-      final String? path = result.files.single.path;
+      final String? path = picked.path;
       if (path == null) {
+        // 選択結果がローカルの実ファイルを指さない場合（`path` は URI から
+        // 導出されるため、file スキーム以外だと null になる）。ここで無言で
+        // 抜けると「選んだのに何も起きない」状態になるので、他の失敗経路と
+        // 同じ通知を出す。
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              SnackBar(content: Text(AppStrings.settings.importFailedSnackBar)),
+            );
+        }
         return;
       }
       final String jsonString = await File(path).readAsString();
