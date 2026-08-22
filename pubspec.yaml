@@ -37,7 +37,7 @@ dependencies:
   webview_flutter: 4.14.1
 
   # 認証情報の暗号化保存（Android Keystore / iOS Keychain）
-  flutter_secure_storage: 10.3.1
+  flutter_secure_storage: 11.0.0
 
   # コメントログのファイル保存先ディレクトリ取得
   path_provider: 2.1.6
