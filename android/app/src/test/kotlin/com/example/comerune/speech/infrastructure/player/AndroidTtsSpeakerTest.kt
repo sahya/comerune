@@ -686,6 +686,48 @@ class AndroidTtsSpeakerTest {
     }
 
     @Test
+    fun `stop claims the utterance so a later onDone is a no-op`() = runBlocking {
+        // Deterministic counterpart for the stop() path, mirroring the focus
+        // loss test below. stop() and the focus listener are separate code
+        // paths making the same claim, and only the racing tests covered
+        // this one — those catch a regression only when threads interleave
+        // badly.
+        //
+        // Unlike the focus loss test, this one passes against the code that
+        // predates the claim: stop() already detached the utteranceId along
+        // with the continuation, so a later onDone failed its id check. It
+        // guards that contract going forward rather than reproducing a bug
+        // that was here.
+        val (speaker, factory, listener) = readySpeaker()
+
+        val speakJob = async(Dispatchers.Default) { speaker.speak("hello", "u-stop-claim") }
+        awaitSpeakRecorded(factory, "u-stop-claim")
+
+        assertTrue("stop() must report success", speaker.stop().isSuccess)
+        val result = withTimeout(1000) { speakJob.await() }
+        assertTrue("stop must resume speak with failure", result.isFailure)
+        assertEquals(
+            "stop must leave the speaker STOPPED",
+            PlayerState.STOPPED,
+            speaker.currentState(),
+        )
+
+        // The platform can still deliver onDone for the utterance stop()
+        // just flushed. It no longer owns the utterance, so nothing changes.
+        listener.onDone("u-stop-claim")
+
+        assertEquals(
+            "onDone after stop must not report the stopped utterance as completed",
+            PlayerState.STOPPED,
+            speaker.currentState(),
+        )
+        assertFalse(
+            "onDone after stop must not flip the speaking flag back on",
+            speaker.isSpeaking(),
+        )
+    }
+
+    @Test
     fun `focus loss claims the utterance so a later onDone is a no-op`() = runBlocking {
         // Deterministic counterpart to the two racing tests around it. Those
         // fire the terminal paths concurrently and can only catch a

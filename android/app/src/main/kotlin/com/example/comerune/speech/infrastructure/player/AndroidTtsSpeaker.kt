@@ -504,7 +504,31 @@ internal class AndroidTtsSpeaker(
                 // the text to the engine: the progress callbacks key off it,
                 // and the platform can report on the utterance as soon as
                 // speak() returns (issue #737).
-                inFlight.set(InFlightUtterance(utteranceId, cont))
+                //
+                // This is the one place that writes [inFlight] without
+                // claiming, because an installer has nothing to claim from.
+                // It therefore assumes speak() is not called concurrently:
+                // overlapping calls would orphan the earlier continuation,
+                // leaving that speak() to its safety timeout. The queue
+                // worker guarantees this — SpeechControllerImpl runs
+                // processItem() (and so speak()) under `processingMutex` —
+                // so keep any new caller on that same serialized path.
+                //
+                // Observed rather than assumed: if the assumption ever
+                // breaks, the symptom is one utterance stalling for the
+                // whole timeout, which is hard to trace back here from a
+                // bug report. Log it instead of throwing, so a stray
+                // overlapping call degrades to a slow utterance rather than
+                // taking down the queue worker.
+                val displaced = inFlight.getAndSet(InFlightUtterance(utteranceId, cont))
+                if (displaced != null) {
+                    Log.w(
+                        TAG,
+                        "speak($utteranceId) displaced in-flight " +
+                            "${displaced.utteranceId}; that call now waits " +
+                            "for its safety timeout",
+                    )
+                }
 
                 val params = Bundle().apply {
                     putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, volume)
