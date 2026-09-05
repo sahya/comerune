@@ -61,7 +61,7 @@ dependencies:
 
   # 時計抽象化（テストで `withClock` により NG 保護通知の throttle を制御する）
   # Dart エコシステム標準・小規模・安定版 API のみ使用。
-  clock: 1.1.2
+  clock: 1.1.3
 
   # ユーザーコメント色のカスタムカラー選択（プリセット 12 色に加えて任意色を選択可能にする）
   flutter_colorpicker: 1.1.0
