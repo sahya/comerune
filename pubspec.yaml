@@ -43,7 +43,7 @@ dependencies:
   path_provider: 2.1.6
 
   # コメントログの共有（Google Drive等の外部ストレージへの保存）
-  share_plus: 13.3.0
+  share_plus: 13.3.1
 
   # コメントログ自動保存先のディレクトリ選択
   file_picker: 12.3.0
