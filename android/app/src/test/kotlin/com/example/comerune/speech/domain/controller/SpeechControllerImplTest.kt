@@ -1,5 +1,6 @@
 package com.example.comerune.speech.domain.controller
 
+import com.example.comerune.speech.domain.audio.CallStateProvider
 import com.example.comerune.speech.domain.model.EngineType
 import com.example.comerune.speech.domain.model.SpeechSettings
 import com.example.comerune.speech.domain.model.TtsEngineState
@@ -505,6 +506,108 @@ class SpeechControllerImplTest {
             assertEquals(0, events.size)
             // Sanity: no engine_state_changed either; updateSettings is purely passive.
             assertNull(emitter.eventsOfType("engine_state_changed").firstOrNull())
+        } finally {
+            ctrl.release()
+        }
+    }
+
+    // --- Issue #931: CallStateProvider mute during phone calls ---
+
+    private class ToggleableCallStateProvider(
+        @Volatile var inCall: Boolean = false,
+    ) : CallStateProvider {
+        override fun isInCall(): Boolean = inCall
+    }
+
+    @Test
+    fun `comments are skipped with reason in_call when CallStateProvider reports in-call`() =
+        runBlocking {
+            val callState = ToggleableCallStateProvider(inCall = true)
+            val ctrl = SpeechControllerImpl(
+                normalizer = normalizer,
+                queueManager = queue,
+                engine = engine,
+                player = player,
+                settingsRepository = settings,
+                eventEmitter = emitter,
+                dispatcher = Dispatchers.Default,
+                synthesisDispatcher = Dispatchers.Default,
+                callStateProvider = callState,
+            )
+            try {
+                ctrl.initialize()
+                ctrl.start()
+                ctrl.submitComment(rawComment("1", "should-be-muted"))
+
+                delay(300)
+
+                val skipped = emitter.eventsOfType("comment_skipped")
+                assertEquals(1, skipped.size)
+                val payload = skipped.first()["payload"] as Map<*, *>
+                assertEquals("in_call", payload["reason"])
+                // The speak path must not have started.
+                assertEquals(0, emitter.eventsOfType("speech_started").size)
+                assertEquals(0, emitter.eventsOfType("speech_completed").size)
+            } finally {
+                ctrl.release()
+            }
+        }
+
+    @Test
+    fun `comments proceed normally when CallStateProvider reports not-in-call`() = runBlocking {
+        val callState = ToggleableCallStateProvider(inCall = false)
+        val ctrl = SpeechControllerImpl(
+            normalizer = normalizer,
+            queueManager = queue,
+            engine = engine,
+            player = player,
+            settingsRepository = settings,
+            eventEmitter = emitter,
+            dispatcher = Dispatchers.Default,
+            synthesisDispatcher = Dispatchers.Default,
+            callStateProvider = callState,
+        )
+        try {
+            ctrl.initialize()
+            ctrl.start()
+            ctrl.submitComment(rawComment("1", "should-play"))
+
+            delay(300)
+
+            assertEquals(0, emitter.eventsOfType("comment_skipped").size)
+            assertEquals(1, emitter.eventsOfType("speech_completed").size)
+        } finally {
+            ctrl.release()
+        }
+    }
+
+    @Test
+    fun `worker continues to next item after in_call skip when call ends`() = runBlocking {
+        val callState = ToggleableCallStateProvider(inCall = true)
+        val ctrl = SpeechControllerImpl(
+            normalizer = normalizer,
+            queueManager = queue,
+            engine = engine,
+            player = player,
+            settingsRepository = settings,
+            eventEmitter = emitter,
+            dispatcher = Dispatchers.Default,
+            synthesisDispatcher = Dispatchers.Default,
+            callStateProvider = callState,
+        )
+        try {
+            ctrl.initialize()
+            ctrl.start()
+            ctrl.submitComment(rawComment("1", "muted-by-call"))
+            delay(300)
+
+            // Call ends mid-session; subsequent items must play normally.
+            callState.inCall = false
+            ctrl.submitComment(rawComment("2", "after-call"))
+            delay(300)
+
+            assertEquals(1, emitter.eventsOfType("comment_skipped").size)
+            assertEquals(1, emitter.eventsOfType("speech_completed").size)
         } finally {
             ctrl.release()
         }

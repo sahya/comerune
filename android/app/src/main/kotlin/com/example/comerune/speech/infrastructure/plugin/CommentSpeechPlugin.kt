@@ -29,13 +29,18 @@ import com.example.comerune.speech.domain.queue.InMemorySpeechQueueManager
 import com.example.comerune.speech.domain.repository.VoicevoxModelRepository
 import com.example.comerune.speech.domain.settings.InMemorySettingsRepository
 import com.example.comerune.speech.domain.player.AudioFocusGuard
+import com.example.comerune.speech.infrastructure.audio.AndroidCallStateProvider
 import com.example.comerune.speech.infrastructure.engine.VoicevoxEngineImpl
 import com.example.comerune.speech.infrastructure.event.FlutterSpeechEventEmitter
 import com.example.comerune.speech.infrastructure.player.AndroidAudioFocusGuard
 import com.example.comerune.speech.infrastructure.player.AndroidTtsSpeaker
 import com.example.comerune.speech.infrastructure.player.DefaultTextToSpeechFactory
+import com.example.comerune.speech.infrastructure.player.HandlerDelayedRunner
+import com.example.comerune.speech.infrastructure.player.NoOpAudioFocusController
 import com.example.comerune.speech.infrastructure.player.SwitchableWavPlayer
 import com.example.comerune.speech.infrastructure.repository.VoicevoxModelRepositoryImpl
+import android.os.Handler
+import android.os.Looper
 
 class CommentSpeechPlugin :
     FlutterPlugin,
@@ -80,11 +85,18 @@ class CommentSpeechPlugin :
         val emitter = FlutterSpeechEventEmitter()
         val voicevoxEngine = VoicevoxEngineImpl(context)
         voicevoxEngine.onDownloadEvent = { event -> emitter.emit(event) }
-        // Single shared AudioFocusGuard for both WAV pipelines and the
-        // system TTS speaker. See AudioFocusGuard for the rationale on
-        // why we no longer request/abandon per utterance.
-        val focusGuard: AudioFocusGuard = AndroidAudioFocusGuard(context)
+        // Issue #931: comerune mixes its TTS with concurrent media instead
+        // of requesting AudioFocus. We keep the shared [AudioFocusGuard]
+        // wired (the WAV players and TTS speaker still subscribe to it)
+        // but drive it with a no-op controller so nothing is ever
+        // claimed from the platform AudioManager. Mute-during-a-call is
+        // handled by [CallStateProvider] checks inside SpeechControllerImpl.
+        val focusGuard: AudioFocusGuard = AndroidAudioFocusGuard(
+            controller = NoOpAudioFocusController(),
+            delayedRunner = HandlerDelayedRunner(Handler(Looper.getMainLooper())),
+        )
         audioFocusGuard = focusGuard
+        val callStateProvider = AndroidCallStateProvider(context)
         val player = SwitchableWavPlayer(context, focusGuard)
         switchablePlayer = player
 
@@ -108,7 +120,8 @@ class CommentSpeechPlugin :
             settingsRepository = settingsRepository,
             eventEmitter = emitter,
             duplicateDetector = duplicateDetector,
-            ttsSpeaker = ttsSpeaker
+            ttsSpeaker = ttsSpeaker,
+            callStateProvider = callStateProvider,
         )
 
         pluginScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
