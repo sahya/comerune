@@ -5,10 +5,10 @@ packages:
     dependency: transitive
     description:
       name: android_file_picker
-      sha256: "665a5a57dfca27f91a715d300e4852a784f9f98e503dcff281bec9afb55767be"
+      sha256: "014c74ab48d452c3252465682375a7fe6ddf56abb908ec361f207a3c4ffb2444"
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.1"
+    version: "1.1.1"
   app_links:
     dependency: "direct main"
     description:
@@ -213,42 +213,42 @@ packages:
     dependency: "direct main"
     description:
       name: file_picker
-      sha256: afbaa8015d9efabd224f41084ed9fdeddfa65389ebd7cd3a9eb1476aca66b46d
+      sha256: "9be6aac79508dbcf8dac80a4fb20f27ce6f910837ca27e3670b9295995cc0110"
       url: "https://pub.dev"
     source: hosted
-    version: "12.0.0"
+    version: "12.3.0"
   file_picker_darwin:
     dependency: transitive
     description:
       name: file_picker_darwin
-      sha256: "5d87d156c1d63920447a662b7117d3498c67e3444a44d2cb01ed955d6efa62ef"
+      sha256: "59fa5394cfa5b6dc8bf491630cb17077b77b844adbb840df371e7be5355d6cf6"
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.1"
+    version: "1.2.0"
   file_picker_linux:
     dependency: transitive
     description:
       name: file_picker_linux
-      sha256: "93d3f62f97c657053e7b184fe0f5e22347d85067c053640a30b1ac8ad7844e3b"
+      sha256: bd52ff1e0048f29df95f913c55ad2991c72791d93e6c42241912c4bdee946cb9
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.1"
+    version: "1.1.0"
   file_picker_platform_interface:
     dependency: transitive
     description:
       name: file_picker_platform_interface
-      sha256: "9e7a7e01e179929241f0afeb2c8c69ac95e29e17c0abea36ed193881c6bef90c"
+      sha256: "0355558fd9af6da499d18e333d6b3beb44b0bf19e00933fccd15d18eb8d0e9ca"
       url: "https://pub.dev"
     source: hosted
-    version: "3.0.1"
+    version: "3.4.0"
   file_picker_web:
     dependency: transitive
     description:
       name: file_picker_web
-      sha256: f1af38b3c91fafe0ca97f659b5c6818a057473ef09bb8b722f9f3f5364aa7eed
+      sha256: "935560a9d29fa6f006f2855addebb88e88d438e13627d4cc24187033c106f227"
       url: "https://pub.dev"
     source: hosted
-    version: "3.0.1"
+    version: "3.1.0"
   fixnum:
     dependency: transitive
     description:
@@ -929,10 +929,10 @@ packages:
     dependency: transitive
     description:
       name: windows_file_picker
-      sha256: "72cf23466e146f2c0f19e1d78be97ff6409dc15b0c090f8eb284f94f4a33de26"
+      sha256: "62e6e6e115231d1d1d71c7b5883b4091ce3e0190e49548dfb0ff8cba8d91ad96"
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.1"
+    version: "1.3.0"
   xdg_directories:
     dependency: transitive
     description:

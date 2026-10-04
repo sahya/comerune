@@ -37,6 +37,7 @@ class FakeFilePickerPlatform extends FilePickerPlatform {
     Function(FilePickerStatus)? onFileLoading,
     int compressionQuality = 0,
     AndroidOptions androidOptions = const AndroidOptions(),
+    DarwinOptions darwinOptions = const DarwinOptions(),
     WindowsOptions windowsOptions = const WindowsOptions(),
     LinuxOptions linuxOptions = const LinuxOptions(),
     WebOptions webOptions = const WebOptions(),
@@ -91,6 +92,11 @@ final class _FakePlatformFile extends PlatformFile {
   /// Throws for a non-`file:` URI, which is correct: a screen that reached a
   /// read on a pathless pick would be skipping its own null-path guard.
   File get _file => File(uri.toFilePath());
+
+  /// Mirrors a platform that did not report a size, so callers fall back to
+  /// [length].
+  @override
+  int? lengthSync() => null;
 
   @override
   Future<int> length() => _file.length();
