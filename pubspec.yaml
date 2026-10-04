@@ -53,7 +53,7 @@ dependencies:
   wakelock_plus: 1.7.0
 
   # コメント内URLを既定ブラウザで開く（WebView 経由ではなく OS ハンドラに委ねる）
-  url_launcher: 6.3.2
+  url_launcher: 6.3.3
 
   # アプリバージョン取得（ライセンスページの applicationVersion を pubspec.yaml と自動同期）
   # wakelock_plus 1.7.0 が package_info_plus ^10.1.0 を要求するため 10.x 系の最新版にピン留め
