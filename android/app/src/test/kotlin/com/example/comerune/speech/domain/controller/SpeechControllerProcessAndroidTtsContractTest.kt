@@ -2,6 +2,7 @@ package com.example.comerune.speech.domain.controller
 
 import com.example.comerune.speech.domain.model.EngineType
 import com.example.comerune.speech.domain.model.SpeechSettings
+import com.example.comerune.speech.domain.player.TtsSpeakException
 import com.example.comerune.speech.domain.player.TtsSpeaker
 import com.example.comerune.speech.domain.queue.InMemorySpeechQueueManager
 import kotlinx.coroutines.Dispatchers
@@ -344,6 +345,86 @@ class SpeechControllerProcessAndroidTtsContractTest {
                 assertEquals(1, completed.size)
                 assertEquals(0, failed.size)
                 assertNotNull(speaker.speakCalls.get())
+            } finally {
+                controller.release()
+            }
+        }
+
+    // ---------------------------------------------------------------------
+    // Issue #966 / #968: a [TtsSpeakException.UserStopped] failure must NOT
+    // be surfaced as `speech_failed`. Otherwise three rapid user-stops
+    // (engine switch / settings retry / queue clear) trip the Flutter-side
+    // `_consecutiveAndroidTtsFailures` counter and flip the AppBar to ERROR
+    // even though the engine is healthy. The recovery counterpart is the
+    // happy-path test above (no double-emit of `speech_completed`).
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `processWithAndroidTts skips speech_failed when speak returns UserStopped`() =
+        runBlocking {
+            val speaker = FakeTtsSpeaker().apply {
+                speakFailureOverride = TtsSpeakException.UserStopped()
+            }
+            val controller = newController(ttsSpeaker = speaker)
+            try {
+                controller.initialize()
+                controller.start()
+
+                controller.submitComment(rawComment("c-user-stop", "hello"))
+                delay(500)
+
+                val failed = emitter.eventsOfType("speech_failed")
+                assertEquals(
+                    "UserStopped is the caller's intent — no speech_failed must be emitted, got ${emittedEventsDump()}",
+                    0,
+                    failed.size,
+                )
+                // Also must NOT have emitted `speech_completed`: a stop is
+                // not a successful speak, so the Flutter recovery path
+                // (counter reset on `speech_completed`) must not be
+                // triggered by a stop either.
+                val completed = emitter.eventsOfType("speech_completed")
+                assertEquals(
+                    "UserStopped must not surface as speech_completed either, got ${emittedEventsDump()}",
+                    0,
+                    completed.size,
+                )
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun `processWithAndroidTts still emits android_tts_failed for sealed EngineError`() =
+        runBlocking {
+            // Sibling guard for the UserStopped suppression: a real engine
+            // failure expressed via the sealed type must still surface as
+            // `android_tts_failed:` so the Flutter-side counter and ERROR
+            // detector keep working (Issue #695 contract preserved).
+            val speaker = FakeTtsSpeaker().apply {
+                speakFailureOverride =
+                    TtsSpeakException.EngineError("simulated engine breakage")
+            }
+            val controller = newController(ttsSpeaker = speaker)
+            try {
+                controller.initialize()
+                controller.start()
+
+                controller.submitComment(rawComment("c-engine-err", "hello"))
+                delay(500)
+
+                val failed = emitter.eventsOfType("speech_failed")
+                assertEquals(
+                    "EngineError must still surface as speech_failed, got ${emittedEventsDump()}",
+                    1,
+                    failed.size,
+                )
+                val message =
+                    (failed.first()["payload"] as Map<*, *>)["message"] as String
+                assertTrue(
+                    "expected '${PrefixContract.FAILED_PREFIX}:' prefix, was '$message'",
+                    message.startsWith("${PrefixContract.FAILED_PREFIX}:"),
+                )
             } finally {
                 controller.release()
             }

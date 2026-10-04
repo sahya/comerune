@@ -1,0 +1,81 @@
+name: Release Metrics
+
+# GitHub Releases API のダウンロード数は「現在の累計値」しか返さず、
+# 過去の推移は取得できないため、日次でスナップショットを取り時系列化する。
+# データはコード履歴を汚さないよう orphan ブランチ `metrics-data` に追記する。
+# 閲覧ページ: site/metrics/ (https://comerune.pages.dev/metrics/)
+# 詳細: docs/release-metrics.md
+
+on:
+  schedule:
+    # 19:23 UTC = 04:23 JST（毎日 1 回。混雑する毎時 0 分は避ける）
+    - cron: "23 19 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Fetch current release download counts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --paginate \
+            | jq -c -s --arg ts "$ts" '
+                add
+                | {ts: $ts,
+                   releases: [ .[]
+                     | select(.draft | not)
+                     | {tag: .tag_name,
+                        prerelease: .prerelease,
+                        published_at: .published_at,
+                        assets: [ .assets[] | {name: .name, count: .download_count} ]} ]}' \
+            > "${RUNNER_TEMP}/snapshot.json"
+          # 期待する形になっているか検証してから書き込みに進む
+          jq -e '(.ts | type == "string") and (.releases | type == "array")' \
+            "${RUNNER_TEMP}/snapshot.json" > /dev/null
+
+      - name: Append snapshot to metrics-data branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code origin refs/heads/metrics-data > /dev/null; then
+            git fetch --depth=1 origin metrics-data
+            git checkout -B metrics-data FETCH_HEAD
+          else
+            # 初回のみ: コード履歴と切り離した orphan ブランチを作る
+            git checkout --orphan metrics-data
+            git rm -rfq .
+            {
+              echo "# metrics-data"
+              echo
+              echo "GitHub Releases のダウンロード数を日次で記録するデータブランチです。"
+              echo "\`.github/workflows/release-metrics.yml\` が自動追記します。手動で編集しないでください。"
+              echo "形式: \`data/release-downloads.jsonl\`（1 行 = 1 スナップショット の JSON Lines）"
+            } > README.md
+            git add README.md
+          fi
+          mkdir -p data
+          cat "${RUNNER_TEMP}/snapshot.json" >> data/release-downloads.jsonl
+          git add data/release-downloads.jsonl
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "chore(metrics): record release download snapshot"
+          git push origin metrics-data

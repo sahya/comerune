@@ -42,6 +42,20 @@ interface TtsSpeaker {
     fun setVolume(volume: Float)
 
     /**
+     * Sets the safety-net timeout applied to a single [speak] call. The
+     * timeout is the upper bound for how long [speak] will suspend waiting
+     * for the underlying engine to deliver a terminal callback before the
+     * implementation force-cleans up and returns failure. Values are
+     * clamped to a sane minimum by implementations to avoid pathological
+     * settings (e.g. 0 ms) wedging the queue worker.
+     *
+     * Issue #965: introduced so slow devices / long utterances can extend
+     * the safety net without recompiling. Default behaviour is preserved
+     * when callers never invoke this.
+     */
+    fun setSpeakTimeoutMs(timeoutMs: Long)
+
+    /**
      * Releases all native resources associated with the speaker.
      *
      * Contract:

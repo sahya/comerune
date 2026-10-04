@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>ダウンロード統計 — comerune</title>
+  <meta name="description" content="comerune のリリースダウンロード数の推移を表示する統計ページ。" />
+  <!-- 内部向けの統計ページなので検索結果には出さない -->
+  <meta name="robots" content="noindex,follow" />
+  <link rel="canonical" href="https://comerune.pages.dev/metrics/" />
+  <link rel="icon" type="image/png" href="/icon.png" />
+  <link rel="apple-touch-icon" href="/icon.png" />
+
+  <style>
+    /*
+     * 計器盤としての読みやすさを優先した配色。
+     * クローム（背景・罫線・文字）は無彩色に寄せ、彩度はデータ系列だけが持つ。
+     * トップページの配色とは意図的に別系統（数値を読むための画面のため）。
+     */
+    :root {
+      --page: #f4f4f5;
+      --surface: #ffffff;
+      --text: #09090b;
+      --text-2: #52525b;
+      --muted: #71717a;
+      --line: #e4e4e7;
+      --line-strong: #d4d4d8;
+      --radius: 6px;
+      --max: 960px;
+      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+              "Liberation Mono", "Courier New", monospace;
+      /* 系列色: 実際の描画面（ライト #ffffff / ダーク #101012）に対して
+         明度帯・彩度・色覚多様性の分離・コントラストを検証済み */
+      --series-1: #2a78d6;
+      --series-2: #eb6834;
+      --series-3: #1baf7a;
+      --series-4: #eda100;
+      --series-5: #e87ba4;
+      --series-other: #8b8b93;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --page: #09090a;
+        --surface: #101012;
+        --text: #fafafa;
+        --text-2: #a1a1aa;
+        --muted: #8b8b93;
+        --line: #26262b;
+        --line-strong: #35353c;
+        /* 同じ色相をダーク面向けに段を落としたもの（別系統の配色ではない） */
+        --series-1: #3987e5;
+        --series-2: #d95926;
+        --series-3: #199e70;
+        --series-4: #c98500;
+        --series-5: #d55181;
+        --series-other: #8b8b93;
+      }
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans",
+                   "Noto Sans JP", "Segoe UI", Roboto, sans-serif;
+      color: var(--text);
+      background: var(--page);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    .wrap { max-width: var(--max); margin: 0 auto; padding: 0 24px; }
+
+    a { color: inherit; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+    a:hover { text-decoration-color: currentColor; }
+    a:focus-visible { outline: 2px solid var(--series-1); outline-offset: 3px; border-radius: 2px; }
+
+    /* 小さな見出しラベル。画面内の階層を字面の強さではなく字間で作る */
+    .eyebrow {
+      font-size: .69rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    header.site {
+      border-bottom: 1px solid var(--line);
+      background: var(--surface);
+    }
+    header.site .wrap { padding-top: 22px; padding-bottom: 22px; }
+    header.site .back { font-size: .8rem; color: var(--muted); display: inline-block; margin-bottom: 14px; }
+    header.site h1 {
+      font-size: 1.45rem;
+      font-weight: 620;
+      letter-spacing: -.015em;
+      margin: 4px 0 0;
+    }
+    header.site .lede { color: var(--text-2); font-size: .85rem; margin: 6px 0 0; }
+
+    main { padding: 28px 0 0; }
+
+    /* 数値のストリップ。カードを3枚並べず、1枚を罫線で区切る */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      margin: 0 0 24px;
+      overflow: hidden;
+    }
+    .stat { padding: 16px 18px; border-left: 1px solid var(--line); }
+    .stat:first-child { border-left: 0; }
+    .stat .value {
+      font-family: var(--mono);
+      font-size: 1.7rem;
+      font-weight: 500;
+      letter-spacing: -.02em;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.25;
+      margin-top: 8px;
+      overflow-wrap: anywhere;
+    }
+    .stat .sub { font-size: .74rem; color: var(--muted); margin-top: 2px; min-height: 1.2em; }
+    @media (max-width: 640px) {
+      .stats { grid-template-columns: 1fr; }
+      .stat { border-left: 0; border-top: 1px solid var(--line); }
+      .stat:first-child { border-top: 0; }
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      margin: 0 0 24px;
+    }
+    .panel > header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+    }
+    .panel h2 { font-size: .92rem; font-weight: 600; letter-spacing: -.005em; margin: 4px 0 0; }
+    .panel .note { color: var(--muted); font-size: .76rem; margin: 3px 0 0; }
+    .panel > .body { padding: 16px 18px 12px; }
+
+    /* 凡例: マークが線なので、色見本も四角ではなく線分にする */
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 18px;
+      margin: 0 0 12px;
+      font-size: .78rem;
+      color: var(--text-2);
+    }
+    .legend .item { display: flex; align-items: center; gap: 7px; }
+    .chip { width: 14px; height: 2.5px; border-radius: 2px; flex: none; }
+
+    .chart { position: relative; }
+    .chart svg { display: block; width: 100%; height: auto; }
+    .chart text.tick {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      fill: var(--muted);
+    }
+    .chart .tooltip {
+      position: absolute;
+      pointer-events: none;
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: 5px;
+      padding: 8px 10px;
+      font-size: .76rem;
+      line-height: 1.6;
+      white-space: nowrap;
+      visibility: hidden;
+      z-index: 1;
+    }
+    .tooltip .t-date {
+      font-family: var(--mono);
+      color: var(--muted);
+      font-size: .72rem;
+      padding-bottom: 4px;
+      margin-bottom: 4px;
+      border-bottom: 1px solid var(--line);
+    }
+    .tooltip .t-row { display: flex; align-items: center; gap: 7px; }
+    .tooltip .t-val {
+      margin-left: auto;
+      padding-left: 20px;
+      font-family: var(--mono);
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+    }
+
+    .table-scroll { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; min-width: 440px; font-size: .84rem; }
+    th, td { text-align: left; padding: 10px 18px; border-top: 1px solid var(--line); }
+    thead th { border-top: 0; }
+    th {
+      color: var(--muted);
+      font-weight: 500;
+      font-size: .69rem;
+      letter-spacing: .09em;
+      text-transform: uppercase;
+    }
+    td.num, th.num { text-align: right; }
+    td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+    td.tag { font-family: var(--mono); }
+    td.dim { color: var(--muted); }
+
+    #status {
+      color: var(--text-2);
+      font-size: .86rem;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 18px;
+    }
+    /* 取得失敗。収集開始前にも出るため警告色は使わず、字面と枠線だけ強める */
+    #status.error { color: var(--text); border-color: var(--line-strong); }
+
+    footer.site {
+      color: var(--muted);
+      font-size: .74rem;
+      padding: 4px 0 48px;
+    }
+    footer.site p { margin: 0; }
+  </style>
+</head>
+<body>
+  <header class="site">
+    <div class="wrap">
+      <a class="back" href="/">← comerune</a>
+      <p class="eyebrow">Release metrics</p>
+      <h1>ダウンロード統計</h1>
+      <p class="lede">GitHub Releases のダウンロード数を 1 日 1 回記録した推移。</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <p id="status">読み込み中…</p>
+    <noscript><p>このページの表示には JavaScript が必要です。</p></noscript>
+
+    <div id="content" hidden>
+      <div class="stats" id="stats"></div>
+
+      <section class="panel">
+        <header>
+          <p class="eyebrow">Cumulative</p>
+          <h2>総ダウンロード数の推移</h2>
+        </header>
+        <div class="body">
+          <div class="chart" id="chart-total"></div>
+        </div>
+      </section>
+
+      <section class="panel" id="section-daily" hidden>
+        <header>
+          <p class="eyebrow">Per day</p>
+          <h2>1 日あたりの増加数</h2>
+          <p class="note">累計ではなく増加ペース。どのバージョンが今伸びているかが分かる。</p>
+        </header>
+        <div class="body">
+          <div class="legend" id="legend-daily"></div>
+          <div class="chart" id="chart-daily"></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <header>
+          <p class="eyebrow">Cumulative by release</p>
+          <h2>リリース別ダウンロード数の推移</h2>
+        </header>
+        <div class="body">
+          <div class="legend" id="legend-by-release"></div>
+          <div class="chart" id="chart-by-release"></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <header>
+          <p class="eyebrow">Latest snapshot</p>
+          <h2>リリース別ダウンロード数</h2>
+        </header>
+        <div class="table-scroll">
+          <table id="table-releases">
+            <thead>
+              <tr>
+                <th scope="col">リリース</th>
+                <th scope="col">公開日</th>
+                <th scope="col" class="num">ダウンロード数</th>
+                <th scope="col" class="num">割合</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site">
+    <div class="wrap"><p id="updated-at"></p></div>
+  </footer>
+
+  <script src="/metrics/app.js" defer></script>
+</body>
+</html>
