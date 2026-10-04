@@ -97,9 +97,17 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # flutter-version は pubspec.lock を生成した SDK (test.yml と同一) に明示固定する。
+      # 未指定だと stable の最新版が取得され、SDK 同梱パッケージ (flutter_test → meta 等)
+      # の制約が pubspec.yaml の exact pin と衝突して `flutter pub get` が失敗する。
+      # サプライチェーン anchor（人手レビュー用、subosito/flutter-action が
+      # 公式 releases manifest 経由で検証する値と一致すべき）:
+      #   framework SHA: 559ffa3f75e7402d65a8def9c28389a9b2e6fe42
+      #   bundle SHA-256: e1ec95e6c550458a34de93580cb85dac24da0e9bedb9bb42811f050ac5a0c7d5
       - name: Set up Flutter
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
+          flutter-version: 3.44.0
           channel: stable
           # 署名 secrets を持つ特権ワークフローのため、PR/push CI と共有される
           # Actions キャッシュ経由のポイズニング (低信頼 CI が書いた main スコープ
