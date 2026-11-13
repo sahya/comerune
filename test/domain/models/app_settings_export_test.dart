@@ -484,6 +484,46 @@ void main() {
       });
     });
 
+    group('duckOtherAudio export/import (#1014)', () {
+      test('default is false (mix with other media, v1.3.0 behaviour)', () {
+        expect(AppSettings.defaults.duckOtherAudio, isFalse);
+      });
+
+      test('toJson → fromJson round-trip preserves true', () {
+        final AppSettings original = AppSettings.defaults.copyWith(
+          duckOtherAudio: true,
+        );
+        final Map<String, dynamic> json = original.toJson();
+        expect(json['duckOtherAudio'], isTrue);
+        expect(AppSettings.fromJson(json).duckOtherAudio, isTrue);
+      });
+
+      test('old export without the key imports with the default (false)', () {
+        final AppSettings result = AppSettings.fromJsonString(
+          '{"themeMode":"light"}',
+        );
+        expect(result.duckOtherAudio, isFalse);
+      });
+
+      test('non-bool value falls back to default', () {
+        final AppSettings result = AppSettings.fromJson(<String, dynamic>{
+          'duckOtherAudio': 'yes',
+        });
+        expect(result.duckOtherAudio, isFalse);
+      });
+
+      test('toSpeechSettings forwards the value to the speech engine', () {
+        expect(AppSettings.defaults.toSpeechSettings().duckOtherAudio, isFalse);
+        expect(
+          AppSettings.defaults
+              .copyWith(duckOtherAudio: true)
+              .toSpeechSettings()
+              .duckOtherAudio,
+          isTrue,
+        );
+      });
+    });
+
     group('commentSortOrder export/import (#774)', () {
       test('default value is ascending', () {
         expect(

@@ -378,6 +378,123 @@ class AudioFocusGuardTest {
             seen.isEmpty(),
         )
     }
+
+    // --- SwitchableAudioFocusController (Issue #1014 duck/mix toggle) ---
+
+    @Test
+    fun `switchable controller mixes by default without touching the real controller`() {
+        val real = FakeAudioFocusController()
+        val controller = SwitchableAudioFocusController(focusController = real)
+
+        assertFalse(controller.isDuckingOtherAudio)
+        assertEquals(AudioManager.AUDIOFOCUS_REQUEST_GRANTED, controller.request())
+        assertEquals(AudioManager.AUDIOFOCUS_REQUEST_GRANTED, controller.abandon())
+        assertEquals(0, real.requestCount.get())
+        assertEquals(0, real.abandonCount.get())
+    }
+
+    @Test
+    fun `switchable controller requests real focus when ducking is enabled`() {
+        val real = FakeAudioFocusController()
+        val controller = SwitchableAudioFocusController(
+            focusController = real,
+            initialDuckOtherAudio = true,
+        )
+
+        controller.request()
+        controller.abandon()
+        assertEquals(1, real.requestCount.get())
+        assertEquals(1, real.abandonCount.get())
+    }
+
+    @Test
+    fun `switchable controller abandons through the delegate that granted focus`() {
+        val real = FakeAudioFocusController()
+        val mix = FakeAudioFocusController()
+        val controller = SwitchableAudioFocusController(
+            focusController = real,
+            mixController = mix,
+            initialDuckOtherAudio = true,
+        )
+
+        controller.request()
+        // Mode flips while the real token is still held: the abandon must
+        // still reach the real controller, otherwise the platform keeps
+        // other media ducked with nobody left to release it.
+        assertTrue(controller.setDuckOtherAudio(false))
+        controller.abandon()
+        assertEquals(1, real.abandonCount.get())
+        assertEquals(0, mix.abandonCount.get())
+
+        // The next request follows the new mode.
+        controller.request()
+        assertEquals(1, real.requestCount.get())
+        assertEquals(1, mix.requestCount.get())
+    }
+
+    @Test
+    fun `switchable controller does not record a delegate for a failed request`() {
+        val real = FakeAudioFocusController(
+            nextRequestResult = AudioManager.AUDIOFOCUS_REQUEST_FAILED,
+        )
+        val controller = SwitchableAudioFocusController(
+            focusController = real,
+            initialDuckOtherAudio = true,
+        )
+
+        controller.request()
+        controller.abandon()
+        assertEquals(
+            "abandon after a failed request must not reach the platform",
+            0,
+            real.abandonCount.get(),
+        )
+    }
+
+    @Test
+    fun `setDuckOtherAudio reports whether the mode changed`() {
+        val controller = SwitchableAudioFocusController(
+            focusController = FakeAudioFocusController(),
+        )
+        assertFalse(controller.setDuckOtherAudio(false))
+        assertTrue(controller.setDuckOtherAudio(true))
+        assertTrue(controller.isDuckingOtherAudio)
+        assertFalse(controller.setDuckOtherAudio(true))
+    }
+
+    @Test
+    fun `switchable controller forwards real focus events to the guard`() {
+        val real = FakeAudioFocusController()
+        val controller = SwitchableAudioFocusController(
+            focusController = real,
+            initialDuckOtherAudio = true,
+        )
+        val guard = newGuard(controller, FakeDelayedRunner())
+        val seen = CopyOnWriteArrayList<AudioFocusGuard.FocusEvent>()
+        guard.addListener { event -> seen.add(event) }
+
+        real.listener!!.onFocusChange(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT)
+        assertEquals(listOf(AudioFocusGuard.FocusEvent.LOSS_TRANSIENT), seen)
+    }
+
+    @Test
+    fun `guard re-requests under the new mode after release on mode change`() = runBlocking {
+        val real = FakeAudioFocusController()
+        val controller = SwitchableAudioFocusController(focusController = real)
+        val guard = newGuard(controller, FakeDelayedRunner())
+
+        assertTrue(guard.acquire().isSuccess)
+        assertEquals(0, real.requestCount.get())
+
+        // Mirrors CommentSpeechPlugin.applyDuckOtherAudio: flip the mode,
+        // then release so the next acquire does not reuse the mix token.
+        assertTrue(controller.setDuckOtherAudio(true))
+        guard.release()
+        assertFalse(guard.isHeld)
+
+        assertTrue(guard.acquire().isSuccess)
+        assertEquals(1, real.requestCount.get())
+    }
 }
 
 private suspend fun waitUntil(

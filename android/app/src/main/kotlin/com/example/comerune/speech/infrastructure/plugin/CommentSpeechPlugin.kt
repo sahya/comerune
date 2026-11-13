@@ -36,9 +36,11 @@ import com.example.comerune.speech.infrastructure.player.AndroidAudioFocusGuard
 import com.example.comerune.speech.infrastructure.player.AndroidTtsSpeaker
 import com.example.comerune.speech.infrastructure.player.DefaultTextToSpeechFactory
 import com.example.comerune.speech.infrastructure.player.HandlerDelayedRunner
-import com.example.comerune.speech.infrastructure.player.NoOpAudioFocusController
+import com.example.comerune.speech.infrastructure.player.RealAudioFocusController
+import com.example.comerune.speech.infrastructure.player.SwitchableAudioFocusController
 import com.example.comerune.speech.infrastructure.player.SwitchableWavPlayer
 import com.example.comerune.speech.infrastructure.repository.VoicevoxModelRepositoryImpl
+import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
 
@@ -63,6 +65,7 @@ class CommentSpeechPlugin :
     private var switchablePlayer: SwitchableWavPlayer? = null
     private var androidTtsSpeaker: AndroidTtsSpeaker? = null
     private var audioFocusGuard: AudioFocusGuard? = null
+    private var audioFocusController: SwitchableAudioFocusController? = null
     private var applicationContext: Context? = null
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -85,14 +88,21 @@ class CommentSpeechPlugin :
         val emitter = FlutterSpeechEventEmitter()
         val voicevoxEngine = VoicevoxEngineImpl(context)
         voicevoxEngine.onDownloadEvent = { event -> emitter.emit(event) }
-        // Issue #931: comerune mixes its TTS with concurrent media instead
-        // of requesting AudioFocus. We keep the shared [AudioFocusGuard]
-        // wired (the WAV players and TTS speaker still subscribe to it)
-        // but drive it with a no-op controller so nothing is ever
-        // claimed from the platform AudioManager. Mute-during-a-call is
-        // handled by [CallStateProvider] checks inside SpeechControllerImpl.
+        // Issue #931 / #1014: by default comerune mixes its TTS with
+        // concurrent media instead of requesting AudioFocus. When the user
+        // enables "duck other audio" in settings, the switchable controller
+        // routes requests to the real AudioManager so other media is ducked
+        // while comerune speaks. The mode arrives via `updateSettings`.
+        // Mute-during-a-call is handled by [CallStateProvider] checks inside
+        // SpeechControllerImpl and applies to both modes.
+        val focusController = SwitchableAudioFocusController(
+            focusController = RealAudioFocusController(
+                context.getSystemService(Context.AUDIO_SERVICE) as AudioManager,
+            ),
+        )
+        audioFocusController = focusController
         val focusGuard: AudioFocusGuard = AndroidAudioFocusGuard(
-            controller = NoOpAudioFocusController(),
+            controller = focusController,
             delayedRunner = HandlerDelayedRunner(Handler(Looper.getMainLooper())),
         )
         audioFocusGuard = focusGuard
@@ -152,6 +162,7 @@ class CommentSpeechPlugin :
         // plugin owns the guard's lifecycle.
         audioFocusGuard?.release()
         audioFocusGuard = null
+        audioFocusController = null
         applicationContext = null
     }
 
@@ -224,6 +235,7 @@ class CommentSpeechPlugin :
                 val settings = parseSpeechSettings(call)
                 Log.d(TAG, "[onMethodCall] → updateSettings enabled=${settings.enabled}, speaker=${settings.speakerId}, speed=${settings.speedScale}, playerType=${settings.playerType}")
                 switchablePlayer?.switchPlayerType(settings.playerType)
+                applyDuckOtherAudio(settings.duckOtherAudio)
                 handleAsync(result) { ctrl.updateSettings(settings) }
             }
             "getStatus" -> {
@@ -580,8 +592,25 @@ class CommentSpeechPlugin :
                 call.argument<Number>("speakTimeoutMs")?.toLong()
                     ?: AndroidTtsSpeaker.DEFAULT_SPEAK_TIMEOUT_MS
                 )
-                .coerceAtLeast(AndroidTtsSpeaker.MIN_SPEAK_TIMEOUT_MS)
+                .coerceAtLeast(AndroidTtsSpeaker.MIN_SPEAK_TIMEOUT_MS),
+            // Issue #1014: older Flutter binaries that do not send this key
+            // keep the v1.3.0 behaviour (mix with other media).
+            duckOtherAudio = call.argument<Boolean>("duckOtherAudio") ?: false,
         )
+    }
+
+    /**
+     * Issue #1014: apply the "duck other audio" mode. When the mode changes,
+     * any focus held under the previous mode is released right away so the
+     * next utterance requests focus (or skips it) under the new mode instead
+     * of reusing a stale token for up to the release grace period.
+     */
+    private fun applyDuckOtherAudio(enabled: Boolean) {
+        val changed = audioFocusController?.setDuckOtherAudio(enabled) ?: return
+        if (changed) {
+            Log.d(TAG, "[applyDuckOtherAudio] duckOtherAudio=$enabled")
+            audioFocusGuard?.release()
+        }
     }
 
     // --- Serialization extensions ---

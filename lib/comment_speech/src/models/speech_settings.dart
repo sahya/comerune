@@ -91,6 +91,12 @@ class SpeechSettings {
   /// utterances without touching native code.
   final int speakTimeoutMs;
 
+  /// Issue #1014: when `true`, the native side requests audio focus while
+  /// speaking so other apps' media is lowered or paused. `false` (default)
+  /// plays on top of other media without lowering it. Mirrors the
+  /// Kotlin-side `SpeechSettings.duckOtherAudio`.
+  final bool duckOtherAudio;
+
   const SpeechSettings({
     this.enabled = true,
     this.engineType = 'voicevox',
@@ -116,6 +122,7 @@ class SpeechSettings {
     this.androidTtsPitch = 1.0,
     this.androidTtsVolume = 1.0,
     this.speakTimeoutMs = 15000,
+    this.duckOtherAudio = false,
   });
 
   Map<String, dynamic> toMap() => {
@@ -143,6 +150,7 @@ class SpeechSettings {
     'androidTtsPitch': androidTtsPitch,
     'androidTtsVolume': androidTtsVolume,
     'speakTimeoutMs': speakTimeoutMs,
+    'duckOtherAudio': duckOtherAudio,
   };
 
   @override
@@ -172,7 +180,8 @@ class SpeechSettings {
           androidTtsSpeed == other.androidTtsSpeed &&
           androidTtsPitch == other.androidTtsPitch &&
           androidTtsVolume == other.androidTtsVolume &&
-          speakTimeoutMs == other.speakTimeoutMs;
+          speakTimeoutMs == other.speakTimeoutMs &&
+          duckOtherAudio == other.duckOtherAudio;
 
   @override
   int get hashCode => Object.hashAll([
@@ -200,5 +209,6 @@ class SpeechSettings {
     androidTtsPitch,
     androidTtsVolume,
     speakTimeoutMs,
+    duckOtherAudio,
   ]);
 }

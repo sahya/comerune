@@ -135,7 +135,8 @@ void main() {
       const settings = SpeechSettings();
       final map = settings.toMap();
       // Issue #965: bumped from 23 → 24 after speakTimeoutMs was added.
-      expect(map.length, 24);
+      // Issue #1014: bumped from 24 → 25 after duckOtherAudio was added.
+      expect(map.length, 25);
       expect(map['enabled'], true);
       expect(map['synthesisMode'], 'AUDIO_QUERY');
       expect(map['speedScale'], 1.15);
@@ -143,6 +144,16 @@ void main() {
       expect(map['ngWords'], isEmpty);
       expect(map['playerType'], 'audio_track');
       expect(map['speakTimeoutMs'], 15000);
+      expect(map['duckOtherAudio'], false);
+    });
+
+    test('toMap propagates duckOtherAudio and equality distinguishes it '
+        '(Issue #1014)', () {
+      const base = SpeechSettings();
+      const ducking = SpeechSettings(duckOtherAudio: true);
+      expect(ducking.toMap()['duckOtherAudio'], true);
+      expect(base, isNot(equals(ducking)));
+      expect(base.hashCode, isNot(equals(ducking.hashCode)));
     });
 
     test('toMap propagates a customized speakTimeoutMs '
