@@ -711,6 +711,17 @@ class _ComeruneAppState extends State<ComeruneApp> {
     if (lv.isEmpty) {
       return;
     }
+    // Issue #1017: ライブで視聴していた放送が再接続の途中で終わっただけの
+    // 場合は、未対応機能の案内ではなく放送終了の表示（ConnectionStatus.ended）
+    // だけを見せる。提示済みとしては記録しないので、終了後にユーザが接続し
+    // 直した（＝終わった放送を開いた）ときは従来どおり 1 度だけ案内する。
+    if (_connectionSupervisor.hasStreamedSinceConnectionStart) {
+      log(
+        'Skipped timeshift-unsupported dialog (broadcast ended while live)',
+        name: 'App',
+      );
+      return;
+    }
     if (_lastTimeshiftUnsupportedDialogLv == lv) {
       return;
     }

@@ -1091,6 +1091,210 @@ void main() {
         expect(supervisor.reconnectCount, 0);
       },
     );
+
+    // Issue #1017: 「最初から終わった放送を開いた」と「ライブ視聴中に
+    // 再接続の途中で終了を知った」を区別するためのフラグ。アプリ側は
+    // endpoint 解決（programinfo）の最中にこの値を読むので、テストでも
+    // connectAndResolveEndpoints が呼ばれた瞬間の値を記録して検証する。
+    test(
+      'hasStreamedSinceConnectionStart is false when opening an ended broadcast',
+      () async {
+        final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
+          endpointsQueue: <SessionEndpoints>[],
+          connectExceptions: <Object>[
+            const SessionWsConnectException(
+              SessionWsConnectFailureKind.broadcastEnded,
+            ),
+          ],
+        );
+        final ConnectionSupervisor supervisor = ConnectionSupervisor(
+          sessionWsClient: sessionWsClient,
+          ndgrClient: FakeNdgrClient(),
+          legacyCommentClient: FakeLegacyCommentClient(),
+        );
+        addTearDown(supervisor.dispose);
+        final List<bool> seenDuringResolve = <bool>[];
+        sessionWsClient.onConnectAndResolveEndpoints = () {
+          seenDuringResolve.add(supervisor.hasStreamedSinceConnectionStart);
+        };
+
+        expect(supervisor.hasStreamedSinceConnectionStart, isFalse);
+        final bool started = await _startAndDrain(supervisor);
+
+        expect(started, isTrue);
+        expect(seenDuringResolve, <bool>[false]);
+        expect(supervisor.status, ConnectionStatus.ended);
+        expect(supervisor.hasStreamedSinceConnectionStart, isFalse);
+      },
+    );
+
+    test('hasStreamedSinceConnectionStart stays true when session reconnect '
+        'finds the broadcast ended', () async {
+      final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
+        endpointsQueue: <SessionEndpoints>[
+          SessionEndpoints(
+            ndgrViewApiUri: Uri.parse('https://example.com/api/view/v4/stream'),
+          ),
+        ],
+      );
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: sessionWsClient,
+        ndgrClient: FakeNdgrClient(),
+        legacyCommentClient: FakeLegacyCommentClient(),
+        delayExecutor: (_) async {},
+        jitterProvider: (_) => Duration.zero,
+      );
+      addTearDown(supervisor.dispose);
+      final List<bool> seenDuringResolve = <bool>[];
+      sessionWsClient.onConnectAndResolveEndpoints = () {
+        seenDuringResolve.add(supervisor.hasStreamedSinceConnectionStart);
+      };
+
+      await _startAndDrain(supervisor);
+      expect(supervisor.status, ConnectionStatus.streamingNdgr);
+      expect(supervisor.hasStreamedSinceConnectionStart, isTrue);
+
+      sessionWsClient.queueConnectException(
+        const SessionWsConnectException(
+          SessionWsConnectFailureKind.broadcastEnded,
+        ),
+      );
+      final bool reconnected = await supervisor.onSessionWsDisconnected();
+
+      expect(reconnected, isFalse);
+      expect(seenDuringResolve, <bool>[false, true]);
+      expect(supervisor.status, ConnectionStatus.ended);
+      expect(supervisor.lastError, ConnectionErrorCode.broadcastEnded);
+      expect(supervisor.hasStreamedSinceConnectionStart, isTrue);
+    });
+
+    test('hasStreamedSinceConnectionStart stays true when legacy fallback '
+        'finds the broadcast ended', () async {
+      final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
+        endpointsQueue: <SessionEndpoints>[
+          SessionEndpoints(legacyWsUrl: Uri.parse('wss://example.com/l')),
+        ],
+      );
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: sessionWsClient,
+        ndgrClient: FakeNdgrClient(),
+        legacyCommentClient: FakeLegacyCommentClient(
+          connectResults: <bool>[true, false, false, false],
+        ),
+        delayExecutor: (_) async {},
+        jitterProvider: (_) => Duration.zero,
+      );
+      addTearDown(supervisor.dispose);
+      final List<bool> seenDuringResolve = <bool>[];
+      sessionWsClient.onConnectAndResolveEndpoints = () {
+        seenDuringResolve.add(supervisor.hasStreamedSinceConnectionStart);
+      };
+
+      await _startAndDrain(supervisor);
+      expect(supervisor.status, ConnectionStatus.streamingLegacy);
+
+      sessionWsClient.queueConnectException(
+        const SessionWsConnectException(
+          SessionWsConnectFailureKind.broadcastEnded,
+        ),
+      );
+      final bool reconnected = await supervisor.onLegacyWsDisconnected();
+
+      expect(reconnected, isFalse);
+      expect(seenDuringResolve, <bool>[false, true]);
+      expect(supervisor.status, ConnectionStatus.ended);
+      expect(supervisor.hasStreamedSinceConnectionStart, isTrue);
+    });
+
+    test(
+      'hasStreamedSinceConnectionStart resets when a new connection starts',
+      () async {
+        final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
+          endpointsQueue: <SessionEndpoints>[
+            SessionEndpoints(
+              ndgrViewApiUri: Uri.parse(
+                'https://example.com/api/view/v4/stream',
+              ),
+            ),
+          ],
+        );
+        final FakeNdgrClient ndgrClient = FakeNdgrClient();
+        final ConnectionSupervisor supervisor = ConnectionSupervisor(
+          sessionWsClient: sessionWsClient,
+          ndgrClient: ndgrClient,
+          legacyCommentClient: FakeLegacyCommentClient(),
+        );
+        addTearDown(supervisor.dispose);
+        final List<bool> seenDuringResolve = <bool>[];
+        sessionWsClient.onConnectAndResolveEndpoints = () {
+          seenDuringResolve.add(supervisor.hasStreamedSinceConnectionStart);
+        };
+
+        await _startAndDrain(supervisor);
+        expect(supervisor.hasStreamedSinceConnectionStart, isTrue);
+
+        // 放送終了イベントで正常に終わった場合は programinfo を呼び直さない。
+        ndgrClient.emitBroadcastEnded();
+        await _drainEventLoop();
+        expect(supervisor.status, ConnectionStatus.ended);
+        expect(seenDuringResolve, <bool>[false]);
+
+        // 終了後にユーザーが接続し直すのは「終わった放送を開く」操作なので、
+        // フラグは新しい接続の開始時に false へ戻る。
+        sessionWsClient.queueConnectException(
+          const SessionWsConnectException(
+            SessionWsConnectFailureKind.broadcastEnded,
+          ),
+        );
+        final bool restarted = supervisor.retryConnectionFromTerminal();
+        await _drainEventLoop();
+
+        expect(restarted, isTrue);
+        expect(seenDuringResolve, <bool>[false, false]);
+        expect(supervisor.status, ConnectionStatus.ended);
+        expect(supervisor.hasStreamedSinceConnectionStart, isFalse);
+      },
+    );
+
+    test('hasStreamedSinceConnectionStart resets when the user stops and opens '
+        'an ended broadcast', () async {
+      final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
+        endpointsQueue: <SessionEndpoints>[
+          SessionEndpoints(
+            ndgrViewApiUri: Uri.parse('https://example.com/api/view/v4/stream'),
+          ),
+        ],
+      );
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: sessionWsClient,
+        ndgrClient: FakeNdgrClient(),
+        legacyCommentClient: FakeLegacyCommentClient(),
+      );
+      addTearDown(supervisor.dispose);
+      final List<bool> seenDuringResolve = <bool>[];
+      sessionWsClient.onConnectAndResolveEndpoints = () {
+        seenDuringResolve.add(supervisor.hasStreamedSinceConnectionStart);
+      };
+
+      await _startAndDrain(supervisor);
+      expect(supervisor.hasStreamedSinceConnectionStart, isTrue);
+
+      // 別の lv に切り替えるときは、いったん停止してから接続し直す。
+      // 前の放送をライブで見ていた事実を、次の放送に持ち越してはいけない。
+      expect(supervisor.stopByUser(), isTrue);
+      await _drainEventLoop();
+      sessionWsClient.queueConnectException(
+        const SessionWsConnectException(
+          SessionWsConnectFailureKind.broadcastEnded,
+        ),
+      );
+      final bool restarted = await _startAndDrain(supervisor);
+
+      expect(restarted, isTrue);
+      expect(seenDuringResolve, <bool>[false, false]);
+      expect(supervisor.status, ConnectionStatus.ended);
+      expect(supervisor.hasStreamedSinceConnectionStart, isFalse);
+    });
   });
 }
 
@@ -1120,12 +1324,18 @@ class FakeSessionWsClient implements SessionWsClient {
   int connectCalls = 0;
   int disconnectCalls = 0;
 
+  /// Invoked at the start of every [connectAndResolveEndpoints] call so a
+  /// test can observe supervisor state at the moment endpoint resolution
+  /// runs (the app reads supervisor state from the same point).
+  void Function()? onConnectAndResolveEndpoints;
+
   @override
   Stream<SessionWsEvent> get events => _eventsController.stream;
 
   @override
   Future<SessionEndpoints> connectAndResolveEndpoints() async {
     connectCalls += 1;
+    onConnectAndResolveEndpoints?.call();
     if (_connectExceptions.isNotEmpty) {
       throw _connectExceptions.removeAt(0);
     }
