@@ -398,13 +398,18 @@ class ProgramInfo {
     this.beginAt,
     this.vposBaseAt,
     this.programStatus,
-  });
+  }) : assert(
+         viewUri != null || programStatus == ProgramStatus.ended,
+         'viewUri may only be null for ended programs (Issue #654)',
+       );
 
   /// The NDGR view URI extracted from `data.rooms[0].viewUri`.
   ///
-  /// Always non-null unless [isTimeshift] is `true`: ended broadcasts may
-  /// return `rooms=[]` (Issue #654), in which case this is `null` and the
-  /// timeshift view URI has to be obtained through another route.
+  /// Always non-null unless [programStatus] is [ProgramStatus.ended]
+  /// (i.e. [isTimeshift] is `true`; enforced by an assert in debug
+  /// builds). Ended broadcasts may return `rooms=[]` (Issue #654), in
+  /// which case this is `null` and the timeshift view URI has to be
+  /// obtained through another route.
   final Uri? viewUri;
 
   /// The program title from `data.title`, or `null` when absent.
