@@ -150,6 +150,12 @@ void main() {
               <String, Object?>{'viewUri': 42},
             ],
           },
+          // `Uri.tryParse` returns null for this (unterminated IPv6 host).
+          'unparseable viewUri': <String, Object?>{
+            'rooms': <Object?>[
+              <String, Object?>{'viewUri': 'http://[::1'},
+            ],
+          },
         };
 
     for (final MapEntry<String, Map<String, Object?>> variant
@@ -208,6 +214,19 @@ void main() {
         resolver.dispose();
       });
     }
+
+    test('ProgramInfo asserts that viewUri is only null for ended '
+        'programs (#654)', () {
+      expect(() => ProgramInfo(), throwsA(isA<AssertionError>()));
+      expect(
+        () => ProgramInfo(programStatus: ProgramStatus.onAir),
+        throwsA(isA<AssertionError>()),
+      );
+      expect(
+        const ProgramInfo(programStatus: ProgramStatus.ended).viewUri,
+        isNull,
+      );
+    });
 
     test('throws with the title when status is not a string, even if rooms '
         'is empty (#654)', () async {
