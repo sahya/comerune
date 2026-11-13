@@ -1255,6 +1255,46 @@ void main() {
         expect(supervisor.hasStreamedSinceConnectionStart, isFalse);
       },
     );
+
+    test('hasStreamedSinceConnectionStart resets when the user stops and opens '
+        'an ended broadcast', () async {
+      final FakeSessionWsClient sessionWsClient = FakeSessionWsClient(
+        endpointsQueue: <SessionEndpoints>[
+          SessionEndpoints(
+            ndgrViewApiUri: Uri.parse('https://example.com/api/view/v4/stream'),
+          ),
+        ],
+      );
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: sessionWsClient,
+        ndgrClient: FakeNdgrClient(),
+        legacyCommentClient: FakeLegacyCommentClient(),
+      );
+      addTearDown(supervisor.dispose);
+      final List<bool> seenDuringResolve = <bool>[];
+      sessionWsClient.onConnectAndResolveEndpoints = () {
+        seenDuringResolve.add(supervisor.hasStreamedSinceConnectionStart);
+      };
+
+      await _startAndDrain(supervisor);
+      expect(supervisor.hasStreamedSinceConnectionStart, isTrue);
+
+      // 別の lv に切り替えるときは、いったん停止してから接続し直す。
+      // 前の放送をライブで見ていた事実を、次の放送に持ち越してはいけない。
+      expect(supervisor.stopByUser(), isTrue);
+      await _drainEventLoop();
+      sessionWsClient.queueConnectException(
+        const SessionWsConnectException(
+          SessionWsConnectFailureKind.broadcastEnded,
+        ),
+      );
+      final bool restarted = await _startAndDrain(supervisor);
+
+      expect(restarted, isTrue);
+      expect(seenDuringResolve, <bool>[false, false]);
+      expect(supervisor.status, ConnectionStatus.ended);
+      expect(supervisor.hasStreamedSinceConnectionStart, isFalse);
+    });
   });
 }
 
