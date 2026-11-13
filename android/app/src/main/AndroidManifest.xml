@@ -24,12 +24,13 @@
               />
             <!-- Disable Flutter's built-in deep linking so incoming App Links
                  (the OAuth callback below) are handled only by the app_links
-                 plugin. Otherwise the Flutter embedding also forwards the full
-                 callback URL to the Navigator, which has no route for it: as
-                 the initial route on cold start, and via pushRouteInformation
-                 on warm start (onNewIntent). Required by the app_links Android
-                 setup since Flutter 3.24. app_links receives the intent either
-                 way, so this does not affect callback delivery. -->
+                 plugin. Otherwise the Flutter embedding also hands the callback
+                 URL to the framework: as the initial route on cold start, and
+                 via pushRouteInformation on warm start (onNewIntent), where the
+                 Navigator, which has no route for it, receives its path and
+                 query. The app_links Android setup asks for this flag to be
+                 disabled explicitly. app_links receives the intent either way,
+                 so this does not affect callback delivery. -->
             <meta-data android:name="flutter_deeplinking_enabled" android:value="false" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
