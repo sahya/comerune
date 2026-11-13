@@ -65,7 +65,11 @@ class ProgramInfoResolver {
   /// [userSession] is the value of the user_session cookie.
   ///
   /// Returns a [ProgramInfo] containing the NDGR view URI and program title.
-  /// Throws [ProgramInfoResolveException] on failure.
+  /// For ended programs (timeshift) the view URI may be `null`, because
+  /// programinfo can return `rooms=[]` for them (Issue #654); callers must
+  /// check [ProgramInfo.viewUri] before using it.
+  /// Throws [ProgramInfoResolveException] on failure, including when a
+  /// non-ended program has no usable view URI.
   Future<ProgramInfo> resolve({
     required String lv,
     String userSession = '',

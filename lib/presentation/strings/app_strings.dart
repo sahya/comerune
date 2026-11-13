@@ -507,7 +507,9 @@ final class TimeshiftStrings {
   ///
   /// Issue #639 / #654 / #173 のフォローアップ。viewUri 取得経路の確立まで
   /// 取得機能を一時無効化する暫定 UI のための文言。実装が整い次第
-  /// `kTimeshiftFetchEnabled` フラグを true に戻して再有効化する。
+  /// `kTimeshiftFetchEnabled` フラグを true に戻して再有効化する。ただし
+  /// viewUri が取れない終了放送（Issue #654）では引き続き表示されるため、
+  /// 除去時期は `kTimeshiftFetchEnabled` の doc の条件に従う。
   String get unsupportedDialogTitle => 'タイムシフトは現在未対応です';
 
   /// タイムシフト未対応ダイアログの本文。

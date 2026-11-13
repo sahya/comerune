@@ -400,7 +400,8 @@ class _ComeruneAppState extends State<ComeruneApp> {
   String _currentLv = '';
   // Issue #639 / #654: 同一 lv で再接続が走るたびに「未対応」ダイアログを
   // 重ねて出さないよう、最後に提示した lv を記録する。
-  // `kTimeshiftFetchEnabled` を true に戻す際は本フィールドも併せて削除する。
+  // 「未対応」ダイアログが不要になった時点（`kTimeshiftFetchEnabled` の doc の
+  // 除去条件を参照）で本フィールドも併せて削除する。
   String? _lastTimeshiftUnsupportedDialogLv;
   // initState で initialSettings.pastCommentFetchCount.historyCount に
   // 上書きされるため値そのものは一時的なもの。AppSettings.defaults と
