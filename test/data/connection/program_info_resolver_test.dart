@@ -126,34 +126,44 @@ void main() {
       resolver.dispose();
     });
 
-    test('returns null viewUri for an ended program whose rooms field is '
-        'missing or whose room has no viewUri (#654)', () async {
-      final List<Map<String, Object?>> dataVariants = <Map<String, Object?>>[
-        <String, Object?>{'status': 'ended', 'title': 'No Rooms Key'},
-        <String, Object?>{
-          'status': 'ended',
-          'title': 'Room Without ViewUri',
-          'rooms': <Object?>[<String, Object?>{}],
-        },
-        <String, Object?>{
-          'status': 'ended',
-          'title': 'Room Not An Object',
-          'rooms': <Object?>['unexpected'],
-        },
-        <String, Object?>{
-          'status': 'ended',
-          'title': 'Empty ViewUri',
-          'rooms': <Object?>[
-            <String, Object?>{'viewUri': ''},
-          ],
-        },
-      ];
+    // Issue #654: every shape in which `rooms[0].viewUri` cannot be
+    // extracted. Ended programs must still resolve (viewUri=null, treated
+    // as timeshift); live programs must keep throwing with the title so
+    // the caller falls back to the WebSocket handshake. Each shape gets
+    // its own test so one failure does not hide the others.
+    final Map<String, Map<String, Object?>> unusableRoomsVariants =
+        <String, Map<String, Object?>>{
+          'rooms key missing': <String, Object?>{},
+          'room without viewUri': <String, Object?>{
+            'rooms': <Object?>[<String, Object?>{}],
+          },
+          'room not a JSON object': <String, Object?>{
+            'rooms': <Object?>['unexpected'],
+          },
+          'empty viewUri': <String, Object?>{
+            'rooms': <Object?>[
+              <String, Object?>{'viewUri': ''},
+            ],
+          },
+          'non-string viewUri': <String, Object?>{
+            'rooms': <Object?>[
+              <String, Object?>{'viewUri': 42},
+            ],
+          },
+        };
 
-      for (final Map<String, Object?> data in dataVariants) {
+    for (final MapEntry<String, Map<String, Object?>> variant
+        in unusableRoomsVariants.entries) {
+      test('returns null viewUri for an ended program when '
+          '${variant.key} (#654)', () async {
         final _FakeHttpClient httpClient = _FakeHttpClient();
         httpClient.responseBody = jsonEncode(<String, Object?>{
           'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
-          'data': data,
+          'data': <String, Object?>{
+            'status': 'ended',
+            'title': 'Ended Program',
+            ...variant.value,
+          },
         });
         final ProgramInfoResolver resolver = ProgramInfoResolver(
           httpClient: httpClient,
@@ -164,12 +174,40 @@ void main() {
           userSession: 'session',
         );
 
-        expect(result.viewUri, isNull, reason: '${data['title']}');
-        expect(result.isTimeshift, isTrue, reason: '${data['title']}');
-        expect(result.title, data['title']);
+        expect(result.viewUri, isNull);
+        expect(result.isTimeshift, isTrue);
+        expect(result.title, 'Ended Program');
         resolver.dispose();
-      }
-    });
+      });
+
+      test('still throws with the title for an onAir program when '
+          '${variant.key} (#654)', () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseBody = jsonEncode(<String, Object?>{
+          'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+          'data': <String, Object?>{
+            'status': 'onAir',
+            'title': 'Live Program',
+            ...variant.value,
+          },
+        });
+        final ProgramInfoResolver resolver = ProgramInfoResolver(
+          httpClient: httpClient,
+        );
+
+        await expectLater(
+          resolver.resolve(lv: 'lv999', userSession: 'session'),
+          throwsA(
+            isA<ProgramInfoResolveException>().having(
+              (ProgramInfoResolveException e) => e.title,
+              'title',
+              'Live Program',
+            ),
+          ),
+        );
+        resolver.dispose();
+      });
+    }
 
     test(
       'programStatus is null when status field is missing or unknown',
