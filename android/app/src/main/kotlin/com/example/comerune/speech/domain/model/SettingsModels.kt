@@ -78,7 +78,8 @@ data class SpeechSettings(
     val speakTimeoutMs: Long = 15_000L,
     // Issue #1014: when true, comerune requests AudioFocus while speaking so
     // other media is ducked/paused. Default false mixes with other media
-    // (Issue #931 behaviour).
+    // (Issue #931 behaviour). Only the plugin layer reads this value (it
+    // switches the AudioFocus controller); SpeechControllerImpl ignores it.
     val duckOtherAudio: Boolean = false,
 )
 

@@ -1192,6 +1192,30 @@ void main() {
       expect(fakePlatform.lastUpdatedSettings?.speakerId, 3);
     });
 
+    // Issue #1014: a change to duckOtherAudio alone must still reach the
+    // engine so the AudioFocus mode switches without restarting speech.
+    testWidgets('duckOtherAudio-only change is pushed to engine while active', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildScreen(
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(enabled: true),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final _SpeechTestHostState host = tester.state(
+        find.byType(_SpeechTestHost),
+      );
+      host.updateSpeechSettings(
+        const SpeechSettings(enabled: true, duckOtherAudio: true),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakePlatform.lastUpdatedSettings?.duckOtherAudio, isTrue);
+    });
+
     testWidgets('messages with timestamp before speech init are not read', (
       WidgetTester tester,
     ) async {

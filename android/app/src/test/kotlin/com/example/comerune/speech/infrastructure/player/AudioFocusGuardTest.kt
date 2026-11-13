@@ -478,22 +478,67 @@ class AudioFocusGuardTest {
     }
 
     @Test
-    fun `guard re-requests under the new mode after release on mode change`() = runBlocking {
+    fun `applyDuckOtherAudioMode re-requests under the new mode after a change`() = runBlocking {
         val real = FakeAudioFocusController()
         val controller = SwitchableAudioFocusController(focusController = real)
         val guard = newGuard(controller, FakeDelayedRunner())
+        val seen = CopyOnWriteArrayList<AudioFocusGuard.FocusEvent>()
+        guard.addListener { event -> seen.add(event) }
 
         assertTrue(guard.acquire().isSuccess)
         assertEquals(0, real.requestCount.get())
 
-        // Mirrors CommentSpeechPlugin.applyDuckOtherAudio: flip the mode,
-        // then release so the next acquire does not reuse the mix token.
-        assertTrue(controller.setDuckOtherAudio(true))
-        guard.release()
+        // mix -> duck: drop the mix token so the next acquire asks the
+        // platform instead of short-circuiting on the stale one.
+        assertTrue(applyDuckOtherAudioMode(controller, guard, enabled = true))
         assertFalse(guard.isHeld)
+        assertTrue("entering duck mode must not fake a GAIN", seen.isEmpty())
 
         assertTrue(guard.acquire().isSuccess)
         assertEquals(1, real.requestCount.get())
+    }
+
+    @Test
+    fun `leaving duck mode resumes a consumer paused by a transient loss`() = runBlocking {
+        val real = FakeAudioFocusController()
+        val controller = SwitchableAudioFocusController(
+            focusController = real,
+            initialDuckOtherAudio = true,
+        )
+        val guard = newGuard(controller, FakeDelayedRunner())
+        val seen = CopyOnWriteArrayList<AudioFocusGuard.FocusEvent>()
+        guard.addListener { event -> seen.add(event) }
+
+        assertTrue(guard.acquire().isSuccess)
+        // Another app takes transient focus: WAV players pause and wait for
+        // GAIN. Once we abandon the real token, the platform never sends it.
+        real.listener!!.onFocusChange(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT)
+
+        assertTrue(applyDuckOtherAudioMode(controller, guard, enabled = false))
+
+        assertEquals(
+            listOf(
+                AudioFocusGuard.FocusEvent.LOSS_TRANSIENT,
+                AudioFocusGuard.FocusEvent.GAIN,
+            ),
+            seen,
+        )
+        assertEquals(1, real.abandonCount.get())
+        assertFalse(guard.isHeld)
+    }
+
+    @Test
+    fun `applyDuckOtherAudioMode with an unchanged mode does nothing`() = runBlocking {
+        val real = FakeAudioFocusController()
+        val controller = SwitchableAudioFocusController(focusController = real)
+        val guard = newGuard(controller, FakeDelayedRunner())
+        val seen = CopyOnWriteArrayList<AudioFocusGuard.FocusEvent>()
+        guard.addListener { event -> seen.add(event) }
+
+        assertTrue(guard.acquire().isSuccess)
+        assertFalse(applyDuckOtherAudioMode(controller, guard, enabled = false))
+        assertTrue("an unchanged mode must keep the held token", guard.isHeld)
+        assertTrue(seen.isEmpty())
     }
 }
 

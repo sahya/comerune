@@ -36,11 +36,14 @@ import com.example.comerune.speech.infrastructure.player.AndroidAudioFocusGuard
 import com.example.comerune.speech.infrastructure.player.AndroidTtsSpeaker
 import com.example.comerune.speech.infrastructure.player.DefaultTextToSpeechFactory
 import com.example.comerune.speech.infrastructure.player.HandlerDelayedRunner
+import com.example.comerune.speech.infrastructure.player.NoOpAudioFocusController
 import com.example.comerune.speech.infrastructure.player.RealAudioFocusController
 import com.example.comerune.speech.infrastructure.player.SwitchableAudioFocusController
+import com.example.comerune.speech.infrastructure.player.applyDuckOtherAudioMode
 import com.example.comerune.speech.infrastructure.player.SwitchableWavPlayer
 import com.example.comerune.speech.infrastructure.repository.VoicevoxModelRepositoryImpl
 import android.media.AudioManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 
@@ -95,10 +98,17 @@ class CommentSpeechPlugin :
         // while comerune speaks. The mode arrives via `updateSettings`.
         // Mute-during-a-call is handled by [CallStateProvider] checks inside
         // SpeechControllerImpl and applies to both modes.
-        val focusController = SwitchableAudioFocusController(
-            focusController = RealAudioFocusController(
+        // RealAudioFocusController needs API 26 (AudioFocusRequest). On older
+        // devices the setting has no effect and speech keeps mixing.
+        val duckingController = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            RealAudioFocusController(
                 context.getSystemService(Context.AUDIO_SERVICE) as AudioManager,
-            ),
+            )
+        } else {
+            NoOpAudioFocusController()
+        }
+        val focusController = SwitchableAudioFocusController(
+            focusController = duckingController,
         )
         audioFocusController = focusController
         val focusGuard: AudioFocusGuard = AndroidAudioFocusGuard(
@@ -599,17 +609,12 @@ class CommentSpeechPlugin :
         )
     }
 
-    /**
-     * Issue #1014: apply the "duck other audio" mode. When the mode changes,
-     * any focus held under the previous mode is released right away so the
-     * next utterance requests focus (or skips it) under the new mode instead
-     * of reusing a stale token for up to the release grace period.
-     */
+    /** Issue #1014: apply the "duck other audio" mode. See [applyDuckOtherAudioMode]. */
     private fun applyDuckOtherAudio(enabled: Boolean) {
-        val changed = audioFocusController?.setDuckOtherAudio(enabled) ?: return
-        if (changed) {
+        val controller = audioFocusController ?: return
+        val guard = audioFocusGuard ?: return
+        if (applyDuckOtherAudioMode(controller, guard, enabled)) {
             Log.d(TAG, "[applyDuckOtherAudio] duckOtherAudio=$enabled")
-            audioFocusGuard?.release()
         }
     }
 
