@@ -92,6 +92,85 @@ void main() {
       },
     );
 
+    test('returns ended status and metadata with null viewUri when an ended '
+        'program has rooms=[] (#654)', () async {
+      // Shape reported on a real device in #654: an ended broadcast
+      // returns title and status but an empty `rooms` list.
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'status': 'ended',
+          'rooms': <Object?>[],
+          'title': 'Ended Program',
+          'beginAt': '2025-07-01T12:00:00+09:00',
+          'broadcaster': <String, Object?>{'id': '12345', 'name': '配信者E'},
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv350354888',
+        userSession: 'session',
+      );
+
+      expect(result.viewUri, isNull);
+      expect(result.programStatus, ProgramStatus.ended);
+      expect(result.isTimeshift, isTrue);
+      expect(result.title, 'Ended Program');
+      expect(result.beginAt!.toUtc(), DateTime.utc(2025, 7, 1, 3, 0, 0));
+      expect(result.supplierUserId, '12345');
+      expect(result.broadcasterName, '配信者E');
+      resolver.dispose();
+    });
+
+    test('returns null viewUri for an ended program whose rooms field is '
+        'missing or whose room has no viewUri (#654)', () async {
+      final List<Map<String, Object?>> dataVariants = <Map<String, Object?>>[
+        <String, Object?>{'status': 'ended', 'title': 'No Rooms Key'},
+        <String, Object?>{
+          'status': 'ended',
+          'title': 'Room Without ViewUri',
+          'rooms': <Object?>[<String, Object?>{}],
+        },
+        <String, Object?>{
+          'status': 'ended',
+          'title': 'Room Not An Object',
+          'rooms': <Object?>['unexpected'],
+        },
+        <String, Object?>{
+          'status': 'ended',
+          'title': 'Empty ViewUri',
+          'rooms': <Object?>[
+            <String, Object?>{'viewUri': ''},
+          ],
+        },
+      ];
+
+      for (final Map<String, Object?> data in dataVariants) {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseBody = jsonEncode(<String, Object?>{
+          'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+          'data': data,
+        });
+        final ProgramInfoResolver resolver = ProgramInfoResolver(
+          httpClient: httpClient,
+        );
+
+        final ProgramInfo result = await resolver.resolve(
+          lv: 'lv999',
+          userSession: 'session',
+        );
+
+        expect(result.viewUri, isNull, reason: '${data['title']}');
+        expect(result.isTimeshift, isTrue, reason: '${data['title']}');
+        expect(result.title, data['title']);
+        resolver.dispose();
+      }
+    });
+
     test(
       'programStatus is null when status field is missing or unknown',
       () async {
@@ -1115,6 +1194,35 @@ void main() {
       await expectLater(
         resolver.resolve(lv: 'lv123', userSession: 'session'),
         throwsA(isA<ProgramInfoResolveException>()),
+      );
+
+      resolver.dispose();
+    });
+
+    test('throws with title when status is unknown and rooms is empty '
+        '(non-ended keeps the WebSocket fallback path)', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200},
+        'data': <String, Object?>{
+          'title': 'Status Missing',
+          'rooms': <Object?>[],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      await expectLater(
+        resolver.resolve(lv: 'lv123', userSession: 'session'),
+        throwsA(
+          isA<ProgramInfoResolveException>().having(
+            (ProgramInfoResolveException e) => e.title,
+            'title',
+            'Status Missing',
+          ),
+        ),
       );
 
       resolver.dispose();

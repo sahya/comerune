@@ -109,39 +109,40 @@ class ProgramInfoResolver {
 
     final String? title = data['title'] as String?;
 
-    final Object? rooms = data['rooms'];
-    if (rooms is! List || rooms.isEmpty) {
-      throw ProgramInfoResolveException(
-        'Program info response has no rooms',
-        title: title,
-      );
-    }
-
-    final Object? firstRoom = rooms[0];
-    if (firstRoom is! Map<String, dynamic>) {
-      throw ProgramInfoResolveException(
-        'Program info room entry is not a JSON object',
-        title: title,
-      );
-    }
-
-    debugPrint(
-      '[ProgramInfoResolver] rooms[0] keys: ${firstRoom.keys.toList()}',
+    // Extract broadcast status (Issue #639 cause 2). `data.status` is
+    // either `'onAir'` (currently broadcasting) or `'ended'` (timeshift).
+    // This lets the caller short-circuit live-session attempts for
+    // already-ended broadcasts and route them into the NDGR timeshift
+    // HTTP flow instead. Unknown / missing values yield `null` so the
+    // caller falls back to the existing live-path behaviour.
+    //
+    // Parsed before `rooms` because ended broadcasts may return
+    // `rooms=[]` (Issue #654); the status must still reach the caller.
+    final ProgramStatus? programStatus = parseProgramStatus(
+      data['status'] as String?,
     );
-    final String? viewUri = firstRoom['viewUri'] as String?;
-    if (viewUri == null || viewUri.isEmpty) {
-      throw ProgramInfoResolveException(
-        'Program info room missing "viewUri" field',
-        title: title,
-      );
-    }
 
-    final Uri? parsed = Uri.tryParse(viewUri);
-    if (parsed == null) {
-      throw ProgramInfoResolveException(
-        'Invalid viewUri: $viewUri',
-        title: title,
-      );
+    final ({Uri? uri, String? error}) viewUriResult = _extractViewUri(data);
+    final Uri? viewUri = viewUriResult.uri;
+    if (viewUri == null) {
+      // Issue #654: ended broadcasts may omit the live-only `rooms`
+      // entry. Return the metadata (status, title, ...) without a
+      // viewUri so the caller can treat the program as a timeshift
+      // instead of falling back to the live WebSocket (HTTP 400).
+      // Non-ended programs keep the historical behaviour: throw so the
+      // caller falls back to the WebSocket handshake.
+      if (programStatus != ProgramStatus.ended) {
+        throw ProgramInfoResolveException(
+          viewUriResult.error ?? 'Program info room missing "viewUri" field',
+          title: title,
+        );
+      }
+      if (kDebugMode) {
+        debugPrint(
+          '[ProgramInfoResolver] Ended program without viewUri: '
+          '${viewUriResult.error}',
+        );
+      }
     }
 
     // Extract broadcaster info if available.
@@ -169,19 +170,11 @@ class ProgramInfoResolver {
     // existing `beginAt` fallback keeps the previous behaviour intact.
     final DateTime? vposBaseAt = _extractVposBaseAt(data);
 
-    // Extract broadcast status (Issue #639 cause 2). `data.status` is
-    // either `'onAir'` (currently broadcasting) or `'ended'` (timeshift).
-    // This lets the caller short-circuit live-session attempts for
-    // already-ended broadcasts and route them into the NDGR timeshift
-    // HTTP flow instead. Unknown / missing values yield `null` so the
-    // caller falls back to the existing live-path behaviour.
-    final ProgramStatus? programStatus = parseProgramStatus(
-      data['status'] as String?,
-    );
-
     log(
-      'Resolved NDGR viewUri for $lv via programinfo'
-      ' (broadcaster: ${broadcasterInfo.name ?? 'null'}'
+      'Resolved program info for $lv via programinfo'
+      ' (viewUri: ${viewUri == null ? 'absent' : 'present'}'
+      ', status: ${programStatus?.name ?? 'unknown'}'
+      ', broadcaster: ${broadcasterInfo.name ?? 'null'}'
       ', userId: ${broadcasterInfo.userId ?? 'null'}'
       ', beginAt: ${beginAt?.toIso8601String() ?? 'null'}'
       ', vposBaseAt: ${vposBaseAt?.toIso8601String() ?? 'null'})',
@@ -192,13 +185,14 @@ class ProgramInfoResolver {
     // `dart:developer.log` reliably). Stripped in release by kDebugMode.
     if (kDebugMode) {
       debugPrint(
-        '[ProgramInfoResolver] Resolved NDGR viewUri for $lv '
-        '(beginAt: ${beginAt?.toIso8601String() ?? 'null'}, '
+        '[ProgramInfoResolver] Resolved program info for $lv '
+        '(viewUri: ${viewUri == null ? 'absent' : 'present'}, '
+        'beginAt: ${beginAt?.toIso8601String() ?? 'null'}, '
         'vposBaseAt: ${vposBaseAt?.toIso8601String() ?? 'null'})',
       );
     }
     return ProgramInfo(
-      viewUri: parsed,
+      viewUri: viewUri,
       title: title,
       supplierUserId: broadcasterInfo.userId,
       broadcasterName: broadcasterInfo.name,
@@ -206,6 +200,41 @@ class ProgramInfoResolver {
       vposBaseAt: vposBaseAt,
       programStatus: programStatus,
     );
+  }
+
+  /// Extracts the NDGR view URI from `data.rooms[0].viewUri`.
+  ///
+  /// Returns the parsed URI, or `uri: null` with a short reason in
+  /// `error` when `rooms` is missing / empty, the first room is not an
+  /// object, or `viewUri` is missing / empty / unparseable. The caller
+  /// decides whether the absence is fatal (live) or expected (ended,
+  /// Issue #654).
+  static ({Uri? uri, String? error}) _extractViewUri(
+    Map<String, dynamic> data,
+  ) {
+    final Object? rooms = data['rooms'];
+    if (rooms is! List || rooms.isEmpty) {
+      return (uri: null, error: 'Program info response has no rooms');
+    }
+
+    final Object? firstRoom = rooms[0];
+    if (firstRoom is! Map<String, dynamic>) {
+      return (uri: null, error: 'Program info room entry is not a JSON object');
+    }
+
+    debugPrint(
+      '[ProgramInfoResolver] rooms[0] keys: ${firstRoom.keys.toList()}',
+    );
+    final Object? rawViewUri = firstRoom['viewUri'];
+    if (rawViewUri is! String || rawViewUri.isEmpty) {
+      return (uri: null, error: 'Program info room missing "viewUri" field');
+    }
+
+    final Uri? parsed = Uri.tryParse(rawViewUri);
+    if (parsed == null) {
+      return (uri: null, error: 'Invalid viewUri: $rawViewUri');
+    }
+    return (uri: parsed, error: null);
   }
 
   /// Extracts `vposBaseAt` from the programinfo response (Issue #465).
@@ -362,7 +391,7 @@ class ProgramInfoResolver {
 /// Resolved program metadata returned by [ProgramInfoResolver.resolve].
 class ProgramInfo {
   const ProgramInfo({
-    required this.viewUri,
+    this.viewUri,
     this.title,
     this.supplierUserId,
     this.broadcasterName,
@@ -372,7 +401,11 @@ class ProgramInfo {
   });
 
   /// The NDGR view URI extracted from `data.rooms[0].viewUri`.
-  final Uri viewUri;
+  ///
+  /// Always non-null unless [isTimeshift] is `true`: ended broadcasts may
+  /// return `rooms=[]` (Issue #654), in which case this is `null` and the
+  /// timeshift view URI has to be obtained through another route.
+  final Uri? viewUri;
 
   /// The program title from `data.title`, or `null` when absent.
   final String? title;
