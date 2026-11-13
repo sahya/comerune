@@ -84,7 +84,12 @@ void main() {
     late String mainActivitySource;
 
     setUpAll(() {
-      final String manifestSource = manifestFile.readAsStringSync();
+      // XML comments are stripped first so a commented-out declaration
+      // does not satisfy the assertion below.
+      final String manifestSource = manifestFile.readAsStringSync().replaceAll(
+        RegExp(r'<!--.*?-->', dotAll: true),
+        '',
+      );
       // Captures the whole MainActivity element (opening tag through
       // </activity>) so the assertion below only passes when the meta-data
       // sits inside the activity. Flutter reads this flag from the
@@ -102,18 +107,27 @@ void main() {
 
     test('disables Flutter built-in deep linking on MainActivity so the OAuth '
         'callback URL is handled only by app_links', () {
-      // Without this flag the Flutter embedding forwards incoming VIEW
-      // intents to the Navigator by default. The app has no route for the
-      // callback URL, so that path only produces routing errors whose
-      // messages include the full callback URL (authorization code and
-      // state). The app_links Android setup guide requires disabling it
-      // explicitly since Flutter 3.24.
-      final RegExp flag = RegExp(
-        r'<meta-data\s+android:name="flutter_deeplinking_enabled"\s+'
-        r'android:value="false"\s*/>',
+      // Without this flag the Flutter embedding also hands incoming VIEW
+      // intent URLs to the Navigator: as the initial route on cold start
+      // (silently dropped, since it does not start with "/"), and via
+      // pushRouteInformation on warm start. The app has no route for the
+      // callback, so in debug builds the warm-start path throws a routing
+      // error whose message includes the callback path and query
+      // (authorization code and state). The app_links Android setup asks
+      // for the flag to be disabled explicitly.
+      //
+      // Attribute order and self-closing vs. open form are not fixed, so
+      // each <meta-data> start tag is checked for both attributes.
+      final Iterable<String> metaDataTags = RegExp(
+        r'<meta-data\b[^>]*>',
+      ).allMatches(mainActivitySource).map((RegExpMatch m) => m.group(0)!);
+      final bool hasFlag = metaDataTags.any(
+        (String tag) =>
+            tag.contains('android:name="flutter_deeplinking_enabled"') &&
+            tag.contains('android:value="false"'),
       );
       expect(
-        flag.hasMatch(mainActivitySource),
+        hasFlag,
         isTrue,
         reason:
             'MainActivity must declare <meta-data '
