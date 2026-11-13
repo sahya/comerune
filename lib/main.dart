@@ -82,12 +82,14 @@ import 'extension/extension_scope.dart';
 ///
 /// 取得経路の調査・実装が完了したら本フラグを `true` に戻し、
 /// `_tryStartTimeshiftInitial` の no-op 分岐を削除して
-/// `fetchInitial(viewApiUri)` を再配線する。`AppStrings.timeshift.unsupported*`
-/// と関連 widget テストもそのタイミングで除去対象になる。ただし
-/// `viewApiUri == null`（終了放送で programinfo が `rooms=[]` を返す、
-/// Issue #654）の分岐は取得を開始できないため、viewUri を別経路で
+/// `fetchInitial(viewApiUri)` を再配線する。
+///
+/// ただし `viewApiUri == null`（終了放送で programinfo が `rooms=[]` を
+/// 返す、Issue #654）の分岐は取得を開始できないため、viewUri を別経路で
 /// 補完できるようになるまではユーザ向けの案内を残すこと（無言の no-op に
-/// しない）。
+/// しない）。`AppStrings.timeshift.unsupported*` と関連テストは、その案内が
+/// 不要になった時点で除去対象になる（文言が viewUri なしのケースに合うかも
+/// フラグを戻す PR で見直す）。
 const bool kTimeshiftFetchEnabled = false;
 
 Future<void> main() async {
@@ -717,8 +719,9 @@ class _ComeruneAppState extends State<ComeruneApp> {
   ///
   /// Issue #639 / #654 / #173 暫定対応。本来の取得経路が確立したら
   /// 呼び出し元の no-op 分岐ごと削除する（`viewApiUri == null` 分岐からの
-  /// 呼び出しは、viewUri を別経路で補完できるようになってから削除する）。Navigator が未マウント等で
-  /// ダイアログを出せない場合は副作用なく抜ける（`AGENTS.md` の
+  /// 呼び出しは、viewUri を別経路で補完できるようになってから削除する）。
+  /// Navigator が未マウント等でダイアログを出せない場合は副作用なく
+  /// 抜ける（`AGENTS.md` の
   /// 「Optional Reference Two-Stage Fallback」方針に準じ、内部構造を
   /// 露出しないログだけ残す）。
   void _showTimeshiftUnsupportedDialogIfNeeded() {
