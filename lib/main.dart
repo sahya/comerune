@@ -83,7 +83,11 @@ import 'extension/extension_scope.dart';
 /// 取得経路の調査・実装が完了したら本フラグを `true` に戻し、
 /// `_tryStartTimeshiftInitial` の no-op 分岐を削除して
 /// `fetchInitial(viewApiUri)` を再配線する。`AppStrings.timeshift.unsupported*`
-/// と関連 widget テストもそのタイミングで除去対象になる。
+/// と関連 widget テストもそのタイミングで除去対象になる。ただし
+/// `viewApiUri == null`（終了放送で programinfo が `rooms=[]` を返す、
+/// Issue #654）の分岐は取得を開始できないため、viewUri を別経路で
+/// 補完できるようになるまではユーザ向けの案内を残すこと（無言の no-op に
+/// しない）。
 const bool kTimeshiftFetchEnabled = false;
 
 Future<void> main() async {
@@ -682,7 +686,8 @@ class _ComeruneAppState extends State<ComeruneApp> {
   ///
   /// Issue #654: 終了放送では programinfo が `rooms=[]` を返し、
   /// [viewApiUri] が `null` になる。この場合は取得を開始できないので、
-  /// フラグが有効でもログだけ残して何もしない。
+  /// フラグが有効でも取得はせず、無言で終わらないよう「未対応」ダイアログを
+  /// 出す。
   Future<void> _tryStartTimeshiftInitial(Uri? viewApiUri) async {
     if (!kTimeshiftFetchEnabled) {
       _showTimeshiftUnsupportedDialogIfNeeded();
@@ -690,6 +695,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
     }
     if (viewApiUri == null) {
       log('Timeshift detected without a view URI; skip fetch', name: 'App');
+      _showTimeshiftUnsupportedDialogIfNeeded();
       return;
     }
     if (_timeshiftFetchController.status != TimeshiftFetchStatus.idle) {
@@ -710,7 +716,8 @@ class _ComeruneAppState extends State<ComeruneApp> {
   /// 「タイムシフト未対応」ダイアログを同一 lv あたり 1 度だけ提示する。
   ///
   /// Issue #639 / #654 / #173 暫定対応。本来の取得経路が確立したら
-  /// 呼び出し元の no-op 分岐ごと削除する。Navigator が未マウント等で
+  /// 呼び出し元の no-op 分岐ごと削除する（`viewApiUri == null` 分岐からの
+  /// 呼び出しは、viewUri を別経路で補完できるようになってから削除する）。Navigator が未マウント等で
   /// ダイアログを出せない場合は副作用なく抜ける（`AGENTS.md` の
   /// 「Optional Reference Two-Stage Fallback」方針に準じ、内部構造を
   /// 露出しないログだけ残す）。
