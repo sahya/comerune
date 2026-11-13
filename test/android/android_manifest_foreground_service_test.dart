@@ -117,10 +117,16 @@ void main() {
       // for the flag to be disabled explicitly.
       //
       // Attribute order and self-closing vs. open form are not fixed, so
-      // each <meta-data> start tag is checked for both attributes.
+      // each <meta-data> start tag is checked for both attributes. Flutter
+      // only reads the activity's own meta-data, so declarations nested in
+      // an <intent-filter> are excluded.
+      final String activityLevelSource = mainActivitySource.replaceAll(
+        RegExp(r'<intent-filter\b.*?</intent-filter>', dotAll: true),
+        '',
+      );
       final Iterable<String> metaDataTags = RegExp(
         r'<meta-data\b[^>]*>',
-      ).allMatches(mainActivitySource).map((RegExpMatch m) => m.group(0)!);
+      ).allMatches(activityLevelSource).map((RegExpMatch m) => m.group(0)!);
       final bool hasFlag = metaDataTags.any(
         (String tag) =>
             tag.contains('android:name="flutter_deeplinking_enabled"') &&
