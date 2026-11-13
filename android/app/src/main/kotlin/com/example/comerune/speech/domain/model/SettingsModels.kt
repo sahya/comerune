@@ -75,7 +75,12 @@ data class SpeechSettings(
     // Issue #965: safety-net timeout for a single Android TTS utterance.
     // Configurable so slow devices / long comments can be tuned without code
     // changes. Default mirrors AndroidTtsSpeaker's historical safety value.
-    val speakTimeoutMs: Long = 15_000L
+    val speakTimeoutMs: Long = 15_000L,
+    // Issue #1014: when true, comerune requests AudioFocus while speaking so
+    // other media is ducked/paused. Default false mixes with other media
+    // (Issue #931 behaviour). Only the plugin layer reads this value (it
+    // switches the AudioFocus controller); SpeechControllerImpl ignores it.
+    val duckOtherAudio: Boolean = false,
 )
 
 data class ReplaceRule(
