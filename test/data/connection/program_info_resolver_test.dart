@@ -92,6 +92,173 @@ void main() {
       },
     );
 
+    test('returns ended status and metadata with null viewUri when an ended '
+        'program has rooms=[] (#654)', () async {
+      // Shape reported on a real device in #654: an ended broadcast
+      // returns title and status but an empty `rooms` list.
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'status': 'ended',
+          'rooms': <Object?>[],
+          'title': 'Ended Program',
+          'beginAt': '2025-07-01T12:00:00+09:00',
+          'broadcaster': <String, Object?>{'id': '12345', 'name': '配信者E'},
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+      final ProgramInfo result = await resolver.resolve(
+        lv: 'lv350354888',
+        userSession: 'session',
+      );
+
+      expect(result.viewUri, isNull);
+      expect(result.programStatus, ProgramStatus.ended);
+      expect(result.isTimeshift, isTrue);
+      expect(result.title, 'Ended Program');
+      expect(result.beginAt!.toUtc(), DateTime.utc(2025, 7, 1, 3, 0, 0));
+      expect(result.supplierUserId, '12345');
+      expect(result.broadcasterName, '配信者E');
+      resolver.dispose();
+    });
+
+    // Issue #654: every shape in which `rooms[0].viewUri` cannot be
+    // extracted. Ended programs must still resolve (viewUri=null, treated
+    // as timeshift); live programs must keep throwing with the title so
+    // the caller falls back to the WebSocket handshake. Each shape gets
+    // its own test so one failure does not hide the others.
+    final Map<String, Map<String, Object?>> unusableRoomsVariants =
+        <String, Map<String, Object?>>{
+          'rooms key missing': <String, Object?>{},
+          'room without viewUri': <String, Object?>{
+            'rooms': <Object?>[<String, Object?>{}],
+          },
+          'room not a JSON object': <String, Object?>{
+            'rooms': <Object?>['unexpected'],
+          },
+          'empty viewUri': <String, Object?>{
+            'rooms': <Object?>[
+              <String, Object?>{'viewUri': ''},
+            ],
+          },
+          'non-string viewUri': <String, Object?>{
+            'rooms': <Object?>[
+              <String, Object?>{'viewUri': 42},
+            ],
+          },
+          // `Uri.tryParse` returns null for this (unterminated IPv6 host).
+          'unparseable viewUri': <String, Object?>{
+            'rooms': <Object?>[
+              <String, Object?>{'viewUri': 'http://[::1'},
+            ],
+          },
+        };
+
+    for (final MapEntry<String, Map<String, Object?>> variant
+        in unusableRoomsVariants.entries) {
+      test('returns null viewUri for an ended program when '
+          '${variant.key} (#654)', () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseBody = jsonEncode(<String, Object?>{
+          'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+          'data': <String, Object?>{
+            'status': 'ended',
+            'title': 'Ended Program',
+            ...variant.value,
+          },
+        });
+        final ProgramInfoResolver resolver = ProgramInfoResolver(
+          httpClient: httpClient,
+        );
+
+        final ProgramInfo result = await resolver.resolve(
+          lv: 'lv999',
+          userSession: 'session',
+        );
+
+        expect(result.viewUri, isNull);
+        expect(result.isTimeshift, isTrue);
+        expect(result.title, 'Ended Program');
+        resolver.dispose();
+      });
+
+      test('still throws with the title for an onAir program when '
+          '${variant.key} (#654)', () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.responseBody = jsonEncode(<String, Object?>{
+          'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+          'data': <String, Object?>{
+            'status': 'onAir',
+            'title': 'Live Program',
+            ...variant.value,
+          },
+        });
+        final ProgramInfoResolver resolver = ProgramInfoResolver(
+          httpClient: httpClient,
+        );
+
+        await expectLater(
+          resolver.resolve(lv: 'lv999', userSession: 'session'),
+          throwsA(
+            isA<ProgramInfoResolveException>().having(
+              (ProgramInfoResolveException e) => e.title,
+              'title',
+              'Live Program',
+            ),
+          ),
+        );
+        resolver.dispose();
+      });
+    }
+
+    test('ProgramInfo asserts that viewUri is only null for ended '
+        'programs (#654)', () {
+      expect(() => ProgramInfo(), throwsA(isA<AssertionError>()));
+      expect(
+        () => ProgramInfo(programStatus: ProgramStatus.onAir),
+        throwsA(isA<AssertionError>()),
+      );
+      expect(
+        const ProgramInfo(programStatus: ProgramStatus.ended).viewUri,
+        isNull,
+      );
+    });
+
+    test('throws with the title when status is not a string, even if rooms '
+        'is empty (#654)', () async {
+      // `status` is parsed before `rooms`; a malformed status must still
+      // surface the title so the caller can show it before the WebSocket
+      // fallback.
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'status': 42,
+          'title': 'Malformed Status',
+          'rooms': <Object?>[],
+        },
+      });
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      await expectLater(
+        resolver.resolve(lv: 'lv999', userSession: 'session'),
+        throwsA(
+          isA<ProgramInfoResolveException>().having(
+            (ProgramInfoResolveException e) => e.title,
+            'title',
+            'Malformed Status',
+          ),
+        ),
+      );
+      resolver.dispose();
+    });
+
     test(
       'programStatus is null when status field is missing or unknown',
       () async {
@@ -1115,6 +1282,35 @@ void main() {
       await expectLater(
         resolver.resolve(lv: 'lv123', userSession: 'session'),
         throwsA(isA<ProgramInfoResolveException>()),
+      );
+
+      resolver.dispose();
+    });
+
+    test('throws with title when status is unknown and rooms is empty '
+        '(non-ended keeps the WebSocket fallback path)', () async {
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200},
+        'data': <String, Object?>{
+          'title': 'Status Missing',
+          'rooms': <Object?>[],
+        },
+      });
+
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      await expectLater(
+        resolver.resolve(lv: 'lv123', userSession: 'session'),
+        throwsA(
+          isA<ProgramInfoResolveException>().having(
+            (ProgramInfoResolveException e) => e.title,
+            'title',
+            'Status Missing',
+          ),
+        ),
       );
 
       resolver.dispose();

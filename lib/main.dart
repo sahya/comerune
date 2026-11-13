@@ -82,8 +82,14 @@ import 'extension/extension_scope.dart';
 ///
 /// 取得経路の調査・実装が完了したら本フラグを `true` に戻し、
 /// `_tryStartTimeshiftInitial` の no-op 分岐を削除して
-/// `fetchInitial(viewApiUri)` を再配線する。`AppStrings.timeshift.unsupported*`
-/// と関連 widget テストもそのタイミングで除去対象になる。
+/// `fetchInitial(viewApiUri)` を再配線する。
+///
+/// ただし `viewApiUri == null`（終了放送で programinfo が `rooms=[]` を
+/// 返す、Issue #654）の分岐は取得を開始できないため、viewUri を別経路で
+/// 補完できるようになるまではユーザ向けの案内を残すこと（無言の no-op に
+/// しない）。`AppStrings.timeshift.unsupported*` と関連テストは、その案内が
+/// 不要になった時点で除去対象になる（文言が viewUri なしのケースに合うかも
+/// フラグを戻す PR で見直す）。
 const bool kTimeshiftFetchEnabled = false;
 
 Future<void> main() async {
@@ -394,7 +400,8 @@ class _ComeruneAppState extends State<ComeruneApp> {
   String _currentLv = '';
   // Issue #639 / #654: 同一 lv で再接続が走るたびに「未対応」ダイアログを
   // 重ねて出さないよう、最後に提示した lv を記録する。
-  // `kTimeshiftFetchEnabled` を true に戻す際は本フィールドも併せて削除する。
+  // 「未対応」ダイアログが不要になった時点（`kTimeshiftFetchEnabled` の doc の
+  // 除去条件を参照）で本フィールドも併せて削除する。
   String? _lastTimeshiftUnsupportedDialogLv;
   // initState で initialSettings.pastCommentFetchCount.historyCount に
   // 上書きされるため値そのものは一時的なもの。AppSettings.defaults と
@@ -591,7 +598,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
       // 取得するよう TimeshiftFetchController に viewApiUri を
       // 渡して初回取得を開始する。同じ URL で二重起動を避けるため
       // 既に実行中/完了している場合はスキップする。
-      onTimeshiftDetected: (Uri viewApiUri) {
+      onTimeshiftDetected: (Uri? viewApiUri) {
         unawaited(_tryStartTimeshiftInitial(viewApiUri));
       },
     );
@@ -679,8 +686,18 @@ class _ComeruneAppState extends State<ComeruneApp> {
   /// 見越して引数として残してあり、フラグを true に戻すだけで本来の経路に
   /// 復帰できる。生ログエラーへの誤遷移防止が主目的のため、ダイアログ表示が
   /// 失敗してもアプリの他機能は影響を受けないよう副作用は最小に留める。
-  Future<void> _tryStartTimeshiftInitial(Uri viewApiUri) async {
+  ///
+  /// Issue #654: 終了放送では programinfo が `rooms=[]` を返し、
+  /// [viewApiUri] が `null` になる。この場合は取得を開始できないので、
+  /// フラグが有効でも取得はせず、無言で終わらないよう「未対応」ダイアログを
+  /// 出す。
+  Future<void> _tryStartTimeshiftInitial(Uri? viewApiUri) async {
     if (!kTimeshiftFetchEnabled) {
+      _showTimeshiftUnsupportedDialogIfNeeded();
+      return;
+    }
+    if (viewApiUri == null) {
+      log('Timeshift detected without a view URI; skip fetch', name: 'App');
       _showTimeshiftUnsupportedDialogIfNeeded();
       return;
     }
@@ -702,8 +719,10 @@ class _ComeruneAppState extends State<ComeruneApp> {
   /// 「タイムシフト未対応」ダイアログを同一 lv あたり 1 度だけ提示する。
   ///
   /// Issue #639 / #654 / #173 暫定対応。本来の取得経路が確立したら
-  /// 呼び出し元の no-op 分岐ごと削除する。Navigator が未マウント等で
-  /// ダイアログを出せない場合は副作用なく抜ける（`AGENTS.md` の
+  /// 呼び出し元の no-op 分岐ごと削除する（`viewApiUri == null` 分岐からの
+  /// 呼び出しは、viewUri を別経路で補完できるようになってから削除する）。
+  /// Navigator が未マウント等でダイアログを出せない場合は副作用なく
+  /// 抜ける（`AGENTS.md` の
   /// 「Optional Reference Two-Stage Fallback」方針に準じ、内部構造を
   /// 露出しないログだけ残す）。
   void _showTimeshiftUnsupportedDialogIfNeeded() {
@@ -900,7 +919,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     void Function(String? userId, String name)? onBroadcasterNameResolved,
     void Function(DateTime beginAt)? onBeginAtResolved,
     void Function(DateTime vposBaseAt)? onVposBaseAtResolved,
-    void Function(Uri viewApiUri)? onTimeshiftDetected,
+    void Function(Uri? viewApiUri)? onTimeshiftDetected,
   }) : _lvProvider = lvProvider,
        _userSessionProvider = userSessionProvider,
        _programInfoResolver = programInfoResolver,
@@ -919,7 +938,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
   final void Function(String? userId, String name)? _onBroadcasterNameResolved;
   final void Function(DateTime beginAt)? _onBeginAtResolved;
   final void Function(DateTime vposBaseAt)? _onVposBaseAtResolved;
-  final void Function(Uri viewApiUri)? _onTimeshiftDetected;
+  final void Function(Uri? viewApiUri)? _onTimeshiftDetected;
   final StreamController<reconnect.SessionWsEvent> _eventsController =
       StreamController<reconnect.SessionWsEvent>.broadcast();
 
@@ -985,7 +1004,8 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       }
       // Issue #639 cause 2: for ended broadcasts (timeshift) notify the
       // caller so they can route fetching through the NDGR timeshift HTTP
-      // flow.
+      // flow. The view URI may be `null` here because ended broadcasts can
+      // return `rooms=[]` (Issue #654).
       if (programInfo.isTimeshift) {
         _onTimeshiftDetected?.call(programInfo.viewUri);
       }
@@ -1012,7 +1032,17 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
           reconnect.SessionWsConnectFailureKind.broadcastEnded,
         );
       }
-      return reconnect.SessionEndpoints(ndgrViewApiUri: programInfo.viewUri);
+      // The resolver guarantees a viewUri for non-ended programs. Guard
+      // anyway so a contract break falls back to the WebSocket handshake
+      // below instead of crashing.
+      final Uri? viewUri = programInfo.viewUri;
+      if (viewUri == null) {
+        throw ProgramInfoResolveException(
+          'Program info returned no viewUri for a non-ended program',
+          title: programInfo.title,
+        );
+      }
+      return reconnect.SessionEndpoints(ndgrViewApiUri: viewUri);
     } on reconnect.SessionWsConnectException {
       // Re-throw our own signalling exception so it is not swallowed by
       // the broad fallback handlers below. ConnectionSupervisor maps

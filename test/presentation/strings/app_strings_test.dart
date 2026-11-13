@@ -119,8 +119,9 @@ void main() {
   group('AppStrings.timeshift unsupported dialog', () {
     test('未対応ダイアログの文言が既定ロケールで固定される（Issue #639 / #654 暫定）', () {
       // 暫定実装の文言が振動しないようバイト完全一致を維持する。
-      // viewUri 取得経路（Issue #654）が確立して `kTimeshiftFetchEnabled` を
-      // true へ戻す PR では、本テストごと削除して問題ない。
+      // viewUri 取得経路（Issue #654）が確立し、`viewApiUri == null` の
+      // 分岐でも案内が不要になった時点で、本テストごと削除して問題ない
+      // （`kTimeshiftFetchEnabled` の doc を参照）。
       expect(AppStrings.timeshift.unsupportedDialogTitle, 'タイムシフトは現在未対応です');
       expect(
         AppStrings.timeshift.unsupportedDialogBody,
