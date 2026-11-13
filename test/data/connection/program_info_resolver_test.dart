@@ -209,6 +209,37 @@ void main() {
       });
     }
 
+    test('throws with the title when status is not a string, even if rooms '
+        'is empty (#654)', () async {
+      // `status` is parsed before `rooms`; a malformed status must still
+      // surface the title so the caller can show it before the WebSocket
+      // fallback.
+      final _FakeHttpClient httpClient = _FakeHttpClient();
+      httpClient.responseBody = jsonEncode(<String, Object?>{
+        'meta': <String, Object?>{'status': 200, 'errorCode': 'OK'},
+        'data': <String, Object?>{
+          'status': 42,
+          'title': 'Malformed Status',
+          'rooms': <Object?>[],
+        },
+      });
+      final ProgramInfoResolver resolver = ProgramInfoResolver(
+        httpClient: httpClient,
+      );
+
+      await expectLater(
+        resolver.resolve(lv: 'lv999', userSession: 'session'),
+        throwsA(
+          isA<ProgramInfoResolveException>().having(
+            (ProgramInfoResolveException e) => e.title,
+            'title',
+            'Malformed Status',
+          ),
+        ),
+      );
+      resolver.dispose();
+    });
+
     test(
       'programStatus is null when status field is missing or unknown',
       () async {

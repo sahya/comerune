@@ -118,8 +118,19 @@ class ProgramInfoResolver {
     //
     // Parsed before `rooms` because ended broadcasts may return
     // `rooms=[]` (Issue #654); the status must still reach the caller.
+    //
+    // A non-string `status` is rejected with the title attached (instead
+    // of a bare cast `TypeError`) so the caller can still surface the
+    // title before falling back to the WebSocket handshake.
+    final Object? rawStatus = data['status'];
+    if (rawStatus != null && rawStatus is! String) {
+      throw ProgramInfoResolveException(
+        'Program info "status" field is not a string',
+        title: title,
+      );
+    }
     final ProgramStatus? programStatus = parseProgramStatus(
-      data['status'] as String?,
+      rawStatus as String?,
     );
 
     final ({Uri? uri, String? error}) viewUriResult = _extractViewUri(data);
