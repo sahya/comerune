@@ -6,13 +6,15 @@ import android.media.AudioManager
  * [AudioFocusController] that never actually requests focus from the
  * platform.
  *
- * Issue #931: comerune mixes its TTS with concurrent media (music,
- * video, navigation) instead of ducking them. Skipping the focus
- * request entirely is the simplest way to achieve mixing — the
- * platform sees no claim from us, so other apps keep their full
- * volume and we keep ours.
+ * Issue #931: in the default mix mode comerune mixes its TTS with
+ * concurrent media (music, video, navigation) instead of ducking them.
+ * Skipping the focus request entirely is the simplest way to achieve
+ * mixing — the platform sees no claim from us, so other apps keep their
+ * full volume and we keep ours. Issue #1014 lets users opt back into
+ * requesting focus; [SwitchableAudioFocusController] picks between this
+ * controller and [RealAudioFocusController].
  *
- * Trade-off: comerune no longer receives platform focus-loss
+ * Trade-off: in mix mode comerune does not receive platform focus-loss
  * callbacks during phone calls. That auto-silence path is replaced
  * by [com.example.comerune.speech.domain.audio.CallStateProvider]
  * checks at speak-dispatch time inside

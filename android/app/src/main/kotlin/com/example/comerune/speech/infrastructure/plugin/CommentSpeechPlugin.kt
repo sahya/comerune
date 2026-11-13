@@ -107,12 +107,12 @@ class CommentSpeechPlugin :
         } else {
             NoOpAudioFocusController()
         }
-        val focusController = SwitchableAudioFocusController(
-            focusController = duckingController,
+        val switchableFocusController = SwitchableAudioFocusController(
+            duckController = duckingController,
         )
-        audioFocusController = focusController
+        audioFocusController = switchableFocusController
         val focusGuard: AudioFocusGuard = AndroidAudioFocusGuard(
-            controller = focusController,
+            controller = switchableFocusController,
             delayedRunner = HandlerDelayedRunner(Handler(Looper.getMainLooper())),
         )
         audioFocusGuard = focusGuard

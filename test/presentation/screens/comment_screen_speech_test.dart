@@ -1211,7 +1211,9 @@ void main() {
       host.updateSpeechSettings(
         const SpeechSettings(enabled: true, duckOtherAudio: true),
       );
-      await tester.pumpAndSettle();
+      // One frame is enough: didUpdateWidget pushes the new settings and the
+      // fake platform completes immediately.
+      await tester.pump();
 
       expect(fakePlatform.lastUpdatedSettings?.duckOtherAudio, isTrue);
     });
