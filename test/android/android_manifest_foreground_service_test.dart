@@ -78,4 +78,49 @@ void main() {
       );
     });
   });
+
+  group('AndroidManifest.xml App Links callback handling', () {
+    final File manifestFile = File('android/app/src/main/AndroidManifest.xml');
+    late String mainActivitySource;
+
+    setUpAll(() {
+      final String manifestSource = manifestFile.readAsStringSync();
+      // Captures the whole MainActivity element (opening tag through
+      // </activity>) so the assertion below only passes when the meta-data
+      // sits inside the activity. Flutter reads this flag from the
+      // activity's own meta-data, not from <application>.
+      final RegExp mainActivity = RegExp(
+        r'<activity\b[^>]*android:name="\.MainActivity".*?</activity>',
+        dotAll: true,
+      );
+      final RegExpMatch? match = mainActivity.firstMatch(manifestSource);
+      if (match == null) {
+        fail('MainActivity declaration not found in $manifestFile');
+      }
+      mainActivitySource = match.group(0)!;
+    });
+
+    test('disables Flutter built-in deep linking on MainActivity so the OAuth '
+        'callback URL is handled only by app_links', () {
+      // Without this flag the Flutter embedding forwards incoming VIEW
+      // intents to the Navigator by default. The app has no route for the
+      // callback URL, so that path only produces routing errors whose
+      // messages include the full callback URL (authorization code and
+      // state). The app_links Android setup guide requires disabling it
+      // explicitly since Flutter 3.24.
+      final RegExp flag = RegExp(
+        r'<meta-data\s+android:name="flutter_deeplinking_enabled"\s+'
+        r'android:value="false"\s*/>',
+      );
+      expect(
+        flag.hasMatch(mainActivitySource),
+        isTrue,
+        reason:
+            'MainActivity must declare <meta-data '
+            'android:name="flutter_deeplinking_enabled" '
+            'android:value="false" /> so the OAuth callback URL is not '
+            'pushed to the Navigator.',
+      );
+    });
+  });
 }
