@@ -188,5 +188,41 @@ void main() {
         );
       },
     );
+
+    test('every Kotlin manifest model pins a SHA-256 digest', () {
+      // Remove block comments (/* ... */) and single-line comments (//).
+      final withoutBlockComments = kotlinSource.replaceAll(
+        RegExp(r'/\*[\s\S]*?\*/'),
+        '',
+      );
+      final nonCommentLines = withoutBlockComments
+          .split('\n')
+          .where((line) => !line.trimLeft().startsWith('//'))
+          .join('\n');
+
+      // Each `VoicevoxModelInfo(...)` entry must declare
+      // `sha256 = "<64 hex chars>"`; downloads are verified against it.
+      final entryPattern = RegExp(r'VoicevoxModelInfo\(([\s\S]*?)\n\s*\)');
+      final entries = entryPattern
+          .allMatches(nonCommentLines)
+          .map((m) => m.group(1)!)
+          .toList();
+      final sha256Pattern = RegExp(r'\bsha256\s*=\s*"([0-9a-f]{64})"');
+
+      expect(
+        entries,
+        hasLength(supportedVoicevoxModelIds.length),
+        reason: 'Failed to parse every model entry in VoicevoxModelManifest.kt',
+      );
+      for (final entry in entries) {
+        expect(
+          sha256Pattern.hasMatch(entry),
+          isTrue,
+          reason:
+              'A VoicevoxModelManifest.kt entry is missing a 64-character '
+              'lower-case hex sha256:\n$entry',
+        );
+      }
+    });
   });
 }
