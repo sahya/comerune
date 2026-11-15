@@ -64,8 +64,9 @@ PlatformFile buildDiskPlatformFile({required String path}) {
 
 /// Convenience to build a [PlatformFile] whose URI is not a `file:` URI.
 ///
-/// `file_picker` 12 derives [PlatformFile.path] from the URI, so this is the
-/// shape a pick takes when it has no local filesystem path and `path` is null.
+/// `file_picker` 12 and later derive [PlatformFile.path] from the URI, so this
+/// is the shape a pick takes when it has no local filesystem path and `path`
+/// is null.
 PlatformFile buildPathlessPlatformFile({
   String uri = 'content://com.example.provider/document/1',
 }) {
