@@ -479,7 +479,7 @@ class _CommentDisplaySettingsScreenState
                         onChanged: (bool value) async {
                           if (value) {
                             // SAF オプション付きの `androidOptions` を渡さないこと
-                            // （file_picker 12〜13 で確認した挙動）。渡した場合、戻り値が実ファイル
+                            // （file_picker 12〜13 の挙動）。渡した場合、戻り値が実ファイル
                             // パスではなく content:// URI 文字列に変わり、保存先を
                             // `Directory` として直接扱っている自動保存が実行時に壊れる。
                             final String? directory =
