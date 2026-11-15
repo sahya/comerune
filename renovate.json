@@ -7,6 +7,10 @@
   "labels": ["dependencies"],
   "prConcurrentLimit": 5,
   "timezone": "Asia/Tokyo",
+  "description": "constraints.flutter pins the Flutter SDK Renovate uses to regenerate pubspec.lock. Keep it equal to flutter-version in .github/workflows/test.yml; a newer SDK can fail to resolve against the exact-pinned pubspec.yaml.",
+  "constraints": {
+    "flutter": "3.44.0"
+  },
   "schedule": [
     "after 10pm every weekday",
     "every weekend"
