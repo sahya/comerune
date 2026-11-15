@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:comerune/data/follow/favorite_user_live_checker.dart';
 import 'package:comerune/domain/models/follow_program.dart';
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Helper to build a broadcast-history API JSON response.
@@ -302,6 +303,41 @@ void main() {
         checker.dispose();
       },
     );
+
+    test('returns empty when the 429 retry body read fails', () {
+      fakeAsync((FakeAsync async) {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.statusCodeByUrlPrefix['providerId=12345'] = 429;
+        httpClient.retryAfterByUrlPrefix['providerId=12345'] = '1';
+        httpClient.statusCodeByUrlPrefixOnRetry['providerId=12345'] =
+            _buildHistoryResponse(programId: 'lv100001', status: 'ON_AIR');
+        httpClient.bodyErrorByUrlPrefix['providerId=12345'] =
+            const HttpException('Connection closed while receiving data');
+
+        final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
+          httpClient: httpClient,
+          minInterval: Duration.zero,
+        );
+
+        Map<String, FollowProgram>? result;
+        Object? error;
+        checker
+            .checkBroadcastStatus(<String>{'12345'})
+            .then(
+              (Map<String, FollowProgram> value) => result = value,
+              onError: (Object e) => error = e,
+            );
+        // Retry-After (1s) + jitter (< 1s).
+        async.elapse(const Duration(seconds: 2));
+
+        expect(error, isNull);
+        expect(result, isEmpty);
+        // 2 requests: initial 429 + retry whose body read fails.
+        expect(httpClient.requestCount, 2);
+
+        checker.dispose();
+      });
+    });
 
     test('returns empty when 429 retry also fails', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
@@ -681,6 +717,7 @@ class _FakeHttpClient implements HttpClient {
             uri: url,
             responseBody: statusCodeByUrlPrefixOnRetry[entry.key]!,
             statusCode: 200,
+            bodyError: bodyErrorByUrlPrefix[entry.key],
           );
         }
 
