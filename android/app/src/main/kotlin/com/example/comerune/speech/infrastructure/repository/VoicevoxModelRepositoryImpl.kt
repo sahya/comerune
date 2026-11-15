@@ -6,6 +6,7 @@ import com.example.comerune.speech.domain.model.ModelDownloadState
 import com.example.comerune.speech.domain.model.VoicevoxModelInfo
 import com.example.comerune.speech.domain.model.VoicevoxModelManifest
 import com.example.comerune.speech.domain.repository.VoicevoxModelRepository
+import com.example.comerune.speech.infrastructure.integrity.DownloadedAssetGuard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -213,6 +214,9 @@ class VoicevoxModelRepositoryImpl(private val context: Context) : VoicevoxModelR
             } finally {
                 connection.disconnect()
             }
+
+            // Only a file matching the pinned digest becomes the model file.
+            DownloadedAssetGuard.verifySha256(tempFile, modelInfo.sha256)
 
             if (!tempFile.renameTo(targetFile)) {
                 throw IOException(

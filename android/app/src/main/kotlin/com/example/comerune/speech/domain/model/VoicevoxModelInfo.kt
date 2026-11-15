@@ -14,6 +14,8 @@ data class VoicevoxModelInfo(
     val vvmFileName: String,
     val downloadUrl: String,
     val fileSizeBytes: Long,
+    /** Expected SHA-256 (hex) of the file at [downloadUrl]; checked before use. */
+    val sha256: String,
     val isBundled: Boolean,
     val downloadState: ModelDownloadState = if (isBundled) ModelDownloadState.DOWNLOADED else ModelDownloadState.NOT_DOWNLOADED
 ) {
