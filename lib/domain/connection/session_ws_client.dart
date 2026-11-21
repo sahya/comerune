@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/io.dart';
@@ -141,8 +142,16 @@ class SessionWsClient {
         SessionWsStartWatchingMode.full,
     Map<String, String>? connectHeaders,
     String userAgent = defaultAndroidUserAgent,
+    Duration connectTimeout = defaultConnectTimeout,
+    Duration postCommentTimeout = defaultPostCommentTimeout,
+    bool disconnectOnPostTimeout = false,
   }) : _webSocketUriOverride = webSocketUri,
-       _channelFactory = channelFactory ?? _defaultChannelFactory,
+       _channelFactory =
+           channelFactory ??
+           ((Uri uri, Map<String, String> headers) =>
+               _defaultChannelFactory(uri, headers, connectTimeout)),
+       _postCommentTimeout = postCommentTimeout,
+       _disconnectOnPostTimeout = disconnectOnPostTimeout,
        _endpointFallbackDelay = endpointFallbackDelay,
        _endpointResolveTimeout = endpointResolveTimeout,
        _startWatchingMode = startWatchingMode,
@@ -163,9 +172,25 @@ class SessionWsClient {
                    ),
              );
 
+  /// Upper bound for opening the WebSocket (TCP + TLS + HTTP upgrade) with
+  /// the default channel factory. Part of the comment-post time budget
+  /// (Issue #1029).
+  static const Duration defaultConnectTimeout = Duration(seconds: 10);
+
+  /// How long [postComment] waits for `postCommentResult`.
+  static const Duration defaultPostCommentTimeout = Duration(seconds: 10);
+
   final String lv;
   final Uri? _webSocketUriOverride;
   final SessionWsChannelFactory _channelFactory;
+  final Duration _postCommentTimeout;
+
+  /// When true, a [postComment] timeout is treated as a dead connection and
+  /// the client disconnects, so the caller re-opens a fresh WebSocket on the
+  /// next post. Only the comment-only connection opts in; the fallback
+  /// (full-mode) connection is shared with endpoint resolution and seat
+  /// keeping, so a single slow post must not tear it down (Issue #1029).
+  final bool _disconnectOnPostTimeout;
   final Duration _endpointFallbackDelay;
   final Duration _endpointResolveTimeout;
   final SessionWsStartWatchingMode _startWatchingMode;
@@ -188,6 +213,10 @@ class SessionWsClient {
   bool _isConnected = false;
   bool _isClosing = false;
   bool _isDisposed = false;
+
+  /// Incremented by every [disconnect]. A [connect] whose channel arrives
+  /// after the generation changed was cancelled and must not take effect.
+  int _connectGeneration = 0;
   Uri? _sessionWsUri;
   Completer<CommentPostResult>? _postCommentCompleter;
 
@@ -217,11 +246,19 @@ class SessionWsClient {
       'override=${_webSocketUriOverride != null})',
     );
 
+    final int generation = _connectGeneration;
     try {
       final SessionWsChannel channel = await _channelFactory(
         uri,
         _connectHeaders,
       );
+      if (_isConnectCancelled(generation)) {
+        // disconnect()/dispose() ran while the channel was being opened.
+        // Close the late channel instead of reviving a discarded client.
+        debugPrint('[SessionWsClient] connect: cancelled, closing channel');
+        unawaited(channel.close().catchError((Object _) {}));
+        return;
+      }
       debugPrint('[SessionWsClient] connect: channel ready');
       _channel = channel;
       _subscription = channel.stream.listen(
@@ -276,6 +313,9 @@ class SessionWsClient {
         _startEndpointResolveTimer();
       }
     } catch (error, stackTrace) {
+      if (_isConnectCancelled(generation)) {
+        return;
+      }
       debugPrint('[SessionWsClient] connect: channel open failed: $error');
       final SessionWsErrorDetail detail = _buildErrorDetail(
         code: SessionWsErrorCode.connectFailed,
@@ -295,10 +335,14 @@ class SessionWsClient {
     }
   }
 
+  bool _isConnectCancelled(int generation) =>
+      _isDisposed || generation != _connectGeneration;
+
   Future<void> disconnect() async {
     if (_isDisposed) {
       return;
     }
+    _connectGeneration += 1;
     if (_isClosing) {
       return;
     }
@@ -340,7 +384,8 @@ class SessionWsClient {
   /// Posts a comment via the session WebSocket.
   ///
   /// Returns a [CommentPostResult] when the server responds with
-  /// `postCommentResult`. Times out after 10 seconds if no response arrives.
+  /// `postCommentResult`. Times out after the configured post timeout
+  /// (10 seconds by default) if no response arrives.
   Future<CommentPostResult> postComment({
     required String text,
     required int vpos,
@@ -395,9 +440,15 @@ class SessionWsClient {
     }
 
     return completer.future.timeout(
-      const Duration(seconds: 10),
+      _postCommentTimeout,
       onTimeout: () {
         _postCommentCompleter = null;
+        if (_disconnectOnPostTimeout) {
+          // Mark the connection dead right away so the very next post does
+          // not reuse it, then tear it down in the background.
+          _isConnected = false;
+          unawaited(disconnect());
+        }
         return const CommentPostResult(
           success: false,
           errorCode: CommentPostErrorCode.networkError,
@@ -630,6 +681,7 @@ class SessionWsClient {
   static Future<SessionWsChannel> _defaultChannelFactory(
     Uri uri,
     Map<String, String> headers,
+    Duration connectTimeout,
   ) async {
     final Map<String, String> sanitizedHeaders = <String, String>{
       for (final MapEntry<String, String> e in headers.entries)
@@ -643,12 +695,26 @@ class SessionWsClient {
       '[SessionWsClient] _defaultChannelFactory: '
       'uri=${uri.host}${uri.path} headers=$sanitizedHeaders',
     );
-    final IOWebSocketChannel channel = IOWebSocketChannel.connect(
-      uri,
+    // `IOWebSocketChannel.connect(connectTimeout:)` only times out the
+    // future and leaves a socket that connects later open, so the timeout
+    // is applied here and a late socket is closed explicitly (Issue #1029).
+    final Future<WebSocket> connecting = WebSocket.connect(
+      uri.toString(),
       headers: headers.isEmpty ? null : headers,
     );
-    await channel.ready;
-    return WebSocketSessionWsChannel(channel);
+    final WebSocket socket;
+    try {
+      socket = await connecting.timeout(connectTimeout);
+    } on TimeoutException {
+      unawaited(
+        connecting.then<void>(
+          (WebSocket late) => late.close().catchError((Object _) {}),
+          onError: (Object _) {},
+        ),
+      );
+      rethrow;
+    }
+    return WebSocketSessionWsChannel(IOWebSocketChannel(socket));
   }
 
   static Map<String, String> _buildConnectHeaders({
