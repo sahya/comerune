@@ -132,7 +132,9 @@ tsukumijima/NDGRClient（`downloadBackwardComments` L866-1028）、NdgrClientSha
 | 視聴ページから WebSocket の URL を取る | `WatchPageWebSocketUrlResolver`（コメント投稿の経路と共用） |
 | WebSocket から viewUri を取る | `TimeshiftViewUriResolver`（`startWatching` の data は空。取得後すぐに閉じる。タイムアウトは 15 秒） |
 | 過去コメントの取得 | `NdgrTimeshiftClient` と `TimeshiftFetchController`（既存） |
+| 取得を始める判断 | `TimeshiftFetchStarter`（番組ごとに 1 回だけ解決する。番組を切り替えたら状態を戻す。ライブで見ていた放送が終わっただけのときは何もしない〔#1017、#1018 の `hasStreamedSinceConnectionStart`〕） |
 | 失敗したとき | 理由ごとのダイアログを lv ごとに 1 回だけ出す（未ログイン／視聴できない／取得できない） |
+| Cookie の送り先 | 視聴ページと同じホストへのリダイレクトと、`wss://*.nicovideo.jp` の WebSocket だけ |
 
 ---
 
