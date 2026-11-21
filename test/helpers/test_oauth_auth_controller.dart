@@ -10,13 +10,17 @@ import 'package:comerune/data/auth/oauth_bff/oauth_state_store.dart';
 import 'package:comerune/data/auth/oauth_bff/oauth_token_store.dart';
 
 /// Test helper: builds an [OAuthAuthController] backed by in-memory stores
-/// and a MockClient that fails any unexpected HTTP call.
+/// and a MockClient that fails any unexpected HTTP call. Pass [tokenStore]
+/// to inspect or seed the stored tokens.
 ///
 /// Default config has all three values empty, so
 /// [OAuthAuthController.isFullyConfigured] returns false and OAuth UI
 /// entry points stay hidden in widget tests that do not exercise the
 /// flow. Callers needing the configured branch can pass a custom [config].
-OAuthAuthController buildTestOAuthAuthController({OAuthBffConfig? config}) {
+OAuthAuthController buildTestOAuthAuthController({
+  OAuthBffConfig? config,
+  OAuthTokenStore? tokenStore,
+}) {
   final OAuthBffConfig effectiveConfig =
       config ??
       const OAuthBffConfig(
@@ -30,7 +34,7 @@ OAuthAuthController buildTestOAuthAuthController({OAuthBffConfig? config}) {
     config: effectiveConfig,
     stateGenerator: SecureOAuthStateGenerator(),
     stateStore: _InMemoryStateStore(),
-    tokenStore: _InMemoryTokenStore(),
+    tokenStore: tokenStore ?? InMemoryOAuthTokenStore(),
     bffClient: OAuthBffClient(
       tokenEndpoint: effectiveConfig.bffTokenEndpoint,
       httpClient: MockClient(
@@ -56,7 +60,8 @@ class _InMemoryStateStore implements OAuthStateStore {
   Future<void> clear() async => _v = null;
 }
 
-class _InMemoryTokenStore implements OAuthTokenStore {
+/// In-memory [OAuthTokenStore] for tests.
+class InMemoryOAuthTokenStore implements OAuthTokenStore {
   OAuthTokens? _v;
 
   @override
@@ -67,4 +72,12 @@ class _InMemoryTokenStore implements OAuthTokenStore {
 
   @override
   Future<void> clear() async => _v = null;
+}
+
+/// [OAuthTokenStore] whose [clear] fails, to test that a failed token
+/// deletion is handled (e.g. logout still completes).
+class ClearThrowingOAuthTokenStore extends InMemoryOAuthTokenStore {
+  @override
+  Future<void> clear() async =>
+      throw StateError('secure_storage delete failed');
 }

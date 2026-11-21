@@ -73,6 +73,14 @@ class OAuthAuthController {
   /// no-op without throwing. On other failures (state persist error, etc.)
   /// the failure is surfaced through [outcome] so the same UI listener
   /// handles every error path.
+  /// Signs out of OAuth: deletes the stored tokens and clears the last
+  /// callback outcome (Issue #1053). Throws when the tokens cannot be
+  /// deleted, so the caller can decide how to report it.
+  Future<void> signOut() async {
+    _outcome.value = null;
+    await _service.signOut();
+  }
+
   Future<Uri?> startLogin() async {
     if (!isFullyConfigured) {
       log(
