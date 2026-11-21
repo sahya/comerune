@@ -117,6 +117,7 @@ class TimeshiftFetchController extends ChangeNotifier {
   TimeshiftFetchStatus _status = TimeshiftFetchStatus.idle;
   Uri? _lastInitialViewApiUri;
   Future<void>? _inFlight;
+  int _generation = 0;
 
   Future<void> _track(Future<void> future) {
     _inFlight = future;
@@ -141,20 +142,16 @@ class TimeshiftFetchController extends ChangeNotifier {
     if (_status == TimeshiftFetchStatus.fetching) {
       return;
     }
+    final int generation = _generation;
     _lastInitialViewApiUri = viewApiUri;
     _setStatus(TimeshiftFetchStatus.fetching);
     _lastError = null;
 
     try {
       await _track(_client.fetchPastComments(viewApiUri));
-      _setStatus(
-        _client.hasMore
-            ? TimeshiftFetchStatus.paused
-            : TimeshiftFetchStatus.completed,
-      );
+      _finish(generation);
     } on Object catch (error) {
-      _lastError = TimeshiftFetchError.classify(error);
-      _setStatus(TimeshiftFetchStatus.error);
+      _fail(generation, error);
     }
   }
 
@@ -174,19 +171,15 @@ class TimeshiftFetchController extends ChangeNotifier {
       _setStatus(TimeshiftFetchStatus.completed);
       return;
     }
+    final int generation = _generation;
     _setStatus(TimeshiftFetchStatus.fetching);
     _lastError = null;
 
     try {
       await _track(_client.fetchMore(count: count));
-      _setStatus(
-        _client.hasMore
-            ? TimeshiftFetchStatus.paused
-            : TimeshiftFetchStatus.completed,
-      );
+      _finish(generation);
     } on Object catch (error) {
-      _lastError = TimeshiftFetchError.classify(error);
-      _setStatus(TimeshiftFetchStatus.error);
+      _fail(generation, error);
     }
   }
 
@@ -199,30 +192,53 @@ class TimeshiftFetchController extends ChangeNotifier {
       return;
     }
 
+    final int generation = _generation;
     _isFetchingAll = true;
     _cancelRequested = false;
     _lastError = null;
     _setStatus(TimeshiftFetchStatus.fetching);
 
     try {
-      while (_client.hasMore && !_cancelRequested) {
+      while (generation == _generation &&
+          _client.hasMore &&
+          !_cancelRequested) {
         await _track(_client.fetchMore(count: _fetchAllBatchSize));
         if (_client.hasMore && !_cancelRequested) {
           await Future<void>.delayed(_fetchAllBatchDelay);
         }
       }
-      _setStatus(
-        _client.hasMore
-            ? TimeshiftFetchStatus.paused
-            : TimeshiftFetchStatus.completed,
-      );
+      _finish(generation);
     } on Object catch (error) {
-      _lastError = TimeshiftFetchError.classify(error);
-      _setStatus(TimeshiftFetchStatus.error);
+      _fail(generation, error);
     } finally {
-      _isFetchingAll = false;
-      _cancelRequested = false;
+      // A reset during this loop already cleared these flags; a fetch
+      // started after the reset owns them now.
+      if (generation == _generation) {
+        _isFetchingAll = false;
+        _cancelRequested = false;
+      }
     }
+  }
+
+  /// Sets the final status of a fetch started in [generation], unless the
+  /// controller was reset meanwhile (Issue #654: a program switch).
+  void _finish(int generation) {
+    if (generation != _generation) {
+      return;
+    }
+    _setStatus(
+      _client.hasMore
+          ? TimeshiftFetchStatus.paused
+          : TimeshiftFetchStatus.completed,
+    );
+  }
+
+  void _fail(int generation, Object error) {
+    if (generation != _generation) {
+      return;
+    }
+    _lastError = TimeshiftFetchError.classify(error);
+    _setStatus(TimeshiftFetchStatus.error);
   }
 
   Future<void> cancel() async {
@@ -265,6 +281,8 @@ class TimeshiftFetchController extends ChangeNotifier {
   }
 
   void reset() {
+    // Results of fetches started before this reset are ignored.
+    _generation += 1;
     _lastInitialViewApiUri = null;
     _client.resetSession();
     _isFetchingAll = false;

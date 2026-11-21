@@ -129,7 +129,9 @@ class TimeshiftViewUriResolver {
             case SessionWsEventType.ndgrEndpointResolved:
               final Uri? viewUri = Uri.tryParse(event.ndgrViewUri ?? '');
               complete(
-                viewUri == null || viewUri.host.isEmpty
+                viewUri == null ||
+                        viewUri.scheme != 'https' ||
+                        viewUri.host.isEmpty
                     ? const TimeshiftViewUriResult.failed(
                         TimeshiftViewUriFailure.sessionFailed,
                       )
@@ -207,10 +209,9 @@ class TimeshiftViewUriResolver {
       _endpointTimeout,
       onTimeout: () {
         unawaited(
-          connecting.then<void>(
-            (SessionWsChannel lateChannel) => lateChannel.close(),
-            onError: (Object _) {},
-          ),
+          connecting
+              .then<void>((SessionWsChannel lateChannel) => lateChannel.close())
+              .catchError((Object _) {}),
         );
         throw TimeoutException('WebSocket connect timed out', _endpointTimeout);
       },

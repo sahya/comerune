@@ -536,7 +536,7 @@ final class TimeshiftStrings {
   /// 通信・解析・タイムアウトで取得できないときの本文。
   String get unavailableFailedBody =>
       'タイムシフトのコメントの取得を開始できませんでした。\n'
-      '通信状況を確認してから、番組を開き直してください。';
+      '通信状況を確認してから、再接続してください。';
 
   /// 取得できないときのダイアログの確認ボタン。
   String get unavailableDialogConfirm => 'OK';

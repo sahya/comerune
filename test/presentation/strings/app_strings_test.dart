@@ -150,10 +150,11 @@ void main() {
       expect(
         AppStrings.timeshift.unavailableFailedBody,
         'タイムシフトのコメントの取得を開始できませんでした。\n'
-        '通信状況を確認してから、番組を開き直してください。',
+        '通信状況を確認してから、再接続してください。',
       );
       expect(AppStrings.timeshift.unavailableDialogConfirm, 'OK');
-      // 再試行を促さない（Issue #639: 同じ操作では解消しないため）。
+      // 「再試行」ボタンを連想させる語は使わない（Issue #639）。通信の失敗
+      // だけは、画面の用語（再接続）で次の操作を案内する。
       for (final String body in <String>[
         AppStrings.timeshift.unavailableNotLoggedInBody,
         AppStrings.timeshift.unavailableNotWatchableBody,

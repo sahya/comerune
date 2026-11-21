@@ -243,6 +243,27 @@ void main() {
       expect(receivedHeaders, hasLength(1));
     });
 
+    test(
+      'does not follow a redirect to another host on the same scheme',
+      () async {
+        handler = (HttpRequest request) async {
+          request.response
+            ..statusCode = HttpStatus.found
+            ..headers.set(
+              'location',
+              'http://localhost:${server.port}/watch/lv1',
+            );
+          await request.response.close();
+        };
+
+        final WatchPageWebSocketUrlResult result = await buildResolver()
+            .resolve(lv: 'lv1', userSession: 's');
+
+        expect(result.status, WatchPageWebSocketUrlStatus.unavailable);
+        expect(receivedHeaders, hasLength(1));
+      },
+    );
+
     test('gives up after too many redirects', () async {
       handler = (HttpRequest request) async {
         request.response

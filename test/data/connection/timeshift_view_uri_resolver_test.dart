@@ -28,11 +28,14 @@ final Uri _wsUrl = Uri.parse(
   'wss://a.live2.nicovideo.jp/wsapi/v2/watch/lv1?audience_token=t',
 );
 const String _viewUri = 'https://mpn.live.nicovideo.jp/api/view/v4/BBzJ?_=1';
-// Real time with short timeouts: the resolver closes the WebSocket through
+// Real time: the resolver closes the WebSocket through
 // `SessionWsClient.disconnect()`, whose `StreamSubscription.cancel` does
 // not advance under fake_async (the same known incompatibility noted in
-// session_ws_client_test.dart).
-const Duration _timeout = Duration(milliseconds: 100);
+// session_ws_client_test.dart). Only the timeout cases use a short timeout;
+// the others get a generous one so a busy CI cannot turn them into
+// timeouts.
+const Duration _timeout = Duration(seconds: 5);
+const Duration _shortTimeout = Duration(milliseconds: 100);
 
 String _messageServer(String viewUri) => jsonEncode(<String, Object?>{
   'type': 'messageServer',
@@ -148,12 +151,10 @@ void main() {
     test(
       'fails with sessionFailed when only a legacy endpoint arrives',
       () async {
-        // The client waits 300 ms for an NDGR endpoint before settling on
-        // the legacy one, so this case needs a longer timeout.
         final Future<TimeshiftViewUriResult> pending = start(
           buildResolver(
             WatchPageWebSocketUrlResult.resolved(_wsUrl),
-            endpointTimeout: const Duration(seconds: 2),
+            endpointTimeout: _timeout,
           ),
         );
         await Future<void>.delayed(Duration.zero);
@@ -175,7 +176,10 @@ void main() {
 
     test('fails with timedOut when no endpoint arrives in time', () async {
       final TimeshiftViewUriResult result = await start(
-        buildResolver(WatchPageWebSocketUrlResult.resolved(_wsUrl)),
+        buildResolver(
+          WatchPageWebSocketUrlResult.resolved(_wsUrl),
+          endpointTimeout: _shortTimeout,
+        ),
       );
 
       expect(result.failure, TimeshiftViewUriFailure.timedOut);
@@ -192,6 +196,7 @@ void main() {
           WatchPageWebSocketUrlResult.resolved(_wsUrl),
           channelFactory: (Uri uri, Map<String, String> headers) =>
               handshake.future,
+          endpointTimeout: _shortTimeout,
         ),
       );
       expect(result.failure, TimeshiftViewUriFailure.timedOut);
@@ -201,18 +206,22 @@ void main() {
       expect(channel.closeCount, 1);
     });
 
-    test('does not return a view URI when messageServer carries an unusable '
-        'one', () async {
+    test('ignores a non-https view URI and times out', () async {
       final Future<TimeshiftViewUriResult> pending = start(
-        buildResolver(WatchPageWebSocketUrlResult.resolved(_wsUrl)),
+        buildResolver(
+          WatchPageWebSocketUrlResult.resolved(_wsUrl),
+          endpointTimeout: _shortTimeout,
+        ),
       );
       await Future<void>.delayed(Duration.zero);
 
-      channel.pushIncoming(_messageServer('not a url'));
+      channel.pushIncoming(
+        _messageServer('http://mpn.live.nicovideo.jp/api/view/v4/BBzJ'),
+      );
       final TimeshiftViewUriResult result = await pending;
 
       expect(result.viewUri, isNull);
-      expect(result.failure, isNotNull);
+      expect(result.failure, TimeshiftViewUriFailure.timedOut);
     });
 
     test(

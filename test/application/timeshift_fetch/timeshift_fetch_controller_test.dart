@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/application/timeshift_fetch/timeshift_fetch_controller.dart';
@@ -396,6 +397,36 @@ void main() {
       await controller.fetchMore(500);
       expect(client.fetchPastCalls, 1);
       controller.dispose();
+    });
+
+    test('a reset during the fetch-all batch delay is not overwritten when '
+        'the loop wakes up (#654)', () {
+      fakeAsync((FakeAsync async) {
+        final FakeTimeshiftClient client = FakeTimeshiftClient(
+          fetchMoreHandler: (_) async {},
+        );
+        client.setHasMore(true);
+        final TimeshiftFetchController controller = TimeshiftFetchController(
+          client: client,
+          onMessages: (_) {},
+          fetchAllBatchDelay: const Duration(milliseconds: 100),
+        );
+
+        unawaited(controller.fetchAll());
+        async.flushMicrotasks();
+        expect(controller.status, TimeshiftFetchStatus.fetching);
+
+        // The user switches programs while the loop waits between batches.
+        unawaited(controller.cancelAndReset());
+        async.flushMicrotasks();
+        expect(controller.status, TimeshiftFetchStatus.idle);
+
+        async.elapse(const Duration(milliseconds: 200));
+
+        expect(controller.status, TimeshiftFetchStatus.idle);
+        expect(controller.isFetchingAll, isFalse);
+        controller.dispose();
+      });
     });
 
     test('notifies listeners on status change', () async {
