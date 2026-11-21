@@ -63,6 +63,14 @@ class OAuthAuthController {
     }
   }
 
+  /// Signs out of OAuth: deletes the stored tokens and clears the last
+  /// callback outcome (Issue #1053). Throws when the tokens cannot be
+  /// deleted, so the caller can decide how to report it.
+  Future<void> signOut() async {
+    _outcome.value = null;
+    await _service.signOut();
+  }
+
   /// Begin the authorization flow. Generates a fresh state, persists it,
   /// and returns the upstream authorize URL for the caller to open
   /// externally (typically with `url_launcher` in
@@ -73,14 +81,6 @@ class OAuthAuthController {
   /// no-op without throwing. On other failures (state persist error, etc.)
   /// the failure is surfaced through [outcome] so the same UI listener
   /// handles every error path.
-  /// Signs out of OAuth: deletes the stored tokens and clears the last
-  /// callback outcome (Issue #1053). Throws when the tokens cannot be
-  /// deleted, so the caller can decide how to report it.
-  Future<void> signOut() async {
-    _outcome.value = null;
-    await _service.signOut();
-  }
-
   Future<Uri?> startLogin() async {
     if (!isFullyConfigured) {
       log(

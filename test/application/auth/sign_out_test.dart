@@ -48,6 +48,26 @@ void main() {
       expect(webViewCookieClears, 1);
     });
 
+    test('still clears the OAuth tokens when clearing the WebView cookies '
+        'throws, and rethrows that error', () async {
+      final InMemoryUserSessionStore sessionStore = InMemoryUserSessionStore();
+      await sessionStore.save('user_session_abc');
+      final InMemoryOAuthTokenStore tokenStore = InMemoryOAuthTokenStore();
+      await tokenStore.save(_tokens);
+
+      await expectLater(
+        signOutEverywhere(
+          sessionStore: sessionStore,
+          clearWebViewCookies: () async => throw StateError('webview'),
+          oauth: buildTestOAuthAuthController(tokenStore: tokenStore),
+        ),
+        throwsA(isA<StateError>()),
+      );
+
+      expect(await sessionStore.load(), isEmpty);
+      expect(await tokenStore.read(), isNull);
+    });
+
     test(
       'completes the logout when the OAuth tokens cannot be deleted',
       () async {

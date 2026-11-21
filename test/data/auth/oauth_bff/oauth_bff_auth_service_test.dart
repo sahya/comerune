@@ -12,7 +12,7 @@ import 'package:comerune/data/auth/oauth_bff/oauth_state_generator.dart';
 import 'package:comerune/data/auth/oauth_bff/oauth_state_store.dart';
 import 'package:comerune/data/auth/oauth_bff/oauth_token_store.dart';
 
-import '../../../helpers/test_oauth_auth_controller.dart';
+import '../../../helpers/in_memory_oauth_token_store.dart';
 
 class _FakeStateGenerator implements OAuthStateGenerator {
   _FakeStateGenerator(this._values);
