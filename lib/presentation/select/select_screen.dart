@@ -591,7 +591,7 @@ class _SelectScreenState extends State<SelectScreen>
 
     final AppSettings settings = _settingsNotifier.value;
     if (_lastConnectedLv != null && _lastConnectedLv != lv) {
-      widget.timelineStore?.clear();
+      _clearTimelineAndStatistics();
       _clearInMemoryUserAttributes();
     }
     widget.timelineStore?.setCapacity(
@@ -1018,9 +1018,21 @@ class _SelectScreenState extends State<SelectScreen>
     }
   }
 
+  /// Clears the timeline and resets the comment statistics together.
+  ///
+  /// Live comments are counted in [StatisticsStore] only when
+  /// [TimelineStore.add] accepts them as new (Issue #1034), so the two
+  /// stores must always be emptied at the same moment. Resetting only the
+  /// statistics would leave re-fetched history uncounted; clearing only the
+  /// timeline would count it twice.
+  void _clearTimelineAndStatistics() {
+    widget.timelineStore?.clear();
+    widget.statisticsStore?.reset();
+  }
+
   Future<void> _onDifferentLvConnected(String previousLv, String nextLv) {
     if (previousLv != nextLv) {
-      widget.timelineStore?.clear();
+      _clearTimelineAndStatistics();
       _currentBroadcasterId = null;
       _clearInMemoryUserAttributes();
     }

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:comerune/application/settings/settings_store.dart';
+import 'package:comerune/application/statistics/statistics_store.dart';
 import 'package:comerune/application/timeline/timeline_store.dart';
 import 'package:comerune/data/follow/favorite_user_live_checker.dart';
 import 'package:comerune/domain/models/follow_program.dart';
@@ -290,6 +291,105 @@ void main() {
 
     expect(find.byType(CommentScreen), findsOneWidget);
     expect(find.byKey(const Key('comment-row-msg-1')), findsOneWidget);
+  });
+
+  group('statistics reset follows timeline clear (Issue #1034)', () {
+    late ConnectionSupervisor supervisor;
+    late TimelineStore timelineStore;
+    late StatisticsStore statisticsStore;
+    final AppMessage seeded = AppMessage(
+      id: 'msg-1',
+      timestamp: DateTime(2026, 3, 28, 10, 0, 0),
+      userId: 'user-1',
+      content: 'hello',
+      type: AppMessageType.chat,
+    );
+
+    setUp(() {
+      supervisor = ConnectionSupervisor();
+      timelineStore = TimelineStore();
+      statisticsStore = StatisticsStore();
+      timelineStore.add(seeded);
+      statisticsStore.recordComment(seeded);
+    });
+
+    tearDown(() {
+      statisticsStore.dispose();
+    });
+
+    Future<void> connectTo(WidgetTester tester, String lv) async {
+      await tester.enterText(inputField(), lv);
+      await tester.pump();
+      await tester.tap(connectButton());
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> stopAndGoBack(WidgetTester tester) async {
+      await tester
+          .widget<CommentScreen>(find.byType(CommentScreen))
+          .callbacks
+          .onStopAllConnections();
+      await tester.pumpAndSettle();
+      Navigator.of(tester.element(find.byType(CommentScreen))).pop();
+      await tester.pumpAndSettle();
+      expect(find.byType(SelectScreen), findsOneWidget);
+      expect(supervisor.canStartConnection, isTrue);
+    }
+
+    Future<void> pumpScreen(WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: supervisor,
+            timelineStore: timelineStore,
+            statisticsStore: statisticsStore,
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    testWidgets('reconnecting to the same lv keeps both timeline and stats', (
+      WidgetTester tester,
+    ) async {
+      await pumpScreen(tester);
+      await connectTo(tester, 'lv345678901');
+      await stopAndGoBack(tester);
+
+      await connectTo(tester, 'lv345678901');
+
+      expect(timelineStore.messages.length, 1);
+      expect(statisticsStore.totalCommentCount, 1);
+    });
+
+    testWidgets('connecting to a different lv clears timeline and stats', (
+      WidgetTester tester,
+    ) async {
+      await pumpScreen(tester);
+      await connectTo(tester, 'lv345678901');
+      await stopAndGoBack(tester);
+
+      await connectTo(tester, 'lv999999999');
+
+      expect(timelineStore.messages, isEmpty);
+      expect(statisticsStore.totalCommentCount, 0);
+    });
+
+    testWidgets('onDifferentLvConnected clears timeline and stats together', (
+      WidgetTester tester,
+    ) async {
+      await pumpScreen(tester);
+      await connectTo(tester, 'lv345678901');
+
+      await tester
+          .widget<CommentScreen>(find.byType(CommentScreen))
+          .callbacks
+          .onDifferentLvConnected('lv345678901', 'lv999999999');
+      await tester.pump();
+
+      expect(timelineStore.messages, isEmpty);
+      expect(statisticsStore.totalCommentCount, 0);
+    });
   });
 
   testWidgets('auto-follows newly added live comments when TimelineStore grows '
