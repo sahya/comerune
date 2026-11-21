@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:comerune/domain/connection/session_ws_client.dart';
 import 'package:comerune/domain/models/comment_post_result.dart';
@@ -1096,6 +1097,178 @@ void main() {
         await Future<void>.delayed(Duration.zero);
         await client.dispose();
       });
+    });
+
+    group('post timeout recovery (Issue #1029)', () {
+      test('comment-only client disconnects when a post times out', () async {
+        final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+        final SessionWsClient client = SessionWsClient(
+          lv: 'lv123456789',
+          startWatchingMode: SessionWsStartWatchingMode.commentOnly,
+          channelFactory: (_, _) async => fakeChannel,
+          postCommentTimeout: const Duration(milliseconds: 50),
+          disconnectOnPostTimeout: true,
+        );
+        final List<SessionWsEventType> events = <SessionWsEventType>[];
+        final StreamSubscription<SessionWsEvent> subscription = client.events
+            .listen((SessionWsEvent e) => events.add(e.type));
+        await client.connect();
+
+        final CommentPostResult result = await client.postComment(
+          text: 'a',
+          vpos: 0,
+          isAnonymous: false,
+        );
+
+        expect(result.success, isFalse);
+        expect(result.errorMessage, 'Comment post timed out');
+        // The next post must already see the connection as dead.
+        expect(client.isConnected, isFalse);
+
+        await Future<void>.delayed(Duration.zero);
+        expect(fakeChannel.closeCount, 1);
+        expect(events, contains(SessionWsEventType.disconnected));
+
+        await subscription.cancel();
+        await client.dispose();
+      });
+
+      test(
+        'full-mode client keeps the connection when a post times out',
+        () async {
+          final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+          final SessionWsClient client = SessionWsClient(
+            lv: 'lv123456789',
+            channelFactory: (_, _) async => fakeChannel,
+            postCommentTimeout: const Duration(milliseconds: 50),
+          );
+          final List<SessionWsEventType> events = <SessionWsEventType>[];
+          final StreamSubscription<SessionWsEvent> subscription = client.events
+              .listen((SessionWsEvent e) => events.add(e.type));
+          await client.connect();
+
+          final CommentPostResult result = await client.postComment(
+            text: 'a',
+            vpos: 0,
+            isAnonymous: false,
+          );
+          await Future<void>.delayed(Duration.zero);
+
+          expect(result.errorMessage, 'Comment post timed out');
+          expect(client.isConnected, isTrue);
+          expect(fakeChannel.closeCount, 0);
+          expect(events, isNot(contains(SessionWsEventType.disconnected)));
+
+          await subscription.cancel();
+          await client.dispose();
+        },
+      );
+    });
+
+    test(
+      'default channel factory gives up on a silent server (Issue #1029)',
+      () async {
+        final ServerSocket server = await ServerSocket.bind(
+          InternetAddress.loopbackIPv4,
+          0,
+        );
+        final List<Socket> accepted = <Socket>[];
+        server.listen(accepted.add);
+        addTearDown(() async {
+          for (final Socket socket in accepted) {
+            socket.destroy();
+          }
+          await server.close();
+        });
+
+        final SessionWsClient client = SessionWsClient(
+          lv: 'lv123456789',
+          webSocketUri: Uri.parse('ws://127.0.0.1:${server.port}/'),
+          connectTimeout: const Duration(milliseconds: 300),
+        );
+        final List<SessionWsEvent> events = <SessionWsEvent>[];
+        final StreamSubscription<SessionWsEvent> subscription = client.events
+            .listen(events.add);
+
+        final Stopwatch stopwatch = Stopwatch()..start();
+        await client.connect();
+
+        final Duration elapsed = stopwatch.elapsed;
+        await Future<void>.delayed(Duration.zero);
+
+        expect(elapsed, lessThan(const Duration(seconds: 2)));
+        expect(client.isConnected, isFalse);
+        expect(
+          events.map((SessionWsEvent e) => e.errorCode),
+          contains(SessionWsErrorCode.connectFailed),
+        );
+
+        await subscription.cancel();
+        await client.dispose();
+      },
+      timeout: const Timeout(Duration(seconds: 5)),
+    );
+
+    group('connect abort (Issue #1029)', () {
+      test(
+        'does not connect when disposed while the channel is pending',
+        () async {
+          final Completer<SessionWsChannel> pending =
+              Completer<SessionWsChannel>();
+          final SessionWsClient client = SessionWsClient(
+            lv: 'lv123456789',
+            startWatchingMode: SessionWsStartWatchingMode.commentOnly,
+            channelFactory: (_, _) => pending.future,
+          );
+
+          final Future<void> connecting = client.connect();
+          await Future<void>.delayed(Duration.zero);
+          await client.dispose();
+
+          final _FakeSessionWsChannel lateChannel = _FakeSessionWsChannel();
+          pending.complete(lateChannel);
+          await connecting;
+          await Future<void>.delayed(Duration.zero);
+
+          expect(client.isDisposed, isTrue);
+          expect(client.isConnected, isFalse);
+          expect(lateChannel.sentMessages, isEmpty);
+          expect(lateChannel.closeCount, 1);
+        },
+      );
+
+      test(
+        'does not connect when disconnected while the channel is pending',
+        () async {
+          final Completer<SessionWsChannel> pending =
+              Completer<SessionWsChannel>();
+          final SessionWsClient client = SessionWsClient(
+            lv: 'lv123456789',
+            startWatchingMode: SessionWsStartWatchingMode.commentOnly,
+            channelFactory: (_, _) => pending.future,
+          );
+          final List<SessionWsEventType> events = <SessionWsEventType>[];
+          final StreamSubscription<SessionWsEvent> subscription = client.events
+              .listen((SessionWsEvent e) => events.add(e.type));
+
+          final Future<void> connecting = client.connect();
+          await Future<void>.delayed(Duration.zero);
+          await client.disconnect();
+
+          final _FakeSessionWsChannel lateChannel = _FakeSessionWsChannel();
+          pending.complete(lateChannel);
+          await connecting;
+          await Future<void>.delayed(Duration.zero);
+
+          expect(client.isConnected, isFalse);
+          expect(lateChannel.sentMessages, isEmpty);
+          expect(lateChannel.closeCount, 1);
+          expect(events, isNot(contains(SessionWsEventType.connected)));
+
+          await subscription.cancel();
+          await client.dispose();
+        },
+      );
     });
   });
 }
