@@ -42,6 +42,9 @@ jobs:
 
       # flutter-version は pubspec.lock を生成した SDK と一致させ、CI 上で
       # `flutter pub get` の resolve 結果が振動しないよう明示固定する。
+      # バージョンを上げるときは他の workflow と renovate.json の
+      # `constraints.flutter` も同じ値に揃えること（Renovate が pubspec.lock を
+      # 再生成する SDK もこの値に固定している）。
       # サプライチェーン anchor（人手レビュー用、subosito/flutter-action が
       # 公式 releases manifest 経由で検証する値と一致すべき）:
       #   framework SHA: 559ffa3f75e7402d65a8def9c28389a9b2e6fe42

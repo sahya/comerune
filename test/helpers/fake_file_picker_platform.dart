@@ -5,7 +5,7 @@ import 'package:file_picker/file_picker.dart';
 
 /// Test double for `FilePickerPlatform`.  Returns a preconfigured
 /// [PlatformFile] (or null to simulate user cancellation).  Can be
-/// configured to throw.
+/// configured to throw.  [getDirectoryPath] returns [directoryToReturn].
 class FakeFilePickerPlatform extends FilePickerPlatform {
   FakeFilePickerPlatform();
 
@@ -21,11 +21,34 @@ class FakeFilePickerPlatform extends FilePickerPlatform {
 
   final List<Map<String, Object?>> pickCalls = <Map<String, Object?>>[];
 
+  /// Result returned from [getDirectoryPath].  Defaults to null (user
+  /// cancelled, or a folder the platform could not resolve to a path).
+  String? directoryToReturn;
+
+  /// The `androidOptions` of each [getDirectoryPath] call, so tests can check
+  /// that no SAF options were passed.
+  final List<AndroidOptions> directoryCalls = <AndroidOptions>[];
+
   void reset() {
     resultToReturn = null;
     errorToThrow = null;
     responseDelay = Duration.zero;
     pickCalls.clear();
+    directoryToReturn = null;
+    directoryCalls.clear();
+  }
+
+  @override
+  Future<String?> getDirectoryPath({
+    String? dialogTitle,
+    String? initialDirectory,
+    AndroidOptions androidOptions = const AndroidOptions(),
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) async {
+    directoryCalls.add(androidOptions);
+    return directoryToReturn;
   }
 
   @override
@@ -64,8 +87,9 @@ PlatformFile buildDiskPlatformFile({required String path}) {
 
 /// Convenience to build a [PlatformFile] whose URI is not a `file:` URI.
 ///
-/// `file_picker` 12 derives [PlatformFile.path] from the URI, so this is the
-/// shape a pick takes when it has no local filesystem path and `path` is null.
+/// `file_picker` 12 and later derive [PlatformFile.path] from the URI, so this
+/// is the shape a pick takes when it has no local filesystem path and `path`
+/// is null.
 PlatformFile buildPathlessPlatformFile({
   String uri = 'content://com.example.provider/document/1',
 }) {

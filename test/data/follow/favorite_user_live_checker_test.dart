@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:comerune/data/follow/favorite_user_live_checker.dart';
 import 'package:comerune/domain/models/follow_program.dart';
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Helper to build a broadcast-history API JSON response.
@@ -303,6 +304,41 @@ void main() {
       },
     );
 
+    test('returns empty when the 429 retry body read fails', () {
+      fakeAsync((FakeAsync async) {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.statusCodeByUrlPrefix['providerId=12345'] = 429;
+        httpClient.retryAfterByUrlPrefix['providerId=12345'] = '1';
+        httpClient.statusCodeByUrlPrefixOnRetry['providerId=12345'] =
+            _buildHistoryResponse(programId: 'lv100001', status: 'ON_AIR');
+        httpClient.bodyErrorByUrlPrefix['providerId=12345'] =
+            const HttpException('Connection closed while receiving data');
+
+        final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
+          httpClient: httpClient,
+          minInterval: Duration.zero,
+        );
+
+        Map<String, FollowProgram>? result;
+        Object? error;
+        checker
+            .checkBroadcastStatus(<String>{'12345'})
+            .then(
+              (Map<String, FollowProgram> value) => result = value,
+              onError: (Object e) => error = e,
+            );
+        // Retry-After (1s) + jitter (< 1s).
+        async.elapse(const Duration(seconds: 2));
+
+        expect(error, isNull);
+        expect(result, isEmpty);
+        // 2 requests: initial 429 + retry whose body read fails.
+        expect(httpClient.requestCount, 2);
+
+        checker.dispose();
+      });
+    });
+
     test('returns empty when 429 retry also fails', () async {
       final _FakeHttpClient httpClient = _FakeHttpClient();
       // Both calls return 429 (no retry response override).
@@ -362,6 +398,31 @@ void main() {
 
       checker.dispose();
     });
+
+    test(
+      'skips only the failing user when the response body read fails',
+      () async {
+        final _FakeHttpClient httpClient = _FakeHttpClient();
+        httpClient.bodyErrorByUrlPrefix['providerId=111'] = const HttpException(
+          'Connection closed while receiving data',
+        );
+        httpClient.responseBodyByUrlPrefix['providerId=222'] =
+            _buildHistoryResponse(programId: 'lv100002', status: 'ON_AIR');
+
+        final FavoriteUserLiveChecker checker = FavoriteUserLiveChecker(
+          httpClient: httpClient,
+          minInterval: Duration.zero,
+        );
+
+        final Map<String, FollowProgram> result = await checker
+            .checkBroadcastStatus(<String>{'111', '222'});
+
+        expect(result.keys, <String>['222']);
+        expect(result['222']!.programId, 'lv100002');
+
+        checker.dispose();
+      },
+    );
 
     test('returns empty map when programId is missing from response', () async {
       final String body = jsonEncode(<String, dynamic>{
@@ -622,6 +683,10 @@ class _FakeHttpClient implements HttpClient {
   /// Maps a URL substring to an exception to throw.
   final Map<String, Exception> throwOnUrlPrefix = <String, Exception>{};
 
+  /// Maps a URL substring to an exception emitted while the 200 response
+  /// body is being read (e.g. the connection dropping mid-body).
+  final Map<String, Exception> bodyErrorByUrlPrefix = <String, Exception>{};
+
   int requestCount = 0;
 
   /// Tracks how many times each URL prefix has been requested (for retry
@@ -652,6 +717,7 @@ class _FakeHttpClient implements HttpClient {
             uri: url,
             responseBody: statusCodeByUrlPrefixOnRetry[entry.key]!,
             statusCode: 200,
+            bodyError: bodyErrorByUrlPrefix[entry.key],
           );
         }
 
@@ -674,8 +740,21 @@ class _FakeHttpClient implements HttpClient {
       }
     }
 
+    Exception? bodyError;
+    for (final MapEntry<String, Exception> entry
+        in bodyErrorByUrlPrefix.entries) {
+      if (urlStr.contains(entry.key)) {
+        bodyError = entry.value;
+        break;
+      }
+    }
+
     requestCount++;
-    return _FakeHttpClientRequest(uri: url, responseBody: body);
+    return _FakeHttpClientRequest(
+      uri: url,
+      responseBody: body,
+      bodyError: bodyError,
+    );
   }
 
   @override
@@ -696,6 +775,7 @@ class _FakeHttpClientRequest implements HttpClientRequest {
     required this.responseBody,
     this.statusCode = 200,
     this.retryAfterHeader,
+    this.bodyError,
   });
 
   @override
@@ -703,6 +783,7 @@ class _FakeHttpClientRequest implements HttpClientRequest {
   final String responseBody;
   final int statusCode;
   final String? retryAfterHeader;
+  final Exception? bodyError;
   final _FakeHttpHeaders _headers = _FakeHttpHeaders();
 
   @override
@@ -714,6 +795,7 @@ class _FakeHttpClientRequest implements HttpClientRequest {
       statusCode: statusCode,
       body: responseBody,
       retryAfterHeader: retryAfterHeader,
+      bodyError: bodyError,
     );
   }
 
@@ -753,12 +835,14 @@ class _FakeHttpClientResponse extends Stream<List<int>>
     required this.statusCode,
     required this.body,
     this.retryAfterHeader,
+    this.bodyError,
   });
 
   @override
   final int statusCode;
   final String body;
   final String? retryAfterHeader;
+  final Exception? bodyError;
 
   @override
   late final HttpHeaders headers = _FakeResponseHeaders(
@@ -772,7 +856,11 @@ class _FakeHttpClientResponse extends Stream<List<int>>
     void Function()? onDone,
     bool? cancelOnError,
   }) {
-    return Stream<List<int>>.value(utf8.encode(body)).listen(
+    final Exception? error = bodyError;
+    final Stream<List<int>> source = error != null
+        ? Stream<List<int>>.error(error)
+        : Stream<List<int>>.value(utf8.encode(body));
+    return source.listen(
       onData,
       onError: onError,
       onDone: onDone,
