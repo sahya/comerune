@@ -54,6 +54,7 @@ import 'data/user/user_attribute_store.dart';
 import 'data/user/user_attribute_store_migrator.dart';
 import 'data/user/user_name_resolver.dart';
 import 'application/timeshift_fetch/timeshift_fetch_controller.dart';
+import 'application/timeshift_fetch/timeshift_fetch_starter.dart';
 import 'domain/connection/connection_clients.dart' as reconnect;
 import 'domain/connection/connection_supervisor.dart';
 import 'domain/connection/legacy_comment_client.dart' as legacy_impl;
@@ -395,7 +396,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
   // 重ねて出さないよう、最後に提示した lv を記録する。
   // 「未対応」ダイアログと Issue #654 の「取得できません」ダイアログの
   // 両方で共有する。
-  String? _lastTimeshiftUnsupportedDialogLv;
+  String? _lastTimeshiftDialogLv;
   // initState で initialSettings.pastCommentFetchCount.historyCount に
   // 上書きされるため値そのものは一時的なもの。AppSettings.defaults と
   // 整合を取るため 500 を初期値としている。
@@ -444,10 +445,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
       TimeshiftViewUriResolver(
         watchPageResolver: _watchPageWebSocketUrlResolver,
       );
-  // Issue #654: lv whose timeshift view URI is being resolved, so repeated
-  // `onTimeshiftDetected` calls (e.g. reconnects) do not start a second
-  // resolution for the same program.
-  String? _timeshiftViewUriResolvingLv;
+  late final TimeshiftFetchStarter _timeshiftFetchStarter;
   ForegroundServiceController? _foregroundServiceController;
 
   // Captured on first access (Dart `late final` semantics) so a
@@ -603,7 +601,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
       // 渡して初回取得を開始する。同じ URL で二重起動を避けるため
       // 既に実行中/完了している場合はスキップする。
       onTimeshiftDetected: (Uri? viewApiUri) {
-        unawaited(_tryStartTimeshiftInitial(viewApiUri));
+        unawaited(_timeshiftFetchStarter.onTimeshiftDetected(viewApiUri));
       },
     );
     _ndgrClient = _NdgrClientAdapter(
@@ -626,7 +624,27 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _timeshiftFetchController = TimeshiftFetchController(
       client: _timeshiftClient,
       onMessages: (List<AppMessage> messages) {
-        _timelineStore.addAll(messages);
+        // Drop messages of a program the user has already left.
+        if (_timeshiftFetchStarter.acceptsMessages) {
+          _timelineStore.addAll(messages);
+        }
+      },
+    );
+    _timeshiftFetchStarter = TimeshiftFetchStarter(
+      enabled: kTimeshiftFetchEnabled,
+      currentLv: () => _currentLv,
+      status: () => _timeshiftFetchController.status,
+      fetchInitial: _timeshiftFetchController.fetchInitial,
+      cancelAndReset: _timeshiftFetchController.cancelAndReset,
+      lookUpViewUri: (String lv) async => _timeshiftViewUriResolver.resolve(
+        lv: lv,
+        userSession: await widget.userSessionStore.load(),
+      ),
+      onUnsupported: _showTimeshiftUnsupportedDialogIfNeeded,
+      onUnavailable: (TimeshiftViewUriFailure? failure) {
+        if (mounted) {
+          _showTimeshiftUnavailableDialogIfNeeded(failure);
+        }
       },
     );
 
@@ -651,6 +669,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
       // an extra supervisor-level notify (which would re-run wakelock /
       // auto-save plumbing per comment).
       _connectionSupervisor.recordReceivedAt(notify: false);
+      _timeshiftFetchStarter.markLiveCommentsReceived();
       _timelineStore.add(message);
       _statisticsStore.recordComment(message);
     });
@@ -658,6 +677,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
       AppMessage message,
     ) {
       _connectionSupervisor.recordReceivedAt(notify: false);
+      _timeshiftFetchStarter.markLiveCommentsReceived();
       _timelineStore.add(message);
       _statisticsStore.recordComment(message);
     });
@@ -673,88 +693,9 @@ class _ComeruneAppState extends State<ComeruneApp> {
     unawaited(widget.oauthAuthController.attach());
   }
 
-  /// Called when [_SessionWsClientAdapter] detects a timeshift (ended)
-  /// broadcast from the programinfo response. Routes past-comment
-  /// retrieval to [TimeshiftFetchController.fetchInitial] so the user
-  /// does not have to trigger it manually (Issue #639 cause 4).
-  ///
-  /// Idempotent: if the controller is already fetching (or has progressed
-  /// past idle in this session) the call is skipped. This prevents double
-  /// initial-fetches when session resolution happens more than once
-  /// (e.g. reconnect attempts) while the previous fetch is still running
-  /// or already collected past comments.
-  ///
-  /// [kTimeshiftFetchEnabled] が `false`（緊急停止）のときは `fetchInitial`
-  /// を呼ばず、「未対応」ダイアログを 1 度だけ提示する no-op として動作する。
-  /// ダイアログ表示が失敗してもアプリの他機能は影響を受けないよう、副作用は
-  /// 最小に留める。
-  ///
-  /// Issue #654: 終了放送では programinfo が `rooms=[]` を返し、
-  /// [viewApiUri] が `null` になる。この場合は [TimeshiftViewUriResolver] で
-  /// 視聴ページ → 視聴 WebSocket の `messageServer` から viewUri を取得する。
-  /// 取得できなかったときは理由別の案内ダイアログを lv ごとに 1 回だけ出し、
-  /// 無言で終わらせない。予約や視聴権の使用はアプリが代行しない。
-  Future<void> _tryStartTimeshiftInitial(Uri? viewApiUri) async {
-    if (!kTimeshiftFetchEnabled) {
-      _showTimeshiftUnsupportedDialogIfNeeded();
-      return;
-    }
-    if (_timeshiftFetchController.status != TimeshiftFetchStatus.idle) {
-      return;
-    }
-    if (viewApiUri == null) {
-      final String lv = _currentLv;
-      if (lv.isEmpty || _timeshiftViewUriResolvingLv == lv) {
-        return;
-      }
-      _timeshiftViewUriResolvingLv = lv;
-      final TimeshiftViewUriResult result;
-      try {
-        result = await _timeshiftViewUriResolver.resolve(
-          lv: lv,
-          userSession: await widget.userSessionStore.load(),
-        );
-      } finally {
-        if (_timeshiftViewUriResolvingLv == lv) {
-          _timeshiftViewUriResolvingLv = null;
-        }
-      }
-      // 取得中に別の lv へ切り替わっていたら結果を捨てる。
-      if (!mounted || _currentLv != lv) {
-        return;
-      }
-      final Uri? resolved = result.viewUri;
-      if (resolved == null) {
-        // 失敗の種類だけを記録する（URL や Cookie は出さない）。
-        log(
-          'Timeshift view URI unavailable: ${result.failure?.name}',
-          name: 'App',
-        );
-        _showTimeshiftUnavailableDialogIfNeeded(result.failure);
-        return;
-      }
-      if (_timeshiftFetchController.status != TimeshiftFetchStatus.idle) {
-        return;
-      }
-      viewApiUri = resolved;
-    }
-    try {
-      await _timeshiftFetchController.fetchInitial(viewApiUri);
-    } on Object catch (error, stackTrace) {
-      log(
-        'Timeshift initial fetch failed',
-        name: 'App',
-        error: error,
-        stackTrace: stackTrace,
-      );
-    }
-  }
-
   /// 「タイムシフト未対応」ダイアログを同一 lv あたり 1 度だけ提示する。
   ///
-  /// Issue #639 / #654 / #173 暫定対応。本来の取得経路が確立したら
-  /// 呼び出し元の no-op 分岐ごと削除する（`viewApiUri == null` 分岐からの
-  /// 呼び出しは、viewUri を別経路で補完できるようになってから削除する）。
+  /// [kTimeshiftFetchEnabled] を `false`（緊急停止）にしたときだけ使う。
   /// Navigator が未マウント等でダイアログを出せない場合は副作用なく
   /// 抜ける（`AGENTS.md` の
   /// 「Optional Reference Two-Stage Fallback」方針に準じ、内部構造を
@@ -765,6 +706,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
       confirmKey: const Key('timeshift-unsupported-dialog-confirm'),
       title: AppStrings.timeshift.unsupportedDialogTitle,
       body: AppStrings.timeshift.unsupportedDialogBody,
+      confirmLabel: AppStrings.timeshift.unsupportedDialogConfirm,
     );
   }
 
@@ -785,6 +727,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
       confirmKey: const Key('timeshift-unavailable-dialog-confirm'),
       title: AppStrings.timeshift.unavailableDialogTitle,
       body: body,
+      confirmLabel: AppStrings.timeshift.unavailableDialogConfirm,
     );
   }
 
@@ -793,15 +736,16 @@ class _ComeruneAppState extends State<ComeruneApp> {
     required Key confirmKey,
     required String title,
     required String body,
+    required String confirmLabel,
   }) {
     final String lv = _currentLv;
     if (lv.isEmpty) {
       return;
     }
-    if (_lastTimeshiftUnsupportedDialogLv == lv) {
+    if (_lastTimeshiftDialogLv == lv) {
       return;
     }
-    _lastTimeshiftUnsupportedDialogLv = lv;
+    _lastTimeshiftDialogLv = lv;
 
     final NavigatorState? navigator = _navigatorKey.currentState;
     if (navigator == null || !navigator.mounted) {
@@ -823,7 +767,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
               TextButton(
                 key: confirmKey,
                 onPressed: () => Navigator.of(dialogContext).pop(),
-                child: Text(AppStrings.timeshift.unsupportedDialogConfirm),
+                child: Text(confirmLabel),
               ),
             ],
           );
@@ -888,11 +832,13 @@ class _ComeruneAppState extends State<ComeruneApp> {
 
   Future<void> _prepareConnection(String lv, AppSettings settings) async {
     _currentLv = lv;
-    // 異なる lv へ切り替わったタイミングで「未対応」ダイアログの提示履歴を
-    // リセットし、次回の検出で再度ユーザに案内できるようにする。
-    if (_lastTimeshiftUnsupportedDialogLv != null &&
-        _lastTimeshiftUnsupportedDialogLv != lv) {
-      _lastTimeshiftUnsupportedDialogLv = null;
+    // Issue #654: 別の番組へ切り替えたら、前の番組のタイムシフト取得を止めて
+    // 状態を戻す（同じ番組への再接続では、取得済みの状態を保つ）。
+    unawaited(_timeshiftFetchStarter.onProgramChanged(lv));
+    // 異なる lv へ切り替わったタイミングでタイムシフト関連ダイアログの
+    // 提示履歴をリセットし、次回の検出で再度ユーザに案内できるようにする。
+    if (_lastTimeshiftDialogLv != null && _lastTimeshiftDialogLv != lv) {
+      _lastTimeshiftDialogLv = null;
     }
     _programTitleNotifier.value = null;
     _broadcasterNameNotifier.value = null;

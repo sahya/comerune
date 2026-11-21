@@ -349,6 +349,55 @@ void main() {
       expect(controller.status, TimeshiftFetchStatus.idle);
     });
 
+    test('fetchMore restarts the initial fetch when the first fetch failed '
+        'before a session opened (#654)', () async {
+      final FakeTimeshiftClient client = FakeTimeshiftClient(
+        fetchPastResult: FakeFetchResult(error: StateError('no session')),
+      );
+      final TimeshiftFetchController controller = TimeshiftFetchController(
+        client: client,
+        onMessages: (_) {},
+      );
+      await controller.fetchInitial(Uri.parse('https://example.com/view'));
+      expect(controller.status, TimeshiftFetchStatus.error);
+
+      client.fetchPastResult = const FakeFetchResult(hasMore: true);
+      await controller.fetchMore(500);
+
+      expect(client.fetchPastCalls, 2);
+      expect(controller.status, TimeshiftFetchStatus.paused);
+      controller.dispose();
+    });
+
+    test('cancelAndReset waits for the running fetch and returns to idle '
+        '(#654)', () async {
+      final Completer<void> release = Completer<void>();
+      final FakeTimeshiftClient client = FakeTimeshiftClient(
+        fetchPastResult: const FakeFetchResult(hasMore: true),
+        fetchMoreHandler: (_) => release.future,
+      );
+      client.setHasMore(true);
+      final TimeshiftFetchController controller = TimeshiftFetchController(
+        client: client,
+        onMessages: (_) {},
+      );
+      await controller.fetchInitial(Uri.parse('https://example.com/view'));
+      final Future<void> fetching = controller.fetchMore(500);
+      expect(controller.status, TimeshiftFetchStatus.fetching);
+
+      final Future<void> resetting = controller.cancelAndReset();
+      release.complete();
+      await resetting;
+      await fetching;
+
+      expect(controller.status, TimeshiftFetchStatus.idle);
+      expect(client.isSessionOpen, isFalse);
+      // A later fetchMore must not restart the previous program's fetch.
+      await controller.fetchMore(500);
+      expect(client.fetchPastCalls, 1);
+      controller.dispose();
+    });
+
     test('notifies listeners on status change', () async {
       final FakeTimeshiftClient client = FakeTimeshiftClient(
         fetchPastResult: FakeFetchResult(hasMore: false, totalFetched: 10),
@@ -395,6 +444,7 @@ class FakeTimeshiftClient implements NdgrTimeshiftClient {
   Future<void> Function(int count)? fetchMoreHandler;
   List<AppMessage> progressMessages;
 
+  int fetchPastCalls = 0;
   bool _hasMore = false;
   int _totalFetched = 0;
   bool _isSessionOpen = false;
@@ -426,12 +476,13 @@ class FakeTimeshiftClient implements NdgrTimeshiftClient {
     int maxMessages = NdgrTimeshiftClient.defaultInitialLimit,
   }) async {
     _isRunning = true;
-    _isSessionOpen = true;
+    fetchPastCalls += 1;
 
     if (fetchPastResult.error != null) {
       _isRunning = false;
       throw fetchPastResult.error!;
     }
+    _isSessionOpen = true;
 
     if (progressMessages.isNotEmpty) {
       _eventsController.add(

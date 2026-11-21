@@ -143,13 +143,16 @@ void main() {
       expect(
         AppStrings.timeshift.unavailableNotWatchableBody,
         'このタイムシフトは現在視聴できません。\n'
-        'タイムシフト予約をしていない、視聴期限が切れている、'
-        'プレミアム会員限定またはチケットが必要、などの理由が考えられます。',
+        'タイムシフト予約をしていない、予約後にまだ視聴を開始していない、'
+        '視聴期限が切れている、プレミアム会員限定またはチケットが必要、'
+        'などの理由が考えられます。',
       );
       expect(
         AppStrings.timeshift.unavailableFailedBody,
-        'タイムシフトのコメントの取得を開始できませんでした。',
+        'タイムシフトのコメントの取得を開始できませんでした。\n'
+        '通信状況を確認してから、番組を開き直してください。',
       );
+      expect(AppStrings.timeshift.unavailableDialogConfirm, 'OK');
       // 再試行を促さない（Issue #639: 同じ操作では解消しないため）。
       for (final String body in <String>[
         AppStrings.timeshift.unavailableNotLoggedInBody,

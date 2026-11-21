@@ -115,6 +115,17 @@ class TimeshiftFetchController extends ChangeNotifier {
   TimeshiftFetchError? _lastError;
 
   TimeshiftFetchStatus _status = TimeshiftFetchStatus.idle;
+  Uri? _lastInitialViewApiUri;
+  Future<void>? _inFlight;
+
+  Future<void> _track(Future<void> future) {
+    _inFlight = future;
+    return future.whenComplete(() {
+      if (identical(_inFlight, future)) {
+        _inFlight = null;
+      }
+    });
+  }
 
   TimeshiftFetchStatus get status => _status;
   bool get hasMore => _client.hasMore;
@@ -130,11 +141,12 @@ class TimeshiftFetchController extends ChangeNotifier {
     if (_status == TimeshiftFetchStatus.fetching) {
       return;
     }
+    _lastInitialViewApiUri = viewApiUri;
     _setStatus(TimeshiftFetchStatus.fetching);
     _lastError = null;
 
     try {
-      await _client.fetchPastComments(viewApiUri);
+      await _track(_client.fetchPastComments(viewApiUri));
       _setStatus(
         _client.hasMore
             ? TimeshiftFetchStatus.paused
@@ -150,6 +162,14 @@ class TimeshiftFetchController extends ChangeNotifier {
     if (_status == TimeshiftFetchStatus.fetching) {
       return;
     }
+    // Issue #654: the initial fetch failed before a session opened (e.g. the
+    // panel's retry button after an error). Start over from the initial
+    // fetch instead of reporting "completed".
+    final Uri? initialUri = _lastInitialViewApiUri;
+    if (!_client.isSessionOpen && initialUri != null) {
+      await fetchInitial(initialUri);
+      return;
+    }
     if (!_client.hasMore) {
       _setStatus(TimeshiftFetchStatus.completed);
       return;
@@ -158,7 +178,7 @@ class TimeshiftFetchController extends ChangeNotifier {
     _lastError = null;
 
     try {
-      await _client.fetchMore(count: count);
+      await _track(_client.fetchMore(count: count));
       _setStatus(
         _client.hasMore
             ? TimeshiftFetchStatus.paused
@@ -186,7 +206,7 @@ class TimeshiftFetchController extends ChangeNotifier {
 
     try {
       while (_client.hasMore && !_cancelRequested) {
-        await _client.fetchMore(count: _fetchAllBatchSize);
+        await _track(_client.fetchMore(count: _fetchAllBatchSize));
         if (_client.hasMore && !_cancelRequested) {
           await Future<void>.delayed(_fetchAllBatchDelay);
         }
@@ -227,7 +247,25 @@ class TimeshiftFetchController extends ChangeNotifier {
     _isFetchingAll = false;
   }
 
+  /// Cancels any running fetch, waits for it to stop, and returns to idle.
+  ///
+  /// Used when the user switches to another program so the next timeshift
+  /// starts from a clean session (Issue #654).
+  Future<void> cancelAndReset() async {
+    await cancel();
+    final Future<void>? inFlight = _inFlight;
+    if (inFlight != null) {
+      try {
+        await inFlight;
+      } on Object {
+        // The fetch was cancelled; its error does not matter any more.
+      }
+    }
+    reset();
+  }
+
   void reset() {
+    _lastInitialViewApiUri = null;
     _client.resetSession();
     _isFetchingAll = false;
     _cancelRequested = false;
