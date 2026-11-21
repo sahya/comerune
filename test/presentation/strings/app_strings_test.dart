@@ -118,10 +118,8 @@ void main() {
 
   group('AppStrings.timeshift unsupported dialog', () {
     test('未対応ダイアログの文言が既定ロケールで固定される（Issue #639 / #654 暫定）', () {
-      // 暫定実装の文言が振動しないようバイト完全一致を維持する。
-      // viewUri 取得経路（Issue #654）が確立し、`viewApiUri == null` の
-      // 分岐でも案内が不要になった時点で、本テストごと削除して問題ない
-      // （`kTimeshiftFetchEnabled` の doc を参照）。
+      // `kTimeshiftFetchEnabled` を false（緊急停止）にしたときの文言。
+      // 文言が振動しないようバイト完全一致を維持する。
       expect(AppStrings.timeshift.unsupportedDialogTitle, 'タイムシフトは現在未対応です');
       expect(
         AppStrings.timeshift.unsupportedDialogBody,
@@ -129,6 +127,37 @@ void main() {
         '今後のアップデートで対応予定です。',
       );
       expect(AppStrings.timeshift.unsupportedDialogConfirm, 'OK');
+    });
+  });
+
+  group('AppStrings.timeshift unavailable dialog', () {
+    test('取得できないときのダイアログ文言が既定ロケールで固定される（Issue #654）', () {
+      expect(
+        AppStrings.timeshift.unavailableDialogTitle,
+        'タイムシフトのコメントを取得できません',
+      );
+      expect(
+        AppStrings.timeshift.unavailableNotLoggedInBody,
+        'タイムシフトのコメントを取得するには、ニコニコにログインしてください。',
+      );
+      expect(
+        AppStrings.timeshift.unavailableNotWatchableBody,
+        'このタイムシフトは現在視聴できません。\n'
+        'タイムシフト予約をしていない、視聴期限が切れている、'
+        'プレミアム会員限定またはチケットが必要、などの理由が考えられます。',
+      );
+      expect(
+        AppStrings.timeshift.unavailableFailedBody,
+        'タイムシフトのコメントの取得を開始できませんでした。',
+      );
+      // 再試行を促さない（Issue #639: 同じ操作では解消しないため）。
+      for (final String body in <String>[
+        AppStrings.timeshift.unavailableNotLoggedInBody,
+        AppStrings.timeshift.unavailableNotWatchableBody,
+        AppStrings.timeshift.unavailableFailedBody,
+      ]) {
+        expect(body, isNot(contains('再試行')));
+      }
     });
   });
 
