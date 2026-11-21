@@ -17,13 +17,14 @@ typedef TimeshiftViewUriLookup =
 ///   the user has switched to another program meanwhile.
 /// - Resets the fetch state when the program changes, so a fetch for one
 ///   program never continues into another one.
-/// - Skips the fetch when live comments were already received for the
-///   program: the user watched it live and the broadcast just ended
-///   (Issue #1017), so there is nothing to fetch and no dialog to show.
+/// - Skips the fetch when the current connection was streaming live: the
+///   user watched the broadcast live and it just ended (Issue #1017), so
+///   there is nothing to fetch and no dialog to show.
 class TimeshiftFetchStarter {
   TimeshiftFetchStarter({
     required bool enabled,
     required String Function() currentLv,
+    required bool Function() hasStreamedLive,
     required TimeshiftFetchStatus Function() status,
     required Future<void> Function(Uri viewApiUri) fetchInitial,
     required Future<void> Function() cancelAndReset,
@@ -32,6 +33,7 @@ class TimeshiftFetchStarter {
     required void Function(TimeshiftViewUriFailure? failure) onUnavailable,
   }) : _enabled = enabled,
        _currentLv = currentLv,
+       _hasStreamedLive = hasStreamedLive,
        _status = status,
        _fetchInitial = fetchInitial,
        _cancelAndReset = cancelAndReset,
@@ -41,6 +43,7 @@ class TimeshiftFetchStarter {
 
   final bool _enabled;
   final String Function() _currentLv;
+  final bool Function() _hasStreamedLive;
   final TimeshiftFetchStatus Function() _status;
   final Future<void> Function(Uri viewApiUri) _fetchInitial;
   final Future<void> Function() _cancelAndReset;
@@ -49,22 +52,14 @@ class TimeshiftFetchStarter {
   final void Function(TimeshiftViewUriFailure? failure) _onUnavailable;
 
   String? _programLv;
-  String? _liveCommentsLv;
   String? _resolvingLv;
   String? _fetchingLv;
+  Future<void>? _pendingReset;
 
   /// Whether messages from the timeshift fetch belong to the program that
   /// is open now. Messages that arrive after a program switch are dropped.
   bool get acceptsMessages =>
       _fetchingLv != null && _fetchingLv == _currentLv();
-
-  /// Records that live comments arrived for the open program.
-  void markLiveCommentsReceived() {
-    final String lv = _currentLv();
-    if (lv.isNotEmpty) {
-      _liveCommentsLv = lv;
-    }
-  }
 
   /// Call when a connection is prepared for [lv]. Resets the fetch state
   /// when [lv] differs from the previous program; a reconnect to the same
@@ -74,24 +69,42 @@ class TimeshiftFetchStarter {
       return;
     }
     _programLv = lv;
-    _liveCommentsLv = null;
     _resolvingLv = null;
     _fetchingLv = null;
-    await _cancelAndReset();
+    final Future<void> reset = _cancelAndReset();
+    _pendingReset = reset;
+    try {
+      await reset;
+    } finally {
+      if (identical(_pendingReset, reset)) {
+        _pendingReset = null;
+      }
+    }
   }
 
   /// Call when the open program turned out to be an ended program.
   /// [viewApiUri] is the view URI from the program info, or `null` when it
   /// had none (Issue #654).
   Future<void> onTimeshiftDetected(Uri? viewApiUri) async {
+    if (_hasStreamedLive()) {
+      return;
+    }
     if (!_enabled) {
       _onUnsupported();
       return;
     }
+    // Let a reset for a program switch finish first, so the previous
+    // program's status does not make this one look already fetched.
+    final Future<void>? pendingReset = _pendingReset;
+    if (pendingReset != null) {
+      try {
+        await pendingReset;
+      } on Object {
+        // A failed reset is logged by the controller; carry on.
+      }
+    }
     final String lv = _currentLv();
-    if (lv.isEmpty ||
-        _liveCommentsLv == lv ||
-        _status() != TimeshiftFetchStatus.idle) {
+    if (lv.isEmpty || _status() != TimeshiftFetchStatus.idle) {
       return;
     }
 
@@ -116,7 +129,7 @@ class TimeshiftFetchStarter {
           _resolvingLv = null;
         }
       }
-      if (_currentLv() != lv || _liveCommentsLv == lv) {
+      if (_currentLv() != lv || _hasStreamedLive()) {
         return;
       }
       uri = result?.viewUri;
@@ -138,10 +151,10 @@ class TimeshiftFetchStarter {
     try {
       await _fetchInitial(uri);
     } on Object catch (error, stackTrace) {
+      // Only the type: HTTP errors can carry signed URLs.
       log(
-        'Timeshift initial fetch failed',
+        'Timeshift initial fetch failed: ${error.runtimeType}',
         name: 'TimeshiftFetchStarter',
-        error: error,
         stackTrace: stackTrace,
       );
     }

@@ -633,6 +633,9 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _timeshiftFetchStarter = TimeshiftFetchStarter(
       enabled: kTimeshiftFetchEnabled,
       currentLv: () => _currentLv,
+      // Issue #1017: a broadcast watched live that ended while reconnecting.
+      hasStreamedLive: () =>
+          _connectionSupervisor.hasStreamedSinceConnectionStart,
       status: () => _timeshiftFetchController.status,
       fetchInitial: _timeshiftFetchController.fetchInitial,
       cancelAndReset: _timeshiftFetchController.cancelAndReset,
@@ -669,7 +672,6 @@ class _ComeruneAppState extends State<ComeruneApp> {
       // an extra supervisor-level notify (which would re-run wakelock /
       // auto-save plumbing per comment).
       _connectionSupervisor.recordReceivedAt(notify: false);
-      _timeshiftFetchStarter.markLiveCommentsReceived();
       _timelineStore.add(message);
       _statisticsStore.recordComment(message);
     });
@@ -677,7 +679,6 @@ class _ComeruneAppState extends State<ComeruneApp> {
       AppMessage message,
     ) {
       _connectionSupervisor.recordReceivedAt(notify: false);
-      _timeshiftFetchStarter.markLiveCommentsReceived();
       _timelineStore.add(message);
       _statisticsStore.recordComment(message);
     });
@@ -740,6 +741,14 @@ class _ComeruneAppState extends State<ComeruneApp> {
   }) {
     final String lv = _currentLv;
     if (lv.isEmpty) {
+      return;
+    }
+    // Issue #1017: ライブで視聴していた放送が再接続の途中で終わっただけの
+    // 場合は、タイムシフトの案内ではなく放送終了の表示（ConnectionStatus.ended）
+    // だけを見せる。提示済みとしては記録しないので、終了後にユーザが接続し
+    // 直した（＝終わった放送を開いた）ときは従来どおり 1 度だけ案内する。
+    if (_connectionSupervisor.hasStreamedSinceConnectionStart) {
+      log('Skipped timeshift dialog (broadcast ended while live)', name: 'App');
       return;
     }
     if (_lastTimeshiftDialogLv == lv) {

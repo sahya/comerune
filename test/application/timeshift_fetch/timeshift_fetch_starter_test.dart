@@ -11,7 +11,10 @@ class _Harness {
 
   final bool enabled;
   String lv = 'lv1';
+  bool streamedLive = false;
   TimeshiftFetchStatus status = TimeshiftFetchStatus.idle;
+  Future<void> Function(Uri uri)? fetchHook;
+  Future<void> Function()? resetHook;
   final List<Uri> fetched = <Uri>[];
   final List<String> lookups = <String>[];
   int resets = 0;
@@ -25,13 +28,16 @@ class _Harness {
   late final TimeshiftFetchStarter starter = TimeshiftFetchStarter(
     enabled: enabled,
     currentLv: () => lv,
+    hasStreamedLive: () => streamedLive,
     status: () => status,
     fetchInitial: (Uri uri) async {
       fetched.add(uri);
+      await fetchHook?.call(uri);
       status = TimeshiftFetchStatus.paused;
     },
     cancelAndReset: () async {
       resets += 1;
+      await resetHook?.call();
       status = TimeshiftFetchStatus.idle;
     },
     lookUpViewUri: (String lv) {
@@ -155,17 +161,86 @@ void main() {
       expect(h.starter.acceptsMessages, isFalse);
     });
 
-    test('skips silently when live comments were received for the program '
-        '(#1017)', () async {
-      final _Harness h = _Harness();
-      await h.starter.onProgramChanged('lv1');
-      h.starter.markLiveCommentsReceived();
+    test(
+      'skips silently when the connection was streaming live (#1017)',
+      () async {
+        final _Harness h = _Harness()..streamedLive = true;
+
+        await h.starter.onTimeshiftDetected(null);
+
+        expect(h.lookups, isEmpty);
+        expect(h.fetched, isEmpty);
+        expect(h.unavailableDialogs, isEmpty);
+        expect(h.unsupportedDialogs, 0);
+      },
+    );
+
+    test(
+      'drops a lookup result when live streaming started meanwhile',
+      () async {
+        final Completer<TimeshiftViewUriResult> pending =
+            Completer<TimeshiftViewUriResult>();
+        final _Harness h = _Harness()..lookUp = (String lv) => pending.future;
+
+        final Future<void> detecting = h.starter.onTimeshiftDetected(null);
+        h.streamedLive = true;
+        pending.complete(
+          TimeshiftViewUriResult.resolved(Uri.parse('https://example.com/a')),
+        );
+        await detecting;
+
+        expect(h.fetched, isEmpty);
+      },
+    );
+
+    test('does not fetch when a fetch started during the lookup', () async {
+      final Completer<TimeshiftViewUriResult> pending =
+          Completer<TimeshiftViewUriResult>();
+      final _Harness h = _Harness()..lookUp = (String lv) => pending.future;
+
+      final Future<void> detecting = h.starter.onTimeshiftDetected(null);
+      h.status = TimeshiftFetchStatus.fetching;
+      pending.complete(
+        TimeshiftViewUriResult.resolved(Uri.parse('https://example.com/a')),
+      );
+      await detecting;
+
+      expect(h.fetched, isEmpty);
+    });
+
+    test('waits for a pending program-switch reset before deciding', () async {
+      final Completer<void> resetDone = Completer<void>();
+      final _Harness h = _Harness()..status = TimeshiftFetchStatus.completed;
+      h.resetHook = () => resetDone.future;
+      final Future<void> switching = h.starter.onProgramChanged('lv1');
+
+      // Detected while the previous program is still being reset.
+      final Future<void> detecting = h.starter.onTimeshiftDetected(
+        _programInfoViewUri,
+      );
+      resetDone.complete();
+      await switching;
+      await detecting;
+
+      expect(h.fetched, <Uri>[_programInfoViewUri]);
+    });
+
+    test('keeps going when the initial fetch throws', () async {
+      final _Harness h = _Harness()
+        ..fetchHook = (Uri uri) async => throw StateError('network');
+
+      await h.starter.onTimeshiftDetected(_programInfoViewUri);
+
+      expect(h.fetched, <Uri>[_programInfoViewUri]);
+    });
+
+    test('ignores detection while no program is open', () async {
+      final _Harness h = _Harness()..lv = '';
 
       await h.starter.onTimeshiftDetected(null);
 
       expect(h.lookups, isEmpty);
       expect(h.fetched, isEmpty);
-      expect(h.unavailableDialogs, isEmpty);
     });
 
     test('skips while a fetch is already running or done', () async {
