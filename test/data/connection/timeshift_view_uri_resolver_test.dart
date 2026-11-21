@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:comerune/data/connection/timeshift_view_uri_resolver.dart';
 import 'package:comerune/data/connection/watch_page_web_socket_url_resolver.dart';
+import 'package:comerune/domain/connection/session_ws_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/fake_session_ws_channel.dart';
@@ -25,8 +27,12 @@ class _StubWatchPageResolver extends WatchPageWebSocketUrlResolver {
 final Uri _wsUrl = Uri.parse(
   'wss://a.live2.nicovideo.jp/wsapi/v2/watch/lv1?audience_token=t',
 );
-const String _viewUri =
-    'https://mpn.live.nicovideo.jp/api/view/v4/BBzJ?_=1&a=b';
+const String _viewUri = 'https://mpn.live.nicovideo.jp/api/view/v4/BBzJ?_=1';
+// Real time with short timeouts: the resolver closes the WebSocket through
+// `SessionWsClient.disconnect()`, whose `StreamSubscription.cancel` does
+// not advance under fake_async (the same known incompatibility noted in
+// session_ws_client_test.dart).
+const Duration _timeout = Duration(milliseconds: 100);
 
 String _messageServer(String viewUri) => jsonEncode(<String, Object?>{
   'type': 'messageServer',
@@ -50,24 +56,31 @@ void main() {
 
     TimeshiftViewUriResolver buildResolver(
       WatchPageWebSocketUrlResult page, {
-      Duration endpointTimeout = const Duration(seconds: 15),
+      SessionWsChannelFactory? channelFactory,
+      Duration endpointTimeout = _timeout,
     }) {
       return TimeshiftViewUriResolver(
         watchPageResolver: _StubWatchPageResolver(page),
-        channelFactory: (Uri uri, Map<String, String> headers) async {
-          connectedUri = uri;
-          connectedHeaders = headers;
-          return channel;
-        },
+        channelFactory:
+            channelFactory ??
+            (Uri uri, Map<String, String> headers) async {
+              connectedUri = uri;
+              connectedHeaders = headers;
+              return channel;
+            },
         endpointTimeout: endpointTimeout,
       );
     }
 
+    Future<TimeshiftViewUriResult> start(TimeshiftViewUriResolver resolver) {
+      return resolver.resolve(lv: 'lv1', userSession: 'session-value');
+    }
+
     test('returns the view URI from messageServer and closes the WebSocket '
         '(#654)', () async {
-      final Future<TimeshiftViewUriResult> pending = buildResolver(
-        WatchPageWebSocketUrlResult.resolved(_wsUrl),
-      ).resolve(lv: 'lv1', userSession: 'session-value');
+      final Future<TimeshiftViewUriResult> pending = start(
+        buildResolver(WatchPageWebSocketUrlResult.resolved(_wsUrl)),
+      );
       await Future<void>.delayed(Duration.zero);
 
       // startWatching is sent with empty data (no video stream requested).
@@ -91,14 +104,10 @@ void main() {
       final _StubWatchPageResolver page = _StubWatchPageResolver(
         WatchPageWebSocketUrlResult.resolved(_wsUrl),
       );
-      final TimeshiftViewUriResolver resolver = TimeshiftViewUriResolver(
-        watchPageResolver: page,
-      );
 
-      final TimeshiftViewUriResult result = await resolver.resolve(
-        lv: 'lv1',
-        userSession: '',
-      );
+      final TimeshiftViewUriResult result = await TimeshiftViewUriResolver(
+        watchPageResolver: page,
+      ).resolve(lv: 'lv1', userSession: '');
 
       expect(result.failure, TimeshiftViewUriFailure.notLoggedIn);
       expect(page.calls, 0);
@@ -106,9 +115,9 @@ void main() {
 
     test('fails with notWatchable when the watch page has no WebSocket URL '
         'and never connects', () async {
-      final TimeshiftViewUriResult result = await buildResolver(
-        const WatchPageWebSocketUrlResult.notWatchable(),
-      ).resolve(lv: 'lv1', userSession: 's');
+      final TimeshiftViewUriResult result = await start(
+        buildResolver(const WatchPageWebSocketUrlResult.notWatchable()),
+      );
 
       expect(result.failure, TimeshiftViewUriFailure.notWatchable);
       expect(connectedUri, isNull);
@@ -116,9 +125,9 @@ void main() {
 
     test('fails with watchPageUnavailable when the watch page cannot be '
         'read', () async {
-      final TimeshiftViewUriResult result = await buildResolver(
-        const WatchPageWebSocketUrlResult.unavailable(),
-      ).resolve(lv: 'lv1', userSession: 's');
+      final TimeshiftViewUriResult result = await start(
+        buildResolver(const WatchPageWebSocketUrlResult.unavailable()),
+      );
 
       expect(result.failure, TimeshiftViewUriFailure.watchPageUnavailable);
       expect(connectedUri, isNull);
@@ -126,23 +135,27 @@ void main() {
 
     test('fails with sessionFailed when the WebSocket closes before '
         'messageServer', () async {
-      final Future<TimeshiftViewUriResult> pending = buildResolver(
-        WatchPageWebSocketUrlResult.resolved(_wsUrl),
-      ).resolve(lv: 'lv1', userSession: 's');
+      final Future<TimeshiftViewUriResult> pending = start(
+        buildResolver(WatchPageWebSocketUrlResult.resolved(_wsUrl)),
+      );
       await Future<void>.delayed(Duration.zero);
 
       await channel.close();
-      final TimeshiftViewUriResult result = await pending;
 
-      expect(result.failure, TimeshiftViewUriFailure.sessionFailed);
+      expect((await pending).failure, TimeshiftViewUriFailure.sessionFailed);
     });
 
     test(
       'fails with sessionFailed when only a legacy endpoint arrives',
       () async {
-        final Future<TimeshiftViewUriResult> pending = buildResolver(
-          WatchPageWebSocketUrlResult.resolved(_wsUrl),
-        ).resolve(lv: 'lv1', userSession: 's');
+        // The client waits 300 ms for an NDGR endpoint before settling on
+        // the legacy one, so this case needs a longer timeout.
+        final Future<TimeshiftViewUriResult> pending = start(
+          buildResolver(
+            WatchPageWebSocketUrlResult.resolved(_wsUrl),
+            endpointTimeout: const Duration(seconds: 2),
+          ),
+        );
         await Future<void>.delayed(Duration.zero);
 
         channel.pushIncoming(
@@ -155,37 +168,63 @@ void main() {
             },
           }),
         );
-        final TimeshiftViewUriResult result = await pending;
 
-        expect(result.failure, TimeshiftViewUriFailure.sessionFailed);
+        expect((await pending).failure, TimeshiftViewUriFailure.sessionFailed);
       },
     );
 
     test('fails with timedOut when no endpoint arrives in time', () async {
-      final TimeshiftViewUriResult result = await buildResolver(
-        WatchPageWebSocketUrlResult.resolved(_wsUrl),
-        endpointTimeout: const Duration(milliseconds: 50),
-      ).resolve(lv: 'lv1', userSession: 's');
+      final TimeshiftViewUriResult result = await start(
+        buildResolver(WatchPageWebSocketUrlResult.resolved(_wsUrl)),
+      );
 
       expect(result.failure, TimeshiftViewUriFailure.timedOut);
       expect(channel.closeCount, greaterThanOrEqualTo(1));
     });
 
+    test('fails with timedOut when the WebSocket handshake stalls, and closes '
+        'a connection that completes later', () async {
+      final Completer<SessionWsChannel> handshake =
+          Completer<SessionWsChannel>();
+
+      final TimeshiftViewUriResult result = await start(
+        buildResolver(
+          WatchPageWebSocketUrlResult.resolved(_wsUrl),
+          channelFactory: (Uri uri, Map<String, String> headers) =>
+              handshake.future,
+        ),
+      );
+      expect(result.failure, TimeshiftViewUriFailure.timedOut);
+
+      handshake.complete(channel);
+      await Future<void>.delayed(Duration.zero);
+      expect(channel.closeCount, 1);
+    });
+
+    test('does not return a view URI when messageServer carries an unusable '
+        'one', () async {
+      final Future<TimeshiftViewUriResult> pending = start(
+        buildResolver(WatchPageWebSocketUrlResult.resolved(_wsUrl)),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      channel.pushIncoming(_messageServer('not a url'));
+      final TimeshiftViewUriResult result = await pending;
+
+      expect(result.viewUri, isNull);
+      expect(result.failure, isNotNull);
+    });
+
     test(
       'fails with sessionFailed when the WebSocket cannot be opened',
       () async {
-        final TimeshiftViewUriResolver resolver = TimeshiftViewUriResolver(
-          watchPageResolver: _StubWatchPageResolver(
+        final TimeshiftViewUriResult result = await start(
+          buildResolver(
             WatchPageWebSocketUrlResult.resolved(_wsUrl),
+            channelFactory: (Uri uri, Map<String, String> headers) async {
+              throw StateError('cannot connect');
+            },
           ),
-          channelFactory: (Uri uri, Map<String, String> headers) async {
-            throw StateError('cannot connect');
-          },
-        );
-
-        final TimeshiftViewUriResult result = await resolver.resolve(
-          lv: 'lv1',
-          userSession: 's',
         );
 
         expect(result.failure, TimeshiftViewUriFailure.sessionFailed);

@@ -52,7 +52,9 @@ final RegExp _embeddedDataPattern = RegExp(
 /// Extracts `site.relive.webSocketUrl` from the HTML of a watch page.
 ///
 /// A missing `frontend_id` query parameter is filled with `9`, which the
-/// watch WebSocket expects from web clients.
+/// watch WebSocket expects from web clients. Only `wss://` URLs on a
+/// `nicovideo.jp` host are accepted, because callers send the session
+/// cookie to this URL.
 WatchPageWebSocketUrlResult parseWatchPageWebSocketUrl(String html) {
   final RegExpMatch? match = _embeddedDataPattern.firstMatch(html);
   final String? escaped = match?.group(1);
@@ -87,7 +89,9 @@ WatchPageWebSocketUrlResult parseWatchPageWebSocketUrl(String html) {
   }
 
   final Uri? parsed = Uri.tryParse(rawUrl);
-  if (parsed == null || !parsed.hasScheme || parsed.host.isEmpty) {
+  if (parsed == null ||
+      parsed.scheme != 'wss' ||
+      !_isNicovideoHost(parsed.host)) {
     return const WatchPageWebSocketUrlResult.unavailable();
   }
   final Map<String, String> queryParams = Map<String, String>.from(
@@ -97,6 +101,11 @@ WatchPageWebSocketUrlResult parseWatchPageWebSocketUrl(String html) {
   return WatchPageWebSocketUrlResult.resolved(
     parsed.replace(queryParameters: queryParams),
   );
+}
+
+bool _isNicovideoHost(String host) {
+  final String lower = host.toLowerCase();
+  return lower == 'nicovideo.jp' || lower.endsWith('.nicovideo.jp');
 }
 
 String _unescapeHtmlAttribute(String input) {
@@ -122,6 +131,9 @@ String _unescapeHtmlAttribute(String input) {
 ///
 /// Used by the comment-post path and by the timeshift path. Never throws:
 /// every failure is reported as [WatchPageWebSocketUrlStatus.unavailable].
+///
+/// Redirects are followed only within the watch page's own scheme and
+/// host, so the session cookie is never sent to another host.
 class WatchPageWebSocketUrlResolver {
   WatchPageWebSocketUrlResolver({
     HttpClient Function()? httpClientFactory,
@@ -183,7 +195,10 @@ class WatchPageWebSocketUrlResolver {
             return const WatchPageWebSocketUrlResult.unavailable();
           }
           currentUri = currentUri.resolve(location);
-          if (currentUri.host.startsWith('sp.')) {
+          // A redirect to the mobile site (`sp.`) serves no embedded data,
+          // and any other host must not receive the session cookie.
+          if (currentUri.scheme != _watchPageBaseUri.scheme ||
+              currentUri.host != _watchPageBaseUri.host) {
             return const WatchPageWebSocketUrlResult.unavailable();
           }
           response = null;

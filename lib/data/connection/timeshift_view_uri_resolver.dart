@@ -20,11 +20,13 @@ enum TimeshiftViewUriFailure {
   /// The watch page could not be fetched or parsed.
   watchPageUnavailable,
 
-  /// The watch WebSocket closed or failed before sending a comment server
-  /// (`messageServer`) message, or sent only a legacy endpoint.
+  /// The watch WebSocket closed, failed, or reported the end of the
+  /// program before sending a comment server (`messageServer`) message;
+  /// sent only a legacy endpoint; or sent an unusable view URI.
   sessionFailed,
 
-  /// No comment server message arrived within the timeout.
+  /// The WebSocket did not connect, or no comment server message arrived,
+  /// within the timeout.
   timedOut,
 }
 
@@ -62,13 +64,14 @@ class TimeshiftViewUriResolver {
     Duration endpointTimeout = const Duration(seconds: 15),
   }) : _watchPageResolver =
            watchPageResolver ?? WatchPageWebSocketUrlResolver(),
-       _channelFactory = channelFactory,
+       _channelFactory =
+           channelFactory ?? SessionWsClient.defaultChannelFactory,
        _endpointTimeout = endpointTimeout;
 
   final WatchPageWebSocketUrlResolver _watchPageResolver;
 
-  /// Test seam for the WebSocket channel; `null` uses a real WebSocket.
-  final SessionWsChannelFactory? _channelFactory;
+  /// Test seam for the WebSocket channel; defaults to a real WebSocket.
+  final SessionWsChannelFactory _channelFactory;
   final Duration _endpointTimeout;
 
   Future<TimeshiftViewUriResult> resolve({
@@ -101,9 +104,10 @@ class TimeshiftViewUriResolver {
     final SessionWsClient client = SessionWsClient(
       lv: lv,
       webSocketUri: page.url,
-      channelFactory: _channelFactory,
-      // `startWatching` with empty data, as other NDGR clients do for ended
-      // programs: no video stream is requested.
+      channelFactory: _connectWithTimeout,
+      // `startWatching` with empty data, as public NDGR clients do for ended
+      // programs (not yet verified on a real device): no video stream is
+      // requested.
       startWatchingMode: SessionWsStartWatchingMode.minimal,
       connectHeaders: <String, String>{
         'Cookie': 'user_session=$userSession',
@@ -142,8 +146,10 @@ class TimeshiftViewUriResolver {
             case SessionWsEventType.error:
               if (event.errorCode == SessionWsErrorCode.connectFailed) {
                 complete(
-                  const TimeshiftViewUriResult.failed(
-                    TimeshiftViewUriFailure.sessionFailed,
+                  TimeshiftViewUriResult.failed(
+                    event.error is TimeoutException
+                        ? TimeshiftViewUriFailure.timedOut
+                        : TimeshiftViewUriFailure.sessionFailed,
                   ),
                 );
               }
@@ -179,7 +185,35 @@ class TimeshiftViewUriResolver {
       );
     } finally {
       await subscription.cancel();
-      await client.dispose();
+      try {
+        await client.dispose().timeout(const Duration(seconds: 2));
+      } on Object {
+        // Closing is best effort; the socket is dropped either way.
+      }
     }
+  }
+
+  /// Opens the WebSocket, giving up after [_endpointTimeout] so a stalled
+  /// TCP / TLS handshake cannot keep the lookup open. A connection that
+  /// completes after the timeout is closed right away.
+  Future<SessionWsChannel> _connectWithTimeout(
+    Uri uri,
+    Map<String, String> headers,
+  ) {
+    final Future<SessionWsChannel> connecting = Future<SessionWsChannel>.sync(
+      () => _channelFactory(uri, headers),
+    );
+    return connecting.timeout(
+      _endpointTimeout,
+      onTimeout: () {
+        unawaited(
+          connecting.then<void>(
+            (SessionWsChannel lateChannel) => lateChannel.close(),
+            onError: (Object _) {},
+          ),
+        );
+        throw TimeoutException('WebSocket connect timed out', _endpointTimeout);
+      },
+    );
   }
 }
