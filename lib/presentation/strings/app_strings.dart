@@ -483,6 +483,16 @@ final class CommentDisplaySettingsStrings {
       '初回接続時にまとめて取得する過去コメント数の上限です。\n'
       '取得後の新着コメントも追加で表示されます'
       '（表示保持数 = 取得数 + 約 $liveCommentBufferSize 件）。';
+
+  /// コメントログ自動保存の保存先に、ファイルとして書き込めないフォルダ
+  /// （端末で保護されたフォルダ等）が選ばれたときの SnackBar。
+  String get autoSaveFolderUnusableSnackBar =>
+      'このフォルダは保存先に使えません。別のフォルダを選んでください';
+
+  /// コメントログ自動保存の保存先を選ぶピッカーがエラーで終了したときの
+  /// SnackBar。
+  String get autoSaveFolderPickFailedSnackBar =>
+      '保存先フォルダを選択できませんでした。もう一度お試しください';
 }
 
 /// タイムシフトコメント取得 UI の文字列。
@@ -507,7 +517,9 @@ final class TimeshiftStrings {
   ///
   /// Issue #639 / #654 / #173 のフォローアップ。viewUri 取得経路の確立まで
   /// 取得機能を一時無効化する暫定 UI のための文言。実装が整い次第
-  /// `kTimeshiftFetchEnabled` フラグを true に戻して再有効化する。
+  /// `kTimeshiftFetchEnabled` フラグを true に戻して再有効化する。ただし
+  /// viewUri が取れない終了放送（Issue #654）では引き続き表示されるため、
+  /// 除去時期は `kTimeshiftFetchEnabled` の doc の条件に従う。
   String get unsupportedDialogTitle => 'タイムシフトは現在未対応です';
 
   /// タイムシフト未対応ダイアログの本文。
