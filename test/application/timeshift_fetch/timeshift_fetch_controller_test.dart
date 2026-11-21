@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/application/timeshift_fetch/timeshift_fetch_controller.dart';
@@ -349,6 +350,85 @@ void main() {
       expect(controller.status, TimeshiftFetchStatus.idle);
     });
 
+    test('fetchMore restarts the initial fetch when the first fetch failed '
+        'before a session opened (#654)', () async {
+      final FakeTimeshiftClient client = FakeTimeshiftClient(
+        fetchPastResult: FakeFetchResult(error: StateError('no session')),
+      );
+      final TimeshiftFetchController controller = TimeshiftFetchController(
+        client: client,
+        onMessages: (_) {},
+      );
+      await controller.fetchInitial(Uri.parse('https://example.com/view'));
+      expect(controller.status, TimeshiftFetchStatus.error);
+
+      client.fetchPastResult = const FakeFetchResult(hasMore: true);
+      await controller.fetchMore(500);
+
+      expect(client.fetchPastCalls, 2);
+      expect(controller.status, TimeshiftFetchStatus.paused);
+      controller.dispose();
+    });
+
+    test('cancelAndReset waits for the running fetch and returns to idle '
+        '(#654)', () async {
+      final Completer<void> release = Completer<void>();
+      final FakeTimeshiftClient client = FakeTimeshiftClient(
+        fetchPastResult: const FakeFetchResult(hasMore: true),
+        fetchMoreHandler: (_) => release.future,
+      );
+      client.setHasMore(true);
+      final TimeshiftFetchController controller = TimeshiftFetchController(
+        client: client,
+        onMessages: (_) {},
+      );
+      await controller.fetchInitial(Uri.parse('https://example.com/view'));
+      final Future<void> fetching = controller.fetchMore(500);
+      expect(controller.status, TimeshiftFetchStatus.fetching);
+
+      final Future<void> resetting = controller.cancelAndReset();
+      release.complete();
+      await resetting;
+      await fetching;
+
+      expect(controller.status, TimeshiftFetchStatus.idle);
+      expect(client.isSessionOpen, isFalse);
+      // A later fetchMore must not restart the previous program's fetch.
+      await controller.fetchMore(500);
+      expect(client.fetchPastCalls, 1);
+      controller.dispose();
+    });
+
+    test('a reset during the fetch-all batch delay is not overwritten when '
+        'the loop wakes up (#654)', () {
+      fakeAsync((FakeAsync async) {
+        final FakeTimeshiftClient client = FakeTimeshiftClient(
+          fetchMoreHandler: (_) async {},
+        );
+        client.setHasMore(true);
+        final TimeshiftFetchController controller = TimeshiftFetchController(
+          client: client,
+          onMessages: (_) {},
+          fetchAllBatchDelay: const Duration(milliseconds: 100),
+        );
+
+        unawaited(controller.fetchAll());
+        async.flushMicrotasks();
+        expect(controller.status, TimeshiftFetchStatus.fetching);
+
+        // The user switches programs while the loop waits between batches.
+        unawaited(controller.cancelAndReset());
+        async.flushMicrotasks();
+        expect(controller.status, TimeshiftFetchStatus.idle);
+
+        async.elapse(const Duration(milliseconds: 200));
+
+        expect(controller.status, TimeshiftFetchStatus.idle);
+        expect(controller.isFetchingAll, isFalse);
+        controller.dispose();
+      });
+    });
+
     test('notifies listeners on status change', () async {
       final FakeTimeshiftClient client = FakeTimeshiftClient(
         fetchPastResult: FakeFetchResult(hasMore: false, totalFetched: 10),
@@ -395,6 +475,7 @@ class FakeTimeshiftClient implements NdgrTimeshiftClient {
   Future<void> Function(int count)? fetchMoreHandler;
   List<AppMessage> progressMessages;
 
+  int fetchPastCalls = 0;
   bool _hasMore = false;
   int _totalFetched = 0;
   bool _isSessionOpen = false;
@@ -426,12 +507,13 @@ class FakeTimeshiftClient implements NdgrTimeshiftClient {
     int maxMessages = NdgrTimeshiftClient.defaultInitialLimit,
   }) async {
     _isRunning = true;
-    _isSessionOpen = true;
+    fetchPastCalls += 1;
 
     if (fetchPastResult.error != null) {
       _isRunning = false;
       throw fetchPastResult.error!;
     }
+    _isSessionOpen = true;
 
     if (progressMessages.isNotEmpty) {
       _eventsController.add(

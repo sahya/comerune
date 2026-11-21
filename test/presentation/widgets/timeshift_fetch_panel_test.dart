@@ -270,4 +270,7 @@ class _FakeController extends ChangeNotifier
     _status = TimeshiftFetchStatus.idle;
     notifyListeners();
   }
+
+  @override
+  Future<void> cancelAndReset() async => reset();
 }

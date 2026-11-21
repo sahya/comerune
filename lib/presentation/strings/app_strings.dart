@@ -513,13 +513,38 @@ final class TimeshiftStrings {
   /// リトライボタンの代わりに表示する案内。Issue #639 cause 5。
   String get nonRetryableNotice => 'このタイムシフトは再試行しても取得できません。';
 
+  /// タイムシフトのコメントを取得できなかったときのダイアログのタイトル。
+  ///
+  /// Issue #654: 終了放送の viewUri を視聴 WebSocket から取得する経路で、
+  /// 取得を始められなかったときに lv ごとに 1 回だけ表示する。
+  String get unavailableDialogTitle => 'タイムシフトのコメントを取得できません';
+
+  /// ログインしていないため取得できないときの本文。
+  String get unavailableNotLoggedInBody =>
+      'タイムシフトのコメントを取得するには、ニコニコにログインしてください。';
+
+  /// 視聴権がないため取得できないときの本文。
+  ///
+  /// 視聴ページに WebSocket URL が無いケース。アプリは予約や視聴権の使用を
+  /// 代行しない（視聴権を消費するため）ので、考えられる理由だけを示す。
+  String get unavailableNotWatchableBody =>
+      'このタイムシフトは現在視聴できません。\n'
+      'タイムシフト予約をしていない、予約後にまだ視聴を開始していない、'
+      '視聴期限が切れている、プレミアム会員限定またはチケットが必要、'
+      'などの理由が考えられます。';
+
+  /// 通信・解析・タイムアウトで取得できないときの本文。
+  String get unavailableFailedBody =>
+      'タイムシフトのコメントの取得を開始できませんでした。\n'
+      '通信状況を確認してから、再接続してください。';
+
+  /// 取得できないときのダイアログの確認ボタン。
+  String get unavailableDialogConfirm => 'OK';
+
   /// タイムシフト未対応ダイアログのタイトル。
   ///
-  /// Issue #639 / #654 / #173 のフォローアップ。viewUri 取得経路の確立まで
-  /// 取得機能を一時無効化する暫定 UI のための文言。実装が整い次第
-  /// `kTimeshiftFetchEnabled` フラグを true に戻して再有効化する。ただし
-  /// viewUri が取れない終了放送（Issue #654）では引き続き表示されるため、
-  /// 除去時期は `kTimeshiftFetchEnabled` の doc の条件に従う。
+  /// `kTimeshiftFetchEnabled` を `false`（緊急停止）にしたときだけ表示する。
+  /// 取得を有効にしたまま失敗したときは `unavailable*` の文言を使う。
   String get unsupportedDialogTitle => 'タイムシフトは現在未対応です';
 
   /// タイムシフト未対応ダイアログの本文。
