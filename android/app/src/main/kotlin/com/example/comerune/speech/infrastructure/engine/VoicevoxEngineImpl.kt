@@ -8,6 +8,7 @@ import com.example.comerune.speech.domain.model.SynthesisMode
 import com.example.comerune.speech.domain.model.TtsEngineState
 import com.example.comerune.speech.domain.model.VoicevoxModelManifest
 import com.example.comerune.speech.domain.model.WavSynthesisResult
+import com.example.comerune.speech.infrastructure.integrity.DownloadedAssetGuard
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -230,6 +231,13 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
 
         private const val OPEN_JTALK_DICT_URL =
             "https://github.com/r9y9/open_jtalk/releases/download/v1.11.1/open_jtalk_dic_utf_8-1.11.tar.gz"
+
+        /**
+         * SHA-256 of the archive at [OPEN_JTALK_DICT_URL]. The archive is only
+         * extracted when its digest matches; update together with the URL.
+         */
+        private const val OPEN_JTALK_DICT_SHA256 =
+            "fe6ba0e43542cef98339abdffd903e062008ea170b04e7e2a35da805902f382a"
         private const val CONNECT_TIMEOUT_MS = 30_000
         private const val READ_TIMEOUT_MS = 120_000
         private const val PROGRESS_REPORT_INTERVAL_BYTES = 1_048_576L // 1 MB
@@ -903,6 +911,7 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
         emitDownloadEvent("download_started", OPEN_JTALK_DICT_DIR_NAME)
         downloadAndExtractTarGz(
             url = OPEN_JTALK_DICT_URL,
+            expectedSha256 = OPEN_JTALK_DICT_SHA256,
             targetDir = dictDir,
             stripPrefix = OPEN_JTALK_DICT_DIR_NAME,
             displayName = OPEN_JTALK_DICT_DIR_NAME
@@ -967,9 +976,11 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
     /**
      * Download a tar.gz archive from [url], extract it to [targetDir],
      * stripping the leading [stripPrefix] directory from entry paths.
+     * Extraction only starts after the archive matches [expectedSha256].
      */
     private fun downloadAndExtractTarGz(
         url: String,
+        expectedSha256: String,
         targetDir: File,
         stripPrefix: String,
         displayName: String
@@ -990,6 +1001,8 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
             } finally {
                 connection.disconnect()
             }
+
+            DownloadedAssetGuard.verifySha256(tempFile, expectedSha256)
 
             // Extract tar.gz
             updateEngineState(
@@ -1118,7 +1131,7 @@ class VoicevoxEngineImpl(private val context: Context) : VoicevoxEngine {
 
             // Security: reject paths that escape the target directory
             val targetFile = File(targetDir, relativeName).canonicalFile
-            if (!targetFile.path.startsWith(targetDir.canonicalPath)) {
+            if (!DownloadedAssetGuard.isWithinDirectory(targetFile, targetDir)) {
                 Log.w(TAG, "Skipping tar entry with path traversal: $relativeName")
                 skipBytes(inputStream, roundUpTo512(size))
                 continue

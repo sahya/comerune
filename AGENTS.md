@@ -62,6 +62,7 @@ the linked tests / comments before merging the upgrade PR.
 | Plugin | Coupled native artefact | Why |
 |---|---|---|
 | `flutter_foreground_task` | `AndroidManifest.xml` `<service android:stopWithTask="true">` and the comment in `lib/data/foreground_service/foreground_service_manager.dart` | The Dart-level `ForegroundTaskOptions.stopWithTask` and the manifest attribute have *different* runtime effects in 9.x (the Dart option wires `TrackVisibilityUtils` and stops the service on every Activity pause). The fix for issue #869 relies on this distinction. See `test/android/android_manifest_foreground_service_test.dart`. |
+| `file_picker` (Android implementation `android_file_picker`) | Method channel `miguelruivo.flutter.plugins.filepicker`, method `dir`, argument `androidSafOptions`, error code `unknown_path` — used directly by `lib/data/comment_log/comment_log_directory_picker.dart` | The plugin's Dart `getDirectoryPath()` turns `unknown_path` (a folder with no filesystem path) into `null`, the same as a cancel, so the comment-log folder picker calls the channel itself to tell them apart. A missing channel falls back to `FilePicker.getDirectoryPath()`. Re-check the native `FilePickerPlugin.kt` / `FileUtils.kt` on any upgrade (minor versions included, since this is not public API). See the `auto-save comment log folder picker` group in `test/presentation/screens/comment_display_settings_screen_test.dart`. |
 
 ## Optional Reference Two-Stage Fallback
 

@@ -839,9 +839,9 @@ void main() {
       'import: pick without a local path shows importFailed SnackBar',
       (WidgetTester tester) async {
         final SettingsStore store = buildStore();
-        // `file_picker` 12 derives `path` from the URI, so a pick that is not a
-        // `file:` URI yields a null path. The screen must say so rather than
-        // returning silently.
+        // `file_picker` 12 and later derive `path` from the URI, so a pick
+        // that is not a `file:` URI yields a null path. The screen must say so
+        // rather than returning silently.
         fakeFilePicker.resultToReturn = buildPathlessPlatformFile();
 
         await tester.pumpWidget(_buildScreen(store));
