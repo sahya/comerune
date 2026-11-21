@@ -236,6 +236,20 @@ class OAuthBffAuthService {
 
   /// Refresh the persisted access token using the persisted refresh token.
   /// Throws [OAuthFailure] on failure. Fresh tokens are persisted on success.
+  /// Deletes the stored OAuth tokens and any pending authorization state,
+  /// so nothing from this login is left on the device after logging out
+  /// (Issue #1053). Throws when the token store cannot be cleared; a
+  /// failure to clear the pending state is ignored because it expires on
+  /// its own.
+  Future<void> signOut() async {
+    await tokenStore.clear();
+    try {
+      await stateStore.clear();
+    } on Object {
+      // Best effort: the pending state is short-lived and unusable alone.
+    }
+  }
+
   Future<OAuthTokens> refresh() async {
     final OAuthTokens? stored;
     try {

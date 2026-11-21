@@ -12,6 +12,8 @@ import 'package:comerune/data/auth/oauth_bff/oauth_state_generator.dart';
 import 'package:comerune/data/auth/oauth_bff/oauth_state_store.dart';
 import 'package:comerune/data/auth/oauth_bff/oauth_token_store.dart';
 
+import '../../../helpers/test_oauth_auth_controller.dart';
+
 class _FakeStateGenerator implements OAuthStateGenerator {
   _FakeStateGenerator(this._values);
   final List<String> _values;
@@ -837,6 +839,50 @@ void main() {
         await service.dispose();
       },
     );
+  });
+
+  group('signOut', () {
+    test('deletes the stored tokens and the pending state (#1053)', () async {
+      final _InMemoryTokenStore tokenStore = _InMemoryTokenStore();
+      final _InMemoryStateStore stateStore = _InMemoryStateStore();
+      final service = _buildService(
+        config: _buildConfig(),
+        stateGenerator: _FakeStateGenerator(const <String>['STATE-1']),
+        stateStore: stateStore,
+        tokenStore: tokenStore,
+        httpClient: MockClient(
+          (http.Request request) async => http.Response('{}', 200),
+        ),
+      );
+      await tokenStore.save(
+        const OAuthTokens(
+          accessToken: 'access',
+          tokenType: 'Bearer',
+          expiresInSeconds: 3600,
+          refreshToken: 'refresh',
+        ),
+      );
+      await service.startAuthorization();
+
+      await service.signOut();
+
+      expect(await tokenStore.read(), isNull);
+      expect(await stateStore.read(), isNull);
+    });
+
+    test('throws when the tokens cannot be deleted', () async {
+      final service = _buildService(
+        config: _buildConfig(),
+        stateGenerator: _FakeStateGenerator(const <String>[]),
+        stateStore: _InMemoryStateStore(),
+        tokenStore: ClearThrowingOAuthTokenStore(),
+        httpClient: MockClient(
+          (http.Request request) async => http.Response('{}', 200),
+        ),
+      );
+
+      await expectLater(service.signOut(), throwsA(isA<StateError>()));
+    });
   });
 
   group('refresh', () {
