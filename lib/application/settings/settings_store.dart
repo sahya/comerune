@@ -232,6 +232,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
   // Issue #739: ended grace 期間中も読み上げを継続するか。
   static const String _kPlayRemainingAfterEnded =
       'settings.tts.playRemainingAfterEnded';
+  // Issue #1014: 読み上げ中に他アプリの音を下げるか（false = 重ねて再生）。
+  static const String _kDuckOtherAudio = 'settings.tts.duckOtherAudio';
   // Issue #774: コメント画面のスクロール方向（昇順/降順）の永続化キー。
   static const String _kCommentSortOrder = 'settings.comment.sortOrder';
   // Issue #784: コメント番号 (NDGR `Chat.no`) の表示 ON/OFF の永続化キー。
@@ -382,6 +384,8 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       playRemainingAfterEnded:
           _prefs.getBool(_kPlayRemainingAfterEnded) ??
           defaults.playRemainingAfterEnded,
+      duckOtherAudio:
+          _prefs.getBool(_kDuckOtherAudio) ?? defaults.duckOtherAudio,
       commentSortOrder: CommentSortOrderValue.fromStorageValue(
         _prefs.getString(_kCommentSortOrder),
       ),
@@ -521,6 +525,7 @@ class SharedPreferencesSettingsStore implements SettingsStore {
       _kPlayRemainingAfterEnded,
       settings.playRemainingAfterEnded,
     );
+    await _prefs.setBool(_kDuckOtherAudio, settings.duckOtherAudio);
     await _prefs.setString(
       _kCommentSortOrder,
       settings.commentSortOrder.storageValue,

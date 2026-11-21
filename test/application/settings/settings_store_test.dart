@@ -1030,5 +1030,28 @@ void main() {
         },
       );
     });
+
+    // Issue #1014: "duck other audio while speaking" Switch persistence.
+    group('duckOtherAudio (Issue #1014)', () {
+      test('defaults to false when not stored', () async {
+        final SharedPreferencesSettingsStore store =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        final AppSettings loaded = await store.load();
+
+        expect(loaded.duckOtherAudio, isFalse);
+      });
+
+      test('round-trips true and back to false', () async {
+        final SharedPreferencesSettingsStore store =
+            SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+
+        await store.save(AppSettings.defaults.copyWith(duckOtherAudio: true));
+        expect((await store.load()).duckOtherAudio, isTrue);
+
+        await store.save(AppSettings.defaults.copyWith(duckOtherAudio: false));
+        expect((await store.load()).duckOtherAudio, isFalse);
+      });
+    });
   });
 }
