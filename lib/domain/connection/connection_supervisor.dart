@@ -246,6 +246,7 @@ class ConnectionSupervisor extends ChangeNotifier {
   Uri? _currentNdgrViewApiUri;
   NdgrResumeCursor? _lastNdgrResumeCursor;
   Uri? _currentLegacyWsUrl;
+  bool _hasStreamedSinceConnectionStart = false;
 
   bool get _hasReconnectClients =>
       _sessionWsClient != null &&
@@ -257,6 +258,18 @@ class ConnectionSupervisor extends ChangeNotifier {
   DateTime? get lastReceivedAt => _lastReceivedAt;
   ConnectionErrorCode? get lastError => _lastError;
   String? get lastErrorDetail => _lastErrorDetail;
+
+  /// Whether this connection has reached a streaming state
+  /// ([ConnectionStatus.streamingNdgr] / [ConnectionStatus.streamingLegacy])
+  /// at least once since the latest [startConnection].
+  ///
+  /// Lets callers tell "the broadcast was already over when it was opened"
+  /// (`false`) apart from "a broadcast being watched live ended while
+  /// reconnecting" (`true`). Reconnects keep the value; only
+  /// [startConnection] (including [retryConnectionFromTerminal]) resets it
+  /// to `false` (Issue #1017).
+  bool get hasStreamedSinceConnectionStart => _hasStreamedSinceConnectionStart;
+
   WifiIndicatorColor get wifiIndicatorColor => _status.usesGreenWifiIcon
       ? WifiIndicatorColor.green
       : WifiIndicatorColor.red;
@@ -842,6 +855,12 @@ class ConnectionSupervisor extends ChangeNotifier {
       _lastNdgrResumeCursor = null;
       _currentNdgrViewApiUri = null;
       _currentLegacyWsUrl = null;
+      _hasStreamedSinceConnectionStart = false;
+    }
+
+    if (next == ConnectionStatus.streamingNdgr ||
+        next == ConnectionStatus.streamingLegacy) {
+      _hasStreamedSinceConnectionStart = true;
     }
 
     if (incrementReconnectCount) {
