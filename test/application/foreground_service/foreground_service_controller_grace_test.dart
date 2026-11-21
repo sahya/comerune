@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
@@ -210,6 +212,39 @@ void main() {
 
         expect(controller.isInGrace, isFalse);
         expect(manager.isRunning, isFalse);
+      });
+    });
+
+    // Issue #1052: when an already-ended broadcast is opened, CommentScreen
+    // releases the FGS grace with a microtask from its own connection
+    // listener. That must work even when the screen's listener was
+    // registered before this controller's.
+    test('never-streamed ended: a release queued by an earlier listener stops '
+        'the FGS at once', () {
+      fakeAsync((FakeAsync async) {
+        late final ForegroundServiceController controller;
+        void releaseOnEnded() {
+          if (supervisor.status == ConnectionStatus.ended &&
+              !supervisor.hasStreamedSinceConnectionStart) {
+            scheduleMicrotask(controller.notifyQueueDrained);
+          }
+        }
+
+        supervisor.addListener(releaseOnEnded);
+        addTearDown(() => supervisor.removeListener(releaseOnEnded));
+        controller = build(grace: true);
+        addTearDown(controller.dispose);
+
+        supervisor.startConnection();
+        async.flushMicrotasks();
+        expect(manager.isRunning, isTrue);
+
+        supervisor.endBroadcast();
+        async.flushMicrotasks();
+
+        expect(controller.isInGrace, isFalse);
+        expect(manager.isRunning, isFalse);
+        expect(controller.graceTimerForTesting, isNull);
       });
     });
 

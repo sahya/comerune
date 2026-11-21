@@ -1744,6 +1744,288 @@ void main() {
       },
     );
 
+    // Issue #1052: opening a broadcast that had already ended reaches
+    // `ended` without ever streaming. With nothing left to read, the grace
+    // window (and the FGS "読み上げ完了待ち..." notification it keeps
+    // alive) must end at once instead of lingering for 30 s.
+    testWidgets(
+      'never-streamed ended broadcast with an idle queue ends grace at once',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildNeverStreamedSupervisor();
+        int graceEndedCount = 0;
+
+        await tester.pumpWidget(
+          _buildGraceHost(
+            supervisor: supervisor,
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+            onSpeechGraceEnded: () => graceEndedCount++,
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(fakePlatform.startCalled, isTrue);
+        fakePlatform.stopCalled = false;
+
+        expect(supervisor.endBroadcast(), isTrue);
+        expect(supervisor.hasStreamedSinceConnectionStart, isFalse);
+        await tester.pump();
+
+        expect(
+          fakePlatform.stopCalled,
+          isTrue,
+          reason: 'nothing to read, so speech must stop without waiting',
+        );
+        expect(
+          graceEndedCount,
+          1,
+          reason: 'the FGS grace must be released at the same time',
+        );
+
+        await tester.pump(const Duration(seconds: 31));
+        expect(graceEndedCount, 1, reason: 'no second release on timeout');
+
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+
+    testWidgets(
+      'never-streamed ended broadcast with speech disabled releases the FGS '
+      'grace at once',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildNeverStreamedSupervisor();
+        int graceEndedCount = 0;
+
+        await tester.pumpWidget(
+          _buildGraceHost(
+            supervisor: supervisor,
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: false),
+            onSpeechGraceEnded: () => graceEndedCount++,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(supervisor.endBroadcast(), isTrue);
+        await tester.pump();
+
+        expect(graceEndedCount, 1);
+        expect(fakePlatform.startCalled, isFalse);
+        expect(fakePlatform.stopCalled, isFalse);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+
+    // Issue #1052: the speech queue is not cleared when the user taps the
+    // reconnect button or switches lv inside this screen, so comments from
+    // the previous connection can still be waiting even though this
+    // connection never streamed. Those must still be read to the end.
+    for (final ({String label, SpeechRuntimeStatus status}) leftover
+        in <({String label, SpeechRuntimeStatus status})>[
+          (
+            label: 'comments still queued',
+            status: const SpeechRuntimeStatus(
+              enabled: true,
+              engineState: 'READY',
+              playerState: 'IDLE',
+              queueSize: 2,
+              currentSpeakerId: 0,
+            ),
+          ),
+          (
+            label: 'a comment still being read',
+            status: const SpeechRuntimeStatus(
+              enabled: true,
+              engineState: 'READY',
+              playerState: 'PLAYING',
+              queueSize: 0,
+              currentCommentId: 'previous-connection-comment',
+              currentSpeakerId: 0,
+            ),
+          ),
+        ]) {
+      testWidgets(
+        'never-streamed ended broadcast keeps grace with ${leftover.label}',
+        (WidgetTester tester) async {
+          final ConnectionSupervisor supervisor =
+              _buildNeverStreamedSupervisor();
+          int graceEndedCount = 0;
+
+          await tester.pumpWidget(
+            _buildGraceHost(
+              supervisor: supervisor,
+              speechPlatform: fakePlatform,
+              speechSettings: const SpeechSettings(enabled: true),
+              onSpeechGraceEnded: () => graceEndedCount++,
+            ),
+          );
+          await tester.pumpAndSettle();
+          fakePlatform.stopCalled = false;
+          fakePlatform.statusToReturn = leftover.status;
+
+          expect(supervisor.endBroadcast(), isTrue);
+          await tester.pump(const Duration(seconds: 5));
+          expect(fakePlatform.stopCalled, isFalse);
+          expect(graceEndedCount, 0);
+
+          // The normal #739 early end still applies once the queue drains.
+          fakePlatform.emitEvent(
+            const SpeechEvent(
+              type: SpeechEventType.queueUpdated,
+              payload: <String, dynamic>{'size': 0},
+            ),
+          );
+          await tester.pump();
+          expect(fakePlatform.stopCalled, isTrue);
+          expect(graceEndedCount, 1);
+
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+      );
+    }
+
+    testWidgets(
+      'never-streamed ended broadcast keeps grace when the queue state '
+      'cannot be read',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildNeverStreamedSupervisor();
+        int graceEndedCount = 0;
+
+        await tester.pumpWidget(
+          _buildGraceHost(
+            supervisor: supervisor,
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+            onSpeechGraceEnded: () => graceEndedCount++,
+          ),
+        );
+        await tester.pumpAndSettle();
+        fakePlatform.stopCalled = false;
+        // Fail only the queue check, not the engine check done at start-up.
+        fakePlatform.getStatusError = Exception('platform channel failure');
+        fakePlatform.getStatusErrorAtCall = fakePlatform.getStatusCallCount + 1;
+
+        expect(supervisor.endBroadcast(), isTrue);
+        await tester.pump(const Duration(seconds: 5));
+        expect(
+          fakePlatform.stopCalled,
+          isFalse,
+          reason: 'when unsure, keep reading (the pre-#1052 behaviour)',
+        );
+        expect(graceEndedCount, 0);
+
+        await tester.pump(const Duration(seconds: 26));
+        expect(fakePlatform.stopCalled, isTrue, reason: 'timeout still ends');
+        expect(graceEndedCount, 1);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+
+    testWidgets(
+      'idle-queue answer that arrives after a reconnect does not stop speech',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildNeverStreamedSupervisor();
+        int graceEndedCount = 0;
+
+        await tester.pumpWidget(
+          _buildGraceHost(
+            supervisor: supervisor,
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+            onSpeechGraceEnded: () => graceEndedCount++,
+          ),
+        );
+        await tester.pumpAndSettle();
+        fakePlatform.stopCalled = false;
+
+        // The user taps reconnect before the queue check answers.
+        expect(supervisor.endBroadcast(), isTrue);
+        expect(supervisor.retryConnectionFromTerminal(), isTrue);
+        await tester.pump();
+
+        expect(fakePlatform.stopCalled, isFalse);
+        expect(graceEndedCount, 0);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+
+    // Issue #1052 guard: a broadcast that was watched live keeps the full
+    // #739 grace even when the queue looks idle, both for a clean end and
+    // for an end that happens mid-reconnect (#1017).
+    for (final ({String label, bool viaReconnect}) liveEnd
+        in <({String label, bool viaReconnect})>[
+          (label: 'ends normally', viaReconnect: false),
+          (label: 'ends while reconnecting', viaReconnect: true),
+        ]) {
+      testWidgets(
+        'live-watched broadcast that ${liveEnd.label} keeps the 30 s grace',
+        (WidgetTester tester) async {
+          final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+          int graceEndedCount = 0;
+
+          await tester.pumpWidget(
+            _buildGraceHost(
+              supervisor: supervisor,
+              speechPlatform: fakePlatform,
+              speechSettings: const SpeechSettings(enabled: true),
+              onSpeechGraceEnded: () => graceEndedCount++,
+            ),
+          );
+          await tester.pumpAndSettle();
+          fakePlatform.stopCalled = false;
+
+          if (liveEnd.viaReconnect) {
+            expect(
+              supervisor.onStreamDisconnected(
+                ConnectionErrorCode.ndgrStreamFailed,
+              ),
+              isTrue,
+            );
+            await tester.pump();
+          }
+          expect(supervisor.endBroadcast(), isTrue);
+          expect(supervisor.hasStreamedSinceConnectionStart, isTrue);
+          await tester.pump(const Duration(seconds: 29));
+          expect(fakePlatform.stopCalled, isFalse);
+          expect(graceEndedCount, 0);
+
+          await tester.pump(const Duration(seconds: 2));
+          expect(fakePlatform.stopCalled, isTrue);
+          expect(graceEndedCount, 1);
+
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+      );
+    }
+
+    testWidgets(
+      'live-watched broadcast with speech disabled does not release the FGS '
+      'grace from the screen',
+      (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+        int graceEndedCount = 0;
+
+        await tester.pumpWidget(
+          _buildGraceHost(
+            supervisor: supervisor,
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: false),
+            onSpeechGraceEnded: () => graceEndedCount++,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(supervisor.endBroadcast(), isTrue);
+        await tester.pump();
+
+        expect(graceEndedCount, 0, reason: 'out of scope for #1052');
+
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+
     testWidgets(
       'speech startup aborts if the broadcast ends while start is pending',
       (WidgetTester tester) async {
@@ -6215,6 +6497,40 @@ ConnectionSupervisor _buildStreamingSupervisor() {
   expect(supervisor.onSessionWsConnected(), isTrue);
   expect(supervisor.onNdgrEndpointResolved(), isTrue);
   return supervisor;
+}
+
+/// A connection that has started but never reached a streaming state, as
+/// when opening a broadcast that had already ended (Issue #1052).
+ConnectionSupervisor _buildNeverStreamedSupervisor() {
+  final ConnectionSupervisor supervisor = ConnectionSupervisor();
+  expect(supervisor.startConnection(), isTrue);
+  return supervisor;
+}
+
+Widget _buildGraceHost({
+  required ConnectionSupervisor supervisor,
+  required FakeCommentSpeechPlatform speechPlatform,
+  required SpeechSettings speechSettings,
+  VoidCallback? onSpeechGraceEnded,
+}) {
+  return MaterialApp(
+    home: CommentScreen(
+      programInfo: const CommentProgramInfo(lv: 'lv123456789'),
+      connectionSupervisor: supervisor,
+      messages: const <AppMessage>[],
+      callbacks: CommentCallbacks(
+        onStopAllConnections: () async {},
+        onReconnectSameLv: () async {},
+        onDifferentLvConnected: (_, _) async {},
+      ),
+      themeMode: AppThemeMode.light,
+      speechConfig: CommentSpeechConfig(
+        speechPlatform: speechPlatform,
+        speechSettings: speechSettings,
+        onSpeechGraceEnded: onSpeechGraceEnded,
+      ),
+    ),
+  );
 }
 
 class _NoopListenable implements Listenable {

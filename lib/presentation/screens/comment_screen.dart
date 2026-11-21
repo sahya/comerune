@@ -2273,9 +2273,23 @@ class _CommentScreenState extends State<CommentScreen>
   /// [_speechGraceTimer] so the queue can drain naturally.
   void _onBroadcastEnded() {
     final bool graceEnabled = widget.speechConfig.playRemainingAfterEnded;
+    // Issue #1052: `false` means the broadcast was already over when it was
+    // opened, so this connection delivered no comments to read.
+    final bool neverStreamed =
+        !widget.connectionSupervisor.hasStreamedSinceConnectionStart;
     if (!graceEnabled || !_speechStarted) {
       // Pre-#739 behaviour: stop immediately.
       unawaited(_stopSpeech());
+      final VoidCallback? onSpeechGraceEnded =
+          widget.speechConfig.onSpeechGraceEnded;
+      if (graceEnabled && neverStreamed && onSpeechGraceEnded != null) {
+        // Nothing is being read, so release the FGS grace too instead of
+        // leaving "読み上げ完了待ち..." up for 30 s. Deferred to a microtask
+        // so it runs after every connection listener has seen `ended`;
+        // otherwise it would depend on the FGS controller having entered
+        // its grace before this screen's listener ran.
+        scheduleMicrotask(onSpeechGraceEnded);
+      }
       return;
     }
     _debugLog(
@@ -2284,11 +2298,44 @@ class _CommentScreenState extends State<CommentScreen>
     );
     _speechGraceTimer?.cancel();
     _isInSpeechGrace = true;
-    _speechGraceTimer = Timer(_speechGraceDuration, () {
+    final Timer graceTimer = Timer(_speechGraceDuration, () {
       // Grace window expired — even if comments remain, force-stop so the
       // engine and the FGS do not linger forever.
       _endSpeechGrace(reason: 'timeout');
     });
+    _speechGraceTimer = graceTimer;
+    if (neverStreamed) {
+      unawaited(_endSpeechGraceIfNothingToRead(graceTimer));
+    }
+  }
+
+  /// Issue #1052: ends the grace window at once when the native queue is
+  /// idle. The queue is not cleared on reconnect or on an lv switch inside
+  /// this screen, so comments from the previous connection may still be
+  /// waiting even though this connection never streamed — those keep the
+  /// normal grace. Native sends no `queueUpdated` for a queue that was
+  /// already empty, so the state is read with `getStatus()` instead.
+  ///
+  /// When unsure (the status call fails, or the grace window changed while
+  /// waiting for the answer) this does nothing and the grace runs as before.
+  Future<void> _endSpeechGraceIfNothingToRead(Timer graceTimer) async {
+    final CommentSpeechPlatform? platform = widget.speechConfig.speechPlatform;
+    if (platform == null) return;
+    final SpeechRuntimeStatus status;
+    try {
+      status = await platform.getStatus();
+    } catch (e, stackTrace) {
+      _errorLog(
+        '[CommentScreen] broadcastEnded: queue check FAILED, keeping grace',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      return;
+    }
+    if (!mounted || !identical(_speechGraceTimer, graceTimer)) return;
+    if (status.queueSize == 0 && status.currentCommentId == null) {
+      _endSpeechGrace(reason: 'nothing_to_read');
+    }
   }
 
   /// Cancels the grace timer without firing the deferred stop. Used when
