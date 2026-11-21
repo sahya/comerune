@@ -1,7 +1,7 @@
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../application/settings/settings_store.dart';
+import '../../data/comment_log/comment_log_directory_picker.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/ng_display_subcategory.dart';
 import '../mixins/settings_screen_mixin.dart';
@@ -165,6 +165,51 @@ class _CommentDisplaySettingsScreenState
       return;
     }
     updateAndSave(spec.set(settings, true));
+  }
+
+  /// Handles taps on the "コメントログ自動保存" switch.
+  ///
+  /// Turning it ON asks for a save folder first and only persists when a
+  /// usable one was chosen. A cancel stays silent; a folder the auto-save
+  /// cannot write to shows a SnackBar so the tap does not look ignored.
+  Future<void> _onAutoSaveCommentLogChanged({
+    required AppSettings settings,
+    required bool value,
+  }) async {
+    if (!value) {
+      updateAndSave(settings.copyWith(autoSaveCommentLog: false));
+      return;
+    }
+    final CommentLogDirectoryPickResult result =
+        await pickCommentLogDirectory();
+    if (!mounted) {
+      return;
+    }
+    switch (result) {
+      case CommentLogDirectoryPicked(:final String path):
+        updateAndSave(
+          settings.copyWith(
+            autoSaveCommentLog: true,
+            autoSaveCommentLogPath: path,
+          ),
+        );
+      case CommentLogDirectoryPickCancelled():
+        break;
+      case CommentLogDirectoryUnusable():
+        _showSnackBar(
+          AppStrings.commentDisplaySettings.autoSaveFolderUnusableSnackBar,
+        );
+      case CommentLogDirectoryPickFailed():
+        _showSnackBar(
+          AppStrings.commentDisplaySettings.autoSaveFolderPickFailedSnackBar,
+        );
+    }
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -476,29 +521,10 @@ class _CommentDisplaySettingsScreenState
                         subtitle: const Text('接続終了時にコメントをファイルに保存'),
                         contentPadding: EdgeInsets.zero,
                         value: settings.autoSaveCommentLog,
-                        onChanged: (bool value) async {
-                          if (value) {
-                            // SAF オプション付きの `androidOptions` を渡さないこと
-                            // （file_picker 12 時点の挙動）。渡した場合、戻り値が実ファイル
-                            // パスではなく content:// URI 文字列に変わり、保存先を
-                            // `Directory` として直接扱っている自動保存が実行時に壊れる。
-                            final String? directory =
-                                await FilePicker.getDirectoryPath();
-                            if (directory == null) {
-                              return;
-                            }
-                            updateAndSave(
-                              settings.copyWith(
-                                autoSaveCommentLog: true,
-                                autoSaveCommentLogPath: directory,
-                              ),
-                            );
-                          } else {
-                            updateAndSave(
-                              settings.copyWith(autoSaveCommentLog: false),
-                            );
-                          }
-                        },
+                        onChanged: (bool value) => _onAutoSaveCommentLogChanged(
+                          settings: settings,
+                          value: value,
+                        ),
                       ),
                       if (settings.autoSaveCommentLog)
                         Padding(

@@ -16,6 +16,10 @@ object VoicevoxModelManifest {
     // File sizes are measured values from VOICEVOX VVM 0.16.2 release.
     // Actual download progress uses HTTP Content-Length from the server.
     //
+    // sha256 is the digest of each file in that release. A download whose
+    // digest differs is discarded, so update it together with the URL when
+    // bumping the VVM version.
+    //
     // VVM バージョンアップ時は公式 README と照合すること:
     // https://github.com/VOICEVOX/voicevox_vvm/blob/main/README.md
     //
@@ -33,6 +37,7 @@ object VoicevoxModelManifest {
             vvmFileName = "0.vvm",
             downloadUrl = "${VVM_BASE_URL}0.vvm",
             fileSizeBytes = 58_214_379L,
+            sha256 = "917e592cae92a02fb7668bd9e168df4e39c8ab2f5302c2be71906c70ec4e2df2",
             isBundled = false
         ),
         VoicevoxModelInfo(
@@ -42,6 +47,7 @@ object VoicevoxModelManifest {
             vvmFileName = "3.vvm",
             downloadUrl = "${VVM_BASE_URL}3.vvm",
             fileSizeBytes = 61_730_024L,
+            sha256 = "be05ba9a196bc5acc298daa2c85de1188f0795b46422581437e2b07071963e03",
             isBundled = false
         ),
         VoicevoxModelInfo(
@@ -51,6 +57,7 @@ object VoicevoxModelManifest {
             vvmFileName = "n0.vvm",
             downloadUrl = "${VVM_BASE_URL}n0.vvm",
             fileSizeBytes = 73_074_437L,
+            sha256 = "e91e2e6ed5cfa6940ff55b61234ba89c631fce3d0146c23685552e7f5d2fe437",
             isBundled = false
         )
     )

@@ -228,10 +228,11 @@ class FavoriteUserLiveChecker {
 
         // Single retry — if this also fails, give up.
         final HttpClientResponse retryResponse = await _sendRequest(uri);
-        return _handleResponse(retryResponse, userId, maskedUserId);
+        // `await` keeps body-read errors inside this try/catch.
+        return await _handleResponse(retryResponse, userId, maskedUserId);
       }
 
-      return _handleResponse(response, userId, maskedUserId);
+      return await _handleResponse(response, userId, maskedUserId);
     } on Exception catch (e) {
       appErrorLog(
         name: 'FavoriteUserLiveChecker',

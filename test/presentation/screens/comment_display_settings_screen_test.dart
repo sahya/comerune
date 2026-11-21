@@ -1,11 +1,15 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/application/settings/settings_store.dart';
+import 'package:comerune/data/comment_log/comment_log_directory_picker.dart';
 import 'package:comerune/domain/models/app_settings.dart';
 import 'package:comerune/presentation/screens/comment_display_settings_screen.dart';
 import 'package:comerune/presentation/strings/app_strings.dart';
 
+import '../../helpers/fake_file_picker_platform.dart';
 import '../../helpers/in_memory_shared_preferences.dart';
 import '../../helpers/settings_test_helpers.dart';
 
@@ -78,8 +82,9 @@ void main() {
     testWidgets('auto-save comment log toggle persists value when turned off', (
       WidgetTester tester,
     ) async {
-      // Pre-set auto-save to ON so we can test turning it OFF
-      // (turning ON requires a file picker which cannot be mocked easily).
+      // Pre-set auto-save to ON so we can test turning it OFF.
+      // Turning it ON goes through the folder picker; see
+      // `_autoSaveFolderPickerTests`.
       final InMemorySharedPreferences prefs = InMemorySharedPreferences();
       await prefs.setBool('settings.comment.autoSaveCommentLog', true);
       final SharedPreferencesSettingsStore settingsStore =
@@ -507,6 +512,7 @@ void main() {
   });
 
   _ngDisplayToggleTests();
+  _autoSaveFolderPickerTests();
 }
 
 /// Per-subcategory test parameters so the same ON/OFF flow runs against
@@ -904,5 +910,190 @@ void _runTwoLineMetaFontPercentSliderTests() {
 
     final AppSettings loaded = await settingsStore.load();
     expect(loaded.commentTwoLineMetaFontPercent, 75);
+  });
+}
+
+void _autoSaveFolderPickerTests() {
+  // The Android picker answers `unknown_path` for a folder it cannot turn
+  // into a filesystem path, and `null` for a cancel. Only the first should
+  // tell the user anything.
+  group('auto-save comment log folder picker', () {
+    const Key switchKey = Key('auto-save-comment-log-switch');
+    final String unusableMessage =
+        AppStrings.commentDisplaySettings.autoSaveFolderUnusableSnackBar;
+    final String failedMessage =
+        AppStrings.commentDisplaySettings.autoSaveFolderPickFailedSnackBar;
+
+    late FakeFilePickerPlatform fakeFilePicker;
+    late List<MethodCall> channelCalls;
+    late SharedPreferencesSettingsStore settingsStore;
+
+    setUp(() {
+      fakeFilePicker = FakeFilePickerPlatform();
+      FilePickerPlatform.instance = fakeFilePicker;
+      channelCalls = <MethodCall>[];
+      settingsStore = SharedPreferencesSettingsStore(
+        prefs: InMemorySharedPreferences(),
+      );
+    });
+
+    void answerChannel(WidgetTester tester, Object? Function() answer) {
+      final TestDefaultBinaryMessenger messenger =
+          tester.binding.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(commentLogDirectoryPickerChannel, (
+        MethodCall call,
+      ) async {
+        channelCalls.add(call);
+        return answer();
+      });
+      addTearDown(
+        () => messenger.setMockMethodCallHandler(
+          commentLogDirectoryPickerChannel,
+          null,
+        ),
+      );
+    }
+
+    // A handler that throws MissingPluginException answers like an
+    // unregistered channel, but inside fake time. Leaving the channel
+    // unmocked would deliver that answer after `pumpAndSettle` returns.
+    void answerMissingChannel(WidgetTester tester) {
+      answerChannel(tester, () => throw MissingPluginException());
+    }
+
+    Future<void> turnOn(WidgetTester tester) async {
+      await tester.pumpWidget(_buildScreen(settingsStore));
+      await tester.pumpAndSettle();
+      await toggleSwitchByKey(tester, _listKey, switchKey);
+    }
+
+    testWidgets('saves the chosen folder without SAF options', (
+      WidgetTester tester,
+    ) async {
+      answerChannel(tester, () => '/storage/emulated/0/Documents/logs');
+
+      await turnOn(tester);
+
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.autoSaveCommentLog, isTrue);
+      expect(
+        loaded.autoSaveCommentLogPath,
+        '/storage/emulated/0/Documents/logs',
+      );
+      expect(find.byType(SnackBar), findsNothing);
+      // SAF options would make the answer a content:// URI.
+      expect(channelCalls, hasLength(1));
+      expect(channelCalls.single.method, 'dir');
+      expect(channelCalls.single.arguments, <String, Object?>{
+        'androidSafOptions': null,
+      });
+    });
+
+    testWidgets('cancelling the picker shows nothing and saves nothing', (
+      WidgetTester tester,
+    ) async {
+      answerChannel(tester, () => null);
+
+      await turnOn(tester);
+
+      expect(find.byType(SnackBar), findsNothing);
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.autoSaveCommentLog, isFalse);
+      expect(loaded.autoSaveCommentLogPath, isEmpty);
+    });
+
+    testWidgets('a folder without a filesystem path shows a message', (
+      WidgetTester tester,
+    ) async {
+      answerChannel(
+        tester,
+        () => throw PlatformException(
+          code: 'unknown_path',
+          message: 'Failed to retrieve directory path.',
+        ),
+      );
+
+      await turnOn(tester);
+
+      expect(find.text(unusableMessage), findsOneWidget);
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.autoSaveCommentLog, isFalse);
+      // The error came from the channel, not from the swallowing API.
+      expect(fakeFilePicker.directoryCalls, isEmpty);
+    });
+
+    testWidgets('a content:// answer is not saved as a folder', (
+      WidgetTester tester,
+    ) async {
+      answerChannel(
+        tester,
+        () => 'content://com.android.externalstorage.documents/tree/x',
+      );
+
+      await turnOn(tester);
+
+      expect(find.text(unusableMessage), findsOneWidget);
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.autoSaveCommentLog, isFalse);
+    });
+
+    testWidgets('another picker error shows the generic failure message', (
+      WidgetTester tester,
+    ) async {
+      answerChannel(
+        tester,
+        () => throw PlatformException(code: 'already_active'),
+      );
+
+      await turnOn(tester);
+
+      expect(find.text(failedMessage), findsOneWidget);
+      expect(find.text(unusableMessage), findsNothing);
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.autoSaveCommentLog, isFalse);
+    });
+
+    testWidgets('falls back to FilePicker when the channel is missing', (
+      WidgetTester tester,
+    ) async {
+      answerMissingChannel(tester);
+      fakeFilePicker.directoryToReturn = '/storage/emulated/0/Documents';
+
+      await turnOn(tester);
+
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.autoSaveCommentLog, isTrue);
+      expect(loaded.autoSaveCommentLogPath, '/storage/emulated/0/Documents');
+      // The plain options type carries no SAF settings.
+      expect(fakeFilePicker.directoryCalls.single.runtimeType, AndroidOptions);
+    });
+
+    testWidgets('fallback null stays silent like a cancel', (
+      WidgetTester tester,
+    ) async {
+      answerMissingChannel(tester);
+
+      await turnOn(tester);
+
+      expect(fakeFilePicker.directoryCalls, hasLength(1));
+      expect(find.byType(SnackBar), findsNothing);
+      final AppSettings loaded = await settingsStore.load();
+      expect(loaded.autoSaveCommentLog, isFalse);
+    });
+
+    testWidgets(
+      'other platforms use FilePicker and never call the Android channel',
+      (WidgetTester tester) async {
+        answerChannel(tester, () => throw PlatformException(code: 'x'));
+        fakeFilePicker.directoryToReturn = '/home/user/logs';
+
+        await turnOn(tester);
+
+        expect(channelCalls, isEmpty);
+        final AppSettings loaded = await settingsStore.load();
+        expect(loaded.autoSaveCommentLogPath, '/home/user/logs');
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.linux),
+    );
   });
 }
