@@ -463,9 +463,11 @@ class SpeechControllerImpl(
         currentCommentId = item.commentId
         currentText = item.text
 
-        // Issue #931: comerune no longer requests AudioFocus per utterance,
-        // so the platform no longer auto-stops TTS when telephony takes
-        // focus. Restore the previous "silent during a call" behavior by
+        // Issue #931: in the default mix mode comerune does not request
+        // AudioFocus, so the platform does not auto-stop TTS when telephony
+        // takes focus (Issue #1014's opt-in duck mode does request it).
+        // This check applies to both modes. Restore the previous
+        // "silent during a call" behavior by
         // probing the audio mode at dispatch time and skipping the
         // utterance entirely. The comment stays in CommentLog (Flutter
         // side) because we only drop the speak, not the log entry.

@@ -316,6 +316,40 @@ void main() {
       expect(loaded.readNicoadComment, isTrue);
     });
 
+    // Issue #1014: duck-other-audio Switch persists and reaches the engine.
+    testWidgets('duck other audio switch persists and pushes to platform', (
+      WidgetTester tester,
+    ) async {
+      final SharedPreferencesSettingsStore settingsStore =
+          SharedPreferencesSettingsStore(prefs: InMemorySharedPreferences());
+      final FakeCommentSpeechPlatform fakePlatform =
+          FakeCommentSpeechPlatform();
+
+      await tester.pumpWidget(
+        _buildScreenWithPlatform(settingsStore, fakePlatform),
+      );
+      await tester.pumpAndSettle();
+
+      AppSettings loaded = await settingsStore.load();
+      expect(loaded.duckOtherAudio, isFalse);
+      fakePlatform.lastUpdatedSettings = null;
+
+      await scrollToKeyInList(
+        tester,
+        _listKey,
+        const Key('duck-other-audio-switch'),
+      );
+      await toggleSwitchByKey(
+        tester,
+        _listKey,
+        const Key('duck-other-audio-switch'),
+      );
+
+      loaded = await settingsStore.load();
+      expect(loaded.duckOtherAudio, isTrue);
+      expect(fakePlatform.lastUpdatedSettings?.duckOtherAudio, isTrue);
+    });
+
     testWidgets('VOICEVOX speed slider change persists value', (
       WidgetTester tester,
     ) async {

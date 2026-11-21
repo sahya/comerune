@@ -392,6 +392,7 @@ class AppSettings {
     required this.androidTtsPitch,
     required this.androidTtsVolume,
     required this.playRemainingAfterEnded,
+    required this.duckOtherAudio,
     required this.commentSortOrder,
     required this.showCommentNo,
     required this.autoExtendBroadcastEnabled,
@@ -465,6 +466,9 @@ class AppSettings {
     androidTtsPitch: 1.0,
     androidTtsVolume: 1.0,
     playRemainingAfterEnded: true,
+    // Issue #1014. Default OFF keeps the v1.3.0 behaviour (speech plays on
+    // top of other apps' media without lowering it).
+    duckOtherAudio: false,
     commentSortOrder: CommentSortOrder.ascending,
     // Issue #784. Default OFF so existing users see no change; opt-in via
     // CommentDisplaySettingsScreen.
@@ -647,6 +651,14 @@ class AppSettings {
   /// `failed` / `stopped` には適用されず、これらは従来通り即時停止する。
   final bool playRemainingAfterEnded;
 
+  /// Issue #1014: `true` のとき、読み上げ中は他アプリ（音楽・動画など）の
+  /// 音を下げる／一時停止させる（#931 以前の挙動）。
+  ///
+  /// 既定 `false` は他アプリの音を下げずに読み上げを重ねて再生する
+  /// （#931 で導入した v1.3.0 の挙動）。通話中の読み上げスキップは
+  /// どちらの値でも有効。
+  final bool duckOtherAudio;
+
   /// コメント画面のスクロール方向（並び順）。
   ///
   /// `ascending`（既定）は古いコメントが上、新しいコメントが下に並ぶ。
@@ -820,6 +832,7 @@ class AppSettings {
     double? androidTtsPitch,
     double? androidTtsVolume,
     bool? playRemainingAfterEnded,
+    bool? duckOtherAudio,
     CommentSortOrder? commentSortOrder,
     bool? showCommentNo,
     bool? autoExtendBroadcastEnabled,
@@ -899,6 +912,7 @@ class AppSettings {
       androidTtsVolume: androidTtsVolume ?? this.androidTtsVolume,
       playRemainingAfterEnded:
           playRemainingAfterEnded ?? this.playRemainingAfterEnded,
+      duckOtherAudio: duckOtherAudio ?? this.duckOtherAudio,
       commentSortOrder: commentSortOrder ?? this.commentSortOrder,
       showCommentNo: showCommentNo ?? this.showCommentNo,
       autoExtendBroadcastEnabled:
@@ -998,6 +1012,7 @@ class AppSettings {
       'androidTtsPitch': androidTtsPitch,
       'androidTtsVolume': androidTtsVolume,
       'playRemainingAfterEnded': playRemainingAfterEnded,
+      'duckOtherAudio': duckOtherAudio,
       'commentSortOrder': commentSortOrder.storageValue,
       'showCommentNo': showCommentNo,
       'autoExtendBroadcastEnabled': autoExtendBroadcastEnabled,
@@ -1195,6 +1210,12 @@ class AppSettings {
         bool b => b,
         _ => d.playRemainingAfterEnded,
       },
+      // Issue #1014: 旧 Export ファイル（このキーが存在しない）や bool 以外の
+      // 値は既定値 (false = 重ねて再生) にフォールバックする。
+      duckOtherAudio: switch (json['duckOtherAudio']) {
+        bool b => b,
+        _ => d.duckOtherAudio,
+      },
       // Issue #774: 旧 Export ファイル（このキーが存在しない）や不正値は
       // デフォルト (ascending) にフォールバックする。
       commentSortOrder: switch (json['commentSortOrder']) {
@@ -1254,6 +1275,7 @@ class AppSettings {
     androidTtsSpeed: androidTtsSpeed,
     androidTtsPitch: androidTtsPitch,
     androidTtsVolume: androidTtsVolume,
+    duckOtherAudio: duckOtherAudio,
   );
 }
 
