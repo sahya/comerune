@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
 import 'dart:ui';
@@ -39,6 +38,7 @@ import 'data/auth/user_session_store.dart';
 import 'data/comment/live_comment_repository.dart';
 import 'data/comment_log/broadcast_history_store.dart';
 import 'data/comment_log/comment_log_writer.dart';
+import 'data/connection/comment_post_time_budget.dart';
 import 'data/connection/program_info_resolver.dart';
 import 'data/broadcaster/broadcaster_name_store.dart';
 import 'data/filter/broadcaster_ng_store.dart';
@@ -47,6 +47,7 @@ import 'data/follow/follow_program_repository.dart';
 import 'data/follow/my_program_repository.dart';
 import 'data/foreground_service/foreground_service_manager.dart';
 import 'data/niconico/broadcaster_embed_resolver.dart';
+import 'data/connection/watch_page_web_socket_url_resolver.dart';
 import 'data/connection/web_socket_channel_legacy_web_socket.dart';
 import 'data/user/file_user_attribute_store.dart';
 import 'data/user/user_attribute_store.dart';
@@ -953,6 +954,8 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
   final StreamController<reconnect.SessionWsEvent> _eventsController =
       StreamController<reconnect.SessionWsEvent>.broadcast();
 
+  final WatchPageWebSocketUrlResolver _watchPageResolver =
+      WatchPageWebSocketUrlResolver();
   session_impl.SessionWsClient? _activeClient;
   StreamSubscription<session_impl.SessionWsEvent>? _activeSubscription;
   Completer<reconnect.SessionEndpoints>? _pendingEndpointsCompleter;
@@ -1173,7 +1176,12 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
   Future<void> _ensureCommentPostWs(String lv) async {
     final session_impl.SessionWsClient? existing = _activeClient;
     if (existing != null) {
-      await existing.dispose();
+      // A half-open socket can make close() slow; never let it stall the
+      // post (Issue #1029). A late close has no user-visible effect.
+      await existing.dispose().timeout(
+        CommentPostTimeBudget.disposePrevious,
+        onTimeout: () {},
+      );
     }
     await _activeSubscription?.cancel();
 
@@ -1181,7 +1189,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
 
     Uri? resolvedWsUri;
     if (userSession.isNotEmpty) {
-      resolvedWsUri = await _resolveWebSocketUrl(lv, userSession);
+      resolvedWsUri = await _watchPageResolver.resolve(lv, userSession);
 
       if (resolvedWsUri != null && _isAnonymousWsUri(resolvedWsUri)) {
         appDebugLog(
@@ -1204,6 +1212,10 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       webSocketUri: resolvedWsUri,
       startWatchingMode: session_impl.SessionWsStartWatchingMode.commentOnly,
       connectHeaders: connectHeaders,
+      // Comment-only: a post timeout means the socket is dead, so drop it
+      // and reconnect on the next post. The fallback (full-mode) client is
+      // shared with endpoint resolution and must not opt in (Issue #1029).
+      disconnectOnPostTimeout: true,
     );
     _activeClient = client;
     _activeSubscription = client.events.listen((
@@ -1223,144 +1235,6 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
   static bool _isAnonymousWsUri(Uri uri) {
     final String? token = uri.queryParameters['audience_token'];
     return token != null && token.contains('anonymous');
-  }
-
-  static const String _watchPageBaseUrl = 'https://live.nicovideo.jp/watch/';
-
-  /// Desktop User-Agent for the watch page fetch.
-  ///
-  /// The mobile Android UA (`Chrome Mobile`) triggers a 302 redirect to
-  /// `sp.live.nicovideo.jp` which serves a mobile page WITHOUT the
-  /// `<script id="embedded-data">` tag. A desktop Chrome UA returns the
-  /// desktop page that contains embedded-data with the webSocketUrl.
-  static const String _desktopUserAgent =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-      '(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
-
-  static final RegExp _embeddedDataPattern = RegExp(
-    r'<script[^>]*\bid="embedded-data"[^>]*\bdata-props="([^"]*)"',
-    caseSensitive: false,
-  );
-
-  static const int _maxWatchPageRedirects = 5;
-
-  Future<Uri?> _resolveWebSocketUrl(String lv, String userSession) async {
-    return _fetchWatchPageWsUrl(
-      Uri.parse('$_watchPageBaseUrl$lv'),
-      userSession,
-    );
-  }
-
-  Future<Uri?> _fetchWatchPageWsUrl(Uri watchUri, String userSession) async {
-    HttpClient? httpClient;
-    try {
-      httpClient = HttpClient();
-      httpClient.connectionTimeout = const Duration(seconds: 5);
-
-      Uri currentUri = watchUri;
-      HttpClientResponse? response;
-
-      for (
-        int redirectCount = 0;
-        redirectCount <= _maxWatchPageRedirects;
-        redirectCount++
-      ) {
-        final HttpClientRequest request = await httpClient.getUrl(currentUri);
-        request.followRedirects = false;
-        request.headers.set('Cookie', 'user_session=$userSession');
-        request.headers.set('X-Niconico-Session', userSession);
-        request.headers.set('User-Agent', _desktopUserAgent);
-        request.headers.set('Accept', 'text/html');
-
-        response = await request.close().timeout(const Duration(seconds: 8));
-        if (response.statusCode >= 300 && response.statusCode < 400) {
-          final String? location = response.headers.value('location');
-          await response.drain<void>();
-          if (location == null || location.isEmpty) {
-            return null;
-          }
-          currentUri = currentUri.resolve(location);
-          if (currentUri.host.startsWith('sp.')) {
-            return null;
-          }
-          continue;
-        }
-
-        break;
-      }
-
-      if (response == null || response.statusCode != 200) {
-        if (response != null) {
-          await response.drain<void>();
-        }
-        return null;
-      }
-
-      final String body = await response.transform(utf8.decoder).join();
-      return _extractWsUrlFromHtml(body);
-    } on Object catch (e) {
-      appDebugLog('[SessionWsClientAdapter] _fetchWatchPageWsUrl: failed: $e');
-      return null;
-    } finally {
-      httpClient?.close(force: true);
-    }
-  }
-
-  Uri? _extractWsUrlFromHtml(String body) {
-    final RegExpMatch? match = _embeddedDataPattern.firstMatch(body);
-    if (match == null) {
-      return null;
-    }
-
-    final String? escaped = match.group(1);
-    if (escaped == null || escaped.isEmpty) {
-      return null;
-    }
-    final String json = _unescapeHtmlAttribute(escaped);
-    final Object? decoded = jsonDecode(json);
-    if (decoded is! Map<String, dynamic>) {
-      return null;
-    }
-
-    final Object? site = decoded['site'];
-    if (site is! Map<String, dynamic>) {
-      return null;
-    }
-    final Object? relive = site['relive'];
-    if (relive is! Map<String, dynamic>) {
-      return null;
-    }
-    final String? wsUrl = relive['webSocketUrl'] as String?;
-    if (wsUrl == null || wsUrl.isEmpty) {
-      return null;
-    }
-
-    final Uri parsed = Uri.parse(wsUrl);
-    final Map<String, String> queryParams = Map<String, String>.from(
-      parsed.queryParameters,
-    );
-    if (!queryParams.containsKey('frontend_id')) {
-      queryParams['frontend_id'] = '9';
-    }
-    return parsed.replace(queryParameters: queryParams);
-  }
-
-  static String _unescapeHtmlAttribute(String input) {
-    String s = input;
-    s = s.replaceAll('&lt;', '<');
-    s = s.replaceAll('&gt;', '>');
-    s = s.replaceAll('&quot;', '"');
-    s = s.replaceAll('&apos;', "'");
-    s = s.replaceAll('&#34;', '"');
-    s = s.replaceAll('&#39;', "'");
-    s = s.replaceAll('&#x22;', '"');
-    s = s.replaceAll('&#x27;', "'");
-    s = s.replaceAll('&#x2F;', '/');
-    s = s.replaceAll('&#47;', '/');
-    s = s.replaceAll('&#60;', '<');
-    s = s.replaceAll('&#62;', '>');
-    s = s.replaceAll('&amp;', '&');
-    return s;
   }
 
   Future<void> dispose() async {
