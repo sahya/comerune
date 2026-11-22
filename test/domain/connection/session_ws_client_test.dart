@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:comerune/domain/connection/session_ws_client.dart';
 import 'package:comerune/domain/models/comment_post_result.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/recording_settings_store.dart';
 
 void main() {
   group('SessionWsMessageParser', () {
@@ -212,6 +215,7 @@ void main() {
       final String raw = jsonEncode(<String, Object?>{
         'url': 'https://u:p@e.co:9/p?a=1#f',
         'socket': 'wss://u:p@e.co:9/ws?token=abc#x',
+        'plainSocket': 'ws://u:p@e.co:9/ws?token=abc#x',
       });
 
       final String sanitized = SessionWsLogSanitizer.sanitizeRawJson(raw);
@@ -220,6 +224,7 @@ void main() {
 
       expect(decoded['url'], 'https://e.co:9/p');
       expect(decoded['socket'], 'wss://e.co:9/ws');
+      expect(decoded['plainSocket'], 'ws://e.co:9/ws');
     });
 
     test('masks password-like keys as sensitive information', () {
@@ -231,6 +236,50 @@ void main() {
           jsonDecode(sanitized) as Map<String, dynamic>;
 
       expect(decoded['password'], '***');
+    });
+
+    test('sanitizeText strips URL queries in free-form text untruncated', () {
+      const String text =
+          "WebSocketChannelException: WebSocketException: Connection to "
+          "'https://a.live2.nicovideo.jp/wsapi/v2/watch/lv1?audience_token=t1#' "
+          'was not upgraded to websocket; '
+          'also ws://127.0.0.1:8080/ws?audience_token=t2 and '
+          'wss://u:p@e.co/ws?token=t3';
+
+      final String sanitized = SessionWsLogSanitizer.sanitizeText(text);
+
+      expect(sanitized, isNot(contains('t1')));
+      expect(sanitized, isNot(contains('t2')));
+      expect(sanitized, isNot(contains('t3')));
+      expect(sanitized, isNot(contains('u:p@')));
+      expect(sanitized, isNot(contains('…')));
+      expect(
+        sanitized,
+        contains('https://a.live2.nicovideo.jp/wsapi/v2/watch/lv1'),
+      );
+      expect(sanitized, contains('ws://127.0.0.1:8080/ws'));
+      expect(sanitized, endsWith('wss://e.co/ws'));
+      expect(sanitized, contains('was not upgraded to websocket'));
+    });
+
+    test('sanitizeText drops the query and user info of a URL it cannot '
+        'parse', () {
+      expect(
+        SessionWsLogSanitizer.sanitizeText(
+          'see https://[bad/path?audience_token=t1',
+        ),
+        'see https://[bad/path',
+      );
+      expect(
+        SessionWsLogSanitizer.sanitizeText(
+          'see https://u:p@[bad/path?audience_token=t1',
+        ),
+        'see https://[bad/path',
+      );
+      expect(
+        SessionWsLogSanitizer.sanitizeText('see https://u:p@[bad#t1'),
+        'see https://[bad',
+      );
     });
   });
 
@@ -1096,6 +1145,51 @@ void main() {
         await Future<void>.delayed(Duration.zero);
         await client.dispose();
       });
+    });
+
+    test('does not log the URL query token when the handshake is '
+        'rejected', () async {
+      const String token = 'test-audience-token-do-not-log';
+      final HttpServer server = await HttpServer.bind(
+        InternetAddress.loopbackIPv4,
+        0,
+      );
+      addTearDown(() => server.close(force: true));
+      server.listen((HttpRequest request) {
+        request.response
+          ..statusCode = HttpStatus.forbidden
+          ..close();
+      });
+
+      final SessionWsClient client = SessionWsClient(
+        lv: 'lv123456789',
+        webSocketUri: Uri.parse(
+          'ws://${server.address.host}:${server.port}/wsapi/v2/watch/lv1'
+          '?audience_token=$token',
+        ),
+      );
+      addTearDown(client.dispose);
+      final Future<SessionWsEvent> errorEvent = client.events.firstWhere(
+        (SessionWsEvent event) => event.type == SessionWsEventType.error,
+      );
+
+      final List<String> logs = <String>[];
+      await withCapturedDebugPrint(logs, client.connect);
+      final SessionWsEvent event = await errorEvent;
+
+      // Precondition: the raw exception really carries the token, so this
+      // test fails if the sanitizing is removed.
+      expect(event.error.toString(), contains(token));
+      expect(
+        logs,
+        contains(contains('[SessionWsClient] connect: channel open failed')),
+      );
+      expect(logs, everyElement(isNot(contains(token))));
+      expect(event.errorDetail.toString(), isNot(contains(token)));
+      expect(
+        SessionWsLogSanitizer.sanitizeText(event.error.toString()),
+        isNot(contains(token)),
+      );
     });
   });
 }

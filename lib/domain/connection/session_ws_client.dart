@@ -59,9 +59,17 @@ class SessionWsErrorDetail {
 
   @override
   String toString() {
-    final String endpointText = endpoint?.toString() ?? '-';
-    final String messageText = (message ?? '-').replaceAll('\n', ' ');
-    final String causeText = (cause?.toString() ?? '-').replaceAll('\n', ' ');
+    // endpoint / cause can carry the full WebSocket URL, including tokens in
+    // its query string, so every field is passed through the log sanitizer.
+    final String endpointText = endpoint == null
+        ? '-'
+        : SessionWsLogSanitizer.sanitizeText(endpoint.toString());
+    final String messageText = SessionWsLogSanitizer.sanitizeText(
+      message ?? '-',
+    ).replaceAll('\n', ' ');
+    final String causeText = SessionWsLogSanitizer.sanitizeText(
+      cause?.toString() ?? '-',
+    ).replaceAll('\n', ' ');
     return 'code=${code.name}; phase=${phase.name}; lv=$lv; '
         'mode=${startWatchingMode.name}; endpoint=$endpointText; '
         'message=$messageText; cause=$causeText';
@@ -252,7 +260,10 @@ class SessionWsClient {
         _sendStartWatching();
         debugPrint('[SessionWsClient] connect: startWatching sent');
       } catch (error, stackTrace) {
-        debugPrint('[SessionWsClient] connect: startWatching failed: $error');
+        debugPrint(
+          '[SessionWsClient] connect: startWatching failed: '
+          '${SessionWsLogSanitizer.sanitizeText('$error')}',
+        );
         await _cleanupConnectionState(emitDisconnected: false);
         final SessionWsErrorDetail detail = _buildErrorDetail(
           code: SessionWsErrorCode.connectFailed,
@@ -276,7 +287,12 @@ class SessionWsClient {
         _startEndpointResolveTimer();
       }
     } catch (error, stackTrace) {
-      debugPrint('[SessionWsClient] connect: channel open failed: $error');
+      // dart:io's WebSocketException embeds the full request URL (query
+      // string included) in its message, so strip it before logging.
+      debugPrint(
+        '[SessionWsClient] connect: channel open failed: '
+        '${SessionWsLogSanitizer.sanitizeText('$error')}',
+      );
       final SessionWsErrorDetail detail = _buildErrorDetail(
         code: SessionWsErrorCode.connectFailed,
         phase: SessionWsFailurePhase.openingSocket,
@@ -993,9 +1009,11 @@ class SessionWsLogSanitizer {
   );
 
   static final RegExp _urlPattern = RegExp(
-    r'((?:https?|wss):\/\/[^\s<>]+)',
+    r'((?:https?|wss?):\/\/[^\s<>]+)',
     caseSensitive: false,
   );
+
+  static final RegExp _queryOrFragmentStart = RegExp('[?#]');
 
   static String sanitizeRawJson(String rawJson) {
     try {
@@ -1049,6 +1067,18 @@ class SessionWsLogSanitizer {
     return value;
   }
 
+  /// Strips the query string, fragment and user info from every URL found in
+  /// [text], leaving the rest of the text intact and untruncated.
+  ///
+  /// Use this for free-form log text such as exception messages, which may
+  /// embed a full request URL with tokens in its query string.
+  static String sanitizeText(String text) {
+    return text.replaceAllMapped(
+      _urlPattern,
+      (Match m) => _stripUrlQuery(m.group(0) ?? ''),
+    );
+  }
+
   static bool _isSensitiveKey(String key) {
     return _sensitiveKeyPattern.hasMatch(key);
   }
@@ -1060,10 +1090,7 @@ class SessionWsLogSanitizer {
   }
 
   static String _sanitizeString(String input) {
-    final String withoutQuery = input.replaceAllMapped(_urlPattern, (Match m) {
-      final String original = m.group(0) ?? '';
-      return _stripUrlQuery(original);
-    });
+    final String withoutQuery = sanitizeText(input);
 
     if (withoutQuery.length >= 40) {
       return '${withoutQuery.substring(0, 40)}…';
@@ -1074,7 +1101,7 @@ class SessionWsLogSanitizer {
   static String _stripUrlQuery(String url) {
     final Uri? uri = Uri.tryParse(url);
     if (uri == null || uri.scheme.isEmpty || uri.host.isEmpty) {
-      return url;
+      return _stripUnparseableUrl(url);
     }
 
     if (uri.hasPort) {
@@ -1087,5 +1114,31 @@ class SessionWsLogSanitizer {
     }
 
     return Uri(scheme: uri.scheme, host: uri.host, path: uri.path).toString();
+  }
+
+  /// Text-based fallback for URLs [Uri.tryParse] rejects: drops everything
+  /// after `?` or `#`, and any `user:pass@` in the authority.
+  static String _stripUnparseableUrl(String url) {
+    final int cut = url.indexOf(_queryOrFragmentStart);
+    final String withoutQuery = cut < 0 ? url : url.substring(0, cut);
+
+    final int schemeEnd = withoutQuery.indexOf('://');
+    if (schemeEnd < 0) {
+      return withoutQuery;
+    }
+    final int authorityStart = schemeEnd + 3;
+    final int pathStart = withoutQuery.indexOf('/', authorityStart);
+    final int authorityEnd = pathStart < 0 ? withoutQuery.length : pathStart;
+    final int userInfoEnd = withoutQuery
+        .substring(authorityStart, authorityEnd)
+        .lastIndexOf('@');
+    if (userInfoEnd < 0) {
+      return withoutQuery;
+    }
+    return withoutQuery.replaceRange(
+      authorityStart,
+      authorityStart + userInfoEnd + 1,
+      '',
+    );
   }
 }
