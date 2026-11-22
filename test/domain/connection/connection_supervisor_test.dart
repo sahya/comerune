@@ -485,6 +485,36 @@ void main() {
       expect(supervisor.lastErrorDetail, contains('HandshakeException'));
     });
 
+    test('redacts URL query tokens from connectFailed cause', () async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor(
+        sessionWsClient: FakeSessionWsClient(
+          endpointsQueue: <SessionEndpoints>[],
+          connectExceptions: <Object>[
+            SessionWsConnectException(
+              SessionWsConnectFailureKind.connectFailed,
+              cause: StateError(
+                "Connection to 'https://a.live2.nicovideo.jp/wsapi/v2/watch/"
+                "lv1?audience_token=SECRET_TOKEN_123#' was not upgraded",
+              ),
+            ),
+          ],
+        ),
+        ndgrClient: FakeNdgrClient(),
+        legacyCommentClient: FakeLegacyCommentClient(),
+      );
+      addTearDown(supervisor.dispose);
+
+      final bool started = await _startAndDrain(supervisor);
+      expect(started, isTrue);
+      expect(supervisor.status, ConnectionStatus.failed);
+      expect(
+        supervisor.lastErrorDetail,
+        contains('https://a.live2.nicovideo.jp/wsapi/v2/watch/lv1'),
+      );
+      expect(supervisor.lastErrorDetail, isNot(contains('SECRET_TOKEN_123')));
+      expect(supervisor.lastErrorDetail, isNot(contains('audience_token')));
+    });
+
     test(
       'reconnects NDGR stall with same URI after disconnecting old stream',
       () async {
