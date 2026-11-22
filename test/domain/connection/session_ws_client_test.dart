@@ -215,6 +215,7 @@ void main() {
       final String raw = jsonEncode(<String, Object?>{
         'url': 'https://u:p@e.co:9/p?a=1#f',
         'socket': 'wss://u:p@e.co:9/ws?token=abc#x',
+        'plainSocket': 'ws://u:p@e.co:9/ws?token=abc#x',
       });
 
       final String sanitized = SessionWsLogSanitizer.sanitizeRawJson(raw);
@@ -223,6 +224,7 @@ void main() {
 
       expect(decoded['url'], 'https://e.co:9/p');
       expect(decoded['socket'], 'wss://e.co:9/ws');
+      expect(decoded['plainSocket'], 'ws://e.co:9/ws');
     });
 
     test('masks password-like keys as sensitive information', () {
@@ -260,12 +262,24 @@ void main() {
       expect(sanitized, contains('was not upgraded to websocket'));
     });
 
-    test('sanitizeText drops the query of a URL it cannot parse', () {
-      final String sanitized = SessionWsLogSanitizer.sanitizeText(
-        'see https://[bad/path?audience_token=t1',
+    test('sanitizeText drops the query and user info of a URL it cannot '
+        'parse', () {
+      expect(
+        SessionWsLogSanitizer.sanitizeText(
+          'see https://[bad/path?audience_token=t1',
+        ),
+        'see https://[bad/path',
       );
-
-      expect(sanitized, 'see https://[bad/path');
+      expect(
+        SessionWsLogSanitizer.sanitizeText(
+          'see https://u:p@[bad/path?audience_token=t1',
+        ),
+        'see https://[bad/path',
+      );
+      expect(
+        SessionWsLogSanitizer.sanitizeText('see https://u:p@[bad#t1'),
+        'see https://[bad',
+      );
     });
   });
 

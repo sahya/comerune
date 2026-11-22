@@ -1101,9 +1101,7 @@ class SessionWsLogSanitizer {
   static String _stripUrlQuery(String url) {
     final Uri? uri = Uri.tryParse(url);
     if (uri == null || uri.scheme.isEmpty || uri.host.isEmpty) {
-      // Unparseable: still never keep anything after `?` or `#`.
-      final int cut = url.indexOf(_queryOrFragmentStart);
-      return cut < 0 ? url : url.substring(0, cut);
+      return _stripUnparseableUrl(url);
     }
 
     if (uri.hasPort) {
@@ -1116,5 +1114,31 @@ class SessionWsLogSanitizer {
     }
 
     return Uri(scheme: uri.scheme, host: uri.host, path: uri.path).toString();
+  }
+
+  /// Text-based fallback for URLs [Uri.tryParse] rejects: drops everything
+  /// after `?` or `#`, and any `user:pass@` in the authority.
+  static String _stripUnparseableUrl(String url) {
+    final int cut = url.indexOf(_queryOrFragmentStart);
+    final String withoutQuery = cut < 0 ? url : url.substring(0, cut);
+
+    final int schemeEnd = withoutQuery.indexOf('://');
+    if (schemeEnd < 0) {
+      return withoutQuery;
+    }
+    final int authorityStart = schemeEnd + 3;
+    final int pathStart = withoutQuery.indexOf('/', authorityStart);
+    final int authorityEnd = pathStart < 0 ? withoutQuery.length : pathStart;
+    final int userInfoEnd = withoutQuery
+        .substring(authorityStart, authorityEnd)
+        .lastIndexOf('@');
+    if (userInfoEnd < 0) {
+      return withoutQuery;
+    }
+    return withoutQuery.replaceRange(
+      authorityStart,
+      authorityStart + userInfoEnd + 1,
+      '',
+    );
   }
 }
