@@ -542,22 +542,61 @@ void main() {
 
       test('overlapping resets keep refusing fetches until the last one '
           'finishes', () async {
-        final Future<void> fetching = controller.fetchMore(500);
+        // The second reset is held in stop() so it deterministically
+        // finishes after the first one.
+        final Completer<void> secondStop = Completer<void>();
+        int stops = 0;
+        client.stopHandler = () async {
+          stops += 1;
+          if (stops == 2) {
+            await secondStop.future;
+          }
+        };
         final Future<void> firstReset = controller.cancelAndReset();
         final Future<void> secondReset = controller.cancelAndReset();
-
-        release.complete();
         await firstReset;
-        // Fetches pressed before the second reset finishes are refused.
+
+        // Only the first reset is done: fetches are still refused.
         await controller.fetchMore(500);
+        await controller.fetchInitial(Uri.parse('https://example.com/x'));
+        expect(fetchMoreCalls, 0);
+        expect(client.fetchPastCalls, 1);
+
+        secondStop.complete();
         await secondReset;
-        await fetching;
-        expect(fetchMoreCalls, 1);
-        expect(controller.status, TimeshiftFetchStatus.idle);
 
         // After both resets, fetches are accepted again.
         await controller.fetchInitial(Uri.parse('https://example.com/next'));
         expect(client.fetchPastCalls, 2);
+        controller.dispose();
+      });
+
+      test('the retry after a failed session reset retries the reset instead '
+          'of continuing the previous session', () async {
+        client.resetSessionError = StateError('client refused');
+        expect(controller.reset, throwsA(isA<StateError>()));
+        client.resetSessionError = StateError('still refused');
+        await controller.fetchInitial(Uri.parse('https://example.com/next'));
+        expect(controller.status, TimeshiftFetchStatus.error);
+        final int resetsBefore = client.resetSessionCalls;
+
+        // The panel's retry button calls fetchMore; fetch-all goes the same
+        // way. While the session still cannot be reset, neither may read
+        // the previous program's session.
+        client.resetSessionError = StateError('still refused');
+        await controller.fetchMore(500);
+        client.resetSessionError = StateError('still refused');
+        await controller.fetchAll();
+
+        expect(fetchMoreCalls, 0);
+        expect(client.fetchPastCalls, 1);
+        expect(client.resetSessionCalls, resetsBefore + 2);
+        expect(controller.status, TimeshiftFetchStatus.error);
+
+        // Once the reset goes through, the retry starts the new program.
+        await controller.fetchMore(500);
+        expect(client.fetchPastCalls, 2);
+        expect(controller.status, TimeshiftFetchStatus.paused);
         controller.dispose();
       });
 
@@ -747,11 +786,15 @@ class FakeTimeshiftClient implements NdgrTimeshiftClient {
     _isRunning = false;
   }
 
+  /// When set, stop() waits for the future this returns.
+  Future<void> Function()? stopHandler;
+
   @override
   Future<void> stop() async {
     // Like NdgrTimeshiftClient, stopping aborts the request but the running
     // fetch only clears `isRunning` when it returns.
     stopCalls += 1;
+    await stopHandler?.call();
   }
 
   int stopCalls = 0;

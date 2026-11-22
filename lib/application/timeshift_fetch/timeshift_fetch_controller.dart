@@ -152,6 +152,9 @@ class TimeshiftFetchController extends ChangeNotifier {
     if (_resetting || _disposed || _status == TimeshiftFetchStatus.fetching) {
       return;
     }
+    // Remember the URI first, so a retry after a failed reset (the panel's
+    // retry button calls fetchMore) comes back here.
+    _lastInitialViewApiUri = viewApiUri;
     if (_sessionNeedsReset) {
       try {
         _client.resetSession();
@@ -183,10 +186,17 @@ class TimeshiftFetchController extends ChangeNotifier {
     // Issue #654: the initial fetch failed before a session opened (e.g. the
     // panel's retry button after an error). Start over from the initial
     // fetch instead of reporting "completed".
+    // A session left open by a refused reset belongs to the previous
+    // program, so it is treated like no session at all.
     final Uri? initialUri = _lastInitialViewApiUri;
-    if (!_client.isSessionOpen && initialUri != null) {
-      await fetchInitial(initialUri);
-      return;
+    if (_sessionNeedsReset || !_client.isSessionOpen) {
+      if (initialUri != null) {
+        await fetchInitial(initialUri);
+        return;
+      }
+      if (_sessionNeedsReset) {
+        return;
+      }
     }
     if (!_client.hasMore) {
       _setStatus(TimeshiftFetchStatus.completed);
@@ -209,6 +219,14 @@ class TimeshiftFetchController extends ChangeNotifier {
         _disposed ||
         _status == TimeshiftFetchStatus.fetching ||
         _isFetchingAll) {
+      return;
+    }
+    if (_sessionNeedsReset) {
+      // Never continue the previous program's session (see fetchMore).
+      final Uri? initialUri = _lastInitialViewApiUri;
+      if (initialUri != null) {
+        await fetchInitial(initialUri);
+      }
       return;
     }
     if (!_client.hasMore) {
