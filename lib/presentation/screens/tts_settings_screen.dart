@@ -1312,6 +1312,22 @@ class _TtsSettingsScreenState extends State<TtsSettingsScreen>
                           );
                         },
                       ),
+                      // Issue #1014: OFF（既定）は他アプリの音を下げずに
+                      // 重ねて再生、ON は読み上げ中だけ他アプリの音を下げる。
+                      SwitchListTile(
+                        key: const Key('duck-other-audio-switch'),
+                        title: const Text('読み上げ中は他のアプリの音を下げる'),
+                        subtitle: const Text(
+                          'ONにすると、読み上げ中は音楽や動画の音が小さくなります（一時停止するアプリもあります）',
+                        ),
+                        contentPadding: EdgeInsets.zero,
+                        value: settings.duckOtherAudio,
+                        onChanged: (bool value) {
+                          updateAndSave(
+                            settings.copyWith(duckOtherAudio: value),
+                          );
+                        },
+                      ),
                     ],
                   ),
                   const SizedBox(height: 12),
