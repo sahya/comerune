@@ -146,7 +146,8 @@ void main() {
         'タイムシフト予約をしていない、予約後にまだ視聴を開始していない、'
         '視聴期限が切れている、プレミアム会員限定またはチケットが必要、'
         'などの理由が考えられます。\n'
-        'ブラウザなどでタイムシフトを予約・視聴開始してから、再接続してください。',
+        '予約や視聴の開始がまだの場合は、ブラウザなどで済ませてから'
+        '再接続してください。',
       );
       expect(
         AppStrings.timeshift.unavailableFailedBody,
@@ -154,8 +155,9 @@ void main() {
         '通信状況を確認してから、再接続してください。',
       );
       expect(AppStrings.timeshift.unavailableDialogConfirm, 'OK');
-      // 「再試行」ボタンを連想させる語は使わない（Issue #639）。通信の失敗
-      // だけは、画面の用語（再接続）で次の操作を案内する。
+      // 「再試行」ボタンを連想させる語は使わない（Issue #639）。次の操作は
+      // 画面の用語（再接続）で案内する（通信の失敗、予約・視聴開始がまだの
+      // 場合）。
       for (final String body in <String>[
         AppStrings.timeshift.unavailableNotLoggedInBody,
         AppStrings.timeshift.unavailableNotWatchableBody,

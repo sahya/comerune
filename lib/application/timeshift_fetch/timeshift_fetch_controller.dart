@@ -118,9 +118,11 @@ class TimeshiftFetchController extends ChangeNotifier {
   Uri? _lastInitialViewApiUri;
   Future<void>? _inFlight;
   int _generation = 0;
-  // True while cancelAndReset() waits for the running fetch to stop; new
-  // fetches are refused so the reset cannot fail on a running client.
-  bool _resetting = false;
+  // Number of cancelAndReset() calls waiting for the running fetch to
+  // stop; while above zero, new fetches are refused so the reset cannot
+  // fail on a running client.
+  int _pendingResets = 0;
+  bool get _resetting => _pendingResets > 0;
   bool _disposed = false;
 
   Future<void> _track(Future<void> future) {
@@ -280,7 +282,7 @@ class TimeshiftFetchController extends ChangeNotifier {
     if (_disposed) {
       return;
     }
-    _resetting = true;
+    _pendingResets += 1;
     try {
       await cancel();
       final Future<void>? inFlight = _inFlight;
@@ -295,7 +297,7 @@ class TimeshiftFetchController extends ChangeNotifier {
         reset();
       }
     } finally {
-      _resetting = false;
+      _pendingResets -= 1;
     }
   }
 
@@ -303,11 +305,16 @@ class TimeshiftFetchController extends ChangeNotifier {
     // Results of fetches started before this reset are ignored.
     _generation += 1;
     _lastInitialViewApiUri = null;
-    _client.resetSession();
-    _isFetchingAll = false;
-    _cancelRequested = false;
-    _lastError = null;
-    _setStatus(TimeshiftFetchStatus.idle);
+    try {
+      _client.resetSession();
+    } finally {
+      // Return to idle even if the client refuses to reset, so the next
+      // program is not mistaken for one that was already fetched.
+      _isFetchingAll = false;
+      _cancelRequested = false;
+      _lastError = null;
+      _setStatus(TimeshiftFetchStatus.idle);
+    }
   }
 
   @override

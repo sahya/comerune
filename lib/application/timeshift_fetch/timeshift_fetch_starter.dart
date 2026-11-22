@@ -1,5 +1,3 @@
-import 'dart:developer';
-
 import '../../app_logging.dart';
 import '../../data/connection/timeshift_view_uri_resolver.dart';
 import 'timeshift_fetch_controller.dart';
@@ -101,10 +99,9 @@ class TimeshiftFetchStarter {
     try {
       await _cancelAndReset();
     } on Object catch (error, stackTrace) {
-      log(
-        'Timeshift fetch reset failed: ${error.runtimeType}',
-        name: 'TimeshiftFetchStarter',
-        stackTrace: stackTrace,
+      appDebugLog(
+        '[TimeshiftFetchStarter] Timeshift fetch reset failed: '
+        '${error.runtimeType}\n$stackTrace',
       );
     }
   }
@@ -120,6 +117,10 @@ class TimeshiftFetchStarter {
       _onUnsupported();
       return;
     }
+    // Pin the program this detection belongs to before waiting, so a
+    // switch during the wait is noticed.
+    final int generation = _generation;
+    final String lv = _currentLv();
     // Let a reset for a program switch finish first, so the previous
     // program's status does not make this one look already fetched.
     final Future<void>? pendingReset = _pendingReset;
@@ -127,11 +128,13 @@ class TimeshiftFetchStarter {
       // onProgramChanged logs a failed reset and never rethrows.
       await pendingReset;
     }
-    final String lv = _currentLv();
-    if (_disposed || lv.isEmpty || _status() != TimeshiftFetchStatus.idle) {
+    if (_disposed ||
+        generation != _generation ||
+        lv.isEmpty ||
+        _currentLv() != lv ||
+        _status() != TimeshiftFetchStatus.idle) {
       return;
     }
-    final int generation = _generation;
 
     Uri? uri = viewApiUri;
     if (uri == null) {
@@ -143,11 +146,9 @@ class TimeshiftFetchStarter {
       try {
         result = await _lookUpViewUri(lv);
       } on Object catch (error, stackTrace) {
-        log(
-          'Timeshift view URI lookup threw',
-          name: 'TimeshiftFetchStarter',
-          error: error.runtimeType,
-          stackTrace: stackTrace,
+        appDebugLog(
+          '[TimeshiftFetchStarter] Timeshift view URI lookup threw: '
+          '${error.runtimeType}\n$stackTrace',
         );
       } finally {
         if (generation == _generation && _resolvingLv == lv) {
@@ -180,10 +181,9 @@ class TimeshiftFetchStarter {
       await _fetchInitial(uri);
     } on Object catch (error, stackTrace) {
       // Only the type: HTTP errors can carry signed URLs.
-      log(
-        'Timeshift initial fetch failed: ${error.runtimeType}',
-        name: 'TimeshiftFetchStarter',
-        stackTrace: stackTrace,
+      appDebugLog(
+        '[TimeshiftFetchStarter] Timeshift initial fetch failed: '
+        '${error.runtimeType}\n$stackTrace',
       );
     }
   }

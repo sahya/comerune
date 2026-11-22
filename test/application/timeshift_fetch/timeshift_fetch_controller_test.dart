@@ -668,8 +668,11 @@ class FakeTimeshiftClient implements NdgrTimeshiftClient {
     _isRunning = true;
 
     if (fetchMoreHandler != null) {
-      await fetchMoreHandler!(count);
-      _isRunning = false;
+      try {
+        await fetchMoreHandler!(count);
+      } finally {
+        _isRunning = false;
+      }
       return;
     }
 
@@ -686,11 +689,19 @@ class FakeTimeshiftClient implements NdgrTimeshiftClient {
 
   @override
   Future<void> stop() async {
-    _isRunning = false;
+    // Like NdgrTimeshiftClient, stopping aborts the request but the running
+    // fetch only clears `isRunning` when it returns.
+    stopCalls += 1;
   }
+
+  int stopCalls = 0;
 
   @override
   void resetSession() {
+    // Same constraint as NdgrTimeshiftClient.resetSession.
+    if (_isRunning) {
+      throw StateError('Cannot reset session while a fetch is in progress.');
+    }
     _isSessionOpen = false;
     _hasMore = false;
     _totalFetched = 0;

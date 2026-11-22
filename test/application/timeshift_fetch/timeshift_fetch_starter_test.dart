@@ -277,6 +277,30 @@ void main() {
       expect(h.fetched, <Uri>[_programInfoViewUri]);
     });
 
+    test('does not start the previous program\'s fetch when the program '
+        'switches again during a pending reset', () async {
+      final Completer<void> resetDone = Completer<void>();
+      final _Harness h = _Harness();
+      h.resetHook = () => resetDone.future;
+      h.lv = 'lvB';
+      final Future<void> switchingToB = h.starter.onProgramChanged('lvB');
+
+      // B's program info arrives while the reset for B is still running.
+      final Uri uriB = Uri.parse('https://example.com/b');
+      final Future<void> detectingB = h.starter.onTimeshiftDetected(uriB);
+      // The user moves on to C before the reset finishes.
+      h.lv = 'lvC';
+      h.resetHook = null;
+      final Future<void> switchingToC = h.starter.onProgramChanged('lvC');
+      resetDone.complete();
+      await switchingToB;
+      await switchingToC;
+      await detectingB;
+
+      expect(h.fetched, isEmpty);
+      expect(h.starter.acceptsMessages, isFalse);
+    });
+
     test('keeps going when the initial fetch throws', () async {
       final _Harness h = _Harness()
         ..fetchHook = (Uri uri) async => throw StateError('network');
