@@ -595,11 +595,11 @@ class _ComeruneAppState extends State<ComeruneApp> {
       onVposBaseAtResolved: (DateTime vposBaseAt) {
         _vposBaseAtNotifier.value = vposBaseAt;
       },
-      // Issue #639 cause 4: programinfo が「ended」を返した放送
-      // （タイムシフト）では、過去コメントを NDGR HTTP 経由で
-      // 取得するよう TimeshiftFetchController に viewApiUri を
-      // 渡して初回取得を開始する。同じ URL で二重起動を避けるため
-      // 既に実行中/完了している場合はスキップする。
+      // Issue #639 cause 4 / #654: programinfo が「ended」を返した放送
+      // （タイムシフト）では、過去コメントを NDGR HTTP 経由で取得する。
+      // viewApiUri が null なら視聴 WebSocket から取得し直してから始める。
+      // 取得を始めるかどうかの判断（二重起動の防止を含む）は
+      // TimeshiftFetchStarter が行う。
       onTimeshiftDetected: (Uri? viewApiUri) {
         unawaited(_timeshiftFetchStarter.onTimeshiftDetected(viewApiUri));
       },
@@ -810,6 +810,8 @@ class _ComeruneAppState extends State<ComeruneApp> {
     // in-flight postComment / ensureBroadcasterStatus future sees the
     // disposed flag before we close the underlying HttpClients.
     _commentPostController.dispose();
+    // Stop acting on view URI lookups that are still running.
+    _timeshiftFetchStarter.dispose();
     _timeshiftFetchController.dispose();
     _timeshiftClient.dispose();
     _followProgramRepository.dispose();

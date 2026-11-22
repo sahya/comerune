@@ -131,6 +131,58 @@ void main() {
       expect(h.unavailableDialogs, isEmpty);
     });
 
+    test('drops a lookup result after switching away and back to the same '
+        'program', () async {
+      final Completer<TimeshiftViewUriResult> first =
+          Completer<TimeshiftViewUriResult>();
+      final _Harness h = _Harness()..lookUp = (String lv) => first.future;
+      await h.starter.onProgramChanged('lv1');
+      final Future<void> detecting = h.starter.onTimeshiftDetected(null);
+
+      h.lv = 'lv2';
+      await h.starter.onProgramChanged('lv2');
+      h.lv = 'lv1';
+      await h.starter.onProgramChanged('lv1');
+      first.complete(
+        TimeshiftViewUriResult.resolved(Uri.parse('https://example.com/old')),
+      );
+      await detecting;
+
+      expect(h.fetched, isEmpty);
+      expect(h.unavailableDialogs, isEmpty);
+    });
+
+    test('drops a lookup result after dispose', () async {
+      final Completer<TimeshiftViewUriResult> pending =
+          Completer<TimeshiftViewUriResult>();
+      final _Harness h = _Harness()..lookUp = (String lv) => pending.future;
+      final Future<void> detecting = h.starter.onTimeshiftDetected(null);
+
+      h.starter.dispose();
+      pending.complete(
+        TimeshiftViewUriResult.resolved(Uri.parse('https://example.com/a')),
+      );
+      await detecting;
+
+      expect(h.fetched, isEmpty);
+      await h.starter.onTimeshiftDetected(_programInfoViewUri);
+      expect(h.fetched, isEmpty);
+    });
+
+    test(
+      'a failing reset is logged, not thrown, and detection goes on',
+      () async {
+        final _Harness h = _Harness()
+          ..resetHook = () async => throw StateError('client running');
+
+        await h.starter.onProgramChanged('lv1');
+        await h.starter.onTimeshiftDetected(_programInfoViewUri);
+
+        expect(h.resets, 1);
+        expect(h.fetched, <Uri>[_programInfoViewUri]);
+      },
+    );
+
     test('resets the fetch state only when the program changes', () async {
       final _Harness h = _Harness();
       await h.starter.onProgramChanged('lv1');

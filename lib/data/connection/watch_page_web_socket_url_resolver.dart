@@ -190,7 +190,7 @@ class WatchPageWebSocketUrlResolver {
         response = await request.close().timeout(_responseTimeout);
         if (response.statusCode >= 300 && response.statusCode < 400) {
           final String? location = response.headers.value('location');
-          await response.drain<void>();
+          await response.drain<void>().timeout(_responseTimeout);
           if (location == null || location.isEmpty) {
             return const WatchPageWebSocketUrlResult.unavailable();
           }
@@ -210,7 +210,7 @@ class WatchPageWebSocketUrlResolver {
 
       if (response == null || response.statusCode != 200) {
         if (response != null) {
-          await response.drain<void>();
+          await response.drain<void>().timeout(_responseTimeout);
         }
         return const WatchPageWebSocketUrlResult.unavailable();
       }

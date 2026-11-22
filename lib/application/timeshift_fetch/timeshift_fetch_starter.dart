@@ -1,5 +1,6 @@
 import 'dart:developer';
 
+import '../../app_logging.dart';
 import '../../data/connection/timeshift_view_uri_resolver.dart';
 import 'timeshift_fetch_controller.dart';
 
@@ -12,9 +13,11 @@ typedef TimeshiftViewUriLookup =
 /// Sits between connection events and [TimeshiftFetchController]:
 ///
 /// - When the program info had no view URI (Issue #654), looks it up and
-///   reports a failure once through [onUnavailable].
-/// - Runs at most one lookup per program, and drops a lookup result when
-///   the user has switched to another program meanwhile.
+///   reports a failure through [onUnavailable] (the caller shows it at most
+///   once per program).
+/// - Runs at most one lookup per program switch, and drops a lookup result
+///   when the user has switched to another program meanwhile (even when
+///   they switched back to the same program).
 /// - Resets the fetch state when the program changes, so a fetch for one
 ///   program never continues into another one.
 /// - Skips the fetch when the current connection was streaming live: the
@@ -55,6 +58,16 @@ class TimeshiftFetchStarter {
   String? _resolvingLv;
   String? _fetchingLv;
   Future<void>? _pendingReset;
+  // Advanced on every program switch and on dispose; a lookup started in
+  // an older generation is discarded when it finishes.
+  int _generation = 0;
+  bool _disposed = false;
+
+  /// Stops acting on lookups and fetches that are still running.
+  void dispose() {
+    _disposed = true;
+    _generation += 1;
+  }
 
   /// Whether messages from the timeshift fetch belong to the program that
   /// is open now. Messages that arrive after a program switch are dropped.
@@ -69,9 +82,10 @@ class TimeshiftFetchStarter {
       return;
     }
     _programLv = lv;
+    _generation += 1;
     _resolvingLv = null;
     _fetchingLv = null;
-    final Future<void> reset = _cancelAndReset();
+    final Future<void> reset = _resetLogged();
     _pendingReset = reset;
     try {
       await reset;
@@ -82,11 +96,24 @@ class TimeshiftFetchStarter {
     }
   }
 
+  /// Resets the fetch state; a failure is logged and never rethrown.
+  Future<void> _resetLogged() async {
+    try {
+      await _cancelAndReset();
+    } on Object catch (error, stackTrace) {
+      log(
+        'Timeshift fetch reset failed: ${error.runtimeType}',
+        name: 'TimeshiftFetchStarter',
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
   /// Call when the open program turned out to be an ended program.
   /// [viewApiUri] is the view URI from the program info, or `null` when it
   /// had none (Issue #654).
   Future<void> onTimeshiftDetected(Uri? viewApiUri) async {
-    if (_hasStreamedLive()) {
+    if (_disposed || _hasStreamedLive()) {
       return;
     }
     if (!_enabled) {
@@ -97,16 +124,14 @@ class TimeshiftFetchStarter {
     // program's status does not make this one look already fetched.
     final Future<void>? pendingReset = _pendingReset;
     if (pendingReset != null) {
-      try {
-        await pendingReset;
-      } on Object {
-        // A failed reset is logged by the controller; carry on.
-      }
+      // onProgramChanged logs a failed reset and never rethrows.
+      await pendingReset;
     }
     final String lv = _currentLv();
-    if (lv.isEmpty || _status() != TimeshiftFetchStatus.idle) {
+    if (_disposed || lv.isEmpty || _status() != TimeshiftFetchStatus.idle) {
       return;
     }
+    final int generation = _generation;
 
     Uri? uri = viewApiUri;
     if (uri == null) {
@@ -125,19 +150,22 @@ class TimeshiftFetchStarter {
           stackTrace: stackTrace,
         );
       } finally {
-        if (_resolvingLv == lv) {
+        if (generation == _generation && _resolvingLv == lv) {
           _resolvingLv = null;
         }
       }
-      if (_currentLv() != lv || _hasStreamedLive()) {
+      if (generation != _generation ||
+          _currentLv() != lv ||
+          _hasStreamedLive()) {
         return;
       }
       uri = result?.viewUri;
       if (uri == null) {
-        // Only the failure kind is logged, never URLs or cookies.
-        log(
-          'Timeshift view URI unavailable: ${result?.failure?.name}',
-          name: 'TimeshiftFetchStarter',
+        // Only the failure kind is logged, never URLs or cookies. Shown in
+        // debug builds' logcat so the failure can be checked on a device.
+        appDebugLog(
+          '[TimeshiftFetchStarter] Timeshift view URI unavailable: '
+          '${result?.failure?.name}',
         );
         _onUnavailable(result?.failure);
         return;

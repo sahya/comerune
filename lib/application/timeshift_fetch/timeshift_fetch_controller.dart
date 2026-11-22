@@ -118,6 +118,10 @@ class TimeshiftFetchController extends ChangeNotifier {
   Uri? _lastInitialViewApiUri;
   Future<void>? _inFlight;
   int _generation = 0;
+  // True while cancelAndReset() waits for the running fetch to stop; new
+  // fetches are refused so the reset cannot fail on a running client.
+  bool _resetting = false;
+  bool _disposed = false;
 
   Future<void> _track(Future<void> future) {
     _inFlight = future;
@@ -139,7 +143,7 @@ class TimeshiftFetchController extends ChangeNotifier {
   TimeshiftFetchError? get lastError => _lastError;
 
   Future<void> fetchInitial(Uri viewApiUri) async {
-    if (_status == TimeshiftFetchStatus.fetching) {
+    if (_resetting || _disposed || _status == TimeshiftFetchStatus.fetching) {
       return;
     }
     final int generation = _generation;
@@ -156,7 +160,7 @@ class TimeshiftFetchController extends ChangeNotifier {
   }
 
   Future<void> fetchMore(int count) async {
-    if (_status == TimeshiftFetchStatus.fetching) {
+    if (_resetting || _disposed || _status == TimeshiftFetchStatus.fetching) {
       return;
     }
     // Issue #654: the initial fetch failed before a session opened (e.g. the
@@ -184,7 +188,10 @@ class TimeshiftFetchController extends ChangeNotifier {
   }
 
   Future<void> fetchAll() async {
-    if (_status == TimeshiftFetchStatus.fetching || _isFetchingAll) {
+    if (_resetting ||
+        _disposed ||
+        _status == TimeshiftFetchStatus.fetching ||
+        _isFetchingAll) {
       return;
     }
     if (!_client.hasMore) {
@@ -267,17 +274,29 @@ class TimeshiftFetchController extends ChangeNotifier {
   ///
   /// Used when the user switches to another program so the next timeshift
   /// starts from a clean session (Issue #654).
+  /// Fetch requests made while this runs are ignored, so a button pressed
+  /// in the meantime cannot start a fetch that would make the reset fail.
   Future<void> cancelAndReset() async {
-    await cancel();
-    final Future<void>? inFlight = _inFlight;
-    if (inFlight != null) {
-      try {
-        await inFlight;
-      } on Object {
-        // The fetch was cancelled; its error does not matter any more.
-      }
+    if (_disposed) {
+      return;
     }
-    reset();
+    _resetting = true;
+    try {
+      await cancel();
+      final Future<void>? inFlight = _inFlight;
+      if (inFlight != null) {
+        try {
+          await inFlight;
+        } on Object {
+          // The fetch was cancelled; its error does not matter any more.
+        }
+      }
+      if (!_disposed) {
+        reset();
+      }
+    } finally {
+      _resetting = false;
+    }
   }
 
   void reset() {
@@ -293,6 +312,9 @@ class TimeshiftFetchController extends ChangeNotifier {
 
   @override
   void dispose() {
+    // Fetches still running after this point must not touch the state.
+    _disposed = true;
+    _generation += 1;
     _subscription?.cancel();
     _subscription = null;
     super.dispose();
@@ -311,7 +333,8 @@ class TimeshiftFetchController extends ChangeNotifier {
         break;
       case NdgrTimeshiftEventType.error:
         log(
-          'Timeshift event error: ${event.error}',
+          // Only the type: HTTP errors can carry signed URLs.
+          'Timeshift event error: ${event.error.runtimeType}',
           name: 'TimeshiftFetchController',
         );
         break;
@@ -319,7 +342,7 @@ class TimeshiftFetchController extends ChangeNotifier {
   }
 
   void _setStatus(TimeshiftFetchStatus next) {
-    if (_status == next) {
+    if (_disposed || _status == next) {
       return;
     }
     _status = next;

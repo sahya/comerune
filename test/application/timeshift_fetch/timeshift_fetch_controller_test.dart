@@ -429,6 +429,140 @@ void main() {
       });
     });
 
+    group('reset and dispose while a fetch is running (#654)', () {
+      late Completer<void> release;
+      late int fetchMoreCalls;
+      late FakeTimeshiftClient client;
+      late TimeshiftFetchController controller;
+
+      setUp(() async {
+        release = Completer<void>();
+        fetchMoreCalls = 0;
+        client = FakeTimeshiftClient(
+          fetchPastResult: const FakeFetchResult(hasMore: true),
+          fetchMoreHandler: (_) async {
+            fetchMoreCalls += 1;
+            await release.future;
+          },
+        );
+        controller = TimeshiftFetchController(
+          client: client,
+          onMessages: (_) {},
+          fetchAllBatchDelay: Duration.zero,
+        );
+        await controller.fetchInitial(Uri.parse('https://example.com/view'));
+        client.setHasMore(true);
+      });
+
+      test(
+        'a fetch that fails after a reset does not set the error state',
+        () async {
+          final Completer<void> failing = Completer<void>();
+          client.fetchMoreHandler = (_) => failing.future;
+          final Future<void> fetching = controller.fetchMore(500);
+
+          final Future<void> resetting = controller.cancelAndReset();
+          failing.completeError(StateError('network'));
+          await resetting;
+          await fetching;
+
+          expect(controller.status, TimeshiftFetchStatus.idle);
+          expect(controller.lastError, isNull);
+          controller.dispose();
+        },
+      );
+
+      test(
+        'a reset during a fetch-all batch leaves the controller idle',
+        () async {
+          final Future<void> fetchingAll = controller.fetchAll();
+          expect(controller.isFetchingAll, isTrue);
+
+          final Future<void> resetting = controller.cancelAndReset();
+          release.complete();
+          await resetting;
+          await fetchingAll;
+
+          expect(controller.status, TimeshiftFetchStatus.idle);
+          expect(controller.isFetchingAll, isFalse);
+          controller.dispose();
+        },
+      );
+
+      test(
+        'fetch requests made while a reset is waiting are ignored',
+        () async {
+          final Future<void> fetching = controller.fetchMore(500);
+          expect(fetchMoreCalls, 1);
+
+          final Future<void> resetting = controller.cancelAndReset();
+          // The user presses a fetch button while the reset waits.
+          await controller.fetchMore(500);
+          await controller.fetchAll();
+          release.complete();
+          await resetting;
+          await fetching;
+
+          expect(fetchMoreCalls, 1);
+          expect(controller.status, TimeshiftFetchStatus.idle);
+          controller.dispose();
+        },
+      );
+
+      test(
+        'a fetch finishing after dispose does not touch the state',
+        () async {
+          final Future<void> fetching = controller.fetchMore(500);
+          controller.dispose();
+
+          release.complete();
+          await fetching;
+
+          // Reaching here without a "used after being disposed" error is the
+          // assertion; the status stays as it was at dispose.
+          expect(controller.status, TimeshiftFetchStatus.fetching);
+        },
+      );
+    });
+
+    test('an old fetch-all loop does not clear the flags of a fetch-all '
+        'started after a reset (#654)', () {
+      fakeAsync((FakeAsync async) {
+        final FakeTimeshiftClient client = FakeTimeshiftClient(
+          fetchMoreHandler: (_) async {},
+        );
+        client.setHasMore(true);
+        final TimeshiftFetchController controller = TimeshiftFetchController(
+          client: client,
+          onMessages: (_) {},
+          fetchAllBatchDelay: const Duration(milliseconds: 100),
+        );
+
+        // The first loop waits between batches when the reset happens.
+        unawaited(controller.fetchAll());
+        async.flushMicrotasks();
+        unawaited(controller.cancelAndReset());
+        async.flushMicrotasks();
+
+        // A new fetch-all starts for the next program and is still running
+        // when the old loop wakes up.
+        final Completer<void> release = Completer<void>();
+        client.fetchMoreHandler = (_) => release.future;
+        client.setHasMore(true);
+        unawaited(controller.fetchAll());
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 200));
+
+        expect(controller.isFetchingAll, isTrue);
+        expect(controller.status, TimeshiftFetchStatus.fetching);
+
+        release.complete();
+        client.setHasMore(false);
+        async.elapse(const Duration(milliseconds: 200));
+        controller.dispose();
+      });
+    });
+
     test('notifies listeners on status change', () async {
       final FakeTimeshiftClient client = FakeTimeshiftClient(
         fetchPastResult: FakeFetchResult(hasMore: false, totalFetched: 10),

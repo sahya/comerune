@@ -252,7 +252,11 @@ class SessionWsClient {
         _sendStartWatching();
         debugPrint('[SessionWsClient] connect: startWatching sent');
       } catch (error, stackTrace) {
-        debugPrint('[SessionWsClient] connect: startWatching failed: $error');
+        // Only the type: socket errors can echo the URL (with its token).
+        debugPrint(
+          '[SessionWsClient] connect: startWatching failed: '
+          '${error.runtimeType}',
+        );
         await _cleanupConnectionState(emitDisconnected: false);
         final SessionWsErrorDetail detail = _buildErrorDetail(
           code: SessionWsErrorCode.connectFailed,
@@ -276,7 +280,10 @@ class SessionWsClient {
         _startEndpointResolveTimer();
       }
     } catch (error, stackTrace) {
-      debugPrint('[SessionWsClient] connect: channel open failed: $error');
+      // Only the type: socket errors can echo the URL (with its token).
+      debugPrint(
+        '[SessionWsClient] connect: channel open failed: ${error.runtimeType}',
+      );
       final SessionWsErrorDetail detail = _buildErrorDetail(
         code: SessionWsErrorCode.connectFailed,
         phase: SessionWsFailurePhase.openingSocket,
