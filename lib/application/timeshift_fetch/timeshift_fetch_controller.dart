@@ -122,6 +122,10 @@ class TimeshiftFetchController extends ChangeNotifier {
   // stop; while above zero, new fetches are refused so the reset cannot
   // fail on a running client.
   int _pendingResets = 0;
+  // Set when the client refused to reset its session, so the previous
+  // program's cursor may still be open. The next initial fetch retries the
+  // reset before reading anything.
+  bool _sessionNeedsReset = false;
   bool get _resetting => _pendingResets > 0;
   bool _disposed = false;
 
@@ -147,6 +151,17 @@ class TimeshiftFetchController extends ChangeNotifier {
   Future<void> fetchInitial(Uri viewApiUri) async {
     if (_resetting || _disposed || _status == TimeshiftFetchStatus.fetching) {
       return;
+    }
+    if (_sessionNeedsReset) {
+      try {
+        _client.resetSession();
+        _sessionNeedsReset = false;
+      } on Object catch (error) {
+        // Never continue the previous program's session for this one.
+        _lastError = TimeshiftFetchError.classify(error);
+        _setStatus(TimeshiftFetchStatus.error);
+        return;
+      }
     }
     final int generation = _generation;
     _lastInitialViewApiUri = viewApiUri;
@@ -307,9 +322,14 @@ class TimeshiftFetchController extends ChangeNotifier {
     _lastInitialViewApiUri = null;
     try {
       _client.resetSession();
+      _sessionNeedsReset = false;
+    } on Object {
+      _sessionNeedsReset = true;
+      rethrow;
     } finally {
       // Return to idle even if the client refuses to reset, so the next
-      // program is not mistaken for one that was already fetched.
+      // program is not mistaken for one that was already fetched. The
+      // session itself is reset again before the next initial fetch.
       _isFetchingAll = false;
       _cancelRequested = false;
       _lastError = null;
