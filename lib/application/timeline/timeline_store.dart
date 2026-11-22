@@ -47,15 +47,26 @@ class TimelineStore extends ChangeNotifier {
   /// state is exposed only after the next [notifyListeners].
   UnmodifiableListView<AppMessage> get messages => _publishedView;
 
-  void add(AppMessage message) {
+  /// Adds [message] unless a message with the same id is already held.
+  ///
+  /// Returns `true` only when [message] was newly accepted **and** is still
+  /// held after capacity trimming. Returns `false` for a duplicate id, or
+  /// when [message] was older than every held message in a full timeline
+  /// and was therefore evicted immediately.
+  ///
+  /// Callers that aggregate per-comment statistics use this result to
+  /// avoid counting the same comment twice — e.g. history comments that
+  /// the NDGR stream re-delivers after every reconnect (Issue #1034).
+  bool add(AppMessage message) {
     if (_knownIds.contains(message.id)) {
-      return;
+      return false;
     }
 
     _insertSorted(message);
     _knownIds.add(message.id);
     _trimOverflow();
     _publishAndNotify();
+    return _knownIds.contains(message.id);
   }
 
   void addAll(List<AppMessage> messages) {

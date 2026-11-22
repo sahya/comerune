@@ -640,22 +640,22 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _ndgrMessageSubscription = _ndgrClient.messages.listen((
       AppMessage message,
     ) {
-      // Silent timestamp update — `_timelineStore.add` /
-      // `_statisticsStore.recordComment` below already trigger a rebuild
-      // of CommentScreen via the ListenableBuilder in select_screen, so
-      // the StatusBar's `最終受信` text picks up the fresh value without
-      // an extra supervisor-level notify (which would re-run wakelock /
-      // auto-save plumbing per comment).
+      // Silent timestamp update — for a new comment, `_ingestLiveMessage`
+      // below already triggers a rebuild of CommentScreen (via
+      // `_timelineStore.add` / `_statisticsStore.recordComment` and the
+      // ListenableBuilder in select_screen), so the StatusBar's `最終受信`
+      // text picks up the fresh value without an extra supervisor-level
+      // notify (which would re-run wakelock / auto-save plumbing per
+      // comment). Duplicates re-delivered on reconnect trigger no rebuild;
+      // the value is shown on the next new comment or status change.
       _connectionSupervisor.recordReceivedAt(notify: false);
-      _timelineStore.add(message);
-      _statisticsStore.recordComment(message);
+      _ingestLiveMessage(message);
     });
     _legacyMessageSubscription = _legacyCommentClient.messages.listen((
       AppMessage message,
     ) {
       _connectionSupervisor.recordReceivedAt(notify: false);
-      _timelineStore.add(message);
-      _statisticsStore.recordComment(message);
+      _ingestLiveMessage(message);
     });
     _ndgrViewerCountSubscription = _ndgrClient.viewerCounts.listen(
       _statisticsStore.updateViewerCount,
@@ -667,6 +667,19 @@ class _ComeruneAppState extends State<ComeruneApp> {
     // if the OAuth login entry point is hidden (the flow simply never
     // gets triggered, and no callback arrives).
     unawaited(widget.oauthAuthController.attach());
+  }
+
+  /// Adds a live (NDGR / legacy) comment to the timeline and counts it in
+  /// the statistics only when the timeline accepted it as new.
+  ///
+  /// The NDGR stream re-delivers recent history comments after every
+  /// reconnect; [TimelineStore.add] drops those by id, and gating
+  /// [StatisticsStore.recordComment] on its result keeps the
+  /// "総コメント数" display from being inflated (Issue #1034).
+  void _ingestLiveMessage(AppMessage message) {
+    if (_timelineStore.add(message)) {
+      _statisticsStore.recordComment(message);
+    }
   }
 
   /// Called when [_SessionWsClientAdapter] detects a timeshift (ended)
@@ -848,8 +861,11 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _ndgrHistoryCount = settings.pastCommentFetchCount.historyCount;
     // TimelineStore の capacity は _SelectScreen 側が接続開始 / 再接続の直前に
     // pastCommentFetchCount.displayCapacity で更新する。ここで二重に呼ぶと
-    // 責務が分散するため、本メソッドでは NDGR 取得数と統計のリセットに専念する。
-    _statisticsStore.reset();
+    // 責務が分散するため、本メソッドでは NDGR 取得数の更新に専念する。
+    // 統計のリセットは、TimelineStore.clear() と必ず同時に行う必要がある
+    // （ライブコメントは TimelineStore が新規と判定したときだけ数えるため。
+    // Issue #1034）。そのため _SelectScreen 側の lv 切り替え時の clear と
+    // 一緒に行う。同じ lv への手動再接続では、どちらも行わない。
   }
 
   @override

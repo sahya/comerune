@@ -127,6 +127,51 @@ void main() {
     ]);
   });
 
+  group('add return value (Issue #1034)', () {
+    test('returns true when a new message is accepted', () {
+      final TimelineStore store = TimelineStore(capacity: 10);
+
+      expect(store.add(_message(1)), isTrue);
+      expect(store.messages.length, 1);
+    });
+
+    test('returns false for a duplicate id re-delivered on reconnect', () {
+      final TimelineStore store = TimelineStore(capacity: 10);
+      store.add(_message(1));
+
+      expect(store.add(_message(1)), isFalse);
+      expect(store.messages.length, 1);
+    });
+
+    test('returns false when the message is evicted immediately', () {
+      final TimelineStore store = TimelineStore(capacity: 2);
+      final AppMessage first = _message(1);
+      store.add(first);
+      store.add(_message(2));
+      store.add(_message(3));
+
+      // id-1 is older than every held message in a full timeline, so it is
+      // trimmed right after insertion and must not count as accepted.
+      expect(store.add(first), isFalse);
+      expect(store.messages.map((AppMessage m) => m.id).toList(), <String>[
+        'id-2',
+        'id-3',
+      ]);
+    });
+
+    test('returns true for a newer message that pushes out the oldest', () {
+      final TimelineStore store = TimelineStore(capacity: 2);
+      store.add(_message(1));
+      store.add(_message(2));
+
+      expect(store.add(_message(3)), isTrue);
+      expect(store.messages.map((AppMessage m) => m.id).toList(), <String>[
+        'id-2',
+        'id-3',
+      ]);
+    });
+  });
+
   test('can add a message with null userId', () {
     final TimelineStore store = TimelineStore(capacity: 10);
     final AppMessage message = AppMessage(
