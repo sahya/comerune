@@ -167,7 +167,6 @@ class TimeshiftFetchController extends ChangeNotifier {
       }
     }
     final int generation = _generation;
-    _lastInitialViewApiUri = viewApiUri;
     _setStatus(TimeshiftFetchStatus.fetching);
     _lastError = null;
 
@@ -223,6 +222,9 @@ class TimeshiftFetchController extends ChangeNotifier {
     }
     if (_sessionNeedsReset) {
       // Never continue the previous program's session (see fetchMore).
+      // Only the initial batch is fetched here; the user can fetch the rest
+      // afterwards. Unreachable from the current panel, which hides this
+      // button in the error state.
       final Uri? initialUri = _lastInitialViewApiUri;
       if (initialUri != null) {
         await fetchInitial(initialUri);

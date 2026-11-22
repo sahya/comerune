@@ -595,8 +595,10 @@ void main() {
 
         // Once the reset goes through, the retry starts the new program.
         await controller.fetchMore(500);
+        expect(client.resetSessionCalls, resetsBefore + 3);
         expect(client.fetchPastCalls, 2);
         expect(controller.status, TimeshiftFetchStatus.paused);
+        expect(controller.lastError, isNull);
         controller.dispose();
       });
 
