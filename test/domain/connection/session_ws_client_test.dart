@@ -7,6 +7,7 @@ import 'package:comerune/domain/models/comment_post_result.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/fake_session_ws_channel.dart';
 import '../../helpers/recording_settings_store.dart';
 
 void main() {
@@ -394,7 +395,7 @@ void main() {
     });
 
     test('passes resolved headers to custom channelFactory', () async {
-      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+      final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
       Map<String, String>? capturedHeaders;
 
       final SessionWsClient client = SessionWsClient(
@@ -417,7 +418,7 @@ void main() {
     });
 
     test('sends startWatching on connect and pong on keepalive', () async {
-      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+      final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
       final SessionWsClient client = SessionWsClient(
         lv: 'lv123456789',
         channelFactory: (_, _) async => fakeChannel,
@@ -463,7 +464,7 @@ void main() {
     });
 
     test('sends minimal startWatching payload when configured', () async {
-      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+      final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
       final SessionWsClient client = SessionWsClient(
         lv: 'lv123456789',
         channelFactory: (_, _) async => fakeChannel,
@@ -485,7 +486,7 @@ void main() {
     test(
       'emits keepalive failure and disconnects when pong send fails',
       () async {
-        final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel(
+        final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel(
           failOnPong: true,
         );
         final SessionWsClient client = SessionWsClient(
@@ -522,7 +523,7 @@ void main() {
     );
 
     test('responds to ping keepalive when configured', () async {
-      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+      final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
       final SessionWsClient client = SessionWsClient(
         lv: 'lv123456789',
         channelFactory: (_, _) async => fakeChannel,
@@ -549,7 +550,7 @@ void main() {
         // CPU 競合で `Timer.periodic(1s)` の発火が遅延して flake する。
         // `fake_async` で仮想時間化し、決定的に 2 回分 tick を進める。
         fakeAsync((FakeAsync async) {
-          final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+          final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
           final SessionWsClient client = SessionWsClient(
             lv: 'lv123456789',
             channelFactory: (_, _) async => fakeChannel,
@@ -588,7 +589,7 @@ void main() {
         // StreamSubscription.cancel の既知の非互換）。実時間を使いつつ、
         // CPU 競合で 1s timer の発火が遅延しても安定して完了できるよう
         // 余裕を十分取る（5s = timer 1 周 + disconnect 完了 + マージン）。
-        final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel(
+        final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel(
           failOnKeepSeat: true,
         );
         final SessionWsClient client = SessionWsClient(
@@ -643,7 +644,7 @@ void main() {
     test(
       'emits ndgr endpoint event before legacy when both exist in message',
       () async {
-        final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+        final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
         final SessionWsClient client = SessionWsClient(
           lv: 'lv123456789',
           channelFactory: (_, _) async => fakeChannel,
@@ -687,7 +688,7 @@ void main() {
     test(
       'delays legacy fallback and prefers ndgr if ndgr arrives in grace window',
       () async {
-        final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+        final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
         final SessionWsClient client = SessionWsClient(
           lv: 'lv123456789',
           channelFactory: (_, _) async => fakeChannel,
@@ -739,7 +740,7 @@ void main() {
     test(
       'emits legacy endpoint when ndgr is not found after grace delay',
       () async {
-        final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+        final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
         final SessionWsClient client = SessionWsClient(
           lv: 'lv123456789',
           channelFactory: (_, _) async => fakeChannel,
@@ -778,7 +779,7 @@ void main() {
     test(
       'does not postpone legacy fallback timer on unrelated incoming messages',
       () async {
-        final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+        final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
         final SessionWsClient client = SessionWsClient(
           lv: 'lv123456789',
           channelFactory: (_, _) async => fakeChannel,
@@ -824,7 +825,7 @@ void main() {
     );
 
     test('emits failed on unknown disconnect event', () async {
-      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+      final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
       final SessionWsClient client = SessionWsClient(
         lv: 'lv123456789',
         channelFactory: (_, _) async => fakeChannel,
@@ -876,7 +877,7 @@ void main() {
     });
 
     test('emits failed when endpoint resolution times out', () async {
-      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+      final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
       final SessionWsClient client = SessionWsClient(
         lv: 'lv123456789',
         channelFactory: (_, _) async => fakeChannel,
@@ -927,10 +928,10 @@ void main() {
     });
 
     test('can reconnect after startWatching send failure', () async {
-      final _FakeSessionWsChannel firstChannel = _FakeSessionWsChannel(
+      final FakeSessionWsChannel firstChannel = FakeSessionWsChannel(
         failOnStartWatching: true,
       );
-      final _FakeSessionWsChannel secondChannel = _FakeSessionWsChannel();
+      final FakeSessionWsChannel secondChannel = FakeSessionWsChannel();
       int factoryCallCount = 0;
 
       final SessionWsClient client = SessionWsClient(
@@ -981,10 +982,10 @@ void main() {
     });
 
     test('ignores connect call while disconnect is in progress', () async {
-      final _FakeSessionWsChannel firstChannel = _FakeSessionWsChannel(
+      final FakeSessionWsChannel firstChannel = FakeSessionWsChannel(
         closeDelay: const Duration(milliseconds: 60),
       );
-      final _FakeSessionWsChannel secondChannel = _FakeSessionWsChannel();
+      final FakeSessionWsChannel secondChannel = FakeSessionWsChannel();
       int factoryCallCount = 0;
       final SessionWsClient client = SessionWsClient(
         lv: 'lv123456789',
@@ -1055,7 +1056,7 @@ void main() {
     });
 
     test('is safe to call disconnect twice concurrently', () async {
-      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel(
+      final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel(
         closeDelay: const Duration(milliseconds: 50),
       );
       final SessionWsClient client = SessionWsClient(
@@ -1088,7 +1089,7 @@ void main() {
     });
 
     test('throws StateError when connect is called after dispose', () async {
-      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+      final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
       final SessionWsClient client = SessionWsClient(
         lv: 'lv123456789',
         channelFactory: (_, _) async => fakeChannel,
@@ -1102,7 +1103,7 @@ void main() {
 
     group('postComment', () {
       test('sends postComment JSON and resolves on success response', () async {
-        final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+        final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
         final SessionWsClient client = SessionWsClient(
           lv: 'lv123456789',
           channelFactory: (_, _) async => fakeChannel,
@@ -1147,7 +1148,7 @@ void main() {
       });
 
       test('resolves with error on postCommentResult error', () async {
-        final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+        final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
         final SessionWsClient client = SessionWsClient(
           lv: 'lv123456789',
           channelFactory: (_, _) async => fakeChannel,
@@ -1180,7 +1181,7 @@ void main() {
       test('returns network error when not connected', () async {
         final SessionWsClient client = SessionWsClient(
           lv: 'lv123456789',
-          channelFactory: (_, _) async => _FakeSessionWsChannel(),
+          channelFactory: (_, _) async => FakeSessionWsChannel(),
         );
 
         final CommentPostResult result = await client.postComment(
@@ -1196,7 +1197,7 @@ void main() {
       });
 
       test('rejects concurrent postComment calls', () async {
-        final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+        final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
         final SessionWsClient client = SessionWsClient(
           lv: 'lv123456789',
           channelFactory: (_, _) async => fakeChannel,
@@ -1281,94 +1282,4 @@ void main() {
       );
     });
   });
-}
-
-class _FakeSessionWsChannel implements SessionWsChannel {
-  _FakeSessionWsChannel({
-    this.failOnPong = false,
-    this.failOnKeepSeat = false,
-    this.failOnStartWatching = false,
-    this.closeDelay = Duration.zero,
-  }) : _incoming = StreamController<dynamic>(),
-       _sink = _FakeSink() {
-    _sink.onAdd = (dynamic data) {
-      sentMessages.add(data);
-
-      if (!failOnPong && !failOnKeepSeat && !failOnStartWatching) {
-        return;
-      }
-
-      final Map<String, dynamic> decoded =
-          jsonDecode(data as String) as Map<String, dynamic>;
-      if (failOnStartWatching && decoded['type'] == 'startWatching') {
-        throw StateError('startWatching send failed');
-      }
-      if (failOnPong && decoded['type'] == 'pong') {
-        throw StateError('pong send failed');
-      }
-      if (failOnKeepSeat && decoded['type'] == 'keepSeat') {
-        throw StateError('keepSeat send failed');
-      }
-    };
-  }
-
-  final bool failOnPong;
-  final bool failOnKeepSeat;
-  final bool failOnStartWatching;
-  final Duration closeDelay;
-  final StreamController<dynamic> _incoming;
-  final _FakeSink _sink;
-  final List<dynamic> sentMessages = <dynamic>[];
-  int closeCount = 0;
-
-  @override
-  Stream<dynamic> get stream => _incoming.stream;
-
-  @override
-  StreamSink<dynamic> get sink => _sink;
-
-  void pushIncoming(dynamic data) {
-    _incoming.add(data);
-  }
-
-  @override
-  Future<void> close([int? code, String? reason]) async {
-    closeCount += 1;
-    if (closeDelay > Duration.zero) {
-      await Future<void>.delayed(closeDelay);
-    }
-    await _sink.close();
-    if (!_incoming.isClosed) {
-      await _incoming.close();
-    }
-  }
-}
-
-class _FakeSink implements StreamSink<dynamic> {
-  void Function(dynamic data)? onAdd;
-  final Completer<void> _done = Completer<void>();
-
-  @override
-  void add(dynamic data) {
-    onAdd?.call(data);
-  }
-
-  @override
-  void addError(Object error, [StackTrace? stackTrace]) {}
-
-  @override
-  Future<void> addStream(Stream<dynamic> stream) {
-    return stream.forEach(add);
-  }
-
-  @override
-  Future<void> close() {
-    if (!_done.isCompleted) {
-      _done.complete();
-    }
-    return _done.future;
-  }
-
-  @override
-  Future<void> get done => _done.future;
 }

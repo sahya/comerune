@@ -644,6 +644,10 @@ class SessionWsClient {
     _eventsController.add(event);
   }
 
+  /// The channel factory used when none is given: a real WebSocket.
+  static const SessionWsChannelFactory defaultChannelFactory =
+      _defaultChannelFactory;
+
   static Future<SessionWsChannel> _defaultChannelFactory(
     Uri uri,
     Map<String, String> headers,
