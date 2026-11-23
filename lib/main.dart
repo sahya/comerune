@@ -1224,10 +1224,17 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       session_impl.SessionWsEvent event,
     ) {
       if (event.error != null || event.errorDetail != null) {
+        // The raw error can embed the WebSocket URL with its token query;
+        // errorDetail.toString() is already sanitized.
+        final Object? error = event.error;
+        final String errorText = error == null
+            ? ''
+            : ' error='
+                  '${session_impl.SessionWsLogSanitizer.sanitizeText('$error')}';
         appDebugLog(
           '[SessionWsClientAdapter] WS event: ${event.type.name}'
           '${event.errorDetail != null ? ' detail=${event.errorDetail}' : ''}'
-          '${event.error != null ? ' error=${event.error}' : ''}',
+          '$errorText',
         );
       }
     });
