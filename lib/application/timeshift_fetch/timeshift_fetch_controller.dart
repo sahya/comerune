@@ -115,6 +115,28 @@ class TimeshiftFetchController extends ChangeNotifier {
   TimeshiftFetchError? _lastError;
 
   TimeshiftFetchStatus _status = TimeshiftFetchStatus.idle;
+  Uri? _lastInitialViewApiUri;
+  Future<void>? _inFlight;
+  int _generation = 0;
+  // Number of cancelAndReset() calls waiting for the running fetch to
+  // stop; while above zero, new fetches are refused so the reset cannot
+  // fail on a running client.
+  int _pendingResets = 0;
+  // Set when the client refused to reset its session, so the previous
+  // program's cursor may still be open. The next initial fetch retries the
+  // reset before reading anything.
+  bool _sessionNeedsReset = false;
+  bool get _resetting => _pendingResets > 0;
+  bool _disposed = false;
+
+  Future<void> _track(Future<void> future) {
+    _inFlight = future;
+    return future.whenComplete(() {
+      if (identical(_inFlight, future)) {
+        _inFlight = null;
+      }
+    });
+  }
 
   TimeshiftFetchStatus get status => _status;
   bool get hasMore => _client.hasMore;
@@ -127,51 +149,86 @@ class TimeshiftFetchController extends ChangeNotifier {
   TimeshiftFetchError? get lastError => _lastError;
 
   Future<void> fetchInitial(Uri viewApiUri) async {
-    if (_status == TimeshiftFetchStatus.fetching) {
+    if (_resetting || _disposed || _status == TimeshiftFetchStatus.fetching) {
       return;
     }
+    // Remember the URI first, so a retry after a failed reset (the panel's
+    // retry button calls fetchMore) comes back here.
+    _lastInitialViewApiUri = viewApiUri;
+    if (_sessionNeedsReset) {
+      try {
+        _client.resetSession();
+        _sessionNeedsReset = false;
+      } on Object catch (error) {
+        // Never continue the previous program's session for this one.
+        _lastError = TimeshiftFetchError.classify(error);
+        _setStatus(TimeshiftFetchStatus.error);
+        return;
+      }
+    }
+    final int generation = _generation;
     _setStatus(TimeshiftFetchStatus.fetching);
     _lastError = null;
 
     try {
-      await _client.fetchPastComments(viewApiUri);
-      _setStatus(
-        _client.hasMore
-            ? TimeshiftFetchStatus.paused
-            : TimeshiftFetchStatus.completed,
-      );
+      await _track(_client.fetchPastComments(viewApiUri));
+      _finish(generation);
     } on Object catch (error) {
-      _lastError = TimeshiftFetchError.classify(error);
-      _setStatus(TimeshiftFetchStatus.error);
+      _fail(generation, error);
     }
   }
 
   Future<void> fetchMore(int count) async {
-    if (_status == TimeshiftFetchStatus.fetching) {
+    if (_resetting || _disposed || _status == TimeshiftFetchStatus.fetching) {
       return;
+    }
+    // Issue #654: the initial fetch failed before a session opened (e.g. the
+    // panel's retry button after an error). Start over from the initial
+    // fetch instead of reporting "completed".
+    // A session left open by a refused reset belongs to the previous
+    // program, so it is treated like no session at all.
+    final Uri? initialUri = _lastInitialViewApiUri;
+    if (_sessionNeedsReset || !_client.isSessionOpen) {
+      if (initialUri != null) {
+        await fetchInitial(initialUri);
+        return;
+      }
+      if (_sessionNeedsReset) {
+        return;
+      }
     }
     if (!_client.hasMore) {
       _setStatus(TimeshiftFetchStatus.completed);
       return;
     }
+    final int generation = _generation;
     _setStatus(TimeshiftFetchStatus.fetching);
     _lastError = null;
 
     try {
-      await _client.fetchMore(count: count);
-      _setStatus(
-        _client.hasMore
-            ? TimeshiftFetchStatus.paused
-            : TimeshiftFetchStatus.completed,
-      );
+      await _track(_client.fetchMore(count: count));
+      _finish(generation);
     } on Object catch (error) {
-      _lastError = TimeshiftFetchError.classify(error);
-      _setStatus(TimeshiftFetchStatus.error);
+      _fail(generation, error);
     }
   }
 
   Future<void> fetchAll() async {
-    if (_status == TimeshiftFetchStatus.fetching || _isFetchingAll) {
+    if (_resetting ||
+        _disposed ||
+        _status == TimeshiftFetchStatus.fetching ||
+        _isFetchingAll) {
+      return;
+    }
+    if (_sessionNeedsReset) {
+      // Never continue the previous program's session (see fetchMore).
+      // Only the initial batch is fetched here; the user can fetch the rest
+      // afterwards. Unreachable from the current panel, which hides this
+      // button in the error state.
+      final Uri? initialUri = _lastInitialViewApiUri;
+      if (initialUri != null) {
+        await fetchInitial(initialUri);
+      }
       return;
     }
     if (!_client.hasMore) {
@@ -179,30 +236,53 @@ class TimeshiftFetchController extends ChangeNotifier {
       return;
     }
 
+    final int generation = _generation;
     _isFetchingAll = true;
     _cancelRequested = false;
     _lastError = null;
     _setStatus(TimeshiftFetchStatus.fetching);
 
     try {
-      while (_client.hasMore && !_cancelRequested) {
-        await _client.fetchMore(count: _fetchAllBatchSize);
+      while (generation == _generation &&
+          _client.hasMore &&
+          !_cancelRequested) {
+        await _track(_client.fetchMore(count: _fetchAllBatchSize));
         if (_client.hasMore && !_cancelRequested) {
           await Future<void>.delayed(_fetchAllBatchDelay);
         }
       }
-      _setStatus(
-        _client.hasMore
-            ? TimeshiftFetchStatus.paused
-            : TimeshiftFetchStatus.completed,
-      );
+      _finish(generation);
     } on Object catch (error) {
-      _lastError = TimeshiftFetchError.classify(error);
-      _setStatus(TimeshiftFetchStatus.error);
+      _fail(generation, error);
     } finally {
-      _isFetchingAll = false;
-      _cancelRequested = false;
+      // A reset during this loop already cleared these flags; a fetch
+      // started after the reset owns them now.
+      if (generation == _generation) {
+        _isFetchingAll = false;
+        _cancelRequested = false;
+      }
     }
+  }
+
+  /// Sets the final status of a fetch started in [generation], unless the
+  /// controller was reset meanwhile (Issue #654: a program switch).
+  void _finish(int generation) {
+    if (generation != _generation) {
+      return;
+    }
+    _setStatus(
+      _client.hasMore
+          ? TimeshiftFetchStatus.paused
+          : TimeshiftFetchStatus.completed,
+    );
+  }
+
+  void _fail(int generation, Object error) {
+    if (generation != _generation) {
+      return;
+    }
+    _lastError = TimeshiftFetchError.classify(error);
+    _setStatus(TimeshiftFetchStatus.error);
   }
 
   Future<void> cancel() async {
@@ -227,16 +307,61 @@ class TimeshiftFetchController extends ChangeNotifier {
     _isFetchingAll = false;
   }
 
+  /// Cancels any running fetch, waits for it to stop, and returns to idle.
+  ///
+  /// Used when the user switches to another program so the next timeshift
+  /// starts from a clean session (Issue #654).
+  /// Fetch requests made while this runs are ignored, so a button pressed
+  /// in the meantime cannot start a fetch that would make the reset fail.
+  Future<void> cancelAndReset() async {
+    if (_disposed) {
+      return;
+    }
+    _pendingResets += 1;
+    try {
+      await cancel();
+      final Future<void>? inFlight = _inFlight;
+      if (inFlight != null) {
+        try {
+          await inFlight;
+        } on Object {
+          // The fetch was cancelled; its error does not matter any more.
+        }
+      }
+      if (!_disposed) {
+        reset();
+      }
+    } finally {
+      _pendingResets -= 1;
+    }
+  }
+
   void reset() {
-    _client.resetSession();
-    _isFetchingAll = false;
-    _cancelRequested = false;
-    _lastError = null;
-    _setStatus(TimeshiftFetchStatus.idle);
+    // Results of fetches started before this reset are ignored.
+    _generation += 1;
+    _lastInitialViewApiUri = null;
+    try {
+      _client.resetSession();
+      _sessionNeedsReset = false;
+    } on Object {
+      _sessionNeedsReset = true;
+      rethrow;
+    } finally {
+      // Return to idle even if the client refuses to reset, so the next
+      // program is not mistaken for one that was already fetched. The
+      // session itself is reset again before the next initial fetch.
+      _isFetchingAll = false;
+      _cancelRequested = false;
+      _lastError = null;
+      _setStatus(TimeshiftFetchStatus.idle);
+    }
   }
 
   @override
   void dispose() {
+    // Fetches still running after this point must not touch the state.
+    _disposed = true;
+    _generation += 1;
     _subscription?.cancel();
     _subscription = null;
     super.dispose();
@@ -255,7 +380,8 @@ class TimeshiftFetchController extends ChangeNotifier {
         break;
       case NdgrTimeshiftEventType.error:
         log(
-          'Timeshift event error: ${event.error}',
+          // Only the type: HTTP errors can carry signed URLs.
+          'Timeshift event error: ${event.error.runtimeType}',
           name: 'TimeshiftFetchController',
         );
         break;
@@ -263,7 +389,7 @@ class TimeshiftFetchController extends ChangeNotifier {
   }
 
   void _setStatus(TimeshiftFetchStatus next) {
-    if (_status == next) {
+    if (_disposed || _status == next) {
       return;
     }
     _status = next;

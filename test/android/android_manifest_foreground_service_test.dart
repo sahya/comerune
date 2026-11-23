@@ -78,4 +78,69 @@ void main() {
       );
     });
   });
+
+  group('AndroidManifest.xml App Links callback handling', () {
+    final File manifestFile = File('android/app/src/main/AndroidManifest.xml');
+    late String mainActivitySource;
+
+    setUpAll(() {
+      // XML comments are stripped first so a commented-out declaration
+      // does not satisfy the assertion below.
+      final String manifestSource = manifestFile.readAsStringSync().replaceAll(
+        RegExp(r'<!--.*?-->', dotAll: true),
+        '',
+      );
+      // Captures the whole MainActivity element (opening tag through
+      // </activity>) so the assertion below only passes when the meta-data
+      // sits inside the activity. Flutter reads this flag from the
+      // activity's own meta-data, not from <application>.
+      final RegExp mainActivity = RegExp(
+        r'<activity\b[^>]*android:name="\.MainActivity".*?</activity>',
+        dotAll: true,
+      );
+      final RegExpMatch? match = mainActivity.firstMatch(manifestSource);
+      if (match == null) {
+        fail('MainActivity declaration not found in $manifestFile');
+      }
+      mainActivitySource = match.group(0)!;
+    });
+
+    test('disables Flutter built-in deep linking on MainActivity so the OAuth '
+        'callback URL is handled only by app_links', () {
+      // Without this flag the Flutter embedding also hands incoming VIEW
+      // intent URLs to the Navigator: as the initial route on cold start
+      // (silently dropped, since it does not start with "/"), and via
+      // pushRouteInformation on warm start. The app has no route for the
+      // callback, so in debug builds the warm-start path throws a routing
+      // error whose message includes the callback path and query
+      // (authorization code and state). The app_links Android setup asks
+      // for the flag to be disabled explicitly.
+      //
+      // Attribute order and self-closing vs. open form are not fixed, so
+      // each <meta-data> start tag is checked for both attributes. Flutter
+      // only reads the activity's own meta-data, so declarations nested in
+      // an <intent-filter> are excluded.
+      final String activityLevelSource = mainActivitySource.replaceAll(
+        RegExp(r'<intent-filter\b.*?</intent-filter>', dotAll: true),
+        '',
+      );
+      final Iterable<String> metaDataTags = RegExp(
+        r'<meta-data\b[^>]*>',
+      ).allMatches(activityLevelSource).map((RegExpMatch m) => m.group(0)!);
+      final bool hasFlag = metaDataTags.any(
+        (String tag) =>
+            tag.contains('android:name="flutter_deeplinking_enabled"') &&
+            tag.contains('android:value="false"'),
+      );
+      expect(
+        hasFlag,
+        isTrue,
+        reason:
+            'MainActivity must declare <meta-data '
+            'android:name="flutter_deeplinking_enabled" '
+            'android:value="false" /> so the OAuth callback URL is not '
+            'pushed to the Navigator.',
+      );
+    });
+  });
 }
