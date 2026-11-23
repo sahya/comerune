@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../../app_logging.dart';
 import '../models/comment_post_result.dart';
 
 enum SessionWsEventType {
@@ -647,17 +648,11 @@ class SessionWsClient {
     Uri uri,
     Map<String, String> headers,
   ) async {
-    final Map<String, String> sanitizedHeaders = <String, String>{
-      for (final MapEntry<String, String> e in headers.entries)
-        e.key:
-            e.key.toLowerCase() == 'cookie' ||
-                e.key.toLowerCase() == 'x-niconico-session'
-            ? '${e.value.substring(0, e.value.length.clamp(0, 20))}...'
-            : e.value,
-    };
-    debugPrint(
-      '[SessionWsClient] _defaultChannelFactory: '
-      'uri=${uri.host}${uri.path} headers=$sanitizedHeaders',
+    appDebugLogLazy(
+      () =>
+          '[SessionWsClient] _defaultChannelFactory: '
+          'uri=${uri.host}${uri.path} '
+          'headers=${SessionWsLogSanitizer.sanitizeHeaders(headers)}',
     );
     final IOWebSocketChannel channel = IOWebSocketChannel.connect(
       uri,
@@ -1014,6 +1009,24 @@ class SessionWsLogSanitizer {
   );
 
   static final RegExp _queryOrFragmentStart = RegExp('[?#]');
+
+  /// Value printed in place of a sensitive header value.
+  static const String redactedHeaderValue = '<redacted>';
+
+  /// Returns a copy of [headers] that is safe to log.
+  ///
+  /// A header is sensitive when its name matches the same pattern that
+  /// [sanitizeRawJson] uses for JSON keys (token, cookie, session, auth,
+  /// credential, secret, password; case-insensitive), so this covers
+  /// `Cookie`, `X-Niconico-Session` and `Authorization`. Sensitive values are
+  /// replaced entirely with [redactedHeaderValue], so no character of the
+  /// original value is kept. Header names are kept for debugging.
+  static Map<String, String> sanitizeHeaders(Map<String, String> headers) {
+    return <String, String>{
+      for (final MapEntry<String, String> e in headers.entries)
+        e.key: _isSensitiveKey(e.key) ? redactedHeaderValue : e.value,
+    };
+  }
 
   static String sanitizeRawJson(String rawJson) {
     try {
