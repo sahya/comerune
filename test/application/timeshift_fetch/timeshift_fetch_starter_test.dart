@@ -245,6 +245,33 @@ void main() {
       },
     );
 
+    test('skips the program info view URI too when the connection was '
+        'streaming live (#1049)', () async {
+      final _Harness h = _Harness()..streamedLive = true;
+
+      await h.starter.onTimeshiftDetected(_programInfoViewUri);
+
+      expect(h.fetched, isEmpty);
+      expect(h.lookups, isEmpty);
+      expect(h.starter.acceptsMessages, isFalse);
+    });
+
+    test('fetches after reconnecting to a program skipped while streaming '
+        'live (#1049)', () async {
+      final _Harness h = _Harness()..streamedLive = true;
+      await h.starter.onProgramChanged('lv1');
+      await h.starter.onTimeshiftDetected(_programInfoViewUri);
+      expect(h.fetched, isEmpty);
+
+      // Reconnecting starts a new connection that has not streamed live.
+      h.streamedLive = false;
+      await h.starter.onProgramChanged('lv1');
+      await h.starter.onTimeshiftDetected(_programInfoViewUri);
+
+      expect(h.fetched, <Uri>[_programInfoViewUri]);
+      expect(h.starter.acceptsMessages, isTrue);
+    });
+
     test('does not fetch when a fetch started during the lookup', () async {
       final Completer<TimeshiftViewUriResult> pending =
           Completer<TimeshiftViewUriResult>();
