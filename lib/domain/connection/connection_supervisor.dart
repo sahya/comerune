@@ -5,6 +5,9 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 
 import 'connection_clients.dart';
+// Only the static log sanitizer; the supervisor still talks to the session
+// WebSocket through the abstractions in connection_clients.dart.
+import 'session_ws_client.dart' show SessionWsLogSanitizer;
 
 enum ConnectionStatus {
   idle,
@@ -587,7 +590,9 @@ class ConnectionSupervisor extends ChangeNotifier {
     } on SessionWsConnectException catch (error) {
       throw _ConnectionFailure(
         _mapSessionWsConnectFailure(error.kind),
-        errorDetail: error.cause?.toString(),
+        errorDetail: error.cause == null
+            ? null
+            : SessionWsLogSanitizer.sanitizeText(error.cause.toString()),
       );
     } catch (_) {
       throw const _ConnectionFailure(

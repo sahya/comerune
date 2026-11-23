@@ -282,9 +282,98 @@ void main() {
         'see https://[bad',
       );
     });
+
+    test('redacts session header values entirely and keeps the rest', () {
+      final Map<String, String> sanitized =
+          SessionWsLogSanitizer.sanitizeHeaders(const <String, String>{
+            'Cookie': 'user_session=user_session_12345_abcdefghijklmnop',
+            'x-niconico-session': 'user_session_12345_abcdefghijklmnop',
+            'Origin': 'https://live.nicovideo.jp',
+            'User-Agent': 'comerune-test-agent',
+          });
+
+      expect(sanitized, <String, String>{
+        'Cookie': SessionWsLogSanitizer.redactedHeaderValue,
+        'x-niconico-session': SessionWsLogSanitizer.redactedHeaderValue,
+        'Origin': 'https://live.nicovideo.jp',
+        'User-Agent': 'comerune-test-agent',
+      });
+    });
+
+    test('redacts empty and short session header values too', () {
+      final Map<String, String> sanitized =
+          SessionWsLogSanitizer.sanitizeHeaders(const <String, String>{
+            'Cookie': '',
+            'X-Niconico-Session': 'ab',
+          });
+
+      expect(sanitized['Cookie'], SessionWsLogSanitizer.redactedHeaderValue);
+      expect(
+        sanitized['X-Niconico-Session'],
+        SessionWsLogSanitizer.redactedHeaderValue,
+      );
+    });
   });
 
   group('SessionWsClient', () {
+    test(
+      'default channelFactory logs no part of the session header values',
+      () async {
+        const String sessionValue = 'Zq7k_98765_SECRETVALUE_xyz9';
+        final HttpServer server = await HttpServer.bind(
+          InternetAddress.loopbackIPv4,
+          0,
+        );
+        final List<WebSocket> serverSockets = <WebSocket>[];
+        addTearDown(() async {
+          for (final WebSocket socket in serverSockets) {
+            await socket.close();
+          }
+          await server.close(force: true);
+        });
+        final Completer<HttpHeaders> receivedHeaders = Completer<HttpHeaders>();
+        server.listen((HttpRequest request) async {
+          receivedHeaders.complete(request.headers);
+          serverSockets.add(await WebSocketTransformer.upgrade(request));
+        });
+
+        final SessionWsClient client = SessionWsClient(
+          lv: 'lv123456789',
+          webSocketUri: Uri.parse('ws://127.0.0.1:${server.port}/wsapi/test'),
+          startWatchingMode: SessionWsStartWatchingMode.commentOnly,
+          connectHeaders: const <String, String>{
+            'Cookie': 'user_session=$sessionValue',
+            'X-Niconico-Session': sessionValue,
+          },
+        );
+        addTearDown(client.dispose);
+
+        final List<String> logs = <String>[];
+        await withCapturedDebugPrint(logs, client.connect);
+
+        final String factoryLog = logs.singleWhere(
+          (String line) => line.contains('_defaultChannelFactory'),
+        );
+        expect(factoryLog, contains('Cookie'));
+        expect(factoryLog, contains('X-Niconico-Session'));
+        expect(factoryLog, contains(SessionWsLogSanitizer.redactedHeaderValue));
+        for (final String line in logs) {
+          expect(line, isNot(contains('user_session=')));
+          expect(line, isNot(contains(sessionValue)));
+          expect(line, isNot(contains(sessionValue.substring(0, 4))));
+          expect(
+            line,
+            isNot(contains(sessionValue.substring(sessionValue.length - 4))),
+          );
+        }
+
+        // Only the log is redacted; the real values still reach the server.
+        final HttpHeaders headers = await receivedHeaders.future;
+        expect(headers.value('cookie'), 'user_session=$sessionValue');
+        expect(headers.value('x-niconico-session'), sessionValue);
+      },
+    );
+
     test('applies default Android User-Agent header', () {
       final SessionWsClient client = SessionWsClient(lv: 'lv123456789');
 
