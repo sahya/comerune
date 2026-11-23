@@ -507,7 +507,7 @@ class ConnectionSupervisor extends ChangeNotifier {
 
   void recordError(ConnectionErrorCode errorCode, {String? errorDetail}) {
     _lastError = errorCode;
-    _lastErrorDetail = errorDetail;
+    _lastErrorDetail = _normalizeErrorDetail(errorDetail);
     notifyListeners();
   }
 
@@ -590,9 +590,7 @@ class ConnectionSupervisor extends ChangeNotifier {
     } on SessionWsConnectException catch (error) {
       throw _ConnectionFailure(
         _mapSessionWsConnectFailure(error.kind),
-        errorDetail: error.cause == null
-            ? null
-            : SessionWsLogSanitizer.sanitizeText(error.cause.toString()),
+        errorDetail: error.cause?.toString(),
       );
     } catch (_) {
       throw const _ConnectionFailure(
@@ -777,7 +775,7 @@ class ConnectionSupervisor extends ChangeNotifier {
             return false;
           }
           _lastError = failure.errorCode;
-          _lastErrorDetail = failure.errorDetail;
+          _lastErrorDetail = _normalizeErrorDetail(failure.errorDetail);
           if (_status != ConnectionStatus.reconnecting) {
             _transitionTo(
               ConnectionStatus.reconnecting,
@@ -874,7 +872,7 @@ class ConnectionSupervisor extends ChangeNotifier {
 
     if (errorCode != null) {
       _lastError = errorCode;
-      _lastErrorDetail = errorDetail;
+      _lastErrorDetail = _normalizeErrorDetail(errorDetail);
     }
 
     _status = next;
@@ -882,6 +880,14 @@ class ConnectionSupervisor extends ChangeNotifier {
       notifyListeners();
     }
     return true;
+  }
+
+  /// URLs are stored without their query, fragment and user info.
+  static String? _normalizeErrorDetail(String? errorDetail) {
+    if (errorDetail == null) {
+      return null;
+    }
+    return SessionWsLogSanitizer.sanitizeText(errorDetail);
   }
 
   void _logInvalidTransition(ConnectionStatus next) {

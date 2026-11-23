@@ -515,6 +515,23 @@ void main() {
       expect(supervisor.lastErrorDetail, isNot(contains('audience_token')));
     });
 
+    test('strips query, fragment and user info from recordError detail', () {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+      addTearDown(supervisor.dispose);
+
+      supervisor.recordError(
+        ConnectionErrorCode.ndgrStreamFailed,
+        errorDetail:
+            'failed: wss://user:pass@example.com/ws/dummy'
+            '?key=dummy-value#frag (closed)',
+      );
+
+      expect(
+        supervisor.lastErrorDetail,
+        'failed: wss://example.com/ws/dummy (closed)',
+      );
+    });
+
     test(
       'reconnects NDGR stall with same URI after disconnecting old stream',
       () async {
