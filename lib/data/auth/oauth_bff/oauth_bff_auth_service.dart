@@ -234,6 +234,16 @@ class OAuthBffAuthService {
     return OAuthCallbackSuccess(tokens);
   }
 
+  /// Deletes the stored OAuth tokens and any pending authorization state,
+  /// so nothing from this login is left on the device after logging out
+  /// (Issue #1053). Throws when the token store cannot be cleared; a
+  /// failure to clear the pending state is only logged because that state
+  /// expires on its own.
+  Future<void> signOut() async {
+    await tokenStore.clear();
+    await _safeClearState();
+  }
+
   /// Refresh the persisted access token using the persisted refresh token.
   /// Throws [OAuthFailure] on failure. Fresh tokens are persisted on success.
   Future<OAuthTokens> refresh() async {

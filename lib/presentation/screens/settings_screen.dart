@@ -11,6 +11,9 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../../application/app_update/app_update_gate.dart';
 import '../../application/app_update/update_prompt_store.dart';
 import '../../application/app_update/version_update_checker.dart';
+import '../../application/auth/oauth_auth_controller.dart';
+import '../../application/auth/oauth_auth_scope.dart';
+import '../../application/auth/sign_out.dart';
 import '../../application/settings/settings_store.dart';
 import '../../application/speech/speech_availability_notifier.dart';
 import '../../comment_speech/comment_speech.dart';
@@ -187,6 +190,8 @@ class _SettingsScreenState extends State<SettingsScreen>
     if (sessionStore == null) {
       return;
     }
+    // Read before the dialog so the context is not used across the await.
+    final OAuthAuthController? oauth = OAuthAuthScope.maybeOf(context);
 
     final bool? confirmed = await showDialog<bool>(
       context: context,
@@ -212,9 +217,13 @@ class _SettingsScreenState extends State<SettingsScreen>
       return;
     }
 
-    await sessionStore.clear();
-    // Also clear WebView cookies so re-login doesn't reuse stale session
-    await WebViewCookieManager().clearCookies();
+    // Clears the cookie session, the WebView cookies (so re-login doesn't
+    // reuse a stale session) and the OAuth tokens (Issue #1053).
+    await signOutEverywhere(
+      sessionStore: sessionStore,
+      clearWebViewCookies: () => WebViewCookieManager().clearCookies(),
+      oauth: oauth,
+    );
     if (mounted) {
       setState(() {
         _isLoggedIn = false;
